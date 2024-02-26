@@ -17,7 +17,7 @@ export type CreatableEvent = Omit<
   properties: Attributes;
   metadata: Attributes | undefined;
   style: Attributes | undefined;
-  output: Attributes | undefined;
+  output: Attributes | string | boolean | number | undefined;
 };
 
 export type CreatableEventKind = TaskEventKind;

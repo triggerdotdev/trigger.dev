@@ -24,6 +24,8 @@ import {
   type CreatableEvent,
   CreatableEventEnvironmentType,
 } from "./eventRepository.server";
+import { logger } from "~/services/logger.server";
+import { env } from "~/env.server";
 
 export type OTLPExporterConfig = {
   batchSize: number;
@@ -41,6 +43,8 @@ class OTLPExporter {
       return convertSpansToCreateableEvents(resourceSpan);
     });
 
+    this.#logEventsVerbose(events);
+
     this._eventRepository.insertMany(events);
 
     return ExportTraceServiceResponse.create();
@@ -51,9 +55,19 @@ class OTLPExporter {
       return convertLogsToCreateableEvents(resourceLog);
     });
 
+    this.#logEventsVerbose(events);
+
     this._eventRepository.insertMany(events);
 
     return ExportLogsServiceResponse.create();
+  }
+
+  #logEventsVerbose(events: CreatableEvent[]) {
+    if (!this._verbose) return;
+
+    events.forEach((event) => {
+      logger.debug("Exporting event", { event });
+    });
   }
 
   #filterResourceSpans(
@@ -120,17 +134,26 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
           pickAttributes(log.attributes ?? [], SemanticInternalAttributes.STYLE),
           []
         ),
-        output: convertKeyValueItemsToMap(
-          pickAttributes(log.attributes ?? [], SemanticInternalAttributes.OUTPUT),
-          []
+        output: detectPrimitiveValue(
+          convertKeyValueItemsToMap(
+            pickAttributes(log.attributes ?? [], SemanticInternalAttributes.OUTPUT),
+            []
+          ),
+          SemanticInternalAttributes.OUTPUT
         ),
         ...resourceProperties,
         attemptId:
-          extractStringAttribute(log.attributes ?? [], SemanticInternalAttributes.ATTEMPT_ID) ??
-          resourceProperties.attemptId,
+          extractStringAttribute(
+            log.attributes ?? [],
+            [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_ID].join(".")
+          ) ?? resourceProperties.attemptId,
         attemptNumber:
-          extractNumberAttribute(log.attributes ?? [], SemanticInternalAttributes.ATTEMPT_NUMBER) ??
-          resourceProperties.attemptNumber,
+          extractNumberAttribute(
+            log.attributes ?? [],
+            [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_NUMBER].join(
+              "."
+            )
+          ) ?? resourceProperties.attemptNumber,
       };
     });
   });
@@ -180,18 +203,25 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
           pickAttributes(span.attributes ?? [], SemanticInternalAttributes.STYLE),
           []
         ),
-        output: convertKeyValueItemsToMap(
-          pickAttributes(span.attributes ?? [], SemanticInternalAttributes.OUTPUT),
-          []
+        output: detectPrimitiveValue(
+          convertKeyValueItemsToMap(
+            pickAttributes(span.attributes ?? [], SemanticInternalAttributes.OUTPUT),
+            []
+          ),
+          SemanticInternalAttributes.OUTPUT
         ),
         ...resourceProperties,
         attemptId:
-          extractStringAttribute(span.attributes ?? [], SemanticInternalAttributes.ATTEMPT_ID) ??
-          resourceProperties.attemptId,
+          extractStringAttribute(
+            span.attributes ?? [],
+            [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_ID].join(".")
+          ) ?? resourceProperties.attemptId,
         attemptNumber:
           extractNumberAttribute(
             span.attributes ?? [],
-            SemanticInternalAttributes.ATTEMPT_NUMBER
+            [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_NUMBER].join(
+              "."
+            )
           ) ?? resourceProperties.attemptNumber,
       };
     });
@@ -261,7 +291,7 @@ function convertKeyValueItemsToMap(
   filteredKeys: string[] = [],
   prefix?: string
 ): Record<string, string | number | boolean | undefined> {
-  return attributes.reduce(
+  const result = attributes.reduce(
     (map: Record<string, string | number | boolean | undefined>, attribute) => {
       if (filteredKeys.includes(attribute.key)) return map;
 
@@ -281,6 +311,19 @@ function convertKeyValueItemsToMap(
     },
     {}
   );
+
+  return result;
+}
+
+function detectPrimitiveValue(
+  attributes: Record<string, string | number | boolean | undefined>,
+  sentinel: string
+): Record<string, string | number | boolean | undefined> | string | number | boolean | undefined {
+  if (typeof attributes[sentinel] !== "undefined") {
+    return attributes[sentinel];
+  }
+
+  return attributes;
 }
 
 function spanLinksToEventLinks(links: Span_Link[]): CreatableEvent["links"] {
@@ -523,4 +566,4 @@ function binaryToHex(buffer: Buffer | undefined): string | undefined {
   return Buffer.from(Array.from(buffer)).toString("hex");
 }
 
-export const otlpExporter = new OTLPExporter(eventRepository, true);
+export const otlpExporter = new OTLPExporter(eventRepository, false);
