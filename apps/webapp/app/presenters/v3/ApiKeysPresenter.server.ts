@@ -46,6 +46,11 @@ export class ApiKeysPresenter {
             version: "desc",
           },
         },
+        _count: {
+          select: {
+            environmentVariableValues: true,
+          },
+        },
       },
       where: {
         project: {
@@ -79,8 +84,7 @@ export class ApiKeysPresenter {
           slug: environment.slug,
           updatedAt: environment.updatedAt,
           latestVersion: environment.backgroundWorkers.at(0)?.version,
-          //todo add environmentVariableCount
-          environmentVariableCount: 0,
+          environmentVariableCount: environment._count.environmentVariableValues,
         }))
       ),
     };
