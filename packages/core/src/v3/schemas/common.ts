@@ -29,7 +29,7 @@ export const TaskRunErrorCodes = {
 
 export const TaskRunInternalError = z.object({
   type: z.literal("INTERNAL_ERROR"),
-  code: z.enum(["COULD_NOT_FIND_EXECUTOR"]),
+  code: z.enum(["COULD_NOT_FIND_EXECUTOR", "CONFIGURED_INCORRECTLY"]),
 });
 
 export type TaskRunInternalError = z.infer<typeof TaskRunInternalError>;
@@ -159,3 +159,10 @@ export const TaskRunExecutionResult = z.discriminatedUnion("ok", [
 ]);
 
 export type TaskRunExecutionResult = z.infer<typeof TaskRunExecutionResult>;
+
+export const BatchTaskRunExecutionResult = z.object({
+  id: z.string(),
+  items: TaskRunExecutionResult.array(),
+});
+
+export type BatchTaskRunExecutionResult = z.infer<typeof BatchTaskRunExecutionResult>;

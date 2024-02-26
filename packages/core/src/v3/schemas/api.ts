@@ -36,8 +36,9 @@ export const TriggerTaskRequestBody = z.object({
   context: z.any(),
   options: z
     .object({
-      parentAttempt: z.string().optional(),
-      lockToCurrentVersion: z.boolean().optional(),
+      dependentAttempt: z.string().optional(),
+      dependentBatch: z.string().optional(),
+      lockToVersion: z.string().optional(),
       queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),
     })
@@ -51,6 +52,33 @@ export const TriggerTaskResponse = z.object({
 });
 
 export type TriggerTaskResponse = z.infer<typeof TriggerTaskResponse>;
+
+export const BatchTriggerTaskRequestBody = z.object({
+  items: TriggerTaskRequestBody.array(),
+  dependentAttempt: z.string().optional(),
+});
+
+export type BatchTriggerTaskRequestBody = z.infer<typeof BatchTriggerTaskRequestBody>;
+
+export const BatchTriggerTaskResponse = z.object({
+  batchId: z.string(),
+  runs: z.string().array(),
+});
+
+export type BatchTriggerTaskResponse = z.infer<typeof BatchTriggerTaskResponse>;
+
+export const GetBatchResponseBody = z.object({
+  id: z.string(),
+  items: z.array(
+    z.object({
+      id: z.string(),
+      taskRunId: z.string(),
+      status: z.enum(["PENDING", "CANCELED", "COMPLETED", "FAILED"]),
+    })
+  ),
+});
+
+export type GetBatchResponseBody = z.infer<typeof GetBatchResponseBody>;
 
 export const CreateImageDetailsRequestBody = z.object({
   metadata: ImageDetailsMetadata,

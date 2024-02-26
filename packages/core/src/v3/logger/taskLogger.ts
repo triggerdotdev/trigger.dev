@@ -1,8 +1,9 @@
 import { Logger, SeverityNumber } from "@opentelemetry/api-logs";
 import { flattenAttributes } from "../utils/flattenAttributes";
-import { Attributes } from "@opentelemetry/api";
+import { Attributes, Span, SpanOptions } from "@opentelemetry/api";
 import { iconStringForSeverity } from "../icons";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
+import { TriggerTracer } from "../tracer";
 
 export type LogLevel = "log" | "error" | "warn" | "info" | "debug";
 
@@ -10,6 +11,7 @@ const logLevels: Array<LogLevel> = ["error", "warn", "log", "info", "debug"];
 
 export type TaskLoggerConfig = {
   logger: Logger;
+  tracer: TriggerTracer;
   level: LogLevel;
 };
 
@@ -19,6 +21,7 @@ export interface TaskLogger {
   info(message: string, properties?: Record<string, unknown>): void;
   warn(message: string, properties?: Record<string, unknown>): void;
   error(message: string, properties?: Record<string, unknown>): void;
+  trace<T>(name: string, fn: (span: Span) => Promise<T>, options?: SpanOptions): Promise<T>;
 }
 
 export class OtelTaskLogger implements TaskLogger {
@@ -78,6 +81,10 @@ export class OtelTaskLogger implements TaskLogger {
       attributes,
     });
   }
+
+  trace<T>(name: string, fn: (span: Span) => Promise<T>, options?: SpanOptions): Promise<T> {
+    return this._config.tracer.startActiveSpan(name, fn, options);
+  }
 }
 
 export class NoopTaskLogger implements TaskLogger {
@@ -86,4 +93,7 @@ export class NoopTaskLogger implements TaskLogger {
   info() {}
   warn() {}
   error() {}
+  trace<T>(name: string, fn: (span: Span) => Promise<T>): Promise<T> {
+    return fn({} as Span);
+  }
 }

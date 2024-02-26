@@ -1,6 +1,11 @@
 const API_NAME = "runtime";
 
-import { TaskRunContext, TaskRunExecutionResult } from "../schemas";
+import {
+  BatchTaskRunExecutionResult,
+  TaskMetadataWithFilePath,
+  TaskRunContext,
+  TaskRunExecutionResult,
+} from "../schemas";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals";
 import { type RuntimeManager } from "./manager";
 import { NoopRuntimeManager } from "./noopRuntimeManager";
@@ -32,6 +37,14 @@ export class RuntimeAPI {
     return this.#getRuntimeManager().waitForTask(params);
   }
 
+  public waitForBatch(params: {
+    id: string;
+    runs: string[];
+    ctx: TaskRunContext;
+  }): Promise<BatchTaskRunExecutionResult> {
+    return this.#getRuntimeManager().waitForBatch(params);
+  }
+
   public setGlobalRuntimeManager(runtimeManager: RuntimeManager): boolean {
     return registerGlobal(API_NAME, runtimeManager);
   }
@@ -39,6 +52,14 @@ export class RuntimeAPI {
   public disable() {
     this.#getRuntimeManager().disable();
     unregisterGlobal(API_NAME);
+  }
+
+  public registerTasks(tasks: TaskMetadataWithFilePath[]): void {
+    this.#getRuntimeManager().registerTasks(tasks);
+  }
+
+  public getTaskMetadata(id: string): TaskMetadataWithFilePath | undefined {
+    return this.#getRuntimeManager().getTaskMetadata(id);
   }
 
   #getRuntimeManager(): RuntimeManager {

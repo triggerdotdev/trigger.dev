@@ -34,7 +34,9 @@ import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 
 let apiClient: ApiClient | undefined;
 
-const DevCommandOptions = CommonCommandOptions;
+const DevCommandOptions = CommonCommandOptions.extend({
+  debugger: z.boolean().default(false),
+});
 
 type DevCommandOptions = z.infer<typeof DevCommandOptions>;
 
@@ -48,6 +50,7 @@ export function configureDevCommand(program: Command) {
       "The log level to use (debug, info, log, warn, error, none)",
       "log"
     )
+    .option("--debugger", "Enable the debugger")
     .action(async (path, options) => {
       try {
         await devCommand(path, options);
@@ -140,6 +143,7 @@ async function startDev(
           apiKey={devEnv.data.apiKey}
           environmentClient={environmentClient}
           projectName={devEnv.data.name}
+          debuggerOn={options.debugger}
         />
       );
     }
@@ -168,9 +172,10 @@ type DevProps = {
   apiKey: string;
   environmentClient: ApiClient;
   projectName: string;
+  debuggerOn: boolean;
 };
 
-function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevProps) {
+function useDev({ config, apiUrl, apiKey, environmentClient, projectName, debuggerOn }: DevProps) {
   useEffect(() => {
     const websocketUrl = new URL(apiUrl);
     websocketUrl.protocol = websocketUrl.protocol.replace("http", "ws");
@@ -294,7 +299,7 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
         metafile: true,
         write: false,
         minify: false,
-        sourcemap: true,
+        sourcemap: debuggerOn ? "inline" : true,
         logLevel: "warning",
         platform: "node",
         format: "esm",
@@ -343,12 +348,6 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
                   (file) => file.path === sourceMapFileKey
                 );
 
-                if (!sourceMapFile) {
-                  throw new Error(
-                    `Could not find source map file for entry point ${metaOutput.entryPoint}`
-                  );
-                }
-
                 const md5Hasher = createHash("md5");
                 md5Hasher.update(Buffer.from(outputFile.contents.buffer));
 
@@ -366,8 +365,11 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
 
                 await fs.promises.mkdir(dirname(fullPath), { recursive: true });
                 await fs.promises.writeFile(fullPath, outputFile.text);
-                const sourceMapPath = `${fullPath}.map`;
-                await fs.promises.writeFile(sourceMapPath, sourceMapFile.text);
+
+                if (sourceMapFile) {
+                  const sourceMapPath = `${fullPath}.map`;
+                  await fs.promises.writeFile(sourceMapPath, sourceMapFile.text);
+                }
 
                 const backgroundWorker = new BackgroundWorker(fullPath, {
                   projectDir: config.projectDir,
@@ -375,6 +377,7 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
                     TRIGGER_API_URL: apiUrl,
                     TRIGGER_API_KEY: apiKey,
                   },
+                  debuggerOn,
                 });
 
                 await backgroundWorker.initialize();

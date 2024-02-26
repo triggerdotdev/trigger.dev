@@ -1,9 +1,20 @@
-import { TaskRunContext, TaskRunExecutionResult } from "../schemas";
+import {
+  BatchTaskRunExecutionResult,
+  TaskMetadataWithFilePath,
+  TaskRunContext,
+  TaskRunExecutionResult,
+} from "../schemas";
 import { RuntimeManager } from "./manager";
 
 export class NoopRuntimeManager implements RuntimeManager {
   disable(): void {
     // do nothing
+  }
+
+  registerTasks(): void {}
+
+  getTaskMetadata(id: string): TaskMetadataWithFilePath | undefined {
+    return undefined;
   }
 
   waitForDuration(ms: number): Promise<void> {
@@ -15,6 +26,21 @@ export class NoopRuntimeManager implements RuntimeManager {
   }
 
   waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
-    throw new Error("Method not implemented.");
+    return Promise.resolve({
+      ok: false,
+      id: params.id,
+      error: { type: "INTERNAL_ERROR", code: "CONFIGURED_INCORRECTLY" },
+    });
+  }
+
+  waitForBatch(params: {
+    id: string;
+    runs: string[];
+    ctx: TaskRunContext;
+  }): Promise<BatchTaskRunExecutionResult> {
+    return Promise.resolve({
+      id: params.id,
+      items: [],
+    });
   }
 }

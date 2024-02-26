@@ -1,4 +1,4 @@
-import { TriggerTaskRequestBody } from "./schemas";
+import { BatchTriggerTaskRequestBody, TriggerTaskRequestBody } from "./schemas";
 
 export * from "./schemas";
 export * from "./apiClient";
@@ -16,9 +16,14 @@ export {
   formatDurationInDays,
   nanosecondsToMilliseconds,
 } from "./utils/durations";
+export { getEnvVar } from "./utils/getEnv";
 
 export function parseTriggerTaskRequestBody(body: unknown) {
   return TriggerTaskRequestBody.safeParse(body);
+}
+
+export function parseBatchTriggerTaskRequestBody(body: unknown) {
+  return BatchTriggerTaskRequestBody.safeParse(body);
 }
 
 export { taskContextManager, TaskContextSpanProcessor } from "./tasks/taskContextManager";
@@ -32,4 +37,4 @@ export { OtelTaskLogger } from "./logger/taskLogger";
 export { ConsoleInterceptor } from "./consoleInterceptor";
 export { flattenAttributes, unflattenAttributes } from "./utils/flattenAttributes";
 export { defaultRetryOptions, calculateNextRetryTimestamp } from "./utils/retries";
-
+export { accessoryAttributes } from "./utils/styleAttributes";

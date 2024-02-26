@@ -2,18 +2,22 @@ import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { ReactNode } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { VersionLabel } from "~/components/VersionLabel";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { InlineCode } from "~/components/code/InlineCode";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
-import { eventTextClassName } from "~/components/runs/v3/EventText";
+import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3SpanParamsSchema } from "~/utils/pathBuilder";
+import { TaskPath } from "~/components/runs/v3/TaskPath";
+import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -41,8 +45,8 @@ export default function Page() {
         <div className="flex h-8 items-center justify-between gap-2 border-b border-ui-border px-2">
           <div className="flex items-center gap-1 overflow-x-hidden">
             <RunIcon name={event.style?.icon} className="min-w-4 min-h-4 h-4 w-4" />
-            <Header2 className={cn("whitespace-nowrap", eventTextClassName(event))}>
-              {event.message}
+            <Header2 className={cn("whitespace-nowrap")}>
+              <SpanTitle {...event} size="large" />
             </Header2>
           </div>
           <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
@@ -52,7 +56,7 @@ export default function Page() {
         <div className="flex flex-col gap-4">
           <PropertyTable>
             {event.level === "TRACE" ? (
-              <Property label="Timeline">
+              <Property label="Timeline" labelClassName="self-end">
                 <Timeline
                   startTime={new Date(event.startTime)}
                   duration={event.duration}
@@ -63,12 +67,41 @@ export default function Page() {
             ) : (
               <Property label="Timestamp">
                 <Paragraph variant="small/bright">
-                  <DateTime date={event.startTime} />
+                  <DateTime date={event.startTime} /> UTC
                 </Paragraph>
               </Property>
             )}
             <Property label="Message">{event.message}</Property>
+            <Property label="Task ID">{event.taskSlug}</Property>
+            {event.taskPath && event.taskExportName && (
+              <Property label="Task">
+                <TaskPath
+                  filePath={event.taskPath}
+                  functionName={`${event.taskExportName}()`}
+                  className="text-xs"
+                />
+              </Property>
+            )}
+
+            {event.queueName && <Property label="Queue name">{event.queueName}</Property>}
+            {event.workerVersion && (
+              <Property label="Version">
+                <VersionLabel
+                  version={event.workerVersion}
+                  environment={{ type: event.environmentType }}
+                />
+              </Property>
+            )}
           </PropertyTable>
+
+          {event.events !== undefined && <SpanEvents spanEvents={event.events} />}
+
+          {event.payload && (
+            <div>
+              <Header2 spacing>Payload</Header2>
+              <CodeBlock code={event.payload} maxLines={20} />
+            </div>
+          )}
 
           {event.output !== null && (
             <div>
@@ -76,7 +109,7 @@ export default function Page() {
               <CodeBlock code={event.output} maxLines={20} />
             </div>
           )}
-          {event.properties !== null && (
+          {event.properties !== undefined && (
             <div>
               <Header2 spacing>Properties</Header2>
               <CodeBlock code={event.properties} maxLines={20} />
@@ -89,18 +122,19 @@ export default function Page() {
 }
 
 function PropertyTable({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-2">{children}</div>;
+  return <div className="grid grid-cols-[auto,1fr] items-baseline gap-x-4 gap-y-2">{children}</div>;
 }
 
 type PropertyProps = {
   label: ReactNode;
+  labelClassName?: string;
   children: ReactNode;
 };
 
-function Property({ label, children }: PropertyProps) {
+function Property({ label, labelClassName, children }: PropertyProps) {
   return (
     <>
-      <div>
+      <div className={labelClassName}>
         {typeof label === "string" ? <Paragraph variant="small">{label}</Paragraph> : label}
       </div>
       <div>
@@ -127,14 +161,12 @@ function Timeline({ startTime, duration, inProgress, isError }: TimelineProps) {
   const state = isError ? "error" : inProgress ? "pending" : "complete";
   return (
     <div className="flex w-full flex-col">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-1">
         <Paragraph variant="small">
-          <DateTime date={startTime} />
+          <DateTime date={startTime} /> UTC
         </Paragraph>
         {state === "pending" ? (
-          <Paragraph variant="small">
-            <LiveTimer startTime={startTime} />
-          </Paragraph>
+          <LiveTimer startTime={startTime} className="" />
         ) : (
           <Paragraph variant="small">
             <DateTime date={new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))} />

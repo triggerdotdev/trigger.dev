@@ -11,7 +11,12 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Input } from "~/components/primitives/Input";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import {
+  PageButtons,
+  PageHeader,
+  PageTitle,
+  PageTitleRow,
+} from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ResizableHandle,
@@ -21,7 +26,7 @@ import {
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
-import { eventTextClassName } from "~/components/runs/v3/EventText";
+import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { useDebounce } from "~/hooks/useDebounce";
@@ -30,9 +35,12 @@ import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
 import { useThrottle } from "~/hooks/useThrottle";
 import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3RunParamsSchema, v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { useUser } from "~/hooks/useUser";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -46,10 +54,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     runFriendlyId: runParam,
   });
 
+  //resizable settings
+  const resizeSettings = await getResizableRunSettings(request);
+
   return typedjson({
     run,
     events,
     parentRunFriendlyId,
+    resizeSettings,
   });
 };
 
@@ -60,11 +72,12 @@ function getSpanId(path: string): string | undefined {
 }
 
 export default function Page() {
-  const { run, events, parentRunFriendlyId } = useTypedLoaderData<typeof loader>();
+  const { run, events, parentRunFriendlyId, resizeSettings } = useTypedLoaderData<typeof loader>();
   const navigate = useNavigate();
   const organization = useOrganization();
   const pathName = usePathName();
   const project = useProject();
+  const user = useUser();
 
   const selectedSpanId = getSpanId(pathName);
 
@@ -72,18 +85,46 @@ export default function Page() {
     navigate(v3RunSpanPath(organization, project, run, { spanId: selectedSpan }));
   }, 250);
 
+  const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
+
   return (
     <>
       <PageHeader hideBorder>
         <PageTitleRow>
           <PageTitle title={`Run #${run.number}`} />
+          <PageButtons>
+            <EnvironmentLabel environment={run.environment} userName={usernameForEnv} />
+          </PageButtons>
         </PageTitleRow>
       </PageHeader>
       <PageBody scrollable={false}>
-        <div className={cn("grid h-full max-h-full grid-cols-1 gap-4")}>
-          <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
-            <ResizablePanel order={1} minSize={30}>
-              <div className="h-full overflow-y-clip">
+        <div className={cn("grid h-full max-h-full grid-cols-1")}>
+          {selectedSpanId === undefined ? (
+            <TasksTreeView
+              selectedId={selectedSpanId}
+              key={events[0]?.id ?? "-"}
+              events={events}
+              parentRunFriendlyId={parentRunFriendlyId}
+              onSelectedIdChanged={(selectedSpan) => {
+                //instantly close the panel if no span is selected
+                if (!selectedSpan) {
+                  navigate(v3RunPath(organization, project, run));
+                  return;
+                }
+
+                changeToSpan(selectedSpan);
+              }}
+            />
+          ) : (
+            <ResizablePanelGroup
+              direction="horizontal"
+              className="h-full max-h-full"
+              onLayout={(layout) => {
+                if (layout.length !== 2) return;
+                setResizableRunSettings(document, layout);
+              }}
+            >
+              <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0]}>
                 <TasksTreeView
                   selectedId={selectedSpanId}
                   key={events[0]?.id ?? "-"}
@@ -99,17 +140,13 @@ export default function Page() {
                     changeToSpan(selectedSpan);
                   }}
                 />
-              </div>
-            </ResizablePanel>
-            {selectedSpanId !== undefined && (
-              <>
-                <ResizableHandle withHandle />
-                <ResizablePanel order={2} minSize={30} defaultSize={40}>
-                  <Outlet key={selectedSpanId} />
-                </ResizablePanel>
-              </>
-            )}
-          </ResizablePanelGroup>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.layout?.[1]}>
+                <Outlet key={selectedSpanId} />
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          )}
         </div>
       </PageBody>
     </>
@@ -160,7 +197,7 @@ function TasksTreeView({
   });
 
   return (
-    <div className="px-3">
+    <div className="h-full overflow-y-clip px-3">
       <div className="flex h-8 items-center justify-between gap-2 border-b border-slate-850">
         <Input
           placeholder="Search log"
@@ -261,11 +298,8 @@ function TasksTreeView({
 function NodeText({ node }: { node: RunEvent }) {
   const className = "truncate";
   return (
-    <Paragraph
-      variant="small"
-      className={cn(className, eventTextClassName(node.data), node.data.isError && "text-rose-500")}
-    >
-      {node.data.message}
+    <Paragraph variant="small" className={cn(className)}>
+      <SpanTitle {...node.data} size="small" />
     </Paragraph>
   );
 }

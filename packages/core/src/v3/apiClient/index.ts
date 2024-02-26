@@ -1,32 +1,38 @@
-import { z } from "zod";
 import { context, propagation } from "@opentelemetry/api";
+import { zodfetch } from "../../zodfetch";
+import { taskContextManager } from "../tasks/taskContextManager";
+import { SafeAsyncLocalStorage } from "../utils/safeAsyncLocalStorage";
+import { getEnvVar } from "../utils/getEnv";
 import {
-  CreateBackgroundWorkerRequestBody,
-  CreateBackgroundWorkerResponse,
-  CreateImageDetailsRequestBody,
-  CreateImageDetailsResponse,
-  GetProjectDevResponse,
   TriggerTaskRequestBody,
   TriggerTaskResponse,
-  WhoAmIResponseSchema,
-} from "../schemas/api";
-import { taskContextManager } from "../tasks/taskContextManager";
-import {
-  CreateAuthorizationCodeResponseSchema,
-  GetPersonalAccessTokenResponseSchema,
+  BatchTriggerTaskRequestBody,
+  BatchTriggerTaskResponse,
 } from "../schemas";
 
 /**
  * Trigger.dev v3 API client
  */
-export class SdkApiClient {
+export class ApiClient {
+  private readonly baseUrl: string;
+
   constructor(
-    private readonly baseUrl: string,
+    baseUrl: string,
     private readonly accessToken: string
-  ) {}
+  ) {
+    this.baseUrl = baseUrl.replace(/\/$/, "");
+  }
 
   triggerTask(taskId: string, options: TriggerTaskRequestBody) {
     return zodfetch(TriggerTaskResponse, `${this.baseUrl}/api/v1/tasks/${taskId}/trigger`, {
+      method: "POST",
+      headers: this.#getHeaders(),
+      body: JSON.stringify(options),
+    });
+  }
+
+  batchTriggerTask(taskId: string, options: BatchTriggerTaskRequestBody) {
+    return zodfetch(BatchTriggerTaskResponse, `${this.baseUrl}/api/v1/tasks/${taskId}/batch`, {
       method: "POST",
       headers: this.#getHeaders(),
       body: JSON.stringify(options),
@@ -48,170 +54,43 @@ export class SdkApiClient {
   }
 }
 
-export class ApiClient {
-  private readonly apiURL: string;
+type ApiClientContext = {
+  baseURL: string;
+  accessToken: string;
+};
 
-  constructor(
-    apiURL: string,
-    private readonly accessToken?: string
-  ) {
-    this.apiURL = apiURL.replace(/\/$/, "");
+export class ApiClientManager {
+  private _storage: SafeAsyncLocalStorage<ApiClientContext> =
+    new SafeAsyncLocalStorage<ApiClientContext>();
+
+  get baseURL(): string | undefined {
+    const store = this.#getStore();
+    return store?.baseURL ?? getEnvVar("TRIGGER_API_URL");
   }
 
-  async createAuthorizationCode() {
-    return zodfetch(
-      CreateAuthorizationCodeResponseSchema,
-      `${this.apiURL}/api/v1/authorization-code`,
-      {
-        method: "POST",
-      }
-    );
+  get accessToken(): string | undefined {
+    const store = this.#getStore();
+    return store?.accessToken ?? getEnvVar("TRIGGER_API_KEY");
   }
 
-  async getPersonalAccessToken(authorizationCode: string) {
-    return zodfetch(GetPersonalAccessTokenResponseSchema, `${this.apiURL}/api/v1/token`, {
-      method: "POST",
-      body: JSON.stringify({
-        authorizationCode,
-      }),
-    });
-  }
-
-  async whoAmI() {
-    if (!this.accessToken) {
-      throw new Error("whoAmI: No access token");
+  get client(): ApiClient | undefined {
+    if (!this.baseURL || !this.accessToken) {
+      return undefined;
     }
 
-    return zodfetch(WhoAmIResponseSchema, `${this.apiURL}/api/v2/whoami`, {
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
+    return new ApiClient(this.baseURL, this.accessToken);
   }
 
-  async createBackgroundWorker(projectRef: string, body: CreateBackgroundWorkerRequestBody) {
-    if (!this.accessToken) {
-      throw new Error("createBackgroundWorker: No access token");
-    }
-
-    return zodfetch(
-      CreateBackgroundWorkerResponse,
-      `${this.apiURL}/api/v1/projects/${projectRef}/background-workers`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      }
-    );
+  runWith<R extends (...args: any[]) => Promise<any>>(
+    context: ApiClientContext,
+    fn: R
+  ): Promise<ReturnType<R>> {
+    return this._storage.runWith(context, fn);
   }
 
-  async createImageDetails(projectRef: string, body: CreateImageDetailsRequestBody) {
-    if (!this.accessToken) {
-      throw new Error("createImageDetails: No access token");
-    }
-
-    return zodfetch(
-      CreateImageDetailsResponse,
-      `${this.apiURL}/api/v1/projects/${projectRef}/image-details`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      }
-    );
-  }
-
-  async getProjectDevEnv({ projectRef }: { projectRef: string }) {
-    if (!this.accessToken) {
-      throw new Error("getProjectDevEnv: No access token");
-    }
-
-    return zodfetch(GetProjectDevResponse, `${this.apiURL}/api/v1/projects/${projectRef}/dev`, {
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
-  }
-
-  async getProjectProdEnv({ projectRef }: { projectRef: string }) {
-    if (!this.accessToken) {
-      throw new Error("getProjectDevEnv: No access token");
-    }
-
-    return zodfetch(GetProjectDevResponse, `${this.apiURL}/api/v1/projects/${projectRef}/prod`, {
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
+  #getStore(): ApiClientContext | undefined {
+    return this._storage.getStore();
   }
 }
 
-type ApiResult<TSuccessResult> =
-  | { success: true; data: TSuccessResult }
-  | {
-      success: false;
-      error: string;
-    };
-
-async function zodfetch<TResponseBody extends any>(
-  schema: z.Schema<TResponseBody>,
-  url: string,
-  requestInit?: RequestInit
-): Promise<ApiResult<TResponseBody>> {
-  try {
-    const response = await fetch(url, requestInit);
-
-    if ((!requestInit || requestInit.method === "GET") && response.status === 404) {
-      return {
-        success: false,
-        error: `404: ${response.statusText}`,
-      };
-    }
-
-    if (response.status >= 400 && response.status < 500) {
-      const body = await response.json();
-      if (!body.error) {
-        return { success: false, error: "Something went wrong" };
-      }
-
-      return { success: false, error: body.error };
-    }
-
-    if (response.status !== 200) {
-      return {
-        success: false,
-        error: `Failed to fetch ${url}, got status code ${response.status}`,
-      };
-    }
-
-    const jsonBody = await response.json();
-    const parsedResult = schema.safeParse(jsonBody);
-
-    if (parsedResult.success) {
-      return { success: true, data: parsedResult.data };
-    }
-
-    if ("error" in jsonBody) {
-      return {
-        success: false,
-        error: typeof jsonBody.error === "string" ? jsonBody.error : JSON.stringify(jsonBody.error),
-      };
-    }
-
-    return { success: false, error: parsedResult.error.message };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : JSON.stringify(error),
-    };
-  }
-}
+export const apiClientManager = new ApiClientManager();
