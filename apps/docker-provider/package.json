@@ -9,7 +9,7 @@
     "build": "npm run build:bundle",
     "build:bundle": "esbuild src/index.ts --bundle --outfile=dist/index.cjs --platform=node",
     "build:image": "docker build -f Containerfile . -t docker-provider",
-    "dev": "tsx --require dotenv/config --watch src/index.ts",
+    "dev": "tsx --no-warnings=ExperimentalWarning --require dotenv/config --watch src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit"
   },
