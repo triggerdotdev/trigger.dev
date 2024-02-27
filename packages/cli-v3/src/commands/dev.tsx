@@ -314,7 +314,7 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName, debugg
         metafile: true,
         write: false,
         minify: false,
-        sourcemap: debuggerOn ? "inline" : true,
+        sourcemap: "external", // does not set the //# sourceMappingURL= comment in the file, we handle it ourselves
         logLevel: "warning",
         platform: "node",
         format: "esm",
@@ -377,9 +377,14 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName, debugg
 
                 // Create a file at join(dir, ".trigger", path) with the fileContents
                 const fullPath = join(config.projectDir, ".trigger", `${contentHash}.mjs`);
+                const sourceMapPath = `${fullPath}.map`;
+
+                const outputFileWithSourceMap = `${
+                  outputFile.text
+                }\n//# sourceMappingURL=${basename(sourceMapPath)}`;
 
                 await fs.promises.mkdir(dirname(fullPath), { recursive: true });
-                await fs.promises.writeFile(fullPath, outputFile.text);
+                await fs.promises.writeFile(fullPath, outputFileWithSourceMap);
 
                 if (sourceMapFile) {
                   const sourceMapPath = `${fullPath}.map`;

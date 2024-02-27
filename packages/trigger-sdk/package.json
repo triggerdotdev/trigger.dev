@@ -45,11 +45,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:^2.3.18",
-    "@trigger.dev/core-backend": "workspace:^2.3.18",
     "@opentelemetry/api": "^1.7.0",
     "@opentelemetry/api-logs": "^0.48.0",
     "@opentelemetry/semantic-conventions": "^1.21.0",
+    "@trigger.dev/core": "workspace:^2.3.18",
+    "@trigger.dev/core-backend": "workspace:^2.3.18",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
@@ -73,10 +73,19 @@
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
     "encoding": "^0.1.13",
+    "msw": "^2.2.1",
     "rimraf": "^3.0.2",
     "tsup": "^8.0.1",
     "typed-emitter": "^2.1.0",
     "typescript": "^5.3.0"
+  },
+  "peerDependencies": {
+    "msw": "^2.2.1"
+  },
+  "peerDependenciesMeta": {
+    "msw": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=18.0.0"

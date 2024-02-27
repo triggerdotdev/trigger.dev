@@ -1,5 +1,9 @@
 import { Attributes } from "@opentelemetry/api";
-import { SemanticInternalAttributes, TaskEventStyle } from "@trigger.dev/core/v3";
+import {
+  SemanticInternalAttributes,
+  TaskEventStyle,
+  correctErrorStackTrace,
+} from "@trigger.dev/core/v3";
 import { unflattenAttributes } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { PrismaClient, prisma, Prisma } from "~/db.server";
@@ -27,6 +31,7 @@ const OtelSpanEvent = z.object({
 });
 
 const OtelSpanEvents = z.array(OtelSpanEvent).optional();
+type OtelSpanEvents = z.infer<typeof OtelSpanEvents>;
 
 export type OtelSpanEvent = z.infer<typeof OtelSpanEvent>;
 
@@ -93,7 +98,7 @@ export class SpanPresenter {
     return {
       event: {
         ...event,
-        events,
+        events: transformEvents(events, event.metadata as Attributes),
         output: isEmptyJson(event.output) ? null : JSON.stringify(event.output, null, 2),
         payload: payload ? JSON.stringify(payload, null, 2) : undefined,
         properties: sanitizedAttributesStringified(event.properties),
@@ -102,6 +107,43 @@ export class SpanPresenter {
       },
     };
   }
+}
+
+function transformEvents(events: OtelSpanEvents, properties: Attributes): OtelSpanEvents {
+  return (events ?? []).map((event) => transformEvent(event, properties));
+}
+
+function transformEvent(event: OtelSpanEvent, properties: Attributes): OtelSpanEvent {
+  if (!event.properties?.exception) {
+    return event;
+  }
+
+  return {
+    ...event,
+    properties: {
+      exception: transformException(event.properties.exception, properties),
+    },
+  };
+}
+
+function transformException(
+  exception: OtelExceptionProperty,
+  properties: Attributes
+): OtelExceptionProperty {
+  const projectDirAttributeValue = properties[SemanticInternalAttributes.PROJECT_DIR];
+
+  if (typeof projectDirAttributeValue !== "string") {
+    return exception;
+  }
+
+  return {
+    ...exception,
+    stacktrace: exception.stacktrace
+      ? correctErrorStackTrace(exception.stacktrace, projectDirAttributeValue, {
+          removeFirstLine: true,
+        })
+      : undefined,
+  };
 }
 
 function filteredAttributes(attributes: Attributes, prefix: string): Attributes {

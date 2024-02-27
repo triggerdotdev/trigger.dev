@@ -1,6 +1,6 @@
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Callout } from "~/components/primitives/Callout";
-import { DateTime } from "~/components/primitives/DateTime";
+import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import type { OtelExceptionProperty, OtelSpanEvent } from "~/presenters/v3/SpanPresenter.server";
@@ -32,7 +32,7 @@ function SpanEventHeader({
     <div className="flex items-center justify-between">
       <Header2 className={titleClassName}>{title}</Header2>
       <Paragraph variant="small">
-        <DateTime date={time} />
+        <DateTimeAccurate date={time} />
       </Paragraph>
     </div>
   );
@@ -64,7 +64,14 @@ function SpanEventError({
     <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 p-3">
       <SpanEventHeader title={"Error"} time={spanEvent.time} titleClassName="text-rose-500" />
       {exception.message && <Callout variant="error">{exception.message}</Callout>}
-      {exception.stacktrace && <CodeBlock code={exception.stacktrace} maxLines={20} />}
+      {exception.stacktrace && (
+        <CodeBlock
+          showCopyButton={false}
+          showLineNumbers={false}
+          code={exception.stacktrace}
+          maxLines={20}
+        />
+      )}
     </div>
   );
 }
