@@ -300,6 +300,8 @@ function EditEnvironmentVariablePanel({
           LeadingIcon={PencilSquareIcon}
           leadingIconClassName="text-slate-500"
           className="text-xs"
+          fullWidth
+          textAlignLeft
         >
           Edit
         </Button>
