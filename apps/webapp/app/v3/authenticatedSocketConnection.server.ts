@@ -8,7 +8,7 @@ import { Evt } from "evt";
 import { randomUUID } from "node:crypto";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { EnvironmentQueueConsumer } from "./marqs/environmentQueueConsumer.server";
+import { DevQueueConsumer } from "./marqs/devQueueConsumer.server";
 import type { WebSocket, MessageEvent, CloseEvent, ErrorEvent } from "ws";
 
 export class AuthenticatedSocketConnection {
@@ -16,7 +16,7 @@ export class AuthenticatedSocketConnection {
   public onClose: Evt<CloseEvent> = new Evt();
 
   private _sender: ZodMessageSender<typeof serverWebsocketMessages>;
-  private _environmentConsumer: EnvironmentQueueConsumer;
+  private _environmentConsumer: DevQueueConsumer;
   private _messageHandler: ZodMessageHandler<typeof clientWebsocketMessages>;
 
   constructor(public ws: WebSocket, public authenticatedEnv: AuthenticatedEnvironment) {
@@ -38,7 +38,7 @@ export class AuthenticatedSocketConnection {
       },
     });
 
-    this._environmentConsumer = new EnvironmentQueueConsumer(authenticatedEnv, this._sender);
+    this._environmentConsumer = new DevQueueConsumer(authenticatedEnv, this._sender);
 
     ws.addEventListener("message", this.#handleMessage.bind(this));
     ws.addEventListener("close", this.#handleClose.bind(this));

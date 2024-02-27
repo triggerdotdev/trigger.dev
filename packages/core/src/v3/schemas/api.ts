@@ -79,3 +79,11 @@ export const GetBatchResponseBody = z.object({
 });
 
 export type GetBatchResponseBody = z.infer<typeof GetBatchResponseBody>;
+
+export const GetEnvironmentVariablesResponseBody = z.object({
+  variables: z.record(z.string()),
+});
+
+export type GetEnvironmentVariablesResponseBody = z.infer<
+  typeof GetEnvironmentVariablesResponseBody
+>;

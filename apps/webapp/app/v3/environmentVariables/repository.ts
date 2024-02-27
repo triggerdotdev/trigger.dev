@@ -68,5 +68,6 @@ export interface Repository {
     userId: string,
     environmentId: string
   ): Promise<EnvironmentVariable[]>;
+  getEnvironmentVariables(projectId: string, environmentId: string): Promise<EnvironmentVariable[]>;
   delete(projectId: string, userId: string, options: DeleteEnvironmentVariable): Promise<Result>;
 }
