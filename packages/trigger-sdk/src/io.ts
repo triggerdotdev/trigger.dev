@@ -588,7 +588,7 @@ export class IO {
             : []),
         ],
         retry: {
-          maxAttempts: 0,
+          limit: 0,
         },
       }
     )) as TResponseData;
@@ -659,7 +659,7 @@ export class IO {
           },
         ],
         retry: {
-          maxAttempts: 0,
+          limit: 0,
         },
       }
     )) as TResponseData;
@@ -717,7 +717,7 @@ export class IO {
             : []),
         ],
         retry: {
-          maxAttempts: 0,
+          limit: 0,
         },
       }
     )) as BackgroundFetchResponse<TResponseData>;

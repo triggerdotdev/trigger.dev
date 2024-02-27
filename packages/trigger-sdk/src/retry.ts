@@ -6,14 +6,14 @@ export type { RetryOptions };
 
 export const retry = {
   standardBackoff: {
-    maxAttempts: 8,
+    limit: 8,
     factor: 1.8,
     minTimeoutInMs: 500,
     maxTimeoutInMs: 30000,
     randomize: true,
   },
   exponentialBackoff: {
-    maxAttempts: 8,
+    limit: 8,
     factor: 2,
     minTimeoutInMs: 1000,
     maxTimeoutInMs: 30000,
