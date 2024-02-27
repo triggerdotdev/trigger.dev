@@ -159,7 +159,9 @@ class ProdWorker {
       this.completed = true;
       this.executing = false;
 
-      // TODO: we may want to exit the process here
+      setTimeout(() => {
+        process.exit(0);
+      }, 1000);
     });
 
     return socket;
