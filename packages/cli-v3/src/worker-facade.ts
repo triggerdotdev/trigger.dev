@@ -1,3 +1,4 @@
+import "source-map-support/register";
 import { TracingSDK } from "@trigger.dev/core/v3/otel";
 // import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 

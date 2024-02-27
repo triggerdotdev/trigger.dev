@@ -2,6 +2,7 @@ import {
   BackgroundWorkerProperties,
   BackgroundWorkerServerMessages,
   CreateBackgroundWorkerResponse,
+  SemanticInternalAttributes,
   TaskMetadataWithFilePath,
   TaskRunBuiltInError,
   TaskRunError,
@@ -11,17 +12,16 @@ import {
   ZodMessageHandler,
   ZodMessageSender,
   childToWorkerMessages,
+  correctErrorStackTrace,
   workerToChildMessages,
 } from "@trigger.dev/core/v3";
 import chalk from "chalk";
+import dotenv from "dotenv";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { readFileSync } from "node:fs";
-import nodePath, { resolve } from "node:path";
-import { SourceMapConsumer, type RawSourceMap } from "source-map";
+import { resolve } from "node:path";
 import terminalLink from "terminal-link";
 import { logger } from "../utilities/logger.js";
-import dotenv from "dotenv";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -146,9 +146,7 @@ export class BackgroundWorkerCoordinator {
 
     const resultText = !completion.ok ? chalk.red("error") : chalk.green("success");
 
-    const errorText = !completion.ok
-      ? `\n\n\t${chalk.bgRed("Error")} ${this.#formatErrorLog(completion.error)}`
-      : "";
+    const errorText = !completion.ok ? `\n\n${this.#formatErrorLog(completion.error)}\n` : "";
 
     const elapsedText = chalk.dim(`(${elapsed.toFixed(2)}ms)`);
 
@@ -173,12 +171,7 @@ export class BackgroundWorkerCoordinator {
         return error.raw;
       }
       case "BUILT_IN_ERROR": {
-        return `${error.name === "Error" ? "" : `(${error.name})`} ${
-          error.message
-        }\n${error.stackTrace
-          .split("\n")
-          .map((line) => `\t  ${line}`)
-          .join("\n")}\n`;
+        return error.stackTrace;
       }
     }
   }
@@ -190,7 +183,6 @@ export type BackgroundWorkerParams = {
   debuggerOn: boolean;
 };
 export class BackgroundWorker {
-  private _rawSourceMap: RawSourceMap | undefined;
   private _initialized: boolean = false;
   private _handler = new ZodMessageHandler({
     schema: childToWorkerMessages,
@@ -207,11 +199,7 @@ export class BackgroundWorker {
   constructor(
     public path: string,
     private params: BackgroundWorkerParams
-  ) {
-    try {
-      this._rawSourceMap = JSON.parse(readFileSync(`${path}.map`, "utf-8"));
-    } catch (e) {}
-  }
+  ) {}
 
   close() {
     this.onTaskHeartbeat.detach();
@@ -304,7 +292,7 @@ export class BackgroundWorker {
           ...this.#readEnvVars(),
         },
         this.metadata,
-        this.params.debuggerOn
+        this.params
       );
 
       taskRunProcess.onExit.attach(() => {
@@ -367,90 +355,8 @@ export class BackgroundWorker {
   ): Promise<TaskRunBuiltInError> {
     return {
       ...error,
-      stackTrace: await this.#correctErrorStackTrace(error.stackTrace, execution),
+      stackTrace: correctErrorStackTrace(error.stackTrace, this.params.projectDir),
     };
-  }
-
-  async #correctErrorStackTrace(stackTrace: string, execution: TaskRunExecution): Promise<string> {
-    if (!this._rawSourceMap) {
-      return stackTrace;
-    }
-
-    // Split the stack trace into lines
-    const lines = stackTrace.split("\n");
-
-    // Remove the first line
-    lines.shift();
-
-    // Use SourceMapConsumer.with to handle the source map for the entire stack trace
-    return SourceMapConsumer.with(this._rawSourceMap, null, (consumer) =>
-      lines
-        .map((line) => this.#correctStackTraceLine(line, consumer, execution))
-        .filter(Boolean)
-        .join("\n")
-    );
-  }
-
-  #correctStackTraceLine(
-    line: string,
-    consumer: SourceMapConsumer,
-    execution: TaskRunExecution
-  ): string | undefined {
-    // Split the line into parts
-    const regex = /at (.*?) \(?file:\/\/(\/.*?\.mjs):(\d+):(\d+)\)?/;
-
-    const match = regex.exec(line);
-
-    if (!match) {
-      return;
-    }
-
-    const [_, identifier, path, lineNum, colNum] = match;
-
-    const originalPosition = consumer.originalPositionFor({
-      line: Number(lineNum),
-      column: Number(colNum),
-    });
-
-    if (!originalPosition.source) {
-      return;
-    }
-
-    const { source, line: originalLine, column: originalColumn } = originalPosition;
-
-    if (this.#shouldFilterLine({ identifier, path: source })) {
-      return;
-    }
-
-    const sourcePath = path
-      ? nodePath.relative(this.params.projectDir, nodePath.resolve(nodePath.dirname(path), source))
-      : source;
-
-    return `at ${
-      identifier === "Object.run" ? `${execution.task.exportName}.run` : identifier
-    } (${sourcePath}:${originalLine}:${originalColumn})`;
-  }
-
-  #shouldFilterLine(line: { identifier?: string; path?: string }): boolean {
-    const filename = nodePath.basename(line.path ?? "");
-
-    if (filename === "__entryPoint.ts") {
-      return true;
-    }
-
-    if (line.identifier === "async ZodMessageHandler.handleMessage") {
-      return true;
-    }
-
-    if (line.identifier === "async ConsoleInterceptor.intercept") {
-      return true;
-    }
-
-    if (line.path?.includes("packages/core/src")) {
-      return true;
-    }
-
-    return false;
   }
 }
 
@@ -474,7 +380,7 @@ class TaskRunProcess {
     private path: string,
     private env: NodeJS.ProcessEnv,
     private metadata: BackgroundWorkerProperties,
-    private debuggerOn: boolean = false
+    private worker: BackgroundWorkerParams
   ) {
     this._sender = new ZodMessageSender({
       schema: workerToChildMessages,
@@ -489,8 +395,15 @@ class TaskRunProcess {
   async initialize() {
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
-      env: this.env,
-      execArgv: this.debuggerOn ? ["--inspect-brk", "--trace-uncaught"] : ["--trace-uncaught"],
+      env: {
+        ...this.env,
+        OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
+          [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectDir,
+        }),
+      },
+      execArgv: this.worker.debuggerOn
+        ? ["--inspect-brk", "--trace-uncaught"]
+        : ["--trace-uncaught"],
     });
 
     this._child.on("message", this.#handleMessage.bind(this));

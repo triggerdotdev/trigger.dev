@@ -7,6 +7,7 @@ export const SemanticInternalAttributes = {
   PROJECT_ID: "ctx.project.id",
   PROJECT_REF: "ctx.project.ref",
   PROJECT_NAME: "ctx.project.title",
+  PROJECT_DIR: "project.dir",
   ATTEMPT_ID: "ctx.attempt.id",
   ATTEMPT_NUMBER: "ctx.attempt.number",
   RUN_ID: "ctx.run.id",
