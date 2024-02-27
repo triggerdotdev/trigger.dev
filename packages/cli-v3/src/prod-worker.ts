@@ -46,6 +46,7 @@ class ProdWorker {
 
   private executing = false;
 
+  #httpPort: number;
   #backgroundWorker: ProdBackgroundWorker;
   #httpServer: ReturnType<typeof createServer>;
   #coordinatorSocket: Socket<CoordinatorToProdWorkerEvents, ProdWorkerToCoordinatorEvents>;
@@ -69,6 +70,7 @@ class ProdWorker {
       this.#coordinatorSocket.emit("TASK_HEARTBEAT", { version: "v1", runId: id });
     });
 
+    this.#httpPort = port;
     this.#httpServer = this.#createHttpServer();
   }
 
@@ -242,7 +244,22 @@ class ProdWorker {
     });
 
     httpServer.on("listening", () => {
-      log("http server listening on port", HTTP_SERVER_PORT);
+      log("http server listening on port", this.#httpPort);
+    });
+
+    httpServer.on("error", (error) => {
+      // @ts-expect-error
+      if (error.code != "EADDRINUSE") {
+        return;
+      }
+
+      log(`port ${this.#httpPort} already in use, retrying with random port..`);
+
+      this.#httpPort = getRandomPortNumber();
+
+      setTimeout(() => {
+        this.start();
+      }, 100);
     });
 
     return httpServer;
@@ -283,10 +300,10 @@ class ProdWorker {
     };
   }
 
-  async start() {
-    this.#httpServer.listen(this.port, this.host);
+  start() {
+    this.#httpServer.listen(this.#httpPort, this.host);
   }
 }
 
 const prodWorker = new ProdWorker(HTTP_SERVER_PORT);
-await prodWorker.start();
+prodWorker.start();
