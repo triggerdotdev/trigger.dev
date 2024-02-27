@@ -137,7 +137,6 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    console.log({ state: navigation.state, lastSubmission });
     if (navigation.state !== "idle") return;
     if (lastSubmission !== undefined) return;
 
