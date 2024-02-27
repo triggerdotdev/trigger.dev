@@ -524,13 +524,7 @@ function V3ProjectSideMenu({
         to={v3EnvironmentVariablesPath(organization, project)}
         data-action="environment variables"
       />
-      {/* <SideMenuItem
-        name="Environments & API Keys"
-        icon="environment"
-        iconColor="text-rose-500"
-        to={projectEnvironmentsPath(organization, project)}
-        data-action="environments & api keys"
-      />
+      {/* 
       <SideMenuItem
         name="Project settings"
         icon="settings"
