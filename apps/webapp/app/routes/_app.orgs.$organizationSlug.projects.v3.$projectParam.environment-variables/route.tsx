@@ -1,4 +1,4 @@
-import { conform, useForm } from "@conform-to/react";
+import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
@@ -6,13 +6,13 @@ import {
   ActionFunctionArgs,
   LoaderFunctionArgs,
   json,
-  redirect,
-  redirectDocument,
+  redirectDocument
 } from "@remix-run/server-runtime";
 import { RuntimeEnvironment } from "@trigger.dev/database";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
@@ -22,7 +22,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
-import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
@@ -62,9 +61,8 @@ import {
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
-  CreateEnvironmentVariable,
-  EditEnvironmentVariable,
   DeleteEnvironmentVariable,
+  EditEnvironmentVariable
 } from "~/v3/environmentVariables/repository";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -274,6 +272,7 @@ function EditEnvironmentVariablePanel({
   variable: EnvironmentVariableWithSetValues;
   environments: Pick<RuntimeEnvironment, "id" | "type">[];
 }) {
+  const [isOpen, setIsOpen] = useState(false);
   const lastSubmission = useActionData();
   const navigation = useNavigation();
 
@@ -293,7 +292,7 @@ function EditEnvironmentVariablePanel({
   });
 
   return (
-    <Dialog>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button
           variant="small-menu-item"
@@ -308,7 +307,7 @@ function EditEnvironmentVariablePanel({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          Edit <strong>{variable.key}</strong>
+            Edit {variable.key}
         </DialogHeader>
         <Form method="post" {...form.props}>
           <input type="hidden" name="action" value="edit" />
@@ -316,47 +315,58 @@ function EditEnvironmentVariablePanel({
           <input type="hidden" name="key" value={variable.key} />
           <FormError id={id.errorId}>{id.error}</FormError>
           <Fieldset>
-            <InputGroup>
+            <InputGroup fullWidth className="mt-2 mb-4">
               <Label>Key</Label>
-              <Header2>{variable.key}</Header2>
+              <InlineCode>{variable.key}</InlineCode>
             </InputGroup>
           </Fieldset>
           <Fieldset>
-            <InputGroup>
+            <InputGroup fullWidth>
               <Label>Values</Label>
-              <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2">
                 {environments.map((environment, index) => {
                   const value = variable.values[environment.id]?.value;
                   return (
-                    <div key={environment.id}>
+                    <Fragment key={environment.id}>
                       <input
                         type="hidden"
                         name={`values[${index}].environmentId`}
                         value={environment.id}
                       />
+                      <label className="flex items-center justify-end" htmlFor={`values[${index}].value`}>
+                        <EnvironmentLabel environment={environment} className="h-5 px-2" />
+                      </label>
                       <Input
                         name={`values[${index}].value`}
                         placeholder="Not set"
                         defaultValue={value}
-                        icon={<EnvironmentLabel environment={environment} />}
                       />
-                    </div>
+                    </Fragment>
                   );
                 })}
               </div>
             </InputGroup>
-          </Fieldset>
 
           <FormError>{form.error}</FormError>
 
           <FormButtons
-            className="m-0 w-max"
             confirmButton={
-              <Button type="submit" variant="primary/medium" disabled={isLoading}>
+              <Button type="submit" variant="primary/small" disabled={isLoading}>
                 {isLoading ? "Saving" : "Edit"}
               </Button>
             }
-          />
+            cancelButton={
+              <Button
+              onClick={() => setIsOpen(false)}
+              variant="secondary/small"
+              type="button"
+              >
+                Cancel
+              </Button>
+            }
+            />
+
+          </Fieldset>
         </Form>
       </DialogContent>
     </Dialog>
