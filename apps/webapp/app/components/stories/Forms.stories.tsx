@@ -15,6 +15,7 @@ import { Paragraph } from "../primitives/Paragraph";
 import { LogoIcon } from "../LogoIcon";
 import { Label } from "../primitives/Label";
 import { TextLink } from "../primitives/TextLink";
+import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 
 const meta: Meta<typeof Forms> = {
   title: "Primitives/Forms",
@@ -55,6 +56,10 @@ export const Search: Story = {
   },
 
   render: (args) => <SearchForm />,
+};
+
+export const Inputs: Story = {
+  render: (args) => <InputFields />,
 };
 
 function Forms() {
@@ -178,5 +183,50 @@ function SearchForm() {
         </Form>
       </div>
     </MainCenteredContainer>
+  );
+}
+
+function InputFields() {
+  return (
+    <div>
+      <div className="m-8 flex w-64 flex-col gap-4">
+        <Input variant="large" placeholder="Name" autoFocus />
+        <Input variant="medium" placeholder="Name" />
+        <Input variant="small" placeholder="Name" />
+        <Input variant="tertiary" placeholder="Name" />
+      </div>
+      <div className="m-8 flex w-64 flex-col gap-4">
+        <Input variant="large" placeholder="Search" icon="search" shortcut="⌘K" />
+        <Input variant="medium" placeholder="Search" icon="search" shortcut="⌘K" />
+        <Input variant="small" placeholder="Search" icon="search" shortcut="⌘K" />
+        <Input variant="tertiary" placeholder="Search" icon="search" shortcut="⌘K" />
+      </div>
+      <div className="m-8 flex w-64 flex-col gap-4">
+        <Input
+          variant="large"
+          placeholder="Search"
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
+          shortcut="⌘K"
+        />
+        <Input
+          variant="medium"
+          placeholder="Search"
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
+          shortcut="⌘K"
+        />
+        <Input
+          variant="small"
+          placeholder="Search"
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
+          shortcut="⌘K"
+        />
+        <Input
+          variant="tertiary"
+          placeholder="Search"
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
+          shortcut="⌘K"
+        />
+      </div>
+    </div>
   );
 }
