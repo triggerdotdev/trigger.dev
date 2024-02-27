@@ -134,6 +134,7 @@ class ProdWorker {
 
     socket.on("RESUME", async (message) => {
       logger("[RESUME]", message);
+      this.#backgroundWorker.taskRunCompletedNotification(message.completion, message.execution);
     });
 
     socket.on("RESUME_WITH", async (message) => {
@@ -154,6 +155,8 @@ class ProdWorker {
 
       callback({ completion });
       this.executing = false;
+
+      // TODO: we may want to exit the process here
     });
 
     return socket;

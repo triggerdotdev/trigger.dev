@@ -3,6 +3,7 @@ import {
   TaskResource,
   ProdTaskRunExecutionPayload,
   TaskRunExecutionResult,
+  TaskRunExecution,
 } from "../schemas";
 
 export type VersionedMessage<TMessage> = { version: "v1" } & TMessage;
@@ -50,7 +51,14 @@ export interface ProdWorkerToCoordinatorEvents {
 
 export interface CoordinatorToProdWorkerEvents {
   INVOKE: (message: VersionedMessage<{ payload: any; context: any }>) => void;
-  RESUME: (message: VersionedMessage<{}>) => void;
+  RESUME: (
+    message: VersionedMessage<{
+      attemptId: string;
+      image: string;
+      completion: TaskRunExecutionResult;
+      execution: TaskRunExecution;
+    }>
+  ) => void;
   RESUME_WITH: (message: VersionedMessage<{ data: any }>) => void;
   EXECUTE_TASK_RUN: (
     message: VersionedMessage<{ payload: ProdTaskRunExecutionPayload }>,
@@ -65,6 +73,7 @@ export interface ProdWorkerSocketData {
   cliPackageVersion: string;
   contentHash: string;
   projectRef: string;
+  attemptId?: string;
 }
 
 // coordinator <--> platform
@@ -95,7 +104,14 @@ export interface CoordinatorToPlatformEvents {
 
 export interface PlatformToCoordinatorEvents {
   INVOKE: (message: VersionedMessage<{ taskId: string; payload: any; context: any }>) => void;
-  RESUME: (message: VersionedMessage<{ taskId: string }>) => void;
+  RESUME: (
+    message: VersionedMessage<{
+      attemptId: string;
+      image: string;
+      completion: TaskRunExecutionResult;
+      execution: TaskRunExecution;
+    }>
+  ) => void;
   RESUME_WITH: (message: VersionedMessage<{ taskId: string; data: any }>) => void;
 }
 

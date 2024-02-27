@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { nanoid } from "nanoid";
-import { $transaction, PrismaClient, prisma } from "~/db.server";
+import { $transaction } from "~/db.server";
 import {
   PRIMARY_VARIANT,
   SemanticInternalAttributes,
@@ -116,7 +116,7 @@ export class TriggerTaskService extends BaseService {
             span.setAttribute("runId", taskRun.friendlyId);
 
             if (body.options?.dependentAttempt) {
-              const dependentAttempt = await tx.taskRun.findUnique({
+              const dependentAttempt = await tx.taskRunAttempt.findUnique({
                 where: { friendlyId: body.options.dependentAttempt },
               });
 

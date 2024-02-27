@@ -28,6 +28,13 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     id: z.string(),
     image: z.string(),
   }),
+  z.object({
+    type: z.literal("RESUME_ATTEMPT"),
+    id: z.string(),
+    image: z.string(),
+    completion: TaskRunExecutionResult,
+    execution: TaskRunExecution,
+  }),
 ]);
 
 export type BackgroundWorkerServerMessages = z.infer<typeof BackgroundWorkerServerMessages>;

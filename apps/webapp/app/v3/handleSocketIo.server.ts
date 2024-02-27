@@ -28,7 +28,12 @@ function initalizeIoServer() {
   const providerNamespace = createProviderNamespace(io);
   const sharedQueueConsumerNamespace = createSharedQueueConsumerNamespace(io);
 
-  return { io, providerNamespace };
+  return {
+    io,
+    coordinatorNamespace,
+    providerNamespace,
+    sharedQueueConsumerNamespace,
+  };
 }
 
 function createLogger(prefix: string) {

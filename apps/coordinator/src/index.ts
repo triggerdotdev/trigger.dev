@@ -143,15 +143,14 @@ class TaskCoordinator {
     socket.on("RESUME", async (message) => {
       logger("[RESUME]", message);
 
-      const taskSocket = await this.#getTaskSocket(message.taskId);
+      const taskSocket = await this.#getAttemptSocket(message.attemptId);
 
       if (!taskSocket) {
+        logger("Socket for attempt not found", { attemptId: message.attemptId });
         return;
       }
 
-      taskSocket.emit("RESUME", {
-        version: message.version,
-      });
+      taskSocket.emit("RESUME", message);
     });
 
     socket.on("RESUME_WITH", async (message) => {
@@ -170,6 +169,16 @@ class TaskCoordinator {
     });
 
     return socket;
+  }
+
+  async #getAttemptSocket(attemptId: string) {
+    const sockets = await this.#prodWorkerNamespace.fetchSockets();
+
+    for (const socket of sockets) {
+      if (socket.data.attemptId === attemptId) {
+        return socket;
+      }
+    }
   }
 
   async #getTaskSocket(taskId: string) {
@@ -318,6 +327,8 @@ class TaskCoordinator {
       });
 
       socket.on("READY_FOR_EXECUTION", async (message) => {
+        socket.data.attemptId = message.attemptId;
+
         logger("[READY_FOR_EXECUTION]", message);
         this.#platformSocket?.emit("READY", {
           version: "v1",

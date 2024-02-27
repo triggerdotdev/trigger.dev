@@ -3,8 +3,11 @@ import {
   ProdTaskRunExecutionPayload,
   RetryOptions,
   TaskRunContext,
+  TaskRunError,
   TaskRunExecution,
   TaskRunExecutionResult,
+  TaskRunFailedExecutionResult,
+  TaskRunSuccessfulExecutionResult,
   ZodMessageSender,
   defaultRetryOptions,
   flattenAttributes,
@@ -17,6 +20,7 @@ import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "../marqs.server";
 import { eventRepository } from "../eventRepository.server";
+import { socketIo } from "../handleSocketIo.server";
 
 const tracer = trace.getTracer("sharedQueueConsumer");
 
@@ -24,6 +28,10 @@ const MessageBody = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("EXECUTE"),
     taskIdentifier: z.string(),
+  }),
+  z.object({
+    type: z.literal("RESUME"),
+    dependentAttempt: z.string().optional(),
   }),
 ]);
 
@@ -45,6 +53,7 @@ export class SharedQueueConsumer {
   private _taskSuccesses: number = 0;
   private _currentSpan: Span | undefined;
   private _endSpanInNextIteration = false;
+  private _tasks = new SharedQueueTasks();
 
   constructor(
     private _sender: ZodMessageSender<typeof serverWebsocketMessages>,
@@ -209,172 +218,343 @@ export class SharedQueueConsumer {
       return;
     }
 
-    const existingTaskRun = await prisma.taskRun.findUnique({
-      where: {
-        id: message.messageId,
-      },
-    });
-
-    if (!existingTaskRun) {
-      logger.error("No existing task run", {
-        queueMessage: message.data,
-        messageId: message.messageId,
-      });
-      await marqs?.acknowledgeMessage(message.messageId);
-      setTimeout(() => this.#doWork(), 100);
-      return;
-    }
-
-    const backgroundWorker = await prisma.backgroundWorker.findFirst({
-      where: {
-        runtimeEnvironmentId: existingTaskRun.runtimeEnvironmentId,
-        projectId: existingTaskRun.projectId,
-        imageDetails: {
-          some: {},
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      include: {
-        tasks: true,
-        imageDetails: true,
-      },
-    });
-
-    if (!backgroundWorker) {
-      logger.error("No matching background worker found for task run", {
-        queueMessage: message.data,
-        messageId: message.messageId,
-      });
-      await marqs?.acknowledgeMessage(message.messageId);
-      setTimeout(() => this.#doWork(), 100);
-      return;
-    }
-
-    const backgroundTask = backgroundWorker.tasks.find(
-      (task) => task.slug === existingTaskRun.taskIdentifier
-    );
-
-    if (!backgroundTask) {
-      logger.warn("No matching background task found for task run", {
-        taskRun: existingTaskRun.id,
-        taskIdentifier: existingTaskRun.taskIdentifier,
-        backgroundWorker: backgroundWorker.id,
-        taskSlugs: backgroundWorker.tasks.map((task) => task.slug),
-      });
-
-      await marqs?.acknowledgeMessage(message.messageId);
-
-      setTimeout(() => this.#doWork(), 100);
-      return;
-    }
-
-    const lockedTaskRun = await prisma.taskRun.update({
-      where: {
-        id: message.messageId,
-      },
-      data: {
-        lockedAt: new Date(),
-        lockedById: backgroundTask.id,
-      },
-      include: {
-        attempts: {
-          take: 1,
-          orderBy: { number: "desc" },
-        },
-        tags: true,
-      },
-    });
-
-    if (!lockedTaskRun) {
-      logger.warn("Failed to lock task run", {
-        taskRun: existingTaskRun.id,
-        taskIdentifier: existingTaskRun.taskIdentifier,
-        backgroundWorker: backgroundWorker.id,
-        messageId: message.messageId,
-      });
-
-      await marqs?.acknowledgeMessage(message.messageId);
-
-      setTimeout(() => this.#doWork(), 100);
-      return;
-    }
-
-    const queue = await prisma.taskQueue.findUnique({
-      where: {
-        runtimeEnvironmentId_name: {
-          runtimeEnvironmentId: environment.id,
-          name: lockedTaskRun.queue,
-        },
-      },
-    });
-
-    if (!queue) {
-      await marqs?.nackMessage(message.messageId);
-      setTimeout(() => this.#doWork(), 1000);
-      return;
-    }
-
-    if (!this._enabled) {
-      await marqs?.nackMessage(message.messageId);
-      return;
-    }
-
-    const taskRunAttempt = await prisma.taskRunAttempt.create({
-      data: {
-        number: lockedTaskRun.attempts[0] ? lockedTaskRun.attempts[0].number + 1 : 1,
-        friendlyId: generateFriendlyId("attempt"),
-        taskRunId: lockedTaskRun.id,
-        startedAt: new Date(),
-        backgroundWorkerId: backgroundTask.workerId,
-        backgroundWorkerTaskId: backgroundTask.id,
-        status: "PENDING" as const,
-        queueId: queue.id,
-      },
-    });
-
-    try {
-      // TODO: send trace context down to the CLI
-      await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
-        backgroundWorkerId: backgroundWorker.friendlyId,
-        data: {
-          type: "SCHEDULE_ATTEMPT",
-          id: taskRunAttempt.id,
-          image: backgroundWorker.imageDetails[0].tag,
-        },
-      });
-    } catch (e) {
-      if (e instanceof Error) {
-        this._currentSpan?.recordException(e);
-      } else {
-        this._currentSpan?.recordException(new Error(String(e)));
-      }
-
-      this._endSpanInNextIteration = true;
-
-      // We now need to unlock the task run and delete the task run attempt
-      await prisma.$transaction([
-        prisma.taskRun.update({
+    switch (messageBody.data.type) {
+      case "EXECUTE": {
+        const existingTaskRun = await prisma.taskRun.findUnique({
           where: {
-            id: lockedTaskRun.id,
+            id: message.messageId,
+          },
+        });
+
+        if (!existingTaskRun) {
+          logger.error("No existing task run", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+          });
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        const backgroundWorker = await prisma.backgroundWorker.findFirst({
+          where: {
+            runtimeEnvironmentId: existingTaskRun.runtimeEnvironmentId,
+            projectId: existingTaskRun.projectId,
+            imageDetails: {
+              some: {},
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          include: {
+            tasks: true,
+            imageDetails: true,
+          },
+        });
+
+        if (!backgroundWorker) {
+          logger.error("No matching background worker found for task run", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+          });
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        const backgroundTask = backgroundWorker.tasks.find(
+          (task) => task.slug === existingTaskRun.taskIdentifier
+        );
+
+        if (!backgroundTask) {
+          logger.warn("No matching background task found for task run", {
+            taskRun: existingTaskRun.id,
+            taskIdentifier: existingTaskRun.taskIdentifier,
+            backgroundWorker: backgroundWorker.id,
+            taskSlugs: backgroundWorker.tasks.map((task) => task.slug),
+          });
+
+          await marqs?.acknowledgeMessage(message.messageId);
+
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        const lockedTaskRun = await prisma.taskRun.update({
+          where: {
+            id: message.messageId,
           },
           data: {
-            lockedAt: null,
-            lockedById: null,
+            lockedAt: new Date(),
+            lockedById: backgroundTask.id,
           },
-        }),
-        prisma.taskRunAttempt.delete({
-          where: {
-            id: taskRunAttempt.id,
+          include: {
+            attempts: {
+              take: 1,
+              orderBy: { number: "desc" },
+            },
+            tags: true,
           },
-        }),
-      ]);
+        });
 
-      // Finally we need to nack the message so it can be retried
-      await marqs?.nackMessage(message.messageId);
-    } finally {
-      setTimeout(() => this.#doWork(), 100);
+        if (!lockedTaskRun) {
+          logger.warn("Failed to lock task run", {
+            taskRun: existingTaskRun.id,
+            taskIdentifier: existingTaskRun.taskIdentifier,
+            backgroundWorker: backgroundWorker.id,
+            messageId: message.messageId,
+          });
+
+          await marqs?.acknowledgeMessage(message.messageId);
+
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        const queue = await prisma.taskQueue.findUnique({
+          where: {
+            runtimeEnvironmentId_name: {
+              runtimeEnvironmentId: environment.id,
+              name: lockedTaskRun.queue,
+            },
+          },
+        });
+
+        if (!queue) {
+          await marqs?.nackMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 1000);
+          return;
+        }
+
+        if (!this._enabled) {
+          await marqs?.nackMessage(message.messageId);
+          return;
+        }
+
+        const taskRunAttempt = await prisma.taskRunAttempt.create({
+          data: {
+            number: lockedTaskRun.attempts[0] ? lockedTaskRun.attempts[0].number + 1 : 1,
+            friendlyId: generateFriendlyId("attempt"),
+            taskRunId: lockedTaskRun.id,
+            startedAt: new Date(),
+            backgroundWorkerId: backgroundTask.workerId,
+            backgroundWorkerTaskId: backgroundTask.id,
+            status: "PENDING" as const,
+            queueId: queue.id,
+          },
+        });
+
+        try {
+          await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
+            backgroundWorkerId: backgroundWorker.friendlyId,
+            data: {
+              type: "SCHEDULE_ATTEMPT",
+              id: taskRunAttempt.id,
+              image: backgroundWorker.imageDetails[0].tag,
+            },
+          });
+        } catch (e) {
+          if (e instanceof Error) {
+            this._currentSpan?.recordException(e);
+          } else {
+            this._currentSpan?.recordException(new Error(String(e)));
+          }
+
+          this._endSpanInNextIteration = true;
+
+          // We now need to unlock the task run and delete the task run attempt
+          await prisma.$transaction([
+            prisma.taskRun.update({
+              where: {
+                id: lockedTaskRun.id,
+              },
+              data: {
+                lockedAt: null,
+                lockedById: null,
+              },
+            }),
+            prisma.taskRunAttempt.delete({
+              where: {
+                id: taskRunAttempt.id,
+              },
+            }),
+          ]);
+
+          // Finally we need to nack the message so it can be retried
+          await marqs?.nackMessage(message.messageId);
+        } finally {
+          setTimeout(() => this.#doWork(), 100);
+        }
+        break;
+      }
+      case "RESUME": {
+        // Resume after dependency completed with no remaining retries
+        if (!messageBody.data.dependentAttempt) {
+          logger.error("Resuming without dependent attempt currently unsupported", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+          });
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        const completedAttempt = await prisma.taskRunAttempt.findUnique({
+          where: {
+            id: message.messageId,
+          },
+        });
+
+        if (!completedAttempt) {
+          logger.error("Completed attempt not found", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+          });
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        const dependentAttempt = await prisma.taskRunAttempt.findUnique({
+          where: {
+            id: messageBody.data.dependentAttempt,
+            taskRun: {
+              lockedAt: {
+                not: null,
+              },
+              lockedById: {
+                not: null,
+              },
+            },
+          },
+          include: {
+            taskRun: true,
+          },
+        });
+
+        if (!dependentAttempt) {
+          logger.error("Dependent attempt not found", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+          });
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        const { taskRun: dependentRun } = dependentAttempt;
+
+        const backgroundWorker = await prisma.backgroundWorker.findFirst({
+          where: {
+            runtimeEnvironmentId: dependentRun.runtimeEnvironmentId,
+            projectId: dependentRun.projectId,
+            imageDetails: {
+              some: {},
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          include: {
+            tasks: true,
+            imageDetails: true,
+          },
+        });
+
+        if (!backgroundWorker) {
+          logger.error("No matching background worker found for task run", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+          });
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        const backgroundTask = backgroundWorker.tasks.find(
+          (task) => task.slug === dependentRun.taskIdentifier
+        );
+
+        if (!backgroundTask) {
+          logger.warn("No matching background task found for task run", {
+            taskRun: dependentRun.id,
+            taskIdentifier: dependentRun.taskIdentifier,
+            backgroundWorker: backgroundWorker.id,
+            taskSlugs: backgroundWorker.tasks.map((task) => task.slug),
+          });
+
+          await marqs?.acknowledgeMessage(message.messageId);
+
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        const queue = await prisma.taskQueue.findUnique({
+          where: {
+            runtimeEnvironmentId_name: {
+              runtimeEnvironmentId: environment.id,
+              name: dependentRun.queue,
+            },
+          },
+        });
+
+        if (!queue) {
+          await marqs?.nackMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 1000);
+          return;
+        }
+
+        if (!this._enabled) {
+          await marqs?.nackMessage(message.messageId);
+          return;
+        }
+
+        const completion = await this._tasks.getCompletionPayloadFromAttempt(completedAttempt.id);
+
+        if (!completion) {
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        const execution = await this._tasks.getExecutionPayloadFromAttempt(
+          completedAttempt.id,
+          false
+        );
+
+        if (!execution) {
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        try {
+          socketIo.coordinatorNamespace.emit("RESUME", {
+            version: "v1",
+            attemptId: dependentAttempt.id,
+            image: backgroundWorker.imageDetails[0].tag,
+            completion,
+            execution: execution.execution,
+          });
+          // FIXME: should heartbeat and ack on completion instead
+          await marqs?.acknowledgeMessage(message.messageId);
+        } catch (e) {
+          if (e instanceof Error) {
+            this._currentSpan?.recordException(e);
+          } else {
+            this._currentSpan?.recordException(new Error(String(e)));
+          }
+
+          this._endSpanInNextIteration = true;
+
+          // Finally we need to nack the message so it can be retried
+          await marqs?.nackMessage(message.messageId);
+        } finally {
+          setTimeout(() => this.#doWork(), 100);
+        }
+        break;
+      }
     }
   }
 
@@ -384,8 +564,60 @@ export class SharedQueueConsumer {
 }
 
 export class SharedQueueTasks {
+  async getCompletionPayloadFromAttempt(id: string): Promise<TaskRunExecutionResult | undefined> {
+    const attempt = await prisma.taskRunAttempt.findUnique({
+      where: {
+        id,
+        status: {
+          in: ["COMPLETED", "FAILED"],
+        },
+      },
+      include: {
+        backgroundWorker: true,
+        backgroundWorkerTask: true,
+        taskRun: {
+          include: {
+            runtimeEnvironment: {
+              include: {
+                organization: true,
+                project: true,
+              },
+            },
+            tags: true,
+          },
+        },
+        queue: true,
+      },
+    });
+
+    if (!attempt) {
+      logger.error("No completed attempt found", { id });
+      return;
+    }
+
+    const ok = attempt.status === "COMPLETED";
+
+    if (ok) {
+      const success: TaskRunSuccessfulExecutionResult = {
+        ok,
+        id: attempt.friendlyId,
+        output: attempt.output ?? "",
+        outputType: attempt.outputType,
+      };
+      return success;
+    } else {
+      const failure: TaskRunFailedExecutionResult = {
+        ok,
+        id: attempt.friendlyId,
+        error: attempt.error as TaskRunError,
+      };
+      return failure;
+    }
+  }
+
   async getExecutionPayloadFromAttempt(
-    id: string
+    id: string,
+    setToExecuting = true
   ): Promise<ProdTaskRunExecutionPayload | undefined> {
     const attempt = await prisma.taskRunAttempt.findUnique({
       where: {
@@ -414,18 +646,20 @@ export class SharedQueueTasks {
       return;
     }
 
-    await prisma.taskRunAttempt.update({
-      where: {
-        id,
-      },
-      data: {
-        status: "EXECUTING",
-      },
-    });
+    if (setToExecuting) {
+      await prisma.taskRunAttempt.update({
+        where: {
+          id,
+        },
+        data: {
+          status: "EXECUTING",
+        },
+      });
+    }
 
     const { backgroundWorkerTask, taskRun, queue } = attempt;
 
-    const execution = {
+    const execution: ProdTaskRunExecutionPayload["execution"] = {
       task: {
         id: backgroundWorkerTask.slug,
         filePath: backgroundWorkerTask.filePath,
@@ -495,7 +729,12 @@ export class SharedQueueTasks {
             outputType: completion.outputType,
           },
           include: {
-            taskRun: true,
+            taskRun: {
+              include: {
+                batchItem: true,
+                dependency: true,
+              },
+            },
             backgroundWorkerTask: true,
           },
         })
@@ -507,12 +746,18 @@ export class SharedQueueTasks {
             error: completion.error,
           },
           include: {
-            taskRun: true,
+            taskRun: {
+              include: {
+                batchItem: true,
+                dependency: true,
+              },
+            },
             backgroundWorkerTask: true,
           },
         });
 
     if (!completion.ok && completion.retry !== undefined) {
+      // Attempt failed and we need to retry
       const retryConfig = taskRunAttempt.backgroundWorkerTask.retryConfig
         ? {
             ...defaultRetryOptions,
@@ -564,7 +809,48 @@ export class SharedQueueTasks {
 
       await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
     } else {
+      // Attempt succeeded or this was the last retry
       await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
+
+      const { batchItem, dependency } = taskRunAttempt.taskRun;
+
+      logger.debug("Handling dependencies", { batchItem, dependency });
+
+      if (dependency) {
+        const environment = await prisma.runtimeEnvironment.findUnique({
+          include: {
+            organization: true,
+            project: true,
+          },
+          where: {
+            id: taskRunAttempt.taskRun.runtimeEnvironmentId,
+          },
+        });
+
+        if (!environment) {
+          logger.error("Environment not found", {
+            attemptId: taskRunAttempt.id,
+            envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
+          });
+          return;
+        }
+
+        if (!dependency.dependentAttemptId) {
+          logger.error("Dependent attempt ID shouldn't be null", {
+            attemptId: taskRunAttempt.id,
+            envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
+          });
+          return;
+        }
+
+        await marqs?.enqueueMessage(
+          environment,
+          taskRunAttempt.taskRun.queue,
+          taskRunAttempt.id,
+          { type: "RESUME", dependentAttempt: dependency.dependentAttemptId },
+          taskRunAttempt.taskRun.concurrencyKey ?? undefined
+        );
+      }
     }
   }
 
