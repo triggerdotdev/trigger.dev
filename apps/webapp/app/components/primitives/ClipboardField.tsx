@@ -1,7 +1,7 @@
+import { CheckIcon } from "@heroicons/react/20/solid";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Button } from "./Buttons";
-import { useCallback, useRef, useState } from "react";
-import { CheckIcon } from "@heroicons/react/20/solid";
 import { IconNames, NamedIcon } from "./NamedIcon";
 
 const variations = {
@@ -99,6 +99,10 @@ export function ClipboardField({
     },
     [value]
   );
+
+  useEffect(() => {
+    setIsSecure(secure !== undefined && secure);
+  }, [secure]);
 
   const { container, input, buttonVariant, button } = variations[variant];
   const iconClassName = variations[variant].iconSize;
