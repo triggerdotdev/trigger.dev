@@ -1,8 +1,9 @@
 import { Prisma, PrismaClient } from "@trigger.dev/database";
+import { z } from "zod";
 import { $transaction, prisma } from "~/db.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
+import { generateFriendlyId } from "../friendlyIdentifiers";
 import { EnvironmentVariable, ProjectEnvironmentVariable, Repository, Result } from "./repository";
-import { z } from "zod";
 
 function secretKeyProjectPrefix(projectId: string) {
   return `environmentvariable:${projectId}:`;
@@ -76,6 +77,7 @@ export class EnvironmentVariablesRepository implements Repository {
         const environmentVariable = await tx.environmentVariable.create({
           data: {
             key: options.key,
+            friendlyId: generateFriendlyId("envvar"),
             project: {
               connect: {
                 id: projectId,
