@@ -188,39 +188,48 @@ function SearchForm() {
 
 function InputFields() {
   return (
+    <div className="flex gap-16">
+      <InputFieldSet />
+      <InputFieldSet disabled />
+    </div>
+  );
+}
+
+function InputFieldSet({ disabled }: { disabled?: boolean }) {
+  return (
     <div>
       <div className="m-8 flex w-64 flex-col gap-4">
-        <Input variant="large" placeholder="Name" autoFocus />
-        <Input variant="medium" placeholder="Name" />
-        <Input variant="small" placeholder="Name" />
-        <Input variant="tertiary" placeholder="Name" />
+        <Input disabled={disabled} variant="large" placeholder="Name" autoFocus />
+        <Input disabled={disabled} variant="medium" placeholder="Name" />
+        <Input disabled={disabled} variant="small" placeholder="Name" />
+        <Input disabled={disabled} variant="tertiary" placeholder="Name" />
       </div>
       <div className="m-8 flex w-64 flex-col gap-4">
-        <Input variant="large" placeholder="Search" icon="search" shortcut="⌘K" />
-        <Input variant="medium" placeholder="Search" icon="search" shortcut="⌘K" />
-        <Input variant="small" placeholder="Search" icon="search" shortcut="⌘K" />
-        <Input variant="tertiary" placeholder="Search" icon="search" shortcut="⌘K" />
+        <Input disabled={disabled} variant="large" placeholder="Search" icon="search" shortcut="⌘K" />
+        <Input disabled={disabled} variant="medium" placeholder="Search" icon="search" shortcut="⌘K" />
+        <Input disabled={disabled} variant="small" placeholder="Search" icon="search" shortcut="⌘K" />
+        <Input disabled={disabled} variant="tertiary" placeholder="Search" icon="search" shortcut="⌘K" />
       </div>
       <div className="m-8 flex w-64 flex-col gap-4">
-        <Input
+        <Input disabled={disabled}
           variant="large"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
           shortcut="⌘K"
         />
-        <Input
+        <Input disabled={disabled}
           variant="medium"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
           shortcut="⌘K"
         />
-        <Input
+        <Input disabled={disabled}
           variant="small"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
           shortcut="⌘K"
         />
-        <Input
+        <Input disabled={disabled}
           variant="tertiary"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}

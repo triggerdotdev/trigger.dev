@@ -1,45 +1,47 @@
 import * as React from "react";
+import { useImperativeHandle, useRef } from "react";
 import { cn } from "~/utils/cn";
-import type { IconNamesOrString } from "./NamedIcon";
-import { NamedIcon } from "./NamedIcon";
 import { Icon, RenderIcon } from "./Icon";
+
+const containerBase = "has-[:focus-visible]:outline-none has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-0 has-[:focus]:border-ring has-[:focus]:outline-none has-[:focus]:ring-2 has-[:focus]:ring-ring has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 ring-offset-background transition cursor-text"
+
+const inputBase = "h-full w-full text-bright bg-transparent file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed"
+
+const shortcutBase = "grid h-fit place-content-center border border-dimmed/40 font-normal text-dimmed"
 
 const variants = {
   large: {
+    container:
+      "px-1 w-full h-10 rounded-[3px] border border-slate-800 bg-slate-850 hover:border-slate-750 hover:bg-slate-800",
     input:
-      "px-3 flex h-10 w-full text-bright rounded-[3px] border border-slate-800 bg-slate-850 text-sm ring-offset-background transition file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
-
-    iconSize: "h-4 w-4 ml-3",
-    iconOffset: "pl-[34px]",
+      "px-2 text-sm",
+    iconSize: "h-4 w-4 ml-1",
     shortcut:
-      "right-2 top-[9px] grid h-fit min-w-[22px] place-content-center rounded-sm border border-dimmed/40 py-[3px] px-[5px] text-[0.6rem] font-normal text-dimmed",
+      "mr-1 min-w-[22px] rounded-sm py-[3px] px-[5px] text-[0.6rem] select-none",
   },
   medium: {
+    container: "px-1 h-8 w-full rounded border border-slate-800 bg-slate-850 hover:border-slate-750 hover:bg-slate-800",
     input:
-      "px-3 flex h-8 w-full text-bright rounded border border-slate-800 bg-slate-850 text-sm ring-offset-background transition file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
-
-    iconSize: "h-4 w-4 ml-2.5",
-    iconOffset: "pl-[36px]",
+      "px-1.5 rounded text-sm",
+    iconSize: "h-4 w-4 ml-0.5",
     shortcut:
-      "right-2 top-[9px] grid h-fit min-w-[22px] place-content-center rounded-sm border border-dimmed/40 py-[3px] px-[5px] text-[0.6rem] font-normal text-dimmed",
+      "min-w-[22px] rounded-sm py-[3px] px-[5px] text-[0.6rem]",
   },
   small: {
+    container: "px-0.5 h-6 w-full rounded border border-slate-800 bg-slate-850 hover:border-slate-750 hover:bg-slate-800",
     input:
-      "px-2 flex h-6 w-full text-bright rounded border border-slate-800 bg-slate-850 text-xs ring-offset-background transition file:border-0 file:bg-transparent file:text-xs file:font-medium placeholder:text-muted-foreground hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
-
-    iconSize: "h-3 w-3 ml-1.5",
-    iconOffset: "pl-[24px]",
+      "px-1 rounded text-xs",
+    iconSize: "h-3 w-3 ml-0.5",
     shortcut:
-      "right-1 top-1 grid h-fit min-w-[22px] place-content-center rounded-[2px] border border-dimmed/40 py-px px-[3px] text-[0.5rem] font-normal text-dimmed",
+      "min-w-[22px] rounded-[2px] py-px px-[3px] text-[0.5rem]",
   },
   tertiary: {
+    container: "px-0.5 h-6 w-full rounded border border-transparent hover:border-slate-800 hover:bg-slate-850",
     input:
-      "px-1 flex h-6 w-full text-bright rounded bg-transparent border border-transparent hover:border-slate-800 hover:bg-slate-850 focus:border-slate-800 focus:bg-slate-850 text-xs ring-offset-background transition file:border-0 file:bg-transparent file:text-xs file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
-
-    iconSize: "h-3 w-3 ml-1.5",
-    iconOffset: "pl-[21px]",
+    "px-1 rounded text-xs",
+    iconSize: "h-3 w-3 ml-0.5",
     shortcut:
-      "right-1 top-1 grid h-fit min-w-[22px] place-content-center rounded-[2px] border border-dimmed/40 py-px px-[3px] text-[0.5rem] font-normal text-dimmed",
+    "min-w-[22px] rounded-[2px] py-px px-[3px] text-[0.5rem]"
   },
 };
 
@@ -52,24 +54,33 @@ export type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, shortcut, fullWidth = true, variant = "medium", icon, ...props }, ref) => {
+    const innerRef = useRef<HTMLInputElement>(null);
+    useImperativeHandle(ref, () => innerRef.current as HTMLInputElement);
+
+    const containerClassName = variants[variant].container;
     const inputClassName = variants[variant].input;
     const iconClassName = variants[variant].iconSize;
-    const iconOffsetClassName = variants[variant].iconOffset;
     const shortcutClassName = variants[variant].shortcut;
+
     return (
-      <div className={cn("relative", fullWidth ? "w-full" : "max-w-max")}>
+      <div
+        className={cn("flex items-center", containerBase, containerClassName, fullWidth ? "w-full" : "max-w-max")}
+        onClick={() => innerRef.current && innerRef.current.focus()}
+      >
         {icon && (
-          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center">
+          <div
+            className="pointer-events-none flex items-center"
+          >
             <Icon icon={icon} className={cn(iconClassName, "text-dimmed")} />
           </div>
         )}
         <input
           type={type}
-          className={cn(inputClassName, icon ? iconOffsetClassName : "", className)}
-          ref={ref}
+          className={cn("grow", inputBase, inputClassName, className)}
+          ref={innerRef}
           {...props}
         />
-        {shortcut && <div className={cn(shortcutClassName, "absolute")}>{shortcut}</div>}
+        {shortcut && <div className={cn(shortcutBase, shortcutClassName)}>{shortcut}</div>}
       </div>
     );
   }
