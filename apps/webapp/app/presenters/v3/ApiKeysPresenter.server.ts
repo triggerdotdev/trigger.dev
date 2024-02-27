@@ -1,19 +1,6 @@
 import { PrismaClient, prisma } from "~/db.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
-import type {
-  Endpoint,
-  EndpointIndex,
-  EndpointIndexStatus,
-  RuntimeEnvironment,
-  RuntimeEnvironmentType,
-} from "@trigger.dev/database";
-import {
-  EndpointIndexError,
-  EndpointIndexErrorSchema,
-  IndexEndpointStats,
-  parseEndpointIndexStats,
-} from "@trigger.dev/core";
 import { sortEnvironments } from "~/services/environmentSort.server";
 
 export class ApiKeysPresenter {
