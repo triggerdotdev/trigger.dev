@@ -99,4 +99,29 @@ export class TriggerTracer {
       }
     );
   }
+
+  startSpan(name: string, options?: SpanOptions, ctx?: Context) {
+    const parentContext = ctx ?? context.active();
+
+    const attributes = options?.attributes ?? {};
+
+    const span = this.tracer.startSpan(name, options, ctx);
+
+    this.tracer
+      .startSpan(
+        name,
+        {
+          ...options,
+          attributes: {
+            ...attributes,
+            [SemanticInternalAttributes.SPAN_PARTIAL]: true,
+            [SemanticInternalAttributes.SPAN_ID]: span.spanContext().spanId,
+          },
+        },
+        parentContext
+      )
+      .end();
+
+    return span;
+  }
 }

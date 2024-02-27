@@ -1,4 +1,5 @@
-import { FetchInstrumentation, HttpInstrumentation, TracingSDK } from "@trigger.dev/core/v3/otel";
+import "source-map-support/register";
+import { TracingSDK } from "@trigger.dev/core/v3/otel";
 // import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
 // IMPORTANT: this needs to be the first import to work properly
@@ -10,27 +11,9 @@ const tracingSDK = new TracingSDK({
     [SemanticInternalAttributes.CLI_VERSION]: packageJson.version,
   }),
   instrumentations: [
-    new HttpInstrumentation({
-      ignoreOutgoingRequestHook: (req) => {
-        return process.env.TRIGGER_API_URL
-          ? urlToRegex(process.env.TRIGGER_API_URL).test(req.host ?? "")
-          : false;
-      },
-    }),
-    new FetchInstrumentation({
-      ignoreUrls: process.env.TRIGGER_API_URL ? [urlToRegex(process.env.TRIGGER_API_URL)] : [],
-    }),
     // new OpenAIInstrumentation(),
   ],
 });
-
-function urlToRegex(url: string): RegExp {
-  const urlObj = new URL(url);
-  const hostnameToIgnore = urlObj.hostname.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
-  const regexToIgnore = new RegExp(hostnameToIgnore);
-
-  return regexToIgnore;
-}
 
 const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
 const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.version);
@@ -50,7 +33,7 @@ import {
   ZodMessageHandler,
   ZodMessageSender,
   accessoryAttributes,
-  calculateNextRetryTimestamp,
+  calculateNextRetryDelay,
   childToWorkerMessages,
   logger,
   parseError,
@@ -63,7 +46,7 @@ import * as packageJson from "../package.json";
 
 import { Resource } from "@opentelemetry/resources";
 import { flattenAttributes } from "@trigger.dev/core/v3";
-import { TaskMetadataWithRun } from "./types.js";
+import { TaskMetadataWithFunctions } from "./types.js";
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);
@@ -89,7 +72,7 @@ __TASKS__;
 declare const __TASKS__: Record<string, string>;
 
 class TaskExecutor {
-  constructor(public task: TaskMetadataWithRun) {}
+  constructor(public task: TaskMetadataWithFunctions) {}
 
   async determineRetrying(
     execution: TaskRunExecution,
@@ -101,9 +84,9 @@ class TaskExecutor {
 
     const retry = this.task.retry;
 
-    const timestamp = calculateNextRetryTimestamp(retry, execution.attempt.number);
+    const delay = calculateNextRetryDelay(retry, execution.attempt.number);
 
-    return timestamp ? { timestamp } : undefined;
+    return typeof delay === "undefined" ? undefined : { timestamp: Date.now() + delay, delay };
   }
 
   async execute(
@@ -132,14 +115,17 @@ class TaskExecutor {
           attemptMessage,
           async (span) => {
             return await consoleInterceptor.intercept(console, async () => {
-              const output = await this.task.run({
-                payload: parsedPayload,
-                ctx,
-              });
+              const init = await this.#callTaskInit(parsedPayload, ctx);
 
-              span.setAttributes(flattenAttributes(output, SemanticInternalAttributes.OUTPUT));
+              try {
+                const output = await this.#callRun(parsedPayload, ctx, init);
 
-              return output;
+                span.setAttributes(flattenAttributes(output, SemanticInternalAttributes.OUTPUT));
+
+                return output;
+              } finally {
+                await this.#callTaskCleanup(parsedPayload, ctx, init);
+              }
             });
           },
           {
@@ -167,10 +153,49 @@ class TaskExecutor {
 
     return { output: JSON.stringify(output), outputType: "application/json" };
   }
+
+  async #callRun(payload: unknown, ctx: TaskRunContext, init: unknown) {
+    const runFn = this.task.fns.run;
+    const middlewareFn = this.task.fns.middleware;
+
+    if (!runFn) {
+      throw new Error("Task does not have a run function");
+    }
+
+    if (!middlewareFn) {
+      return runFn({ payload, ctx });
+    }
+
+    return middlewareFn({ payload, ctx, next: async () => runFn({ payload, ctx, init }) });
+  }
+
+  async #callTaskInit(payload: unknown, ctx: TaskRunContext) {
+    const initFn = this.task.fns.init;
+
+    if (!initFn) {
+      return {};
+    }
+
+    return tracer.startActiveSpan("init", async (span) => {
+      return await initFn({ payload, ctx });
+    });
+  }
+
+  async #callTaskCleanup(payload: unknown, ctx: TaskRunContext, init: unknown) {
+    const cleanupFn = this.task.fns.cleanup;
+
+    if (!cleanupFn) {
+      return;
+    }
+
+    return tracer.startActiveSpan("cleanup", async (span) => {
+      return await cleanupFn({ payload, ctx, init });
+    });
+  }
 }
 
-function getTasks(): Array<TaskMetadataWithRun> {
-  const result: Array<TaskMetadataWithRun> = [];
+function getTasks(): Array<TaskMetadataWithFunctions> {
+  const result: Array<TaskMetadataWithFunctions> = [];
 
   for (const [importName, taskFile] of Object.entries(TaskFiles)) {
     const fileImports = TaskFileImports[importName];
@@ -183,8 +208,8 @@ function getTasks(): Array<TaskMetadataWithRun> {
           packageVersion: (task as any).__trigger.packageVersion,
           filePath: (taskFile as any).filePath,
           queue: (task as any).__trigger.queue,
-          run: (task as any).__trigger.run,
           retry: (task as any).__trigger.retry,
+          fns: (task as any).__trigger.fns,
         });
       }
     }
@@ -196,9 +221,9 @@ function getTasks(): Array<TaskMetadataWithRun> {
 function getTaskMetadata(): Array<TaskMetadataWithFilePath> {
   const result = getTasks();
 
-  // Remove the run function from the metadata
+  // Remove the functions from the metadata
   return result.map((task) => {
-    const { run, ...metadata } = task;
+    const { fns, ...metadata } = task;
 
     return metadata;
   });
@@ -228,6 +253,24 @@ const handler = new ZodMessageHandler({
   schema: workerToChildMessages,
   messages: {
     EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }) => {
+      if (_isRunning) {
+        console.error("Worker is already running a task");
+
+        await sender.send("TASK_RUN_COMPLETED", {
+          execution,
+          result: {
+            ok: false,
+            id: execution.attempt.id,
+            error: {
+              type: "INTERNAL_ERROR",
+              code: TaskRunErrorCodes.TASK_ALREADY_RUNNING,
+            },
+          },
+        });
+
+        return;
+      }
+
       process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
 
       const executor = taskExecutors.get(execution.task.id);

@@ -1,4 +1,4 @@
-import { DiagConsoleLogger, DiagLogLevel, TracerProvider, diag } from "@opentelemetry/api";
+import { TracerProvider } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -23,6 +23,7 @@ import {
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 import { TaskContextLogProcessor, TaskContextSpanProcessor } from "../tasks/taskContextManager";
+import { getEnvVar } from "../utils/getEnv";
 
 class AsyncResourceDetector implements DetectorSync {
   private _promise: Promise<ResourceAttributes>;
@@ -70,6 +71,11 @@ export class TracingSDK {
   public readonly getTracer: TracerProvider["getTracer"];
 
   constructor(private readonly config: TracingSDKConfig) {
+    const envResourceAttributesSerialized = getEnvVar("OTEL_RESOURCE_ATTRIBUTES");
+    const envResourceAttributes = envResourceAttributesSerialized
+      ? JSON.parse(envResourceAttributesSerialized)
+      : {};
+
     const commonResources = detectResourcesSync({
       detectors: [this.asyncResourceDetector],
     })
@@ -79,7 +85,8 @@ export class TracingSDK {
           [SemanticInternalAttributes.TRIGGER]: true,
         })
       )
-      .merge(config.resource ?? new Resource({}));
+      .merge(config.resource ?? new Resource({}))
+      .merge(new Resource(envResourceAttributes));
 
     const traceProvider = new NodeTracerProvider({
       forceFlushTimeoutMillis: config.forceFlushTimeoutMillis ?? 500,

@@ -2,6 +2,7 @@ export * from "./tasks";
 export * from "./config";
 export * from "./wait";
 export * from "./cache";
+export { retry, type RetryOptions } from "./retry";
 
 import type { Context } from "./shared";
 export type { Context };

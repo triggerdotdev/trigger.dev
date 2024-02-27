@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@trigger.dev/sdk": "workspace:*",
+    "msw": "^2.2.1",
     "openai": "^4.28.0"
   },
   "devDependencies": {
