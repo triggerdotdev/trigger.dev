@@ -25,6 +25,8 @@ function parseSecretKey(key: string) {
   };
 }
 
+const SecretValue = z.object({ secret: z.string() });
+
 export class EnvironmentVariablesRepository implements Repository {
   constructor(private prismaClient: PrismaClient = prisma) {}
 
@@ -314,7 +316,7 @@ export class EnvironmentVariablesRepository implements Repository {
     });
 
     const secrets = await secretStore.getSecrets(
-      z.object({ secret: z.string() }),
+      SecretValue,
       secretKeyProjectPrefix(projectId)
     );
 
@@ -403,7 +405,7 @@ export class EnvironmentVariablesRepository implements Repository {
     });
 
     const secrets = await secretStore.getSecrets(
-      z.object({ secret: z.string() }),
+      SecretValue,
       secretKeyEnvironmentPrefix(projectId, environmentId)
     );
 
