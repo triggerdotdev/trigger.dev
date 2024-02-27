@@ -22,6 +22,7 @@ import { ChildProcess, fork } from "node:child_process";
 import { resolve } from "node:path";
 import terminalLink from "terminal-link";
 import { logger } from "../utilities/logger.js";
+import { unlinkSync } from "node:fs";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -208,6 +209,12 @@ export class BackgroundWorker {
     for (const taskRunProcess of this._taskRunProcesses.values()) {
       taskRunProcess.cleanup(true);
     }
+
+    // Delete worker files
+    this._onClose.post();
+
+    unlinkSync(this.path);
+    unlinkSync(`${this.path}.map`);
   }
 
   async initialize() {
