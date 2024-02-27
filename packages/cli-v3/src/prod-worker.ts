@@ -45,6 +45,7 @@ class ProdWorker {
   private cliPackageVersion = process.env.TRIGGER_CLI_PACKAGE_VERSION!;
 
   private executing = false;
+  private completed = false;
 
   #httpPort: number;
   #backgroundWorker: ProdBackgroundWorker;
@@ -144,7 +145,7 @@ class ProdWorker {
     socket.on("EXECUTE_TASK_RUN", async (message, callback) => {
       logger("[EXECUTE_TASK_RUN]");
 
-      if (this.executing) {
+      if (this.executing || this.completed) {
         return;
       }
 
@@ -154,6 +155,8 @@ class ProdWorker {
       console.log("completed", completion);
 
       callback({ completion });
+
+      this.completed = true;
       this.executing = false;
 
       // TODO: we may want to exit the process here
