@@ -1,9 +1,8 @@
+import { CheckIcon } from "@heroicons/react/20/solid";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Button } from "./Buttons";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckIcon } from "@heroicons/react/20/solid";
 import { IconNames, NamedIcon } from "./NamedIcon";
-import { set } from "jsonpointer";
 
 const variations = {
   "primary/small": {
