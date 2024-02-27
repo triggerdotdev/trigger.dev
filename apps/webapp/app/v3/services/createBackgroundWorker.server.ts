@@ -58,6 +58,8 @@ export class CreateBackgroundWorkerService extends BaseService {
           projectId: project.id,
           metadata: body.metadata,
           contentHash: body.metadata.contentHash,
+          cliVersion: body.metadata.cliPackageVersion,
+          sdkVersion: body.metadata.packageVersion,
         },
       });
 
