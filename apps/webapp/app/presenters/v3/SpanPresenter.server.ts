@@ -99,7 +99,9 @@ export class SpanPresenter {
       event: {
         ...event,
         events: transformEvents(events, event.metadata as Attributes),
-        output: isEmptyJson(event.output) ? null : JSON.stringify(event.output, null, 2),
+        output: isEmptyJson(event.output)
+          ? null
+          : JSON.stringify(unflattenAttributes(event.output as Attributes), null, 2),
         payload: payload ? JSON.stringify(payload, null, 2) : undefined,
         properties: sanitizedAttributesStringified(event.properties),
         style,
