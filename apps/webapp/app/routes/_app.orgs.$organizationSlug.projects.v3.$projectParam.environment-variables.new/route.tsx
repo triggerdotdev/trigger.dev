@@ -2,7 +2,7 @@ import { Submission, conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { Form, useActionData, useLocation, useNavigate, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
@@ -157,8 +157,8 @@ export default function Page() {
       <DialogContent>
         <DialogHeader>New environment variable</DialogHeader>
         <Form method="post" {...form.props}>
-          <Fieldset>
-            <InputGroup>
+          <Fieldset className="mt-2">
+            <InputGroup fullWidth>
               <Label>Key</Label>
               <Input
                 {...conform.input(key)}
@@ -167,23 +167,25 @@ export default function Page() {
                 ref={keyFieldRef}
               />
             </InputGroup>
-            <InputGroup>
+            <InputGroup fullWidth>
               <Label>Values</Label>
-              <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2">
                 {environments.map((environment, index) => {
                   return (
-                    <div key={environment.id}>
+                    <Fragment key={environment.id}>
                       <input
                         type="hidden"
                         name={`values[${index}].environmentId`}
                         value={environment.id}
                       />
+                      <label className="flex items-center justify-end" htmlFor={`values[${index}].value`}>
+                        <EnvironmentLabel environment={environment} className="h-5 px-2" />
+                      </label>
                       <Input
                         name={`values[${index}].value`}
                         placeholder="Not set"
-                        icon={<EnvironmentLabel environment={environment} />}
                       />
-                    </div>
+                    </Fragment>
                   );
                 })}
               </div>
