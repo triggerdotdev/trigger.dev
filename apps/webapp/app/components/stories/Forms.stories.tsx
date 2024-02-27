@@ -199,10 +199,10 @@ function InputFieldSet({ disabled }: { disabled?: boolean }) {
   return (
     <div>
       <div className="m-8 flex w-64 flex-col gap-4">
-        <Input disabled={disabled} variant="large" placeholder="Name" autoFocus />
-        <Input disabled={disabled} variant="medium" placeholder="Name" />
-        <Input disabled={disabled} variant="small" placeholder="Name" />
-        <Input disabled={disabled} variant="tertiary" placeholder="Name" />
+        <Input disabled={disabled} variant="large" placeholder="Name" autoFocus type="text" />
+        <Input disabled={disabled} variant="medium" placeholder="Name"  type="text" />
+        <Input disabled={disabled} variant="small" placeholder="Name"  type="text" />
+        <Input disabled={disabled} variant="tertiary" placeholder="Name"  type="text" />
       </div>
       <div className="m-8 flex w-64 flex-col gap-4">
         <Input disabled={disabled} variant="large" placeholder="Search" icon="search" shortcut="⌘K" />

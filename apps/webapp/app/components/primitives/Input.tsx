@@ -5,7 +5,7 @@ import { Icon, RenderIcon } from "./Icon";
 
 const containerBase = "has-[:focus-visible]:outline-none has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-0 has-[:focus]:border-ring has-[:focus]:outline-none has-[:focus]:ring-2 has-[:focus]:ring-ring has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 ring-offset-background transition cursor-text"
 
-const inputBase = "h-full w-full text-bright bg-transparent file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed"
+const inputBase = "h-full w-full text-bright bg-transparent file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed outline-none ring-0 border-none"
 
 const shortcutBase = "grid h-fit place-content-center border border-dimmed/40 font-normal text-dimmed"
 
