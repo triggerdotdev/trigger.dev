@@ -1,5 +1,5 @@
 import { Link, LinkProps, NavLink, NavLinkProps } from "@remix-run/react";
-import React, { ReactComponentElement, forwardRef, useImperativeHandle, useRef } from "react";
+import React, { forwardRef, useImperativeHandle, useRef } from "react";
 import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { IconNamesOrString, NamedIcon } from "./NamedIcon";
@@ -8,14 +8,14 @@ import { ShortcutKey } from "./ShortcutKey";
 const variant = {
   "primary/small": {
     textColor:
-      "text-text-bright group-hover:text-white transition group-disabled:text-text-bright/80 px-1",
+      "text-charcoal-900 group-hover:text-white transition group-disabled:text-text-bright/80 px-1",
     button:
-      "h-6 px-[5px] text-xs bg-indigo-600 group-hover:bg-indigo-500/90 group-disabled:opacity-50 group-disabled:pointer-events-none",
+      "h-6 px-[5px] text-xs bg-primary group-hover:bg-apple-200 group-disabled:opacity-50 group-disabled:pointer-events-none",
     icon: "h-3.5",
     iconSpacing: "gap-x-0.5",
     shortcutVariant: "small" as const,
     shortcut:
-      "ml-1 -mr-0.5 border-bright/40 text-text-bright group-hover:border-bright/60 justify-self-center",
+      "ml-1 -mr-0.5 border-black/40 text-charcoal-800 group-hover:border-black/60 justify-self-center",
   },
   "secondary/small": {
     textColor:
@@ -52,11 +52,11 @@ const variant = {
   "primary/medium": {
     textColor:
       "text-text-bright group-hover:text-white transition group-disabled:text-text-bright/80 px-1",
-    button: "h-8 px-2 text-sm bg-indigo-600 group-hover:bg-indigo-500/90 disabled:opacity-50",
+    button: "h-8 px-2 text-sm bg-primary group-hover:bg-apple-200 disabled:opacity-50",
     icon: "h-4",
     iconSpacing: "gap-x-0.5",
     shortcutVariant: "medium" as const,
-    shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-text-bright group-hover:border-bright/60",
+    shortcut: "ml-1.5 -mr-0.5 border-black/40 text-charcoal-800 group-hover:border-black/60",
   },
   "secondary/medium": {
     textColor:
@@ -91,7 +91,7 @@ const variant = {
     textColor:
       "text-text-bright group-hover:text-white transition group-disabled:text-text-dimmed/80 px-1",
     button:
-      "h-10 px-2 text-sm font-medium bg-indigo-600 group-hover:bg-indigo-500/90 group-disabled:opacity-50 group-disabled:group-hover:bg-indigo-600",
+      "h-10 px-2 text-sm font-medium bg-primary group-hover:bg-apple-200 group-disabled:opacity-50 group-disabled:group-hover:bg-primary",
     icon: "h-5",
     iconSpacing: "gap-x-0.5",
     shortcutVariant: undefined,
@@ -119,8 +119,7 @@ const variant = {
   "primary/extra-large": {
     textColor:
       "text-text-bright group-hover:text-white transition group-disabled:text-text-dimmed/80",
-    button:
-      "h-12 px-2 text-md font-medium bg-indigo-600 group-hover:bg-indigo-500/90 disabled:opacity-50",
+    button: "h-12 px-2 text-md font-medium bg-primary group-hover:bg-apple-200 disabled:opacity-50",
     icon: "h-5",
     iconSpacing: undefined,
     shortcutVariant: undefined,
