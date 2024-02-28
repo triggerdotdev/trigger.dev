@@ -16,8 +16,6 @@ importers:
       '@manypkg/cli': ^0.19.2
       '@playwright/test': ^1.36.2
       '@remix-run/changelog-github': ^0.0.5
-      '@tailwindcss/forms': ^0.5.3
-      '@tailwindcss/typography': ^0.5.8
       '@trigger.dev/cli': workspace:*
       '@trigger.dev/database': workspace:*
       '@types/node': 18.17.1
@@ -25,7 +23,6 @@ importers:
       eslint-config-custom: workspace:*
       node-fetch: 2.6.x
       prettier: ^3.0.0
-      tailwindcss: 3.1.8
       tsx: ^3.7.1
       turbo: ^1.10.3
       vite: ^4.1.1
@@ -38,15 +35,12 @@ importers:
     devDependencies:
       '@manypkg/cli': 0.19.2
       '@playwright/test': 1.37.0
-      '@tailwindcss/forms': 0.5.3_tailwindcss@3.1.8
-      '@tailwindcss/typography': 0.5.9_tailwindcss@3.1.8
       '@trigger.dev/cli': link:packages/cli
       '@trigger.dev/database': link:packages/database
       '@types/node': 18.17.1
       autoprefixer: 10.4.13
       eslint-config-custom: link:config-packages/eslint-config-custom
       prettier: 3.0.0
-      tailwindcss: 3.1.8
       tsx: 3.12.2
       turbo: 1.10.3
       vite: 4.1.4_@types+node@18.17.1
@@ -17219,15 +17213,6 @@ packages:
       tailwindcss: 3.4.1_ts-node@10.9.1
     dev: false
 
-  /@tailwindcss/forms/0.5.3_tailwindcss@3.1.8:
-    resolution: {integrity: sha512-y5mb86JUoiUgBjY/o6FJSFZSEttfb3Q5gllE4xoKjAAD+vBrnIhE4dViwUuow3va8mpH4s9jyUbUbrRGoRdc2Q==}
-    peerDependencies:
-      tailwindcss: '>=3.0.0 || >= 3.0.0-alpha.1'
-    dependencies:
-      mini-svg-data-uri: 1.4.4
-      tailwindcss: 3.1.8
-    dev: true
-
   /@tailwindcss/forms/0.5.3_tailwindcss@3.4.1:
     resolution: {integrity: sha512-y5mb86JUoiUgBjY/o6FJSFZSEttfb3Q5gllE4xoKjAAD+vBrnIhE4dViwUuow3va8mpH4s9jyUbUbrRGoRdc2Q==}
     peerDependencies:
@@ -17235,18 +17220,6 @@ packages:
     dependencies:
       mini-svg-data-uri: 1.4.4
       tailwindcss: 3.4.1_ts-node@10.9.1
-    dev: true
-
-  /@tailwindcss/typography/0.5.9_tailwindcss@3.1.8:
-    resolution: {integrity: sha512-t8Sg3DyynFysV9f4JDOVISGsjazNb48AeIYQwcL+Bsq5uf4RYL75C1giZ43KISjeDGBaTN3Kxh7Xj/vRSMJUUg==}
-    peerDependencies:
-      tailwindcss: '>=3.0.0 || insiders'
-    dependencies:
-      lodash.castarray: 4.4.0
-      lodash.isplainobject: 4.0.6
-      lodash.merge: 4.6.2
-      postcss-selector-parser: 6.0.10
-      tailwindcss: 3.1.8
     dev: true
 
   /@tailwindcss/typography/0.5.9_tailwindcss@3.4.1:
@@ -19406,14 +19379,6 @@ packages:
       acorn: ^6.0.0 || ^7.0.0 || ^8.0.0
     dependencies:
       acorn: 8.10.0
-
-  /acorn-node/1.8.2:
-    resolution: {integrity: sha512-8mt+fslDufLYntIoPAaIMUe/lrbrehIiwmR3t2k9LljIzoigEPF27eLk2hy8zSGzmR/ogr7zbRKINMo1u0yh5A==}
-    dependencies:
-      acorn: 7.4.1
-      acorn-walk: 7.2.0
-      xtend: 4.0.2
-    dev: true
 
   /acorn-walk/7.2.0:
     resolution: {integrity: sha512-OPdCF6GsMIP+Az+aWfAAOEt2/+iVDKE7oy6lJ098aoe59oAmK76qV6Gw60SbZ8jHuG2wH058GF4pLFbYamYrVA==}
@@ -22287,10 +22252,6 @@ packages:
       isobject: 3.0.1
     dev: false
 
-  /defined/1.0.1:
-    resolution: {integrity: sha512-hsBd2qSVCRE+5PmNdHt1uzyrFu5d3RwmFDKzyNZMFq/EwDNJF7Ee5+D5oEKF0hU6LhtoUF1macFvOe4AskQC1Q==}
-    dev: true
-
   /defu/6.1.2:
     resolution: {integrity: sha512-+uO4+qr7msjNNWKYPHqN/3+Dx3NFkmIzayk2L1MyZQlvgZb/J1A0fo410dpKrN2SnqFjt8n4JL8fDJE0wIgjFQ==}
     dev: true
@@ -22393,16 +22354,6 @@ packages:
       debug: 4.3.4
     transitivePeerDependencies:
       - supports-color
-    dev: true
-
-  /detective/5.2.1:
-    resolution: {integrity: sha512-v9XE1zRnz1wRtgurGu0Bs8uHKFSTdteYZNbIPFVhUZ39L/S79ppMpdmVOZAnoz1jfEFodc48n6MX483Xo3t1yw==}
-    engines: {node: '>=0.8.0'}
-    hasBin: true
-    dependencies:
-      acorn-node: 1.8.2
-      defined: 1.0.1
-      minimist: 1.2.7
     dev: true
 
   /devalue/4.3.2:
@@ -24817,17 +24768,6 @@ packages:
 
   /fast-glob/3.2.11:
     resolution: {integrity: sha512-xrO3+1bxSo3ZVHAnqzyuewYT6aMFHRAd4Kcs92MAonjwQZLsK9d0SF1IyQ3k5PoirxTW0Oe/RqFgMQ6TcNE5Ew==}
-    engines: {node: '>=8.6.0'}
-    dependencies:
-      '@nodelib/fs.stat': 2.0.5
-      '@nodelib/fs.walk': 1.2.8
-      glob-parent: 5.1.2
-      merge2: 1.4.1
-      micromatch: 4.0.5
-    dev: true
-
-  /fast-glob/3.2.12:
-    resolution: {integrity: sha512-DVj4CQIYYow0BlaelwK1pHl5n5cRSJfM60UA0zK891sVInoPri2Ekj7+e1CT3/3qxXenpI+nBBmQAcJPJgaj4w==}
     engines: {node: '>=8.6.0'}
     dependencies:
       '@nodelib/fs.stat': 2.0.5
@@ -28495,11 +28435,6 @@ packages:
       set-cookie-parser: 2.6.0
     dev: true
 
-  /lilconfig/2.0.6:
-    resolution: {integrity: sha512-9JROoBW7pobfsx+Sq2JsASvCo6Pfo6WWoUW79HuB1BCoBXD4PLWJPqDF6fNj67pqBYTbAHkE57M1kS/+L1neOg==}
-    engines: {node: '>=10'}
-    dev: true
-
   /lilconfig/2.1.0:
     resolution: {integrity: sha512-utWOt/GHzuUxnLKxB6dk81RoOeoNeHgbrXiuGk4yyF5qlRz+iIVWu56E2fqGHFrXz0QNUhLB/8nKqvRH66JKGQ==}
     engines: {node: '>=10'}
@@ -31829,18 +31764,6 @@ packages:
       postcss: 8.4.29
     dev: true
 
-  /postcss-import/14.1.0_postcss@8.4.31:
-    resolution: {integrity: sha512-flwI+Vgm4SElObFVPpTIT7SU7R3qk2L7PyduMcokiaVKuWv9d/U+Gm/QAd8NDLuykTWTkcrjOeD2Pp1rMeBTGw==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      postcss: ^8.0.0
-    dependencies:
-      postcss: 8.4.31
-      postcss-value-parser: 4.2.0
-      read-cache: 1.0.0
-      resolve: 1.22.1
-    dev: true
-
   /postcss-import/15.1.0_postcss@8.4.29:
     resolution: {integrity: sha512-hpr+J05B2FVYUAXHeK1YyI267J/dDDhMU6B6civm8hSY1jYJnBXxzKDKDswzJmtLHryrjhnDjqqp/49t8FALew==}
     engines: {node: '>=14.0.0'}
@@ -31873,16 +31796,6 @@ packages:
       postcss-value-parser: 4.2.0
       read-cache: 1.0.0
       resolve: 1.22.4
-    dev: true
-
-  /postcss-js/4.0.0_postcss@8.4.31:
-    resolution: {integrity: sha512-77QESFBwgX4irogGVPgQ5s07vLvFqWr228qZY+w6lW599cRlK/HmnlivnnVUxkjHnCu4J16PDMHcH+e+2HbvTQ==}
-    engines: {node: ^12 || ^14 || >= 16}
-    peerDependencies:
-      postcss: ^8.3.3
-    dependencies:
-      camelcase-css: 2.0.1
-      postcss: 8.4.31
     dev: true
 
   /postcss-js/4.0.1_postcss@8.4.29:
@@ -31934,23 +31847,6 @@ packages:
     dependencies:
       lilconfig: 2.1.0
       postcss: 8.4.29
-      yaml: 1.10.2
-    dev: true
-
-  /postcss-load-config/3.1.4_postcss@8.4.31:
-    resolution: {integrity: sha512-6DiM4E7v4coTE4uzA8U//WhtPwyhiim3eyjEMFCnUpzbrkK9wJHgKDT2mR+HbtSrd/NubVaYTOpSpjUl8NQeRg==}
-    engines: {node: '>= 10'}
-    peerDependencies:
-      postcss: '>=8.0.9'
-      ts-node: '>=9.0.0'
-    peerDependenciesMeta:
-      postcss:
-        optional: true
-      ts-node:
-        optional: true
-    dependencies:
-      lilconfig: 2.1.0
-      postcss: 8.4.31
       yaml: 1.10.2
     dev: true
 
@@ -32149,16 +32045,6 @@ packages:
       postcss-modules-scope: 3.1.1_postcss@8.4.29
       postcss-modules-values: 4.0.0_postcss@8.4.29
       string-hash: 1.1.3
-    dev: true
-
-  /postcss-nested/5.0.6_postcss@8.4.31:
-    resolution: {integrity: sha512-rKqm2Fk0KbA8Vt3AdGN0FB9OBOMDVajMG6ZCf/GoHgdxUJ4sBFp0A/uMIRm+MJUdo33YXEtjqIz8u7DAp8B7DA==}
-    engines: {node: '>=12.0'}
-    peerDependencies:
-      postcss: ^8.2.14
-    dependencies:
-      postcss: 8.4.31
-      postcss-selector-parser: 6.0.11
     dev: true
 
   /postcss-nested/6.0.1_postcss@8.4.29:
@@ -35652,37 +35538,6 @@ packages:
       tailwindcss: 3.4.1_ts-node@10.9.1
     dev: false
 
-  /tailwindcss/3.1.8:
-    resolution: {integrity: sha512-YSneUCZSFDYMwk+TGq8qYFdCA3yfBRdBlS7txSq0LUmzyeqRe3a8fBQzbz9M3WS/iFT4BNf/nmw9mEzrnSaC0g==}
-    engines: {node: '>=12.13.0'}
-    hasBin: true
-    dependencies:
-      arg: 5.0.2
-      chokidar: 3.5.3
-      color-name: 1.1.4
-      detective: 5.2.1
-      didyoumean: 1.2.2
-      dlv: 1.1.3
-      fast-glob: 3.2.12
-      glob-parent: 6.0.2
-      is-glob: 4.0.3
-      lilconfig: 2.0.6
-      normalize-path: 3.0.0
-      object-hash: 3.0.0
-      picocolors: 1.0.0
-      postcss: 8.4.31
-      postcss-import: 14.1.0_postcss@8.4.31
-      postcss-js: 4.0.0_postcss@8.4.31
-      postcss-load-config: 3.1.4_postcss@8.4.31
-      postcss-nested: 5.0.6_postcss@8.4.31
-      postcss-selector-parser: 6.0.11
-      postcss-value-parser: 4.2.0
-      quick-lru: 5.1.1
-      resolve: 1.22.1
-    transitivePeerDependencies:
-      - ts-node
-    dev: true
-
   /tailwindcss/3.3.3:
     resolution: {integrity: sha512-A0KgSkef7eE4Mf+nKJ83i75TMyq8HqY3qmFIJSWy8bNt0v1lG7jUcpGpoTFxAwYcWOphcTBLPPJg+bDfhDf52w==}
     engines: {node: '>=14.0.0'}
@@ -37806,7 +37661,7 @@ packages:
     dependencies:
       '@types/node': 18.11.18
       esbuild: 0.18.11
-      postcss: 8.4.35
+      postcss: 8.4.29
       rollup: 3.29.1
     optionalDependencies:
       fsevents: 2.3.3

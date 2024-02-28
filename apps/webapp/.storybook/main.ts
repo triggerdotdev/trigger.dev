@@ -18,30 +18,6 @@ const config: StorybookConfig = {
           ...[".ts", ".tsx", ".js", ".jsx", ".mdx"],
         ],
       },
-      module: {
-        ...config.module,
-        rules: [
-          ...(config.module?.rules ?? []),
-          {
-            test: /\,css&/,
-            use: [
-              {
-                loader: "postcss-loader",
-                options: {
-                  postcssOptions: {
-                    plugins: [
-                      require("postcss-import"),
-                      require("tailwindcss"),
-                      require("autoprefixer"),
-                    ],
-                  },
-                },
-              },
-            ],
-            include: path.resolve(__dirname, "../"),
-          },
-        ],
-      },
     };
   },
   stories: ["../app/**/stories/*.mdx", "../app/**/stories/*.stories.@(js|jsx|ts|tsx)"],
@@ -51,6 +27,14 @@ const config: StorybookConfig = {
     "@storybook/addon-interactions",
     "storybook-addon-variants",
     "storybook-addon-designs",
+    {
+      name: "@storybook/addon-styling",
+      options: {
+        // Check out https://github.com/storybookjs/addon-styling/blob/main/docs/api.md
+        // For more details on this addon's options.
+        postCss: true,
+      },
+    },
   ],
   framework: {
     name: "@storybook/react-webpack5",
