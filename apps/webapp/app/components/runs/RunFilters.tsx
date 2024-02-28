@@ -209,7 +209,7 @@ export function filterStatusTitle(status: FilterableStatus): string {
 export function filterStatusClassNameColor(status: FilterableStatus): string {
   switch (status) {
     case "QUEUED":
-      return "text-slate-500";
+      return "text-charcoal-500";
     case "IN_PROGRESS":
       return "text-blue-500";
     case "WAITING":
@@ -219,7 +219,7 @@ export function filterStatusClassNameColor(status: FilterableStatus): string {
     case "FAILED":
       return "text-rose-500";
     case "CANCELED":
-      return "text-slate-500";
+      return "text-charcoal-500";
     case "TIMEDOUT":
       return "text-amber-300";
     default: {

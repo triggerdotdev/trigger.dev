@@ -38,7 +38,7 @@ export function CodeExample({ example }: { example: ApiExample }) {
 
   if (customerFetcher.state === "loading")
     return (
-      <div className="flex h-96 w-full items-center justify-center gap-2 rounded-md border border-slate-800 font-mono">
+      <div className="flex h-96 w-full items-center justify-center gap-2 rounded-md border border-charcoal-800 font-mono">
         <Spinner />
         <Paragraph>Loading example code</Paragraph>
       </div>

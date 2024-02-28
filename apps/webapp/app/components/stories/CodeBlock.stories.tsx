@@ -159,7 +159,7 @@ function AnimatedHighlight() {
             }}
             className={cn(
               "transition-bg text-xl transition-colors duration-300",
-              region.range ? "cursor-pointer rounded px-1 text-indigo-500" : "text-slate-500",
+              region.range ? "cursor-pointer rounded px-1 text-indigo-500" : "text-charcoal-500",
               highlighted === index && "bg-indigo-500 text-white"
             )}
           >

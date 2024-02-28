@@ -36,7 +36,7 @@ Basic.parameters = {
 
 function PageHeaders() {
   return (
-    <div className="flex flex-col gap-4 bg-slate-800 p-4">
+    <div className="flex flex-col gap-4 bg-charcoal-800 p-4">
       <div className="bg-[#0B1018]">
         <PageHeader>
           <PageTitleRow>

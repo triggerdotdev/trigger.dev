@@ -64,7 +64,7 @@ export function SpanCodePathAccessory({
   return (
     <code
       className={cn(
-        "inline-flex items-center gap-0.5 rounded border border-slate-800 bg-midnight-850 px-1.5 py-0.5 font-mono text-sky-200",
+        "inline-flex items-center gap-0.5 rounded border border-charcoal-800 bg-background-bright px-1.5 py-0.5 font-mono text-sky-200",
         className
       )}
     >
@@ -73,13 +73,13 @@ export function SpanCodePathAccessory({
           <span
             className={cn(
               "inline-flex items-center",
-              index === accessory.items.length - 1 ? "text-yellow-200" : "text-dimmed"
+              index === accessory.items.length - 1 ? "text-yellow-200" : "text-text-dimmed"
             )}
           >
             {item.text}
           </span>
           {index < accessory.items.length - 1 && (
-            <span className="text-slate-500">
+            <span className="text-charcoal-500">
               <ChevronRightIcon className="h-4 w-4" />
             </span>
           )}
@@ -121,7 +121,7 @@ function classNameForVariant(variant: TaskEventStyle["variant"]) {
       return "text-blue-500";
     }
     default: {
-      return "text-dimmed";
+      return "text-text-dimmed";
     }
   }
 }

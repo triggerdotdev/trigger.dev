@@ -6,7 +6,7 @@ const variations = {
   primary:
     "text-indigo-500 transition hover:text-indigo-400 inline-flex gap-0.5 items-center group",
   secondary:
-    "text-dimmed transition underline underline-offset-2 decoration-dimmed/50 hover:decoration-dimmed inline-flex gap-0.5 items-center group",
+    "text-text-dimmed transition underline underline-offset-2 decoration-dimmed/50 hover:decoration-dimmed inline-flex gap-0.5 items-center group",
 } as const;
 
 type TextLinkProps = {

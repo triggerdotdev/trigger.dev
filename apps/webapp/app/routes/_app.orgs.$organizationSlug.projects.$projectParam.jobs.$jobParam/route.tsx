@@ -135,7 +135,7 @@ export default function Job() {
             />
           </PageInfoGroup>
           <PageInfoGroup alignment="right">
-            <Paragraph variant="extra-small" className="text-slate-600">
+            <Paragraph variant="extra-small" className="text-charcoal-600">
               UID: {job.id}
             </Paragraph>
           </PageInfoGroup>

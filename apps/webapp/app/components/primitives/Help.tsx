@@ -80,7 +80,7 @@ export function HelpContent({
               <Button
                 variant="tertiary/small"
                 TrailingIcon="close"
-                trailingIconClassName="text-slate-400"
+                trailingIconClassName="text-charcoal-400"
                 onClick={() => setOpen(false)}
               >
                 Dismiss
@@ -88,7 +88,7 @@ export function HelpContent({
             )}
           </div>
 
-          <div className="grow rounded border border-slate-850 bg-midnight-850/80 bg-contain bg-left-top bg-no-repeat p-6">
+          <div className="grow rounded border border-charcoal-850 bg-background-bright/80 bg-contain bg-left-top bg-no-repeat p-6">
             {children}
           </div>
         </div>

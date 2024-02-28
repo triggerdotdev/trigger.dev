@@ -64,7 +64,7 @@ export function TaskCard({
                 <TaskStatusIcon
                   status={status}
                   minimal={true}
-                  className={cn("h-5 w-5", !isSelected && "text-slate-400")}
+                  className={cn("h-5 w-5", !isSelected && "text-charcoal-400")}
                 />
               )
             }
@@ -112,11 +112,11 @@ export function TaskCard({
           </RunPanelBody>
           {subtasks && subtasks.length > 0 && (
             <button
-              className="mt-4 flex h-10 w-full items-center justify-between gap-2 bg-slate-800 px-2"
+              className="mt-4 flex h-10 w-full items-center justify-between gap-2 bg-charcoal-800 px-2"
               onClick={() => setExpanded((c) => !c)}
             >
               <div className="flex items-center gap-2">
-                <Square2StackIcon className="h-5 w-5 text-slate-400" />
+                <Square2StackIcon className="h-5 w-5 text-charcoal-400" />
                 <Paragraph variant="small">
                   {simplur`${expanded ? "Hide" : "Show"} ${subtasks.length} subtask[|s]`}
                 </Paragraph>
@@ -129,7 +129,7 @@ export function TaskCard({
                   expanded: { rotate: 180, transition: { ease: "anticipate" } },
                 }}
               >
-                <ChevronDownIcon className={"h-5 w-5 text-slate-400 transition"} />
+                <ChevronDownIcon className={"h-5 w-5 text-charcoal-400 transition"} />
               </motion.span>
             </button>
           )}

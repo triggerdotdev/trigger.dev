@@ -113,7 +113,7 @@ export default function Page() {
       </PageHeader>
       <PageBody>
         <Header2>Members</Header2>
-        <ul className="flex w-full max-w-md flex-col divide-y divide-ui-border border-b border-ui-border">
+        <ul className="divide-ui-border flex w-full max-w-md flex-col divide-y border-b border-grid-bright">
           {members.map((member) => (
             <li key={member.user.id} className="flex items-center gap-x-4 py-4">
               <UserAvatar
@@ -124,7 +124,7 @@ export default function Page() {
               <div className="flex flex-col gap-0.5">
                 <Header3>
                   {member.user.name}{" "}
-                  {member.user.id === user.id && <span className="text-dimmed">(You)</span>}
+                  {member.user.id === user.id && <span className="text-text-dimmed">(You)</span>}
                 </Header3>
                 <Paragraph variant="small">{member.user.email}</Paragraph>
               </div>
@@ -143,10 +143,10 @@ export default function Page() {
         {invites.length > 0 && (
           <>
             <Header2 className="mt-4">Pending invites</Header2>
-            <ul className="flex w-full max-w-md flex-col divide-y divide-slate-800 border-b border-slate-800">
+            <ul className="flex w-full max-w-md flex-col divide-y divide-charcoal-800 border-b border-charcoal-800">
               {invites.map((invite) => (
                 <li key={invite.id} className="flex items-center gap-4 py-4">
-                  <div className="rounded-md border border-slate-750 bg-slate-800 p-1.5">
+                  <div className="rounded-md border border-charcoal-750 bg-charcoal-800 p-1.5">
                     <NamedIcon name="envelope" className="h-7 w-7" />
                   </div>
                   <div className="flex flex-col gap-0.5">

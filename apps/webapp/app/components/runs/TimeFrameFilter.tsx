@@ -52,12 +52,12 @@ export function TimeFrameFilter({ from, to, onRangeChanged }: RunTimeFrameFilter
       <PopoverTrigger asChild>
         <Button
           variant="secondary/small"
-          className="bg-slate-800 group-hover:bg-tertiary-foreground"
+          className="group-hover:bg-tertiary-foreground bg-charcoal-800"
         >
           <Paragraph variant="extra-small" className="mr-2">
             {title(from, to, relativeTimeSeconds)}
           </Paragraph>
-          <ChevronDownIcon className="h-4 w-4 text-bright" />
+          <ChevronDownIcon className="h-4 w-4 text-text-bright" />
         </Button>
       </PopoverTrigger>
 
@@ -135,7 +135,7 @@ function RelativeTimeFrame({
           variant={value === timeframe.value ? "primary/small" : "tertiary/small"}
           className={cn(
             "w-full",
-            value !== timeframe.value && "border border-slate-700 group-hover:bg-slate-700"
+            value !== timeframe.value && "border border-charcoal-700 group-hover:bg-charcoal-700"
           )}
           onClick={() => {
             onValueChange(timeframe.value);

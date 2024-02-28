@@ -222,7 +222,7 @@ export default function Page() {
           onSubmit={(e) => submitForm(e)}
         >
           <div className="grid h-full grid-cols-[1fr_auto] overflow-hidden">
-            <div className="relative h-full flex-1 overflow-hidden rounded-l border border-border">
+            <div className="relative h-full flex-1 overflow-hidden rounded-l border border-grid-bright">
               <JSONEditor
                 defaultValue={defaultJson}
                 readOnly={false}
@@ -246,7 +246,7 @@ export default function Page() {
                 className="h-full"
               />
             </div>
-            <div className="flex h-full w-fit min-w-[20rem] flex-col gap-4 overflow-y-auto rounded-r border border-l-0 border-border p-4">
+            <div className="flex h-full w-fit min-w-[20rem] flex-col gap-4 overflow-y-auto rounded-r border border-l-0 border-grid-bright p-4">
               {examples.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <Header2>Example payloads</Header2>
@@ -267,7 +267,7 @@ export default function Page() {
                         trailingIconClassName={
                           example.id === selectedCodeSampleId
                             ? "text-green-500 group-hover:text-green-400"
-                            : "text-slate-500 group-hover:text-bright"
+                            : "text-charcoal-500 group-hover:text-text-bright"
                         }
                       />
                     </button>
@@ -293,7 +293,7 @@ export default function Page() {
                       >
                         <DetailCell
                           leadingIcon={ClockIcon}
-                          leadingIconClassName="text-slate-400"
+                          leadingIconClassName="text-charcoal-400"
                           label={<DateTime date={run.created} />}
                           description={
                             <>
@@ -309,7 +309,7 @@ export default function Page() {
                           trailingIconClassName={
                             run.id === selectedCodeSampleId
                               ? "text-green-500 group-hover:text-green-400"
-                              : "text-slate-500 group-hover:text-bright"
+                              : "text-charcoal-500 group-hover:text-text-bright"
                           }
                         />
                       </button>
@@ -378,7 +378,7 @@ export default function Page() {
                 type="submit"
                 variant="primary/medium"
                 LeadingIcon="beaker"
-                leadingIconClassName="text-bright"
+                leadingIconClassName="text-text-bright"
                 shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
               >
                 Run test

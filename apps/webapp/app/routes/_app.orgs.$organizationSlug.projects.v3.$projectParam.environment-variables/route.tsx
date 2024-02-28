@@ -6,7 +6,7 @@ import {
   ActionFunctionArgs,
   LoaderFunctionArgs,
   json,
-  redirectDocument
+  redirectDocument,
 } from "@remix-run/server-runtime";
 import { RuntimeEnvironment } from "@trigger.dev/database";
 import { Fragment, useState } from "react";
@@ -62,7 +62,7 @@ import {
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
   DeleteEnvironmentVariable,
-  EditEnvironmentVariable
+  EditEnvironmentVariable,
 } from "~/v3/environmentVariables/repository";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -297,7 +297,7 @@ function EditEnvironmentVariablePanel({
         <Button
           variant="small-menu-item"
           LeadingIcon={PencilSquareIcon}
-          leadingIconClassName="text-slate-500"
+          leadingIconClassName="text-charcoal-500"
           className="text-xs"
           fullWidth
           textAlignLeft
@@ -306,16 +306,14 @@ function EditEnvironmentVariablePanel({
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader>
-            Edit {variable.key}
-        </DialogHeader>
+        <DialogHeader>Edit {variable.key}</DialogHeader>
         <Form method="post" {...form.props}>
           <input type="hidden" name="action" value="edit" />
           <input type="hidden" name="id" value={variable.id} />
           <input type="hidden" name="key" value={variable.key} />
           <FormError id={id.errorId}>{id.error}</FormError>
           <Fieldset>
-            <InputGroup fullWidth className="mt-2 mb-4">
+            <InputGroup fullWidth className="mb-4 mt-2">
               <Label>Key</Label>
               <InlineCode>{variable.key}</InlineCode>
             </InputGroup>
@@ -333,7 +331,10 @@ function EditEnvironmentVariablePanel({
                         name={`values[${index}].environmentId`}
                         value={environment.id}
                       />
-                      <label className="flex items-center justify-end" htmlFor={`values[${index}].value`}>
+                      <label
+                        className="flex items-center justify-end"
+                        htmlFor={`values[${index}].value`}
+                      >
                         <EnvironmentLabel environment={environment} className="h-5 px-2" />
                       </label>
                       <Input
@@ -347,25 +348,20 @@ function EditEnvironmentVariablePanel({
               </div>
             </InputGroup>
 
-          <FormError>{form.error}</FormError>
+            <FormError>{form.error}</FormError>
 
-          <FormButtons
-            confirmButton={
-              <Button type="submit" variant="primary/small" disabled={isLoading}>
-                {isLoading ? "Saving" : "Edit"}
-              </Button>
-            }
-            cancelButton={
-              <Button
-              onClick={() => setIsOpen(false)}
-              variant="secondary/small"
-              type="button"
-              >
-                Cancel
-              </Button>
-            }
+            <FormButtons
+              confirmButton={
+                <Button type="submit" variant="primary/small" disabled={isLoading}>
+                  {isLoading ? "Saving" : "Edit"}
+                </Button>
+              }
+              cancelButton={
+                <Button onClick={() => setIsOpen(false)} variant="secondary/small" type="button">
+                  Cancel
+                </Button>
+              }
             />
-
           </Fieldset>
         </Form>
       </DialogContent>

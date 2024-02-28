@@ -121,7 +121,7 @@ function LoginForm() {
             <Button variant="secondary/large" fullWidth>
               <NamedIcon
                 name={"envelope"}
-                className={"mr-1.5 h-4 w-4 transition group-hover:text-bright"}
+                className={"mr-1.5 h-4 w-4 transition group-hover:text-text-bright"}
               />
               Continue with Email
             </Button>
@@ -200,48 +200,78 @@ function InputFieldSet({ disabled }: { disabled?: boolean }) {
     <div>
       <div className="m-8 flex w-64 flex-col gap-4">
         <Input disabled={disabled} variant="large" placeholder="Name" autoFocus type="text" />
-        <Input disabled={disabled} variant="medium" placeholder="Name"  type="text" />
-        <Input disabled={disabled} variant="small" placeholder="Name"  type="text" />
-        <Input disabled={disabled} variant="tertiary" placeholder="Name"  type="text" />
+        <Input disabled={disabled} variant="medium" placeholder="Name" type="text" />
+        <Input disabled={disabled} variant="small" placeholder="Name" type="text" />
+        <Input disabled={disabled} variant="tertiary" placeholder="Name" type="text" />
       </div>
       <div className="m-8 flex w-64 flex-col gap-4">
-        <Input disabled={disabled} variant="large" placeholder="Search" icon="search" shortcut="⌘K" />
-        <Input disabled={disabled} variant="medium" placeholder="Search" icon="search" shortcut="⌘K" />
-        <Input disabled={disabled} variant="small" placeholder="Search" icon="search" shortcut="⌘K" />
-        <Input disabled={disabled} variant="tertiary" placeholder="Search" icon="search" shortcut="⌘K" />
+        <Input
+          disabled={disabled}
+          variant="large"
+          placeholder="Search"
+          icon="search"
+          shortcut="⌘K"
+        />
+        <Input
+          disabled={disabled}
+          variant="medium"
+          placeholder="Search"
+          icon="search"
+          shortcut="⌘K"
+        />
+        <Input
+          disabled={disabled}
+          variant="small"
+          placeholder="Search"
+          icon="search"
+          shortcut="⌘K"
+        />
+        <Input
+          disabled={disabled}
+          variant="tertiary"
+          placeholder="Search"
+          icon="search"
+          shortcut="⌘K"
+        />
       </div>
       <div className="m-8 flex w-64 flex-col gap-4">
-        <Input disabled={disabled}
+        <Input
+          disabled={disabled}
           variant="large"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
           shortcut="⌘K"
         />
-        <Input disabled={disabled}
+        <Input
+          disabled={disabled}
           variant="medium"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
           shortcut="⌘K"
         />
-        <Input disabled={disabled}
+        <Input
+          disabled={disabled}
           variant="small"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
           shortcut="⌘K"
         />
-        <Input disabled={disabled}
+        <Input
+          disabled={disabled}
           variant="tertiary"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
           shortcut="⌘K"
         />
-        <Input disabled={disabled}
+        <Input
+          disabled={disabled}
           variant="tertiary"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "STAGING" }} />}
           shortcut="⌘K"
         />
-        <Input disabled={disabled}
+        <Input
+          disabled={disabled}
           variant="tertiary"
           placeholder="Search"
           icon={<EnvironmentLabel environment={{ type: "PRODUCTION" }} />}

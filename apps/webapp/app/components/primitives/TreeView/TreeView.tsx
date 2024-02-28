@@ -51,7 +51,7 @@ export function TreeView<TData>({
     <div
       ref={parentRef}
       className={cn(
-        "w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700 focus-within:outline-none",
+        "w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 focus-within:outline-none",
         parentClassName
       )}
       {...getTreeProps()}

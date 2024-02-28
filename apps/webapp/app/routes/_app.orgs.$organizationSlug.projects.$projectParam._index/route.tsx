@@ -138,7 +138,7 @@ export default function Page() {
 
 function RunYourJobPrompt() {
   return (
-    <div className="mt-2 flex w-full gap-x-2 rounded border border-slate-800 bg-slate-900 p-4 pl-6">
+    <div className="mt-2 flex w-full gap-x-2 rounded border border-charcoal-800 bg-charcoal-900 p-4 pl-6">
       <ArrowUpIcon className="h-5 w-5 animate-bounce text-green-500" />
       <Paragraph variant="small" className="text-green-500">
         Your Job is ready to run! Click it to run it now.
@@ -162,7 +162,7 @@ function ExampleJobs() {
         height="250"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowFullScreen
-        className="mb-4 border-b border-slate-800"
+        className="mb-4 border-b border-charcoal-800"
       />
       <Header2 spacing>How to create a Job</Header2>
       <Paragraph variant="small" spacing>
@@ -171,10 +171,10 @@ function ExampleJobs() {
       </Paragraph>
       <a
         href="https://trigger.dev/docs/documentation/guides/create-a-job"
-        className="mb-4 flex w-full items-center rounded border-b border-slate-800 py-2 transition hover:border-transparent hover:bg-slate-800"
+        className="mb-4 flex w-full items-center rounded border-b border-charcoal-800 py-2 transition hover:border-transparent hover:bg-charcoal-800"
       >
         <NamedIcon name={"external-link"} className={iconStyles} />
-        <Paragraph variant="small" className="font-semibold text-bright">
+        <Paragraph variant="small" className="font-semibold text-text-bright">
           How to create a Job
         </Paragraph>
       </a>
@@ -189,11 +189,11 @@ function ExampleJobs() {
           <a
             href={example.codeLink}
             key={example.title}
-            className="flex w-full items-center rounded border-b border-ui-border py-2 transition hover:border-transparent hover:bg-slate-800"
+            className="flex w-full items-center rounded border-b border-grid-bright py-2 transition hover:border-transparent hover:bg-charcoal-800"
           >
             {example.icon}
             <Paragraph variant="small">
-              <span className="font-semibold text-bright">{example.title}</span> -{" "}
+              <span className="font-semibold text-text-bright">{example.title}</span> -{" "}
               {example.description}
             </Paragraph>
           </a>

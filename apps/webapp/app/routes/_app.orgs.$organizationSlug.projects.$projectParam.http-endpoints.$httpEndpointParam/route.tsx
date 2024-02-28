@@ -168,9 +168,9 @@ export default function Page() {
                               <TableCell>{httpEnvironment.source}</TableCell>
                               <TableCell>
                                 {httpEnvironment.immediateResponseFilter ? (
-                                  <CheckIcon className="h-4 w-4 text-slate-400" />
+                                  <CheckIcon className="h-4 w-4 text-charcoal-400" />
                                 ) : (
-                                  <StopIcon className="h-4 w-4 text-slate-850" />
+                                  <StopIcon className="h-4 w-4 text-charcoal-850" />
                                 )}
                               </TableCell>
                               <TableCell alignment="right">

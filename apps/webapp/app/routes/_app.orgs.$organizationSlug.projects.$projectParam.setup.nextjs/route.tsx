@@ -51,7 +51,7 @@ export default function SetupNextjs() {
         <NextjsLogo className="w-56" />
       </div>
       <div className="flex items-center justify-between">
-        <Header1 spacing className="text-bright">
+        <Header1 spacing className="text-text-bright">
           Get setup in {selectedValue === "create-new-next-app" ? "5" : "2"} minutes
         </Header1>
         <div className="flex items-center gap-2">

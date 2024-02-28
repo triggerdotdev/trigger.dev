@@ -35,13 +35,13 @@ export function SideMenuItem({
       fullWidth
       textAlignLeft
       LeadingIcon={icon}
-      leadingIconClassName={isActive ? iconColor : "text-dimmed"}
+      leadingIconClassName={isActive ? iconColor : "text-text-dimmed"}
       to={to}
       target={target}
       className={cn(
-        "text-bright group-hover:bg-slate-850",
-        subItem ? "text-dimmed" : "",
-        isActive ? "bg-slate-850 text-bright" : "group-hover:text-bright"
+        "text-text-bright group-hover:bg-charcoal-750",
+        subItem ? "text-text-dimmed" : "",
+        isActive ? "bg-tertiary text-text-bright" : "group-hover:text-text-bright"
       )}
     >
       <div className="flex w-full items-center justify-between">
@@ -69,5 +69,7 @@ export function SideMenuItem({
 }
 
 export function MenuCount({ count }: { count: number | string }) {
-  return <div className="rounded-full bg-slate-900 px-2 py-1 text-xxs text-dimmed">{count}</div>;
+  return (
+    <div className="rounded-full bg-charcoal-900 px-2 py-1 text-xxs text-text-dimmed">{count}</div>
+  );
 }

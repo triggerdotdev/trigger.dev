@@ -25,7 +25,7 @@ export default function SegmentedControl({
   onChange,
 }: SegmentedControlProps) {
   return (
-    <div className={cn("flex h-10 rounded bg-slate-850", fullWidth ? "w-full" : "w-fit")}>
+    <div className={cn("flex h-10 rounded bg-charcoal-850", fullWidth ? "w-full" : "w-fit")}>
       <RadioGroup
         value={value}
         defaultValue={defaultValue ?? options[0].value}
@@ -49,8 +49,8 @@ export default function SegmentedControl({
                     ? "ring-offset-2 focus-visible:ring focus-visible:ring-indigo-500 focus-visible:ring-opacity-60"
                     : "",
                   checked
-                    ? "text-bright"
-                    : "rounded-[2px] text-dimmed transition hover:bg-slate-750/50 hover:text-bright"
+                    ? "text-text-bright"
+                    : "rounded-[2px] text-text-dimmed transition hover:bg-charcoal-750/50 hover:text-text-bright"
                 )
               }
             >

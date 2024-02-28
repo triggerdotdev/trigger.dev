@@ -75,7 +75,7 @@ function TaskSelector({ tasks }: { tasks: TaskListItem[] }) {
   const project = useProject();
 
   return (
-    <div className="flex flex-col divide-y divide-slate-800">
+    <div className="flex flex-col divide-y divide-charcoal-800">
       {tasks.map((t) => (
         <NavLink key={t.id} to={v3TestTaskPath(organization, project, t)}>
           {({ isActive, isPending }) => (

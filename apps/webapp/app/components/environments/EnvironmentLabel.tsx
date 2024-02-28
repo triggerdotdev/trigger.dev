@@ -2,21 +2,29 @@ import { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { cn } from "~/utils/cn";
 
 type Environment = Pick<RuntimeEnvironment, "type">;
+const variants = {
+  small: "h-4 text-xxs",
+  large: "h-6 text-xs",
+};
 
 export function EnvironmentLabel({
   environment,
+  size = "small",
   userName,
   className,
 }: {
   environment: Environment;
+  size?: keyof typeof variants;
   userName?: string;
   className?: string;
 }) {
   return (
     <span
       className={cn(
-        "inline-flex h-4 items-center justify-center rounded-[2px] px-1 text-xxs font-medium uppercase tracking-wider text-midnight-900 whitespace-nowrap",
-        environmentColorClassName(environment),
+        "text-midnight-900 inline-flex h-4 items-center justify-center whitespace-nowrap rounded-[2px] border px-1 font-medium uppercase tracking-wider",
+        environmentBorderClassName(environment),
+        environmentTextClassName(environment),
+        variants[size],
         className
       )}
     >
@@ -54,13 +62,13 @@ export function environmentColorClassName(environment: Environment) {
 export function environmentBorderClassName(environment: Environment) {
   switch (environment.type) {
     case "PRODUCTION":
-      return "border-green-500";
+      return "border-green-500/50";
     case "STAGING":
-      return "border-amber-500";
+      return "border-amber-500/50";
     case "DEVELOPMENT":
-      return "border-pink-500";
+      return "border-pink-500/50";
     case "PREVIEW":
-      return "border-yellow-500";
+      return "border-yellow-500/50";
   }
 }
 

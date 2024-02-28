@@ -101,11 +101,11 @@ export default function Page() {
 
       <PageBody scrollable={false}>
         <div className="grid h-full grid-cols-2">
-          <div className="overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+          <div className="overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <EventDetail event={event} />
           </div>
 
-          <div className="overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+          <div className="overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <div className="mb-2 flex items-center justify-between gap-x-2">
               <RunsFilters />
               <div className="flex items-center justify-end gap-x-2">

@@ -114,11 +114,11 @@ function DiscordBanner() {
     <a
       href="https://trigger.dev/discord"
       target="_blank"
-      className="group mb-4 flex w-full items-center justify-between rounded-md border border-slate-600 bg-gradient-to-br from-blue-400/30 to-indigo-400/50 p-4 transition hover:border-indigo-400"
+      className="group mb-4 flex w-full items-center justify-between rounded-md border border-charcoal-600 bg-gradient-to-br from-blue-400/30 to-indigo-400/50 p-4 transition hover:border-indigo-400"
     >
       <div className="flex flex-col gap-y-2">
         <DiscordIcon className="h-8 w-8" />
-        <h2 className="font-title text-2xl text-bright transition group-hover:text-white">
+        <h2 className="font-title text-2xl text-text-bright transition group-hover:text-white">
           Join the Trigger.dev
           <br />
           Discord community
@@ -127,7 +127,7 @@ function DiscordBanner() {
           Get help or answer questions from the Trigger.dev community.
         </Paragraph>
       </div>
-      <ChevronRightIcon className="h-5 w-5 text-slate-400 transition group-hover:translate-x-1 group-hover:text-indigo-400" />
+      <ChevronRightIcon className="h-5 w-5 text-charcoal-400 transition group-hover:translate-x-1 group-hover:text-indigo-400" />
     </a>
   );
 }

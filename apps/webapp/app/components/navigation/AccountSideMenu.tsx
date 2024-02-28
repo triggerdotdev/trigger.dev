@@ -16,12 +16,14 @@ export function AccountSideMenu({ user }: { user: User }) {
   return (
     <div
       className={cn(
-        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-ui-border transition"
+        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-grid-bright transition"
       )}
     >
       <div className="flex h-full flex-col">
         <div
-          className={cn("flex items-center justify-between border-b bg-background p-px transition")}
+          className={cn(
+            "flex items-center justify-between border-b bg-background-dimmed p-px transition"
+          )}
         >
           <LinkButton
             variant="tertiary/medium"
@@ -33,7 +35,7 @@ export function AccountSideMenu({ user }: { user: User }) {
             Account
           </LinkButton>
         </div>
-        <div className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+        <div className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <div className="mb-6 flex flex-col gap-1 px-1">
             <SideMenuHeader title={user.name ?? user.displayName ?? user.email} />
 
@@ -58,7 +60,7 @@ export function AccountSideMenu({ user }: { user: User }) {
             </div>
           )}
         </div>
-        <div className="flex flex-col gap-1 border-t border-border p-1">
+        <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
           <SideMenuItem
             name="Join our Discord"
             icon={DiscordIcon}

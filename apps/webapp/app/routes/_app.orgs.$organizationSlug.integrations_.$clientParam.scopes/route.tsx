@@ -29,10 +29,10 @@ export default function Page() {
   const { scopes } = useTypedLoaderData<typeof loader>();
 
   return (
-    <ul className="flex max-w-md flex-col gap-4 divide-y divide-slate-800">
+    <ul className="flex max-w-md flex-col gap-4 divide-y divide-charcoal-800">
       {scopes.map((scope) => (
         <li key={scope.name} className="flex flex-col gap-1 pt-4 first:pt-0">
-          <Paragraph className="font-mono text-bright">{scope.name}</Paragraph>
+          <Paragraph className="font-mono text-text-bright">{scope.name}</Paragraph>
           <Paragraph variant="small">{scope.description}</Paragraph>
         </li>
       ))}

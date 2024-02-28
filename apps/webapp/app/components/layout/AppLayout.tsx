@@ -31,7 +31,7 @@ export function PageBody({
     <div
       className={cn(
         scrollable
-          ? "overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          ? "overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
           : "overflow-hidden"
       )}
     >
@@ -52,7 +52,7 @@ export function MainCenteredContainer({
   className?: string;
 }) {
   return (
-    <div className="h-full w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+    <div className="h-full w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
       <div className={cn("mx-auto mt-[25vh] max-w-xs overflow-y-auto", className)}>{children}</div>
     </div>
   );

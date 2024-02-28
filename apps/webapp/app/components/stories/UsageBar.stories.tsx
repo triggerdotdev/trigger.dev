@@ -68,7 +68,7 @@ function UsageProgressBar() {
 
 function UsageBarWrapper({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-md border border-border p-6">
+    <div className="rounded-md border border-grid-bright p-6">
       <Paragraph>{title}</Paragraph>
       {children}
     </div>

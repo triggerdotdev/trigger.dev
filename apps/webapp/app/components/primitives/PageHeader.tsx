@@ -16,7 +16,7 @@ type WithChildren = {
 
 export function PageHeader({ children, hideBorder }: WithChildren & { hideBorder?: boolean }) {
   return (
-    <div className={cn("mx-4 pt-4", hideBorder ? "" : "border-b border-ui-border pb-4")}>
+    <div className={cn("mx-4 pt-4", hideBorder ? "" : "border-b border-grid-bright pb-4")}>
       {children}
     </div>
   );
@@ -42,7 +42,7 @@ export function PageTitle({ icon, title, backButton }: PageTitleProps) {
         <div className="group flex items-center gap-2">
           <Link
             to={backButton.to}
-            className="flex items-center gap-1 text-slate-400 transition group-hover:text-white"
+            className="flex items-center gap-1 text-charcoal-400 transition group-hover:text-white"
           >
             <ChevronLeftIcon className="h-6" />
             <Header1 textColor="dimmed" className="transition group-hover:text-white">

@@ -108,7 +108,7 @@ export default function Integrations() {
                       <CheckCircleIcon className="h-6 w-6 text-green-500" />
                     ) : t.environment.type === "DEVELOPMENT" ? (
                       <span className="flex items-center gap-1">
-                        <NoSymbolIcon className="h-6 w-6 text-dimmed" />
+                        <NoSymbolIcon className="h-6 w-6 text-text-dimmed" />
                         <Paragraph variant="extra-small">
                           <TextLink
                             href={docsPath("documentation/concepts/triggers/scheduled")}
@@ -129,7 +129,7 @@ export default function Integrations() {
                         {t.dynamicTrigger.slug}
                       </span>
                     ) : (
-                      <span className="text-dimmed">–</span>
+                      <span className="text-text-dimmed">–</span>
                     )}
                   </TableCell>
                   <TableCell>

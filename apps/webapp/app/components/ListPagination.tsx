@@ -29,7 +29,8 @@ function NextButton({ cursor }: { cursor?: string }) {
       TrailingIcon="chevron-right"
       className={cn(
         "flex items-center",
-        !path && "cursor-default opacity-50 group-hover:bg-transparent group-hover:text-slate-800"
+        !path &&
+          "cursor-default opacity-50 group-hover:bg-transparent group-hover:text-charcoal-800"
       )}
       onClick={(e) => !path && e.preventDefault()}
     >
@@ -48,7 +49,8 @@ function PreviousButton({ cursor }: { cursor?: string }) {
       LeadingIcon="chevron-left"
       className={cn(
         "flex items-center",
-        !path && "cursor-default opacity-50 group-hover:bg-transparent group-hover:text-slate-800"
+        !path &&
+          "cursor-default opacity-50 group-hover:bg-transparent group-hover:text-charcoal-800"
       )}
       onClick={(e) => !path && e.preventDefault()}
     >

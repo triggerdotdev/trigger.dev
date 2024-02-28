@@ -189,7 +189,7 @@ export default function Page() {
       </PageHeader>
 
       <PageBody scrollable={false}>
-        <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+        <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <Header2 spacing>External Trigger registration runs</Header2>
           <Paragraph variant="small" spacing>
             External Triggers need to be registered with the external service. You can see the list

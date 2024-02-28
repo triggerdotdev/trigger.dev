@@ -42,7 +42,7 @@ export default function Page() {
         </PageTitleRow>
         <PageInfoRow>
           <PageInfoGroup alignment="right">
-            <Paragraph variant="extra-small" className="text-slate-600">
+            <Paragraph variant="extra-small" className="text-charcoal-600">
               UID: {organization.id}
             </Paragraph>
           </PageInfoGroup>
@@ -55,7 +55,7 @@ export default function Page() {
               return (
                 <li key={project.id}>
                   <Link
-                    className="flex gap-4 rounded-md border border-ui-border-dimmed p-4 transition hover:bg-slate-900 "
+                    className="border-grid-bright-dimmed flex gap-4 rounded-md border p-4 transition hover:bg-charcoal-900 "
                     to={projectPath(organization, project)}
                   >
                     <NamedIcon name="folder" className="h-10 w-10 flex-none" />

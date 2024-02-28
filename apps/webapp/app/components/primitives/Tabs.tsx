@@ -8,12 +8,12 @@ export type TabsProps = {
     to: string;
   }[];
   className?: string;
-  layoutId: string
+  layoutId: string;
 };
 
 export function Tabs({ tabs, className, layoutId }: TabsProps) {
   return (
-    <div className={cn(`flex flex-row gap-x-6 border-b border-ui-border`, className)}>
+    <div className={cn(`flex flex-row gap-x-6 border-b border-grid-bright`, className)}>
       {tabs.map((tab, index) => (
         <NavLink key={index} to={tab.to} className="group flex flex-col items-center pt-1" end>
           {({ isActive, isPending }) => (
@@ -21,7 +21,7 @@ export function Tabs({ tabs, className, layoutId }: TabsProps) {
               <span
                 className={cn(
                   "text-sm transition duration-200",
-                  isActive || isPending ? "text-indigo-500" : "text-slate-200"
+                  isActive || isPending ? "text-indigo-500" : "text-charcoal-200"
                 )}
               >
                 {tab.label}
@@ -29,7 +29,7 @@ export function Tabs({ tabs, className, layoutId }: TabsProps) {
               {isActive || isPending ? (
                 <motion.div layoutId={layoutId} className="mt-1 h-0.5 w-full bg-indigo-500" />
               ) : (
-                <div className="mt-1 h-0.5 w-full bg-slate-500 opacity-0 transition duration-200 group-hover:opacity-100" />
+                <div className="mt-1 h-0.5 w-full bg-charcoal-500 opacity-0 transition duration-200 group-hover:opacity-100" />
               )}
             </>
           )}

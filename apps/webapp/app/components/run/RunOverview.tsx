@@ -109,8 +109,8 @@ export function RunOverview({ run, trigger, showRerun, paths, currentUser }: Run
           />
           <PageButtons>
             {run.isTest && (
-              <span className="flex items-center gap-1 text-xs uppercase text-slate-600">
-                <NamedIcon name="beaker" className="h-4 w-4 text-slate-600" />
+              <span className="flex items-center gap-1 text-xs uppercase text-charcoal-600">
+                <NamedIcon name="beaker" className="h-4 w-4 text-charcoal-600" />
                 Test run
               </span>
             )}
@@ -160,7 +160,7 @@ export function RunOverview({ run, trigger, showRerun, paths, currentUser }: Run
             />
           </PageInfoGroup>
           <PageInfoGroup alignment="right">
-            <Paragraph variant="extra-small" className="whitespace-nowrap text-slate-600">
+            <Paragraph variant="extra-small" className="whitespace-nowrap text-charcoal-600">
               RUN ID: {run.id}
             </Paragraph>
           </PageInfoGroup>
@@ -168,7 +168,7 @@ export function RunOverview({ run, trigger, showRerun, paths, currentUser }: Run
       </PageHeader>
       <PageBody scrollable={false}>
         <div className="grid h-full grid-cols-2 gap-2">
-          <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+          <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <div>
               {run.status === "SUCCESS" &&
                 (run.tasks.length === 0 || run.tasks.every((t) => t.noop)) && (
@@ -285,7 +285,7 @@ export function RunOverview({ run, trigger, showRerun, paths, currentUser }: Run
           </div>
 
           {/* Detail view */}
-          <div className="overflow-y-auto py-4 pr-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+          <div className="overflow-y-auto py-4 pr-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <Header2 className="mb-2">Details</Header2>
             {selectedId ? <Outlet /> : <Callout variant="info">Select a task or trigger</Callout>}
           </div>
@@ -359,7 +359,7 @@ function RerunPopover({
             </div>
           )}
 
-          <div className="flex flex-col items-start divide-y divide-slate-800">
+          <div className="flex flex-col items-start divide-y divide-charcoal-800">
             <div className="p-4">
               <Paragraph variant="small" className="mb-3">
                 Start a brand new Job run with the same Trigger data as this one. This will re-do
@@ -371,9 +371,9 @@ function RerunPopover({
                 name={conform.INTENT}
                 value="start"
                 fullWidth
-                className="text-bright"
+                className="text-text-bright"
               >
-                <BoltIcon className="mr-1 h-3.5 w-3.5 text-bright" />
+                <BoltIcon className="mr-1 h-3.5 w-3.5 text-text-bright" />
                 Run again
               </Button>
             </div>
@@ -389,9 +389,9 @@ function RerunPopover({
                   name={conform.INTENT}
                   value="continue"
                   fullWidth
-                  className="text-bright"
+                  className="text-text-bright"
                 >
-                  <PlayIcon className="mr-1 h-3.5 w-3.5 text-bright" />
+                  <PlayIcon className="mr-1 h-3.5 w-3.5 text-text-bright" />
                   Retry Job run
                 </Button>
               </div>

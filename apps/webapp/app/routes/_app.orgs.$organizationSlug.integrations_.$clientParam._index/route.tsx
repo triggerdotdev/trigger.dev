@@ -65,7 +65,7 @@ export default function Page() {
               <HelpTrigger title="How do I use this integration?" />
             </div>
             {jobs.length === 0 ? (
-              <div className="mt-8 rounded border border-border px-2 py-6 text-center">
+              <div className="mt-8 rounded border border-grid-bright px-2 py-6 text-center">
                 <Paragraph variant="small">Jobs using this Integration will appear here.</Paragraph>
               </div>
             ) : (

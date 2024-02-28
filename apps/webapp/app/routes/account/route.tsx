@@ -21,7 +21,7 @@ export default function Page() {
         <AccountSideMenu user={user} />
 
         <div className="grid grid-rows-[2.25rem_1fr] overflow-hidden">
-          <div className="flex w-full items-center justify-between border-b border-ui-border">
+          <div className="flex w-full items-center justify-between border-b border-grid-bright">
             <Breadcrumb />
             <div className="flex h-full items-center gap-4">
               <PageNavigationIndicator className="mr-2" />

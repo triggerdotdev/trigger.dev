@@ -84,7 +84,7 @@ export default function Integrations() {
                         {t.dynamicTrigger.slug}
                       </span>
                     ) : (
-                      <span className="text-dimmed">–</span>
+                      <span className="text-text-dimmed">–</span>
                     )}
                   </TableCell>
                   <TableCell to={path}>

@@ -40,7 +40,7 @@ type DisplayOptionsProps = {
 export function ErrorDisplay({ title, message, button }: DisplayOptionsProps) {
   return (
     <div className="p-4">
-      <Header1 className="mb-4 border-b border-slate-800 pb-4">{title}</Header1>
+      <Header1 className="mb-4 border-b border-charcoal-800 pb-4">{title}</Header1>
       {message && <Header3>{message}</Header3>}
       <LinkButton to={button ? button.to : "/"} variant="primary/medium" className="mt-8">
         {button ? button.title : "Home"}

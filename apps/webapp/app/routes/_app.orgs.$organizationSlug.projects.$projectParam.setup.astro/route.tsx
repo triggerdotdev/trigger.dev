@@ -37,7 +37,7 @@ export default function SetUpAstro() {
         <AstroLogo className="w-64" />
       </div>
       <div className="flex items-center justify-between">
-        <Header1 spacing className="text-bright">
+        <Header1 spacing className="text-text-bright">
           Get setup in 5 minutes
         </Header1>
         <div className="flex items-center gap-2">

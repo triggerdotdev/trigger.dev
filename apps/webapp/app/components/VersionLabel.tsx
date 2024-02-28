@@ -14,13 +14,13 @@ export function VersionLabel({ environment, userName, version }: VersionLabelPro
   return (
     <div
       className={cn(
-        "inline-flex items-center justify-stretch justify-items-stretch rounded-sm border border-midnight-700 text-xxs"
+        "border-midnight-700 inline-flex items-center justify-stretch justify-items-stretch rounded-sm border text-xxs"
       )}
     >
-      <div className="px-1 text-xs tabular-nums text-dimmed">v{version}</div>
+      <div className="px-1 text-xs tabular-nums text-text-dimmed">v{version}</div>
       <div
         className={cn(
-          "inline-flex items-center justify-center rounded-r-sm border-l border-midnight-700 px-1 text-xxs font-medium uppercase tracking-wider",
+          "border-midnight-700 inline-flex items-center justify-center rounded-r-sm border-l px-1 text-xxs font-medium uppercase tracking-wider",
           environmentTextClassName(environment)
         )}
       >

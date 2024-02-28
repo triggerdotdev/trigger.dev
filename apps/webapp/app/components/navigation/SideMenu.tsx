@@ -110,21 +110,21 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
   return (
     <div
       className={cn(
-        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-ui-border transition"
+        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-grid-bright bg-background-bright transition"
       )}
     >
       <div className="flex h-full flex-col">
         <div
           className={cn(
-            "flex items-center justify-between border-b bg-background px-1 py-1 transition",
-            showHeaderDivider ? " border-border" : "border-transparent"
+            "flex items-center justify-between border-b bg-background-dimmed px-1 py-1 transition",
+            showHeaderDivider ? " border-grid-bright" : "border-transparent"
           )}
         >
           <ProjectSelector organizations={organizations} project={project} />
           <UserMenu user={user} />
         </div>
         <div
-          className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
           ref={borderRef}
         >
           <div className="mb-6 flex flex-col gap-1 px-1">
@@ -182,7 +182,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             />
           </div>
         </div>
-        <div className="flex flex-col gap-1 border-t border-border p-1">
+        <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
           {currentPlan?.subscription?.isPaying === true && (
             <Dialog>
               <DialogTrigger asChild>
@@ -206,13 +206,13 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                       support with the Trigger.dev team.
                     </Paragraph>
                   </div>
-                  <hr className="border-slate-800" />
+                  <hr className="border-charcoal-800" />
                   <div>
                     <StepNumber stepNumber="1" title="Create a new Slack channel" />
                     <StepContentContainer>
                       <Paragraph>
                         In your Slack app, create a new channel from the main menu by going to File{" "}
-                        <ArrowRightIcon className="inline h-4 w-4 text-dimmed" /> New Channel
+                        <ArrowRightIcon className="inline h-4 w-4 text-text-dimmed" /> New Channel
                       </Paragraph>
                     </StepContentContainer>
                     <StepNumber stepNumber="2" title="Setup your channel" />
@@ -312,7 +312,7 @@ function ProjectSelector({
         <span className="truncate">{project.name ?? "Select a project"}</span>
       </PopoverArrowTrigger>
       <PopoverContent
-        className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+        className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
@@ -328,7 +328,7 @@ function ProjectSelector({
                       key={p.id}
                       to={projectPath(organization, p)}
                       title={
-                        <div className="flex w-full items-center justify-between text-bright">
+                        <div className="flex w-full items-center justify-between text-text-bright">
                           <span className="grow truncate text-left">{p.name}</span>
                           <MenuCount count={p.jobCount} />
                         </div>
@@ -348,7 +348,7 @@ function ProjectSelector({
             </div>
           </Fragment>
         ))}
-        <div className="border-t border-slate-800 p-1">
+        <div className="border-t border-charcoal-800 p-1">
           <PopoverMenuItem to={newOrganizationPath()} title="New Organization" icon="plus" />
         </div>
       </PopoverContent>
@@ -370,13 +370,13 @@ function UserMenu({ user }: { user: SideMenuUser }) {
       <PopoverCustomTrigger isOpen={isProfileMenuOpen} className="p-1">
         <UserProfilePhoto
           className={cn(
-            "h-5 w-5 text-slate-600",
+            "h-5 w-5 text-charcoal-600",
             user.isImpersonating && "rounded-full border border-yellow-500"
           )}
         />
       </PopoverCustomTrigger>
       <PopoverContent
-        className="min-w-[12rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+        className="min-w-[12rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         align="start"
       >
         <Fragment>

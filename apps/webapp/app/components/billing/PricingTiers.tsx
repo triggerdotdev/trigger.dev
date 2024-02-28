@@ -275,7 +275,7 @@ export function TierPro({
       <Form action={`/resources/${organizationSlug}/subscribe`} method="post" {...form.props}>
         <Header title={plan.title} isHighlighted cost={selectedTier?.tierCost} />
 
-        <div className="mb-2 mt-6 font-sans text-sm font-normal text-bright">
+        <div className="mb-2 mt-6 font-sans text-sm font-normal text-text-bright">
           <DefinitionTip
             title={pricingDefinitions.concurrentRuns.title}
             content={pricingDefinitions.concurrentRuns.content}
@@ -460,7 +460,7 @@ function TierContainer({
     <div
       className={cn(
         "flex w-full min-w-[16rem] flex-col rounded-md border p-6",
-        isHighlighted ? "border-indigo-500" : "border-border"
+        isHighlighted ? "border-indigo-500" : "border-grid-bright"
       )}
     >
       {children}
@@ -479,13 +479,18 @@ function Header({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <h2 className={cn("text-xl font-medium", isHighlighted ? "text-indigo-500" : "text-dimmed")}>
+      <h2
+        className={cn(
+          "text-xl font-medium",
+          isHighlighted ? "text-indigo-500" : "text-text-dimmed"
+        )}
+      >
         {title}
       </h2>
       {flatCost === 0 || flatCost ? (
         <h3 className="text-4xl font-medium">
           ${flatCost}
-          <span className="text-2sm font-normal tracking-wide text-dimmed">/month</span>
+          <span className="text-2sm font-normal tracking-wide text-text-dimmed">/month</span>
         </h3>
       ) : (
         <h2 className="text-4xl font-medium">Custom</h2>
@@ -498,7 +503,9 @@ function TierLimit({ children }: { children: React.ReactNode }) {
   return (
     <div>
       <hr className="my-[1.9rem]" />
-      <div className="mb-[0.6rem] mt-6 font-sans text-sm font-normal text-bright">{children}</div>
+      <div className="mb-[0.6rem] mt-6 font-sans text-sm font-normal text-text-bright">
+        {children}
+      </div>
     </div>
   );
 }
@@ -509,9 +516,14 @@ function FeatureItem({ checked, children }: { checked?: boolean; children: React
       {checked ? (
         <CheckIcon className="h-4 w-4 text-green-500" />
       ) : (
-        <XMarkIcon className="h-4 w-4 text-slate-500" />
+        <XMarkIcon className="h-4 w-4 text-charcoal-500" />
       )}
-      <div className={cn("font-sans text-sm font-normal", checked ? "text-bright" : "text-dimmed")}>
+      <div
+        className={cn(
+          "font-sans text-sm font-normal",
+          checked ? "text-text-bright" : "text-text-dimmed"
+        )}
+      >
         {children}
       </div>
     </li>

@@ -28,7 +28,7 @@ export function RegenerateApiKeyModal({ id, title }: ModalProps) {
       <DialogTrigger asChild>
         <Button
           variant="tertiary/small"
-          leadingIconClassName="text-dimmed"
+          leadingIconClassName="text-text-dimmed"
           LeadingIcon={ArrowPathIcon}
         >
           Regenerate
@@ -59,12 +59,12 @@ const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: Mod
 
   return (
     <div className="flex w-full flex-col items-center gap-y-5 pb-4">
-      <div className="mt-3 flex gap-x-3 rounded-md border border-ui-border py-4 pl-3 pr-5">
+      <div className="mt-3 flex gap-x-3 rounded-md border border-grid-bright py-4 pl-3 pr-5">
         <ExclamationTriangleIcon className="relative top-1 h-6 w-6 min-w-[2rem] text-amber-500" />
         <Paragraph>
           Regenerating the keys for this environment will temporarily break any live Jobs in the
-          <span className="text-bright"> {title} Environment</span> until the new API keys are set
-          in the relevant environment variables.
+          <span className="text-text-bright"> {title} Environment</span> until the new API keys are
+          set in the relevant environment variables.
         </Paragraph>
       </div>
       <fetcher.Form
@@ -76,7 +76,7 @@ const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: Mod
           <Paragraph variant="small/bright">Enter this text below to confirm:</Paragraph>
           <Paragraph
             variant="small"
-            className="select-all rounded-md border border-ui-border bg-slate-900 px-2 py-1 font-mono text-bright"
+            className="select-all rounded-md border border-grid-bright bg-charcoal-900 px-2 py-1 font-mono text-text-bright"
           >
             {randomWord}
           </Paragraph>

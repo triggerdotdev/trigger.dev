@@ -186,7 +186,7 @@ export default function Page() {
                 Recent payloads will show here once you've completed a Run.
               </Callout>
             ) : (
-              <div className="flex flex-col divide-y divide-slate-850">
+              <div className="flex flex-col divide-y divide-charcoal-850">
                 {runs.map((run) => (
                   <button
                     key={run.id}
@@ -202,7 +202,7 @@ export default function Page() {
                       <Paragraph variant="small">
                         <DateTime date={run.createdAt} />
                       </Paragraph>
-                      <div className="flex items-center gap-1 text-xs text-dimmed">
+                      <div className="flex items-center gap-1 text-xs text-text-dimmed">
                         <div>Run #{run.number}</div>
                         <TaskRunStatus status={run.status} />
                       </div>
@@ -214,7 +214,7 @@ export default function Page() {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="flex items-center justify-end gap-2 border-t border-border bg-midnight-900">
+      <div className="bg-midnight-900 flex items-center justify-end gap-2 border-t border-grid-bright">
         <div className="flex items-center gap-1">
           <TaskPath
             filePath={task.filePath}
@@ -229,7 +229,7 @@ export default function Page() {
           type="submit"
           variant="primary/medium"
           LeadingIcon="beaker"
-          leadingIconClassName="text-bright"
+          leadingIconClassName="text-text-bright"
           shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
         >
           Run test

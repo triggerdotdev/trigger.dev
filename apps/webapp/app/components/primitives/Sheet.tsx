@@ -41,7 +41,7 @@ const SheetOverlay = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-midnight-900/80 transition animate-in duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
+      "bg-midnight-900/80 fixed inset-0 z-50 transition duration-200 animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
       className
     )}
     {...props}
@@ -51,7 +51,7 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  "fixed z-50 scale-100 gap-4 bg-midnight-900 shadow-lg shadow-white/10 opacity-100 border-l border-ui-border",
+  "fixed z-50 scale-100 gap-4 bg-midnight-900 shadow-lg shadow-white/10 opacity-100 border-l border-grid-bright",
   {
     variants: {
       position: {
@@ -154,8 +154,8 @@ const SheetContent = React.forwardRef<
       {...props}
     >
       <div className="grid max-h-full grid-rows-[2.75rem_1fr] overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-ui-border p-2">
-          <SheetPrimitive.Close className="rounded-sm p-1 transition hover:bg-slate-800 disabled:pointer-events-none">
+        <div className="flex items-center gap-2 border-b border-grid-bright p-2">
+          <SheetPrimitive.Close className="rounded-sm p-1 transition hover:bg-charcoal-800 disabled:pointer-events-none">
             <NamedIcon name="close" className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>
@@ -171,7 +171,7 @@ SheetContent.displayName = SheetPrimitive.Content.displayName;
 export const SheetBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700",
+      "overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
       className
     )}
     {...props}
@@ -181,7 +181,7 @@ export const SheetBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivE
 export const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "mx-4 flex shrink-0 items-center gap-4 border-b border-ui-border py-3.5",
+      "mx-4 flex shrink-0 items-center gap-4 border-b border-grid-bright py-3.5",
       className
     )}
     {...props}
@@ -194,7 +194,7 @@ export const SheetFooter = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn("shrink-0", className)} {...props}>
-    <div className="mx-4 border-t border-ui-border py-3">{children}</div>
+    <div className="mx-4 border-t border-grid-bright py-3">{children}</div>
   </div>
 );
 

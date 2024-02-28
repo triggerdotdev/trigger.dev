@@ -74,9 +74,9 @@ export default function Page() {
       <PricingTiers organizationSlug={organizationSlug} plans={plans} />
       <div>
         <Header2 spacing>Estimate your usage</Header2>
-        <div className="flex h-full w-full rounded-md border border-border p-6">
+        <div className="flex h-full w-full rounded-md border border-grid-bright p-6">
           <PricingCalculator plans={plans} />
-          <div className="mx-6 min-h-full w-px bg-border" />
+          <div className="bg-border mx-6 min-h-full w-px" />
           <RunsVolumeDiscountTable brackets={plans.paid.runs?.pricing?.brackets ?? []} />
         </div>
       </div>

@@ -20,11 +20,11 @@ function Examples() {
     <div className="flex max-w-xl flex-col items-start gap-y-8 p-8">
       <DetailCell
         leadingIcon="integration"
-        leadingIconClassName="text-dimmed"
+        leadingIconClassName="text-text-dimmed"
         label="Learn how to create your own API Integrations"
         variant="base"
         trailingIcon="external-link"
-        trailingIconClassName="text-slate-700 group-hover:text-bright"
+        trailingIconClassName="text-charcoal-700 group-hover:text-text-bright"
       />
       <DetailCell
         leadingIcon={CodeBracketIcon}
@@ -35,11 +35,11 @@ function Examples() {
       />
       <DetailCell
         leadingIcon={ClockIcon}
-        leadingIconClassName="text-slate-400"
+        leadingIconClassName="text-charcoal-400"
         label={<DateTime date={new Date()} />}
         description="Run #42 complete"
         trailingIcon="plus"
-        trailingIconClassName="text-slate-500 group-hover:text-bright"
+        trailingIconClassName="text-charcoal-500 group-hover:text-text-bright"
       />
     </div>
   );

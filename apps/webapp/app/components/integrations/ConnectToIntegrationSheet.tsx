@@ -52,7 +52,7 @@ export function ConnectToIntegrationSheet({
             to={apiReferencePath(integration.identifier)}
             variant="secondary/small"
             TrailingIcon="arrow-up-right"
-            trailingIconClassName="h-4 w-4 text-slate-400"
+            trailingIconClassName="h-4 w-4 text-charcoal-400"
             target="_blank"
           >
             View examples

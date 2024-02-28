@@ -38,7 +38,7 @@ function NamedIcons() {
                 <div>
                   <NamedIcon name={iconName} className={"h-6 w-6"} />
                 </div>
-                <span className="text-xs text-dimmed">{iconName}</span>
+                <span className="text-xs text-text-dimmed">{iconName}</span>
               </div>
             ))}
         </div>
@@ -51,7 +51,7 @@ function NamedIcons() {
               <div>
                 <NamedIcon name={iconName} className={"h-6 w-6 text-indigo-500"} />
               </div>
-              <span className="text-xs text-dimmed">{iconName}</span>
+              <span className="text-xs text-text-dimmed">{iconName}</span>
             </div>
           ))}
         </div>

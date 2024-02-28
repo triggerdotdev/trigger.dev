@@ -61,11 +61,11 @@ export function ReactHooks({ eventId }: { eventId: string }) {
         {data?.output && data.status === "SUCCESS" && (
           <div className="flex flex-col gap-0.5">
             <h4 className="text-base font-semibold">Output</h4>
-            <p className="text-slate-400 text-sm mb-4">{data.output.summary}</p>
+            <p className="text-charcoal-400 text-sm mb-4">{data.output.summary}</p>
           </div>
         )}
         {(data?.status === "SUCCESS" || data?.status === "FAILURE") && (
-          <Link className="border border-slate-500 p-2 text-center" href={"/"}>
+          <Link className="border border-charcoal-500 p-2 text-center" href={"/"}>
             Back to home
           </Link>
         )}

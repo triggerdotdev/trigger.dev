@@ -18,10 +18,10 @@ import { Spinner } from "./Spinner";
 
 export const variantClasses = {
   info: {
-    className: "border-slate-700 bg-slate-800",
-    icon: <InformationCircleIcon className="h-5 w-5 shrink-0 text-dimmed" />,
-    textColor: "text-bright",
-    linkClassName: "transition hover:bg-slate-750",
+    className: "border-charcoal-700 bg-charcoal-800",
+    icon: <InformationCircleIcon className="h-5 w-5 shrink-0 text-text-dimmed" />,
+    textColor: "text-text-bright",
+    linkClassName: "transition hover:bg-charcoal-750",
   },
   warning: {
     className: "border-yellow-400/20 bg-yellow-400/30",

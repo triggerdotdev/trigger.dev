@@ -214,7 +214,7 @@ function TreeViewParent({
         nodes={nodes}
         getNodeProps={getNodeProps}
         getTreeProps={getTreeProps}
-        parentClassName="h-96 bg-slate-900"
+        parentClassName="h-96 bg-charcoal-900"
         renderNode={({ node, state, index, virtualizer, virtualItem }) => (
           <div
             style={{

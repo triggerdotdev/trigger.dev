@@ -43,7 +43,7 @@ const quotes: QuoteType[] = [
 ];
 
 const layout = "group grid place-items-center text-center overflow-hidden";
-const gridCell = "hover:bg-midnight-850 rounded-lg transition bg-midnight-850/40";
+const gridCell = "hover:bg-background-bright rounded-lg transition bg-background-bright/40";
 const opacity = "opacity-10 group-hover:opacity-100 transition group-hover:scale-105";
 const logos = "h-[60%] w-[60%] transition grayscale group-hover:grayscale-0";
 const features = "h-[60%] w-[60%] text-gray-500 grayscale transition group-hover:grayscale-0";
@@ -61,7 +61,7 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <main className="grid h-full grid-cols-12">
-      <div className="border-midnight-750 z-10 col-span-12 border-r bg-midnight-850 md:col-span-6">
+      <div className="border-midnight-750 z-10 col-span-12 border-r bg-background-bright md:col-span-6">
         <div className="flex h-full flex-col items-center justify-between p-6">
           <div className="flex w-full items-center justify-between">
             <a href="https://trigger.dev">
@@ -106,12 +106,12 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
         <LoginTooltip side="top" content={<QuoteTooltipContent />}>
           <div className={cn(layout, gridCell, wider)}>
             <div className="px-4">
-              <Header3 className="relative text-2xl font-normal leading-8 text-gray-600 transition before:relative before:right-1 before:top-0 before:text-4xl before:text-slate-600 before:opacity-20 before:content-['❝'] group-hover:text-slate-500 group-hover:before:opacity-30 lg-height:text-xl md-height:text-lg">
+              <Header3 className="relative text-2xl font-normal leading-8 text-gray-600 transition before:relative before:right-1 before:top-0 before:text-4xl before:text-charcoal-600 before:opacity-20 before:content-['❝'] group-hover:text-charcoal-500 group-hover:before:opacity-30 lg-height:text-xl md-height:text-lg">
                 {randomQuote?.quote}
               </Header3>
               <Paragraph
                 variant="small"
-                className="mt-4 text-gray-700 transition group-hover:text-slate-600"
+                className="mt-4 text-gray-700 transition group-hover:text-charcoal-600"
               >
                 {randomQuote?.person}
               </Paragraph>

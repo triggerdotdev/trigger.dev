@@ -41,7 +41,7 @@ export function HowToRunYourJob() {
           to={jobTestPath(organization, project, job)}
           variant={"primary/small"}
           LeadingIcon={"beaker"}
-          leadingIconClassName="text-bright"
+          leadingIconClassName="text-text-bright"
         >
           Test
         </LinkButton>
@@ -57,7 +57,7 @@ export function HowToRunYourJob() {
           to="https://trigger.dev/docs/documentation/guides/running-jobs"
           variant={"primary/small"}
           LeadingIcon={"docs"}
-          leadingIconClassName="text-bright"
+          leadingIconClassName="text-text-bright"
         >
           How to run a Job
         </LinkButton>

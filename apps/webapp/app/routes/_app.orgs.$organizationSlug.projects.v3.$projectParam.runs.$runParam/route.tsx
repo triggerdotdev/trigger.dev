@@ -197,7 +197,7 @@ function TasksTreeView({
 
   return (
     <div className="h-full overflow-y-clip px-3">
-      <div className="flex h-8 items-center justify-between gap-2 border-b border-slate-850">
+      <div className="flex h-8 items-center justify-between gap-2 border-b border-charcoal-850">
         <Input
           placeholder="Search log"
           variant="tertiary"
@@ -227,7 +227,7 @@ function TasksTreeView({
           <div
             className={cn(
               "flex h-8 cursor-pointer items-center rounded-sm border border-transparent",
-              node.data.isError ? "bg-rose-500/10 hover:bg-rose-500/20" : "hover:bg-slate-900",
+              node.data.isError ? "bg-rose-500/10 hover:bg-rose-500/20" : "hover:bg-charcoal-900",
               state.selected && (node.data.isError ? "border-rose-500" : "border-indigo-500")
             )}
             onClick={() => {
@@ -242,7 +242,7 @@ function TasksTreeView({
                 className={cn(
                   "flex h-8 w-4 items-center",
                   node.hasChildren &&
-                    (node.data.isError ? "hover:bg-rose-500/30" : "hover:bg-slate-800")
+                    (node.data.isError ? "hover:bg-rose-500/30" : "hover:bg-charcoal-800")
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -256,9 +256,9 @@ function TasksTreeView({
               >
                 {node.hasChildren ? (
                   state.expanded ? (
-                    <ChevronDownIcon className="h-4 w-4 text-slate-400" />
+                    <ChevronDownIcon className="h-4 w-4 text-charcoal-400" />
                   ) : (
-                    <ChevronRightIcon className="h-4 w-4 text-slate-400" />
+                    <ChevronRightIcon className="h-4 w-4 text-charcoal-400" />
                   )
                 ) : (
                   <div className="h-8 w-4" />
@@ -268,7 +268,7 @@ function TasksTreeView({
 
             <div className="flex w-full items-center justify-between gap-2 px-1">
               <div className="flex items-center gap-2 overflow-x-hidden">
-                <RunIcon name={node.data.style?.icon} className="min-w-4 min-h-4 h-4 w-4" />
+                <RunIcon name={node.data.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
                 <NodeText node={node} />
               </div>
               <div className="flex items-center gap-2">
@@ -310,7 +310,9 @@ function NodeText({ node }: { node: RunEvent }) {
 
 function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {
   return (
-    <div className={cn("h-8 w-2 border-r", isError ? "border-rose-500/10" : "border-slate-800")} />
+    <div
+      className={cn("h-8 w-2 border-r", isError ? "border-rose-500/10" : "border-charcoal-800")}
+    />
   );
 }
 
@@ -348,9 +350,12 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
       {mouseOver ? (
         <ShowParentIconSelected className="h-4 w-4 text-indigo-500" />
       ) : (
-        <ShowParentIcon className="h-4 w-4 text-slate-650" />
+        <ShowParentIcon className="text-charcoal-650 h-4 w-4" />
       )}
-      <Paragraph variant="small" className={cn(mouseOver ? "text-indigo-500" : "text-slate-500")}>
+      <Paragraph
+        variant="small"
+        className={cn(mouseOver ? "text-indigo-500" : "text-charcoal-500")}
+      >
         Show parent items
       </Paragraph>
     </Link>

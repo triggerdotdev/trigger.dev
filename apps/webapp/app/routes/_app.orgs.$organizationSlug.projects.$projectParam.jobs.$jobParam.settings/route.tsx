@@ -44,7 +44,7 @@ export default function Page() {
                 <DialogTrigger asChild>
                   <Button
                     variant="danger/small"
-                    leadingIconClassName="text-bright"
+                    leadingIconClassName="text-text-bright"
                     LeadingIcon="trash-can"
                   >
                     I want to delete this Job

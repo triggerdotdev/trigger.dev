@@ -59,14 +59,14 @@ export function TaskRunStatusIcon({
 
 export function runStatusClassNameColor(status: ExtendedTaskAttemptStatus | null): string {
   if (status === null) {
-    return "text-slate-500";
+    return "text-charcoal-500";
   }
 
   switch (status) {
     case "ENQUEUED":
-      return "text-slate-500";
+      return "text-charcoal-500";
     case "PENDING":
-      return "text-slate-500";
+      return "text-charcoal-500";
     case "EXECUTING":
       return "text-blue-500";
     case "PAUSED":
@@ -74,7 +74,7 @@ export function runStatusClassNameColor(status: ExtendedTaskAttemptStatus | null
     case "FAILED":
       return "text-rose-500";
     case "CANCELED":
-      return "text-slate-500";
+      return "text-charcoal-500";
     case "COMPLETED":
       return "text-green-500";
     default: {

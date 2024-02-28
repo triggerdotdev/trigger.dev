@@ -13,7 +13,7 @@ export function RunsVolumeDiscountTable({
   brackets: RunPriceBracket[];
 }) {
   const runsVolumeDiscountRow =
-    "flex justify-between whitespace-nowrap border-b gap-16 border-border last:pb-0 last:border-none py-2";
+    "flex justify-between whitespace-nowrap border-b gap-16 border-grid-bright last:pb-0 last:border-none py-2";
 
   const bracketData = bracketInfo(brackets);
 

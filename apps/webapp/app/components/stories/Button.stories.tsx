@@ -37,7 +37,7 @@ function ButtonList({ primary }: { primary: string }) {
   return (
     <div>
       <Header1 className="mb-2">Small buttons</Header1>
-      <div className="grid grid-cols-4 gap-8 border-b border-slate-700 pb-8">
+      <div className="grid grid-cols-4 gap-8 border-b border-charcoal-700 pb-8">
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Basic</Header3>
           <Button variant="primary/small">Primary button</Button>
@@ -144,7 +144,7 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
       </div>
       <Header1 className="mb-2 mt-8">Medium buttons</Header1>
-      <div className="grid grid-cols-4 gap-8 border-b border-slate-700 pb-8">
+      <div className="grid grid-cols-4 gap-8 border-b border-charcoal-700 pb-8">
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Basic</Header3>
           <Button variant="primary/medium">Primary button</Button>
@@ -251,7 +251,7 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
       </div>
       <Header1 className="mb-2 mt-8">Large buttons</Header1>
-      <div className="grid grid-cols-1 gap-8 border-b border-slate-700 pb-8">
+      <div className="grid grid-cols-1 gap-8 border-b border-charcoal-700 pb-8">
         <div className="flex flex-col gap-2">
           <div className="flex flex-col items-start gap-2">
             <Button variant="primary/large" fullWidth>
@@ -261,14 +261,16 @@ function ButtonList({ primary }: { primary: string }) {
             <Button variant="secondary/large" fullWidth>
               <NamedIcon
                 name={"envelope"}
-                className={"mr-1.5 h-4 w-4 transition group-hover:text-bright"}
+                className={"mr-1.5 h-4 w-4 transition group-hover:text-text-bright"}
               />
               Continue with Email
             </Button>
             <Button variant="danger/large" fullWidth>
               <NamedIcon
                 name={"trash-can"}
-                className={"mr-1.5 h-4 w-4 text-bright transition group-hover:text-bright"}
+                className={
+                  "mr-1.5 h-4 w-4 text-text-bright transition group-hover:text-text-bright"
+                }
               />
               This is a delete button
             </Button>
@@ -276,7 +278,7 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
       </div>
       <Header1 className="mb-2 mt-8">Extra Large buttons</Header1>
-      <div className="grid grid-cols-1 gap-8 border-b border-slate-700 pb-8">
+      <div className="grid grid-cols-1 gap-8 border-b border-charcoal-700 pb-8">
         <div className="flex flex-col gap-2">
           <div className="flex flex-col items-start gap-2">
             <Button variant="primary/extra-large" fullWidth>
@@ -286,14 +288,16 @@ function ButtonList({ primary }: { primary: string }) {
             <Button variant="secondary/extra-large" fullWidth>
               <NamedIcon
                 name={"envelope"}
-                className={"mr-1.5 h-5 w-5 transition group-hover:text-bright"}
+                className={"mr-1.5 h-5 w-5 transition group-hover:text-text-bright"}
               />
               Continue with Email
             </Button>
             <Button variant="danger/extra-large" fullWidth>
               <NamedIcon
                 name={"trash-can"}
-                className={"mr-1.5 h-5 w-5 text-bright transition group-hover:text-bright"}
+                className={
+                  "mr-1.5 h-5 w-5 text-text-bright transition group-hover:text-text-bright"
+                }
               />
               This is a delete button
             </Button>
@@ -302,7 +306,7 @@ function ButtonList({ primary }: { primary: string }) {
       </div>
       <Header1 className="mb-2 mt-8">Menu items</Header1>
       <div className="grid grid-cols-1">
-        <div className="flex flex-col items-start gap-1 rounded border border-slate-800 bg-slate-850 p-1">
+        <div className="flex flex-col items-start gap-1 rounded border border-charcoal-800 bg-charcoal-850 p-1">
           <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon="folder">
             Acme Inc.
           </Button>
@@ -315,7 +319,7 @@ function ButtonList({ primary }: { primary: string }) {
             textAlignLeft
             LeadingIcon="globe"
             TrailingIcon={isSelected ? "check" : undefined}
-            className={isSelected ? "bg-slate-750 group-hover:bg-slate-750" : undefined}
+            className={isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-750" : undefined}
           >
             Item enabled
           </Button>
@@ -330,7 +334,7 @@ function ButtonList({ primary }: { primary: string }) {
             fullWidth
             textAlignLeft
             LeadingIcon={ArrowUturnLeftIcon}
-            leadingIconClassName="text-dimmed"
+            leadingIconClassName="text-text-dimmed"
           >
             Latest run payload
           </Button>
@@ -339,7 +343,7 @@ function ButtonList({ primary }: { primary: string }) {
             fullWidth
             textAlignLeft
             LeadingIcon={NoSymbolIcon}
-            leadingIconClassName="text-dimmed"
+            leadingIconClassName="text-text-dimmed"
             disabled
             className={disabled ? "group-hover:bg-transparent" : undefined}
           >

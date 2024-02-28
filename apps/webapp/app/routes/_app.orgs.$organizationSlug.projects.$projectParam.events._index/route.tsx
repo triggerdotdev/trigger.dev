@@ -74,7 +74,7 @@ export default function Page() {
       </PageHeader>
 
       <PageBody scrollable={false}>
-        <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+        <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <div className="mb-2 flex items-center justify-between gap-x-2">
             <EventsFilters />
             <ListPagination list={list} />

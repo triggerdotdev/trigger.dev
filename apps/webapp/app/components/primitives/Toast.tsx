@@ -39,7 +39,7 @@ export function ToastUI({
 }) {
   return (
     <div
-      className={`self-end rounded-md border border-border bg-background`}
+      className={`self-end rounded-md border border-grid-bright bg-background-dimmed`}
       style={{
         width: toastWidth,
       }}
@@ -50,9 +50,9 @@ export function ToastUI({
         ) : (
           <ExclamationCircleIcon className="mt-1 h-6 w-6 min-w-[1.5rem] text-rose-600" />
         )}
-        <Paragraph className="py-1 text-dimmed">{message}</Paragraph>
+        <Paragraph className="py-1 text-text-dimmed">{message}</Paragraph>
         <button
-          className="ms-auto rounded p-2 text-dimmed transition hover:bg-midnight-800 hover:text-bright"
+          className="hover:bg-midnight-800 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright"
           onClick={() => toast.dismiss(t)}
         >
           <XMarkIcon className="h-4 w-4" />

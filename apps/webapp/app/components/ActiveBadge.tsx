@@ -17,13 +17,13 @@ export function ActiveBadge({ active, className, badgeSize = "normal" }: ActiveB
   switch (active) {
     case true:
       return (
-        <span className={cn(variant[badgeSize], "bg-slate-800 text-green-500", className)}>
+        <span className={cn(variant[badgeSize], "bg-charcoal-800 text-green-500", className)}>
           Active
         </span>
       );
     case false:
       return (
-        <span className={cn(variant[badgeSize], "bg-slate-800 text-dimmed", className)}>
+        <span className={cn(variant[badgeSize], "bg-charcoal-800 text-text-dimmed", className)}>
           Disabled
         </span>
       );
@@ -52,6 +52,6 @@ export function NewBadge({
   badgeSize?: keyof typeof variant;
 }) {
   return (
-    <span className={cn(variant[badgeSize], "bg-green-600 text-background", className)}>New!</span>
+    <span className={cn(variant[badgeSize], "text-background bg-green-600", className)}>New!</span>
   );
 }

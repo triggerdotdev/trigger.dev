@@ -41,10 +41,10 @@ export default function Page() {
 
   return (
     <div className="grid max-h-full grid-rows-[2rem_1fr] overflow-hidden">
-      <div className="border-b border-slate-800">
-        <div className="flex h-8 items-center justify-between gap-2 border-b border-ui-border px-2">
+      <div className="border-b border-charcoal-800">
+        <div className="flex h-8 items-center justify-between gap-2 border-b border-grid-bright px-2">
           <div className="flex items-center gap-1 overflow-x-hidden">
-            <RunIcon name={event.style?.icon} className="min-w-4 min-h-4 h-4 w-4" />
+            <RunIcon name={event.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
             <Header2 className={cn("whitespace-nowrap")}>
               <SpanTitle {...event} size="large" />
             </Header2>
@@ -52,7 +52,7 @@ export default function Page() {
           <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
         </div>
       </div>
-      <div className="overflow-y-auto px-2 pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+      <div className="overflow-y-auto px-2 pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div className="flex flex-col gap-4">
           <PropertyTable>
             {event.level === "TRACE" ? (

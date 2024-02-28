@@ -4,8 +4,8 @@ import { cn } from "~/utils/cn";
 
 const variantClasses = {
   basic:
-    "bg-popover border border-slate-800 rounded-md px-3 py-1.5 text-sm text-bright shadow-md fade-in-50",
-  dark: "bg-background border border-border rounded px-3 py-2 text-sm text-bright shadow-md fade-in-50",
+    "bg-popover border border-charcoal-800 rounded-md px-3 py-1.5 text-sm text-text-bright shadow-md fade-in-50",
+  dark: "bg-background-dimmed border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50",
 };
 
 type Variant = keyof typeof variantClasses;
@@ -15,7 +15,7 @@ const TooltipProvider = TooltipPrimitive.Provider;
 const TooltipArrow = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Arrow>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Arrow>
->(({ ...props }, ref) => <TooltipPrimitive.Arrow className="z-50 fill-popover" {...props} />);
+>(({ ...props }, ref) => <TooltipPrimitive.Arrow className="fill-popover z-50" {...props} />);
 TooltipArrow.displayName = TooltipPrimitive.Arrow.displayName;
 
 const Tooltip = React.forwardRef<
@@ -98,7 +98,7 @@ export function LoginTooltip({
         <TooltipTrigger asChild>{children}</TooltipTrigger>
         <TooltipContent
           className={cn(
-            "max-w-xs border-slate-800 bg-slate-900 px-5 py-4 backdrop-blur-md",
+            "max-w-xs border-charcoal-800 bg-charcoal-900 px-5 py-4 backdrop-blur-md",
             className
           )}
           side={side}

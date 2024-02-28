@@ -108,7 +108,7 @@ export default function Page() {
           {invites.map((invite) => (
             <Form key={invite.id} method="post" {...form.props}>
               <Fieldset>
-                <InputGroup className="flex items-center justify-between border-b border-slate-800 py-4">
+                <InputGroup className="flex items-center justify-between border-b border-charcoal-800 py-4">
                   <div className="flex flex-col gap-y-0.5 overflow-hidden">
                     <Header2 className="truncate">{invite.organization.title}</Header2>
                     <Paragraph variant="small" className="truncate">

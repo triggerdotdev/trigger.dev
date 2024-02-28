@@ -18,14 +18,14 @@ export function FreePlanUsage({ to, percentage }: { to: string; percentage: numb
   return (
     <div
       className={cn(
-        "rounded border border-slate-900 bg-[#101722] p-2.5",
+        "rounded border border-charcoal-900 bg-[#101722] p-2.5",
         hasHitLimit && "border-rose-800/60"
       )}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <ArrowUpCircleIcon className="h-5 w-5 text-dimmed" />
-          <Paragraph className="text-2sm text-bright">Free Plan</Paragraph>
+          <ArrowUpCircleIcon className="h-5 w-5 text-text-dimmed" />
+          <Paragraph className="text-2sm text-text-bright">Free Plan</Paragraph>
         </div>
         <Link to={to} className="text-2sm text-indigo-500">
           Learn more
