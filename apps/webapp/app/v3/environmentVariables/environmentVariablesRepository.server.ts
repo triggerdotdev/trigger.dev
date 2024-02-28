@@ -317,10 +317,7 @@ export class EnvironmentVariablesRepository implements Repository {
       prismaClient: this.prismaClient,
     });
 
-    const secrets = await secretStore.getSecrets(
-      SecretValue,
-      secretKeyProjectPrefix(projectId)
-    );
+    const secrets = await secretStore.getSecrets(SecretValue, secretKeyProjectPrefix(projectId));
 
     const values = secrets.map((secret) => {
       const { projectId, environmentId, key } = parseSecretKey(secret.key);
@@ -402,6 +399,13 @@ export class EnvironmentVariablesRepository implements Repository {
       return [];
     }
 
+    return this.getEnvironmentVariables(projectId, environmentId);
+  }
+
+  async getEnvironmentVariables(
+    projectId: string,
+    environmentId: string
+  ): Promise<EnvironmentVariable[]> {
     const secretStore = getSecretStore("DATABASE", {
       prismaClient: this.prismaClient,
     });

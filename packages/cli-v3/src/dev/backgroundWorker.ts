@@ -228,8 +228,8 @@ export class BackgroundWorker {
       const child = fork(this.path, {
         stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
         env: {
-          ...this.params.env,
           ...this.#readEnvVars(),
+          ...this.params.env,
         },
       });
 
@@ -295,8 +295,9 @@ export class BackgroundWorker {
       const taskRunProcess = new TaskRunProcess(
         this.path,
         {
-          ...this.params.env,
           ...this.#readEnvVars(),
+          ...this.params.env,
+          ...(payload.environment ?? {}),
         },
         this.metadata,
         this.params

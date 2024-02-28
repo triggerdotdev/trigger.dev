@@ -6,6 +6,7 @@ import {
   CreateBackgroundWorkerRequestBody,
   WhoAmIResponseSchema,
   CreateBackgroundWorkerResponse,
+  GetEnvironmentVariablesResponseBody,
 } from "@trigger.dev/core/v3";
 
 export class ApiClient {
@@ -76,6 +77,23 @@ export class ApiClient {
         "Content-Type": "application/json",
       },
     });
+  }
+
+  async getEnvironmentVariables(projectRef: string) {
+    if (!this.accessToken) {
+      throw new Error("getEnvironmentVariables: No access token");
+    }
+
+    return zodfetch(
+      GetEnvironmentVariablesResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/envvars`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
   }
 }
 

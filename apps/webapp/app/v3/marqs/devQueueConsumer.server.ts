@@ -3,6 +3,7 @@ import {
   RetryOptions,
   TaskRunContext,
   TaskRunExecution,
+  TaskRunExecutionPayload,
   TaskRunExecutionResult,
   ZodMessageSender,
   defaultRetryOptions,
@@ -18,6 +19,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "../marqs.server";
 import { attributesFromAuthenticatedEnv } from "../tracer.server";
 import { eventRepository } from "../eventRepository.server";
+import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 
 const tracer = trace.getTracer("environmentQueueConsumer");
 
@@ -35,7 +37,7 @@ export type EnvironmentQueueConsumerOptions = {
   traceTimeoutSeconds?: number;
 };
 
-export class EnvironmentQueueConsumer {
+export class DevQueueConsumer {
   private _backgroundWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
   private _enabled = false;
   private _options: Required<EnvironmentQueueConsumerOptions>;
@@ -430,9 +432,19 @@ export class EnvironmentQueueConsumer {
       },
     };
 
-    const payload = {
+    const environmentRepository = new EnvironmentVariablesRepository();
+    const variables = await environmentRepository.getEnvironmentVariables(
+      this.env.project.id,
+      this.env.id
+    );
+
+    const payload: TaskRunExecutionPayload = {
       execution,
       traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
+      environment: variables.reduce((acc: Record<string, string>, curr) => {
+        acc[curr.key] = curr.value;
+        return acc;
+      }, {}),
     };
 
     try {
