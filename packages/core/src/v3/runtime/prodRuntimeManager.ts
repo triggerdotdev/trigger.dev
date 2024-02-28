@@ -39,12 +39,13 @@ export class ProdRuntimeManager implements RuntimeManager {
   }
 
   async waitForDuration(ms: number): Promise<void> {
-    await this.sender.send("WAIT_FOR_DURATION", {
-      ms,
-    });
+    if (ms > 30_000) {
+      // TODO: sender with ack support
+      await this.sender.send("WAIT_FOR_DURATION", { ms });
+      // TODO: resolve after resume signal instead
+    }
 
     return new Promise((resolve) => {
-      // TODO: resolve after resume signal
       setTimeout(resolve, ms);
     });
   }
