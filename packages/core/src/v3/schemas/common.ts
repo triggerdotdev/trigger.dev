@@ -27,11 +27,21 @@ export const TaskRunErrorCodes = {
   COULD_NOT_FIND_EXECUTOR: "COULD_NOT_FIND_EXECUTOR",
   CONFIGURED_INCORRECTLY: "CONFIGURED_INCORRECTLY",
   TASK_ALREADY_RUNNING: "TASK_ALREADY_RUNNING",
+  TASK_EXECUTION_FAILED: "TASK_EXECUTION_FAILED",
+  TASK_EXECUTION_ABORTED: "TASK_EXECUTION_ABORTED",
+  TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE: "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE",
 } as const;
 
 export const TaskRunInternalError = z.object({
   type: z.literal("INTERNAL_ERROR"),
-  code: z.enum(["COULD_NOT_FIND_EXECUTOR", "CONFIGURED_INCORRECTLY", "TASK_ALREADY_RUNNING"]),
+  code: z.enum([
+    "COULD_NOT_FIND_EXECUTOR",
+    "CONFIGURED_INCORRECTLY",
+    "TASK_ALREADY_RUNNING",
+    "TASK_EXECUTION_FAILED",
+    "TASK_EXECUTION_ABORTED",
+    "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE",
+  ]),
 });
 
 export type TaskRunInternalError = z.infer<typeof TaskRunInternalError>;
@@ -151,7 +161,7 @@ export type TaskRunFailedExecutionResult = z.infer<typeof TaskRunFailedExecution
 export const TaskRunSuccessfulExecutionResult = z.object({
   ok: z.literal(true),
   id: z.string(),
-  output: z.string(),
+  output: z.string().optional(),
   outputType: z.string(),
 });
 

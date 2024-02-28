@@ -6,6 +6,7 @@ import {
   TaskMetadataWithFilePath,
   TaskRunBuiltInError,
   TaskRunError,
+  TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
@@ -22,7 +23,7 @@ import { ChildProcess, fork } from "node:child_process";
 import { resolve } from "node:path";
 import terminalLink from "terminal-link";
 import { logger } from "../utilities/logger.js";
-import { unlinkSync } from "node:fs";
+import { safeDeleteFileSync } from "../utilities/fileSystem.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -145,9 +146,14 @@ export class BackgroundWorkerCoordinator {
 
     const elapsed = performance.now() - now;
 
-    const resultText = !completion.ok ? chalk.red("error") : chalk.green("success");
+    const resultText = !completion.ok
+      ? completion.error.type === "INTERNAL_ERROR" &&
+        completion.error.code === TaskRunErrorCodes.TASK_EXECUTION_ABORTED
+        ? chalk.yellow("cancelled")
+        : chalk.red("error")
+      : chalk.green("success");
 
-    const errorText = !completion.ok ? `\n\n${this.#formatErrorLog(completion.error)}\n` : "";
+    const errorText = !completion.ok ? this.#formatErrorLog(completion.error) : "";
 
     const elapsedText = chalk.dim(`(${elapsed.toFixed(2)}ms)`);
 
@@ -163,18 +169,34 @@ export class BackgroundWorkerCoordinator {
   #formatErrorLog(error: TaskRunError) {
     switch (error.type) {
       case "INTERNAL_ERROR": {
-        return `Internal error: ${error.code}`;
+        return "";
       }
       case "STRING_ERROR": {
-        return error.raw;
+        return `\n\n${error.raw}\n`;
       }
       case "CUSTOM_ERROR": {
-        return error.raw;
+        return `\n\n${error.raw}\n`;
       }
       case "BUILT_IN_ERROR": {
-        return error.stackTrace;
+        return `\n\n${error.stackTrace}\n`;
       }
     }
+  }
+}
+
+class UnexpectedExitError extends Error {
+  constructor(public code: number) {
+    super(`Unexpected exit with code ${code}`);
+
+    this.name = "UnexpectedExitError";
+  }
+}
+
+class CleanupProcessError extends Error {
+  constructor() {
+    super("Cancelled");
+
+    this.name = "CleanupProcessError";
   }
 }
 
@@ -197,12 +219,20 @@ export class BackgroundWorker {
 
   _taskRunProcesses: Map<string, TaskRunProcess> = new Map();
 
+  private _closed: boolean = false;
+
   constructor(
     public path: string,
     private params: BackgroundWorkerParams
   ) {}
 
   close() {
+    if (this._closed) {
+      return;
+    }
+
+    this._closed = true;
+
     this.onTaskHeartbeat.detach();
 
     // We need to close all the task run processes
@@ -213,8 +243,8 @@ export class BackgroundWorker {
     // Delete worker files
     this._onClose.post();
 
-    unlinkSync(this.path);
-    unlinkSync(`${this.path}.map`);
+    safeDeleteFileSync(this.path);
+    safeDeleteFileSync(`${this.path}.map`);
   }
 
   async initialize() {
@@ -321,29 +351,64 @@ export class BackgroundWorker {
 
   // We need to fork the process before we can execute any tasks
   async executeTaskRun(payload: TaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
-    const taskRunProcess = await this.#initializeTaskRunProcess(payload);
+    try {
+      const taskRunProcess = await this.#initializeTaskRunProcess(payload);
+      const result = await taskRunProcess.executeTaskRun(payload);
 
-    const result = await taskRunProcess.executeTaskRun(payload);
+      // Kill the worker if the task was successful or if it's not going to be retried);
+      await taskRunProcess.cleanup(result.ok || result.retry === undefined);
 
-    // Kill the worker if the task was successful or if it's not going to be retried);
-    await taskRunProcess.cleanup(result.ok || result.retry === undefined);
+      if (result.ok) {
+        return result;
+      }
 
-    if (result.ok) {
+      const error = result.error;
+
+      if (error.type === "BUILT_IN_ERROR") {
+        const mappedError = await this.#correctError(error, payload.execution);
+
+        return {
+          ...result,
+          error: mappedError,
+        };
+      }
+
       return result;
-    }
+    } catch (e) {
+      if (e instanceof CleanupProcessError) {
+        return {
+          id: payload.execution.attempt.id,
+          ok: false,
+          retry: undefined,
+          error: {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.TASK_EXECUTION_ABORTED,
+          },
+        };
+      }
 
-    const error = result.error;
-
-    if (error.type === "BUILT_IN_ERROR") {
-      const mappedError = await this.#correctError(error, payload.execution);
+      if (e instanceof UnexpectedExitError) {
+        return {
+          id: payload.execution.attempt.id,
+          ok: false,
+          retry: undefined,
+          error: {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE,
+          },
+        };
+      }
 
       return {
-        ...result,
-        error: mappedError,
+        id: payload.execution.attempt.id,
+        ok: false,
+        retry: undefined,
+        error: {
+          type: "INTERNAL_ERROR",
+          code: TaskRunErrorCodes.TASK_EXECUTION_FAILED,
+        },
       };
     }
-
-    return result;
   }
 
   #readEnvVars() {
@@ -532,7 +597,11 @@ class TaskRunProcess {
 
         const { rejecter } = attemptPromise;
 
-        rejecter(new Error(`Worker exited with code ${code}`));
+        if (this._isBeingKilled) {
+          rejecter(new CleanupProcessError());
+        } else {
+          rejecter(new UnexpectedExitError(code));
+        }
       }
     }
 
@@ -552,6 +621,10 @@ class TaskRunProcess {
   }
 
   #handleStdErr(data: Buffer) {
+    if (this._isBeingKilled) {
+      return;
+    }
+
     if (!this._currentExecution) {
       logger.error(`[${this.metadata.version}] ${data.toString()}`);
 

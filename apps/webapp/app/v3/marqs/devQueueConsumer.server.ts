@@ -1,13 +1,9 @@
 import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
 import {
-  RetryOptions,
-  TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
   ZodMessageSender,
-  defaultRetryOptions,
-  flattenAttributes,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
 import { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
@@ -15,13 +11,12 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "../marqs.server";
-import { attributesFromAuthenticatedEnv } from "../tracer.server";
-import { eventRepository } from "../eventRepository.server";
-import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 import { CancelAttemptService } from "../services/cancelAttempt.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
+import { attributesFromAuthenticatedEnv } from "../tracer.server";
 
 const tracer = trace.getTracer("devQueueConsumer");
 
@@ -41,6 +36,7 @@ export type DevQueueConsumerOptions = {
 
 export class DevQueueConsumer {
   private _backgroundWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
+  private _deprecatedWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
   private _enabled = false;
   private _options: Required<DevQueueConsumerOptions>;
   private _perTraceCountdown: number | undefined;
@@ -61,6 +57,18 @@ export class DevQueueConsumer {
       maximumItemsPerTrace: options.maximumItemsPerTrace ?? 1_000, // 1k items per trace
       traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
     };
+  }
+
+  // This method is called when a background worker is deprecated and will no longer be used unless a run is locked to it
+  public async deprecateBackgroundWorker(id: string) {
+    const backgroundWorker = this._backgroundWorkers.get(id);
+
+    if (!backgroundWorker) {
+      return;
+    }
+
+    this._deprecatedWorkers.set(id, backgroundWorker);
+    this._backgroundWorkers.delete(id);
   }
 
   public async registerBackgroundWorker(id: string) {
@@ -100,17 +108,6 @@ export class DevQueueConsumer {
 
     const service = new CompleteAttemptService();
     await service.call(completion, execution, this.env);
-  }
-
-  #generateMetadataAttributesForNextAttempt(execution: TaskRunExecution) {
-    const context = TaskRunContext.parse(execution);
-
-    // @ts-ignore
-    context.attempt = {
-      number: context.attempt.number + 1,
-    };
-
-    return flattenAttributes(context, "ctx");
   }
 
   public async taskHeartbeat(workerId: string, id: string, seconds: number = 60) {
@@ -277,7 +274,8 @@ export class DevQueueConsumer {
     }
 
     const backgroundWorker = existingTaskRun.lockedToVersionId
-      ? this._backgroundWorkers.get(existingTaskRun.lockedToVersionId)
+      ? this._deprecatedWorkers.get(existingTaskRun.lockedToVersionId) ??
+        this._backgroundWorkers.get(existingTaskRun.lockedToVersionId)
       : this.#getLatestBackgroundWorker();
 
     if (!backgroundWorker) {
@@ -471,7 +469,7 @@ export class DevQueueConsumer {
   }
 
   // Get the latest background worker based on the version.
-  // Versions are in the format of 20240101.1 and 20240101.2
+  // Versions are in the format of 20240101.1 and 20240101.2, or even 20240101.10, 20240101.11, etc.
   #getLatestBackgroundWorker() {
     const workers = Array.from(this._backgroundWorkers.values());
 
@@ -480,11 +478,22 @@ export class DevQueueConsumer {
     }
 
     return workers.reduce((acc, curr) => {
-      if (acc.version > curr.version) {
+      const accParts = acc.version.split(".").map(Number);
+      const currParts = curr.version.split(".").map(Number);
+
+      // Compare the major part
+      if (accParts[0] < currParts[0]) {
+        return curr;
+      } else if (accParts[0] > currParts[0]) {
         return acc;
       }
 
-      return curr;
+      // Compare the minor part (assuming all versions have two parts)
+      if (accParts[1] < currParts[1]) {
+        return curr;
+      } else {
+        return acc;
+      }
     });
   }
 }

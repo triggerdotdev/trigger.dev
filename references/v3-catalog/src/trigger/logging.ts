@@ -4,5 +4,7 @@ export const loggingTask = task({
   id: "logging-task",
   run: async ({ payload }: { payload: { url: string } }) => {
     console.log("Hello world");
+
+    return null;
   },
 });
