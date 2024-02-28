@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { $ } from "execa";
 import { Namespace } from "socket.io";
@@ -21,15 +22,15 @@ import { HttpReply, getTextBody } from "@trigger.dev/core-apps";
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
 collectDefaultMetrics();
 
-const DEBUG = ["v1", "true"].includes(process.env.DEBUG ?? "") || false;
-const PORT = Number(process.env.HTTP_SERVER_PORT || 8000);
+const DEBUG = ["1", "true"].includes(process.env.DEBUG ?? "") || false;
+const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8000);
 const NODE_NAME = process.env.NODE_NAME || "coordinator";
 const REGISTRY_FQDN = process.env.REGISTRY_FQDN || "localhost:5000";
 const REPO_NAME = process.env.REPO_NAME || "checkpoints";
 const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
 const REGISTRY_TLS_VERIFY = process.env.REGISTRY_TLS_VERIFY === "false" ? "false" : "true";
 
-const PLATFORM_ENABLED = ["v1", "true"].includes(process.env.PLATFORM_ENABLED ?? "") || false;
+const PLATFORM_ENABLED = ["1", "true"].includes(process.env.PLATFORM_ENABLED ?? "") || false;
 const PLATFORM_HOST = process.env.PLATFORM_HOST || "127.0.0.1";
 const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 5080;
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
@@ -38,18 +39,170 @@ function createLogger(prefix: string) {
   return (...args: any[]) => console.log(prefix, ...args);
 }
 
-const debug = (...args: any[]) => {
+const debug = <TFirstArg>(firstArg: TFirstArg, ...otherArgs: any[]) => {
   if (!DEBUG) {
-    return args[0];
+    return firstArg;
   }
-  logger("DEBUG", ...args);
-  return args[0];
+  logger("DEBUG", firstArg, ...otherArgs);
+  return firstArg;
 };
 
 const logger = createLogger(`[${NODE_NAME}]`);
 
+class Checkpointer {
+  #initialized = false;
+  #canCheckpoint = false;
+  #dockerMode = true;
+
+  #logger = createLogger("[checkptr]");
+
+  async initialize() {
+    if (this.#initialized) {
+      return;
+    }
+
+    try {
+      await $`criu --version`;
+    } catch (error) {
+      this.#logger("No checkpoint support: Missing CRIU binary");
+      this.#canCheckpoint = false;
+      this.#initialized = true;
+      return;
+    }
+
+    try {
+      await $`docker checkpoint`;
+    } catch (error) {
+      this.#logger("No checkpoint support: Docker needs to have experimental features enabled");
+      this.#canCheckpoint = false;
+      this.#initialized = true;
+      return;
+    }
+
+    this.#logger(
+      `Full checkpoint support with docker ${this.#dockerMode ? "enabled" : "disabled"}`
+    );
+
+    this.#initialized = true;
+    this.#canCheckpoint = true;
+  }
+
+  async checkpointAndPush(podName: string) {
+    await this.initialize();
+
+    if (!this.#canCheckpoint) {
+      return;
+    }
+
+    try {
+      const { path } = await this.#checkpointContainer(podName);
+      const { tag } = await this.#buildImage(path, podName);
+      const { destination } = await this.#pushImage(tag);
+
+      this.#logger("checkpointed and pushed image to:", destination);
+
+      return {
+        path,
+        tag,
+        destination,
+        docker: this.#dockerMode,
+      };
+    } catch (error) {
+      this.#logger("checkpoint failed", error);
+      return;
+    }
+  }
+
+  async #checkpointContainer(podName: string) {
+    await this.initialize();
+
+    if (!this.#canCheckpoint) {
+      throw new Error("No checkpoint support");
+    }
+
+    if (this.#dockerMode) {
+      this.#logger("Checkpointing:", podName);
+
+      const path = randomUUID();
+
+      try {
+        debug(await $`docker checkpoint create ${podName} ${path}`);
+      } catch (error: any) {
+        this.#logger(error.stderr);
+      }
+
+      return { path };
+    }
+
+    const containerId = debug(
+      // @ts-expect-error
+      await $`crictl ps`
+        .pipeStdout($({ stdin: "pipe" })`grep ${podName}`)
+        .pipeStdout($({ stdin: "pipe" })`cut -f1 ${"-d "}`)
+    );
+
+    if (!containerId.stdout) {
+      throw new Error("could not find container id");
+    }
+
+    const exportPath = `${CHECKPOINT_PATH}/${podName}.tar`;
+
+    debug(await $`crictl checkpoint --export=${exportPath} ${containerId}`);
+
+    return {
+      path: exportPath,
+    };
+  }
+
+  async #buildImage(checkpointPath: string, tag: string) {
+    await this.initialize();
+
+    if (!this.#canCheckpoint) {
+      throw new Error("No checkpoint support");
+    }
+
+    if (this.#dockerMode) {
+      // Nothing to do here
+      return { tag };
+    }
+
+    const container = debug(await $`buildah from scratch`);
+    debug(await $`buildah add ${container} ${checkpointPath} /`);
+    debug(
+      await $`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
+    );
+    debug(await $`buildah commit ${container} ${REGISTRY_FQDN}/${REPO_NAME}:${tag}`);
+    debug(await $`buildah rm ${container}`);
+
+    return {
+      tag,
+    };
+  }
+
+  async #pushImage(tag: string) {
+    await this.initialize();
+
+    if (!this.#canCheckpoint) {
+      throw new Error("No checkpoint support");
+    }
+
+    if (this.#dockerMode) {
+      // Nothing to do here
+      return { destination: "" };
+    }
+
+    const destination = `${REGISTRY_FQDN}/${REPO_NAME}:${tag}`;
+    debug(await $`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${destination}`);
+
+    return {
+      destination,
+    };
+  }
+}
+
 class TaskCoordinator {
   #httpServer: ReturnType<typeof createServer>;
+  #checkpointer = new Checkpointer();
 
   #prodWorkerNamespace: Namespace<
     ProdWorkerToCoordinatorEvents,
@@ -71,6 +224,7 @@ class TaskCoordinator {
     private host = "0.0.0.0"
   ) {
     this.#httpServer = this.#createHttpServer();
+    this.#checkpointer.initialize();
 
     const io = new Server(this.#httpServer, {
       // connectionStateRecovery: {
@@ -243,12 +397,12 @@ class TaskCoordinator {
 
       socket.on("WAIT_FOR_DURATION", (message) => {
         logger("[WAIT_FOR_DURATION]", message.seconds);
-        this.#checkpointAndPush(socket.data.taskId);
+        this.#checkpointer.checkpointAndPush(socket.data.taskId);
       });
 
       socket.on("WAIT_FOR_EVENT", (message) => {
         logger("[WAIT_FOR_EVENT]", message.name);
-        this.#checkpointAndPush(socket.data.taskId);
+        this.#checkpointer.checkpointAndPush(socket.data.taskId);
       });
     });
 
@@ -350,6 +504,7 @@ class TaskCoordinator {
           return;
         }
 
+        // FIXME: shouldn't wait for completion here
         const completionAck = await socket.emitWithAck("EXECUTE_TASK_RUN", {
           version: "v1",
           payload: executionAck.payload,
@@ -369,14 +524,19 @@ class TaskCoordinator {
         this.#platformSocket?.emit("TASK_HEARTBEAT", message);
       });
 
-      socket.on("WAIT_FOR_DURATION", (message) => {
-        logger("[WAIT_FOR_DURATION]", message.seconds);
-        this.#checkpointAndPush(socket.data.taskId);
+      socket.on("WAIT_FOR_BATCH", (message) => {
+        logger("[WAIT_FOR_BATCH]", message);
+        // this.#checkpointer.checkpointAndPush(socket.data.podName);
       });
 
-      socket.on("WAIT_FOR_EVENT", (message) => {
-        logger("[WAIT_FOR_EVENT]", message.name);
-        this.#checkpointAndPush(socket.data.taskId);
+      socket.on("WAIT_FOR_DURATION", (message) => {
+        logger("[WAIT_FOR_DURATION]", message);
+        // this.#checkpointer.checkpointAndPush(socket.data.podName);
+      });
+
+      socket.on("WAIT_FOR_TASK", (message) => {
+        logger("[WAIT_FOR_TASK]", message);
+        // this.#checkpointer.checkpointAndPush(socket.data.podName);
       });
 
       socket.on("INDEX_TASKS", async (message, callback) => {
@@ -442,6 +602,7 @@ class TaskCoordinator {
         setSocketDataFromHeader("contentHash", "x-trigger-content-hash");
         setSocketDataFromHeader("cliPackageVersion", "x-trigger-cli-package-version");
         setSocketDataFromHeader("projectRef", "x-trigger-project-ref");
+        setSocketDataFromHeader("podName", "x-pod-name");
       } catch (error) {
         return socket.disconnect(true);
       }
@@ -474,7 +635,7 @@ class TaskCoordinator {
         }
         case "/checkpoint": {
           const body = await getTextBody(req);
-          await this.#checkpointAndPush(body);
+          await this.#checkpointer.checkpointAndPush(body);
           return reply.text(`sent restore request: ${body}`);
         }
         default: {
@@ -488,68 +649,10 @@ class TaskCoordinator {
     });
 
     httpServer.on("listening", () => {
-      logger("server listening on port", PORT);
+      logger("server listening on port", HTTP_SERVER_PORT);
     });
 
     return httpServer;
-  }
-
-  async #checkpointAndPush(podName: string) {
-    const { path } = await this.#checkpointContainer(podName);
-    const { tag } = await this.#buildImage(path, podName);
-    const { destination } = await this.#pushImage(tag);
-
-    logger("checkpointed and pushed image to:", destination);
-
-    return {
-      path,
-      tag,
-      destination,
-    };
-  }
-
-  async #checkpointContainer(podName: string) {
-    const containerId = debug(
-      // @ts-expect-error
-      await $`crictl ps`
-        .pipeStdout($({ stdin: "pipe" })`grep ${podName}`)
-        .pipeStdout($({ stdin: "pipe" })`cut -f1 ${"-d "}`)
-    );
-
-    if (!containerId.stdout) {
-      throw new Error("could not find container id");
-    }
-
-    const exportPath = `${CHECKPOINT_PATH}/${podName}.tar`;
-
-    debug(await $`crictl checkpoint --export=${exportPath} ${containerId}`);
-
-    return {
-      path: exportPath,
-    };
-  }
-
-  async #buildImage(checkpointPath: string, tag: string) {
-    const container = debug(await $`buildah from scratch`);
-    debug(await $`buildah add ${container} ${checkpointPath} /`);
-    debug(
-      await $`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
-    );
-    debug(await $`buildah commit ${container} ${REGISTRY_FQDN}/${REPO_NAME}:${tag}`);
-    debug(await $`buildah rm ${container}`);
-
-    return {
-      tag,
-    };
-  }
-
-  async #pushImage(tag: string) {
-    const destination = `${REGISTRY_FQDN}/${REPO_NAME}:${tag}`;
-    debug(await $`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${destination}`);
-
-    return {
-      destination,
-    };
   }
 
   listen() {
@@ -557,5 +660,5 @@ class TaskCoordinator {
   }
 }
 
-const coordinator = new TaskCoordinator(PORT);
+const coordinator = new TaskCoordinator(HTTP_SERVER_PORT);
 coordinator.listen();

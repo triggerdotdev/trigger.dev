@@ -61,7 +61,7 @@ class DockerTaskOperations implements TaskOperations {
 
     const containerName = this.#getIndexContainerName(opts.contentHash);
     const { stdout, stderr, exitCode } =
-      await $`docker run --rm -e COORDINATOR_PORT=8020 -e INDEX_TASKS=true --network=host --pull=never --name=${containerName} ${opts.imageTag}`;
+      await $`docker run --rm -e COORDINATOR_PORT=8020 -e POD_NAME=${containerName} -e INDEX_TASKS=true --network=host --pull=never --name=${containerName} ${opts.imageTag}`;
     debug({ stdout, stderr });
 
     if (exitCode !== 0) {
@@ -72,7 +72,7 @@ class DockerTaskOperations implements TaskOperations {
   async create(opts: { attemptId: string; image: string; machine: Machine }) {
     const containerName = this.#getRunContainerName(opts.attemptId);
     const { stdout, stderr, exitCode } =
-      await $`docker run --rm -e COORDINATOR_PORT=8020 -e TRIGGER_ATTEMPT_ID=${opts.attemptId} --network=host --pull=never --name=${containerName} ${opts.image}`;
+      await $`docker run -d -e COORDINATOR_PORT=8020 -e POD_NAME=${containerName} -e TRIGGER_ATTEMPT_ID=${opts.attemptId} --network=host --pull=never --name=${containerName} ${opts.image}`;
     debug({ stdout, stderr });
 
     if (exitCode !== 0) {
@@ -81,13 +81,21 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   async restore(opts: {
+    attemptId: string;
     runId: string;
     image: string;
     name: string;
     checkpointId: string;
     machine: Machine;
   }) {
-    logger("noop: restore");
+    const containerName = this.#getRunContainerName(opts.attemptId);
+    const { stdout, stderr, exitCode } =
+      await $`docker start --checkpoint=${opts.checkpointId} ${containerName}`;
+    debug({ stdout, stderr });
+
+    if (exitCode !== 0) {
+      throw new Error("docker start command failed");
+    }
   }
 
   async delete(opts: { runId: string }) {
@@ -282,16 +290,16 @@ class DockerProvider implements Provider {
       });
     });
 
-    socket.on("RESTORE", async (message) => {
-      logger("[RESTORE]", message);
-      await this.tasks.restore({
-        runId: message.image,
-        name: message.name,
-        image: message.image,
-        checkpointId: message.baseImage,
-        machine: message.machine,
-      });
-    });
+    // socket.on("RESTORE", async (message) => {
+    //   logger("[RESTORE]", message);
+    //   await this.tasks.restore({
+    //     runId: message.image,
+    //     name: message.name,
+    //     image: message.image,
+    //     checkpointId: message.baseImage,
+    //     machine: message.machine,
+    //   });
+    // });
 
     socket.on("HEALTH", async (message) => {
       logger("[HEALTH]", message);
@@ -345,16 +353,16 @@ class DockerProvider implements Provider {
           const image = items[0];
           const baseImageTag = items[1] ?? image;
 
-          await this.tasks.restore({
-            runId: image,
-            name: `${image}-restore`,
-            image,
-            checkpointId: baseImageTag,
-            machine: {
-              cpu: "1",
-              memory: "100Mi",
-            },
-          });
+          // await this.tasks.restore({
+          //   runId: image,
+          //   name: `${image}-restore`,
+          //   image,
+          //   checkpointId: baseImageTag,
+          //   machine: {
+          //     cpu: "1",
+          //     memory: "100Mi",
+          //   },
+          // });
 
           return reply.text(`sent restore request: ${body}`);
         }

@@ -44,9 +44,10 @@ export interface ProdWorkerToCoordinatorEvents {
     callback: (params: { success: boolean }) => {}
   ) => void;
   READY_FOR_EXECUTION: (message: VersionedMessage<{ attemptId: string }>) => void;
-  WAIT_FOR_DURATION: (message: VersionedMessage<{ seconds: string }>) => void;
-  WAIT_FOR_EVENT: (message: VersionedMessage<{ name: string }>) => void;
   TASK_HEARTBEAT: (message: VersionedMessage<{ runId: string }>) => void;
+  WAIT_FOR_BATCH: (message: VersionedMessage<{ id: string; runs: string[] }>) => void;
+  WAIT_FOR_DURATION: (message: VersionedMessage<{ ms: number }>) => void;
+  WAIT_FOR_TASK: (message: VersionedMessage<{ id: string }>) => void;
 }
 
 export interface CoordinatorToProdWorkerEvents {
@@ -74,6 +75,7 @@ export interface ProdWorkerSocketData {
   contentHash: string;
   projectRef: string;
   attemptId?: string;
+  podName: string;
 }
 
 // coordinator <--> platform

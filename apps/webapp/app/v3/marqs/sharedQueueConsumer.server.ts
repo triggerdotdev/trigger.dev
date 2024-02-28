@@ -530,6 +530,8 @@ export class SharedQueueConsumer {
         }
 
         try {
+          // TODO: only broadcast immediately if there is no checkpoint
+          //  otherwise, we should restore the checkpoint first and then broadcast
           socketIo.coordinatorNamespace.emit("RESUME", {
             version: "v1",
             attemptId: dependentAttempt.id,

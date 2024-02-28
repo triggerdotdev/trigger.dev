@@ -67,7 +67,14 @@ import { TaskMetadataWithRun } from "./types.js";
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);
 
-const prodRuntimeManager = new ProdRuntimeManager();
+const sender = new ZodMessageSender({
+  schema: childToWorkerMessages,
+  sender: async (message) => {
+    process.send?.(message);
+  },
+});
+
+const prodRuntimeManager = new ProdRuntimeManager(sender);
 
 runtime.setGlobalRuntimeManager(prodRuntimeManager);
 
@@ -189,13 +196,6 @@ function getTaskMetadata(): Array<TaskMetadataWithFilePath> {
     return metadata;
   });
 }
-
-const sender = new ZodMessageSender({
-  schema: childToWorkerMessages,
-  sender: async (message) => {
-    process.send?.(message);
-  },
-});
 
 const tasks = getTasks();
 

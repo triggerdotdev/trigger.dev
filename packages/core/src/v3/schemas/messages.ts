@@ -195,4 +195,17 @@ export const childToWorkerMessages = {
     id: z.string(),
   }),
   READY_TO_DISPOSE: z.undefined(),
+  WAIT_FOR_DURATION: z.object({
+    version: z.literal("v1").default("v1"),
+    ms: z.number(),
+  }),
+  WAIT_FOR_TASK: z.object({
+    version: z.literal("v1").default("v1"),
+    id: z.string(),
+  }),
+  WAIT_FOR_BATCH: z.object({
+    version: z.literal("v1").default("v1"),
+    id: z.string(),
+    runs: z.string().array(),
+  }),
 };

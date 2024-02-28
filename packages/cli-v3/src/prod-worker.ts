@@ -17,11 +17,12 @@ function getRandomPortNumber() {
   return getRandomInteger(8000, 9999);
 }
 
-const DEBUG = ["v1", "true"].includes(process.env.DEBUG ?? "") || false;
+const DEBUG = ["1", "true"].includes(process.env.DEBUG ?? "") || false;
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
 const COORDINATOR_HOST = process.env.COORDINATOR_HOST || "127.0.0.1";
 const COORDINATOR_PORT = Number(process.env.COORDINATOR_PORT || 50080);
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
+const POD_NAME = process.env.POD_NAME || "some-pod";
 const SHORT_HASH = process.env.TRIGGER_CONTENT_HASH!.slice(0, 9);
 
 const log = (...args: any[]) => {
@@ -67,8 +68,16 @@ class ProdWorker {
       contentHash: this.contentHash,
     });
     this.#backgroundWorker.onTaskHeartbeat.attach((id) => {
-      console.log("hearbeat", { id });
       this.#coordinatorSocket.emit("TASK_HEARTBEAT", { version: "v1", runId: id });
+    });
+    this.#backgroundWorker.onWaitForBatch.attach((message) => {
+      this.#coordinatorSocket.emit("WAIT_FOR_BATCH", { version: "v1", ...message });
+    });
+    this.#backgroundWorker.onWaitForDuration.attach((message) => {
+      this.#coordinatorSocket.emit("WAIT_FOR_DURATION", { version: "v1", ...message });
+    });
+    this.#backgroundWorker.onWaitForTask.attach((message) => {
+      this.#coordinatorSocket.emit("WAIT_FOR_TASK", { version: "v1", ...message });
     });
 
     this.#httpPort = port;
@@ -86,6 +95,7 @@ class ProdWorker {
         },
         extraHeaders: {
           "x-machine-name": MACHINE_NAME,
+          "x-pod-name": POD_NAME,
           "x-trigger-content-hash": this.contentHash,
           "x-trigger-cli-package-version": this.cliPackageVersion,
           "x-trigger-project-ref": this.projectRef,
@@ -195,7 +205,7 @@ class ProdWorker {
         case "/wait":
           this.#coordinatorSocket.emit("WAIT_FOR_DURATION", {
             version: "v1",
-            seconds: "60",
+            ms: 60_000,
           });
           // this is required when C/Ring established connections
           this.#coordinatorSocket.close();

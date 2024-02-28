@@ -181,6 +181,10 @@ export class ProdBackgroundWorker {
 
   public onTaskHeartbeat: Evt<string> = new Evt();
 
+  public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
+  public onWaitForDuration: Evt<{ version?: "v1"; ms: number }> = new Evt();
+  public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
+
   public tasks: Array<TaskMetadataWithFilePath> = [];
 
   _taskRunProcesses: Map<string, TaskRunProcess> = new Map();
@@ -288,6 +292,22 @@ export class ProdBackgroundWorker {
 
       taskRunProcess.onExit.attach(() => {
         this._taskRunProcesses.delete(payload.execution.run.id);
+      });
+
+      taskRunProcess.onTaskHeartbeat.attach((id) => {
+        this.onTaskHeartbeat.post(id);
+      });
+
+      taskRunProcess.onWaitForBatch.attach((message) => {
+        this.onWaitForBatch.post(message);
+      });
+
+      taskRunProcess.onWaitForDuration.attach((message) => {
+        this.onWaitForDuration.post(message);
+      });
+
+      taskRunProcess.onWaitForTask.attach((message) => {
+        this.onWaitForTask.post(message);
       });
 
       await taskRunProcess.initialize();
@@ -427,8 +447,13 @@ class TaskRunProcess {
   private _attemptStatuses: Map<string, "PENDING" | "REJECTED" | "RESOLVED"> = new Map();
   private _currentExecution: TaskRunExecution | undefined;
   private _isBeingKilled: boolean = false;
+
   public onTaskHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<number> = new Evt();
+
+  public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
+  public onWaitForDuration: Evt<{ version?: "v1"; ms: number }> = new Evt();
+  public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
 
   constructor(
     private path: string,
@@ -545,6 +570,21 @@ class TaskRunProcess {
         break;
       }
       case "TASKS_READY": {
+        break;
+      }
+      case "WAIT_FOR_BATCH": {
+        this.onWaitForBatch.post(message.payload);
+
+        break;
+      }
+      case "WAIT_FOR_DURATION": {
+        this.onWaitForDuration.post(message.payload);
+
+        break;
+      }
+      case "WAIT_FOR_TASK": {
+        this.onWaitForTask.post(message.payload);
+
         break;
       }
     }

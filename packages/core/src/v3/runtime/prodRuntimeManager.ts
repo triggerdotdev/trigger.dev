@@ -4,7 +4,9 @@ import {
   TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionResult,
+  childToWorkerMessages,
 } from "../schemas";
+import { ZodMessageSender } from "../zodMessageHandler";
 import { RuntimeManager } from "./manager";
 
 export class ProdRuntimeManager implements RuntimeManager {
@@ -19,6 +21,8 @@ export class ProdRuntimeManager implements RuntimeManager {
   > = new Map();
 
   _tasks: Map<string, TaskMetadataWithFilePath> = new Map();
+
+  constructor(private sender: ZodMessageSender<typeof childToWorkerMessages>) {}
 
   disable(): void {
     // do nothing
@@ -35,20 +39,27 @@ export class ProdRuntimeManager implements RuntimeManager {
   }
 
   async waitForDuration(ms: number): Promise<void> {
+    await this.sender.send("WAIT_FOR_DURATION", {
+      ms,
+    });
+
     return new Promise((resolve) => {
+      // TODO: resolve after resume signal
       setTimeout(resolve, ms);
     });
   }
 
   async waitUntil(date: Date): Promise<void> {
-    return new Promise((resolve) => {
-      setTimeout(resolve, date.getTime() - Date.now());
-    });
+    return this.waitForDuration(date.getTime() - Date.now());
   }
 
   async waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
     const promise = new Promise<TaskRunExecutionResult>((resolve, reject) => {
       this._taskWaits.set(params.id, { resolve, reject });
+    });
+
+    await this.sender.send("WAIT_FOR_TASK", {
+      id: params.id,
     });
 
     return await promise;
@@ -70,6 +81,11 @@ export class ProdRuntimeManager implements RuntimeManager {
         });
       })
     );
+
+    await this.sender.send("WAIT_FOR_BATCH", {
+      id: params.id,
+      runs: params.runs,
+    });
 
     const results = await promise;
 
