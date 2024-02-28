@@ -311,6 +311,14 @@ export function v3TestPath(organization: OrgForPath, project: ProjectForPath) {
   return `${v3ProjectPath(organization, project)}/test`;
 }
 
+export function v3TestTaskPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  task: TaskForPath
+) {
+  return `${v3TestPath(organization, project)}/tasks/${task.friendlyId}`;
+}
+
 export function v3RunsPath(
   organization: OrgForPath,
   project: ProjectForPath,

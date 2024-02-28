@@ -1,0 +1,87 @@
+import { TaskRunAttemptStatus } from "@trigger.dev/database";
+import { PrismaClient, prisma } from "~/db.server";
+import { getUsername } from "~/utils/username";
+
+type TestTaskOptions = {
+  userId: string;
+  projectSlug: string;
+  taskFriendId: string;
+};
+
+export type TestTask = Awaited<ReturnType<TestTaskPresenter["call"]>>;
+
+export class TestTaskPresenter {
+  #prismaClient: PrismaClient;
+
+  constructor(prismaClient: PrismaClient = prisma) {
+    this.#prismaClient = prismaClient;
+  }
+
+  public async call({ userId, projectSlug, taskFriendId }: TestTaskOptions) {
+    const task = await this.#prismaClient.backgroundWorkerTask.findFirstOrThrow({
+      where: {
+        friendlyId: taskFriendId,
+      },
+    });
+
+    //todo get runs
+
+    const latestRuns = await this.#prismaClient.$queryRaw<
+      {
+        id: string;
+        number: BigInt;
+        friendlyId: string;
+        createdAt: Date;
+        status: TaskRunAttemptStatus;
+        payload: string;
+        payloadType: string;
+        runtimeEnvironmentId: string;
+      }[]
+    >`
+    SELECT 
+      taskr.id,
+      taskr.number,
+      taskr."friendlyId",
+      taskr."createdAt",
+      tra.status,
+      taskr.payload,
+      taskr."payloadType",
+      taskr."runtimeEnvironmentId"
+    FROM
+      (
+        SELECT 
+            tr.* 
+        FROM 
+            "TaskRun" as tr
+        JOIN
+            "BackgroundWorkerTask" as bwt
+        ON
+          tr."taskIdentifier" = bwt.slug
+        WHERE
+            bwt."friendlyId" = ${taskFriendId}
+        ORDER BY 
+            tr."createdAt" DESC
+        LIMIT 5
+      ) AS taskr
+    LEFT JOIN
+      "TaskRunAttempt" AS tra
+    ON
+      taskr.id = tra."taskRunId"
+    ORDER BY
+      tra."createdAt" DESC
+    LIMIT 5;`;
+
+    return {
+      task,
+      examples: [{ id: "1", payload: "{}" }],
+      runs: latestRuns.map((r) => {
+        //we need to format the code on the server, because we detect if the sample has been edited by comparing the contents
+        try {
+          r.payload = JSON.stringify(JSON.parse(r.payload ?? ""), null, 2);
+        } catch (e) {}
+
+        return { ...r, number: Number(r.number) };
+      }),
+    };
+  }
+}
