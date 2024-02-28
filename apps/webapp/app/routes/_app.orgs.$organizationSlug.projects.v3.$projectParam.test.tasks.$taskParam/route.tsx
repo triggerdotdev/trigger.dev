@@ -214,7 +214,7 @@ export default function Page() {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="bg-midnight-900 flex items-center justify-end gap-2 border-t border-grid-bright">
+      <div className="bg-midnight-900 flex items-center justify-end gap-2 border-t border-grid-bright px-2">
         <div className="flex items-center gap-1">
           <TaskPath
             filePath={task.filePath}
@@ -227,7 +227,7 @@ export default function Page() {
         </div>
         <Button
           type="submit"
-          variant="primary/medium"
+          variant="primary/small"
           LeadingIcon="beaker"
           leadingIconClassName="text-text-bright"
           shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
