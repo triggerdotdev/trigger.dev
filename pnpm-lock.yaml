@@ -192,6 +192,7 @@ importers:
       compression: ^1.7.4
       cron-parser: ^4.7.1
       cross-env: ^7.0.3
+      css-loader: ^6.10.0
       cuid: ^2.1.8
       datepicker: link:@types/@react-aria/datepicker
       emails: workspace:*
@@ -216,6 +217,8 @@ importers:
       non.geist: ^1.0.2
       npm-run-all: ^4.1.5
       ohash: ^1.1.3
+      postcss-import: ^16.0.1
+      postcss-loader: ^8.1.1
       posthog-js: ^1.93.3
       posthog-node: ^3.1.3
       prettier: ^2.8.8
@@ -248,6 +251,7 @@ importers:
       storybook: ^7.0.7
       storybook-addon-designs: 7.0.0-beta.2
       storybook-addon-variants: ^0.2.0
+      style-loader: ^3.3.4
       tailwind-merge: ^1.12.0
       tailwind-scrollbar: ^3.0.1
       tailwind-scrollbar-hide: ^1.1.7
@@ -435,11 +439,14 @@ importers:
       autoprefixer: 10.4.13
       babel-loader: 9.1.3
       babel-preset-react-app: 10.0.1
+      css-loader: 6.10.0
       datepicker: link:@types/@react-aria/datepicker
       esbuild: 0.15.18
       eslint: 8.31.0
       eslint-config-prettier: 8.6.0_eslint@8.31.0
       npm-run-all: 4.1.5
+      postcss-import: 16.0.1
+      postcss-loader: 8.1.1_typescript@5.2.2
       prettier: 2.8.8
       prettier-plugin-tailwindcss: 0.3.0_prettier@2.8.8
       prop-types: 15.8.1
@@ -447,6 +454,7 @@ importers:
       storybook: 7.0.9
       storybook-addon-designs: 7.0.0-beta.2_gtov7sygms2deenjyn5i42ywqa
       storybook-addon-variants: 0.2.0_biqbaboplfbrettd7655fr4n2y
+      style-loader: 3.3.4
       tailwind-scrollbar: 3.0.1_tailwindcss@3.4.1
       tailwindcss: 3.4.1_ts-node@10.9.1
       ts-node: 10.9.1_v2fyojhutw2zqp3xtxirvaa4jq
@@ -17981,7 +17989,7 @@ packages:
       '@types/http-errors': 2.0.1
       '@types/keygrip': 1.0.2
       '@types/koa-compose': 3.2.5
-      '@types/node': 20.6.0
+      '@types/node': 20.11.20
     dev: false
 
   /@types/koa__router/12.0.3:
@@ -21655,6 +21663,22 @@ packages:
       path-type: 4.0.0
     dev: true
 
+  /cosmiconfig/9.0.0_typescript@5.2.2:
+    resolution: {integrity: sha512-itvL5h8RETACmOTFc4UfIyB2RfEHi71Ax6E/PivVxq9NseKbOWpeyHEOIbmAw1rs8Ak0VursQNww7lf7YtUwzg==}
+    engines: {node: '>=14'}
+    peerDependencies:
+      typescript: '>=4.9.5'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      env-paths: 2.2.1
+      import-fresh: 3.3.0
+      js-yaml: 4.1.0
+      parse-json: 5.2.0
+      typescript: 5.2.2
+    dev: true
+
   /cp-file/7.0.0:
     resolution: {integrity: sha512-0Cbj7gyvFVApzpK/uhCtQ/9kE9UnYpxMzaq5nQQC/Dh4iaj5fxp7iEFIullrYwzj8nf0qnsI1Qsx34hAeAebvw==}
     engines: {node: '>=8'}
@@ -22698,7 +22722,6 @@ packages:
   /env-paths/2.2.1:
     resolution: {integrity: sha512-+h1lkLKhZMTYjog1VEpJNG7NZJWcuc2DDk/qsqSTRRCOXiLjeQ1d1/udrUGhqMxUgAlwKNZ0cf2uqan5GLuS2A==}
     engines: {node: '>=6'}
-    dev: false
 
   /envinfo/7.8.1:
     resolution: {integrity: sha512-/o+BXHmB7ocbHEAs6F2EnG0ogybVVUdkRunTT2glZU9XAaGmhqskrvKwqXuDfNjEO0LZKWdejEEpnq8aM0tOaw==}
@@ -28099,6 +28122,7 @@ packages:
   /jiti/1.18.2:
     resolution: {integrity: sha512-QAdOptna2NYiSSpv0O/BwoHBSmz4YhpzJHyi+fnMRTXFjp7B8i/YG5Z8IfusxB1ufjcD2Sre1F3R+nX3fvy7gg==}
     hasBin: true
+    dev: false
 
   /jiti/1.21.0:
     resolution: {integrity: sha512-gFqAIbuKyyso/3G2qhiO2OM6shY6EPP/R0+mkDbyspxKazh8BXDC5FiFsUjlczgdNz/vfra0da2y+aHrusLG/Q==}
@@ -31840,6 +31864,17 @@ packages:
       read-cache: 1.0.0
       resolve: 1.22.4
 
+  /postcss-import/16.0.1:
+    resolution: {integrity: sha512-i2Pci0310NaLHr/5JUFSw1j/8hf1CzwMY13g6ZDxgOavmRHQi2ba3PmUHoihO+sjaum+KmCNzskNsw7JDrg03g==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      postcss: ^8.0.0
+    dependencies:
+      postcss-value-parser: 4.2.0
+      read-cache: 1.0.0
+      resolve: 1.22.4
+    dev: true
+
   /postcss-js/4.0.0_postcss@8.4.31:
     resolution: {integrity: sha512-77QESFBwgX4irogGVPgQ5s07vLvFqWr228qZY+w6lW599cRlK/HmnlivnnVUxkjHnCu4J16PDMHcH+e+2HbvTQ==}
     engines: {node: ^12 || ^14 || >= 16}
@@ -31993,9 +32028,29 @@ packages:
       webpack: ^5.0.0
     dependencies:
       cosmiconfig: 8.1.3
-      jiti: 1.18.2
+      jiti: 1.21.0
       klona: 2.0.6
       semver: 7.5.4
+    dev: true
+
+  /postcss-loader/8.1.1_typescript@5.2.2:
+    resolution: {integrity: sha512-0IeqyAsG6tYiDRCYKQJLAmgQr47DX6N7sFSWvQxt6AcupX8DIdmykuk/o/tx0Lze3ErGHJEp5OSRxrelC6+NdQ==}
+    engines: {node: '>= 18.12.0'}
+    peerDependencies:
+      '@rspack/core': 0.x || 1.x
+      postcss: ^7.0.0 || ^8.0.1
+      webpack: ^5.0.0
+    peerDependenciesMeta:
+      '@rspack/core':
+        optional: true
+      webpack:
+        optional: true
+    dependencies:
+      cosmiconfig: 9.0.0_typescript@5.2.2
+      jiti: 1.21.0
+      semver: 7.5.4
+    transitivePeerDependencies:
+      - typescript
     dev: true
 
   /postcss-modules-extract-imports/3.0.0_postcss@8.4.29:
@@ -37751,7 +37806,7 @@ packages:
     dependencies:
       '@types/node': 18.11.18
       esbuild: 0.18.11
-      postcss: 8.4.29
+      postcss: 8.4.35
       rollup: 3.29.1
     optionalDependencies:
       fsevents: 2.3.3
