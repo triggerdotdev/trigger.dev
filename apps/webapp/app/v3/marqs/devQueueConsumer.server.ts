@@ -143,7 +143,11 @@ export class DevQueueConsumer {
 
     const cancelledAt = new Date();
 
-    for (const [attemptId, messageId] of this._inProgressAttempts) {
+    const inProgressAttempts = new Map(this._inProgressAttempts);
+
+    this._inProgressAttempts.clear();
+
+    for (const [attemptId, messageId] of inProgressAttempts) {
       await this.#cancelInProgressAttempt(attemptId, messageId, service, cancelledAt, reason);
     }
   }
