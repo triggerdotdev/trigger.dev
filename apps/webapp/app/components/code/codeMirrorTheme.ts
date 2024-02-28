@@ -36,7 +36,7 @@ export function darkTheme(): Extension {
 
       ".cm-content": {
         caretColor: cursor,
-        fontFamily: "monospace",
+        fontFamily: "Geist Mono Variable",
         fontSize: "14px",
       },
 
