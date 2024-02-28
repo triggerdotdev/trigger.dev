@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigation } from "@remix-run/react";
+import { NavLink, Outlet, useNavigation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
@@ -41,6 +41,7 @@ export default function Page() {
   const isLoading = navigation.state !== "idle";
   const project = useProject();
   const user = useUser();
+  const { taskParam } = useParams();
 
   return (
     <PageContainer>
@@ -60,7 +61,7 @@ export default function Page() {
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel order={2} minSize={30} defaultSize={70}>
-              <Outlet />
+              <Outlet key={taskParam} />
             </ResizablePanel>
           </ResizablePanelGroup>
         </div>
