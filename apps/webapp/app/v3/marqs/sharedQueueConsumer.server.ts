@@ -245,7 +245,7 @@ export class SharedQueueConsumer {
             },
           },
           orderBy: {
-            createdAt: "desc",
+            updatedAt: "desc",
           },
           include: {
             tasks: true,
@@ -464,7 +464,12 @@ export class SharedQueueConsumer {
           },
           include: {
             tasks: true,
-            imageDetails: true,
+            imageDetails: {
+              take: 1,
+              orderBy: {
+                updatedAt: "desc",
+              },
+            },
           },
         });
 

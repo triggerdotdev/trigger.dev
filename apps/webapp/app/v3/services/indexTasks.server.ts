@@ -28,7 +28,17 @@ export class IndexTasksService {
     }
 
     if (imageDetails.backgroundWorkerId) {
-      logger.error(`Image details have already been indexed for ID: ${imageDetailsId}`);
+      logger.debug(
+        `Image details have already been indexed for ${imageDetails.friendlyId}. Refreshing worker timestamp.`
+      );
+      await this.#prismaClient.backgroundWorker.update({
+        where: {
+          id: imageDetails.backgroundWorkerId,
+        },
+        data: {
+          updatedAt: new Date(),
+        },
+      });
       return;
     }
 
