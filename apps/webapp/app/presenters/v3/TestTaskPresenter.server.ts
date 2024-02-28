@@ -5,7 +5,7 @@ import { getUsername } from "~/utils/username";
 type TestTaskOptions = {
   userId: string;
   projectSlug: string;
-  taskFriendId: string;
+  taskFriendlyId: string;
 };
 
 export type TestTask = Awaited<ReturnType<TestTaskPresenter["call"]>>;
@@ -17,7 +17,7 @@ export class TestTaskPresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ userId, projectSlug, taskFriendId }: TestTaskOptions) {
+  public async call({ userId, projectSlug, taskFriendlyId }: TestTaskOptions) {
     const task = await this.#prismaClient.backgroundWorkerTask.findFirstOrThrow({
       select: {
         id: true,
@@ -43,7 +43,7 @@ export class TestTaskPresenter {
         },
       },
       where: {
-        friendlyId: taskFriendId,
+        friendlyId: taskFriendlyId,
       },
     });
 
@@ -69,7 +69,7 @@ export class TestTaskPresenter {
       ON
           tr."taskIdentifier" = bwt.slug
       WHERE
-          bwt."friendlyId" = ${taskFriendId}
+          bwt."friendlyId" = ${taskFriendlyId}
       ORDER BY 
           tr."createdAt" DESC
       LIMIT 5
@@ -107,7 +107,7 @@ export class TestTaskPresenter {
         taskIdentifier: task.slug,
         filePath: task.filePath,
         exportName: task.exportName,
-        friendlyId: taskFriendId,
+        friendlyId: taskFriendlyId,
         environment: {
           id: task.runtimeEnvironment.id,
           type: task.runtimeEnvironment.type,

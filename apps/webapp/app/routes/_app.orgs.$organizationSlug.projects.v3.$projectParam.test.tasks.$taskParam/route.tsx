@@ -34,7 +34,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { task, runs } = await presenter.call({
     userId,
     projectSlug: projectParam,
-    taskFriendId: taskParam,
+    taskFriendlyId: taskParam,
   });
 
   return typedjson({
