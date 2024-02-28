@@ -59,38 +59,47 @@ export class TestTaskPresenter {
         runtimeEnvironmentId: string;
       }[]
     >`
-    SELECT 
-      taskr.id,
-      taskr.number,
-      taskr."friendlyId",
-      taskr."createdAt",
-      tra.status,
-      taskr.payload,
-      taskr."payloadType",
-      taskr."runtimeEnvironmentId"
-    FROM
-      (
-        SELECT 
-            tr.* 
-        FROM 
-            "TaskRun" as tr
-        JOIN
-            "BackgroundWorkerTask" as bwt
-        ON
+    WITH taskruns AS (
+      SELECT 
+          tr.* 
+      FROM 
+          "TaskRun" as tr
+      JOIN
+          "BackgroundWorkerTask" as bwt
+      ON
           tr."taskIdentifier" = bwt.slug
-        WHERE
-            bwt."friendlyId" = ${taskFriendId}
-        ORDER BY 
-            tr."createdAt" DESC
-        LIMIT 5
-      ) AS taskr
+      WHERE
+          bwt."friendlyId" = ${taskFriendId}
+      ORDER BY 
+          tr."createdAt" DESC
+      LIMIT 5
+    ), latestattempts AS (
+        SELECT
+            "taskRunId",
+            status,
+            ROW_NUMBER() OVER(PARTITION BY "taskRunId" ORDER BY "createdAt" DESC) AS rank
+        FROM
+            "TaskRunAttempt"
+    )
+    SELECT 
+        taskr.id,
+        taskr.number,
+        taskr."friendlyId",
+        taskr."taskIdentifier",
+        taskr."createdAt",
+        tra.status,
+        taskr.payload,
+        taskr."payloadType",
+        taskr."runtimeEnvironmentId"
+    FROM 
+        taskruns AS taskr
     LEFT JOIN
-      "TaskRunAttempt" AS tra
-    ON
-      taskr.id = tra."taskRunId"
+        latestattempts AS tra
+        ON taskr.id = tra."taskRunId"
+    WHERE
+        tra.rank = 1
     ORDER BY
-      tra."createdAt" DESC
-    LIMIT 5;`;
+        taskr."createdAt" DESC;`;
 
     return {
       task: {

@@ -1,7 +1,7 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { Form, useActionData, useNavigation, useSubmit } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -20,9 +20,11 @@ import {
 } from "~/components/primitives/Resizable";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
+import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { TestTaskPresenter } from "~/presenters/v3/TestTaskPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { v3TaskParamsSchema } from "~/utils/pathBuilder";
+import { v3RunPath, v3TaskParamsSchema } from "~/utils/pathBuilder";
+import { TestTaskService } from "~/v3/services/testTask.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -66,6 +68,34 @@ const schema = z.object({
   environmentId: z.string(),
   accountId: z.string().optional(),
 });
+
+export const action: ActionFunction = async ({ request, params }) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug, projectParam, taskParam } = v3TaskParamsSchema.parse(params);
+
+  const formData = await request.formData();
+  const submission = parse(formData, { schema });
+
+  if (!submission.value) {
+    return json(submission);
+  }
+
+  const testService = new TestTaskService();
+  const run = await testService.call(userId, submission.value);
+
+  if (!run) {
+    return redirectBackWithErrorMessage(
+      request,
+      "Unable to start a test run: Something went wrong"
+    );
+  }
+
+  return redirectWithSuccessMessage(
+    v3RunPath({ slug: organizationSlug }, { slug: projectParam }, { friendlyId: run.friendlyId }),
+    request,
+    "Test run created"
+  );
+};
 
 const startingJson = "{\n\n}";
 
@@ -173,7 +203,7 @@ export default function Page() {
                         <DateTime date={run.createdAt} />
                       </Paragraph>
                       <div className="flex items-center gap-1 text-xs text-dimmed">
-                        <div>Run #${run.number}</div>
+                        <div>Run #{run.number}</div>
                         <TaskRunStatus status={run.status} />
                       </div>
                     </div>
