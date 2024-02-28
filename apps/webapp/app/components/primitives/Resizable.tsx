@@ -29,11 +29,11 @@ const ResizableHandle = ({
     )}
     {...props}
   >
-    <div className="bg-border absolute left-[0.0625rem] top-0 h-full w-px group-hover:left-0 group-hover:w-0.75 group-hover:bg-indigo-500" />
+    <div className="absolute left-[0.0625rem] top-0 h-full w-px bg-grid-bright group-hover:left-0 group-hover:w-0.75 group-hover:bg-indigo-500" />
     {withHandle && (
       <div className="z-10 flex h-5 w-3 flex-col items-center justify-center gap-[0.1875rem] bg-background-dimmed group-hover:hidden">
         {Array.from({ length: 3 }).map((_, index) => (
-          <div key={index} className="h-[0.1875rem] w-0.75 rounded-full bg-charcoal-750" />
+          <div key={index} className="h-[0.1875rem] w-0.75 rounded-full bg-charcoal-600" />
         ))}
       </div>
     )}
