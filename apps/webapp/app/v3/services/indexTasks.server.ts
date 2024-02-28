@@ -1,5 +1,6 @@
 import { PrismaClient, prisma } from "~/db.server";
 import { socketIo } from "../handleSocketIo.server";
+import { logger } from "~/services/logger.server";
 
 export type IndexTasksServiceOptions = {
   idempotencyKey?: string;
@@ -22,11 +23,13 @@ export class IndexTasksService {
     });
 
     if (!imageDetails) {
-      throw new Error(`No image details with this ID: ${imageDetailsId}`);
+      logger.error(`No image details with this ID: ${imageDetailsId}`);
+      return;
     }
 
     if (imageDetails.backgroundWorkerId) {
-      throw new Error(`Image details have already been indexed for ID: ${imageDetailsId}`);
+      logger.error(`Image details have already been indexed for ID: ${imageDetailsId}`);
+      return;
     }
 
     // just broadcast for now - there should only ever be one provider connected
