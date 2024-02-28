@@ -6,3 +6,4 @@ export * from "./messages";
 export * from "./style";
 export * from "./fetch";
 export * from "./eventFilter";
+export * from "./openTelemetry";

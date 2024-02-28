@@ -1,9 +1,13 @@
+import {
+  isExceptionSpanEvent,
+  type ExceptionEventProperties,
+  type SpanEvent as OtelSpanEvent,
+} from "@trigger.dev/core/v3";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Callout } from "~/components/primitives/Callout";
-import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { DateTimeAccurate } from "~/components/primitives/DateTime";
+import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import type { OtelExceptionProperty, OtelSpanEvent } from "~/presenters/v3/SpanPresenter.server";
 
 type SpanEventsProps = {
   spanEvents: OtelSpanEvent[];
@@ -39,7 +43,7 @@ function SpanEventHeader({
 }
 
 function SpanEvent({ spanEvent }: { spanEvent: OtelSpanEvent }) {
-  if (spanEvent.properties?.exception) {
+  if (isExceptionSpanEvent(spanEvent)) {
     return <SpanEventError spanEvent={spanEvent} exception={spanEvent.properties.exception} />;
   }
 
@@ -58,7 +62,7 @@ function SpanEventError({
   exception,
 }: {
   spanEvent: OtelSpanEvent;
-  exception: OtelExceptionProperty;
+  exception: ExceptionEventProperties;
 }) {
   return (
     <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 p-3">

@@ -103,7 +103,7 @@ export default function Page() {
             </div>
           )}
 
-          {event.output !== null && (
+          {event.output && (
             <div>
               <Header2 spacing>Output</Header2>
               <CodeBlock code={event.output} maxLines={20} />

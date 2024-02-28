@@ -47,21 +47,23 @@ export class TriggerTaskService extends BaseService {
       }
 
       return await eventRepository.traceEvent(
-        `${taskId}`,
+        taskId,
         {
           context: options.traceContext,
           kind: "SERVER",
           environment,
           taskSlug: taskId,
           attributes: {
-            metadata: {
-              ...flattenAttributes(body.payload, SemanticInternalAttributes.PAYLOAD),
+            properties: {
+              [SemanticInternalAttributes.PAYLOAD]: body.payload,
             },
             style: {
               icon: "play",
               variant: PRIMARY_VARIANT,
             },
           },
+          incomplete: true,
+          immediate: true,
         },
         async (event, traceContext) => {
           const lockId = taskIdentifierToLockId(taskId);

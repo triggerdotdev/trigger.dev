@@ -1,9 +1,7 @@
 import { ChevronRightIcon } from "@heroicons/react/20/solid";
-import { Span } from "@opentelemetry/sdk-trace-base";
 import { TaskEventStyle } from "@trigger.dev/core/v3";
-import { TaskEventLevel } from "@trigger.dev/database";
+import type { TaskEventLevel } from "@trigger.dev/database";
 import { Fragment } from "react";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import { cn } from "~/utils/cn";
 
 type SpanTitleProps = {

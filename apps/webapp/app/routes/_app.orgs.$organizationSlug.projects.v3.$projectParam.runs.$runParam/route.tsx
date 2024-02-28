@@ -3,12 +3,13 @@ import {
   ChevronRightIcon,
   ExclamationCircleIcon,
 } from "@heroicons/react/20/solid";
-import { Link, Outlet, useNavigate, useParams, useSubmit } from "@remix-run/react";
+import { Link, Outlet, useNavigate } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { formatDuration, formatDurationNanoseconds } from "@trigger.dev/core/v3";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
+import { useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Input } from "~/components/primitives/Input";
 import {
@@ -26,21 +27,19 @@ import {
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
-import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
+import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { useDebounce } from "~/hooks/useDebounce";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
-import { useThrottle } from "~/hooks/useThrottle";
+import { useUser } from "~/hooks/useUser";
 import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3RunParamsSchema, v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { useUser } from "~/hooks/useUser";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -285,6 +284,11 @@ function TasksTreeView({
                   <LiveDuration startTime={node.data.startTime} />
                 ) : node.data.duration > 0 ? (
                   <Duration duration={node.data.duration} />
+                ) : null}
+                {node.data.isCancelled ? (
+                  <Paragraph variant="extra-small" className="text-amber-500">
+                    Cancelled
+                  </Paragraph>
                 ) : null}
               </div>
             </div>
