@@ -4,7 +4,6 @@ import {
   PlatformToCoordinatorEvents,
   ProviderClientToServerEvents,
   ProviderServerToClientEvents,
-  ZodMessageSender,
   clientWebsocketMessages,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
@@ -13,6 +12,7 @@ import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { SharedSocketConnection } from "./sharedSocketConnection";
 import { SharedQueueTasks } from "./marqs/sharedQueueConsumer.server";
+import { CreateCheckpointService } from "./services/createCheckpoint.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 const sharedQueueTasks = singleton("sharedQueueTasks", () => new SharedQueueTasks());
@@ -80,9 +80,17 @@ function createCoordinatorNamespace(io: Server) {
     });
 
     socket.on("TASK_HEARTBEAT", async (message) => {
-      logger("[TASK_HEARTBEAT]", { runId: message.runId });
+      // TODO: handle RESUME message heartbeats
+      logger("[TASK_HEARTBEAT]", message);
 
-      await sharedQueueTasks.taskHeartbeat(message.runId);
+      await sharedQueueTasks.taskHeartbeat(message.attemptFriendlyId);
+    });
+
+    socket.on("CHEAKPOINT_CREATED", async (message) => {
+      logger("[CHEAKPOINT_CREATED]", message);
+
+      const createCheckpoint = new CreateCheckpointService();
+      await createCheckpoint.call(message);
     });
   });
 

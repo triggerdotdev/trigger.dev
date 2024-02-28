@@ -430,6 +430,12 @@ export class SharedQueueConsumer {
           },
           include: {
             taskRun: true,
+            checkpoints: {
+              take: 1,
+              orderBy: {
+                createdAt: "desc",
+              },
+            },
           },
         });
 
@@ -530,17 +536,30 @@ export class SharedQueueConsumer {
         }
 
         try {
-          // TODO: only broadcast immediately if there is no checkpoint
-          //  otherwise, we should restore the checkpoint first and then broadcast
-          socketIo.coordinatorNamespace.emit("RESUME", {
-            version: "v1",
-            attemptId: dependentAttempt.id,
-            image: backgroundWorker.imageDetails[0].tag,
-            completion,
-            execution: execution.execution,
-          });
-          // FIXME: should heartbeat and ack on completion instead
-          await marqs?.acknowledgeMessage(message.messageId);
+          const latestCheckpoint = dependentAttempt.checkpoints[0];
+
+          if (!latestCheckpoint) {
+            // No checkpoint means the task should still be running
+            // We can broadcast to all coordinators to resume immediately
+            socketIo.coordinatorNamespace.emit("RESUME", {
+              version: "v1",
+              attemptId: dependentAttempt.id,
+              image: backgroundWorker.imageDetails[0].tag,
+              completion,
+              execution: execution.execution,
+            });
+          } else {
+            // There's a checkpoint we need to restore first
+            // TODO: Send RESUME message once the restored task has checked in
+            socketIo.providerNamespace.emit("RESTORE", {
+              version: "v1",
+              id: latestCheckpoint.id,
+              attemptId: latestCheckpoint.attemptId,
+              type: latestCheckpoint.type,
+              location: latestCheckpoint.location,
+              reason: latestCheckpoint.reason ?? undefined,
+            });
+          }
         } catch (e) {
           if (e instanceof Error) {
             this._currentSpan?.recordException(e);
@@ -738,6 +757,8 @@ export class SharedQueueTasks {
               },
             },
             backgroundWorkerTask: true,
+            taskRunDependency: true,
+            batchTaskRunDependency: true,
           },
         })
       : await prisma.taskRunAttempt.update({
@@ -755,6 +776,8 @@ export class SharedQueueTasks {
               },
             },
             backgroundWorkerTask: true,
+            taskRunDependency: true,
+            batchTaskRunDependency: true,
           },
         });
 
@@ -809,6 +832,7 @@ export class SharedQueueTasks {
         }
       );
 
+      // FIXME: If this is a resumed attempt, we need to ack the RESUME and enqueue another EXECUTE (as it will no longer exist)
       await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
     } else {
       // Attempt succeeded or this was the last retry
@@ -867,9 +891,9 @@ export class SharedQueueTasks {
     return flattenAttributes(context, "ctx");
   }
 
-  async taskHeartbeat(id: string, seconds: number = 60) {
+  async taskHeartbeat(attemptFriendlyId: string, seconds: number = 60) {
     const taskRunAttempt = await prisma.taskRunAttempt.findUnique({
-      where: { friendlyId: id },
+      where: { friendlyId: attemptFriendlyId },
     });
 
     if (!taskRunAttempt) {

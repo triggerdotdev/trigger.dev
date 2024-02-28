@@ -99,12 +99,16 @@ class Checkpointer {
       const { tag } = await this.#buildImage(path, podName);
       const { destination } = await this.#pushImage(tag);
 
-      this.#logger("checkpointed and pushed image to:", destination);
+      if (this.#dockerMode) {
+        this.#logger("checkpoint created:", { podName, path });
+      } else {
+        this.#logger("checkpointed and pushed image to:", destination);
+      }
 
       return {
         path,
         tag,
-        destination,
+        destination: this.#dockerMode ? path : destination,
         docker: this.#dockerMode,
       };
     } catch (error) {
@@ -126,7 +130,7 @@ class Checkpointer {
       const path = randomUUID();
 
       try {
-        debug(await $`docker checkpoint create ${podName} ${path}`);
+        debug(await $`docker checkpoint create --leave-running ${podName} ${path}`);
       } catch (error: any) {
         this.#logger(error.stderr);
       }
@@ -529,9 +533,25 @@ class TaskCoordinator {
         // this.#checkpointer.checkpointAndPush(socket.data.podName);
       });
 
-      socket.on("WAIT_FOR_DURATION", (message) => {
+      socket.on("WAIT_FOR_DURATION", async (message, callback) => {
         logger("[WAIT_FOR_DURATION]", message);
-        // this.#checkpointer.checkpointAndPush(socket.data.podName);
+        const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
+
+        if (!checkpoint) {
+          logger("Failed to checkpoint", { podName: socket.data.podName });
+          callback({ success: false });
+          return;
+        }
+
+        this.#platformSocket?.emit("CHEAKPOINT_CREATED", {
+          version: "v1",
+          attemptId: socket.data.attemptId,
+          docker: checkpoint.docker,
+          location: checkpoint.destination,
+          reason: "WAIT_FOR_DURATION",
+        });
+
+        callback({ success: true });
       });
 
       socket.on("WAIT_FOR_TASK", (message) => {
@@ -602,6 +622,7 @@ class TaskCoordinator {
         setSocketDataFromHeader("contentHash", "x-trigger-content-hash");
         setSocketDataFromHeader("cliPackageVersion", "x-trigger-cli-package-version");
         setSocketDataFromHeader("projectRef", "x-trigger-project-ref");
+        setSocketDataFromHeader("attemptId", "x-trigger-attempt-id");
         setSocketDataFromHeader("podName", "x-pod-name");
       } catch (error) {
         return socket.disconnect(true);

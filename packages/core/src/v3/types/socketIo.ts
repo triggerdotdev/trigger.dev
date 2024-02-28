@@ -20,10 +20,11 @@ export interface ProviderServerToClientEvents {
   INVOKE: (message: VersionedMessage<{ name: string; machine: Machine }>) => void;
   RESTORE: (
     message: VersionedMessage<{
-      name: string;
-      image: string;
-      baseImage: string;
-      machine: Machine;
+      id: string;
+      attemptId: string;
+      type: "DOCKER" | "KUBERNETES";
+      location: string;
+      reason?: string;
     }>
   ) => void;
   DELETE: (
@@ -44,9 +45,12 @@ export interface ProdWorkerToCoordinatorEvents {
     callback: (params: { success: boolean }) => {}
   ) => void;
   READY_FOR_EXECUTION: (message: VersionedMessage<{ attemptId: string }>) => void;
-  TASK_HEARTBEAT: (message: VersionedMessage<{ runId: string }>) => void;
+  TASK_HEARTBEAT: (message: VersionedMessage<{ attemptFriendlyId: string }>) => void;
   WAIT_FOR_BATCH: (message: VersionedMessage<{ id: string; runs: string[] }>) => void;
-  WAIT_FOR_DURATION: (message: VersionedMessage<{ ms: number }>) => void;
+  WAIT_FOR_DURATION: (
+    message: VersionedMessage<{ ms: number }>,
+    callback: (ack: { success: boolean }) => void
+  ) => void;
   WAIT_FOR_TASK: (message: VersionedMessage<{ id: string }>) => void;
 }
 
@@ -74,7 +78,7 @@ export interface ProdWorkerSocketData {
   cliPackageVersion: string;
   contentHash: string;
   projectRef: string;
-  attemptId?: string;
+  attemptId: string;
   podName: string;
 }
 
@@ -101,7 +105,15 @@ export interface CoordinatorToPlatformEvents {
       completion: TaskRunExecutionResult;
     }>
   ) => void;
-  TASK_HEARTBEAT: (message: VersionedMessage<{ runId: string }>) => void;
+  TASK_HEARTBEAT: (message: VersionedMessage<{ attemptFriendlyId: string }>) => void;
+  CHEAKPOINT_CREATED: (
+    message: VersionedMessage<{
+      attemptId: string;
+      docker: boolean;
+      location: string;
+      reason?: string;
+    }>
+  ) => void;
 }
 
 export interface PlatformToCoordinatorEvents {

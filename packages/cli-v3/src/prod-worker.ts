@@ -44,6 +44,7 @@ class ProdWorker {
   private projectDir = process.env.TRIGGER_PROJECT_DIR!;
   private projectRef = process.env.TRIGGER_PROJECT_REF!;
   private cliPackageVersion = process.env.TRIGGER_CLI_PACKAGE_VERSION!;
+  private attemptId = process.env.TRIGGER_ATTEMPT_ID || "index-only";
 
   private executing = false;
   private completed = false;
@@ -67,14 +68,20 @@ class ProdWorker {
       },
       contentHash: this.contentHash,
     });
-    this.#backgroundWorker.onTaskHeartbeat.attach((id) => {
-      this.#coordinatorSocket.emit("TASK_HEARTBEAT", { version: "v1", runId: id });
+    this.#backgroundWorker.onTaskHeartbeat.attach((attemptFriendlyId) => {
+      this.#coordinatorSocket.emit("TASK_HEARTBEAT", { version: "v1", attemptFriendlyId });
     });
     this.#backgroundWorker.onWaitForBatch.attach((message) => {
       this.#coordinatorSocket.emit("WAIT_FOR_BATCH", { version: "v1", ...message });
     });
     this.#backgroundWorker.onWaitForDuration.attach((message) => {
-      this.#coordinatorSocket.emit("WAIT_FOR_DURATION", { version: "v1", ...message });
+      this.#coordinatorSocket.emit(
+        "WAIT_FOR_DURATION",
+        { version: "v1", ...message },
+        ({ success }) => {
+          log("WAIT_FOR_DURATION", { success });
+        }
+      );
     });
     this.#backgroundWorker.onWaitForTask.attach((message) => {
       this.#coordinatorSocket.emit("WAIT_FOR_TASK", { version: "v1", ...message });
@@ -99,6 +106,7 @@ class ProdWorker {
           "x-trigger-content-hash": this.contentHash,
           "x-trigger-cli-package-version": this.cliPackageVersion,
           "x-trigger-project-ref": this.projectRef,
+          "x-trigger-attempt-id": this.attemptId,
         },
       }
     );
@@ -203,10 +211,16 @@ class ProdWorker {
           return reply.text(this.contentHash);
 
         case "/wait":
-          this.#coordinatorSocket.emit("WAIT_FOR_DURATION", {
-            version: "v1",
-            ms: 60_000,
-          });
+          this.#coordinatorSocket.emit(
+            "WAIT_FOR_DURATION",
+            {
+              version: "v1",
+              ms: 60_000,
+            },
+            ({ success }) => {
+              log("WAIT_FOR_DURATION", { success });
+            }
+          );
           // this is required when C/Ring established connections
           this.#coordinatorSocket.close();
           return reply.text("sent WAIT");
@@ -248,7 +262,7 @@ class ProdWorker {
         case "/ready":
           this.#coordinatorSocket.emit("READY_FOR_EXECUTION", {
             version: "v1",
-            attemptId: process.env.TRIGGER_ATTEMPT_ID!,
+            attemptId: this.attemptId,
           });
           return reply.empty();
 
