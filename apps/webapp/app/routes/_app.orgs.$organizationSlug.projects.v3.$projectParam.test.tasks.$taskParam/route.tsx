@@ -1,16 +1,15 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ClockIcon } from "@heroicons/react/20/solid";
-import { useActionData, useNavigation, useSubmit } from "@remix-run/react";
+import { Form, useActionData, useNavigation, useSubmit } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { CodeBlock } from "~/components/code/CodeBlock";
 import { JSONEditor } from "~/components/code/JSONEditor";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
-import { DetailCell } from "~/components/primitives/DetailCell";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
@@ -19,9 +18,8 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
+import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
-import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
 import { TestTaskPresenter } from "~/presenters/v3/TestTaskPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { v3TaskParamsSchema } from "~/utils/pathBuilder";
@@ -31,7 +29,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, taskParam } = v3TaskParamsSchema.parse(params);
 
   const presenter = new TestTaskPresenter();
-  const { task, examples, runs } = await presenter.call({
+  const { task, runs } = await presenter.call({
     userId,
     projectSlug: projectParam,
     taskFriendId: taskParam,
@@ -39,7 +37,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typedjson({
     task,
-    examples,
     runs,
   });
 };
@@ -65,14 +62,15 @@ const schema = z.object({
       }
     }
   }),
-  taskId: z.string(),
+  taskIdentifier: z.string(),
+  environmentId: z.string(),
   accountId: z.string().optional(),
 });
 
 const startingJson = "{\n\n}";
 
 export default function Page() {
-  const { task, examples, runs } = useTypedLoaderData<typeof loader>();
+  const { task, runs } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
 
   //form submission
@@ -80,12 +78,8 @@ export default function Page() {
   const lastSubmission = useActionData();
 
   //examples
-  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(
-    examples.at(0)?.id ?? runs.at(0)?.id
-  );
-  const selectedCodeSample =
-    examples.find((e) => e.id === selectedCodeSampleId)?.payload ??
-    runs.find((r) => r.id === selectedCodeSampleId)?.payload;
+  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
+  const selectedCodeSample = runs.find((r) => r.id === selectedCodeSampleId)?.payload;
 
   const [defaultJson, setDefaultJson] = useState<string>(selectedCodeSample ?? startingJson);
   const setCode = useCallback((code: string) => {
@@ -99,7 +93,8 @@ export default function Page() {
       submit(
         {
           payload: currentJson.current,
-          taskId: task.id,
+          taskIdentifier: task.taskIdentifier,
+          environmentId: task.environment.id,
         },
         {
           action: "",
@@ -121,7 +116,12 @@ export default function Page() {
   });
 
   return (
-    <div className="grid h-full max-h-full grid-rows-[1fr_2.5rem]">
+    <Form
+      className="grid h-full max-h-full grid-rows-[1fr_2.5rem]"
+      method="post"
+      {...form.props}
+      onSubmit={(e) => submitForm(e)}
+    >
       <ResizablePanelGroup direction="horizontal">
         <ResizablePanel order={1} minSize={30} defaultSize={60}>
           <JSONEditor
@@ -184,7 +184,27 @@ export default function Page() {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="bg-slate-600"></div>
-    </div>
+      <div className="flex items-center justify-end gap-2 border-t border-border bg-midnight-900">
+        <div className="flex items-center gap-1">
+          <TaskPath
+            filePath={task.filePath}
+            functionName={`${task.exportName}()`}
+            className="text-xs"
+          />
+          <Paragraph variant="small">will run as a test in your</Paragraph>
+          <EnvironmentLabel environment={task.environment} />
+          <Paragraph variant="small">environment:</Paragraph>
+        </div>
+        <Button
+          type="submit"
+          variant="primary/medium"
+          LeadingIcon="beaker"
+          leadingIconClassName="text-bright"
+          shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
+        >
+          Run test
+        </Button>
+      </div>
+    </Form>
   );
 }

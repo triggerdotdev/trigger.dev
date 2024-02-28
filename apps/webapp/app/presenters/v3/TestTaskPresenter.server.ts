@@ -19,12 +19,33 @@ export class TestTaskPresenter {
 
   public async call({ userId, projectSlug, taskFriendId }: TestTaskOptions) {
     const task = await this.#prismaClient.backgroundWorkerTask.findFirstOrThrow({
+      select: {
+        id: true,
+        filePath: true,
+        exportName: true,
+        slug: true,
+        runtimeEnvironment: {
+          select: {
+            id: true,
+            type: true,
+            orgMember: {
+              select: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    displayName: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       where: {
         friendlyId: taskFriendId,
       },
     });
-
-    //todo get runs
 
     const latestRuns = await this.#prismaClient.$queryRaw<
       {
@@ -72,8 +93,19 @@ export class TestTaskPresenter {
     LIMIT 5;`;
 
     return {
-      task,
-      examples: [{ id: "1", payload: "{}" }],
+      task: {
+        id: task.id,
+        taskIdentifier: task.slug,
+        filePath: task.filePath,
+        exportName: task.exportName,
+        friendlyId: taskFriendId,
+        environment: {
+          id: task.runtimeEnvironment.id,
+          type: task.runtimeEnvironment.type,
+          userId: task.runtimeEnvironment.orgMember?.user.id,
+          userName: getUsername(task.runtimeEnvironment.orgMember?.user),
+        },
+      },
       runs: latestRuns.map((r) => {
         //we need to format the code on the server, because we detect if the sample has been edited by comparing the contents
         try {
