@@ -1724,7 +1724,8 @@ model TaskEvent {
   projectId  String
   projectRef String
 
-  runId String
+  runId     String
+  runIsTest Boolean @default(false)
 
   taskSlug       String
   taskPath       String?

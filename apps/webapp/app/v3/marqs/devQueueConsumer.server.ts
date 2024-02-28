@@ -386,6 +386,7 @@ export class DevQueueConsumer {
         context: lockedTaskRun.context,
         createdAt: lockedTaskRun.createdAt,
         tags: lockedTaskRun.tags.map((tag) => tag.name),
+        isTest: lockedTaskRun.isTest,
       },
       queue: {
         id: queue.friendlyId,

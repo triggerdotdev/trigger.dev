@@ -2,7 +2,6 @@ import {
   PRIMARY_VARIANT,
   SemanticInternalAttributes,
   TriggerTaskRequestBody,
-  flattenAttributes,
 } from "@trigger.dev/core/v3";
 import { nanoid } from "nanoid";
 import { createHash } from "node:crypto";
@@ -17,7 +16,6 @@ export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
   triggerVersion?: string;
   traceContext?: Record<string, string | undefined>;
-  isTest?: boolean;
 };
 
 export class TriggerTaskService extends BaseService {
@@ -61,6 +59,7 @@ export class TriggerTaskService extends BaseService {
               icon: "play",
               variant: PRIMARY_VARIANT,
             },
+            runIsTest: body.options?.test ?? false,
           },
           incomplete: true,
           immediate: true,
@@ -112,7 +111,7 @@ export class TriggerTaskService extends BaseService {
                 lockedToVersionId: lockedToBackgroundWorker?.id,
                 concurrencyKey: body.options?.concurrencyKey,
                 queue: queueName,
-                isTest: options.isTest ?? false,
+                isTest: body.options?.test ?? false,
               },
             });
 

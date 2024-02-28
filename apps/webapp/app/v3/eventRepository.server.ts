@@ -42,6 +42,7 @@ export type TraceAttributes = Partial<
     | "attemptId"
     | "isError"
     | "runId"
+    | "runIsTest"
     | "output"
     | "metadata"
     | "properties"
@@ -376,6 +377,7 @@ export class EventRepository {
       [SemanticInternalAttributes.PROJECT_ID]: options.environment.projectId,
       [SemanticInternalAttributes.PROJECT_REF]: options.environment.project.externalRef,
       [SemanticInternalAttributes.RUN_ID]: options.attributes.runId,
+      [SemanticInternalAttributes.RUN_IS_TEST]: options.attributes.runIsTest ?? false,
       [SemanticInternalAttributes.TASK_SLUG]: options.taskSlug,
       [SemanticResourceAttributes.SERVICE_NAME]: "api server",
       [SemanticResourceAttributes.SERVICE_NAMESPACE]: "trigger.dev",
@@ -410,6 +412,7 @@ export class EventRepository {
       projectId: options.environment.projectId,
       projectRef: options.environment.project.externalRef,
       runId: options.attributes.runId,
+      runIsTest: options.attributes.runIsTest ?? false,
       taskSlug: options.taskSlug,
       queueId: options.attributes.queueId,
       queueName: options.attributes.queueName,
@@ -489,6 +492,7 @@ export class EventRepository {
       [SemanticInternalAttributes.PROJECT_ID]: options.environment.projectId,
       [SemanticInternalAttributes.PROJECT_REF]: options.environment.project.externalRef,
       [SemanticInternalAttributes.RUN_ID]: options.attributes.runId,
+      [SemanticInternalAttributes.RUN_IS_TEST]: options.attributes.runIsTest ?? false,
       [SemanticInternalAttributes.TASK_SLUG]: options.taskSlug,
       [SemanticResourceAttributes.SERVICE_NAME]: "api server",
       [SemanticResourceAttributes.SERVICE_NAMESPACE]: "trigger.dev",
@@ -524,6 +528,7 @@ export class EventRepository {
       projectId: options.environment.projectId,
       projectRef: options.environment.project.externalRef,
       runId: options.attributes.runId,
+      runIsTest: options.attributes.runIsTest ?? false,
       taskSlug: options.taskSlug,
       queueId: options.attributes.queueId,
       queueName: options.attributes.queueName,

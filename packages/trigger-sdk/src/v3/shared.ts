@@ -165,6 +165,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             options: {
               queue: params.queue,
               concurrencyKey: options?.concurrencyKey,
+              test: taskContextManager.ctx?.run.isTest,
             },
           });
 
@@ -221,6 +222,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
               options: {
                 queue: item.options?.queue ?? params.queue,
                 concurrencyKey: item.options?.concurrencyKey,
+                test: taskContextManager.ctx?.run.isTest,
               },
             })),
           });
@@ -287,6 +289,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
               lockToVersion: taskContextManager.worker?.version, // Lock to current version because we're waiting for it to finish
               queue: params.queue,
               concurrencyKey: options?.concurrencyKey,
+              test: taskContextManager.ctx?.run.isTest,
             },
           });
 
@@ -357,6 +360,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
                 lockToVersion: taskContextManager.worker?.version,
                 queue: item.options?.queue ?? params.queue,
                 concurrencyKey: item.options?.concurrencyKey,
+                test: taskContextManager.ctx?.run.isTest,
               },
             })),
             dependentAttempt: ctx.attempt.id,
