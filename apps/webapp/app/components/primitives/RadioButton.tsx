@@ -54,6 +54,40 @@ const variants = {
   },
 };
 
+type RadioButtonCircleProps = {
+  checked: boolean;
+  boxClassName?: string;
+  outerCircleClassName?: string;
+  innerCircleClassName?: string;
+};
+
+export function RadioButtonCircle({
+  checked,
+  boxClassName,
+  outerCircleClassName,
+  innerCircleClassName,
+}: RadioButtonCircleProps) {
+  return (
+    <div
+      className={cn(
+        "aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-full border border-slate-700 ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        boxClassName
+      )}
+    >
+      {checked && (
+        <div
+          className={cn(
+            "flex h-full w-full items-center justify-center bg-indigo-700",
+            outerCircleClassName
+          )}
+        >
+          <Circle className={cn("h-1.5 w-1.5 fill-white text-white", innerCircleClassName)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const RadioGroup = React.forwardRef<
   React.ElementRef<typeof RadioGroupPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Root>
@@ -66,8 +100,8 @@ type RadioGroupItemProps = Omit<
   "onChange"
 > & {
   variant?: keyof typeof variants;
-  label?: string;
-  description?: string;
+  label?: React.ReactNode;
+  description?: React.ReactNode;
   badges?: string[];
   className?: string;
   icon?: React.ReactNode;
@@ -95,7 +129,7 @@ export const RadioGroupItem = React.forwardRef<
       >
         <div
           className={cn(
-            "aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-sm border border-slate-700 ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+            "aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-full border border-slate-700 ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
             variation.inputPosition
           )}
         >

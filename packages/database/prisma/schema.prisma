@@ -1559,6 +1559,8 @@ model TaskRun {
   idempotencyKey String
   taskIdentifier String
 
+  isTest Boolean @default(false)
+
   payload      String
   payloadType  String @default("application/json")
   context      Json?

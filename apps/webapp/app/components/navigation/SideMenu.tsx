@@ -2,6 +2,7 @@ import {
   AcademicCapIcon,
   ArrowRightIcon,
   ArrowRightOnRectangleIcon,
+  BeakerIcon,
   ChartBarIcon,
   CursorArrowRaysIcon,
   IdentificationIcon,
@@ -42,6 +43,7 @@ import {
   v3EnvironmentVariablesPath,
   v3ProjectPath,
   v3RunsPath,
+  v3TestPath,
 } from "~/utils/pathBuilder";
 import { Feedback } from "../Feedback";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -509,6 +511,13 @@ function V3ProjectSideMenu({
         icon="runs"
         iconColor="text-teal-500"
         to={v3RunsPath(organization, project)}
+      />
+      <SideMenuItem
+        name="Test"
+        icon={BeakerIcon}
+        iconColor="text-lime-500"
+        to={v3TestPath(organization, project)}
+        data-action="test"
       />
       <SideMenuItem
         name="API Keys"
