@@ -2,6 +2,7 @@ import {
   BackgroundWorkerProperties,
   CreateBackgroundWorkerResponse,
   ProdTaskRunExecutionPayload,
+  SemanticInternalAttributes,
   TaskMetadataWithFilePath,
   TaskRunBuiltInError,
   TaskRunExecution,
@@ -10,13 +11,12 @@ import {
   ZodMessageHandler,
   ZodMessageSender,
   childToWorkerMessages,
+  correctErrorStackTrace,
   workerToChildMessages,
 } from "@trigger.dev/core/v3";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { readFileSync } from "node:fs";
-import nodePath from "node:path";
-import { SourceMapConsumer, type RawSourceMap } from "source-map";
+import { unlinkSync } from "node:fs";
 
 type BackgroundWorkerParams = {
   env: Record<string, string>;
@@ -25,7 +25,6 @@ type BackgroundWorkerParams = {
 };
 
 export class ProdBackgroundWorker {
-  private _rawSourceMap: RawSourceMap;
   private _initialized: boolean = false;
   private _handler = new ZodMessageHandler({
     schema: childToWorkerMessages,
@@ -37,6 +36,8 @@ export class ProdBackgroundWorker {
   public onWaitForDuration: Evt<{ version?: "v1"; ms: number }> = new Evt();
   public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
 
+  private _onClose: Evt<void> = new Evt();
+
   public tasks: Array<TaskMetadataWithFilePath> = [];
 
   _taskRunProcesses: Map<string, TaskRunProcess> = new Map();
@@ -44,9 +45,7 @@ export class ProdBackgroundWorker {
   constructor(
     public path: string,
     private params: BackgroundWorkerParams
-  ) {
-    this._rawSourceMap = JSON.parse(readFileSync(`${path}.map`, "utf-8"));
-  }
+  ) {}
 
   close() {
     this.onTaskHeartbeat.detach();
@@ -55,6 +54,12 @@ export class ProdBackgroundWorker {
     for (const taskRunProcess of this._taskRunProcesses.values()) {
       taskRunProcess.cleanup(true);
     }
+
+    // Delete worker files
+    this._onClose.post();
+
+    unlinkSync(this.path);
+    unlinkSync(`${this.path}.map`);
   }
 
   async initialize() {
@@ -140,7 +145,15 @@ export class ProdBackgroundWorker {
     );
 
     if (!this._taskRunProcesses.has(payload.execution.run.id)) {
-      const taskRunProcess = new TaskRunProcess(this.path, this.params.env, metadata);
+      const taskRunProcess = new TaskRunProcess(
+        this.path,
+        {
+          ...this.params.env,
+          ...(payload.environment ?? {}),
+        },
+        metadata,
+        this.params
+      );
 
       taskRunProcess.onExit.attach(() => {
         this._taskRunProcesses.delete(payload.execution.run.id);
@@ -203,86 +216,8 @@ export class ProdBackgroundWorker {
   ): Promise<TaskRunBuiltInError> {
     return {
       ...error,
-      stackTrace: await this.#correctErrorStackTrace(error.stackTrace, execution),
+      stackTrace: correctErrorStackTrace(error.stackTrace, this.params.projectDir),
     };
-  }
-
-  async #correctErrorStackTrace(stackTrace: string, execution: TaskRunExecution): Promise<string> {
-    // Split the stack trace into lines
-    const lines = stackTrace.split("\n");
-
-    // Remove the first line
-    lines.shift();
-
-    // Use SourceMapConsumer.with to handle the source map for the entire stack trace
-    return SourceMapConsumer.with(this._rawSourceMap, null, (consumer) =>
-      lines
-        .map((line) => this.#correctStackTraceLine(line, consumer, execution))
-        .filter(Boolean)
-        .join("\n")
-    );
-  }
-
-  #correctStackTraceLine(
-    line: string,
-    consumer: SourceMapConsumer,
-    execution: TaskRunExecution
-  ): string | undefined {
-    // Split the line into parts
-    const regex = /at (.*?) \(file:\/\/(\/.*?\.mjs):(\d+):(\d+)\)/;
-
-    const match = regex.exec(line);
-
-    if (!match) {
-      return line;
-    }
-
-    const [_, identifier, path, lineNum, colNum] = match;
-
-    const originalPosition = consumer.originalPositionFor({
-      line: Number(lineNum),
-      column: Number(colNum),
-    });
-
-    if (!originalPosition.source) {
-      return line;
-    }
-
-    const { source, line: originalLine, column: originalColumn } = originalPosition;
-
-    if (this.#shouldFilterLine({ identifier, path: source })) {
-      return;
-    }
-
-    const sourcePath = path
-      ? nodePath.relative(this.params.projectDir, nodePath.resolve(nodePath.dirname(path), source))
-      : source;
-
-    return `at ${
-      identifier === "Object.run" ? `${execution.task.exportName}.run` : identifier
-    } (${sourcePath}:${originalLine}:${originalColumn})`;
-  }
-
-  #shouldFilterLine(line: { identifier?: string; path?: string }): boolean {
-    const filename = nodePath.basename(line.path ?? "");
-
-    if (filename === "__entryPoint.ts") {
-      return true;
-    }
-
-    if (line.identifier === "async ZodMessageHandler.handleMessage") {
-      return true;
-    }
-
-    if (line.identifier === "async ConsoleInterceptor.intercept") {
-      return true;
-    }
-
-    if (line.path?.includes("packages/core/src")) {
-      return true;
-    }
-
-    return false;
   }
 }
 
@@ -310,7 +245,8 @@ class TaskRunProcess {
   constructor(
     private path: string,
     private env: NodeJS.ProcessEnv,
-    private metadata: BackgroundWorkerProperties
+    private metadata: BackgroundWorkerProperties,
+    private worker: BackgroundWorkerParams
   ) {
     this._sender = new ZodMessageSender({
       schema: workerToChildMessages,
@@ -325,12 +261,18 @@ class TaskRunProcess {
   async initialize() {
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
-      env: this.env,
+      env: {
+        ...this.env,
+        OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
+          [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectDir,
+        }),
+      },
     });
 
     this._child.on("message", this.#handleMessage.bind(this));
     this._child.on("exit", this.#handleExit.bind(this));
     this._child.stdout?.on("data", this.#handleLog.bind(this));
+    this._child.stderr?.on("data", this.#handleStdErr.bind(this));
   }
 
   async cleanup(kill: boolean = false) {
@@ -378,6 +320,9 @@ class TaskRunProcess {
   }
 
   taskRunCompletedNotification(completion: TaskRunExecutionResult, execution: TaskRunExecution) {
+    if (!completion.ok && typeof completion.retry === "undefined") {
+      return;
+    }
     this._sender.send("TASK_RUN_COMPLETED_NOTIFICATION", {
       completion,
       execution,
@@ -469,6 +414,20 @@ class TaskRunProcess {
     }
 
     console.log(
+      `[${this.metadata.version}][${this._currentExecution.run.id}.${
+        this._currentExecution.attempt.number
+      }] ${data.toString()}`
+    );
+  }
+
+  #handleStdErr(data: Buffer) {
+    if (!this._currentExecution) {
+      console.error(`[${this.metadata.version}] ${data.toString()}`);
+
+      return;
+    }
+
+    console.error(
       `[${this.metadata.version}][${this._currentExecution.run.id}.${
         this._currentExecution.attempt.number
       }] ${data.toString()}`

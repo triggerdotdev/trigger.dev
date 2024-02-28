@@ -1,4 +1,5 @@
-import { FetchInstrumentation, HttpInstrumentation, TracingSDK } from "@trigger.dev/core/v3/otel";
+// import "source-map-support/register";
+import { TracingSDK } from "@trigger.dev/core/v3/otel";
 // import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
 // IMPORTANT: this needs to be the first import to work properly
@@ -10,27 +11,9 @@ const tracingSDK = new TracingSDK({
     [SemanticInternalAttributes.CLI_VERSION]: packageJson.version,
   }),
   instrumentations: [
-    new HttpInstrumentation({
-      ignoreOutgoingRequestHook: (req) => {
-        return process.env.TRIGGER_API_URL
-          ? urlToRegex(process.env.TRIGGER_API_URL).test(req.host ?? "")
-          : false;
-      },
-    }),
-    new FetchInstrumentation({
-      ignoreUrls: process.env.TRIGGER_API_URL ? [urlToRegex(process.env.TRIGGER_API_URL)] : [],
-    }),
     // new OpenAIInstrumentation(),
   ],
 });
-
-function urlToRegex(url: string): RegExp {
-  const urlObj = new URL(url);
-  const hostnameToIgnore = urlObj.hostname.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
-  const regexToIgnore = new RegExp(hostnameToIgnore);
-
-  return regexToIgnore;
-}
 
 const otelTracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.version);
 const otelLogger = tracingSDK.getLogger("trigger-prod-worker", packageJson.version);
@@ -255,6 +238,8 @@ function getTaskMetadata(): Array<TaskMetadataWithFilePath> {
 
 const tasks = getTasks();
 
+runtime.registerTasks(tasks);
+
 const taskExecutors: Map<string, TaskExecutor> = new Map();
 
 for (const task of tasks) {
@@ -268,6 +253,23 @@ const handler = new ZodMessageHandler({
   schema: workerToChildMessages,
   messages: {
     EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }) => {
+      if (_isRunning) {
+        console.error("Worker is already running a task");
+
+        await sender.send("TASK_RUN_COMPLETED", {
+          execution,
+          result: {
+            ok: false,
+            id: execution.attempt.id,
+            error: {
+              type: "INTERNAL_ERROR",
+              code: TaskRunErrorCodes.TASK_ALREADY_RUNNING,
+            },
+          },
+        });
+
+        return;
+      }
       process.title = `trigger-prod-worker: ${execution.task.id} ${execution.run.id}`;
 
       const executor = taskExecutors.get(execution.task.id);
@@ -314,6 +316,9 @@ const handler = new ZodMessageHandler({
             retry: await executor.determineRetrying(execution, e),
           },
         });
+      } finally {
+        _execution = undefined;
+        _isRunning = false;
       }
     },
     TASK_RUN_COMPLETED_NOTIFICATION: async ({ completion, execution }) => {
@@ -321,9 +326,9 @@ const handler = new ZodMessageHandler({
     },
     CLEANUP: async ({ flush, kill }) => {
       if (kill) {
+        await tracingSDK.flush();
         // Now we need to exit the process
         await sender.send("READY_TO_DISPOSE", undefined);
-        await tracingSDK.shutdown();
       } else {
         if (flush) {
           await tracingSDK.flush();
