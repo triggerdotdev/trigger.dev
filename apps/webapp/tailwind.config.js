@@ -131,23 +131,26 @@ const lavender = {
 /** Trigger.dev custom palette */
 
 /** Text colors */
-const primary = colors.apple[500];
-const secondary = colors.lavender[400];
-const tertiary = colors.charcoal[700];
-const textLink = colors.lavender[400];
-const textDimmed = colors.charcoal[400];
-const textBright = colors.charcoal[200];
-const backgroundBright = colors.charcoal[800];
-const backgroundDimmed = colors.charcoal[850];
-const gridBright = colors.charcoal[700];
-const gridDimmed = colors.charcoal[750];
-const success = colors.mint[500];
+const primary = apple[500];
+const secondary = lavender[400];
+const tertiary = charcoal[700];
+const textLink = lavender[400];
+const textDimmed = charcoal[400];
+const textBright = charcoal[200];
+const backgroundBright = charcoal[800];
+const backgroundDimmed = charcoal[850];
+const gridBright = charcoal[700];
+const gridDimmed = charcoal[750];
+const success = mint[500];
 const pending = colors.blue[500];
 const warning = colors.amber[500];
 const error = colors.rose[500];
 const devEnv = colors.pink[500];
-const stagingEnv = colors.sun[400];
-const prodEnv = colors.mint[500];
+const stagingEnv = sun[400];
+const prodEnv = mint[500];
+
+/** Other variables */
+const radius = "0.5rem";
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -166,9 +169,8 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        sans: ["Inter", "sans-serif"],
-        mono: ["Roboto Mono", "monospace"],
-        title: ["Poppins", "sans-serif"],
+        sans: ['var(--font-geist-sans)'],
+        mono: ['var(--font-geist-mono)'],
       },
       fontSize: {
         xxs: [
