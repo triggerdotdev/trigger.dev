@@ -38,9 +38,8 @@ const otelLogger = tracingSDK.getLogger("trigger-prod-worker", packageJson.versi
 import { SpanKind } from "@opentelemetry/api";
 import {
   ConsoleInterceptor,
-  CreateBackgroundWorkerResponse,
-  OtelTaskLogger,
   ProdRuntimeManager,
+  OtelTaskLogger,
   SemanticInternalAttributes,
   TaskMetadataWithFilePath,
   TaskRunContext,
@@ -50,19 +49,21 @@ import {
   TriggerTracer,
   ZodMessageHandler,
   ZodMessageSender,
-  calculateNextRetryTimestamp,
+  accessoryAttributes,
+  calculateNextRetryDelay,
   childToWorkerMessages,
   logger,
   parseError,
   runtime,
   taskContextManager,
   workerToChildMessages,
+  type BackgroundWorkerProperties,
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../package.json";
 
 import { Resource } from "@opentelemetry/resources";
 import { flattenAttributes } from "@trigger.dev/core/v3";
-import { TaskMetadataWithRun } from "./types.js";
+import { TaskMetadataWithFunctions } from "./types";
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);
@@ -95,7 +96,7 @@ __TASKS__;
 declare const __TASKS__: Record<string, string>;
 
 class TaskExecutor {
-  constructor(public task: TaskMetadataWithRun) {}
+  constructor(public task: TaskMetadataWithFunctions) {}
 
   async determineRetrying(
     execution: TaskRunExecution,
@@ -107,19 +108,19 @@ class TaskExecutor {
 
     const retry = this.task.retry;
 
-    const timestamp = calculateNextRetryTimestamp(retry, execution.attempt.number);
+    const delay = calculateNextRetryDelay(retry, execution.attempt.number);
 
-    return timestamp ? { timestamp } : undefined;
+    return typeof delay === "undefined" ? undefined : { timestamp: Date.now() + delay, delay };
   }
 
   async execute(
     execution: TaskRunExecution,
-    worker: CreateBackgroundWorkerResponse,
+    worker: BackgroundWorkerProperties,
     traceContext: Record<string, unknown>
   ) {
     const parsedPayload = JSON.parse(execution.run.payload);
     const ctx = TaskRunContext.parse(execution);
-    const attemptMessage = `Attempt #${execution.attempt.number}`;
+    const attemptMessage = `Attempt ${execution.attempt.number}`;
 
     const output = await taskContextManager.runWith(
       {
@@ -138,20 +139,35 @@ class TaskExecutor {
           attemptMessage,
           async (span) => {
             return await consoleInterceptor.intercept(console, async () => {
-              const output = await this.task.run({
-                payload: parsedPayload,
-                ctx: TaskRunContext.parse(execution),
-              });
+              const init = await this.#callTaskInit(parsedPayload, ctx);
 
-              span.setAttributes(flattenAttributes(output, SemanticInternalAttributes.OUTPUT));
+              try {
+                const output = await this.#callRun(parsedPayload, ctx, init);
 
-              return output;
+                span.setAttributes(flattenAttributes(output, SemanticInternalAttributes.OUTPUT));
+
+                return output;
+              } finally {
+                await this.#callTaskCleanup(parsedPayload, ctx, init);
+              }
             });
           },
           {
             kind: SpanKind.CONSUMER,
             attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "task",
+              [SemanticInternalAttributes.STYLE_ICON]: "attempt",
+              ...flattenAttributes(parsedPayload, SemanticInternalAttributes.PAYLOAD),
+              ...accessoryAttributes({
+                items: [
+                  {
+                    text: ctx.task.filePath,
+                  },
+                  {
+                    text: `${ctx.task.exportName}.run()`,
+                  },
+                ],
+                style: "codepath",
+              }),
             },
           },
           tracer.extractContext(traceContext)
@@ -161,10 +177,49 @@ class TaskExecutor {
 
     return { output: JSON.stringify(output), outputType: "application/json" };
   }
+
+  async #callRun(payload: unknown, ctx: TaskRunContext, init: unknown) {
+    const runFn = this.task.fns.run;
+    const middlewareFn = this.task.fns.middleware;
+
+    if (!runFn) {
+      throw new Error("Task does not have a run function");
+    }
+
+    if (!middlewareFn) {
+      return runFn({ payload, ctx });
+    }
+
+    return middlewareFn({ payload, ctx, next: async () => runFn({ payload, ctx, init }) });
+  }
+
+  async #callTaskInit(payload: unknown, ctx: TaskRunContext) {
+    const initFn = this.task.fns.init;
+
+    if (!initFn) {
+      return {};
+    }
+
+    return tracer.startActiveSpan("init", async (span) => {
+      return await initFn({ payload, ctx });
+    });
+  }
+
+  async #callTaskCleanup(payload: unknown, ctx: TaskRunContext, init: unknown) {
+    const cleanupFn = this.task.fns.cleanup;
+
+    if (!cleanupFn) {
+      return;
+    }
+
+    return tracer.startActiveSpan("cleanup", async (span) => {
+      return await cleanupFn({ payload, ctx, init });
+    });
+  }
 }
 
-function getTasks(): Array<TaskMetadataWithRun> {
-  const result: Array<TaskMetadataWithRun> = [];
+function getTasks(): Array<TaskMetadataWithFunctions> {
+  const result: Array<TaskMetadataWithFunctions> = [];
 
   for (const [importName, taskFile] of Object.entries(TaskFiles)) {
     const fileImports = TaskFileImports[importName];
@@ -176,8 +231,9 @@ function getTasks(): Array<TaskMetadataWithRun> {
           exportName,
           packageVersion: (task as any).__trigger.packageVersion,
           filePath: (taskFile as any).filePath,
-          run: (task as any).__trigger.run,
+          queue: (task as any).__trigger.queue,
           retry: (task as any).__trigger.retry,
+          fns: (task as any).__trigger.fns,
         });
       }
     }
@@ -189,9 +245,9 @@ function getTasks(): Array<TaskMetadataWithRun> {
 function getTaskMetadata(): Array<TaskMetadataWithFilePath> {
   const result = getTasks();
 
-  // Remove the run function from the metadata
+  // Remove the functions from the metadata
   return result.map((task) => {
-    const { run, ...metadata } = task;
+    const { fns, ...metadata } = task;
 
     return metadata;
   });

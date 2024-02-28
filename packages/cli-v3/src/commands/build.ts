@@ -203,13 +203,6 @@ async function runBuild(
   );
   await fs.promises.copyFile(prodWorkerPath, join(buildContextPath, "index.mjs"));
 
-  // Ensure source-map package dep exists
-  const sourceMapDep = new URL(importResolve("./mappings.wasm", import.meta.url)).href.replace(
-    "file://",
-    ""
-  );
-  await fs.promises.copyFile(sourceMapDep, join(buildContextPath, "mappings.wasm"));
-
   logger.log(chalk.green(`Bundling finished.\n`));
 
   let localOnly = false;
