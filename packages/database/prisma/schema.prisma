@@ -1694,8 +1694,9 @@ model TaskEvent {
   parentId   String?
   tracestate String?
 
-  isError   Boolean @default(false)
-  isPartial Boolean @default(false)
+  isError     Boolean @default(false)
+  isPartial   Boolean @default(false)
+  isCancelled Boolean @default(false)
 
   serviceName      String
   serviceNamespace String

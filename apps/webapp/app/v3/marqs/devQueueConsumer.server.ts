@@ -20,8 +20,10 @@ import { marqs } from "../marqs.server";
 import { attributesFromAuthenticatedEnv } from "../tracer.server";
 import { eventRepository } from "../eventRepository.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
+import { CancelAttemptService } from "../services/cancelAttempt.server";
+import { CompleteAttemptService } from "../services/completeAttempt.server";
 
-const tracer = trace.getTracer("environmentQueueConsumer");
+const tracer = trace.getTracer("devQueueConsumer");
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
@@ -32,7 +34,7 @@ const MessageBody = z.discriminatedUnion("type", [
 
 type BackgroundWorkerWithTasks = BackgroundWorker & { tasks: BackgroundWorkerTask[] };
 
-export type EnvironmentQueueConsumerOptions = {
+export type DevQueueConsumerOptions = {
   maximumItemsPerTrace?: number;
   traceTimeoutSeconds?: number;
 };
@@ -40,7 +42,7 @@ export type EnvironmentQueueConsumerOptions = {
 export class DevQueueConsumer {
   private _backgroundWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
   private _enabled = false;
-  private _options: Required<EnvironmentQueueConsumerOptions>;
+  private _options: Required<DevQueueConsumerOptions>;
   private _perTraceCountdown: number | undefined;
   private _lastNewTrace: Date | undefined;
   private _currentSpanContext: Context | undefined;
@@ -48,11 +50,12 @@ export class DevQueueConsumer {
   private _taskSuccesses: number = 0;
   private _currentSpan: Span | undefined;
   private _endSpanInNextIteration = false;
+  private _inProgressAttempts: Map<string, string> = new Map(); // Keys are task attempt friendly IDs, values are TaskRun ids/queue message ids
 
   constructor(
     public env: AuthenticatedEnvironment,
     private _sender: ZodMessageSender<typeof serverWebsocketMessages>,
-    options: EnvironmentQueueConsumerOptions = {}
+    options: DevQueueConsumerOptions = {}
   ) {
     this._options = {
       maximumItemsPerTrace: options.maximumItemsPerTrace ?? 1_000, // 1k items per trace
@@ -80,90 +83,23 @@ export class DevQueueConsumer {
     this.#enable();
   }
 
-  public async taskRunCompleted(
+  public async taskAttemptCompleted(
     workerId: string,
     completion: TaskRunExecutionResult,
     execution: TaskRunExecution
   ) {
-    logger.debug("Task run completed", { taskRunCompletion: completion, execution });
+    this._inProgressAttempts.delete(completion.id);
 
-    const taskRunAttempt = completion.ok
-      ? await prisma.taskRunAttempt.update({
-          where: { friendlyId: completion.id },
-          data: {
-            status: "COMPLETED",
-            completedAt: new Date(),
-            output: completion.output,
-            outputType: completion.outputType,
-          },
-          include: {
-            taskRun: true,
-            backgroundWorkerTask: true,
-          },
-        })
-      : await prisma.taskRunAttempt.update({
-          where: { friendlyId: completion.id },
-          data: {
-            status: "FAILED",
-            completedAt: new Date(),
-            error: completion.error,
-          },
-          include: {
-            taskRun: true,
-            backgroundWorkerTask: true,
-          },
-        });
-
-    if (taskRunAttempt.status === "COMPLETED") {
+    if (completion.ok) {
       this._taskSuccesses++;
     } else {
       this._taskFailures++;
     }
 
-    if (!completion.ok && completion.retry !== undefined) {
-      const retryConfig = taskRunAttempt.backgroundWorkerTask.retryConfig
-        ? {
-            ...defaultRetryOptions,
-            ...RetryOptions.parse(taskRunAttempt.backgroundWorkerTask.retryConfig),
-          }
-        : undefined;
+    logger.debug("Task run completed", { taskRunCompletion: completion, execution });
 
-      const retryAt = new Date(completion.retry.timestamp);
-      // Retry the task run
-      await eventRepository.recordEvent(
-        retryConfig?.maxAttempts
-          ? `Retry ${execution.attempt.number}/${retryConfig?.maxAttempts - 1} delay`
-          : `Retry #${execution.attempt.number} delay`,
-        {
-          taskSlug: taskRunAttempt.taskRun.taskIdentifier,
-          environment: this.env,
-          attributes: {
-            metadata: this.#generateMetadataAttributesForNextAttempt(execution),
-            properties: {
-              retryAt: retryAt.toISOString(),
-              factor: retryConfig?.factor,
-              maxAttempts: retryConfig?.maxAttempts,
-              minTimeoutInMs: retryConfig?.minTimeoutInMs,
-              maxTimeoutInMs: retryConfig?.maxTimeoutInMs,
-              randomize: retryConfig?.randomize,
-            },
-            runId: taskRunAttempt.taskRunId,
-            style: {
-              icon: "schedule-attempt",
-            },
-            queueId: taskRunAttempt.queueId,
-            queueName: taskRunAttempt.taskRun.queue,
-          },
-          context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
-          spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
-          endTime: retryAt,
-        }
-      );
-
-      await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
-    } else {
-      await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
-    }
+    const service = new CompleteAttemptService();
+    await service.call(completion, execution, this.env);
   }
 
   #generateMetadataAttributesForNextAttempt(execution: TaskRunExecution) {
@@ -189,8 +125,45 @@ export class DevQueueConsumer {
     await marqs?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
   }
 
-  public async stop() {
+  public async stop(reason: string = "CLI disconnected") {
+    if (!this._enabled) {
+      return;
+    }
+
+    logger.debug("Stopping dev queue consumer", { env: this.env });
+
     this._enabled = false;
+
+    // We need to cancel all the in progress task run attempts and ack the messages so they will stop processing
+    await this.#cancelInProgressAttempts(reason);
+  }
+
+  async #cancelInProgressAttempts(reason: string) {
+    const service = new CancelAttemptService();
+
+    const cancelledAt = new Date();
+
+    for (const [attemptId, messageId] of this._inProgressAttempts) {
+      await this.#cancelInProgressAttempt(attemptId, messageId, service, cancelledAt, reason);
+    }
+  }
+
+  async #cancelInProgressAttempt(
+    attemptId: string,
+    messageId: string,
+    cancelAttemptService: CancelAttemptService,
+    cancelledAt: Date,
+    reason: string
+  ) {
+    try {
+      await cancelAttemptService.call(attemptId, messageId, cancelledAt, reason, this.env);
+    } catch (e) {
+      logger.error("Failed to cancel in progress attempt", {
+        attemptId,
+        messageId,
+        error: e,
+      });
+    }
   }
 
   #enable() {
@@ -228,7 +201,7 @@ export class DevQueueConsumer {
 
       // Create a new trace
       this._currentSpan = tracer.startSpan(
-        "EnvironmentQueueConsumer.doWork()",
+        "DevQueueConsumer.doWork()",
         {
           kind: SpanKind.CONSUMER,
           attributes: {
@@ -456,6 +429,8 @@ export class DevQueueConsumer {
           payloads: [payload],
         },
       });
+
+      this._inProgressAttempts.set(taskRunAttempt.friendlyId, message.messageId);
     } catch (e) {
       if (e instanceof Error) {
         this._currentSpan?.recordException(e);
