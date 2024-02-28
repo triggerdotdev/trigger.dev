@@ -2,27 +2,22 @@ import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { $ } from "execa";
 import { Namespace } from "socket.io";
-import { WebSocket } from "partysocket";
 import { Server } from "socket.io";
 import { Socket, io } from "socket.io-client";
 import { DefaultEventsMap } from "socket.io/dist/typed-events";
 import {
   CoordinatorToPlatformEvents,
   CoordinatorToProdWorkerEvents,
-  CoordinatorToDemoTaskEvents,
   PlatformToCoordinatorEvents,
   ProdWorkerSocketData,
   ProdWorkerToCoordinatorEvents,
-  DemoTaskSocketData,
-  DemoTaskToCoordinatorEvents,
   CliApiClient,
 } from "@trigger.dev/core/v3";
-import { HttpReply, getTextBody } from "@trigger.dev/core-apps";
+import { HttpReply, getTextBody, SimpleLogger } from "@trigger.dev/core-apps";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
 collectDefaultMetrics();
 
-const DEBUG = ["1", "true"].includes(process.env.DEBUG ?? "") || false;
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8000);
 const NODE_NAME = process.env.NODE_NAME || "coordinator";
 const REGISTRY_FQDN = process.env.REGISTRY_FQDN || "localhost:5000";
@@ -35,26 +30,14 @@ const PLATFORM_HOST = process.env.PLATFORM_HOST || "127.0.0.1";
 const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 5080;
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
 
-function createLogger(prefix: string) {
-  return (...args: any[]) => console.log(prefix, ...args);
-}
-
-const debug = <TFirstArg>(firstArg: TFirstArg, ...otherArgs: any[]) => {
-  if (!DEBUG) {
-    return firstArg;
-  }
-  logger("DEBUG", firstArg, ...otherArgs);
-  return firstArg;
-};
-
-const logger = createLogger(`[${NODE_NAME}]`);
+const logger = new SimpleLogger(`[${NODE_NAME}]`);
 
 class Checkpointer {
   #initialized = false;
   #canCheckpoint = false;
   #dockerMode = true;
 
-  #logger = createLogger("[checkptr]");
+  #logger = new SimpleLogger("[checkptr]");
 
   async initialize() {
     if (this.#initialized) {
@@ -64,22 +47,26 @@ class Checkpointer {
     try {
       await $`criu --version`;
     } catch (error) {
-      this.#logger("No checkpoint support: Missing CRIU binary");
+      this.#logger.error("No checkpoint support: Missing CRIU binary");
       this.#canCheckpoint = false;
       this.#initialized = true;
       return;
     }
 
-    try {
-      await $`docker checkpoint`;
-    } catch (error) {
-      this.#logger("No checkpoint support: Docker needs to have experimental features enabled");
-      this.#canCheckpoint = false;
-      this.#initialized = true;
-      return;
+    if (this.#dockerMode) {
+      try {
+        await $`docker checkpoint`;
+      } catch (error) {
+        this.#logger.error(
+          "No checkpoint support: Docker needs to have experimental features enabled"
+        );
+        this.#canCheckpoint = false;
+        this.#initialized = true;
+        return;
+      }
     }
 
-    this.#logger(
+    this.#logger.log(
       `Full checkpoint support with docker ${this.#dockerMode ? "enabled" : "disabled"}`
     );
 
@@ -100,9 +87,9 @@ class Checkpointer {
       const { destination } = await this.#pushImage(tag);
 
       if (this.#dockerMode) {
-        this.#logger("checkpoint created:", { podName, path });
+        this.#logger.log("checkpoint created:", { podName, path });
       } else {
-        this.#logger("checkpointed and pushed image to:", destination);
+        this.#logger.log("checkpointed and pushed image to:", destination);
       }
 
       return {
@@ -112,7 +99,7 @@ class Checkpointer {
         docker: this.#dockerMode,
       };
     } catch (error) {
-      this.#logger("checkpoint failed", error);
+      this.#logger.error("checkpoint failed", error);
       return;
     }
   }
@@ -125,20 +112,20 @@ class Checkpointer {
     }
 
     if (this.#dockerMode) {
-      this.#logger("Checkpointing:", podName);
+      this.#logger.log("Checkpointing:", podName);
 
       const path = randomUUID();
 
       try {
-        debug(await $`docker checkpoint create --leave-running ${podName} ${path}`);
+        this.#logger.debug(await $`docker checkpoint create --leave-running ${podName} ${path}`);
       } catch (error: any) {
-        this.#logger(error.stderr);
+        this.#logger.error(error.stderr);
       }
 
       return { path };
     }
 
-    const containerId = debug(
+    const containerId = this.#logger.debug(
       // @ts-expect-error
       await $`crictl ps`
         .pipeStdout($({ stdin: "pipe" })`grep ${podName}`)
@@ -151,7 +138,7 @@ class Checkpointer {
 
     const exportPath = `${CHECKPOINT_PATH}/${podName}.tar`;
 
-    debug(await $`crictl checkpoint --export=${exportPath} ${containerId}`);
+    this.#logger.debug(await $`crictl checkpoint --export=${exportPath} ${containerId}`);
 
     return {
       path: exportPath,
@@ -170,13 +157,13 @@ class Checkpointer {
       return { tag };
     }
 
-    const container = debug(await $`buildah from scratch`);
-    debug(await $`buildah add ${container} ${checkpointPath} /`);
-    debug(
+    const container = this.#logger.debug(await $`buildah from scratch`);
+    this.#logger.debug(await $`buildah add ${container} ${checkpointPath} /`);
+    this.#logger.debug(
       await $`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
     );
-    debug(await $`buildah commit ${container} ${REGISTRY_FQDN}/${REPO_NAME}:${tag}`);
-    debug(await $`buildah rm ${container}`);
+    this.#logger.debug(await $`buildah commit ${container} ${REGISTRY_FQDN}/${REPO_NAME}:${tag}`);
+    this.#logger.debug(await $`buildah rm ${container}`);
 
     return {
       tag,
@@ -196,7 +183,7 @@ class Checkpointer {
     }
 
     const destination = `${REGISTRY_FQDN}/${REPO_NAME}:${tag}`;
-    debug(await $`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${destination}`);
+    this.#logger.debug(await $`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${destination}`);
 
     return {
       destination,
@@ -214,14 +201,7 @@ class TaskCoordinator {
     DefaultEventsMap,
     ProdWorkerSocketData
   >;
-  #demoTaskNamespace: Namespace<
-    DemoTaskToCoordinatorEvents,
-    CoordinatorToDemoTaskEvents,
-    DefaultEventsMap,
-    DemoTaskSocketData
-  >;
   #platformSocket?: Socket<PlatformToCoordinatorEvents, CoordinatorToPlatformEvents>;
-  #platformWebSocket?: WebSocket;
 
   constructor(
     private port: number,
@@ -230,23 +210,16 @@ class TaskCoordinator {
     this.#httpServer = this.#createHttpServer();
     this.#checkpointer.initialize();
 
-    const io = new Server(this.#httpServer, {
-      // connectionStateRecovery: {
-      //   maxDisconnectionDuration: 2 * 60 * 1000,
-      //   skipMiddlewares: false,
-      // },
-    });
-
-    this.#demoTaskNamespace = this.#createDemoTaskNamespace(io);
+    const io = new Server(this.#httpServer);
     this.#prodWorkerNamespace = this.#createProdWorkerNamespace(io);
 
     this.#platformSocket = this.#createPlatformSocket();
 
     const connectedTasksTotal = new Gauge({
-      name: "daemon_connected_tasks_total",
-      help: "The number of tasks currently connected via websocket.",
+      name: "daemon_connected_tasks_total", // don't change this without updating dashboard config
+      help: "The number of tasks currently connected.",
       collect: () => {
-        connectedTasksTotal.set(this.#demoTaskNamespace.sockets.size);
+        connectedTasksTotal.set(this.#prodWorkerNamespace.sockets.size);
       },
     });
     register.registerMetric(connectedTasksTotal);
@@ -268,62 +241,31 @@ class TaskCoordinator {
       }
     );
 
-    const logger = createLogger(`[platform][${socket.id ?? "NO_ID"}]`);
+    const logger = new SimpleLogger(`[platform][${socket.id ?? "NO_ID"}]`);
 
     socket.on("connect", () => {
-      logger("connect");
+      logger.log("connect");
     });
 
     socket.on("connect_error", (err) => {
-      logger(`connect_error: ${err.message}`);
+      logger.error(`connect_error: ${err.message}`);
     });
 
     socket.on("disconnect", () => {
-      logger("disconnect");
-    });
-
-    socket.on("INVOKE", async (message) => {
-      logger("[INVOKE]", message);
-
-      const taskSocket = await this.#getTaskSocket(message.taskId);
-
-      if (!taskSocket) {
-        return;
-      }
-
-      taskSocket.emit("INVOKE", {
-        version: message.version,
-        payload: message.payload,
-        context: message.context,
-      });
+      logger.log("disconnect");
     });
 
     socket.on("RESUME", async (message) => {
-      logger("[RESUME]", message);
+      logger.log("[RESUME]", message);
 
       const taskSocket = await this.#getAttemptSocket(message.attemptId);
 
       if (!taskSocket) {
-        logger("Socket for attempt not found", { attemptId: message.attemptId });
+        logger.log("Socket for attempt not found", { attemptId: message.attemptId });
         return;
       }
 
       taskSocket.emit("RESUME", message);
-    });
-
-    socket.on("RESUME_WITH", async (message) => {
-      logger("[RESUME_WITH]", message);
-
-      const taskSocket = await this.#getTaskSocket(message.taskId);
-
-      if (!taskSocket) {
-        return;
-      }
-
-      taskSocket.emit("RESUME_WITH", {
-        version: message.version,
-        data: message.data,
-      });
     });
 
     return socket;
@@ -339,108 +281,6 @@ class TaskCoordinator {
     }
   }
 
-  async #getTaskSocket(taskId: string) {
-    const sockets = await this.#demoTaskNamespace.fetchSockets();
-
-    for (const socket of sockets) {
-      if (socket.data.taskId === taskId) {
-        return socket;
-      }
-    }
-  }
-
-  #createDemoTaskNamespace(io: Server) {
-    const namespace: Namespace<
-      DemoTaskToCoordinatorEvents,
-      CoordinatorToDemoTaskEvents,
-      DefaultEventsMap,
-      DemoTaskSocketData
-    > = io.of("/task");
-
-    namespace.on("connection", async (socket) => {
-      const logger = createLogger(`[task][${socket.id}]`);
-
-      this.#platformSocket?.emit("LOG", {
-        version: "v1",
-        taskId: socket.data.taskId,
-        text: "connected",
-      });
-
-      logger("connected");
-
-      socket.on("disconnect", (reason, description) => {
-        logger("disconnect", { reason, description });
-
-        this.#platformSocket?.emit("LOG", {
-          version: "v1",
-          taskId: socket.data.taskId,
-          text: "disconnect",
-        });
-      });
-
-      socket.on("error", (error) => {
-        logger({ error });
-      });
-
-      socket.on("LOG", (message) => {
-        logger("[LOG]", message.text);
-        this.#platformSocket?.emit("LOG", {
-          version: "v1",
-          taskId: socket.data.taskId,
-          text: message.text,
-        });
-      });
-
-      socket.on("READY", (message) => {
-        logger("[READY]", message);
-        this.#platformSocket?.emit("READY", {
-          version: "v1",
-          taskId: socket.data.taskId,
-        });
-      });
-
-      socket.on("WAIT_FOR_DURATION", (message) => {
-        logger("[WAIT_FOR_DURATION]", message.seconds);
-        this.#checkpointer.checkpointAndPush(socket.data.taskId);
-      });
-
-      socket.on("WAIT_FOR_EVENT", (message) => {
-        logger("[WAIT_FOR_EVENT]", message.name);
-        this.#checkpointer.checkpointAndPush(socket.data.taskId);
-      });
-    });
-
-    // auth middleware
-    namespace.use((socket, next) => {
-      const logger = createLogger(`[task][${socket.id}][auth]`);
-
-      const { auth } = socket.handshake;
-
-      if (!("token" in auth)) {
-        logger("no token");
-        return socket.disconnect(true);
-      }
-
-      if (auth.token !== "task-secret") {
-        logger("invalid token");
-        return socket.disconnect(true);
-      }
-
-      const taskId = socket.handshake.headers["x-task-id"];
-      if (!taskId) {
-        logger("no task id");
-        return socket.disconnect(true);
-      }
-      socket.data.taskId = Array.isArray(taskId) ? taskId[0] : taskId;
-
-      logger("success", { taskId: socket.data.taskId });
-
-      next();
-    });
-
-    return namespace;
-  }
-
   #createProdWorkerNamespace(io: Server) {
     const namespace: Namespace<
       ProdWorkerToCoordinatorEvents,
@@ -450,7 +290,7 @@ class TaskCoordinator {
     > = io.of("/prod-worker");
 
     namespace.on("connection", async (socket) => {
-      const logger = createLogger(`[task][${socket.id}]`);
+      const logger = new SimpleLogger(`[task][${socket.id}]`);
 
       this.#platformSocket?.emit("LOG", {
         version: "v1",
@@ -458,10 +298,10 @@ class TaskCoordinator {
         text: "connected",
       });
 
-      logger("connected");
+      logger.log("connected");
 
       socket.on("disconnect", (reason, description) => {
-        logger("disconnect", { reason, description });
+        logger.log("disconnect", { reason, description });
 
         this.#platformSocket?.emit("LOG", {
           version: "v1",
@@ -471,12 +311,14 @@ class TaskCoordinator {
       });
 
       socket.on("error", (error) => {
-        logger({ error });
+        logger.error({ error });
       });
 
       socket.on("LOG", (message, callback) => {
-        logger("[LOG]", message.text);
+        logger.log("[LOG]", message.text);
+
         callback();
+
         this.#platformSocket?.emit("LOG", {
           version: "v1",
           taskId: socket.data.taskId,
@@ -485,9 +327,8 @@ class TaskCoordinator {
       });
 
       socket.on("READY_FOR_EXECUTION", async (message) => {
-        socket.data.attemptId = message.attemptId;
+        logger.log("[READY_FOR_EXECUTION]", message);
 
-        logger("[READY_FOR_EXECUTION]", message);
         this.#platformSocket?.emit("READY", {
           version: "v1",
           taskId: socket.data.taskId,
@@ -499,12 +340,12 @@ class TaskCoordinator {
         });
 
         if (!executionAck) {
-          logger("no execution ack");
+          logger.error("no execution ack", { attemptId: socket.data.attemptId });
           return;
         }
 
         if (!executionAck.success) {
-          logger("execution ack unsuccessful");
+          logger.error("execution unsuccessful", { attemptId: socket.data.attemptId });
           return;
         }
 
@@ -514,7 +355,7 @@ class TaskCoordinator {
           payload: executionAck.payload,
         });
 
-        logger("completed task", { completionId: completionAck.completion.id });
+        logger.log("completed task", { completionId: completionAck.completion.id });
 
         this.#platformSocket?.emit("TASK_RUN_COMPLETED", {
           version: "v1",
@@ -524,26 +365,29 @@ class TaskCoordinator {
       });
 
       socket.on("TASK_HEARTBEAT", (message) => {
-        logger("[TASK_HEARTBEAT]", message);
+        logger.log("[TASK_HEARTBEAT]", message);
+
         this.#platformSocket?.emit("TASK_HEARTBEAT", message);
       });
 
       socket.on("WAIT_FOR_BATCH", (message) => {
-        logger("[WAIT_FOR_BATCH]", message);
+        logger.log("[WAIT_FOR_BATCH]", message);
+
         // this.#checkpointer.checkpointAndPush(socket.data.podName);
       });
 
       socket.on("WAIT_FOR_DURATION", async (message, callback) => {
-        logger("[WAIT_FOR_DURATION]", message);
+        logger.log("[WAIT_FOR_DURATION]", message);
+
         const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
 
         if (!checkpoint) {
-          logger("Failed to checkpoint", { podName: socket.data.podName });
+          logger.error("Failed to checkpoint", { podName: socket.data.podName });
           callback({ success: false });
           return;
         }
 
-        this.#platformSocket?.emit("CHEAKPOINT_CREATED", {
+        this.#platformSocket?.emit("CHECKPOINT_CREATED", {
           version: "v1",
           attemptId: socket.data.attemptId,
           docker: checkpoint.docker,
@@ -555,15 +399,17 @@ class TaskCoordinator {
       });
 
       socket.on("WAIT_FOR_TASK", (message) => {
-        logger("[WAIT_FOR_TASK]", message);
+        logger.log("[WAIT_FOR_TASK]", message);
+
         // this.#checkpointer.checkpointAndPush(socket.data.podName);
       });
 
       socket.on("INDEX_TASKS", async (message, callback) => {
-        logger("[INDEX_TASKS]", message);
+        logger.log("[INDEX_TASKS]", message);
 
         const environmentClient = new CliApiClient(socket.data.apiUrl, socket.data.apiKey);
 
+        // TODO: should do this via socket instead
         const createResponse = await environmentClient.createBackgroundWorker(
           socket.data.projectRef,
           {
@@ -577,33 +423,34 @@ class TaskCoordinator {
           }
         );
 
-        logger({ createResponse });
+        logger.log("created background worker", createResponse);
+
         callback({ success: createResponse.success });
       });
     });
 
     // auth middleware
     namespace.use(async (socket, next) => {
-      const logger = createLogger(`[task][${socket.id}][auth]`);
+      const logger = new SimpleLogger(`[task][${socket.id}][auth]`);
 
       const { auth } = socket.handshake;
 
       if (!("apiKey" in auth)) {
-        logger("no api key");
+        logger.error("no api key");
         return socket.disconnect(true);
       }
 
       if (!("apiUrl" in auth)) {
-        logger("no api url");
+        logger.error("no api url");
         return socket.disconnect(true);
       }
 
+      // TODO: remove this section once worker creation via socket
       async function validateApiKey(apiKey: string, apiUrl: string) {
         return true;
       }
-
       if (!(await validateApiKey(auth.apiKey, auth.apiUrl))) {
-        logger("invalid api key");
+        logger.error("invalid api key");
         return socket.disconnect(true);
       }
       socket.data.apiKey = auth.apiKey;
@@ -612,7 +459,7 @@ class TaskCoordinator {
       function setSocketDataFromHeader(dataKey: keyof typeof socket.data, headerName: string) {
         const value = socket.handshake.headers[headerName];
         if (!value) {
-          logger(`missing required header: ${headerName}`);
+          logger.error(`missing required header: ${headerName}`);
           throw new Error("missing header");
         }
         socket.data[dataKey] = Array.isArray(value) ? value[0] : value;
@@ -628,7 +475,7 @@ class TaskCoordinator {
         return socket.disconnect(true);
       }
 
-      logger("success", socket.data);
+      logger.log("success", socket.data);
 
       next();
     });
@@ -638,7 +485,7 @@ class TaskCoordinator {
 
   #createHttpServer() {
     const httpServer = createServer(async (req, res) => {
-      logger(`[${req.method}]`, req.url);
+      logger.log(`[${req.method}]`, req.url);
 
       const reply = new HttpReply(res);
 
@@ -647,9 +494,7 @@ class TaskCoordinator {
           return reply.text("ok");
         }
         case "/metrics": {
-          return res
-            .writeHead(200, { "Content-Type": register.contentType })
-            .end(await register.metrics());
+          return reply.text(await register.metrics(), 200, register.contentType);
         }
         case "/whoami": {
           return reply.text(NODE_NAME);
@@ -670,7 +515,7 @@ class TaskCoordinator {
     });
 
     httpServer.on("listening", () => {
-      logger("server listening on port", HTTP_SERVER_PORT);
+      logger.log("server listening on port", HTTP_SERVER_PORT);
     });
 
     return httpServer;

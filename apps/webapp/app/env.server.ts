@@ -74,8 +74,8 @@ const EnvironmentSchema = z.object({
   LOG_TELEMETRY: z.string().default("true"),
   IMAGE_REGISTRY: z.string().default("docker.io"),
   IMAGE_REPO: z.string().default("task"),
-  PROVIDER_SECRET: z.string(),
-  COORDINATOR_SECRET: z.string(),
+  PROVIDER_SECRET: z.string().default("provider-secret"),
+  COORDINATOR_SECRET: z.string().default("coordinator-secret"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

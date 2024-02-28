@@ -21,6 +21,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "../marqs.server";
 import { eventRepository } from "../eventRepository.server";
 import { socketIo } from "../handleSocketIo.server";
+import { singleton } from "~/utils/singleton";
 
 const tracer = trace.getTracer("sharedQueueConsumer");
 
@@ -53,7 +54,7 @@ export class SharedQueueConsumer {
   private _taskSuccesses: number = 0;
   private _currentSpan: Span | undefined;
   private _endSpanInNextIteration = false;
-  private _tasks = new SharedQueueTasks();
+  private _tasks = sharedQueueTasks;
 
   constructor(
     private _sender: ZodMessageSender<typeof serverWebsocketMessages>,
@@ -388,8 +389,8 @@ export class SharedQueueConsumer {
         }
         break;
       }
+      // Resume after dependency completed with no remaining retries
       case "RESUME": {
-        // Resume after dependency completed with no remaining retries
         if (!messageBody.data.dependentAttempt) {
           logger.error("Resuming without dependent attempt currently unsupported", {
             queueMessage: message.data,
@@ -589,7 +590,7 @@ export class SharedQueueConsumer {
   }
 }
 
-export class SharedQueueTasks {
+class SharedQueueTasks {
   async getCompletionPayloadFromAttempt(id: string): Promise<TaskRunExecutionResult | undefined> {
     const attempt = await prisma.taskRunAttempt.findUnique({
       where: {
@@ -837,10 +838,11 @@ export class SharedQueueTasks {
         }
       );
 
-      // FIXME: If this is a resumed attempt, we need to ack the RESUME and enqueue another EXECUTE (as it will no longer exist)
+      // TODO: If this is a resumed attempt, we need to ack the RESUME and enqueue another EXECUTE (as it will no longer exist)
       await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
-    } else {
-      // Attempt succeeded or this was the last retry
+    }
+    // Attempt succeeded or this was the last retry
+    else {
       await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
       const { batchItem, dependency } = taskRunAttempt.taskRun;
@@ -908,3 +910,5 @@ export class SharedQueueTasks {
     await marqs?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
   }
 }
+
+export const sharedQueueTasks = singleton("sharedQueueTasks", () => new SharedQueueTasks());

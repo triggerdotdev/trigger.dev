@@ -21,9 +21,9 @@ export class HttpReply {
     return this.response.writeHead(status ?? 200).end();
   }
 
-  text(text: string, status?: number) {
+  text(text: string, status?: number, contentType?: string) {
     return this.response
-      .writeHead(status ?? 200, { "Content-Type": "text/plain" })
+      .writeHead(status ?? 200, { "Content-Type": contentType || "text/plain" })
       .end(text.endsWith("\n") ? text : `${text}\n`);
   }
 }

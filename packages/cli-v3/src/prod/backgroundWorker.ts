@@ -1,11 +1,9 @@
 import {
   BackgroundWorkerProperties,
-  BackgroundWorkerServerMessages,
   CreateBackgroundWorkerResponse,
   ProdTaskRunExecutionPayload,
   TaskMetadataWithFilePath,
   TaskRunBuiltInError,
-  TaskRunError,
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
@@ -19,152 +17,6 @@ import { ChildProcess, fork } from "node:child_process";
 import { readFileSync } from "node:fs";
 import nodePath from "node:path";
 import { SourceMapConsumer, type RawSourceMap } from "source-map";
-
-export class ProdBackgroundWorkerCoordinator {
-  public onTaskCompleted: Evt<{
-    backgroundWorkerId: string;
-    completion: TaskRunExecutionResult;
-    worker: ProdBackgroundWorker;
-    execution: TaskRunExecution;
-  }> = new Evt();
-
-  public onWorkerRegistered: Evt<{
-    worker: ProdBackgroundWorker;
-    id: string;
-    record: CreateBackgroundWorkerResponse;
-  }> = new Evt();
-
-  public onWorkerDeprecated: Evt<{ worker: ProdBackgroundWorker; id: string }> = new Evt();
-  private _backgroundWorkers: Map<string, ProdBackgroundWorker> = new Map();
-  private _records: Map<string, CreateBackgroundWorkerResponse> = new Map();
-
-  constructor(private baseURL: string) {
-    this.onTaskCompleted.attach(async ({ completion, execution }) => {
-      await this.#notifyWorkersOfTaskCompletion(completion, execution);
-    });
-  }
-
-  async #notifyWorkersOfTaskCompletion(
-    completion: TaskRunExecutionResult,
-    execution: TaskRunExecution
-  ) {
-    for (const worker of this._backgroundWorkers.values()) {
-      await worker.taskRunCompletedNotification(completion, execution);
-    }
-  }
-
-  get currentWorkers() {
-    return Array.from(this._backgroundWorkers.entries()).map(([id, worker]) => ({
-      id,
-      worker,
-      record: this._records.get(id)!,
-    }));
-  }
-
-  async registerWorker(record: CreateBackgroundWorkerResponse, worker: ProdBackgroundWorker) {
-    for (const [workerId, existingWorker] of this._backgroundWorkers.entries()) {
-      if (workerId === record.id) {
-        continue;
-      }
-
-      this.onWorkerDeprecated.post({ worker: existingWorker, id: workerId });
-    }
-
-    this._backgroundWorkers.set(record.id, worker);
-    this._records.set(record.id, record);
-    this.onWorkerRegistered.post({ worker, id: record.id, record });
-  }
-
-  close() {
-    for (const worker of this._backgroundWorkers.values()) {
-      worker.close();
-    }
-
-    this._backgroundWorkers.clear();
-    this._records.clear();
-  }
-
-  async handleMessage(id: string, message: BackgroundWorkerServerMessages) {
-    switch (message.type) {
-      case "EXECUTE_RUNS": {
-        await Promise.all(message.payloads.map((payload) => this.#executeTaskRun(id, payload)));
-      }
-    }
-  }
-
-  async #executeTaskRun(id: string, payload: TaskRunExecutionPayload) {
-    const worker = this._backgroundWorkers.get(id);
-
-    if (!worker) {
-      console.error(`Could not find worker ${id}`);
-      return;
-    }
-
-    const record = this._records.get(id);
-
-    if (!record) {
-      console.error(`Could not find worker record ${id}`);
-      return;
-    }
-
-    const { execution } = payload;
-
-    const link = `view logs: ${this.baseURL}/runs/${execution.run.id}`;
-    const workerPrefix = `[worker:${record.version}]`;
-    const taskPrefix = `[task:${execution.task.id}]`;
-    const runId = execution.run.id;
-    const attempt = `.${execution.attempt.number}`;
-
-    console.log(`${workerPrefix}${taskPrefix} ${runId}${attempt} ${link}`);
-
-    const now = performance.now();
-
-    const completion = await worker.executeTaskRun(payload as ProdTaskRunExecutionPayload);
-
-    const elapsed = performance.now() - now;
-
-    const resultText = !completion.ok ? "error" : "success";
-
-    const errorText = !completion.ok
-      ? `\n\n\t${"Error"} ${this.#formatErrorLog(completion.error)}`
-      : "";
-
-    const elapsedText = `(${elapsed.toFixed(2)}ms)`;
-
-    console.log(
-      `${workerPrefix}${taskPrefix} ${runId}${attempt} ${resultText} ${elapsedText} ${link}${errorText}`
-    );
-
-    this.onTaskCompleted.post({
-      completion,
-      execution,
-      worker,
-      backgroundWorkerId: id,
-    });
-  }
-
-  #formatErrorLog(error: TaskRunError) {
-    switch (error.type) {
-      case "INTERNAL_ERROR": {
-        return `Internal error: ${error.code}`;
-      }
-      case "STRING_ERROR": {
-        return error.raw;
-      }
-      case "CUSTOM_ERROR": {
-        return error.raw;
-      }
-      case "BUILT_IN_ERROR": {
-        return `${error.name === "Error" ? "" : `(${error.name})`} ${
-          error.message
-        }\n${error.stackTrace
-          .split("\n")
-          .map((line) => `\t  ${line}`)
-          .join("\n")}\n`;
-      }
-    }
-  }
-}
 
 type BackgroundWorkerParams = {
   env: Record<string, string>;

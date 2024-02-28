@@ -28,7 +28,6 @@
     "test": "jest"
   },
   "devDependencies": {
-    "@trigger.dev/core": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
     "@trigger.dev/tsup": "workspace:*",
     "@types/node": "18",
@@ -38,9 +37,5 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "dependencies": {
-    "evt": "^2.5.7",
-    "source-map": "^0.7.4"
   }
 }

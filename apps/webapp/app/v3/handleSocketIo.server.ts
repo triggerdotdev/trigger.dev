@@ -11,11 +11,10 @@ import { type Namespace, Server } from "socket.io";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { SharedSocketConnection } from "./sharedSocketConnection";
-import { SharedQueueTasks } from "./marqs/sharedQueueConsumer.server";
 import { CreateCheckpointService } from "./services/createCheckpoint.server";
+import { sharedQueueTasks } from "./marqs/sharedQueueConsumer.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
-const sharedQueueTasks = singleton("sharedQueueTasks", () => new SharedQueueTasks());
 
 function initalizeIoServer() {
   const io = new Server();
@@ -54,7 +53,7 @@ function createCoordinatorNamespace(io: Server) {
     });
 
     socket.on("error", (error) => {
-      logger({ error });
+      logger("error", error);
     });
 
     socket.on("LOG", (message) => {
@@ -86,8 +85,8 @@ function createCoordinatorNamespace(io: Server) {
       await sharedQueueTasks.taskHeartbeat(message.attemptFriendlyId);
     });
 
-    socket.on("CHEAKPOINT_CREATED", async (message) => {
-      logger("[CHEAKPOINT_CREATED]", message);
+    socket.on("CHECKPOINT_CREATED", async (message) => {
+      logger("[CHECKPOINT_CREATED]", message);
 
       const createCheckpoint = new CreateCheckpointService();
       await createCheckpoint.call(message);
@@ -132,7 +131,7 @@ function createProviderNamespace(io: Server) {
     });
 
     socket.on("error", (error) => {
-      logger({ error });
+      logger("error", error);
     });
 
     socket.on("LOG", (message) => {

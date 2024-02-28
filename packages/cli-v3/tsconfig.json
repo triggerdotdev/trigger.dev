@@ -1,6 +1,6 @@
 // See: https://www.totaltypescript.com/tsconfig-cheat-sheet
 {
-  "include": ["./src/**/*.ts", "./src/**/*.tsx", "../core/src/v3/schemas/schemas.ts", "../core/src/v3/types/utils.ts"],
+  "include": ["./src/**/*.ts", "./src/**/*.tsx"],
   "compilerOptions": {
     "esModuleInterop": true,
     "skipLibCheck": true,

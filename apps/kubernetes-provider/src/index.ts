@@ -7,11 +7,10 @@ import {
   ProviderClientToServerEvents,
   ProviderServerToClientEvents,
 } from "@trigger.dev/core/v3";
-import { HttpReply, getTextBody } from "@trigger.dev/core-apps";
+import { HttpReply, SimpleLogger, getTextBody } from "@trigger.dev/core-apps";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 
-const DEBUG = ["1", "true"].includes(process.env.DEBUG ?? "") || false;
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8000);
 const NODE_NAME = process.env.NODE_NAME || "some-node";
 const POD_NAME = process.env.POD_NAME || "k8s-provider";
@@ -23,17 +22,7 @@ const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "provider-secret";
 const REGISTRY_FQDN = process.env.REGISTRY_FQDN || "localhost:5000";
 const REPO_NAME = process.env.REPO_NAME || "test";
 
-const debug = (...args: any[]) => {
-  if (!DEBUG) {
-    return args[0];
-  }
-  console.log(`[${NODE_NAME}]`, "debug:", ...args);
-  return args[0];
-};
-
-const log = (...args: any[]) => {
-  console.log(`[${NODE_NAME}]`, ...args);
-};
+const logger = new SimpleLogger(`[${NODE_NAME}]`);
 
 type Namespace = {
   metadata: {
@@ -333,12 +322,12 @@ class KubernetesTaskOperations implements TaskOperations {
   async #createPod(pod: V1Pod, namespace: Namespace) {
     try {
       const res = await this.#k8sApi.core.createNamespacedPod(namespace.metadata.name, pod);
-      debug(res.body);
+      logger.debug(res.body);
     } catch (err: any) {
       if ("body" in err) {
-        console.error(err.body);
+        logger.error(err.body);
       } else {
-        console.error(err);
+        logger.error(err);
       }
     }
   }
@@ -349,12 +338,12 @@ class KubernetesTaskOperations implements TaskOperations {
         opts.podName,
         opts.namespace.metadata.name
       );
-      debug(res.body);
+      logger.debug(res.body);
     } catch (err: any) {
       if ("body" in err) {
-        console.error(err.body);
+        logger.error(err.body);
       } else {
-        console.error(err);
+        logger.error(err);
       }
     }
   }
@@ -362,13 +351,13 @@ class KubernetesTaskOperations implements TaskOperations {
   async #getPod(podName: string, namespace: Namespace) {
     try {
       const res = await this.#k8sApi.core.readNamespacedPod(podName, namespace.metadata.name);
-      debug(res.body);
+      logger.debug(res.body);
       return res.body;
     } catch (err: any) {
       if ("body" in err) {
-        console.error(err.body);
+        logger.error(err.body);
       } else {
-        console.error(err);
+        logger.error(err);
       }
     }
   }
@@ -376,12 +365,12 @@ class KubernetesTaskOperations implements TaskOperations {
   async #createJob(job: V1Job, namespace: Namespace) {
     try {
       const res = await this.#k8sApi.batch.createNamespacedJob(namespace.metadata.name, job);
-      debug(res.body);
+      logger.debug(res.body);
     } catch (err: any) {
       if ("body" in err) {
-        console.error(err.body);
+        logger.error(err.body);
       } else {
-        console.error(err);
+        logger.error(err);
       }
     }
   }
@@ -423,53 +412,47 @@ class KubernetesProvider implements Provider {
       }
     );
 
-    const logger = (...args: any[]) => {
-      console.log(`[platform][${socket.id ?? "NO_ID"}]`, ...args);
-    };
+    const logger = new SimpleLogger(`[platform][${socket.id ?? "NO_ID"}]`);
 
     socket.on("connect_error", (err) => {
-      logger(`connect_error: ${err.message}`);
+      logger.error(`connect_error: ${err.message}`);
     });
 
     socket.on("connect", () => {
-      logger("connect");
+      logger.log("connect");
     });
 
     socket.on("disconnect", () => {
-      logger("disconnect");
+      logger.log("disconnect");
     });
 
     socket.on("GET", async (message) => {
-      logger("[GET]", message);
+      logger.log("[GET]", message);
       this.tasks.get({ runId: message.name });
     });
 
     socket.on("DELETE", async (message, callback) => {
-      logger("[DELETE]", message);
+      logger.log("[DELETE]", message);
+
       callback({
         message: "delete request received",
       });
+
       this.tasks.delete({ runId: message.name });
     });
 
     socket.on("INDEX", async (message) => {
-      logger("[INDEX]", message);
+      logger.log("[INDEX]", message);
+
       await this.tasks.index({
         contentHash: message.contentHash,
         imageTag: message.imageTag,
       });
     });
 
-    socket.on("INDEX_COMPLETE", async (message) => {
-      logger("[INDEX_COMPLETE]", message);
-      // await this.tasks.completeIndex({
-      //   contentHash: message.contentHash,
-      //   imageTag: message.imageTag,
-      // })
-    });
-
     socket.on("INVOKE", async (message) => {
-      logger("[INVOKE]", message);
+      logger.log("[INVOKE]", message);
+
       await this.tasks.create({
         runId: message.name,
         image: message.name,
@@ -478,18 +461,13 @@ class KubernetesProvider implements Provider {
     });
 
     socket.on("RESTORE", async (message) => {
-      logger("[RESTORE]", message);
-      await this.tasks.restore({
-        runId: message.image,
-        name: message.name,
-        image: message.image,
-        checkpointId: message.baseImage,
-        machine: message.machine,
-      });
+      logger.log("[RESTORE]", message);
+
+      // await this.tasks.restore({});
     });
 
     socket.on("HEALTH", async (message) => {
-      logger("[HEALTH]", message);
+      logger.log("[HEALTH]", message);
     });
 
     return socket;
@@ -497,7 +475,7 @@ class KubernetesProvider implements Provider {
 
   #createHttpServer() {
     const httpServer = createServer(async (req, res) => {
-      log(`[${req.method}]`, req.url);
+      logger.log(`[${req.method}]`, req.url);
 
       const reply = new HttpReply(res);
 
@@ -564,7 +542,7 @@ class KubernetesProvider implements Provider {
     });
 
     httpServer.on("listening", () => {
-      log("server listening on port", this.options.port);
+      logger.log("server listening on port", this.options.port);
     });
 
     return httpServer;

@@ -5,7 +5,7 @@ import { execa } from "execa";
 import { resolve as importResolve } from "import-meta-resolve";
 import { createHash } from "node:crypto";
 import fs, { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";

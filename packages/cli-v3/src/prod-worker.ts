@@ -3,9 +3,10 @@ import {
   ProdWorkerToCoordinatorEvents,
   TaskResource,
 } from "@trigger.dev/core/v3";
-import { HttpReply, getTextBody, ProdBackgroundWorker } from "@trigger.dev/core-apps";
+import { HttpReply, getTextBody, SimpleLogger } from "@trigger.dev/core-apps";
 import { createServer } from "node:http";
 import { io, Socket } from "socket.io-client";
+import { ProdBackgroundWorker } from "./prod/backgroundWorker";
 
 function getRandomInteger(min: number, max: number) {
   const intMin = Math.ceil(min);
@@ -17,7 +18,6 @@ function getRandomPortNumber() {
   return getRandomInteger(8000, 9999);
 }
 
-const DEBUG = ["1", "true"].includes(process.env.DEBUG ?? "") || false;
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
 const COORDINATOR_HOST = process.env.COORDINATOR_HOST || "127.0.0.1";
 const COORDINATOR_PORT = Number(process.env.COORDINATOR_PORT || 50080);
@@ -25,17 +25,7 @@ const MACHINE_NAME = process.env.MACHINE_NAME || "local";
 const POD_NAME = process.env.POD_NAME || "some-pod";
 const SHORT_HASH = process.env.TRIGGER_CONTENT_HASH!.slice(0, 9);
 
-const log = (...args: any[]) => {
-  console.log(`[${MACHINE_NAME}][${SHORT_HASH}]`, ...args);
-};
-
-const debug = (...args: any[]) => {
-  if (!DEBUG) {
-    return args[0];
-  }
-  log("DEBUG", ...args);
-  return args[0];
-};
+const logger = new SimpleLogger(`[${MACHINE_NAME}][${SHORT_HASH}]`);
 
 class ProdWorker {
   private apiUrl = process.env.TRIGGER_API_URL!;
@@ -55,7 +45,7 @@ class ProdWorker {
   #coordinatorSocket: Socket<CoordinatorToProdWorkerEvents, ProdWorkerToCoordinatorEvents>;
 
   constructor(
-    private port: number,
+    port: number,
     private host = "0.0.0.0"
   ) {
     this.#coordinatorSocket = this.#createCoordinatorSocket();
@@ -79,7 +69,7 @@ class ProdWorker {
         "WAIT_FOR_DURATION",
         { version: "v1", ...message },
         ({ success }) => {
-          log("WAIT_FOR_DURATION", { success });
+          logger.log("WAIT_FOR_DURATION", { success });
         }
       );
     });
@@ -111,16 +101,14 @@ class ProdWorker {
       }
     );
 
-    const logger = (...args: any[]) => {
-      console.log(`[coordinator][${socket.id ?? "NO_ID"}]`, ...args);
-    };
+    const logger = new SimpleLogger(`[coordinator][${socket.id ?? "NO_ID"}]`);
 
     socket.on("connect_error", (err) => {
-      logger(`connect_error: ${err.message}`);
+      logger.error(`connect_error: ${err.message}`);
     });
 
     socket.on("connect", async () => {
-      logger("connect");
+      logger.log("connect");
 
       if (process.env.INDEX_TASKS === "true") {
         const taskResources = await this.#initializeWorker();
@@ -129,10 +117,10 @@ class ProdWorker {
           ...taskResources,
         });
         if (success) {
-          logger("indexing done, shutting down..");
+          logger.log("indexing done, shutting down..");
           process.exit(0);
         } else {
-          logger("indexing failure, shutting down..");
+          logger.log("indexing failure, shutting down..");
           process.exit(1);
         }
       } else {
@@ -144,24 +132,17 @@ class ProdWorker {
     });
 
     socket.on("disconnect", () => {
-      logger("disconnect");
-    });
-
-    socket.on("INVOKE", async (message) => {
-      logger("[INVOKE]", message);
+      logger.log("disconnect");
     });
 
     socket.on("RESUME", async (message) => {
-      logger("[RESUME]", message);
+      logger.log("[RESUME]", message);
+
       this.#backgroundWorker.taskRunCompletedNotification(message.completion, message.execution);
     });
 
-    socket.on("RESUME_WITH", async (message) => {
-      logger("[RESUME_WITH]", message);
-    });
-
     socket.on("EXECUTE_TASK_RUN", async (message, callback) => {
-      logger("[EXECUTE_TASK_RUN]");
+      logger.log("[EXECUTE_TASK_RUN]", { attempt: message.payload.execution.attempt });
 
       if (this.executing || this.completed) {
         return;
@@ -170,8 +151,9 @@ class ProdWorker {
       this.executing = true;
       const completion = await this.#backgroundWorker.executeTaskRun(message.payload);
 
-      console.log("completed", completion);
+      logger.log("completed", completion);
 
+      // TODO: replace ack with emit
       callback({ completion });
 
       this.completed = true;
@@ -187,7 +169,7 @@ class ProdWorker {
 
   #createHttpServer() {
     const httpServer = createServer(async (req, res) => {
-      log(`[${req.method}]`, req.url);
+      logger.log(`[${req.method}]`, req.url);
 
       const reply = new HttpReply(res);
 
@@ -218,7 +200,7 @@ class ProdWorker {
               ms: 60_000,
             },
             ({ success }) => {
-              log("WAIT_FOR_DURATION", { success });
+              logger.log("WAIT_FOR_DURATION", { success });
             }
           );
           // this is required when C/Ring established connections
@@ -255,8 +237,7 @@ class ProdWorker {
           return reply.empty();
 
         case "/preStop":
-          log("should do preStop stuff, e.g. checkpoint and graceful shutdown");
-          // this.#sendMessage({ action: "WAIT" })
+          logger.log("should do preStop stuff, e.g. checkpoint and graceful shutdown");
           return reply.text("got preStop request");
 
         case "/ready":
@@ -276,7 +257,7 @@ class ProdWorker {
     });
 
     httpServer.on("listening", () => {
-      log("http server listening on port", this.#httpPort);
+      logger.log("http server listening on port", this.#httpPort);
     });
 
     httpServer.on("error", (error) => {
@@ -285,7 +266,7 @@ class ProdWorker {
         return;
       }
 
-      log(`port ${this.#httpPort} already in use, retrying with random port..`);
+      logger.error(`port ${this.#httpPort} already in use, retrying with random port..`);
 
       this.#httpPort = getRandomPortNumber();
 

@@ -1,2 +1,2 @@
 export * from "./http";
-export * from "./prodBackgroundWorker";
+export * from "./logger";

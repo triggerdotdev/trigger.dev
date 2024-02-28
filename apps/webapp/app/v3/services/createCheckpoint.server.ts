@@ -13,7 +13,7 @@ export class CreateCheckpointService {
   }
 
   public async call(
-    params: Parameters<CoordinatorToPlatformEvents["CHEAKPOINT_CREATED"]>[0]
+    params: Parameters<CoordinatorToPlatformEvents["CHECKPOINT_CREATED"]>[0]
   ): Promise<Checkpoint> {
     const attempt = await this.#prismaClient.taskRunAttempt.findUniqueOrThrow({
       where: {

@@ -60,35 +60,23 @@ importers:
       '@trigger.dev/core': workspace:*
       '@trigger.dev/core-apps': workspace:*
       '@types/node': ^18
-      '@types/ws': ^8.5.10
       dotenv: ^16.4.2
       esbuild: ^0.19.11
-      evt: ^2.5.7
       execa: ^8.0.1
-      partysocket: ^0.0.25
       prom-client: ^15.1.0
       socket.io: ^4.7.4
       socket.io-client: ^4.7.4
-      source-map: ^0.7.4
       tsx: ^4.7.0
       typescript: ^5.3.3
-      ws: ^8.16.0
-      zod: ^3.22.4
     dependencies:
       '@trigger.dev/core': link:../../packages/core
       '@trigger.dev/core-apps': link:../../packages/core-apps
-      evt: 2.5.7
       execa: 8.0.1
-      partysocket: 0.0.25
       prom-client: 15.1.0
       socket.io: 4.7.4
       socket.io-client: 4.7.4
-      source-map: 0.7.4
-      ws: 8.16.0
-      zod: 3.22.4
     devDependencies:
       '@types/node': 18.19.17
-      '@types/ws': 8.5.10
       dotenv: 16.4.4
       esbuild: 0.19.11
       tsx: 4.7.1
@@ -102,18 +90,14 @@ importers:
       dotenv: ^16.4.2
       esbuild: ^0.19.11
       execa: ^8.0.1
-      socket.io: ^4.7.4
       socket.io-client: ^4.7.4
       tsx: ^4.7.0
       typescript: ^5.3.3
-      zod: ^3.22.4
     dependencies:
       '@trigger.dev/core': link:../../packages/core
       '@trigger.dev/core-apps': link:../../packages/core-apps
       execa: 8.0.1
-      socket.io: 4.7.4
       socket.io-client: 4.7.4
-      zod: 3.22.4
     devDependencies:
       '@types/node': 18.19.17
       dotenv: 16.4.4
@@ -128,18 +112,14 @@ importers:
       '@trigger.dev/core-apps': workspace:*
       dotenv: ^16.4.2
       esbuild: ^0.19.11
-      socket.io: ^4.7.4
       socket.io-client: ^4.7.4
       tsx: ^4.7.0
       typescript: ^5.3.3
-      zod: ^3.22.4
     dependencies:
       '@kubernetes/client-node': 0.20.0
       '@trigger.dev/core': link:../../packages/core
       '@trigger.dev/core-apps': link:../../packages/core-apps
-      socket.io: 4.7.4
       socket.io-client: 4.7.4
-      zod: 3.22.4
     devDependencies:
       dotenv: 16.4.4
       esbuild: 0.19.11
@@ -1260,20 +1240,13 @@ importers:
 
   packages/core-apps:
     specifiers:
-      '@trigger.dev/core': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@trigger.dev/tsup': workspace:*
       '@types/node': '18'
-      evt: ^2.5.7
       rimraf: ^3.0.2
-      source-map: ^0.7.4
       tsup: ^8.0.1
       typescript: ^5.3.0
-    dependencies:
-      evt: 2.5.7
-      source-map: 0.7.4
     devDependencies:
-      '@trigger.dev/core': link:../core
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@trigger.dev/tsup': link:../../config-packages/tsup
       '@types/node': 18.19.17
@@ -18345,6 +18318,7 @@ packages:
     resolution: {integrity: sha512-vmQSUcfalpIq0R9q7uTo2lXs6eGIpt9wtnLdMv9LVpIjCA/+ufZRozlVoVelIYixx1ugCBKDhn89vnsEGOCx9A==}
     dependencies:
       '@types/node': 20.6.0
+    dev: false
 
   /@types/ws/8.5.4:
     resolution: {integrity: sha512-zdQDHKUgcX/zBc4GrwsE/7dVdAD8JR4EuiAXiiUhhfyIJXXb2+PrGshFyeXWQPMmmZ2XxgaqclgpIC7eTXc1mg==}
@@ -24506,11 +24480,6 @@ packages:
   /event-target-shim/5.0.1:
     resolution: {integrity: sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==}
     engines: {node: '>=6'}
-
-  /event-target-shim/6.0.2:
-    resolution: {integrity: sha512-8q3LsZjRezbFZ2PN+uP+Q7pnHUMmAOziU2vA2OwoFaKIXxlxl38IylhSSgUorWu/rf4er67w0ikBqjBFk/pomA==}
-    engines: {node: '>=10.13.0'}
-    dev: false
 
   /eventemitter3/3.1.2:
     resolution: {integrity: sha512-tvtQIeLVHjDkJYnzf2dgVMxfuSGJeM/7UCG17TT4EumTfNtF+0nebF/4zWOIkCreAbtNqhGEboB6BWrwqNaw4Q==}
@@ -31498,12 +31467,6 @@ packages:
 
   /partysocket/0.0.17:
     resolution: {integrity: sha512-8Re9nmgP2LzQhq+FBs9+BZNTjmMwoF4geEKlpH0lxW1JKp3FmplN74306afGH9EsOjdfcXqKY2VCZtc3iAHIow==}
-    dev: false
-
-  /partysocket/0.0.25:
-    resolution: {integrity: sha512-1oCGA65fydX/FgdnsiBh68buOvfxuteoZVSb3Paci2kRp/7lhF0HyA8EDb5X/O6FxId1e+usPTQNRuzFEvkJbQ==}
-    dependencies:
-      event-target-shim: 6.0.2
     dev: false
 
   /pascal-case/3.1.2:
