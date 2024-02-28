@@ -98,6 +98,7 @@ export class RunListPresenter {
         createdAt: Date;
         startedAt: Date | null;
         completedAt: Date | null;
+        isTest: boolean;
         attempts: BigInt;
       }[]
     >`
@@ -112,6 +113,7 @@ export class RunListPresenter {
     tr."createdAt" AS "createdAt",
     tra."startedAt" AS "startedAt",
     tra."completedAt" AS "completedAt",
+    tr."isTest" AS "isTest",
     COUNT(tra.id) AS attempts
   FROM
     "TaskRun" tr
@@ -211,7 +213,7 @@ export class RunListPresenter {
           createdAt: run.createdAt,
           startedAt: run.startedAt,
           completedAt: run.completedAt,
-          isTest: false,
+          isTest: run.isTest,
           status: run.status,
           version: run.version,
           taskIdentifier: run.taskIdentifier,

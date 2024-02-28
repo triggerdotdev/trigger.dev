@@ -41,6 +41,7 @@ export const TriggerTaskRequestBody = z.object({
       lockToVersion: z.string().optional(),
       queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),
+      test: z.boolean().optional(),
     })
     .optional(),
 });
@@ -79,6 +80,14 @@ export const GetBatchResponseBody = z.object({
 });
 
 export type GetBatchResponseBody = z.infer<typeof GetBatchResponseBody>;
+
+export const GetEnvironmentVariablesResponseBody = z.object({
+  variables: z.record(z.string()),
+});
+
+export type GetEnvironmentVariablesResponseBody = z.infer<
+  typeof GetEnvironmentVariablesResponseBody
+>;
 
 export const CreateImageDetailsRequestBody = z.object({
   metadata: ImageDetailsMetadata,

@@ -25,7 +25,6 @@ import {
   CreatableEventEnvironmentType,
 } from "./eventRepository.server";
 import { logger } from "~/services/logger.server";
-import { env } from "~/env.server";
 
 export type OTLPExporterConfig = {
   batchSize: number;
@@ -263,6 +262,7 @@ function extractResourceProperties(attributes: KeyValue[]) {
       "unknown"
     ),
     runId: extractStringAttribute(attributes, SemanticInternalAttributes.RUN_ID, "unknown"),
+    runIsTest: extractBooleanAttribute(attributes, SemanticInternalAttributes.RUN_IS_TEST, false),
     attemptId: extractStringAttribute(attributes, SemanticInternalAttributes.ATTEMPT_ID),
     attemptNumber: extractNumberAttribute(attributes, SemanticInternalAttributes.ATTEMPT_NUMBER),
     taskSlug: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_SLUG, "unknown"),
@@ -504,6 +504,20 @@ function extractNumberAttribute(
   if (!attribute) return fallback;
 
   return isIntValue(attribute?.value) ? Number(attribute.value.value.intValue) : fallback;
+}
+
+function extractBooleanAttribute(attributes: KeyValue[], name: string): boolean | undefined;
+function extractBooleanAttribute(attributes: KeyValue[], name: string, fallback: boolean): boolean;
+function extractBooleanAttribute(
+  attributes: KeyValue[],
+  name: string,
+  fallback?: boolean
+): boolean | undefined {
+  const attribute = attributes.find((attribute) => attribute.key === name);
+
+  if (!attribute) return fallback;
+
+  return isBoolValue(attribute?.value) ? attribute.value.value.boolValue : fallback;
 }
 
 function isPartialSpan(span: Span): boolean {

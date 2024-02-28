@@ -1,9 +1,7 @@
-import { Attributes } from "@opentelemetry/api";
-import { TaskEventStyle, unflattenAttributes } from "@trigger.dev/core/v3";
-import { TaskEvent } from "@trigger.dev/database";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
+import { eventRepository } from "~/v3/eventRepository.server";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
@@ -62,45 +60,13 @@ export class RunPresenter {
     });
 
     // get the events
-    const events = await this.#prismaClient.$queryRaw<(TaskEvent & { rank: BigInt })[]>`
-    WITH ranked_events AS (
-        SELECT *,
-        ROW_NUMBER() OVER (PARTITION BY "spanId" ORDER BY "isPartial" ASC) as rank
-        FROM "TaskEvent"
-        WHERE "traceId" = ${run.traceId}
-    )
-    SELECT *
-    FROM ranked_events
-    WHERE rank = 1
-    ORDER BY "startTime" ASC;
-    `;
+    const traceSummary = await eventRepository.getTraceSummary(run.traceId);
 
-    const tree = createTreeFromFlatItems(
-      events.map((event) => {
-        const styleUnflattened = unflattenAttributes(event.style as Attributes);
-        const style = TaskEventStyle.parse(styleUnflattened);
-
-        return {
-          id: event.spanId,
-          parentId: event.parentId ?? undefined,
-          data: {
-            message: event.message,
-            style,
-            duration: Number(event.duration),
-            isError: event.isError,
-            isPartial: event.isPartial,
-            startTime: event.startTime,
-            level: event.level,
-          },
-        };
-      }),
-      run.spanId
-    );
-
-    const rootSpanId = events.find((event) => !event.parentId);
-    if (!rootSpanId) {
-      throw new Error("Root span not found");
+    if (!traceSummary) {
+      throw new Error("Trace not found");
     }
+
+    const tree = createTreeFromFlatItems(traceSummary.spans, run.spanId);
 
     return {
       run: {
@@ -114,7 +80,8 @@ export class RunPresenter {
         },
       },
       events: tree ? flattenTree(tree) : [],
-      parentRunFriendlyId: tree?.id === rootSpanId.spanId ? undefined : rootSpanId.runId,
+      parentRunFriendlyId:
+        tree?.id === traceSummary.rootSpan.id ? undefined : traceSummary.rootSpan.runId,
     };
   }
 }

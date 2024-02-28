@@ -94,3 +94,16 @@ export function unflattenAttributes(obj: Attributes): Record<string, unknown> {
 
   return result;
 }
+
+export function flattenAndNormalizeAttributes(
+  obj: Record<string, unknown> | Array<unknown> | string | boolean | number | undefined,
+  prefix: string
+): Attributes {
+  const attributes = flattenAttributes(obj, prefix);
+
+  if (typeof attributes[prefix] !== "undefined" && attributes[prefix] !== null) {
+    return attributes[prefix] as unknown as Attributes;
+  }
+
+  return attributes;
+}

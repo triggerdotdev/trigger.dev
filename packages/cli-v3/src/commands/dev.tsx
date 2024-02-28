@@ -299,7 +299,7 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName, debugg
         metafile: true,
         write: false,
         minify: false,
-        sourcemap: debuggerOn ? "inline" : true,
+        sourcemap: "external", // does not set the //# sourceMappingURL= comment in the file, we handle it ourselves
         logLevel: "warning",
         platform: "node",
         format: "esm",
@@ -362,85 +362,100 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName, debugg
 
                 // Create a file at join(dir, ".trigger", path) with the fileContents
                 const fullPath = join(config.projectDir, ".trigger", `${contentHash}.mjs`);
+                const sourceMapPath = `${fullPath}.map`;
+
+                const outputFileWithSourceMap = `${
+                  outputFile.text
+                }\n//# sourceMappingURL=${basename(sourceMapPath)}`;
 
                 await fs.promises.mkdir(dirname(fullPath), { recursive: true });
-                await fs.promises.writeFile(fullPath, outputFile.text);
+                await fs.promises.writeFile(fullPath, outputFileWithSourceMap);
 
                 if (sourceMapFile) {
                   const sourceMapPath = `${fullPath}.map`;
                   await fs.promises.writeFile(sourceMapPath, sourceMapFile.text);
                 }
 
+                const environmentVariablesResponse =
+                  await environmentClient.getEnvironmentVariables(config.project);
+
                 const backgroundWorker = new BackgroundWorker(fullPath, {
                   projectDir: config.projectDir,
                   env: {
                     TRIGGER_API_URL: apiUrl,
                     TRIGGER_API_KEY: apiKey,
+                    ...(environmentVariablesResponse.success
+                      ? environmentVariablesResponse.data.variables
+                      : {}),
                   },
                   debuggerOn,
                 });
 
-                await backgroundWorker.initialize();
+                try {
+                  await backgroundWorker.initialize();
 
-                latestWorkerContentHash = contentHash;
+                  latestWorkerContentHash = contentHash;
 
-                let packageVersion: string | undefined;
+                  let packageVersion: string | undefined;
 
-                const taskResources: Array<TaskResource> = [];
+                  const taskResources: Array<TaskResource> = [];
 
-                if (!backgroundWorker.tasks) {
-                  throw new Error(`Background Worker started without tasks`);
-                }
+                  if (!backgroundWorker.tasks) {
+                    throw new Error(`Background Worker started without tasks`);
+                  }
 
-                for (const task of backgroundWorker.tasks) {
-                  taskResources.push(task);
+                  for (const task of backgroundWorker.tasks) {
+                    taskResources.push(task);
 
-                  packageVersion = task.packageVersion;
-                }
+                    packageVersion = task.packageVersion;
+                  }
 
-                if (!packageVersion) {
-                  throw new Error(`Background Worker started without package version`);
-                }
+                  if (!packageVersion) {
+                    throw new Error(`Background Worker started without package version`);
+                  }
 
-                const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
-                  localOnly: true,
-                  metadata: {
-                    packageVersion,
-                    cliPackageVersion: packageJson.version,
-                    tasks: taskResources,
-                    contentHash: contentHash,
-                  },
-                };
+                  const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
+                    localOnly: true,
+                    metadata: {
+                      packageVersion,
+                      cliPackageVersion: packageJson.version,
+                      tasks: taskResources,
+                      contentHash: contentHash,
+                    },
+                  };
 
-                const backgroundWorkerRecord = await environmentClient.createBackgroundWorker(
-                  config.project,
-                  backgroundWorkerBody
-                );
-
-                if (!backgroundWorkerRecord.success) {
-                  throw new Error(backgroundWorkerRecord.error);
-                }
-
-                backgroundWorker.metadata = backgroundWorkerRecord.data;
-
-                if (firstBuild) {
-                  logger.log(
-                    chalk.green(
-                      `Background worker started (${backgroundWorkerRecord.data.version})`
-                    )
+                  const backgroundWorkerRecord = await environmentClient.createBackgroundWorker(
+                    config.project,
+                    backgroundWorkerBody
                   );
-                } else {
-                  logger.log(
-                    chalk.dim(`Background worker rebuilt (${backgroundWorkerRecord.data.version})`)
+
+                  if (!backgroundWorkerRecord.success) {
+                    throw new Error(backgroundWorkerRecord.error);
+                  }
+
+                  backgroundWorker.metadata = backgroundWorkerRecord.data;
+
+                  if (firstBuild) {
+                    logger.log(
+                      chalk.green(
+                        `Background worker started (${backgroundWorkerRecord.data.version})`
+                      )
+                    );
+                  } else {
+                    logger.log(
+                      chalk.dim(
+                        `Background worker rebuilt (${backgroundWorkerRecord.data.version})`
+                      )
+                    );
+                  }
+
+                  firstBuild = false;
+
+                  await backgroundWorkerCoordinator.registerWorker(
+                    backgroundWorkerRecord.data,
+                    backgroundWorker
                   );
-                }
-
-                firstBuild = false;
-
-                await backgroundWorkerCoordinator.registerWorker(
-                  backgroundWorkerRecord.data,
-                  backgroundWorker
-                );
+                } catch (e) {}
               });
             },
           },

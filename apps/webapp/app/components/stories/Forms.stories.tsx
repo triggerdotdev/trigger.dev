@@ -15,6 +15,7 @@ import { Paragraph } from "../primitives/Paragraph";
 import { LogoIcon } from "../LogoIcon";
 import { Label } from "../primitives/Label";
 import { TextLink } from "../primitives/TextLink";
+import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 
 const meta: Meta<typeof Forms> = {
   title: "Primitives/Forms",
@@ -55,6 +56,10 @@ export const Search: Story = {
   },
 
   render: (args) => <SearchForm />,
+};
+
+export const Inputs: Story = {
+  render: (args) => <InputFields />,
 };
 
 function Forms() {
@@ -178,5 +183,71 @@ function SearchForm() {
         </Form>
       </div>
     </MainCenteredContainer>
+  );
+}
+
+function InputFields() {
+  return (
+    <div className="flex gap-16">
+      <InputFieldSet />
+      <InputFieldSet disabled />
+    </div>
+  );
+}
+
+function InputFieldSet({ disabled }: { disabled?: boolean }) {
+  return (
+    <div>
+      <div className="m-8 flex w-64 flex-col gap-4">
+        <Input disabled={disabled} variant="large" placeholder="Name" autoFocus type="text" />
+        <Input disabled={disabled} variant="medium" placeholder="Name"  type="text" />
+        <Input disabled={disabled} variant="small" placeholder="Name"  type="text" />
+        <Input disabled={disabled} variant="tertiary" placeholder="Name"  type="text" />
+      </div>
+      <div className="m-8 flex w-64 flex-col gap-4">
+        <Input disabled={disabled} variant="large" placeholder="Search" icon="search" shortcut="⌘K" />
+        <Input disabled={disabled} variant="medium" placeholder="Search" icon="search" shortcut="⌘K" />
+        <Input disabled={disabled} variant="small" placeholder="Search" icon="search" shortcut="⌘K" />
+        <Input disabled={disabled} variant="tertiary" placeholder="Search" icon="search" shortcut="⌘K" />
+      </div>
+      <div className="m-8 flex w-64 flex-col gap-4">
+        <Input disabled={disabled}
+          variant="large"
+          placeholder="Search"
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
+          shortcut="⌘K"
+        />
+        <Input disabled={disabled}
+          variant="medium"
+          placeholder="Search"
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
+          shortcut="⌘K"
+        />
+        <Input disabled={disabled}
+          variant="small"
+          placeholder="Search"
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
+          shortcut="⌘K"
+        />
+        <Input disabled={disabled}
+          variant="tertiary"
+          placeholder="Search"
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
+          shortcut="⌘K"
+        />
+        <Input disabled={disabled}
+          variant="tertiary"
+          placeholder="Search"
+          icon={<EnvironmentLabel environment={{ type: "STAGING" }} />}
+          shortcut="⌘K"
+        />
+        <Input disabled={disabled}
+          variant="tertiary"
+          placeholder="Search"
+          icon={<EnvironmentLabel environment={{ type: "PRODUCTION" }} />}
+          shortcut="⌘K"
+        />
+      </div>
+    </div>
   );
 }

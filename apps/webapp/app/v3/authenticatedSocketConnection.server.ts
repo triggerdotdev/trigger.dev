@@ -8,7 +8,7 @@ import { Evt } from "evt";
 import { randomUUID } from "node:crypto";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { EnvironmentQueueConsumer } from "./marqs/environmentQueueConsumer.server";
+import { DevQueueConsumer } from "./marqs/devQueueConsumer.server";
 import type { WebSocket, MessageEvent, CloseEvent, ErrorEvent } from "ws";
 
 export class AuthenticatedSocketConnection {
@@ -16,7 +16,7 @@ export class AuthenticatedSocketConnection {
   public onClose: Evt<CloseEvent> = new Evt();
 
   private _sender: ZodMessageSender<typeof serverWebsocketMessages>;
-  private _environmentConsumer: EnvironmentQueueConsumer;
+  private _consumer: DevQueueConsumer;
   private _messageHandler: ZodMessageHandler<typeof clientWebsocketMessages>;
 
   constructor(public ws: WebSocket, public authenticatedEnv: AuthenticatedEnvironment) {
@@ -38,7 +38,7 @@ export class AuthenticatedSocketConnection {
       },
     });
 
-    this._environmentConsumer = new EnvironmentQueueConsumer(authenticatedEnv, this._sender);
+    this._consumer = new DevQueueConsumer(authenticatedEnv, this._sender);
 
     ws.addEventListener("message", this.#handleMessage.bind(this));
     ws.addEventListener("close", this.#handleClose.bind(this));
@@ -48,13 +48,13 @@ export class AuthenticatedSocketConnection {
       schema: clientWebsocketMessages,
       messages: {
         READY_FOR_TASKS: async (payload) => {
-          await this._environmentConsumer.registerBackgroundWorker(payload.backgroundWorkerId);
+          await this._consumer.registerBackgroundWorker(payload.backgroundWorkerId);
         },
 
         BACKGROUND_WORKER_MESSAGE: async (payload) => {
           switch (payload.data.type) {
             case "TASK_RUN_COMPLETED": {
-              await this._environmentConsumer.taskRunCompleted(
+              await this._consumer.taskAttemptCompleted(
                 payload.backgroundWorkerId,
                 payload.data.completion,
                 payload.data.execution
@@ -62,10 +62,7 @@ export class AuthenticatedSocketConnection {
               break;
             }
             case "TASK_HEARTBEAT": {
-              await this._environmentConsumer.taskHeartbeat(
-                payload.backgroundWorkerId,
-                payload.data.id
-              );
+              await this._consumer.taskHeartbeat(payload.backgroundWorkerId, payload.data.id);
               break;
             }
           }
@@ -85,7 +82,7 @@ export class AuthenticatedSocketConnection {
   }
 
   async #handleClose(ev: CloseEvent) {
-    await this._environmentConsumer.stop();
+    await this._consumer.stop();
 
     this.onClose.post(ev);
   }

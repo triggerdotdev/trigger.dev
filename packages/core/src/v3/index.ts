@@ -36,6 +36,12 @@ export { TriggerTracer } from "./tracer";
 export type { TaskLogger } from "./logger/taskLogger";
 export { OtelTaskLogger } from "./logger/taskLogger";
 export { ConsoleInterceptor } from "./consoleInterceptor";
-export { flattenAttributes, unflattenAttributes } from "./utils/flattenAttributes";
-export { defaultRetryOptions, calculateNextRetryTimestamp } from "./utils/retries";
+export {
+  flattenAttributes,
+  unflattenAttributes,
+  flattenAndNormalizeAttributes,
+} from "./utils/flattenAttributes";
+export { defaultRetryOptions, calculateNextRetryDelay, calculateResetAt } from "./utils/retries";
 export { accessoryAttributes } from "./utils/styleAttributes";
+export { eventFilterMatches } from "../eventFilterMatches";
+export { omit } from "./utils/omit";

@@ -9,11 +9,14 @@
     "start:longRunning": "ts-node -r tsconfig-paths/register -r dotenv/config src/longRunningUsage.ts",
     "start:openai": "ts-node -r tsconfig-paths/register -r dotenv/config src/openaiUsage.ts",
     "start:retries": "ts-node -r tsconfig-paths/register -r dotenv/config src/retriesUsage.ts",
-    "start:batch": "ts-node -r tsconfig-paths/register -r dotenv/config src/batchUsage.ts"
+    "start:batch": "ts-node -r tsconfig-paths/register -r dotenv/config src/batchUsage.ts",
+    "start:stripe": "ts-node -r tsconfig-paths/register -r dotenv/config src/stripeUsage.ts"
   },
   "dependencies": {
     "@trigger.dev/sdk": "workspace:*",
-    "openai": "^4.28.0"
+    "msw": "^2.2.1",
+    "openai": "^4.28.0",
+    "stripe": "^12.14.0"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",

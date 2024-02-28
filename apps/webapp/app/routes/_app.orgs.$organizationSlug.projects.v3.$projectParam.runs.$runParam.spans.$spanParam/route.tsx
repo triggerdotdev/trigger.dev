@@ -5,7 +5,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { VersionLabel } from "~/components/VersionLabel";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
-import { DateTime } from "~/components/primitives/DateTime";
+import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
@@ -67,7 +67,7 @@ export default function Page() {
             ) : (
               <Property label="Timestamp">
                 <Paragraph variant="small/bright">
-                  <DateTime date={event.startTime} /> UTC
+                  <DateTimeAccurate date={event.startTime} /> UTC
                 </Paragraph>
               </Property>
             )}
@@ -103,7 +103,7 @@ export default function Page() {
             </div>
           )}
 
-          {event.output !== null && (
+          {event.output && (
             <div>
               <Header2 spacing>Output</Header2>
               <CodeBlock code={event.output} maxLines={20} />
@@ -163,13 +163,15 @@ function Timeline({ startTime, duration, inProgress, isError }: TimelineProps) {
     <div className="flex w-full flex-col">
       <div className="flex items-center justify-between gap-1">
         <Paragraph variant="small">
-          <DateTime date={startTime} /> UTC
+          <DateTimeAccurate date={startTime} /> UTC
         </Paragraph>
         {state === "pending" ? (
           <LiveTimer startTime={startTime} className="" />
         ) : (
           <Paragraph variant="small">
-            <DateTime date={new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))} />
+            <DateTimeAccurate
+              date={new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))}
+            />
           </Paragraph>
         )}
       </div>

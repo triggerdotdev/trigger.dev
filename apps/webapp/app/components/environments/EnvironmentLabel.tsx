@@ -15,7 +15,7 @@ export function EnvironmentLabel({
   return (
     <span
       className={cn(
-        "inline-flex h-4 items-center justify-center rounded-[2px] px-1 text-xxs font-medium uppercase tracking-wider text-midnight-900",
+        "inline-flex h-4 items-center justify-center rounded-[2px] px-1 text-xxs font-medium uppercase tracking-wider text-midnight-900 whitespace-nowrap",
         environmentColorClassName(environment),
         className
       )}
@@ -32,7 +32,7 @@ export function environmentTitle(environment: Environment, username?: string) {
     case "STAGING":
       return "Staging";
     case "DEVELOPMENT":
-      return username ? `Dev: ${username}` : "Dev";
+      return username ? `Dev: ${username}` : "Dev: You";
     case "PREVIEW":
       return "Preview";
   }

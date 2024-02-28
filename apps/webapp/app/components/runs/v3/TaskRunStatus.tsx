@@ -12,7 +12,7 @@ import { ExtendedTaskAttemptStatus } from "./RunFilters";
 
 export function TaskRunStatus({ status }: { status: ExtendedTaskAttemptStatus | null }) {
   return (
-    <span className="flex items-center gap-1">
+    <span className="inline-flex items-center gap-1">
       <TaskRunStatusIcon status={status} className="h-4 w-4" />
       <TaskRunStatusLabel status={status} />
     </span>

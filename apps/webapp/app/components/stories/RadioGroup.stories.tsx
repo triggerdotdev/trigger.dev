@@ -51,6 +51,16 @@ function RadioGroupExample() {
             variant="icon"
             icon={<NamedIcon name="tree" className="h-8 w-8" />}
           />
+          <RadioGroupItem
+            id="r8"
+            label={
+              <div className="flex items-center gap-2">
+                <span>This is a</span> <span className="text-red-500">React node</span>
+              </div>
+            }
+            value={"8"}
+            variant="simple/small"
+          />
         </RadioGroup>
       </form>
     </div>

@@ -1,12 +1,11 @@
-import { createHash } from "node:crypto";
-import { nanoid } from "nanoid";
-import { $transaction } from "~/db.server";
 import {
   PRIMARY_VARIANT,
   SemanticInternalAttributes,
   TriggerTaskRequestBody,
-  flattenAttributes,
 } from "@trigger.dev/core/v3";
+import { nanoid } from "nanoid";
+import { createHash } from "node:crypto";
+import { $transaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
@@ -46,21 +45,24 @@ export class TriggerTaskService extends BaseService {
       }
 
       return await eventRepository.traceEvent(
-        `${taskId}`,
+        taskId,
         {
           context: options.traceContext,
           kind: "SERVER",
           environment,
           taskSlug: taskId,
           attributes: {
-            metadata: {
-              ...flattenAttributes(body.payload, SemanticInternalAttributes.PAYLOAD),
+            properties: {
+              [SemanticInternalAttributes.PAYLOAD]: body.payload,
             },
             style: {
               icon: "play",
               variant: PRIMARY_VARIANT,
             },
+            runIsTest: body.options?.test ?? false,
           },
+          incomplete: true,
+          immediate: true,
         },
         async (event, traceContext) => {
           const lockId = taskIdentifierToLockId(taskId);
@@ -109,6 +111,7 @@ export class TriggerTaskService extends BaseService {
                 lockedToVersionId: lockedToBackgroundWorker?.id,
                 concurrencyKey: body.options?.concurrencyKey,
                 queue: queueName,
+                isTest: body.options?.test ?? false,
               },
             });
 

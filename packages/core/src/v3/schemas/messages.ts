@@ -1,9 +1,10 @@
 import { z } from "zod";
-import { TaskRunExecutionResult, TaskRunExecution, TaskRunFailedExecutionResult } from "./common";
+import { TaskRunExecution, TaskRunExecutionResult } from "./common";
 
 export const TaskRunExecutionPayload = z.object({
   execution: TaskRunExecution,
   traceContext: z.record(z.unknown()),
+  environment: z.record(z.string()).optional(),
 });
 
 export type TaskRunExecutionPayload = z.infer<typeof TaskRunExecutionPayload>;

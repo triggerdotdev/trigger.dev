@@ -77,7 +77,6 @@ export const DateTimeAccurate = ({ date, timeZone = "UTC" }: DateTimeProps) => {
 
 function formatDateTimeAccurate(date: Date, timeZone: string, locales: string[]): string {
   const formattedDateTime = new Intl.DateTimeFormat(locales, {
-    year: "numeric",
     month: "short",
     day: "numeric",
     hour: "numeric",

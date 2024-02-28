@@ -1,14 +1,26 @@
-import { Prisma, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
+import { Attributes } from "@opentelemetry/api";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
-import { Attributes, ROOT_CONTEXT, propagation, trace } from "@opentelemetry/api";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
-import { SemanticInternalAttributes, PRIMARY_VARIANT } from "@trigger.dev/core/v3";
-import { flattenAttributes } from "@trigger.dev/core/v3";
+import {
+  ExceptionEventProperties,
+  PRIMARY_VARIANT,
+  SemanticInternalAttributes,
+  SpanEvent,
+  SpanEvents,
+  TaskEventStyle,
+  correctErrorStackTrace,
+  flattenAndNormalizeAttributes,
+  flattenAttributes,
+  isExceptionSpanEvent,
+  logger,
+  omit,
+  unflattenAttributes,
+} from "@trigger.dev/core/v3";
+import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
+import { createHash } from "node:crypto";
+import { PrismaClient, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
-import { logger } from "~/services/logger.server";
-import { createHash } from "node:crypto";
 
 export type CreatableEvent = Omit<
   Prisma.TaskEventCreateInput,
@@ -30,6 +42,7 @@ export type TraceAttributes = Partial<
     | "attemptId"
     | "isError"
     | "runId"
+    | "runIsTest"
     | "output"
     | "metadata"
     | "properties"
@@ -50,6 +63,7 @@ export type TraceEventOptions = {
   taskSlug: string;
   startTime?: Date;
   endTime?: Date;
+  immediate?: boolean;
 };
 
 export type EventBuilder = {
@@ -61,6 +75,44 @@ export type EventBuilder = {
 export type EventRepoConfig = {
   batchSize: number;
   batchInterval: number;
+};
+
+export type QueryOptions = Prisma.TaskEventWhereInput;
+
+export type TaskEventRecord = TaskEvent;
+
+export type QueriedEvent = TaskEvent;
+
+export type PreparedEvent = Omit<TaskEventRecord, "events" | "style" | "duration"> & {
+  duration: number;
+  events: SpanEvents;
+  style: TaskEventStyle;
+};
+
+export type SpanSummary = {
+  recordId: string;
+  id: string;
+  parentId: string | undefined;
+  runId: string;
+  data: {
+    message: string;
+    style: TaskEventStyle;
+    events: SpanEvents;
+    startTime: Date;
+    duration: number;
+    isError: boolean;
+    isPartial: boolean;
+    isCancelled: boolean;
+    level: NonNullable<CreatableEvent["level"]>;
+  };
+};
+
+export type TraceSummary = { rootSpan: SpanSummary; spans: Array<SpanSummary> };
+
+export type UpdateEventOptions = {
+  attributes: TraceAttributes;
+  endTime?: Date;
+  immediate?: boolean;
 };
 
 export class EventRepository {
@@ -80,8 +132,229 @@ export class EventRepository {
     this._flushScheduler.addToBatch([event]);
   }
 
+  async insertImmediate(event: CreatableEvent) {
+    await this.db.taskEvent.create({
+      data: event as Prisma.TaskEventCreateInput,
+    });
+  }
+
   async insertMany(events: CreatableEvent[]) {
     this._flushScheduler.addToBatch(events);
+  }
+
+  async completeEvent(spanId: string, options?: UpdateEventOptions) {
+    const events = await this.queryIncompleteEvents({ spanId });
+
+    if (events.length === 0) {
+      return;
+    }
+
+    const event = events[0];
+
+    logger.debug("Completing event", { spanId, eventId: event.id });
+
+    await this.insert({
+      ...omit(event, "id"),
+      isPartial: false,
+      isError: options?.attributes.isError ?? false,
+      isCancelled: false,
+      status: options?.attributes.isError ? "ERROR" : "OK",
+      links: event.links ?? [],
+      events: event.events ?? [],
+      duration:
+        ((options?.endTime ?? new Date()).getTime() - event.startTime.getTime()) * 1_000_000, // convert to nanoseconds
+      properties: event.properties as Attributes,
+      metadata: event.metadata as Attributes,
+      style: event.style as Attributes,
+      output: options?.attributes.output
+        ? flattenAndNormalizeAttributes(
+            options.attributes.output,
+            SemanticInternalAttributes.OUTPUT
+          )
+        : undefined,
+    });
+  }
+
+  async cancelEvent(event: TaskEventRecord, cancelledAt: Date, reason: string) {
+    if (!event.isPartial) {
+      return;
+    }
+
+    await this.insertImmediate({
+      ...omit(event, "id"),
+      isPartial: false,
+      isError: false,
+      isCancelled: true,
+      status: "ERROR",
+      links: event.links ?? [],
+      events: [
+        {
+          name: "cancellation",
+          time: cancelledAt,
+          properties: {
+            reason,
+          },
+        },
+        ...((event.events as any[]) ?? []),
+      ],
+      duration: (cancelledAt.getTime() - event.startTime.getTime()) * 1_000_000, // convert to nanoseconds
+      properties: event.properties as Attributes,
+      metadata: event.metadata as Attributes,
+      style: event.style as Attributes,
+      output: event.output as Attributes,
+    });
+  }
+
+  async queryEvents(queryOptions: QueryOptions): Promise<TaskEventRecord[]> {
+    return await this.db.taskEvent.findMany({
+      where: queryOptions,
+    });
+  }
+
+  async queryIncompleteEvents(queryOptions: QueryOptions) {
+    // First we will find all the events that match the query options (selecting minimal data).
+    const taskEvents = await this.db.taskEvent.findMany({
+      where: queryOptions,
+      select: {
+        spanId: true,
+        isPartial: true,
+        isCancelled: true,
+      },
+    });
+
+    const filteredTaskEvents = taskEvents.filter((event) => {
+      // Event must be partial
+      if (!event.isPartial) return false;
+
+      // If the event is cancelled, it is not incomplete
+      if (event.isCancelled) return false;
+
+      // There must not be another complete event with the same spanId
+      const hasCompleteDuplicate = taskEvents.some(
+        (otherEvent) =>
+          otherEvent.spanId === event.spanId && !otherEvent.isPartial && !otherEvent.isCancelled
+      );
+
+      return !hasCompleteDuplicate;
+    });
+
+    return this.queryEvents({
+      spanId: {
+        in: filteredTaskEvents.map((event) => event.spanId),
+      },
+    });
+  }
+
+  public async getTraceSummary(traceId: string): Promise<TraceSummary | undefined> {
+    const events = await this.db.taskEvent.findMany({
+      where: {
+        traceId,
+      },
+      orderBy: {
+        startTime: "asc",
+      },
+    });
+
+    const preparedEvents = removeDuplicateEvents(events.map(prepareEvent));
+
+    const spans = preparedEvents.map((event) => {
+      const ancestorCancelled = isAncestorCancelled(preparedEvents, event.spanId);
+      const duration = calculateDurationIfAncestorIsCancelled(
+        preparedEvents,
+        event.spanId,
+        event.duration
+      );
+
+      return {
+        recordId: event.id,
+        id: event.spanId,
+        parentId: event.parentId ?? undefined,
+        runId: event.runId,
+        data: {
+          message: event.message,
+          style: event.style,
+          duration,
+          isError: event.isError,
+          isPartial: ancestorCancelled ? false : event.isPartial,
+          isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
+          startTime: event.startTime,
+          level: event.level,
+          events: event.events,
+        },
+      };
+    });
+
+    const rootSpanId = events.find((event) => !event.parentId);
+    if (!rootSpanId) {
+      return;
+    }
+
+    const rootSpan = spans.find((span) => span.id === rootSpanId.spanId);
+
+    if (!rootSpan) {
+      return;
+    }
+
+    return {
+      rootSpan,
+      spans,
+    };
+  }
+
+  // A Span can be cancelled if it is partial and has a parent that is cancelled
+  // And a span's duration, if it is partial and has a cancelled parent, is the time between the start of the span and the time of the cancellation event of the parent
+  public async getSpan(spanId: string) {
+    const traceSearch = await this.db.taskEvent.findFirst({
+      where: {
+        spanId,
+      },
+      select: {
+        traceId: true,
+      },
+    });
+
+    if (!traceSearch) {
+      return;
+    }
+
+    const traceSummary = await this.getTraceSummary(traceSearch.traceId);
+
+    const span = traceSummary?.spans.find((span) => span.id === spanId);
+
+    if (!span) {
+      return;
+    }
+
+    const fullEvent = await this.db.taskEvent.findUnique({
+      where: {
+        id: span.recordId,
+      },
+    });
+
+    if (!fullEvent) {
+      return;
+    }
+
+    const payload = unflattenAttributes(
+      filteredAttributes(fullEvent.properties as Attributes, SemanticInternalAttributes.PAYLOAD)
+    )[SemanticInternalAttributes.PAYLOAD];
+
+    const output = isEmptyJson(fullEvent.output)
+      ? null
+      : unflattenAttributes(fullEvent.output as Attributes);
+
+    const properties = sanitizedAttributes(fullEvent.properties);
+
+    const events = transformEvents(span.data.events, fullEvent.metadata as Attributes);
+
+    return {
+      ...fullEvent,
+      ...span.data,
+      payload,
+      output,
+      properties,
+      events,
+    };
   }
 
   public async recordEvent(message: string, options: TraceEventOptions) {
@@ -104,6 +377,7 @@ export class EventRepository {
       [SemanticInternalAttributes.PROJECT_ID]: options.environment.projectId,
       [SemanticInternalAttributes.PROJECT_REF]: options.environment.project.externalRef,
       [SemanticInternalAttributes.RUN_ID]: options.attributes.runId,
+      [SemanticInternalAttributes.RUN_IS_TEST]: options.attributes.runIsTest ?? false,
       [SemanticInternalAttributes.TASK_SLUG]: options.taskSlug,
       [SemanticResourceAttributes.SERVICE_NAME]: "api server",
       [SemanticResourceAttributes.SERVICE_NAMESPACE]: "trigger.dev",
@@ -138,6 +412,7 @@ export class EventRepository {
       projectId: options.environment.projectId,
       projectRef: options.environment.project.externalRef,
       runId: options.attributes.runId,
+      runIsTest: options.attributes.runIsTest ?? false,
       taskSlug: options.taskSlug,
       queueId: options.attributes.queueId,
       queueName: options.attributes.queueName,
@@ -154,14 +429,18 @@ export class EventRepository {
       output: undefined,
     };
 
-    this._flushScheduler.addToBatch([event]);
+    if (options.immediate) {
+      await this.insertImmediate(event);
+    } else {
+      this._flushScheduler.addToBatch([event]);
+    }
 
     return event;
   }
 
   public async traceEvent<TResult>(
     message: string,
-    options: TraceEventOptions,
+    options: TraceEventOptions & { incomplete?: boolean },
     callback: (
       e: EventBuilder,
       traceContext: Record<string, string | undefined>
@@ -178,15 +457,6 @@ export class EventRepository {
     const spanId = options.spanIdSeed
       ? this.#generateDeterministicSpanId(traceId, options.spanIdSeed)
       : this.generateSpanId();
-
-    logger.info("traceEvent", {
-      traceId,
-      parentId,
-      tracestate,
-      spanId,
-      context: options.context,
-      propagatedContext,
-    });
 
     const traceContext = {
       traceparent: `00-${traceId}-${spanId}-01`,
@@ -222,6 +492,7 @@ export class EventRepository {
       [SemanticInternalAttributes.PROJECT_ID]: options.environment.projectId,
       [SemanticInternalAttributes.PROJECT_REF]: options.environment.project.externalRef,
       [SemanticInternalAttributes.RUN_ID]: options.attributes.runId,
+      [SemanticInternalAttributes.RUN_IS_TEST]: options.attributes.runIsTest ?? false,
       [SemanticInternalAttributes.TASK_SLUG]: options.taskSlug,
       [SemanticResourceAttributes.SERVICE_NAME]: "api server",
       [SemanticResourceAttributes.SERVICE_NAMESPACE]: "trigger.dev",
@@ -242,7 +513,8 @@ export class EventRepository {
       spanId,
       parentId,
       tracestate,
-      duration: duration,
+      duration: options.incomplete ? 0 : duration,
+      isPartial: options.incomplete,
       message: message,
       serviceName: "api server",
       serviceNamespace: "trigger.dev",
@@ -256,6 +528,7 @@ export class EventRepository {
       projectId: options.environment.projectId,
       projectRef: options.environment.project.externalRef,
       runId: options.attributes.runId,
+      runIsTest: options.attributes.runIsTest ?? false,
       taskSlug: options.taskSlug,
       queueId: options.attributes.queueId,
       queueName: options.attributes.queueName,
@@ -265,13 +538,18 @@ export class EventRepository {
           string,
           string
         >),
+        ...flattenAttributes(options.attributes.properties),
       },
       metadata: metadata,
       style: stripAttributePrefix(style, SemanticInternalAttributes.STYLE),
       output: undefined,
     };
 
-    this._flushScheduler.addToBatch([event]);
+    if (options.immediate) {
+      await this.insertImmediate(event);
+    } else {
+      this._flushScheduler.addToBatch([event]);
+    }
 
     return result;
   }
@@ -375,16 +653,228 @@ function parseTraceparent(traceparent?: string): { traceId: string; spanId: stri
   return { traceId, spanId };
 }
 
-const SHARED_CHAR_CODES_ARRAY = Array(32);
-function getIdGenerator(bytes: number): () => string {
-  return function generateId() {
-    for (let i = 0; i < bytes * 2; i++) {
-      SHARED_CHAR_CODES_ARRAY[i] = Math.floor(Math.random() * 16) + 48;
-      // valid hex characters in the range 48-57 and 97-102
-      if (SHARED_CHAR_CODES_ARRAY[i] >= 58) {
-        SHARED_CHAR_CODES_ARRAY[i] += 39;
+function prepareEvent(event: QueriedEvent): PreparedEvent {
+  return {
+    ...event,
+    duration: Number(event.duration),
+    events: parseEventsField(event.events),
+    style: parseStyleField(event.style),
+  };
+}
+
+function parseEventsField(events: Prisma.JsonValue): SpanEvents {
+  const eventsUnflattened = events
+    ? (events as any[]).map((e) => ({
+        ...e,
+        properties: unflattenAttributes(e.properties as Attributes),
+      }))
+    : undefined;
+
+  const spanEvents = SpanEvents.safeParse(eventsUnflattened);
+
+  if (spanEvents.success) {
+    return spanEvents.data;
+  }
+
+  return [];
+}
+
+function parseStyleField(style: Prisma.JsonValue): TaskEventStyle {
+  const parsedStyle = TaskEventStyle.safeParse(unflattenAttributes(style as Attributes));
+
+  if (parsedStyle.success) {
+    return parsedStyle.data;
+  }
+
+  return {};
+}
+
+function isAncestorCancelled(events: PreparedEvent[], spanId: string) {
+  const event = events.find((event) => event.spanId === spanId);
+
+  if (!event) {
+    return false;
+  }
+
+  if (event.isCancelled) {
+    return true;
+  }
+
+  if (event.parentId) {
+    return isAncestorCancelled(events, event.parentId);
+  }
+
+  return false;
+}
+
+function calculateDurationIfAncestorIsCancelled(
+  events: PreparedEvent[],
+  spanId: string,
+  defaultDuration: number
+) {
+  const event = events.find((event) => event.spanId === spanId);
+
+  if (!event) {
+    return defaultDuration;
+  }
+
+  if (event.isCancelled) {
+    return defaultDuration;
+  }
+
+  if (!event.isPartial) {
+    return defaultDuration;
+  }
+
+  if (event.parentId) {
+    const cancelledAncestor = findFirstCancelledAncestor(events, event.parentId);
+
+    if (cancelledAncestor) {
+      // We need to get the cancellation time from the cancellation span event
+      const cancellationEvent = cancelledAncestor.events.find(
+        (event) => event.name === "cancellation"
+      );
+
+      if (cancellationEvent) {
+        return (cancellationEvent.time.getTime() - event.startTime.getTime()) * 1_000_000;
       }
     }
-    return String.fromCharCode.apply(null, SHARED_CHAR_CODES_ARRAY.slice(0, bytes * 2));
+  }
+
+  return defaultDuration;
+}
+
+function findFirstCancelledAncestor(events: PreparedEvent[], spanId: string) {
+  const event = events.find((event) => event.spanId === spanId);
+  if (!event) {
+    return;
+  }
+
+  if (event.isCancelled) {
+    return event;
+  }
+
+  if (event.parentId) {
+    return findFirstCancelledAncestor(events, event.parentId);
+  }
+
+  return;
+}
+
+// Prioritize spans with the same id, keeping the completed spans over partial spans
+// Completed spans are either !isPartial or isCancelled
+function removeDuplicateEvents(events: PreparedEvent[]) {
+  const dedupedEvents = new Map<string, PreparedEvent>();
+
+  for (const event of events) {
+    const existingEvent = dedupedEvents.get(event.spanId);
+
+    if (!existingEvent) {
+      dedupedEvents.set(event.spanId, event);
+      continue;
+    }
+
+    if (event.isCancelled || !event.isPartial) {
+      dedupedEvents.set(event.spanId, event);
+    }
+  }
+
+  return Array.from(dedupedEvents.values());
+}
+
+function isEmptyJson(json: Prisma.JsonValue) {
+  if (json === null) {
+    return true;
+  }
+  if (Object.keys(json).length === 0) {
+    return true;
+  }
+
+  return false;
+}
+
+function sanitizedAttributes(json: Prisma.JsonValue): Record<string, unknown> | undefined {
+  if (json === null || json === undefined) {
+    return;
+  }
+
+  const withoutPrivateProperties = removePrivateProperties(json as Attributes);
+  if (!withoutPrivateProperties) {
+    return;
+  }
+
+  return unflattenAttributes(withoutPrivateProperties);
+}
+// removes keys that start with a $ sign. If there are no keys left, return undefined
+function removePrivateProperties(
+  attributes: Attributes | undefined | null
+): Attributes | undefined {
+  if (!attributes) {
+    return undefined;
+  }
+
+  const result: Attributes = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (key.startsWith("$")) {
+      continue;
+    }
+
+    result[key] = value;
+  }
+
+  if (Object.keys(result).length === 0) {
+    return undefined;
+  }
+
+  return result;
+}
+
+function transformEvents(events: SpanEvents, properties: Attributes): SpanEvents {
+  return (events ?? []).map((event) => transformEvent(event, properties));
+}
+
+function transformEvent(event: SpanEvent, properties: Attributes): SpanEvent {
+  if (isExceptionSpanEvent(event)) {
+    return {
+      ...event,
+      properties: {
+        exception: transformException(event.properties.exception, properties),
+      },
+    };
+  }
+
+  return event;
+}
+
+function transformException(
+  exception: ExceptionEventProperties,
+  properties: Attributes
+): ExceptionEventProperties {
+  const projectDirAttributeValue = properties[SemanticInternalAttributes.PROJECT_DIR];
+
+  if (typeof projectDirAttributeValue !== "string") {
+    return exception;
+  }
+
+  return {
+    ...exception,
+    stacktrace: exception.stacktrace
+      ? correctErrorStackTrace(exception.stacktrace, projectDirAttributeValue, {
+          removeFirstLine: true,
+        })
+      : undefined,
   };
+}
+
+function filteredAttributes(attributes: Attributes, prefix: string): Attributes {
+  const result: Attributes = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (key.startsWith(prefix)) {
+      result[key] = value;
+    }
+  }
+
+  return result;
 }

@@ -2,8 +2,11 @@ import {
   AcademicCapIcon,
   ArrowRightIcon,
   ArrowRightOnRectangleIcon,
+  BeakerIcon,
   ChartBarIcon,
   CursorArrowRaysIcon,
+  IdentificationIcon,
+  KeyIcon,
   ShieldCheckIcon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
@@ -36,8 +39,11 @@ import {
   projectSettingsPath,
   projectSetupPath,
   projectTriggersPath,
+  v3ApiKeysPath,
+  v3EnvironmentVariablesPath,
   v3ProjectPath,
   v3RunsPath,
+  v3TestPath,
 } from "~/utils/pathBuilder";
 import { Feedback } from "../Feedback";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -506,13 +512,28 @@ function V3ProjectSideMenu({
         iconColor="text-teal-500"
         to={v3RunsPath(organization, project)}
       />
-      {/* <SideMenuItem
-        name="Environments & API Keys"
-        icon="environment"
-        iconColor="text-rose-500"
-        to={projectEnvironmentsPath(organization, project)}
-        data-action="environments & api keys"
+      <SideMenuItem
+        name="Test"
+        icon={BeakerIcon}
+        iconColor="text-lime-500"
+        to={v3TestPath(organization, project)}
+        data-action="test"
       />
+      <SideMenuItem
+        name="API Keys"
+        icon={KeyIcon}
+        iconColor="text-amber-500"
+        to={v3ApiKeysPath(organization, project)}
+        data-action="api keys"
+      />
+      <SideMenuItem
+        name="Environment variables"
+        icon={IdentificationIcon}
+        iconColor="text-pink-500"
+        to={v3EnvironmentVariablesPath(organization, project)}
+        data-action="environment variables"
+      />
+      {/* 
       <SideMenuItem
         name="Project settings"
         icon="settings"
