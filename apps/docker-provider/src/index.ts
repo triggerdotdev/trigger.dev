@@ -290,16 +290,10 @@ class DockerProvider implements Provider {
       });
     });
 
-    // socket.on("RESTORE", async (message) => {
-    //   logger("[RESTORE]", message);
-    //   await this.tasks.restore({
-    //     runId: message.image,
-    //     name: message.name,
-    //     image: message.image,
-    //     checkpointId: message.baseImage,
-    //     machine: message.machine,
-    //   });
-    // });
+    socket.on("RESTORE", async (message) => {
+      logger("[RESTORE]", message);
+      // await this.tasks.restore({});
+    });
 
     socket.on("HEALTH", async (message) => {
       logger("[HEALTH]", message);
