@@ -1,10 +1,9 @@
+@import url("non.geist");
+@import url("non.geist/mono");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-body {
-  color: white;
-}
 
 @layer base {
   * {

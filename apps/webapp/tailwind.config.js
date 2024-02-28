@@ -169,8 +169,8 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        sans: ['var(--font-geist-sans)'],
-        mono: ['var(--font-geist-mono)'],
+        sans: ["Geist Variable", "Helvetica Neue", "Helvetica", "Arial", "sans-serif"],
+        mono: ["Geist Mono Variable", "monaco", "Consolas", "Lucida Console", "monospace"],
       },
       fontSize: {
         xxs: [
