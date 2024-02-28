@@ -51,6 +51,7 @@ export const TaskRun = z.object({
   payloadType: z.string(),
   context: z.any(),
   tags: z.array(z.string()),
+  isTest: z.boolean().default(false),
   createdAt: z.coerce.date(),
 });
 
