@@ -116,7 +116,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
       <div className="flex h-full flex-col">
         <div
           className={cn(
-            "flex items-center justify-between border-b bg-background-dimmed px-1 py-1 transition",
+            "flex items-center justify-between px-1 py-1 transition",
             showHeaderDivider ? " border-grid-bright" : "border-transparent"
           )}
         >
@@ -367,10 +367,10 @@ function UserMenu({ user }: { user: SideMenuUser }) {
 
   return (
     <Popover onOpenChange={(open) => setProfileMenuOpen(open)}>
-      <PopoverCustomTrigger isOpen={isProfileMenuOpen} className="p-1">
+      <PopoverCustomTrigger isOpen={isProfileMenuOpen} className="p-1 hover:bg-transparent">
         <UserProfilePhoto
           className={cn(
-            "h-5 w-5 text-charcoal-600",
+            "h-5 w-5 rounded-full border border-transparent text-charcoal-600 transition hover:border-charcoal-600",
             user.isImpersonating && "rounded-full border border-yellow-500"
           )}
         />
