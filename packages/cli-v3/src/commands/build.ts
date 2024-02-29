@@ -28,7 +28,7 @@ export function configureBuildCommand(program: Command) {
     .command("build")
     .description("Build your Trigger.dev tasks locally")
     .argument("[path]", "The path to the project", ".")
-    .requiredOption("-r, --repo <repo_name>", "The repo to push images to")
+    .option("-r, --repo <repo_name>", "The repo to push images to", "task")
     .option("-rr, --registry <registry_address>", "The registry to push images to", "")
     .option(
       "-l, --log-level <level>",
