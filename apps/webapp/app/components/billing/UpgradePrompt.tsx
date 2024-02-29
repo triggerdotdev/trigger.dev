@@ -6,38 +6,58 @@ import { plansPath } from "~/utils/pathBuilder";
 import { LinkButton } from "../primitives/Buttons";
 import { Paragraph } from "../primitives/Paragraph";
 import { Callout } from "../primitives/Callout";
+import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
+import { Icon } from "../primitives/Icon";
+import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 
 type UpgradePromptProps = {
-  organization: MatchedOrganization;
+  runsEnabled: boolean;
+  runCountCap: number;
+  planPath: string;
 };
 
-export function UpgradePrompt({ organization }: UpgradePromptProps) {
-  const currentPlan = useCurrentPlan();
-
-  if (!currentPlan || !currentPlan.usage.exceededRunCount || !currentPlan.usage.runCountCap) {
-    return null;
-  }
-
+export function UpgradePrompt({ runsEnabled, runCountCap, planPath }: UpgradePromptProps) {
   return (
-    <Callout variant="error" className="flex h-full items-center rounded-none px-1 py-0">
-      <div className="flex items-center justify-between gap-3">
-        <Paragraph variant="extra-small" className="text-white">
-          {organization.runsEnabled
-            ? `You have exceeded the monthly ${formatNumberCompact(
-                currentPlan.usage.runCountCap
-              )} runs
+    <div
+      className="flex h-full items-center justify-between border border-error bg-repeat py-0 pl-3 pr-2"
+      style={{ backgroundImage: `url(${tileBgPath})`, backgroundSize: "8px 8px" }}
+    >
+      <div className="flex items-center gap-2">
+        <Icon icon={ExclamationCircleIcon} className="h-5 w-5 text-error" />
+        <Paragraph variant="small" className="text-error">
+          {runsEnabled
+            ? `You have exceeded the monthly ${formatNumberCompact(runCountCap)} runs
           limit`
             : `No runs are executing because you have exceeded the free limit`}
         </Paragraph>
-        <LinkButton
-          variant={"primary/small"}
-          LeadingIcon={ArrowUpCircleIcon}
-          leadingIconClassName="px-0"
-          to={plansPath(organization)}
-        >
-          Upgrade
-        </LinkButton>
       </div>
-    </Callout>
+      <LinkButton
+        variant={"primary/small"}
+        LeadingIcon={ArrowUpCircleIcon}
+        leadingIconClassName="px-0"
+        to={planPath}
+      >
+        Upgrade
+      </LinkButton>
+    </div>
   );
+}
+
+export function useShowUpgradePrompt(organization?: MatchedOrganization) {
+  const currentPlan = useCurrentPlan();
+  const shouldShow =
+    organization !== undefined &&
+    currentPlan !== undefined &&
+    currentPlan.usage.exceededRunCount &&
+    currentPlan.usage.runCountCap !== undefined;
+
+  if (!shouldShow) {
+    return { shouldShow };
+  }
+
+  return {
+    shouldShow,
+    runCountCap: currentPlan.usage.runCountCap!,
+    runsEnabled: organization.runsEnabled,
+  };
 }
