@@ -1,4 +1,4 @@
-import { TracerProvider } from "@opentelemetry/api";
+import { DiagConsoleLogger, DiagLogLevel, TracerProvider, diag } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -54,11 +54,21 @@ class AsyncResourceDetector implements DetectorSync {
   }
 }
 
+export type TracingDiagnosticLogLevel =
+  | "none"
+  | "error"
+  | "warn"
+  | "info"
+  | "debug"
+  | "verbose"
+  | "all";
+
 export type TracingSDKConfig = {
   url: string;
   forceFlushTimeoutMillis?: number;
   resource?: IResource;
   instrumentations?: InstrumentationOption[];
+  diagLogLevel?: TracingDiagnosticLogLevel;
 };
 
 export class TracingSDK {
@@ -71,6 +81,8 @@ export class TracingSDK {
   public readonly getTracer: TracerProvider["getTracer"];
 
   constructor(private readonly config: TracingSDKConfig) {
+    setLogLevel(config.diagLogLevel ?? "none");
+
     const envResourceAttributesSerialized = getEnvVar("OTEL_RESOURCE_ATTRIBUTES");
     const envResourceAttributes = envResourceAttributesSerialized
       ? JSON.parse(envResourceAttributesSerialized)
@@ -139,4 +151,36 @@ export class TracingSDK {
     await this._spanExporter.shutdown();
     await this._logProvider.shutdown();
   }
+}
+
+function setLogLevel(level: TracingDiagnosticLogLevel) {
+  let diagLogLevel: DiagLogLevel;
+
+  switch (level) {
+    case "none":
+      diagLogLevel = DiagLogLevel.NONE;
+      break;
+    case "error":
+      diagLogLevel = DiagLogLevel.ERROR;
+      break;
+    case "warn":
+      diagLogLevel = DiagLogLevel.WARN;
+      break;
+    case "info":
+      diagLogLevel = DiagLogLevel.INFO;
+      break;
+    case "debug":
+      diagLogLevel = DiagLogLevel.DEBUG;
+      break;
+    case "verbose":
+      diagLogLevel = DiagLogLevel.VERBOSE;
+      break;
+    case "all":
+      diagLogLevel = DiagLogLevel.ALL;
+      break;
+    default:
+      diagLogLevel = DiagLogLevel.NONE;
+  }
+
+  diag.setLogger(new DiagConsoleLogger(), diagLogLevel);
 }

@@ -60,7 +60,7 @@ export class TestPresenter {
     WITH workers AS (
       SELECT 
             bw.*,
-            ROW_NUMBER() OVER(PARTITION BY bw."runtimeEnvironmentId" ORDER BY bw.version DESC) AS rn
+            ROW_NUMBER() OVER(PARTITION BY bw."runtimeEnvironmentId" ORDER BY string_to_array(bw.version, '.')::int[] DESC) AS rn
       FROM 
             "BackgroundWorker" bw
       WHERE "projectId" = ${project.id}

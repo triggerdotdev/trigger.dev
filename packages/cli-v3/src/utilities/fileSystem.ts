@@ -61,3 +61,11 @@ export function readJSONFileSync(path: string) {
 
   return JSON.parse(fileContents);
 }
+
+export function safeDeleteFileSync(path: string) {
+  try {
+    fs.unlinkSync(path);
+  } catch (error) {
+    // ignore error
+  }
+}

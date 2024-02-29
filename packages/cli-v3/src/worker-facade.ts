@@ -13,6 +13,7 @@ const tracingSDK = new TracingSDK({
   instrumentations: [
     // new OpenAIInstrumentation(),
   ],
+  diagLogLevel: (process.env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
 });
 
 const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
@@ -47,6 +48,7 @@ import * as packageJson from "../package.json";
 import { Resource } from "@opentelemetry/resources";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import { TaskMetadataWithFunctions } from "./types.js";
+import { TracingDiagnosticLogLevel } from "@trigger.dev/core/v3/otel/tracingSDK";
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);
