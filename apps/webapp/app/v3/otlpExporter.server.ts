@@ -38,6 +38,8 @@ class OTLPExporter {
   ) {}
 
   async exportTraces(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse> {
+    this.#logExportTracesVerbose(request);
+
     const events = this.#filterResourceSpans(request.resourceSpans).flatMap((resourceSpan) => {
       return convertSpansToCreateableEvents(resourceSpan);
     });
@@ -50,6 +52,8 @@ class OTLPExporter {
   }
 
   async exportLogs(request: ExportLogsServiceRequest): Promise<ExportLogsServiceResponse> {
+    this.#logExportLogsVerbose(request);
+
     const events = this.#filterResourceLogs(request.resourceLogs).flatMap((resourceLog) => {
       return convertLogsToCreateableEvents(resourceLog);
     });
@@ -66,6 +70,32 @@ class OTLPExporter {
 
     events.forEach((event) => {
       logger.debug("Exporting event", { event });
+    });
+  }
+
+  #logExportTracesVerbose(request: ExportTraceServiceRequest) {
+    if (!this._verbose) return;
+
+    logger.debug("Exporting traces", {
+      resourceSpans: request.resourceSpans.length,
+      totalSpans: request.resourceSpans.reduce(
+        (acc, resourceSpan) => acc + resourceSpan.scopeSpans.length,
+        0
+      ),
+    });
+  }
+
+  #logExportLogsVerbose(request: ExportLogsServiceRequest) {
+    if (!this._verbose) return;
+
+    logger.debug("Exporting logs", {
+      resourceLogs: request.resourceLogs.length,
+      totalLogs: request.resourceLogs.reduce(
+        (acc, resourceLog) =>
+          acc +
+          resourceLog.scopeLogs.reduce((acc, scopeLog) => acc + scopeLog.logRecords.length, 0),
+        0
+      ),
     });
   }
 
@@ -272,6 +302,7 @@ function extractResourceProperties(attributes: KeyValue[]) {
     workerVersion: extractStringAttribute(attributes, SemanticInternalAttributes.WORKER_VERSION),
     queueId: extractStringAttribute(attributes, SemanticInternalAttributes.QUEUE_ID),
     queueName: extractStringAttribute(attributes, SemanticInternalAttributes.QUEUE_NAME),
+    batchId: extractStringAttribute(attributes, SemanticInternalAttributes.BATCH_ID),
   };
 }
 
@@ -580,4 +611,7 @@ function binaryToHex(buffer: Buffer | undefined): string | undefined {
   return Buffer.from(Array.from(buffer)).toString("hex");
 }
 
-export const otlpExporter = new OTLPExporter(eventRepository, false);
+export const otlpExporter = new OTLPExporter(
+  eventRepository,
+  process.env.OTL_EXPORTER_VERBOSE === "1"
+);

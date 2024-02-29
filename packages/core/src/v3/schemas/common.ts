@@ -118,6 +118,10 @@ export const TaskRunExecutionQueue = z.object({
 
 export type TaskRunExecutionQueue = z.infer<typeof TaskRunExecutionQueue>;
 
+export const TaskRunExecutionBatch = z.object({
+  id: z.string(),
+});
+
 export const TaskRunExecution = z.object({
   task: TaskRunExecutionTask,
   attempt: TaskRunExecutionAttempt,
@@ -126,18 +130,23 @@ export const TaskRunExecution = z.object({
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,
   project: TaskRunExecutionProject,
+  batch: TaskRunExecutionBatch.optional(),
 });
 
 export type TaskRunExecution = z.infer<typeof TaskRunExecution>;
 
 export const TaskRunContext = z.object({
   task: TaskRunExecutionTask,
-  attempt: TaskRunExecutionAttempt.omit({ backgroundWorkerId: true, backgroundWorkerTaskId: true }),
+  attempt: TaskRunExecutionAttempt.omit({
+    backgroundWorkerId: true,
+    backgroundWorkerTaskId: true,
+  }),
   run: TaskRun.omit({ payload: true, payloadType: true }),
   queue: TaskRunExecutionQueue,
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,
   project: TaskRunExecutionProject,
+  batch: TaskRunExecutionBatch.optional(),
 });
 
 export type TaskRunContext = z.infer<typeof TaskRunContext>;

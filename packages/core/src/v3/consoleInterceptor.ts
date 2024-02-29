@@ -78,9 +78,7 @@ export class ConsoleInterceptor {
 
   #getAttributes(severityNumber: SeverityNumber): logsAPI.LogAttributes {
     const icon = iconStringForSeverity(severityNumber);
-    let result: logsAPI.LogAttributes = {
-      "log.type": "console",
-    };
+    let result: logsAPI.LogAttributes = {};
 
     if (icon !== undefined) {
       result[SemanticInternalAttributes.STYLE_ICON] = icon;

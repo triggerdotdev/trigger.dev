@@ -204,6 +204,7 @@ export type BackgroundWorkerParams = {
   env: Record<string, string>;
   projectDir: string;
   debuggerOn: boolean;
+  debugOtel?: boolean;
 };
 export class BackgroundWorker {
   private _initialized: boolean = false;
@@ -473,6 +474,7 @@ class TaskRunProcess {
         OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
           [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectDir,
         }),
+        ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
       },
       execArgv: this.worker.debuggerOn
         ? ["--inspect-brk", "--trace-uncaught"]

@@ -11,6 +11,10 @@ import { taskContextManager } from "../tasks/taskContextManager";
 import { SafeAsyncLocalStorage } from "../utils/safeAsyncLocalStorage";
 import { getEnvVar } from "../utils/getEnv";
 
+export type TriggerOptions = {
+  spanParentAsLink?: boolean;
+};
+
 /**
  * Trigger.dev v3 API client
  */
@@ -20,24 +24,24 @@ export class ApiClient {
     private readonly accessToken: string
   ) {}
 
-  triggerTask(taskId: string, options: TriggerTaskRequestBody) {
+  triggerTask(taskId: string, body: TriggerTaskRequestBody, options?: TriggerOptions) {
     return zodfetch(TriggerTaskResponse, `${this.baseUrl}/api/v1/tasks/${taskId}/trigger`, {
       method: "POST",
-      headers: this.#getHeaders(),
-      body: JSON.stringify(options),
+      headers: this.#getHeaders(options?.spanParentAsLink ?? false),
+      body: JSON.stringify(body),
     });
   }
 
-  batchTriggerTask(taskId: string, options: BatchTriggerTaskRequestBody) {
+  batchTriggerTask(taskId: string, body: BatchTriggerTaskRequestBody, options?: TriggerOptions) {
     return zodfetch(BatchTriggerTaskResponse, `${this.baseUrl}/api/v1/tasks/${taskId}/batch`, {
       method: "POST",
-      headers: this.#getHeaders(),
-      body: JSON.stringify(options),
+      headers: this.#getHeaders(options?.spanParentAsLink ?? false),
+      body: JSON.stringify(body),
     });
   }
 
-  #getHeaders() {
-    const headers = {
+  #getHeaders(spanParentAsLink: boolean) {
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.accessToken}`,
     };
@@ -45,6 +49,10 @@ export class ApiClient {
     // Only inject the context if we are inside a task
     if (taskContextManager.isInsideTask) {
       propagation.inject(context.active(), headers);
+
+      if (spanParentAsLink) {
+        headers["x-trigger-span-parent-as-link"] = "1";
+      }
     }
 
     return headers;

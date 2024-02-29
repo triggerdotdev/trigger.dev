@@ -55,6 +55,7 @@ let apiClient: ApiClient | undefined;
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugger: z.boolean().default(false),
+  debugOtel: z.boolean().default(false),
 });
 
 type DevCommandOptions = z.infer<typeof DevCommandOptions>;
@@ -70,6 +71,7 @@ export function configureDevCommand(program: Command) {
       "log"
     )
     .option("--debugger", "Enable the debugger")
+    .option("--debug-otel", "Enable OpenTelemetry debugging")
     .action(async (path, options) => {
       try {
         await devCommand(path, options);
@@ -159,6 +161,7 @@ async function startDev(
           environmentClient={environmentClient}
           projectName={devEnv.data.name}
           debuggerOn={options.debugger}
+          debugOtel={options.debugOtel}
         />
       );
     }
@@ -188,9 +191,18 @@ type DevProps = {
   environmentClient: ApiClient;
   projectName: string;
   debuggerOn: boolean;
+  debugOtel: boolean;
 };
 
-function useDev({ config, apiUrl, apiKey, environmentClient, projectName, debuggerOn }: DevProps) {
+function useDev({
+  config,
+  apiUrl,
+  apiKey,
+  environmentClient,
+  projectName,
+  debuggerOn,
+  debugOtel,
+}: DevProps) {
   useEffect(() => {
     const websocketUrl = new URL(apiUrl);
     websocketUrl.protocol = websocketUrl.protocol.replace("http", "ws");
@@ -410,6 +422,7 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName, debugg
                       : {}),
                   },
                   debuggerOn,
+                  debugOtel,
                 });
 
                 try {

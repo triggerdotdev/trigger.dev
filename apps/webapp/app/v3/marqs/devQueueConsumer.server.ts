@@ -316,6 +316,11 @@ export class DevQueueConsumer {
           orderBy: { number: "desc" },
         },
         tags: true,
+        batchItem: {
+          include: {
+            batchTaskRun: true,
+          },
+        },
       },
     });
 
@@ -363,7 +368,7 @@ export class DevQueueConsumer {
       },
     });
 
-    const execution = {
+    const execution: TaskRunExecution = {
       task: {
         id: backgroundTask.slug,
         filePath: backgroundTask.filePath,
@@ -406,6 +411,9 @@ export class DevQueueConsumer {
         slug: this.env.project.slug,
         name: this.env.project.name,
       },
+      batch: lockedTaskRun.batchItem?.batchTaskRun
+        ? { id: lockedTaskRun.batchItem.batchTaskRun.friendlyId }
+        : undefined,
     };
 
     const environmentRepository = new EnvironmentVariablesRepository();
