@@ -44,7 +44,7 @@ function createCoordinatorNamespace(io: Server) {
     clientMessages: CoordinatorToPlatformMessages,
     serverMessages: PlatformToCoordinatorMessages,
     messageHandler: {
-      READY_FOR_EXECUTION: async (message /*, callback */) => {
+      READY_FOR_EXECUTION: async (message) => {
         const payload = await sharedQueueTasks.getExecutionPayloadFromAttempt(message.attemptId);
 
         if (!payload) {
@@ -65,9 +65,6 @@ function createCoordinatorNamespace(io: Server) {
         const createCheckpoint = new CreateCheckpointService();
         await createCheckpoint.call(message);
       },
-      READY: async (message) => {
-        return "foo"
-      }
     },
   });
 
@@ -81,9 +78,6 @@ function createProviderNamespace(io: Server) {
     authToken: env.PROVIDER_SECRET,
     clientMessages: ProviderToPlatformMessages,
     serverMessages: PlatformToProviderMessages,
-    onConnection: async (socket, handler, sender, logger) => {
-      sender.send("HEALTH", {});
-    },
   });
 
   return provider.namespace;
