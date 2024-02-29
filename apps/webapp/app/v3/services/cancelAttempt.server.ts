@@ -4,14 +4,26 @@ import { marqs } from "../marqs.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 
+import { PrismaClientOrTransaction, prisma } from "~/db.server";
+
 export class CancelAttemptService extends BaseService {
   public async call(
     attemptId: string,
     taskRunId: string,
     cancelledAt: Date,
     reason: string,
-    environment: AuthenticatedEnvironment
+    env?: AuthenticatedEnvironment
   ) {
+    let environment: AuthenticatedEnvironment | undefined = env;
+
+    if (!environment) {
+      environment = await getAuthenticatedEnvironmentFromAttempt(attemptId);
+
+      if (!environment) {
+        return;
+      }
+    }
+
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskRunId", taskRunId);
       span.setAttribute("attemptId", attemptId);
@@ -55,4 +67,33 @@ export class CancelAttemptService extends BaseService {
       );
     });
   }
+}
+
+async function getAuthenticatedEnvironmentFromAttempt(
+  friendlyId: string,
+  prismaClient?: PrismaClientOrTransaction
+) {
+  const taskRunAttempt = await (prismaClient ?? prisma).taskRunAttempt.findUnique({
+    where: {
+      friendlyId,
+    },
+    include: {
+      taskRun: {
+        include: {
+          runtimeEnvironment: {
+            include: {
+              organization: true,
+              project: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!taskRunAttempt) {
+    return;
+  }
+
+  return taskRunAttempt?.taskRun.runtimeEnvironment;
 }

@@ -1,16 +1,11 @@
 import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
 import {
   ProdTaskRunExecutionPayload,
-  RetryOptions,
-  TaskRunContext,
   TaskRunError,
-  TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
   ZodMessageSender,
-  defaultRetryOptions,
-  flattenAttributes,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
 import { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
@@ -19,7 +14,8 @@ import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "../marqs.server";
-import { eventRepository } from "../eventRepository.server";
+import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
+import { CancelAttemptService } from "../services/cancelAttempt.server";
 import { socketIo } from "../handleSocketIo.server";
 import { singleton } from "~/utils/singleton";
 
@@ -55,6 +51,7 @@ export class SharedQueueConsumer {
   private _currentSpan: Span | undefined;
   private _endSpanInNextIteration = false;
   private _tasks = sharedQueueTasks;
+  private _inProgressAttempts: Map<string, string> = new Map(); // Keys are task attempt friendly IDs, values are TaskRun ids/queue message ids
 
   constructor(
     private _sender: ZodMessageSender<typeof serverWebsocketMessages>,
@@ -100,8 +97,48 @@ export class SharedQueueConsumer {
     this.#enable();
   }
 
-  public async stop() {
+  public async stop(reason: string = "Provider disconnected") {
+    if (!this._enabled) {
+      return;
+    }
+
+    logger.debug("Stopping shared queue consumer");
     this._enabled = false;
+
+    // We need to cancel all the in progress task run attempts and ack the messages so they will stop processing
+    await this.#cancelInProgressAttempts(reason);
+  }
+
+  async #cancelInProgressAttempts(reason: string) {
+    const service = new CancelAttemptService();
+
+    const cancelledAt = new Date();
+
+    const inProgressAttempts = new Map(this._inProgressAttempts);
+
+    this._inProgressAttempts.clear();
+
+    for (const [attemptId, messageId] of inProgressAttempts) {
+      await this.#cancelInProgressAttempt(attemptId, messageId, service, cancelledAt, reason);
+    }
+  }
+
+  async #cancelInProgressAttempt(
+    attemptId: string,
+    messageId: string,
+    cancelAttemptService: CancelAttemptService,
+    cancelledAt: Date,
+    reason: string
+  ) {
+    try {
+      await cancelAttemptService.call(attemptId, messageId, cancelledAt, reason);
+    } catch (e) {
+      logger.error("Failed to cancel in progress attempt", {
+        attemptId,
+        messageId,
+        error: e,
+      });
+    }
   }
 
   #enable() {
@@ -355,6 +392,8 @@ export class SharedQueueConsumer {
               image: backgroundWorker.imageDetails[0].tag,
             },
           });
+
+          this._inProgressAttempts.set(taskRunAttempt.friendlyId, message.messageId);
         } catch (e) {
           if (e instanceof Error) {
             this._currentSpan?.recordException(e);
@@ -707,6 +746,7 @@ class SharedQueueTasks {
         context: taskRun.context,
         createdAt: taskRun.createdAt,
         tags: taskRun.tags.map((tag) => tag.name),
+        isTest: taskRun.isTest,
       },
       queue: {
         id: queue.friendlyId,
@@ -735,167 +775,22 @@ class SharedQueueTasks {
       },
     };
 
-    const payload = {
+    const environmentRepository = new EnvironmentVariablesRepository();
+    const variables = await environmentRepository.getEnvironmentVariables(
+      attempt.taskRun.runtimeEnvironment.projectId,
+      attempt.taskRun.runtimeEnvironmentId
+    );
+
+    const payload: ProdTaskRunExecutionPayload = {
       execution,
       traceContext: taskRun.traceContext as Record<string, unknown>,
+      environment: variables.reduce((acc: Record<string, string>, curr) => {
+        acc[curr.key] = curr.value;
+        return acc;
+      }, {}),
     };
 
     return payload;
-  }
-
-  async completeTaskRun(completion: TaskRunExecutionResult, execution: TaskRunExecution) {
-    logger.debug("Task run completed", { taskRunCompletion: completion, execution });
-
-    const taskRunAttempt = completion.ok
-      ? await prisma.taskRunAttempt.update({
-          where: { friendlyId: completion.id },
-          data: {
-            status: "COMPLETED",
-            completedAt: new Date(),
-            output: completion.output,
-            outputType: completion.outputType,
-          },
-          include: {
-            taskRun: {
-              include: {
-                batchItem: true,
-                dependency: true,
-              },
-            },
-            backgroundWorkerTask: true,
-            taskRunDependency: true,
-            batchTaskRunDependency: true,
-          },
-        })
-      : await prisma.taskRunAttempt.update({
-          where: { friendlyId: completion.id },
-          data: {
-            status: "FAILED",
-            completedAt: new Date(),
-            error: completion.error,
-          },
-          include: {
-            taskRun: {
-              include: {
-                batchItem: true,
-                dependency: true,
-              },
-            },
-            backgroundWorkerTask: true,
-            taskRunDependency: true,
-            batchTaskRunDependency: true,
-          },
-        });
-
-    if (!completion.ok && completion.retry !== undefined) {
-      // Attempt failed and we need to retry
-      const retryConfig = taskRunAttempt.backgroundWorkerTask.retryConfig
-        ? {
-            ...defaultRetryOptions,
-            ...RetryOptions.parse(taskRunAttempt.backgroundWorkerTask.retryConfig),
-          }
-        : undefined;
-
-      const environment = await prisma.runtimeEnvironment.findUniqueOrThrow({
-        where: {
-          id: execution.environment.id,
-        },
-        include: {
-          project: true,
-          organization: true,
-        },
-      });
-
-      const retryAt = new Date(completion.retry.timestamp);
-      // Retry the task run
-      await eventRepository.recordEvent(
-        retryConfig?.maxAttempts
-          ? `Retry ${execution.attempt.number}/${retryConfig?.maxAttempts - 1} delay`
-          : `Retry #${execution.attempt.number} delay`,
-        {
-          taskSlug: taskRunAttempt.taskRun.taskIdentifier,
-          environment: environment,
-          attributes: {
-            metadata: this.#generateMetadataAttributesForNextAttempt(execution),
-            properties: {
-              retryAt: retryAt.toISOString(),
-              factor: retryConfig?.factor,
-              maxAttempts: retryConfig?.maxAttempts,
-              minTimeoutInMs: retryConfig?.minTimeoutInMs,
-              maxTimeoutInMs: retryConfig?.maxTimeoutInMs,
-              randomize: retryConfig?.randomize,
-            },
-            runId: taskRunAttempt.taskRunId,
-            style: {
-              icon: "schedule-attempt",
-            },
-            queueId: taskRunAttempt.queueId,
-            queueName: taskRunAttempt.taskRun.queue,
-          },
-          context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
-          spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
-          endTime: retryAt,
-        }
-      );
-
-      // TODO: If this is a resumed attempt, we need to ack the RESUME and enqueue another EXECUTE (as it will no longer exist)
-      await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
-    }
-    // Attempt succeeded or this was the last retry
-    else {
-      await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
-
-      const { batchItem, dependency } = taskRunAttempt.taskRun;
-
-      logger.debug("Handling dependencies", { batchItem, dependency });
-
-      if (dependency) {
-        const environment = await prisma.runtimeEnvironment.findUnique({
-          include: {
-            organization: true,
-            project: true,
-          },
-          where: {
-            id: taskRunAttempt.taskRun.runtimeEnvironmentId,
-          },
-        });
-
-        if (!environment) {
-          logger.error("Environment not found", {
-            attemptId: taskRunAttempt.id,
-            envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
-          });
-          return;
-        }
-
-        if (!dependency.dependentAttemptId) {
-          logger.error("Dependent attempt ID shouldn't be null", {
-            attemptId: taskRunAttempt.id,
-            envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
-          });
-          return;
-        }
-
-        await marqs?.enqueueMessage(
-          environment,
-          taskRunAttempt.taskRun.queue,
-          taskRunAttempt.id,
-          { type: "RESUME", dependentAttempt: dependency.dependentAttemptId },
-          taskRunAttempt.taskRun.concurrencyKey ?? undefined
-        );
-      }
-    }
-  }
-
-  #generateMetadataAttributesForNextAttempt(execution: TaskRunExecution) {
-    const context = TaskRunContext.parse(execution);
-
-    // @ts-ignore
-    context.attempt = {
-      number: context.attempt.number + 1,
-    };
-
-    return flattenAttributes(context, "ctx");
   }
 
   async taskHeartbeat(attemptFriendlyId: string, seconds: number = 60) {

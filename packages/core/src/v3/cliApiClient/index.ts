@@ -8,6 +8,7 @@ import {
   GetProjectDevResponse,
   CreateImageDetailsRequestBody,
   CreateImageDetailsResponse,
+  GetEnvironmentVariablesResponseBody,
 } from "../schemas";
 
 export class CliApiClient {
@@ -114,6 +115,23 @@ export class CliApiClient {
         "Content-Type": "application/json",
       },
     });
+  }
+
+  async getEnvironmentVariables(projectRef: string) {
+    if (!this.accessToken) {
+      throw new Error("getEnvironmentVariables: No access token");
+    }
+
+    return zodfetch(
+      GetEnvironmentVariablesResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/envvars`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
   }
 }
 

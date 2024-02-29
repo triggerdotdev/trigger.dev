@@ -11,13 +11,14 @@ import { eventRepository } from "../eventRepository.server";
 import { marqs } from "../marqs.server";
 import { BaseService } from "./baseService.server";
 import { Attributes } from "@opentelemetry/api";
+import { logger } from "~/services/logger.server";
 
 export class CompleteAttemptService extends BaseService {
   public async call(
     completion: TaskRunExecutionResult,
     execution: TaskRunExecution,
-    env: AuthenticatedEnvironment
-  ): Promise<"ACKNOWLEDGED" | "RETRIED"> {
+    env?: AuthenticatedEnvironment
+  ): Promise<"ACKNOWLEDGED" | "RETRIED" | "FAILED"> {
     const taskRunAttempt = completion.ok
       ? await this._prisma.taskRunAttempt.update({
           where: { friendlyId: completion.id },
@@ -28,7 +29,12 @@ export class CompleteAttemptService extends BaseService {
             outputType: completion.outputType,
           },
           include: {
-            taskRun: true,
+            taskRun: {
+              include: {
+                batchItem: true,
+                dependency: true,
+              },
+            },
             backgroundWorkerTask: true,
           },
         })
@@ -40,7 +46,12 @@ export class CompleteAttemptService extends BaseService {
             error: completion.error,
           },
           include: {
-            taskRun: true,
+            taskRun: {
+              include: {
+                batchItem: true,
+                dependency: true,
+              },
+            },
             backgroundWorkerTask: true,
           },
         });
@@ -53,6 +64,16 @@ export class CompleteAttemptService extends BaseService {
           }
         : undefined;
 
+      const environment = await this._prisma.runtimeEnvironment.findUniqueOrThrow({
+        where: {
+          id: execution.environment.id,
+        },
+        include: {
+          project: true,
+          organization: true,
+        },
+      });
+
       const retryAt = new Date(completion.retry.timestamp);
       // Retry the task run
       await eventRepository.recordEvent(
@@ -61,7 +82,7 @@ export class CompleteAttemptService extends BaseService {
           : `Retry #${execution.attempt.number} delay`,
         {
           taskSlug: taskRunAttempt.taskRun.taskIdentifier,
-          environment: env,
+          environment,
           attributes: {
             metadata: this.#generateMetadataAttributesForNextAttempt(execution),
             properties: {
@@ -85,10 +106,13 @@ export class CompleteAttemptService extends BaseService {
         }
       );
 
+      // TODO: If this is a resumed attempt, we need to ack the RESUME and enqueue another EXECUTE (as it will no longer exist)
       await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
 
       return "RETRIED";
-    } else {
+    }
+    // Attempt succeeded or this was the last retry
+    else {
       await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
       // Now we need to "complete" the task run event/span
@@ -107,6 +131,46 @@ export class CompleteAttemptService extends BaseService {
             isError: true,
           },
         });
+      }
+
+      const { batchItem, dependency } = taskRunAttempt.taskRun;
+
+      if (dependency) {
+        logger.debug("Completing attempt with dependency", { batchItem, dependency });
+
+        const environment = await this._prisma.runtimeEnvironment.findUnique({
+          where: {
+            id: taskRunAttempt.taskRun.runtimeEnvironmentId,
+          },
+          include: {
+            organization: true,
+            project: true,
+          },
+        });
+
+        if (!environment) {
+          logger.error("Environment not found", {
+            attemptId: taskRunAttempt.id,
+            envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
+          });
+          return "FAILED";
+        }
+
+        if (!dependency.dependentAttemptId) {
+          logger.error("Dependent attempt ID shouldn't be null", {
+            attemptId: taskRunAttempt.id,
+            envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
+          });
+          return "FAILED";
+        }
+
+        await marqs?.enqueueMessage(
+          environment,
+          taskRunAttempt.taskRun.queue,
+          taskRunAttempt.id,
+          { type: "RESUME", dependentAttempt: dependency.dependentAttemptId },
+          taskRunAttempt.taskRun.concurrencyKey ?? undefined
+        );
       }
 
       return "ACKNOWLEDGED";

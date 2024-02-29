@@ -13,6 +13,7 @@ import { singleton } from "~/utils/singleton";
 import { SharedSocketConnection } from "./sharedSocketConnection";
 import { CreateCheckpointService } from "./services/createCheckpoint.server";
 import { sharedQueueTasks } from "./marqs/sharedQueueConsumer.server";
+import { CompleteAttemptService } from "./services/completeAttempt.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -75,7 +76,8 @@ function createCoordinatorNamespace(io: Server) {
     socket.on("TASK_RUN_COMPLETED", async (message) => {
       logger("[TASK_RUN_COMPLETED]", { runId: message.execution.run.id });
 
-      await sharedQueueTasks.completeTaskRun(message.completion, message.execution);
+      const completeAttempt = new CompleteAttemptService();
+      await completeAttempt.call(message.completion, message.execution);
     });
 
     socket.on("TASK_HEARTBEAT", async (message) => {
