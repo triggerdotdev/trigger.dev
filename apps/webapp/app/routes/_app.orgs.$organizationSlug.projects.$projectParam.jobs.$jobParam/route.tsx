@@ -74,8 +74,8 @@ export default function Job() {
           </PageAccessories>
         )}
       </NavBar>
-      <PageBody className="grid grid-rows-[auto_1fr]" scrollable={false}>
-        <div className="p-4">
+      <PageBody className="grid grid-rows-[auto_1fr] px-4" scrollable={false}>
+        <div className="py-4">
           <PageInfoRow>
             <PageInfoGroup>
               <PageInfoProperty

@@ -11,7 +11,7 @@ import { cn } from "~/utils/cn";
 import { ProjectParamSchema } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
 import { PageBody } from "~/components/layout/AppLayout";
-import { NavBar, PageTitleRow, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

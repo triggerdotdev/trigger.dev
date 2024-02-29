@@ -17,7 +17,6 @@ import {
   PageInfoProperty,
   PageInfoRow,
   PageTitle,
-  PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -75,7 +74,6 @@ export default function Page() {
             to: projectHttpEndpointsPath(organization, project),
             text: "HTTP endpoints",
           }}
-          icon={httpEndpoint.icon ?? undefined}
         />
         <PageAccessories>
           <LinkButton

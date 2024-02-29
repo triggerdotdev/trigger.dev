@@ -3,7 +3,7 @@ import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EventDetail } from "~/components/event/EventDetail";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { NavBar, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { RunsFilters } from "~/components/runs/RunFilters";
 import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsTable } from "~/components/runs/RunsTable";

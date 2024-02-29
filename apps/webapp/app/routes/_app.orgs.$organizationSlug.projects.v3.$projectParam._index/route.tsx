@@ -1,21 +1,17 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { TaskRunAttemptStatus } from "@trigger.dev/database";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { VersionLabel } from "~/components/VersionLabel";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header2 } from "~/components/primitives/Headers";
-import { NavBar, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { PopoverMenuItem } from "~/components/primitives/Popover";
 import {
   Table,
   TableBlankRow,
   TableBody,
   TableCell,
   TableCellChevron,
-  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -61,7 +57,7 @@ export default function Page() {
   const hasTasks = tasks.length > 0;
 
   return (
-    <PageContainer className={hasTasks ? "" : "grid-rows-1"}>
+    <PageContainer>
       <NavBar>
         <PageTitle title="Tasks" />
       </NavBar>

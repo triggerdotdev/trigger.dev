@@ -2,14 +2,11 @@ import { Outlet } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { prisma } from "~/db.server";
-import { organizationMatchId, useOrganization } from "~/hooks/useOrganizations";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { Handle } from "~/utils/handle";
 import { ProjectParamSchema, projectPath, v3ProjectPath } from "~/utils/pathBuilder";
-import { loader as orgLoader } from "../_app.orgs.$organizationSlug/route";
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {
   const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);

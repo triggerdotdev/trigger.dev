@@ -12,12 +12,7 @@ import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParen
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Input } from "~/components/primitives/Input";
-import {
-  PageAccessories,
-  NavBar,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { PageAccessories, NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ResizableHandle,
