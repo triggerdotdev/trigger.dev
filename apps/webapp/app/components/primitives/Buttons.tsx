@@ -5,145 +5,102 @@ import { cn } from "~/utils/cn";
 import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 import { ShortcutKey } from "./ShortcutKey";
 
-const variant = {
-  "primary/small": {
+const sizes = {
+  small: {
+    button: "h-6 px-2 text-xs",
+    icon: "h-3.5",
+    iconSpacing: "gap-x-0.5",
+    shortcutVariant: "small" as const,
+    shortcut: "ml-1 -mr-0.5 justify-self-center",
+  },
+  medium: {
+    button: "h-8 px-2 text-sm",
+    icon: "h-4",
+    iconSpacing: "gap-x-0.5",
+    shortcutVariant: "medium" as const,
+    shortcut: "ml-1.5 -mr-0.5 justify-self-center",
+  },
+  large: {
+    button: "h-10 px-2 text-sm font-medium",
+    icon: "h-5",
+    iconSpacing: "gap-x-0.5",
+    shortcutVariant: "medium" as const,
+    shortcut: "ml-1.5 -mr-0.5",
+  },
+  "extra-large": {
+    button: "h-12 px-2 text-base font-medium",
+    icon: "h-5",
+    iconSpacing: "gap-x-0.5",
+    shortcutVariant: "medium" as const,
+    shortcut: "ml-1.5 -mr-0.5",
+  },
+};
+
+type Size = keyof typeof sizes;
+
+const theme = {
+  primary: {
     textColor:
       "text-charcoal-900 group-hover:text-white transition group-disabled:text-text-bright/80 px-1",
     button:
-      "h-6 px-[5px] text-xs bg-primary group-hover:bg-apple-200 group-disabled:opacity-50 group-disabled:pointer-events-none",
-    icon: "h-3.5",
-    iconSpacing: "gap-x-0.5",
-    shortcutVariant: "small" as const,
-    shortcut:
-      "ml-1 -mr-0.5 border-black/40 text-charcoal-800 group-hover:border-black/60 justify-self-center",
+      "bg-primary group-hover:bg-apple-200 group-disabled:opacity-50 group-disabled:pointer-events-none",
+    shortcut: "border-black/40 text-charcoal-800 group-hover:border-black/60",
   },
-  "secondary/small": {
+  secondary: {
     textColor:
       "text-text-dimmed group-hover:text-text-bright transition group-disabled:text-text-dimmed/80 px-1",
     button:
-      "h-6 px-[5px] text-xs bg-charcoal-800 group-hover:bg-charcoal-700/70 disabled:opacity-50 group-disabled:pointer-events-none",
-    icon: "h-3.5",
-    iconSpacing: "gap-x-0.5",
-    shortcutVariant: "small" as const,
+      "bg-charcoal-800 group-hover:bg-charcoal-700/70 disabled:opacity-50 group-disabled:pointer-events-none",
     shortcut:
-      "ml-1 -mr-0.5 border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60",
+      "border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60",
   },
-  "tertiary/small": {
+  tertiary: {
     textColor:
       "text-text-dimmed group-hover:text-text-bright transition group-disabled:text-text-dimmed/80 px-1",
     button:
-      "h-6 px-[5px] text-xs bg-transparent group-hover:bg-charcoal-850 disabled:opacity-50 group-disabled:pointer-events-none",
-    icon: "h-3.5",
-    iconSpacing: "gap-x-0.5",
-    shortcutVariant: "small" as const,
+      "bg-transparent group-hover:bg-charcoal-850 disabled:opacity-50 group-disabled:pointer-events-none",
     shortcut:
-      "ml-1 -mr-0.5 border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60",
+      "border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60",
   },
-  "danger/small": {
+  danger: {
     textColor:
       "text-text-bright group-hover:text-white transition group-disabled:text-text-bright/80 px-1",
     button:
-      "h-6 px-[5px] text-xs bg-rose-600 group-hover:bg-rose-500 disabled:opacity-50 group-disabled:pointer-events-none",
-    icon: "h-3.5",
-    iconSpacing: "gap-x-0.5",
-    shortcutVariant: "small" as const,
-    shortcut: "ml-1 -mr-0.5 border-bright/40 text-text-bright group-hover:border-bright/60",
+      "bg-rose-600 group-hover:bg-rose-500 disabled:opacity-50 group-disabled:pointer-events-none",
+    shortcut: "border-bright/40 text-text-bright group-hover:border-bright/60",
   },
-  "primary/medium": {
-    textColor:
-      "text-text-bright group-hover:text-white transition group-disabled:text-text-bright/80 px-1",
-    button: "h-8 px-2 text-sm bg-primary group-hover:bg-apple-200 disabled:opacity-50",
-    icon: "h-4",
-    iconSpacing: "gap-x-0.5",
-    shortcutVariant: "medium" as const,
-    shortcut: "ml-1.5 -mr-0.5 border-black/40 text-charcoal-800 group-hover:border-black/60",
-  },
-  "secondary/medium": {
-    textColor:
-      "text-text-dimmed group-hover:text-text-bright transition group-disabled:text-text-dimmed/80 px-1",
-    button: "h-8 px-2 text-sm bg-charcoal-800 group-hover:bg-charcoal-700/70 disabled:opacity-50",
-    icon: "h-4",
-    iconSpacing: "gap-x-0.5",
-    shortcutVariant: "medium" as const,
-    shortcut:
-      "ml-1.5 -mr-0.5 border-dimmed/40 text-text-dimmed group-hover:border-dimmed group-hover:text-text-bright",
-  },
-  "tertiary/medium": {
-    textColor:
-      "text-text-dimmed group-hover:text-text-bright transition group-disabled:text-text-dimmed/80 px-1",
-    button: "h-8 px-2 text-sm bg-transparent group-hover:bg-charcoal-850 disabled:opacity-50",
-    icon: "h-4",
-    iconSpacing: "gap-x-0.5",
-    shortcutVariant: "medium" as const,
-    shortcut:
-      "ml-1.5 -mr-0.5 border-bright/40 text-text-dimmed group-hover:border-bright/60 group-hover:text-text-bright",
-  },
-  "danger/medium": {
-    textColor:
-      "text-text-bright group-hover:text-white transition group-disabled:text-text-bright/80 px-1",
-    button: "h-8 px-2 text-sm bg-rose-600 group-hover:bg-rose-500 disabled:opacity-50",
-    icon: "h-4",
-    iconSpacing: "gap-x-0.5",
-    shortcutVariant: "medium" as const,
-    shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-text-bright group-hover:border-bright/60",
-  },
-  "primary/large": {
-    textColor:
-      "text-text-bright group-hover:text-white transition group-disabled:text-text-dimmed/80 px-1",
-    button:
-      "h-10 px-2 text-sm font-medium bg-primary group-hover:bg-apple-200 group-disabled:opacity-50 group-disabled:group-hover:bg-primary",
-    icon: "h-5",
-    iconSpacing: "gap-x-0.5",
-    shortcutVariant: undefined,
-    shortcut: undefined,
-  },
-  "secondary/large": {
-    textColor: "text-text-bright group-disabled:text-text-dimmed px-1",
-    button:
-      "h-10 px-2 text-sm transition font-medium bg-charcoal-800 group-hover:bg-charcoal-700/70 group-disabled:opacity-40 group-disabled:group-hover:bg-charcoal-800",
-    icon: "h-5",
-    iconSpacing: "gap-x-0.5",
-    shortcutVariant: undefined,
-    shortcut: undefined,
-  },
-  "danger/large": {
-    textColor:
-      "text-text-bright group-hover:text-white transition group-disabled:text-text-bright/50 px-1",
-    button:
-      "h-10 px-2 text-md bg-rose-600 group-hover:bg-rose-500 group-disabled:opacity-50 group-disabled:group-hover:bg-rose-600",
-    icon: "h-5",
-    iconSpacing: "gap-x-0.5",
-    shortcutVariant: "medium" as const,
-    shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-text-bright group-hover:border-bright/60",
-  },
-  "primary/extra-large": {
-    textColor:
-      "text-text-bright group-hover:text-white transition group-disabled:text-text-dimmed/80",
-    button: "h-12 px-2 text-md font-medium bg-primary group-hover:bg-apple-200 disabled:opacity-50",
-    icon: "h-5",
-    iconSpacing: undefined,
-    shortcutVariant: undefined,
-    shortcut: undefined,
-  },
-  "secondary/extra-large": {
-    textColor: "text-text-dimmed",
-    button:
-      "h-12 px-2 text-md text-text-dimmed group-hover:text-text-bright transition font-medium bg-charcoal-800 group-hover:bg-charcoal-700/70 disabled:opacity-50",
-    icon: "h-5",
-    iconSpacing: undefined,
-    shortcutVariant: undefined,
-    shortcut: undefined,
-  },
-  "danger/extra-large": {
-    textColor:
-      "text-text-bright group-hover:text-white transition group-disabled:text-text-bright/50",
-    button:
-      "h-12 px-2 text-md bg-rose-600 group-hover:bg-rose-500 group-disabled:opacity-50 group-disabled:group-hover:bg-rose-600",
-    icon: "h-5",
-    iconSpacing: undefined,
-    shortcutVariant: "medium" as const,
-    shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-text-bright group-hover:border-bright/60",
-  },
+};
+
+type Theme = keyof typeof theme;
+
+function createVariant(sizeName: Size, themeName: Theme) {
+  return {
+    textColor: theme[themeName].textColor,
+    button: cn(sizes[sizeName].button, theme[themeName].button),
+    icon: sizes[sizeName].icon,
+    iconSpacing: sizes[sizeName].iconSpacing,
+    shortcutVariant: sizes[sizeName].shortcutVariant,
+    shortcut: sizes[sizeName].shortcut,
+  };
+}
+
+const variant = {
+  "primary/small": createVariant("small", "primary"),
+  "primary/medium": createVariant("medium", "primary"),
+  "primary/large": createVariant("large", "primary"),
+  "primary/extra-large": createVariant("extra-large", "primary"),
+  "secondary/small": createVariant("small", "secondary"),
+  "secondary/medium": createVariant("medium", "secondary"),
+  "secondary/large": createVariant("large", "secondary"),
+  "secondary/extra-large": createVariant("extra-large", "secondary"),
+  "tertiary/small": createVariant("small", "tertiary"),
+  "tertiary/medium": createVariant("medium", "tertiary"),
+  "tertiary/large": createVariant("large", "tertiary"),
+  "tertiary/extra-large": createVariant("extra-large", "tertiary"),
+  "danger/small": createVariant("small", "danger"),
+  "danger/medium": createVariant("medium", "danger"),
+  "danger/large": createVariant("large", "danger"),
+  "danger/extra-large": createVariant("extra-large", "danger"),
   "menu-item": {
     textColor: "text-text-bright px-1",
     button:
