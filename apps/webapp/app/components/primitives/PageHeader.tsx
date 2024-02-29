@@ -12,6 +12,7 @@ import { Header2, Header3 } from "./Headers";
 import { NamedIcon } from "./NamedIcon";
 import { Paragraph } from "./Paragraph";
 import { Tabs, TabsProps } from "./Tabs";
+import { LoadingBarDivider } from "./LoadingBarDivider";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -23,11 +24,9 @@ export function NavBar({ children }: WithChildren) {
 
   return (
     <div>
-      <div className="flex h-10 w-full items-center border-b border-grid-bright bg-background-bright pl-3 pr-1">
-        <div className="flex grow items-center justify-between">{children}</div>
-        <div className="flex h-full items-center gap-4">
-          <PageNavigationIndicator className="mr-2" />
-        </div>
+      <div className="grid h-10 w-full grid-rows-[auto_1px] bg-background-bright">
+        <div className="flex w-full items-center justify-between pl-3 pr-1">{children}</div>
+        <LoadingBarDivider isLoading={true} />
       </div>
       {showUpgradePrompt.shouldShow && organization && (
         <UpgradePrompt
