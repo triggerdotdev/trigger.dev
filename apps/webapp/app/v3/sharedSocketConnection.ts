@@ -58,6 +58,9 @@ export class SharedSocketConnection {
         READY_FOR_TASKS: async (payload) => {
           this._sharedConsumer.start();
         },
+        BACKGROUND_WORKER_DEPRECATED: async (payload) => {
+          await this._sharedConsumer.deprecateBackgroundWorker(payload.backgroundWorkerId);
+        },
         BACKGROUND_WORKER_MESSAGE: async (payload) => {
           switch (payload.data.type) {
             case "TASK_RUN_COMPLETED": {

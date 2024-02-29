@@ -5,6 +5,7 @@ import {
   SemanticInternalAttributes,
   TaskMetadataWithFilePath,
   TaskRunBuiltInError,
+  TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
@@ -16,12 +17,29 @@ import {
 } from "@trigger.dev/core/v3";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { unlinkSync } from "node:fs";
+import { safeDeleteFileSync } from "../utilities/fileSystem";
+
+class UnexpectedExitError extends Error {
+  constructor(public code: number) {
+    super(`Unexpected exit with code ${code}`);
+
+    this.name = "UnexpectedExitError";
+  }
+}
+
+class CleanupProcessError extends Error {
+  constructor() {
+    super("Cancelled");
+
+    this.name = "CleanupProcessError";
+  }
+}
 
 type BackgroundWorkerParams = {
   env: Record<string, string>;
   projectDir: string;
   contentHash: string;
+  debugOtel?: boolean;
 };
 
 export class ProdBackgroundWorker {
@@ -42,12 +60,20 @@ export class ProdBackgroundWorker {
 
   _taskRunProcesses: Map<string, TaskRunProcess> = new Map();
 
+  private _closed: boolean = false;
+
   constructor(
     public path: string,
     private params: BackgroundWorkerParams
   ) {}
 
   close() {
+    if (this._closed) {
+      return;
+    }
+
+    this._closed = true;
+
     this.onTaskHeartbeat.detach();
 
     // We need to close all the task run processes
@@ -58,8 +84,8 @@ export class ProdBackgroundWorker {
     // Delete worker files
     this._onClose.post();
 
-    unlinkSync(this.path);
-    unlinkSync(`${this.path}.map`);
+    safeDeleteFileSync(this.path);
+    safeDeleteFileSync(`${this.path}.map`);
   }
 
   async initialize() {
@@ -185,29 +211,65 @@ export class ProdBackgroundWorker {
 
   // We need to fork the process before we can execute any tasks
   async executeTaskRun(payload: ProdTaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
-    const taskRunProcess = await this.#initializeTaskRunProcess(payload);
+    try {
+      const taskRunProcess = await this.#initializeTaskRunProcess(payload);
 
-    const result = await taskRunProcess.executeTaskRun(payload);
+      const result = await taskRunProcess.executeTaskRun(payload);
 
-    // Kill the worker if the task was successful or if it's not going to be retried);
-    await taskRunProcess.cleanup(result.ok || result.retry === undefined);
+      // Kill the worker if the task was successful or if it's not going to be retried);
+      await taskRunProcess.cleanup(result.ok || result.retry === undefined);
 
-    if (result.ok) {
+      if (result.ok) {
+        return result;
+      }
+
+      const error = result.error;
+
+      if (error.type === "BUILT_IN_ERROR") {
+        const mappedError = await this.#correctError(error, payload.execution);
+
+        return {
+          ...result,
+          error: mappedError,
+        };
+      }
+
       return result;
-    }
+    } catch (e) {
+      if (e instanceof CleanupProcessError) {
+        return {
+          id: payload.execution.attempt.id,
+          ok: false,
+          retry: undefined,
+          error: {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.TASK_EXECUTION_ABORTED,
+          },
+        };
+      }
 
-    const error = result.error;
-
-    if (error.type === "BUILT_IN_ERROR") {
-      const mappedError = await this.#correctError(error, payload.execution);
+      if (e instanceof UnexpectedExitError) {
+        return {
+          id: payload.execution.attempt.id,
+          ok: false,
+          retry: undefined,
+          error: {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE,
+          },
+        };
+      }
 
       return {
-        ...result,
-        error: mappedError,
+        id: payload.execution.attempt.id,
+        ok: false,
+        retry: undefined,
+        error: {
+          type: "INTERNAL_ERROR",
+          code: TaskRunErrorCodes.TASK_EXECUTION_FAILED,
+        },
       };
     }
-
-    return result;
   }
 
   async #correctError(
@@ -266,6 +328,7 @@ class TaskRunProcess {
         OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
           [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectDir,
         }),
+        ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
       },
     });
 
@@ -402,6 +465,12 @@ class TaskRunProcess {
         const { rejecter } = attemptPromise;
 
         rejecter(new Error(`Worker exited with code ${code}`));
+
+        if (this._isBeingKilled) {
+          rejecter(new CleanupProcessError());
+        } else {
+          rejecter(new UnexpectedExitError(code));
+        }
       }
     }
 
@@ -421,6 +490,10 @@ class TaskRunProcess {
   }
 
   #handleStdErr(data: Buffer) {
+    if (this._isBeingKilled) {
+      return;
+    }
+
     if (!this._currentExecution) {
       console.error(`[${this.metadata.version}] ${data.toString()}`);
 

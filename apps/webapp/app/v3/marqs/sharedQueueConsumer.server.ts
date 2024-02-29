@@ -1,5 +1,6 @@
 import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
 import {
+  ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   TaskRunError,
   TaskRunExecutionResult,
@@ -41,6 +42,7 @@ export type SharedQueueConsumerOptions = {
 
 export class SharedQueueConsumer {
   private _backgroundWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
+  private _deprecatedWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
   private _enabled = false;
   private _options: Required<SharedQueueConsumerOptions>;
   private _perTraceCountdown: number | undefined;
@@ -61,6 +63,18 @@ export class SharedQueueConsumer {
       maximumItemsPerTrace: options.maximumItemsPerTrace ?? 1_000, // 1k items per trace
       traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
     };
+  }
+
+  // This method is called when a background worker is deprecated and will no longer be used unless a run is locked to it
+  public async deprecateBackgroundWorker(id: string) {
+    const backgroundWorker = this._backgroundWorkers.get(id);
+
+    if (!backgroundWorker) {
+      return;
+    }
+
+    this._deprecatedWorkers.set(id, backgroundWorker);
+    this._backgroundWorkers.delete(id);
   }
 
   public async registerBackgroundWorker(id: string, envId?: string) {
@@ -701,6 +715,11 @@ class SharedQueueTasks {
               },
             },
             tags: true,
+            batchItem: {
+              include: {
+                batchTaskRun: true,
+              },
+            },
           },
         },
         queue: true,
@@ -725,7 +744,7 @@ class SharedQueueTasks {
 
     const { backgroundWorkerTask, taskRun, queue } = attempt;
 
-    const execution: ProdTaskRunExecutionPayload["execution"] = {
+    const execution: ProdTaskRunExecution = {
       task: {
         id: backgroundWorkerTask.slug,
         filePath: backgroundWorkerTask.filePath,
@@ -768,6 +787,9 @@ class SharedQueueTasks {
         slug: taskRun.runtimeEnvironment.project.slug,
         name: taskRun.runtimeEnvironment.project.name,
       },
+      batch: taskRun.batchItem?.batchTaskRun
+        ? { id: taskRun.batchItem.batchTaskRun.friendlyId }
+        : undefined,
       worker: {
         id: attempt.backgroundWorkerId,
         contentHash: attempt.backgroundWorker.contentHash,
