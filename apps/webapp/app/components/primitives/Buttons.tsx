@@ -178,7 +178,6 @@ export function ButtonContent(props: ButtonContentPropsType) {
   const iconClassName = variation.icon;
   const iconSpacingClassName = variation.iconSpacing;
   const shortcutClassName = variation.shortcut;
-  console.log({ shortcutClassName });
   const textColorClassName = variation.textColor;
 
   return (
