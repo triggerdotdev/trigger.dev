@@ -136,7 +136,7 @@ export class CompleteAttemptService extends BaseService {
       const { batchItem, dependency } = taskRunAttempt.taskRun;
 
       if (dependency) {
-        logger.debug("Completing attempt with dependency", { batchItem, dependency });
+        logger.debug("Completing attempt with dependency", { dependency });
 
         const environment = await this._prisma.runtimeEnvironment.findUnique({
           where: {
@@ -156,21 +156,56 @@ export class CompleteAttemptService extends BaseService {
           return "FAILED";
         }
 
-        if (!dependency.dependentAttemptId) {
-          logger.error("Dependent attempt ID shouldn't be null", {
-            attemptId: taskRunAttempt.id,
-            envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
+        if (dependency.dependentAttemptId) {
+          await marqs?.enqueueMessage(
+            environment,
+            taskRunAttempt.taskRun.queue,
+            taskRunAttempt.id,
+            { type: "RESUME", dependentAttempt: dependency.dependentAttemptId },
+            taskRunAttempt.taskRun.concurrencyKey ?? undefined
+          );
+        } else if (dependency.dependentBatchRunId) {
+          const batchTaskRun = await this._prisma.batchTaskRun.findFirst({
+            where: {
+              id: dependency.dependentBatchRunId,
+            },
           });
-          return "FAILED";
+
+          if (!batchTaskRun) {
+            logger.error("Batch task run does not exist", {
+              attemptId: taskRunAttempt.id,
+              envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
+              batchTaskRunId: dependency.dependentBatchRunId,
+            });
+            return "FAILED";
+          }
+
+          if (!batchTaskRun.dependentTaskAttemptId) {
+            logger.error("Dependent attempt ID shouldn't be null", {
+              attemptId: taskRunAttempt.id,
+              envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
+            });
+            return "FAILED";
+          }
+
+          // TODO: If there are checkpoints, we should only resume once all batch items have been completed
+
+          await marqs?.enqueueMessage(
+            environment,
+            taskRunAttempt.taskRun.queue,
+            taskRunAttempt.id,
+            { type: "RESUME", dependentAttempt: batchTaskRun.dependentTaskAttemptId },
+            taskRunAttempt.taskRun.concurrencyKey ?? undefined
+          );
         }
 
-        await marqs?.enqueueMessage(
-          environment,
-          taskRunAttempt.taskRun.queue,
-          taskRunAttempt.id,
-          { type: "RESUME", dependentAttempt: dependency.dependentAttemptId },
-          taskRunAttempt.taskRun.concurrencyKey ?? undefined
-        );
+        logger.error("Invalid dependency", {
+          attemptId: taskRunAttempt.id,
+          dependencyId: dependency.id,
+          envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
+        });
+
+        return "FAILED";
       }
 
       return "ACKNOWLEDGED";
