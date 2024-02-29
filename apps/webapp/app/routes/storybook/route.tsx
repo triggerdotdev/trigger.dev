@@ -2,7 +2,6 @@ import { NavLink, Outlet } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AppContainer } from "~/components/layout/AppLayout";
-import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import { env } from "~/env.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -31,6 +30,10 @@ const stories: Story[] = [
   {
     name: "Code block",
     slug: "code-block",
+  },
+  {
+    name: "Detail cell",
+    slug: "detail-cell",
   },
 ];
 

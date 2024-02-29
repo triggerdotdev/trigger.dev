@@ -1,21 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { DetailCell } from "../primitives/DetailCell";
-import { ClockIcon, CodeBracketIcon } from "@heroicons/react/24/outline";
-import { DateTime, DateTimeAccurate } from "../primitives/DateTime";
+import { ClockIcon, CodeBracketIcon } from "@heroicons/react/20/solid";
+import { DateTime } from "~/components/primitives/DateTime";
+import { DetailCell } from "~/components/primitives/DetailCell";
 
-const meta: Meta = {
-  title: "Primitives/DetailCells",
-};
-
-export default meta;
-
-type Story = StoryObj<typeof Examples>;
-
-export const Basic: Story = {
-  render: () => <Examples />,
-};
-
-function Examples() {
+export default function Story() {
   return (
     <div className="flex max-w-xl flex-col items-start gap-y-8 p-8">
       <DetailCell
