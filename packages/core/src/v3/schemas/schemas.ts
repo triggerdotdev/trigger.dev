@@ -46,6 +46,7 @@ export const PlatformToProviderMessages = {
     machine: Machine,
   }),
   RESTORE: z.object({
+    version: z.literal("v1").default("v1"),
     id: z.string(),
     attemptId: z.string(),
     type: z.enum(["DOCKER", "KUBERNETES"]),
