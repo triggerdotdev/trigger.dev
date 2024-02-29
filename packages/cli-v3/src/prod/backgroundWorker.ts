@@ -464,8 +464,6 @@ class TaskRunProcess {
 
         const { rejecter } = attemptPromise;
 
-        rejecter(new Error(`Worker exited with code ${code}`));
-
         if (this._isBeingKilled) {
           rejecter(new CleanupProcessError());
         } else {
