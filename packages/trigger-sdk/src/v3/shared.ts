@@ -308,7 +308,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             throw createErrorTaskError(result.error);
           }
 
-          return JSON.parse(result.output);
+          return typeof result.output === "string" ? JSON.parse(result.output) : result.output;
         },
         {
           kind: SpanKind.PRODUCER,
@@ -383,7 +383,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
               return {
                 ok: true,
                 id: item.id,
-                output: JSON.parse(item.output),
+                output: typeof item.output === "string" ? JSON.parse(item.output) : item.output,
               } satisfies TaskRunResult<TOutput>;
             } else {
               return {
