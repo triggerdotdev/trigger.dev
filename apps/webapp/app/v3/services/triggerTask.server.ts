@@ -16,6 +16,8 @@ export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
   triggerVersion?: string;
   traceContext?: Record<string, string | undefined>;
+  spanParentAsLink?: boolean;
+  batchId?: string;
 };
 
 export class TriggerTaskService extends BaseService {
@@ -48,6 +50,7 @@ export class TriggerTaskService extends BaseService {
         taskId,
         {
           context: options.traceContext,
+          spanParentAsLink: options.spanParentAsLink,
           kind: "SERVER",
           environment,
           taskSlug: taskId,
@@ -60,6 +63,7 @@ export class TriggerTaskService extends BaseService {
               variant: PRIMARY_VARIANT,
             },
             runIsTest: body.options?.test ?? false,
+            batchId: options.batchId,
           },
           incomplete: true,
           immediate: true,

@@ -1744,6 +1744,8 @@ model TaskEvent {
   queueId   String?
   queueName String?
 
+  batchId String?
+
   /// This represents all the span attributes available, like http.status_code, and special attributes like $style.icon, $output, $metadata.payload.userId, as it's used for searching and filtering
   properties Json
 

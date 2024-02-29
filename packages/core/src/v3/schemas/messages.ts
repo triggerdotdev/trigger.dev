@@ -82,6 +82,10 @@ export const clientWebsocketMessages = {
     version: z.literal("v1").default("v1"),
     backgroundWorkerId: z.string(),
   }),
+  BACKGROUND_WORKER_DEPRECATED: z.object({
+    version: z.literal("v1").default("v1"),
+    backgroundWorkerId: z.string(),
+  }),
   BACKGROUND_WORKER_MESSAGE: z.object({
     version: z.literal("v1").default("v1"),
     backgroundWorkerId: z.string(),

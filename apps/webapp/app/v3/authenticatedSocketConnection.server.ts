@@ -50,7 +50,9 @@ export class AuthenticatedSocketConnection {
         READY_FOR_TASKS: async (payload) => {
           await this._consumer.registerBackgroundWorker(payload.backgroundWorkerId);
         },
-
+        BACKGROUND_WORKER_DEPRECATED: async (payload) => {
+          await this._consumer.deprecateBackgroundWorker(payload.backgroundWorkerId);
+        },
         BACKGROUND_WORKER_MESSAGE: async (payload) => {
           switch (payload.data.type) {
             case "TASK_RUN_COMPLETED": {
