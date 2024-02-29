@@ -1,16 +1,9 @@
 import { Outlet } from "@remix-run/react";
 import { AppContainer } from "~/components/layout/AppLayout";
 import { AccountSideMenu } from "~/components/navigation/AccountSideMenu";
-import { Breadcrumb, BreadcrumbLink } from "~/components/navigation/Breadcrumb";
+import { Breadcrumb } from "~/components/navigation/Breadcrumb";
 import { PageNavigationIndicator } from "~/components/navigation/PageNavigationIndicator";
 import { useUser } from "~/hooks/useUser";
-import { Handle } from "~/utils/handle";
-
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    return <BreadcrumbLink to={match.pathname} title={"Account"} />;
-  },
-};
 
 export default function Page() {
   const user = useUser();

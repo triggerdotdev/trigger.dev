@@ -16,15 +16,11 @@ export function AccountSideMenu({ user }: { user: User }) {
   return (
     <div
       className={cn(
-        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-grid-bright transition"
+        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-grid-bright bg-background-bright transition"
       )}
     >
       <div className="flex h-full flex-col">
-        <div
-          className={cn(
-            "flex items-center justify-between border-b bg-background-dimmed p-px transition"
-          )}
-        >
+        <div className={cn("flex items-center justify-between border-b p-px transition")}>
           <LinkButton
             variant="tertiary/medium"
             LeadingIcon={ArrowLeftIcon}
