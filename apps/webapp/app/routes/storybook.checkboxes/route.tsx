@@ -1,29 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { withDesign } from "storybook-addon-designs";
-import { Checkbox } from "../primitives/Checkbox";
 import { useState } from "react";
-import { Button } from "../primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
+import { Checkbox } from "~/components/primitives/Checkbox";
 
-const meta: Meta = {
-  title: "Primitives/Checkboxes",
-};
-
-export default meta;
-
-type Story = StoryObj<typeof BasicCheckBox>;
-
-export const Basic: Story = {
-  render: () => <BasicCheckBox />,
-};
-
-Basic.parameters = {
-  design: {
-    type: "figma",
-    url: "https://www.figma.com/file/jBqUJJ2d4lU6aSeKIIOBMY/Trigger.dev?type=design&node-id=2577%3A87576&t=ambgtfvgnwXTHmzI-1",
-  },
-};
-
-function BasicCheckBox() {
+export default function Story() {
   const [isDisabled, setIsDisabled] = useState(false);
 
   return (

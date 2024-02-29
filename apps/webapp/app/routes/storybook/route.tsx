@@ -9,8 +9,28 @@ import { cn } from "~/utils/cn";
 
 const stories: Story[] = [
   {
+    name: "Badges",
+    slug: "badges",
+  },
+  {
     name: "Buttons",
     slug: "buttons",
+  },
+  {
+    name: "Callouts",
+    slug: "callout",
+  },
+  {
+    name: "Checkboxes",
+    slug: "checkboxes",
+  },
+  {
+    name: "Clipboard field",
+    slug: "clipboard-field",
+  },
+  {
+    name: "Code block",
+    slug: "code-block",
   },
 ];
 
@@ -62,12 +82,11 @@ function SideMenu({ stories }: { stories: Story[] }) {
               {({ isActive, isPending }) => (
                 <div
                   className={cn(
-                    "relative flex items-center gap-2 overflow-hidden truncate rounded-sm px-2 py-2",
-                    (isActive || isPending) && "z-20 outline outline-1 outline-indigo-500"
+                    "relative flex items-center gap-2 overflow-hidden truncate rounded-sm px-2 py-2 text-sm text-text-dimmed",
+                    (isActive || isPending) && "bg-tertiary text-text-bright"
                   )}
                 >
-                  <RadioButtonCircle checked={isActive || isPending} />
-                  <div className="flex w-full items-center justify-between gap-2">{story.name}</div>
+                  {story.name}
                 </div>
               )}
             </NavLink>

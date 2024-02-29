@@ -1,21 +1,7 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { withDesign } from "storybook-addon-designs";
-import { ClipboardField } from "../primitives/ClipboardField";
-import { EnvironmentLabel } from "../environments/EnvironmentLabel";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 
-const meta: Meta = {
-  title: "Primitives/ClipboardField",
-};
-
-export default meta;
-
-type Story = StoryObj<typeof ClipboardFieldExample>;
-
-export const Basic: Story = {
-  render: () => <ClipboardFieldExample />,
-};
-
-function ClipboardFieldExample() {
+export default function Story() {
   return (
     <div className="flex gap-8">
       <div className="flex flex-col items-start gap-y-8 p-8">

@@ -1,23 +1,7 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { withDesign } from "storybook-addon-designs";
-import { useState } from "react";
-import { Button } from "../primitives/Buttons";
-import { Callout } from "../primitives/Callout";
-import { EnvelopeIcon } from "@heroicons/react/24/solid";
+import { EnvelopeIcon } from "@heroicons/react/20/solid";
+import { Callout } from "~/components/primitives/Callout";
 
-const meta: Meta = {
-  title: "Primitives/Callout",
-};
-
-export default meta;
-
-type Story = StoryObj<typeof CalloutsSet>;
-
-export const Callouts: Story = {
-  render: () => <CalloutsSet />,
-};
-
-function CalloutsSet() {
+export default function Story() {
   return (
     <div className="grid grid-cols-2">
       <div className="flex flex-col items-start gap-y-4 p-4">
