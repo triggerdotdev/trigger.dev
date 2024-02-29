@@ -31,11 +31,6 @@ export const loader = async ({ params }: LoaderFunctionArgs) => {
 };
 
 export const handle: Handle = {
-  breadcrumb: (match, matches) => {
-    const orgMatch = matches.find((m) => m.id === organizationMatchId);
-    const data = useTypedMatchData<typeof orgLoader>(orgMatch);
-    return <BreadcrumbLink to={match.pathname} title={data?.project.name ?? "Project"} />;
-  },
   scripts: (match) => [
     {
       src: "https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js",

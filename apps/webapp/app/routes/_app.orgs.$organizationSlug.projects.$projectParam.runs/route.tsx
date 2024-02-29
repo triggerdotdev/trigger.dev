@@ -22,6 +22,8 @@ import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsFilters } from "~/components/runs/RunFilters";
 import { Suspense } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
+import { Handle } from "~/utils/handle";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -49,6 +51,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return defer({
     list,
   });
+};
+
+export const handle: Handle = {
+  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Runs" />,
 };
 
 export default function Page() {

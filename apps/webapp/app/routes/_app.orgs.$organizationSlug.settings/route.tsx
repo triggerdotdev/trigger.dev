@@ -7,6 +7,7 @@ import { r } from "tar";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -27,6 +28,7 @@ import {
 import { DeleteOrganizationService } from "~/services/deleteOrganization.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
+import { Handle } from "~/utils/handle";
 import { organizationPath, organizationSettingsPath, rootPath } from "~/utils/pathBuilder";
 
 export function createSchema(
@@ -136,6 +138,10 @@ export const action: ActionFunction = async ({ request, params }) => {
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
+};
+
+export const handle: Handle = {
+  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Organization settings" />,
 };
 
 export default function Page() {

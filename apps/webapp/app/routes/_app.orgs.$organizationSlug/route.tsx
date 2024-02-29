@@ -62,15 +62,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    const data = useTypedMatchData<typeof loader>(match);
-    return (
-      <BreadcrumbLink to={match.pathname} title={data?.organization.title ?? "Organization"} />
-    );
-  },
-};
-
 export default function Organization() {
   const { organization, project, organizations, isImpersonating } =
     useTypedLoaderData<typeof loader>();

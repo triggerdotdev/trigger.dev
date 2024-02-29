@@ -62,10 +62,12 @@ export const handle: Handle = {
   breadcrumb: (match) => {
     const data = useTypedMatchData<typeof loader>(match);
     return (
-      <BreadcrumbLink
-        to={trimTrailingSlash(match?.pathname ?? "")}
-        title={data?.job.title ?? "Job"}
-      />
+      <>
+        <BreadcrumbLink
+          to={trimTrailingSlash(match?.pathname ?? "")}
+          title={data?.job.title ?? "Job"}
+        />
+      </>
     );
   },
 };
