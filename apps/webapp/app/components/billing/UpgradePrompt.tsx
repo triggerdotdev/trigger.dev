@@ -19,7 +19,7 @@ type UpgradePromptProps = {
 export function UpgradePrompt({ runsEnabled, runCountCap, planPath }: UpgradePromptProps) {
   return (
     <div
-      className="flex h-full items-center justify-between border border-error bg-repeat py-0 pl-3 pr-2"
+      className="flex h-10 items-center justify-between border border-error bg-repeat py-0 pl-3 pr-2"
       style={{ backgroundImage: `url(${tileBgPath})`, backgroundSize: "8px 8px" }}
     >
       <div className="flex items-center gap-2">

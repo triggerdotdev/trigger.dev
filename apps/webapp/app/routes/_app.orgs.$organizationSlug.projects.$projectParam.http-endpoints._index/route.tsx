@@ -7,13 +7,7 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Icon } from "~/components/primitives/Icon";
-import {
-  PageButtons,
-  PageDescription,
-  PageHeader,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
@@ -49,23 +43,18 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="HTTP endpoints" />
-          <PageButtons>
-            <LinkButton
-              LeadingIcon={"docs"}
-              to={docsPath("documentation/concepts/http-endpoints")}
-              variant="secondary/small"
-            >
-              HTTP endpoints documentation
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
-        <PageDescription>
-          HTTP endpoints allow you to receive webhooks from any API.
-        </PageDescription>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="HTTP endpoints" />
+        <PageAccessories>
+          <LinkButton
+            LeadingIcon={"docs"}
+            to={docsPath("documentation/concepts/http-endpoints")}
+            variant="secondary/small"
+          >
+            HTTP endpoints documentation
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
       <PageBody>
         <Help defaultOpen={true}>
           {(open) => (

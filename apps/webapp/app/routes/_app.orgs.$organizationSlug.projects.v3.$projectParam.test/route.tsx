@@ -4,7 +4,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Header2 } from "~/components/primitives/Headers";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import {
   ResizableHandle,
@@ -45,11 +45,9 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader hideBorder>
-        <PageTitleRow>
-          <PageTitle title="Test" />
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Test" />
+      </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("grid h-full max-h-full grid-cols-1")}>
           <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">

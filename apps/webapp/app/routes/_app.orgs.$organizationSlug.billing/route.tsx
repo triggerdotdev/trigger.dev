@@ -7,14 +7,13 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
-  PageButtons,
-  PageHeader,
+  PageAccessories,
+  NavBar,
   PageInfoGroup,
   PageInfoProperty,
   PageInfoRow,
   PageTabs,
   PageTitle,
-  PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -50,34 +49,32 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader hideBorder>
-        <PageTitleRow>
-          <PageTitle title={isManagedCloud ? "Usage & Billing" : "Usage"} />
-          <PageButtons>
-            {isManagedCloud && (
-              <>
-                {currentPlan?.subscription?.isPaying && (
-                  <>
-                    <LinkButton to={stripePortalPath(organization)} variant="secondary/small">
-                      Invoices
-                    </LinkButton>
-                    <LinkButton to={stripePortalPath(organization)} variant="secondary/small">
-                      Manage card details
-                    </LinkButton>
-                  </>
-                )}
-                <LinkButton
-                  to={plansPath(organization)}
-                  variant="primary/small"
-                  LeadingIcon={ArrowUpCircleIcon}
-                  leadingIconClassName="px-0"
-                >
-                  Upgrade
-                </LinkButton>
-              </>
-            )}
-          </PageButtons>
-        </PageTitleRow>
+      <NavBar>
+        <PageTitle title={isManagedCloud ? "Usage & Billing" : "Usage"} />
+        <PageAccessories>
+          {isManagedCloud && (
+            <>
+              {currentPlan?.subscription?.isPaying && (
+                <>
+                  <LinkButton to={stripePortalPath(organization)} variant="secondary/small">
+                    Invoices
+                  </LinkButton>
+                  <LinkButton to={stripePortalPath(organization)} variant="secondary/small">
+                    Manage card details
+                  </LinkButton>
+                </>
+              )}
+              <LinkButton
+                to={plansPath(organization)}
+                variant="primary/small"
+                LeadingIcon={ArrowUpCircleIcon}
+                leadingIconClassName="px-0"
+              >
+                Upgrade
+              </LinkButton>
+            </>
+          )}
+        </PageAccessories>
 
         <PageInfoRow>
           <PageInfoGroup>
@@ -117,7 +114,7 @@ export default function Page() {
             layoutId="usage-and-billing"
           />
         )}
-      </PageHeader>
+      </NavBar>
       <PageBody scrollable={false}>
         <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <Outlet />

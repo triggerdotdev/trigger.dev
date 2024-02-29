@@ -15,7 +15,7 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { prisma } from "~/db.server";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -176,11 +176,9 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title={`${project.name} project settings`} />
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title={`${project.name} project settings`} />
+      </NavBar>
 
       <PageBody>
         <div className="flex flex-col gap-4">

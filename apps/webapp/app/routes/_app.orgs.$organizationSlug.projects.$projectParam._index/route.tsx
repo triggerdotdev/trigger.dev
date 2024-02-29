@@ -9,14 +9,7 @@ import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
-import {
-  PageHeader,
-  PageInfoGroup,
-  PageInfoProperty,
-  PageInfoRow,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
@@ -59,24 +52,14 @@ export default function Page() {
   const activeJobCount = jobs.filter((j) => j.status === "ACTIVE").length;
 
   return (
-    <PageContainer className={hasJobs ? "" : "grid-rows-1"}>
-      {hasJobs && (
-        <PageHeader>
-          <PageTitleRow>
-            <PageTitle title="Jobs" />
-          </PageTitleRow>
-          <PageInfoRow>
-            <PageInfoGroup>
-              <PageInfoProperty icon={"job"} label={"Total"} value={totalJobs} />
-              <PageInfoProperty icon={"job"} label={"Active"} value={activeJobCount} />
-            </PageInfoGroup>
-          </PageInfoRow>
-        </PageHeader>
-      )}
+    <PageContainer>
+      <NavBar>
+        <PageTitle title="Jobs" />
+      </NavBar>
       <PageBody>
         <Help>
           {(open) => (
-            <div className={cn("grid gap-4", open ? "h-full grid-cols-2" : " h-full grid-cols-1")}>
+            <div className={cn("grid gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
               <div className="h-full">
                 {hasJobs ? (
                   <>

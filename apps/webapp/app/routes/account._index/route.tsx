@@ -14,7 +14,7 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { prisma } from "~/db.server";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -124,11 +124,9 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Your profile" />
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Your profile" />
+      </NavBar>
 
       <PageBody>
         <Form method="post" {...form.props} className="max-w-md">

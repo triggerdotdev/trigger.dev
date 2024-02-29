@@ -3,7 +3,7 @@ import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EventDetail } from "~/components/event/EventDetail";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { RunsFilters } from "~/components/runs/RunFilters";
 import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsTable } from "~/components/runs/RunsTable";
@@ -69,17 +69,15 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle
-            title={event.name}
-            backButton={{
-              to: projectEventsPath(organization, project),
-              text: "Events",
-            }}
-          />
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle
+          title={event.name}
+          backButton={{
+            to: projectEventsPath(organization, project),
+            text: "Events",
+          }}
+        />
+      </NavBar>
 
       <PageBody scrollable={false}>
         <div className="grid h-full grid-cols-2">

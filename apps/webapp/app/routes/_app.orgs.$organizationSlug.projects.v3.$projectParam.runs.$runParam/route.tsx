@@ -13,8 +13,8 @@ import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Input } from "~/components/primitives/Input";
 import {
-  PageButtons,
-  PageHeader,
+  PageAccessories,
+  NavBar,
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
@@ -88,14 +88,12 @@ export default function Page() {
 
   return (
     <>
-      <PageHeader hideBorder>
-        <PageTitleRow>
-          <PageTitle title={`Run #${run.number}`} />
-          <PageButtons>
-            <EnvironmentLabel environment={run.environment} userName={usernameForEnv} />
-          </PageButtons>
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title={`Run #${run.number}`} />
+        <PageAccessories>
+          <EnvironmentLabel environment={run.environment} userName={usernameForEnv} />
+        </PageAccessories>
+      </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("grid h-full max-h-full grid-cols-1")}>
           {selectedSpanId === undefined ? (

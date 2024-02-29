@@ -3,7 +3,7 @@ import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
-  PageHeader,
+  NavBar,
   PageInfoGroup,
   PageInfoProperty,
   PageInfoRow,
@@ -58,16 +58,15 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader hideBorder>
-        <PageTitleRow>
-          <PageTitle
-            title={trigger.key}
-            backButton={{
-              to: projectWebhookTriggersPath(organization, project),
-              text: "Webhook Triggers",
-            }}
-          />
-        </PageTitleRow>
+      <NavBar>
+        <PageTitle
+          title={trigger.key}
+          backButton={{
+            to: projectWebhookTriggersPath(organization, project),
+            text: "Webhook Triggers",
+          }}
+        />
+
         <PageInfoRow>
           <PageInfoGroup>
             <PageInfoProperty
@@ -92,7 +91,7 @@ export default function Page() {
             },
           ]}
         />
-      </PageHeader>
+      </NavBar>
 
       <PageBody scrollable={false}>
         <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">

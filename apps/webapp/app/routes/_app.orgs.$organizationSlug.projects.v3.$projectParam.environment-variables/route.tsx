@@ -25,8 +25,8 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import {
-  PageButtons,
-  PageHeader,
+  PageAccessories,
+  NavBar,
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
@@ -166,20 +166,18 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Environment variables" />
-          <PageButtons>
-            <LinkButton
-              LeadingIcon={"docs"}
-              to={docsPath("/documentation/concepts/environments-endpoints#environments")}
-              variant="secondary/small"
-            >
-              Environment variables docs
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Environment variables" />
+        <PageAccessories>
+          <LinkButton
+            LeadingIcon={"docs"}
+            to={docsPath("/documentation/concepts/environments-endpoints#environments")}
+            variant="secondary/small"
+          >
+            Environment variables docs
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
       <PageBody>
         <div className={cn("flex h-full flex-col gap-3")}>
           <div className="flex items-center justify-end gap-2">

@@ -12,7 +12,7 @@ import { Callout, variantClasses } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
-  PageHeader,
+  NavBar,
   PageInfoGroup,
   PageInfoProperty,
   PageInfoRow,
@@ -117,16 +117,15 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle
-            title={`${trigger.integration.title}: ${trigger.integration.slug}`}
-            backButton={{
-              to: projectTriggersPath(organization, project),
-              text: "External Triggers",
-            }}
-          />
-        </PageTitleRow>
+      <NavBar>
+        <PageTitle
+          title={`${trigger.integration.title}: ${trigger.integration.slug}`}
+          backButton={{
+            to: projectTriggersPath(organization, project),
+            text: "External Triggers",
+          }}
+        />
+
         <PageInfoRow>
           <PageInfoGroup>
             <PageInfoProperty
@@ -157,7 +156,7 @@ export default function Page() {
             />
           </PageInfoGroup>
         </PageInfoRow>
-      </PageHeader>
+      </NavBar>
 
       <PageBody scrollable={false}>
         <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">

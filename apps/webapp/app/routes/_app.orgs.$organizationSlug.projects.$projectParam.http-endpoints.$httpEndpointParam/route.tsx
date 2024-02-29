@@ -11,8 +11,8 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { Header1 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import {
-  PageButtons,
-  PageHeader,
+  PageAccessories,
+  NavBar,
   PageInfoGroup,
   PageInfoProperty,
   PageInfoRow,
@@ -68,26 +68,25 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle
-            title={httpEndpoint.title ?? httpEndpoint.key}
-            backButton={{
-              to: projectHttpEndpointsPath(organization, project),
-              text: "HTTP endpoints",
-            }}
-            icon={httpEndpoint.icon ?? undefined}
-          />
-          <PageButtons>
-            <LinkButton
-              LeadingIcon={"docs"}
-              to={docsPath("documentation/concepts/http-endpoints")}
-              variant="secondary/small"
-            >
-              HTTP endpoints documentation
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
+      <NavBar>
+        <PageTitle
+          title={httpEndpoint.title ?? httpEndpoint.key}
+          backButton={{
+            to: projectHttpEndpointsPath(organization, project),
+            text: "HTTP endpoints",
+          }}
+          icon={httpEndpoint.icon ?? undefined}
+        />
+        <PageAccessories>
+          <LinkButton
+            LeadingIcon={"docs"}
+            to={docsPath("documentation/concepts/http-endpoints")}
+            variant="secondary/small"
+          >
+            HTTP endpoints documentation
+          </LinkButton>
+        </PageAccessories>
+
         {httpEndpoint.webhook && (
           <PageInfoRow>
             <PageInfoGroup>
@@ -99,7 +98,7 @@ export default function Page() {
             </PageInfoGroup>
           </PageInfoRow>
         )}
-      </PageHeader>
+      </NavBar>
       <PageBody>
         <Help defaultOpen={true}>
           {(open) => (

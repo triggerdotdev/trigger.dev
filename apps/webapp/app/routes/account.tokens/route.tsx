@@ -20,13 +20,7 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import {
-  PageButtons,
-  PageDescription,
-  PageHeader,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
@@ -130,23 +124,20 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Personal Access Tokens" />
-          <PageButtons>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="primary/small">Create new token</Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>Create a Personal Access Token</DialogHeader>
-                <CreatePersonalAccessToken />
-              </DialogContent>
-            </Dialog>
-          </PageButtons>
-        </PageTitleRow>
-        <PageDescription>Personal Access Tokens can be used with our CLI and API.</PageDescription>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Personal Access Tokens" />
+        <PageAccessories>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="primary/small">Create new token</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>Create a Personal Access Token</DialogHeader>
+              <CreatePersonalAccessToken />
+            </DialogContent>
+          </Dialog>
+        </PageAccessories>
+      </NavBar>
 
       <PageBody>
         <div className="flex flex-col gap-3">

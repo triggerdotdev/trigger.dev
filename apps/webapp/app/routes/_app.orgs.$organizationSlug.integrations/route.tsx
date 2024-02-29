@@ -17,13 +17,7 @@ import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
-import {
-  PageButtons,
-  PageDescription,
-  PageHeader,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Switch } from "~/components/primitives/Switch";
 import {
   Table,
@@ -66,23 +60,18 @@ export default function Integrations() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Integrations & APIs" />
-          <PageButtons>
-            <LinkButton
-              to={docsPath("/integrations/introduction")}
-              variant="secondary/small"
-              LeadingIcon="docs"
-            >
-              Integrations documentation
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
-        <PageDescription>
-          Easily use an Integration, an existing Node.js SDK or make HTTP calls from a Job.
-        </PageDescription>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Integrations & APIs" />
+        <PageAccessories>
+          <LinkButton
+            to={docsPath("/integrations/introduction")}
+            variant="secondary/small"
+            LeadingIcon="docs"
+          >
+            Integrations documentation
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
 
       <PageBody scrollable={false}>
         <div className="grid h-full max-w-full grid-cols-[2fr_3fr] divide-x divide-charcoal-900 overflow-hidden">

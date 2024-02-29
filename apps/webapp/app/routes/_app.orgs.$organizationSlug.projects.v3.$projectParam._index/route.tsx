@@ -6,7 +6,7 @@ import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import {
@@ -62,11 +62,9 @@ export default function Page() {
 
   return (
     <PageContainer className={hasTasks ? "" : "grid-rows-1"}>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Tasks" />
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Tasks" />
+      </NavBar>
       <PageBody>
         <div className={cn("grid h-full grid-cols-1 gap-4")}>
           <div className="h-full">

@@ -1,11 +1,14 @@
 import { ArrowUpRightIcon } from "@heroicons/react/20/solid";
 import { ChevronLeftIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
+import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
+import { plansPath } from "~/utils/pathBuilder";
+import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
+import { PageNavigationIndicator } from "../navigation/PageNavigationIndicator";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { LinkButton } from "./Buttons";
-import { Header1 } from "./Headers";
-import { Icon, RenderIcon } from "./Icon";
+import { Header2, Header3 } from "./Headers";
 import { NamedIcon } from "./NamedIcon";
 import { Paragraph } from "./Paragraph";
 import { Tabs, TabsProps } from "./Tabs";
@@ -14,20 +17,30 @@ type WithChildren = {
   children: React.ReactNode;
 };
 
-export function PageHeader({ children, hideBorder }: WithChildren & { hideBorder?: boolean }) {
+export function NavBar({ children }: WithChildren) {
+  const organization = useOptionalOrganization();
+  const showUpgradePrompt = useShowUpgradePrompt(organization);
+
   return (
-    <div className={cn("mx-4 pt-4", hideBorder ? "" : "border-b border-grid-bright pb-4")}>
-      {children}
+    <div>
+      <div className="flex h-10 w-full items-center border-b border-grid-bright bg-background-bright pl-3 pr-1">
+        <div className="flex grow items-center justify-between">{children}</div>
+        <div className="flex h-full items-center gap-4">
+          <PageNavigationIndicator className="mr-2" />
+        </div>
+      </div>
+      {showUpgradePrompt.shouldShow && organization && (
+        <UpgradePrompt
+          runsEnabled={showUpgradePrompt.runsEnabled}
+          runCountCap={showUpgradePrompt.runCountCap}
+          planPath={plansPath(organization)}
+        />
+      )}
     </div>
   );
 }
 
-export function PageTitleRow({ children }: WithChildren) {
-  return <div className="flex items-center justify-between">{children}</div>;
-}
-
 type PageTitleProps = {
-  icon?: RenderIcon;
   title: string;
   backButton?: {
     to: string;
@@ -35,7 +48,7 @@ type PageTitleProps = {
   };
 };
 
-export function PageTitle({ icon, title, backButton }: PageTitleProps) {
+export function PageTitle({ title, backButton }: PageTitleProps) {
   return (
     <div className="flex items-center gap-2">
       {backButton && (
@@ -45,35 +58,24 @@ export function PageTitle({ icon, title, backButton }: PageTitleProps) {
             className="flex items-center gap-1 text-charcoal-400 transition group-hover:text-white"
           >
             <ChevronLeftIcon className="h-6" />
-            <Header1 textColor="dimmed" className="transition group-hover:text-white">
+            <Header3 textColor="dimmed" className="transition group-hover:text-white">
               {backButton.text}
-            </Header1>
+            </Header3>
           </Link>
           <BreadcrumbIcon className="h-6" />
         </div>
       )}
-      <Header1 className="flex items-center gap-1">
-        {icon && <Icon icon={icon} className="h-5 w-5" />}
-        {title}
-      </Header1>
+      <Header2 className="flex items-center gap-1">{title}</Header2>
     </div>
   );
 }
 
-export function PageButtons({ children }: WithChildren) {
+export function PageAccessories({ children }: WithChildren) {
   return <div className="flex items-center gap-3">{children}</div>;
 }
 
-export function PageDescription({ children }: WithChildren) {
-  return (
-    <Paragraph variant="small" className="mb-0 mt-2">
-      {children}
-    </Paragraph>
-  );
-}
-
 export function PageInfoRow({ children }: WithChildren) {
-  return <div className="mt-2 flex w-full items-center gap-2">{children}</div>;
+  return <div className="flex w-full items-center gap-2">{children}</div>;
 }
 
 export function PageInfoGroup({
@@ -139,7 +141,7 @@ function PageInfoPropertyContent({
 
 export function PageTabs(props: TabsProps) {
   return (
-    <div className="mt-4">
+    <div className="mt-2">
       <Tabs {...props} />
     </div>
   );

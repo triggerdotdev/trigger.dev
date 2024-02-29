@@ -3,13 +3,7 @@ import { LoaderFunctionArgs, defer } from "@remix-run/server-runtime";
 import { Suspense } from "react";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
-import {
-  PageButtons,
-  PageDescription,
-  PageHeader,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { RunsFilters } from "~/components/runs/RunFilters";
 import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsTable } from "~/components/runs/RunsTable";
@@ -59,21 +53,18 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title={`${project.name} runs`} />
-          <PageButtons>
-            <LinkButton
-              LeadingIcon={"docs"}
-              to={docsPath("documentation/concepts/runs")}
-              variant="secondary/small"
-            >
-              Run documentation
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
-        <PageDescription>All job runs in this project</PageDescription>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title={`${project.name} runs`} />
+        <PageAccessories>
+          <LinkButton
+            LeadingIcon={"docs"}
+            to={docsPath("documentation/concepts/runs")}
+            variant="secondary/small"
+          >
+            Run documentation
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
 
       <PageBody scrollable={false}>
         <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">

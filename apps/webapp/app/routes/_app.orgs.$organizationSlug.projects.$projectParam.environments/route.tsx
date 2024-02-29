@@ -16,13 +16,7 @@ import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
-import {
-  PageButtons,
-  PageDescription,
-  PageHeader,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
@@ -125,21 +119,18 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Environments & API Keys" />
-          <PageButtons>
-            <LinkButton
-              LeadingIcon={"docs"}
-              to={docsPath("/documentation/concepts/environments-endpoints#environments")}
-              variant="secondary/small"
-            >
-              Environments documentation
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
-        <PageDescription>API Keys and endpoints for your environments.</PageDescription>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Environments & API Keys" />
+        <PageAccessories>
+          <LinkButton
+            LeadingIcon={"docs"}
+            to={docsPath("/documentation/concepts/environments-endpoints#environments")}
+            variant="secondary/small"
+          >
+            Environments documentation
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
       <PageBody>
         <Help defaultOpen={!isAnyClientFullyConfigured}>
           {(open) => (

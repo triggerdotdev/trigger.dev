@@ -3,7 +3,7 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
-import { MainBody } from "~/components/navigation/NavBar";
+import { MainBody } from "~/components/layout/AppLayout";
 import { SideMenu } from "~/components/navigation/SideMenu";
 import { featuresForRequest } from "~/features.server";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
@@ -73,7 +73,7 @@ export default function Organization() {
           organization={organization}
           organizations={organizations}
         />
-        <MainBody organization={organization}>
+        <MainBody>
           <Outlet />
         </MainBody>
       </div>

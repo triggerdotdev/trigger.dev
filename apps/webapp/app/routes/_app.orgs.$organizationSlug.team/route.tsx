@@ -23,7 +23,7 @@ import { Button, ButtonContent, LinkButton } from "~/components/primitives/Butto
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -100,11 +100,9 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Team" />
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Team" />
+      </NavBar>
       <PageBody>
         <Header2>Members</Header2>
         <ul className="divide-ui-border flex w-full max-w-md flex-col divide-y border-b border-grid-bright">

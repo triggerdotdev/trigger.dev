@@ -5,12 +5,11 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
-  PageButtons,
-  PageHeader,
+  PageAccessories,
+  NavBar,
   PageInfoGroup,
   PageInfoRow,
   PageTitle,
-  PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -21,19 +20,19 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title={`${organization.title} projects`} />
-          <PageButtons>
-            <LinkButton
-              to={newProjectPath(organization)}
-              variant="primary/small"
-              shortcut={{ key: "n" }}
-            >
-              Create a new project
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
+      <NavBar>
+        <PageTitle title={`${organization.title} projects`} />
+        <PageAccessories>
+          <LinkButton
+            to={newProjectPath(organization)}
+            variant="primary/small"
+            shortcut={{ key: "n" }}
+          >
+            Create a new project
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
+      <PageBody>
         <PageInfoRow>
           <PageInfoGroup alignment="right">
             <Paragraph variant="extra-small" className="text-charcoal-600">
@@ -41,8 +40,6 @@ export default function Page() {
             </Paragraph>
           </PageInfoGroup>
         </PageInfoRow>
-      </PageHeader>
-      <PageBody>
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {organization.projects.length > 0 ? (
             organization.projects.map((project) => {

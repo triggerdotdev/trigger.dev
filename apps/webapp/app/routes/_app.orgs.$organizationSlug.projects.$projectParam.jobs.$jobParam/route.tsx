@@ -6,14 +6,13 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
-  PageButtons,
-  PageHeader,
+  PageAccessories,
+  NavBar,
   PageInfoGroup,
   PageInfoProperty,
   PageInfoRow,
   PageTabs,
   PageTitle,
-  PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useJob } from "~/hooks/useJob";
@@ -61,21 +60,21 @@ export default function Job() {
 
   return renderHeader ? (
     <PageContainer>
-      <PageHeader hideBorder>
-        <PageTitleRow>
-          <PageTitle title={job.title} />
-          {!isTestPage && (
-            <PageButtons>
-              <LinkButton
-                to={jobTestPath(organization, project, job)}
-                variant="primary/small"
-                shortcut={{ key: "t" }}
-              >
-                Test
-              </LinkButton>
-            </PageButtons>
-          )}
-        </PageTitleRow>
+      <NavBar>
+        <PageTitle title={job.title} />
+        {!isTestPage && (
+          <PageAccessories>
+            <LinkButton
+              to={jobTestPath(organization, project, job)}
+              variant="primary/small"
+              shortcut={{ key: "t" }}
+            >
+              Test
+            </LinkButton>
+          </PageAccessories>
+        )}
+      </NavBar>
+      <PageBody className="h-full max-h-full" scrollable={false}>
         <PageInfoRow>
           <PageInfoGroup>
             <PageInfoProperty
@@ -137,8 +136,6 @@ export default function Job() {
             },
           ]}
         />
-      </PageHeader>
-      <PageBody>
         <Outlet />
       </PageBody>
     </PageContainer>

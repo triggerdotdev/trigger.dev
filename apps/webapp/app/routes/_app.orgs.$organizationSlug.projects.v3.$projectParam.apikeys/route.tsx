@@ -8,8 +8,8 @@ import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
 import {
-  PageButtons,
-  PageHeader,
+  PageAccessories,
+  NavBar,
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
@@ -58,20 +58,18 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="API Keys" />
-          <PageButtons>
-            <LinkButton
-              LeadingIcon={"docs"}
-              to={docsPath("/documentation/concepts/environments-endpoints#environments")}
-              variant="secondary/small"
-            >
-              API keys docs
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="API Keys" />
+        <PageAccessories>
+          <LinkButton
+            LeadingIcon={"docs"}
+            to={docsPath("/documentation/concepts/environments-endpoints#environments")}
+            variant="secondary/small"
+          >
+            API keys docs
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
       <PageBody>
         <div className={cn("h-full")}>
           <Header3 spacing>Server API keys</Header3>

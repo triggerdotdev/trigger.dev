@@ -6,7 +6,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
-  PageHeader,
+  NavBar,
   PageInfoGroup,
   PageInfoProperty,
   PageInfoRow,
@@ -67,16 +67,15 @@ export default function Integrations() {
 
   return (
     <PageContainer>
-      <PageHeader hideBorder>
-        <PageTitleRow>
-          <PageTitle
-            title={client.title}
-            backButton={{
-              to: organizationIntegrationsPath(organization),
-              text: "Integrations",
-            }}
-          />
-        </PageTitleRow>
+      <NavBar>
+        <PageTitle
+          title={client.title}
+          backButton={{
+            to: organizationIntegrationsPath(organization),
+            text: "Integrations",
+          }}
+        />
+
         <PageInfoRow>
           <PageInfoGroup>
             <PageInfoProperty
@@ -104,7 +103,7 @@ export default function Integrations() {
           </PageInfoGroup>
         </PageInfoRow>
         <PageTabs layoutId="integrations" tabs={tabs} />
-      </PageHeader>
+      </NavBar>
 
       <PageBody scrollable={true}>
         <Outlet />

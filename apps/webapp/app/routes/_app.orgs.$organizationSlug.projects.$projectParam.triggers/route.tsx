@@ -1,14 +1,7 @@
 import { Outlet } from "@remix-run/react";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
-import {
-  PageButtons,
-  PageDescription,
-  PageHeader,
-  PageTabs,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { PageAccessories, NavBar, PageTabs, PageTitle } from "~/components/primitives/PageHeader";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import {
@@ -24,20 +17,18 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader hideBorder>
-        <PageTitleRow>
-          <PageTitle title="Triggers" />
-          <PageButtons>
-            <LinkButton
-              LeadingIcon={"docs"}
-              to={docsPath("documentation/concepts/triggers")}
-              variant="secondary/small"
-            >
-              Triggers documentation
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
-        <PageDescription>A Trigger is what starts a Job Run.</PageDescription>
+      <NavBar>
+        <PageTitle title="Triggers" />
+        <PageAccessories>
+          <LinkButton
+            LeadingIcon={"docs"}
+            to={docsPath("documentation/concepts/triggers")}
+            variant="secondary/small"
+          >
+            Triggers documentation
+          </LinkButton>
+        </PageAccessories>
+
         <PageTabs
           layoutId="triggers"
           tabs={[
@@ -55,7 +46,7 @@ export default function Page() {
             },
           ]}
         />
-      </PageHeader>
+      </NavBar>
 
       <PageBody scrollable={false}>
         <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">

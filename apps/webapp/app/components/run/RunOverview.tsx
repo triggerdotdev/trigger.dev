@@ -29,13 +29,12 @@ import { Header2 } from "../primitives/Headers";
 import { Icon } from "../primitives/Icon";
 import { NamedIcon } from "../primitives/NamedIcon";
 import {
-  PageButtons,
-  PageHeader,
+  PageAccessories,
+  NavBar,
   PageInfoGroup,
   PageInfoProperty,
   PageInfoRow,
   PageTitle,
-  PageTitleRow,
 } from "../primitives/PageHeader";
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
@@ -96,36 +95,36 @@ export function RunOverview({ run, trigger, showRerun, paths, currentUser }: Run
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle
-            backButton={{
-              to: paths.back,
-              text: "Runs",
-            }}
-            title={
-              typeof run.number === "number" ? `Run #${run.number}` : `Run ${run.id.slice(0, 8)}`
-            }
-          />
-          <PageButtons>
-            {run.isTest && (
-              <span className="flex items-center gap-1 text-xs uppercase text-charcoal-600">
-                <NamedIcon name="beaker" className="h-4 w-4 text-charcoal-600" />
-                Test run
-              </span>
-            )}
-            {showRerun && run.isFinished && (
-              <RerunPopover
-                runId={run.id}
-                runPath={paths.run}
-                runsPath={paths.runsPath}
-                environmentType={run.environment.type}
-                status={run.basicStatus}
-              />
-            )}
-            {!run.isFinished && <CancelRun runId={run.id} />}
-          </PageButtons>
-        </PageTitleRow>
+      <NavBar>
+        <PageTitle
+          backButton={{
+            to: paths.back,
+            text: "Runs",
+          }}
+          title={
+            typeof run.number === "number" ? `Run #${run.number}` : `Run ${run.id.slice(0, 8)}`
+          }
+        />
+        <PageAccessories>
+          {run.isTest && (
+            <span className="flex items-center gap-1 text-xs uppercase text-charcoal-600">
+              <NamedIcon name="beaker" className="h-4 w-4 text-charcoal-600" />
+              Test run
+            </span>
+          )}
+          {showRerun && run.isFinished && (
+            <RerunPopover
+              runId={run.id}
+              runPath={paths.run}
+              runsPath={paths.runsPath}
+              environmentType={run.environment.type}
+              status={run.basicStatus}
+            />
+          )}
+          {!run.isFinished && <CancelRun runId={run.id} />}
+        </PageAccessories>
+      </NavBar>
+      <PageBody scrollable={false}>
         <PageInfoRow>
           <PageInfoGroup>
             <PageInfoProperty
@@ -165,8 +164,6 @@ export function RunOverview({ run, trigger, showRerun, paths, currentUser }: Run
             </Paragraph>
           </PageInfoGroup>
         </PageInfoRow>
-      </PageHeader>
-      <PageBody scrollable={false}>
         <div className="grid h-full grid-cols-2 gap-2">
           <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <div>

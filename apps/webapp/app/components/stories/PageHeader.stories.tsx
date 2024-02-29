@@ -1,13 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { withDesign } from "storybook-addon-designs";
 import { LinkButton } from "../primitives/Buttons";
-import {
-  PageHeader,
-  PageTitleRow,
-  PageTitle,
-  PageButtons,
-  PageDescription,
-} from "../primitives/PageHeader";
+import { NavBar, PageTitle, PageAccessories } from "../primitives/PageHeader";
 
 const meta: Meta<typeof PageHeaders> = {
   title: "Primitives/PageHeaders",
@@ -38,31 +32,24 @@ function PageHeaders() {
   return (
     <div className="flex flex-col gap-4 bg-charcoal-800 p-4">
       <div className="bg-[#0B1018]">
-        <PageHeader>
-          <PageTitleRow>
-            <PageTitle title="Organizations" />
-            <PageButtons>
-              <LinkButton to={""} variant="primary/small" shortcut={{ key: "n" }}>
-                Create a new Organization
-              </LinkButton>
-            </PageButtons>
-          </PageTitleRow>
-          <PageDescription>
-            Create new Organizations and new Projects to help organize your Jobs.
-          </PageDescription>
-        </PageHeader>
+        <NavBar>
+          <PageTitle title="Organizations" />
+          <PageAccessories>
+            <LinkButton to={""} variant="primary/small" shortcut={{ key: "n" }}>
+              Create a new Organization
+            </LinkButton>
+          </PageAccessories>
+        </NavBar>
       </div>
       <div className="bg-[#0B1018]">
-        <PageHeader>
-          <PageTitleRow>
-            <PageTitle title="Your Organizations" backButton={{ to: "#", text: "Orgs" }} />
-            <PageButtons>
-              <LinkButton to={""} variant="primary/small" shortcut={{ key: "n" }}>
-                Create a new Organization
-              </LinkButton>
-            </PageButtons>
-          </PageTitleRow>
-        </PageHeader>
+        <NavBar>
+          <PageTitle title="Your Organizations" backButton={{ to: "#", text: "Orgs" }} />
+          <PageAccessories>
+            <LinkButton to={""} variant="primary/small" shortcut={{ key: "n" }}>
+              Create a new Organization
+            </LinkButton>
+          </PageAccessories>
+        </NavBar>
       </div>
     </div>
   );
