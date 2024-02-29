@@ -154,33 +154,37 @@ export default function Page() {
     >
       <ResizablePanelGroup direction="horizontal">
         <ResizablePanel order={1} minSize={30} defaultSize={60}>
-          <JSONEditor
-            defaultValue={defaultJson}
-            readOnly={false}
-            basicSetup
-            onChange={(v) => {
-              currentJson.current = v;
+          <div className="h-full bg-charcoal-900">
+            <JSONEditor
+              defaultValue={defaultJson}
+              readOnly={false}
+              basicSetup
+              onChange={(v) => {
+                currentJson.current = v;
 
-              //deselect the example if it's been edited
-              if (selectedCodeSampleId) {
-                if (v !== selectedCodeSample) {
-                  setDefaultJson(v);
-                  setSelectedCodeSampleId(undefined);
+                //deselect the example if it's been edited
+                if (selectedCodeSampleId) {
+                  if (v !== selectedCodeSample) {
+                    setDefaultJson(v);
+                    setSelectedCodeSampleId(undefined);
+                  }
                 }
-              }
-            }}
-            height="100%"
-            min-height="100%"
-            max-height="100%"
-            autoFocus
-            placeholder="Use your schema to enter valid JSON or add one of the example payloads then click 'Run test'"
-            className="h-full"
-          />
+              }}
+              height="100%"
+              min-height="100%"
+              max-height="100%"
+              autoFocus
+              placeholder="Use your schema to enter valid JSON or add one of the recent payloads then click 'Run test'"
+              className="h-full"
+            />
+          </div>
         </ResizablePanel>
         <ResizableHandle withHandle />
         <ResizablePanel order={2} minSize={20} defaultSize={40}>
           <div className="flex flex-col gap-2 pl-4">
-            <Header2>Recent payloads</Header2>
+            <div className="flex h-10 items-center border-b border-grid-dimmed">
+              <Header2>Recent payloads</Header2>
+            </div>
             {runs.length === 0 ? (
               <Callout variant="info">
                 Recent payloads will show here once you've completed a Run.

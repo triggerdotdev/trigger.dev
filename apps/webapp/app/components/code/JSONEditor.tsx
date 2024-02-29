@@ -1,6 +1,6 @@
 import { json as jsonLang } from "@codemirror/lang-json";
 import type { ViewUpdate } from "@codemirror/view";
-import { CheckIcon, ClipboardIcon } from "@heroicons/react/20/solid";
+import { CheckIcon, ClipboardIcon, TrashIcon } from "@heroicons/react/20/solid";
 import type { ReactCodeMirrorProps, UseCodeMirror } from "@uiw/react-codemirror";
 import { useCodeMirror } from "@uiw/react-codemirror";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -108,20 +108,13 @@ export function JSONEditor(opts: JSONEditorProps) {
   }, [view]);
 
   return (
-    <div className={cn(opts.className, "relative")}>
-      <div
-        className="h-full w-full"
-        ref={editor}
-        onBlur={() => {
-          if (!onBlur) return;
-          onBlur(editor.current?.textContent ?? "");
-        }}
-      />
-      <div className="absolute right-3 top-3 flex items-center gap-2">
+    <div className={cn(opts.className, "grid grid-rows-[2.5rem_1fr]")}>
+      <div className="mx-3 flex items-center justify-end gap-2 border-b border-grid-dimmed">
         {showClearButton && (
           <Button
             type="button"
-            variant="secondary/small"
+            variant="minimal/small"
+            TrailingIcon={TrashIcon}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -134,9 +127,9 @@ export function JSONEditor(opts: JSONEditorProps) {
         {showCopyButton && (
           <Button
             type="button"
-            variant="secondary/small"
-            LeadingIcon={copied ? CheckIcon : ClipboardIcon}
-            leadingIconClassName={copied ? "text-green-500 group-hover:text-green-500" : undefined}
+            variant="minimal/small"
+            TrailingIcon={copied ? CheckIcon : ClipboardIcon}
+            trailingIconClassName={copied ? "text-green-500 group-hover:text-green-500" : undefined}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -147,6 +140,14 @@ export function JSONEditor(opts: JSONEditorProps) {
           </Button>
         )}
       </div>
+      <div
+        className="w-full overflow-auto"
+        ref={editor}
+        onBlur={() => {
+          if (!onBlur) return;
+          onBlur(editor.current?.textContent ?? "");
+        }}
+      />
     </div>
   );
 }

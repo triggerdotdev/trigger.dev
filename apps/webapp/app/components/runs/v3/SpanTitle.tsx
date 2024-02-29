@@ -64,7 +64,7 @@ export function SpanCodePathAccessory({
   return (
     <code
       className={cn(
-        "inline-flex items-center gap-0.5 rounded border border-charcoal-800 bg-background-bright px-1.5 py-0.5 font-mono text-sky-200",
+        "inline-flex items-center gap-0.5 rounded border border-charcoal-700 bg-charcoal-800 px-1.5 py-0.5 font-mono text-text-dimmed",
         className
       )}
     >
@@ -73,13 +73,13 @@ export function SpanCodePathAccessory({
           <span
             className={cn(
               "inline-flex items-center",
-              index === accessory.items.length - 1 ? "text-yellow-200" : "text-text-dimmed"
+              index === accessory.items.length - 1 ? "text-sun-100" : "text-text-dimmed"
             )}
           >
             {item.text}
           </span>
           {index < accessory.items.length - 1 && (
-            <span className="text-charcoal-500">
+            <span className="text-text-dimmed">
               <ChevronRightIcon className="h-4 w-4" />
             </span>
           )}

@@ -1,8 +1,7 @@
-import { EditorView } from "@codemirror/view";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
-import { HighlightStyle } from "@codemirror/language";
-import { tagHighlighter, tags } from "@lezer/highlight";
-import { syntaxHighlighting } from "@codemirror/language";
+import { EditorView } from "@codemirror/view";
+import { tags } from "@lezer/highlight";
 
 export function darkTheme(): Extension {
   const chalky = "#e5c07b",

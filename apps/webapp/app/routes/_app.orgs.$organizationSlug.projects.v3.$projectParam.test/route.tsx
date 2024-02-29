@@ -37,10 +37,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   const { tasks } = useTypedLoaderData<typeof loader>();
-  const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
-  const project = useProject();
-  const user = useUser();
   const { taskParam } = useParams();
 
   return (
@@ -53,7 +49,9 @@ export default function Page() {
           <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
             <ResizablePanel order={1} minSize={20} defaultSize={30}>
               <div className="flex flex-col px-3">
-                <Header2>Select a task</Header2>
+                <div className="flex h-10 items-center border-b border-grid-dimmed">
+                  <Header2>Select a task</Header2>
+                </div>
                 <TaskSelector tasks={tasks} />
               </div>
             </ResizablePanel>
