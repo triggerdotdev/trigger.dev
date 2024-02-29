@@ -9,15 +9,23 @@ export const TaskRunExecutionPayload = z.object({
 
 export type TaskRunExecutionPayload = z.infer<typeof TaskRunExecutionPayload>;
 
-export type ProdTaskRunExecutionPayload = TaskRunExecutionPayload & {
-  execution: {
-    worker: {
-      id: string;
-      contentHash: string;
-      version: string;
-    };
-  };
-};
+export const ProdTaskRunExecution = TaskRunExecution.extend({
+  worker: z.object({
+    id: z.string(),
+    contentHash: z.string(),
+    version: z.string(),
+  }),
+});
+
+export type ProdTaskRunExecution = z.infer<typeof ProdTaskRunExecution>;
+
+export const ProdTaskRunExecutionPayload = z.object({
+  execution: ProdTaskRunExecution,
+  traceContext: z.record(z.unknown()),
+  environment: z.record(z.string()).optional(),
+});
+
+export type ProdTaskRunExecutionPayload = z.infer<typeof ProdTaskRunExecutionPayload>;
 
 export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
   z.object({

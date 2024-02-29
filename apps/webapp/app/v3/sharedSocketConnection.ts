@@ -27,7 +27,8 @@ export class SharedSocketConnection {
     private socket: Socket<
       MessageCatalogToSocketIoEvents<typeof clientWebsocketMessages>,
       MessageCatalogToSocketIoEvents<typeof serverWebsocketMessages>
-    >
+    >,
+    logger?: (...args: any[]) => void
   ) {
     this.id = randomUUID();
 
@@ -71,7 +72,7 @@ export class SharedSocketConnection {
         },
       },
     });
-    this._messageHandler.registerHandlers(this.socket);
+    this._messageHandler.registerHandlers(this.socket, logger);
   }
 
   async initialize() {

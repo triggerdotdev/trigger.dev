@@ -4,6 +4,7 @@ import {
   ProdTaskRunExecutionPayload,
   TaskRunExecutionResult,
   TaskRunExecution,
+  ProdTaskRunExecution,
 } from "../schemas";
 
 export type VersionedMessage<TMessage> = { version: "v1" } & TMessage;
@@ -86,19 +87,12 @@ export interface CoordinatorToPlatformEvents {
   READY_FOR_EXECUTION: (
     message: VersionedMessage<{ attemptId: string }>,
     callback: (
-      ack:
-        | {
-            success: false;
-          }
-        | {
-            success: true;
-            payload: ProdTaskRunExecutionPayload;
-          }
+      ack: { success: false } | { success: true; payload: ProdTaskRunExecutionPayload }
     ) => void
   ) => void;
   TASK_RUN_COMPLETED: (
     message: VersionedMessage<{
-      execution: ProdTaskRunExecutionPayload["execution"];
+      execution: ProdTaskRunExecution;
       completion: TaskRunExecutionResult;
     }>
   ) => void;

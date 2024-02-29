@@ -5,7 +5,7 @@ export interface ZodMessageCatalogSchema {
 }
 
 export type ZodMessageHandlers<TCatalogSchema extends ZodMessageCatalogSchema> = Partial<{
-  [K in keyof TCatalogSchema]: (payload: z.infer<TCatalogSchema[K]>) => Promise<void>;
+  [K in keyof TCatalogSchema]: (payload: z.infer<TCatalogSchema[K]>) => Promise<any>;
 }>;
 
 export type ZodMessageHandlerOptions<TMessageCatalog extends ZodMessageCatalogSchema> = {
@@ -54,10 +54,13 @@ export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> 
     const handler = this.#handlers[parsedMessage.type];
 
     if (!handler) {
-      throw new Error(`Unknown message type: ${String(parsedMessage.type)}`);
+      console.error(`No handler for message type: ${String(parsedMessage.type)}`);
+      return;
     }
 
-    await handler(parsedMessage.payload);
+    const ack = await handler(parsedMessage.payload);
+
+    return ack;
   }
 
   public parseMessage(message: unknown): MessageFromCatalog<TMessageCatalog> {
@@ -85,10 +88,31 @@ export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> 
     };
   }
 
-  public registerHandlers(emitter: EventEmitterLike) {
+  public registerHandlers(emitter: EventEmitterLike, logger?: (...args: any[]) => void) {
+    const log = logger ?? console.log;
+
+    if (!this.#handlers) {
+      log("No handlers provided");
+      return;
+    }
+
     for (const eventName of Object.keys(this.#schema)) {
-      emitter.on(eventName, (payload: any): void => {
-        this.handleMessage({ type: eventName, ...payload });
+      emitter.on(eventName, async (message: any, callback?: any): Promise<void> => {
+        log(`handling ${eventName}`, message);
+
+        let ack;
+
+        if ("payload" in message) {
+          ack = await this.handleMessage({ type: eventName, ...message });
+        } else {
+          // Handle messages not sent by ZodMessageSender
+          const { version, ...payload } = message;
+          ack = await this.handleMessage({ type: eventName, version, payload });
+        }
+
+        if (callback && typeof callback === "function") {
+          callback(ack);
+        }
       });
     }
   }

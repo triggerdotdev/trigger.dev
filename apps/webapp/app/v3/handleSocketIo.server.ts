@@ -1,13 +1,13 @@
 import {
-  CoordinatorToPlatformEvents,
-  MessageCatalogToSocketIoEvents,
-  PlatformToCoordinatorEvents,
-  ProviderClientToServerEvents,
-  ProviderServerToClientEvents,
+  CoordinatorToPlatformMessages,
+  PlatformToCoordinatorMessages,
+  PlatformToProviderMessages,
+  ProviderToPlatformMessages,
+  ZodNamespace,
   clientWebsocketMessages,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
-import { type Namespace, Server } from "socket.io";
+import { Server } from "socket.io";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { SharedSocketConnection } from "./sharedSocketConnection";
@@ -36,175 +36,80 @@ function initalizeIoServer() {
   };
 }
 
-function createLogger(prefix: string) {
-  return (...args: any[]) => console.log(prefix, ...args);
-}
-
 function createCoordinatorNamespace(io: Server) {
-  const coordinatorNamespace: Namespace<CoordinatorToPlatformEvents, PlatformToCoordinatorEvents> =
-    io.of("/coordinator");
+  const coordinator = new ZodNamespace({
+    io,
+    name: "coordinator",
+    authToken: env.COORDINATOR_SECRET,
+    clientMessages: CoordinatorToPlatformMessages,
+    serverMessages: PlatformToCoordinatorMessages,
+    messageHandler: {
+      READY_FOR_EXECUTION: async (message /*, callback */) => {
+        const payload = await sharedQueueTasks.getExecutionPayloadFromAttempt(message.attemptId);
 
-  coordinatorNamespace.on("connection", async (socket) => {
-    const logger = createLogger(`[coordinator][${socket.id}]`);
-
-    logger("connected");
-
-    socket.on("disconnect", (reason, description) => {
-      logger("disconnect", { reason, description });
-    });
-
-    socket.on("error", (error) => {
-      logger("error", error);
-    });
-
-    socket.on("LOG", (message) => {
-      logger("[LOG]", { message });
-    });
-
-    socket.on("READY_FOR_EXECUTION", async (message, callback) => {
-      logger("[READY_FOR_EXECUTION]", { message });
-
-      const payload = await sharedQueueTasks.getExecutionPayloadFromAttempt(message.attemptId);
-
-      if (!payload) {
-        callback({ success: false });
-      } else {
-        callback({ success: true, payload });
+        if (!payload) {
+          return { success: false };
+        } else {
+          return { success: true, payload };
+        }
+      },
+      TASK_RUN_COMPLETED: async (message) => {
+        const completeAttempt = new CompleteAttemptService();
+        await completeAttempt.call(message.completion, message.execution);
+      },
+      TASK_HEARTBEAT: async (message) => {
+        // TODO: handle RESUME message heartbeats
+        await sharedQueueTasks.taskHeartbeat(message.attemptFriendlyId);
+      },
+      CHECKPOINT_CREATED: async (message) => {
+        const createCheckpoint = new CreateCheckpointService();
+        await createCheckpoint.call(message);
+      },
+      READY: async (message) => {
+        return "foo"
       }
-    });
-
-    socket.on("TASK_RUN_COMPLETED", async (message) => {
-      logger("[TASK_RUN_COMPLETED]", { runId: message.execution.run.id });
-
-      const completeAttempt = new CompleteAttemptService();
-      await completeAttempt.call(message.completion, message.execution);
-    });
-
-    socket.on("TASK_HEARTBEAT", async (message) => {
-      // TODO: handle RESUME message heartbeats
-      logger("[TASK_HEARTBEAT]", message);
-
-      await sharedQueueTasks.taskHeartbeat(message.attemptFriendlyId);
-    });
-
-    socket.on("CHECKPOINT_CREATED", async (message) => {
-      logger("[CHECKPOINT_CREATED]", message);
-
-      const createCheckpoint = new CreateCheckpointService();
-      await createCheckpoint.call(message);
-    });
+    },
   });
 
-  // auth middleware
-  coordinatorNamespace.use((socket, next) => {
-    const logger = createLogger(`[coordinator][${socket.id}][auth]`);
-
-    const { auth } = socket.handshake;
-
-    if (!("token" in auth)) {
-      logger("no token");
-      return socket.disconnect(true);
-    }
-
-    if (auth.token !== env.COORDINATOR_SECRET) {
-      logger("invalid token");
-      return socket.disconnect(true);
-    }
-
-    logger("success");
-
-    next();
-  });
-
-  return coordinatorNamespace;
+  return coordinator.namespace;
 }
 
 function createProviderNamespace(io: Server) {
-  const providerNamespace: Namespace<ProviderClientToServerEvents, ProviderServerToClientEvents> =
-    io.of("/provider");
-
-  providerNamespace.on("connection", async (socket) => {
-    const logger = createLogger(`[provider][${socket.id}]`);
-
-    logger("connected");
-
-    socket.on("disconnect", (reason, description) => {
-      logger("disconnect", { reason, description });
-    });
-
-    socket.on("error", (error) => {
-      logger("error", error);
-    });
-
-    socket.on("LOG", (message) => {
-      logger("[LOG]", { message });
-    });
+  const provider = new ZodNamespace({
+    io,
+    name: "provider",
+    authToken: env.PROVIDER_SECRET,
+    clientMessages: ProviderToPlatformMessages,
+    serverMessages: PlatformToProviderMessages,
+    onConnection: async (socket, handler, sender, logger) => {
+      sender.send("HEALTH", {});
+    },
   });
 
-  // auth middleware
-  providerNamespace.use((socket, next) => {
-    const logger = createLogger(`[provider][${socket.id}][auth]`);
-
-    const { auth } = socket.handshake;
-
-    if (!("token" in auth)) {
-      logger("no token");
-      return socket.disconnect(true);
-    }
-
-    if (auth.token !== env.PROVIDER_SECRET) {
-      logger("invalid token");
-      return socket.disconnect(true);
-    }
-
-    logger("success");
-
-    next();
-  });
-
-  return providerNamespace;
+  return provider.namespace;
 }
 
 function createSharedQueueConsumerNamespace(io: Server) {
-  const sharedQueueNamespace: Namespace<
-    MessageCatalogToSocketIoEvents<typeof clientWebsocketMessages>,
-    MessageCatalogToSocketIoEvents<typeof serverWebsocketMessages>
-  > = io.of("/shared-queue");
+  const sharedQueue = new ZodNamespace({
+    io,
+    name: "shared-queue",
+    authToken: env.PROVIDER_SECRET,
+    clientMessages: clientWebsocketMessages,
+    serverMessages: serverWebsocketMessages,
+    onConnection: async (socket, handler, sender, logger) => {
+      const sharedSocketConnection = new SharedSocketConnection(
+        sharedQueue.namespace,
+        socket,
+        logger
+      );
 
-  sharedQueueNamespace.on("connection", async (socket) => {
-    const logger = createLogger(`[shared-queue][${socket.id}]`);
+      sharedSocketConnection.onClose.attach((closeEvent) => {
+        logger("Socket closed", { closeEvent });
+      });
 
-    logger("connected");
-
-    const sharedSocketConnection = new SharedSocketConnection(sharedQueueNamespace, socket);
-
-    sharedSocketConnection.onClose.attach((closeEvent) => {
-      logger("Websocket closed", { closeEvent });
-    });
-
-    await sharedSocketConnection.initialize();
+      await sharedSocketConnection.initialize();
+    },
   });
 
-  // auth middleware
-  sharedQueueNamespace.use((socket, next) => {
-    const logger = createLogger(`[shared-queue][${socket.id}][auth]`);
-
-    const { auth } = socket.handshake;
-
-    if (!("token" in auth)) {
-      logger("no token");
-      return socket.disconnect(true);
-    }
-
-    if (auth.token !== env.PROVIDER_SECRET) {
-      logger("invalid token");
-      return socket.disconnect(true);
-    }
-
-    logger("success");
-
-    next();
-  });
-
-  return sharedQueueNamespace;
+  return sharedQueue.namespace;
 }
