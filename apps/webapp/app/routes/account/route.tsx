@@ -1,7 +1,7 @@
 import { Outlet } from "@remix-run/react";
 import { AppContainer } from "~/components/layout/AppLayout";
 import { AccountSideMenu } from "~/components/navigation/AccountSideMenu";
-import { MainBody, NavBar } from "~/components/navigation/NavBar";
+import { MainBody } from "~/components/navigation/NavBar";
 import { useUser } from "~/hooks/useUser";
 
 export default function Page() {
