@@ -51,7 +51,7 @@ export function TimeFrameFilter({ from, to, onRangeChanged }: RunTimeFrameFilter
     <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen} modal>
       <PopoverTrigger asChild>
         <Button
-          variant="secondary/small"
+          variant="tertiary/small"
           className="group-hover:bg-tertiary-foreground bg-charcoal-800"
         >
           <Paragraph variant="extra-small" className="mr-2">
