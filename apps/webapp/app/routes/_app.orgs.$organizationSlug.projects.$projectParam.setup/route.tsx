@@ -1,13 +1,4 @@
 import { Outlet } from "@remix-run/react";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { Handle } from "~/utils/handle";
-import { trimTrailingSlash } from "~/utils/pathBuilder";
-
-export const handle: Handle = {
-  breadcrumb: (match) => (
-    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Framework setup" />
-  ),
-};
 
 export default function Page() {
   return (

@@ -1,26 +1,20 @@
 import { Link } from "@remix-run/react";
 import simplur from "simplur";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
-  PageHeader,
-  PageTitleRow,
-  PageTitle,
   PageButtons,
-  PageInfoRow,
+  PageHeader,
   PageInfoGroup,
+  PageInfoRow,
+  PageTitle,
+  PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { Handle } from "~/utils/handle";
 import { newProjectPath, projectPath } from "~/utils/pathBuilder";
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Projects" />,
-};
 
 export default function Page() {
   const organization = useOrganization();

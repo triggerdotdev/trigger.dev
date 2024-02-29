@@ -1,22 +1,15 @@
-import { useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
-import { useActionData } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { SetPlanBodySchema } from "@trigger.dev/billing";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PricingCalculator } from "~/components/billing/PricingCalculator";
-import { PricingTiers, TierEnterprise, TierFree, TierPro } from "~/components/billing/PricingTiers";
+import { PricingTiers } from "~/components/billing/PricingTiers";
 import { RunsVolumeDiscountTable } from "~/components/billing/RunsVolumeDiscountTable";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { featuresForRequest } from "~/features.server";
-import { useFeatures } from "~/hooks/useFeatures";
 import { OrgBillingPlanPresenter } from "~/presenters/OrgBillingPlanPresenter";
-import { Handle } from "~/utils/handle";
+import { formatNumberCompact } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, organizationBillingPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { formatNumberCompact } from "~/utils/numberFormatter";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
@@ -38,10 +31,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     organizationSlug,
   });
 }
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Plans" />,
-};
 
 export default function Page() {
   const { plans, maxConcurrency, organizationSlug } = useTypedLoaderData<typeof loader>();

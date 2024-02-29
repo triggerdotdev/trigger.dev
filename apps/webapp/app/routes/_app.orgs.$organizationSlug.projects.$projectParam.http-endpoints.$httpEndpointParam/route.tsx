@@ -5,7 +5,6 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { HowToConnectHttpEndpoint } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -32,11 +31,9 @@ import {
 import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { HttpEndpointPresenter } from "~/presenters/HttpEndpointPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
 import { HttpEndpointParamSchema, docsPath, projectHttpEndpointsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -62,18 +59,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     console.log(e);
     throw new Response(e instanceof Error ? e.message : JSON.stringify(e), { status: 404 });
   }
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    const data = useTypedMatchData<typeof loader>(match);
-    return (
-      <BreadcrumbLink
-        to={match.pathname}
-        title={data?.httpEndpoint.title ?? data?.httpEndpoint.key ?? "Endpoint"}
-      />
-    );
-  },
 };
 
 export default function Page() {

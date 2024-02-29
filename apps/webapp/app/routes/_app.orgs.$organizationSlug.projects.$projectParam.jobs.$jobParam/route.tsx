@@ -2,7 +2,6 @@ import { Outlet, useLocation } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
@@ -21,18 +20,10 @@ import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useOptionalRun } from "~/hooks/useRun";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { JobPresenter } from "~/presenters/JobPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { titleCase } from "~/utils";
-import { Handle } from "~/utils/handle";
-import {
-  JobParamsSchema,
-  jobPath,
-  jobSettingsPath,
-  jobTestPath,
-  trimTrailingSlash,
-} from "~/utils/pathBuilder";
+import { JobParamsSchema, jobPath, jobSettingsPath, jobTestPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -56,20 +47,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({
     job,
   });
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    const data = useTypedMatchData<typeof loader>(match);
-    return (
-      <>
-        <BreadcrumbLink
-          to={trimTrailingSlash(match?.pathname ?? "")}
-          title={data?.job.title ?? "Job"}
-        />
-      </>
-    );
-  },
 };
 
 export default function Job() {

@@ -1,11 +1,8 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { HowToUseThisIntegration } from "~/components/helpContent/HelpContentText";
-import { JobSkeleton } from "~/components/jobs/JobSkeleton";
 import { JobsTable } from "~/components/jobs/JobsTable";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Callout } from "~/components/primitives/Callout";
-import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -14,12 +11,7 @@ import { useIntegrationClient } from "~/hooks/useIntegrationClient";
 import { JobListPresenter } from "~/presenters/JobListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
-import {
-  IntegrationClientParamSchema,
-  docsIntegrationPath,
-  trimTrailingSlash,
-} from "~/utils/pathBuilder";
+import { IntegrationClientParamSchema, docsIntegrationPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -34,10 +26,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 
   return typedjson({ jobs });
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Jobs" />,
 };
 
 export default function Page() {

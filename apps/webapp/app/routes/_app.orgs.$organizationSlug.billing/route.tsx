@@ -2,8 +2,8 @@ import { CalendarDaysIcon, ReceiptRefundIcon } from "@heroicons/react/20/solid";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Outlet } from "@remix-run/react";
 import { ActiveSubscription } from "@trigger.dev/billing";
+import { formatDurationInDays } from "@trigger.dev/core/v3";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
@@ -18,14 +18,8 @@ import {
 } from "~/components/primitives/PageHeader";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { Handle } from "~/utils/handle";
 import { plansPath, stripePortalPath, usagePath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { formatDurationInDays } from "@trigger.dev/core/v3";
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Usage & Billing" />,
-};
 
 function planLabel(subscription: ActiveSubscription | undefined, periodEnd: Date) {
   if (!subscription) {

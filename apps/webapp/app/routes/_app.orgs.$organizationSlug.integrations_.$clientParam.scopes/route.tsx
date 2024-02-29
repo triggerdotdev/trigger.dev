@@ -1,11 +1,9 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { IntegrationClientScopesPresenter } from "~/presenters/IntegrationClientScopesPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
-import { IntegrationClientParamSchema, trimTrailingSlash } from "~/utils/pathBuilder";
+import { IntegrationClientParamSchema } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -19,10 +17,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 
   return typedjson({ scopes });
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Scopes" />,
 };
 
 export default function Page() {

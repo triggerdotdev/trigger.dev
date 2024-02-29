@@ -5,7 +5,6 @@ import { Feedback } from "~/components/Feedback";
 import { InitCommand, RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { InlineCode } from "~/components/code/InlineCode";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header1 } from "~/components/primitives/Headers";
@@ -16,12 +15,7 @@ import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useProjectSetupComplete } from "~/hooks/useProjectSetupComplete";
-import { Handle } from "~/utils/handle";
-import { projectSetupPath, trimTrailingSlash } from "~/utils/pathBuilder";
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Astro" />,
-};
+import { projectSetupPath } from "~/utils/pathBuilder";
 
 export default function SetUpAstro() {
   const organization = useOrganization();

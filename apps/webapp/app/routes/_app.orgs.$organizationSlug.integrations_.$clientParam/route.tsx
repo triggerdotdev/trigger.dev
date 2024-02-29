@@ -3,7 +3,6 @@ import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { connectionType } from "~/components/integrations/connectionType";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
@@ -16,10 +15,8 @@ import {
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { IntegrationClientPresenter } from "~/presenters/IntegrationClientPresenter.server";
-import { requireUser, requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
+import { requireUserId } from "~/services/session.server";
 import {
   IntegrationClientParamSchema,
   integrationClientConnectionsPath,
@@ -44,13 +41,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   return typedjson({ client });
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    const data = useTypedMatchData<typeof loader>(match);
-    return <BreadcrumbLink to={match.pathname} title={data?.client.title ?? "Integration"} />;
-  },
 };
 
 export default function Integrations() {

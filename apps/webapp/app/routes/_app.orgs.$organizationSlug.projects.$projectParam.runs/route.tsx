@@ -1,6 +1,6 @@
-import { Await, useLoaderData, useLocation, useNavigate, useNavigation } from "@remix-run/react";
+import { Await, useLoaderData, useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs, defer } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { Suspense } from "react";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import {
@@ -10,6 +10,8 @@ import {
   PageTitle,
   PageTitleRow,
 } from "~/components/primitives/PageHeader";
+import { RunsFilters } from "~/components/runs/RunFilters";
+import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsTable } from "~/components/runs/RunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -18,12 +20,6 @@ import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema, docsPath, projectPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
-import { RunListSearchSchema } from "~/components/runs/RunStatuses";
-import { RunsFilters } from "~/components/runs/RunFilters";
-import { Suspense } from "react";
-import { Spinner } from "~/components/primitives/Spinner";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { Handle } from "~/utils/handle";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -51,10 +47,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return defer({
     list,
   });
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Runs" />,
 };
 
 export default function Page() {

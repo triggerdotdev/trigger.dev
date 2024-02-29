@@ -5,7 +5,6 @@ import { ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -21,7 +20,6 @@ import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
 import { accountPath } from "~/utils/pathBuilder";
 
 function createSchema(
@@ -109,12 +107,6 @@ export const action: ActionFunction = async ({ request }) => {
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    return <BreadcrumbLink to={match.pathname} title={"Profile"} />;
-  },
 };
 
 export default function Page() {

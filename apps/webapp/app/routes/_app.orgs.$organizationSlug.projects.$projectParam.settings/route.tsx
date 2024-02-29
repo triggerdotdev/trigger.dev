@@ -6,7 +6,6 @@ import { redirect } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -18,7 +17,6 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { prisma } from "~/db.server";
-import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import {
@@ -28,7 +26,6 @@ import {
 import { DeleteProjectService } from "~/services/deleteProject.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
 import { organizationPath, projectPath } from "~/utils/pathBuilder";
 
 export function createSchema(
@@ -135,10 +132,6 @@ export const action: ActionFunction = async ({ request, params }) => {
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Project settings" />,
 };
 
 export default function Page() {

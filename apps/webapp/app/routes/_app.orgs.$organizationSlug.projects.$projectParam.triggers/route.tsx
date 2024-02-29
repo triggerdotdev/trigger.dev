@@ -1,6 +1,5 @@
 import { Outlet } from "@remix-run/react";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import {
   PageButtons,
@@ -12,18 +11,12 @@ import {
 } from "~/components/primitives/PageHeader";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { Handle } from "~/utils/handle";
 import {
   docsPath,
   projectScheduledTriggersPath,
   projectTriggersPath,
   projectWebhookTriggersPath,
-  trimTrailingSlash,
 } from "~/utils/pathBuilder";
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Triggers" />,
-};
 
 export default function Page() {
   const organization = useOrganization();

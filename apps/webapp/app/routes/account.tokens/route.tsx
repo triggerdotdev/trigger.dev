@@ -4,10 +4,9 @@ import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useFetcher } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
@@ -34,7 +33,6 @@ import {
   TableBlankRow,
   TableBody,
   TableCell,
-  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -48,7 +46,6 @@ import {
   revokePersonalAccessToken,
 } from "~/services/personalAccessToken.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
 import { personalAccessTokensPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -126,12 +123,6 @@ export const action: ActionFunction = async ({ request }) => {
       return json({ errors: { body: "Invalid action" } }, { status: 400 });
     }
   }
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    return <BreadcrumbLink to={match.pathname} title={"Personal Access Tokens"} />;
-  },
 };
 
 export default function Page() {

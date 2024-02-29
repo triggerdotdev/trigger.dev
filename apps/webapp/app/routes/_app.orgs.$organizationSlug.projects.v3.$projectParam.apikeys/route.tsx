@@ -3,7 +3,6 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -28,7 +27,6 @@ import { useProject } from "~/hooks/useProject";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
 import { ProjectParamSchema, docsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -52,10 +50,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: "Something went wrong, if this problem persists please contact support.",
     });
   }
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Environments & API Keys" />,
 };
 
 export default function Page() {

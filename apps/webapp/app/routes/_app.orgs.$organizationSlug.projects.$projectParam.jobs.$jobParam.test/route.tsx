@@ -8,7 +8,6 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -32,14 +31,8 @@ import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/mode
 import { TestJobPresenter } from "~/presenters/TestJobPresenter.server";
 import { TestJobService } from "~/services/jobs/testJob.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
 import { isValidIcon } from "~/utils/icon";
-import {
-  JobParamsSchema,
-  docsPath,
-  jobRunDashboardPath,
-  trimTrailingSlash,
-} from "~/utils/pathBuilder";
+import { JobParamsSchema, docsPath, jobRunDashboardPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -114,10 +107,6 @@ export const action: ActionFunction = async ({ request, params }) => {
     request,
     "Test run created"
   );
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Test" />,
 };
 
 const startingJson = "{\n\n}";

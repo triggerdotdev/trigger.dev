@@ -1,17 +1,21 @@
-import { MatchedOrganization } from "~/hooks/useOrganizations";
-import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
-import { Breadcrumb } from "./Breadcrumb";
-import { PageNavigationIndicator } from "./PageNavigationIndicator";
 import { ReactNode } from "react";
-import { plansPath } from "~/utils/pathBuilder";
+import { MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
+import { plansPath } from "~/utils/pathBuilder";
+import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
+import { PageNavigationIndicator } from "./PageNavigationIndicator";
+
+type NavBar = {
+  children?: ReactNode;
+};
 
 function NavBar() {
   return (
-    <div className="flex w-full items-center justify-between border-b border-grid-bright">
-      <Breadcrumb />
-      <div className="flex h-full items-center gap-4">
-        <PageNavigationIndicator className="mr-2" />
+    <div>
+      <div className="flex h-10 w-full items-center justify-between border-b border-grid-bright bg-background-bright">
+        <div className="flex h-full items-center gap-4">
+          <PageNavigationIndicator className="mr-2" />
+        </div>
       </div>
     </div>
   );

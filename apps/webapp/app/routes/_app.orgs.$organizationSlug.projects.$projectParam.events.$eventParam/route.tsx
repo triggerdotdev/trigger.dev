@@ -1,24 +1,20 @@
+import { useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { EventDetail } from "~/components/event/EventDetail";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
-import { requireUserId } from "~/services/session.server";
-import { EventParamSchema, projectEventsPath, projectPath } from "~/utils/pathBuilder";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { Handle } from "~/utils/handle";
-import { EventDetail } from "~/components/event/EventDetail";
-import { EventPresenter } from "~/presenters/EventPresenter.server";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
-import { Fragment } from "react";
+import { RunsFilters } from "~/components/runs/RunFilters";
+import { RunListSearchSchema } from "~/components/runs/RunStatuses";
+import { RunsTable } from "~/components/runs/RunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { RunListSearchSchema } from "~/components/runs/RunStatuses";
-import { RunListPresenter } from "~/presenters/RunListPresenter.server";
-import { RunsTable } from "~/components/runs/RunsTable";
-import { RunsFilters } from "~/components/runs/RunFilters";
-import { ListPagination } from "../../components/ListPagination";
 import { useUser } from "~/hooks/useUser";
-import { useNavigation } from "@remix-run/react";
+import { EventPresenter } from "~/presenters/EventPresenter.server";
+import { RunListPresenter } from "~/presenters/RunListPresenter.server";
+import { requireUserId } from "~/services/session.server";
+import { EventParamSchema, projectEventsPath, projectPath } from "~/utils/pathBuilder";
+import { ListPagination } from "../../components/ListPagination";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -61,20 +57,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     console.log(e);
     throw new Response(e instanceof Error ? e.message : JSON.stringify(e), { status: 404 });
   }
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    const eventData = useTypedMatchData<typeof loader>(match);
-
-    return (
-      <Fragment>
-        {eventData && eventData.event && (
-          <BreadcrumbLink to={match.pathname} title={eventData.event.name} />
-        )}
-      </Fragment>
-    );
-  },
 };
 
 export default function Page() {

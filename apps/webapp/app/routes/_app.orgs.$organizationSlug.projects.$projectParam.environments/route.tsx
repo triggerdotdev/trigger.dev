@@ -2,15 +2,14 @@ import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEventSource } from "~/hooks/useEventSource";
 import {
   EndpointIndexStatusIcon,
   EndpointIndexStatusLabel,
 } from "~/components/environments/EndpointIndexStatus";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
+import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Badge } from "~/components/primitives/Badge";
 import { ButtonContent, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
@@ -34,12 +33,12 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { ClientEndpoint, EnvironmentsPresenter } from "~/presenters/EnvironmentsPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
 import {
   ProjectParamSchema,
   docsPath,
@@ -49,7 +48,6 @@ import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
 import { FirstEndpointSheet } from "./FirstEndpointSheet";
-import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -76,10 +74,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: "Something went wrong, if this problem persists please contact support.",
     });
   }
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Environments & API Keys" />,
 };
 
 export default function Page() {

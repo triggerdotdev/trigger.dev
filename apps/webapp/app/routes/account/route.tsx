@@ -11,7 +11,6 @@ export default function Page() {
     <AppContainer>
       <div className="grid grid-cols-[14rem_1fr] overflow-hidden">
         <AccountSideMenu user={user} />
-
         <MainBody>
           <Outlet />
         </MainBody>

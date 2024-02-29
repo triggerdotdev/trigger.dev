@@ -20,8 +20,10 @@ import {
   AlertTrigger,
 } from "~/components/primitives/Alert";
 import { Button, ButtonContent, LinkButton } from "~/components/primitives/Buttons";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
+import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -30,10 +32,6 @@ import { getTeamMembersAndInvites, removeTeamMember } from "~/models/member.serv
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUserId } from "~/services/session.server";
 import { inviteTeamMemberPath, organizationTeamPath, resendInvitePath } from "~/utils/pathBuilder";
-import { DateTime } from "~/components/primitives/DateTime";
-import { PageHeader, PageTitleRow, PageTitle } from "~/components/primitives/PageHeader";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { Handle } from "~/utils/handle";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -94,10 +92,6 @@ export const action: ActionFunction = async ({ request, params }) => {
 
 type Member = UseDataFunctionReturn<typeof loader>["members"][number];
 type Invite = UseDataFunctionReturn<typeof loader>["invites"][number];
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Team" />,
-};
 
 export default function Page() {
   const user = useUser();

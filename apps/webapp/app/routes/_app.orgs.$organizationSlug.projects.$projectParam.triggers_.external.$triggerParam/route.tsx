@@ -3,13 +3,10 @@ import { parse } from "@conform-to/zod";
 import { json } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Fragment } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout, variantClasses } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
@@ -27,20 +24,17 @@ import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsTable } from "~/components/runs/RunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TriggerSourcePresenter } from "~/presenters/TriggerSourcePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { ActivateSourceService } from "~/services/sources/activateSource.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
 import {
   TriggerSourceParamSchema,
   externalTriggerPath,
   externalTriggerRunsParentPath,
   projectTriggersPath,
-  trimTrailingSlash,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
 
@@ -100,29 +94,6 @@ export const action: ActionFunction = async ({ request, params }) => {
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
-};
-export const handle: Handle = {
-  //this one is complicated because we render outside the parent route (using triggers_ in the path)
-  breadcrumb: (match, matches) => {
-    const data = useTypedMatchData<typeof loader>(match);
-    if (!data) return null;
-
-    const org = useOrganization(matches);
-    const project = useProject(matches);
-
-    return (
-      <Fragment>
-        <BreadcrumbLink to={projectTriggersPath(org, project)} title="Triggers" />
-        <BreadcrumbIcon />
-        <BreadcrumbLink to={projectTriggersPath(org, project)} title="External Triggers" />
-        <BreadcrumbIcon />
-        <BreadcrumbLink
-          to={trimTrailingSlash(match.pathname)}
-          title={`${data.trigger.integration.title}: ${data.trigger.integration.slug}`}
-        />
-      </Fragment>
-    );
-  },
 };
 
 export default function Page() {

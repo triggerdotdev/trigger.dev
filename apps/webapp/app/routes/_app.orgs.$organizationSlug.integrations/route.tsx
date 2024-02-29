@@ -9,7 +9,6 @@ import { ConnectToIntegrationSheet } from "~/components/integrations/ConnectToIn
 import { IntegrationWithMissingFieldSheet } from "~/components/integrations/IntegrationWithMissingFieldSheet";
 import { NoIntegrationSheet } from "~/components/integrations/NoIntegrationSheet";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -45,7 +44,6 @@ import {
   IntegrationsPresenter,
 } from "~/presenters/IntegrationsPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
 import { OrganizationParamsSchema, docsPath, integrationClientPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -59,10 +57,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 
   return typedjson(data);
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Integrations" />,
 };
 
 export default function Integrations() {

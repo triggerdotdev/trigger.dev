@@ -6,7 +6,6 @@ import { Feedback } from "~/components/Feedback";
 import { InitCommand, RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { InlineCode } from "~/components/code/InlineCode";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import {
@@ -26,14 +25,9 @@ import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useProjectSetupComplete } from "~/hooks/useProjectSetupComplete";
-import { Handle } from "~/utils/handle";
-import { projectSetupPath, trimTrailingSlash } from "~/utils/pathBuilder";
+import { projectSetupPath } from "~/utils/pathBuilder";
 
 type SelectionChoices = "use-existing-project" | "create-new-next-app";
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Next.js" />,
-};
 
 export default function SetupNextjs() {
   const organization = useOrganization();
