@@ -180,7 +180,7 @@ class DockerProvider implements Provider {
         },
       },
     });
-    handler.registerHandlers(socket);
+    handler.registerHandlers(socket, logger.log.bind(logger));
 
     return socket;
   }
