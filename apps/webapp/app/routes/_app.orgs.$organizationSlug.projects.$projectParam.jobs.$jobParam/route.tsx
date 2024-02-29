@@ -74,68 +74,70 @@ export default function Job() {
           </PageAccessories>
         )}
       </NavBar>
-      <PageBody className="h-full max-h-full" scrollable={false}>
-        <PageInfoRow>
-          <PageInfoGroup>
-            <PageInfoProperty
-              icon={job.event.icon}
-              label={"Trigger"}
-              value={job.event.title}
-              to={job.event.link ?? undefined}
-            />
-            {job.dynamic && <PageInfoProperty icon="dynamic" value={"Dynamic"} />}
-            <PageInfoProperty icon="id" label={"ID"} value={job.slug} />
-            {job.properties &&
-              job.properties.map((property, index) => (
-                <PageInfoProperty
-                  key={index}
-                  icon="property"
-                  label={property.label}
-                  value={property.text}
-                />
-              ))}
-            {job.integrations.length > 0 && (
+      <PageBody className="grid grid-rows-[auto_1fr]" scrollable={false}>
+        <div className="p-4">
+          <PageInfoRow>
+            <PageInfoGroup>
               <PageInfoProperty
-                label="Integrations"
-                value={
-                  <span className="flex gap-0.5">
-                    {job.integrations.map((integration, index) => (
-                      <NamedIcon key={index} name={integration.icon} className={"h-4 w-4"} />
-                    ))}
-                  </span>
-                }
+                icon={job.event.icon}
+                label={"Trigger"}
+                value={job.event.title}
+                to={job.event.link ?? undefined}
               />
-            )}
-            <PageInfoProperty
-              icon="pulse"
-              label={"STATUS"}
-              value={titleCase(job.status.toLowerCase())}
-            />
-          </PageInfoGroup>
-          <PageInfoGroup alignment="right">
-            <Paragraph variant="extra-small" className="text-charcoal-600">
-              UID: {job.id}
-            </Paragraph>
-          </PageInfoGroup>
-        </PageInfoRow>
+              {job.dynamic && <PageInfoProperty icon="dynamic" value={"Dynamic"} />}
+              <PageInfoProperty icon="id" label={"ID"} value={job.slug} />
+              {job.properties &&
+                job.properties.map((property, index) => (
+                  <PageInfoProperty
+                    key={index}
+                    icon="property"
+                    label={property.label}
+                    value={property.text}
+                  />
+                ))}
+              {job.integrations.length > 0 && (
+                <PageInfoProperty
+                  label="Integrations"
+                  value={
+                    <span className="flex gap-0.5">
+                      {job.integrations.map((integration, index) => (
+                        <NamedIcon key={index} name={integration.icon} className={"h-4 w-4"} />
+                      ))}
+                    </span>
+                  }
+                />
+              )}
+              <PageInfoProperty
+                icon="pulse"
+                label={"STATUS"}
+                value={titleCase(job.status.toLowerCase())}
+              />
+            </PageInfoGroup>
+            <PageInfoGroup alignment="right">
+              <Paragraph variant="extra-small" className="text-charcoal-600">
+                UID: {job.id}
+              </Paragraph>
+            </PageInfoGroup>
+          </PageInfoRow>
 
-        {job.noRunsHelp && (
-          <Callout variant="info" to={job.noRunsHelp.link} className="mt-2">
-            {job.noRunsHelp.text}
-          </Callout>
-        )}
+          {job.noRunsHelp && (
+            <Callout variant="info" to={job.noRunsHelp.link} className="mt-2">
+              {job.noRunsHelp.text}
+            </Callout>
+          )}
 
-        <PageTabs
-          layoutId="jobs"
-          tabs={[
-            { label: "Runs", to: jobPath(organization, project, job) },
-            { label: "Test", to: jobTestPath(organization, project, job) },
-            {
-              label: "Settings",
-              to: jobSettingsPath(organization, project, job),
-            },
-          ]}
-        />
+          <PageTabs
+            layoutId="jobs"
+            tabs={[
+              { label: "Runs", to: jobPath(organization, project, job) },
+              { label: "Test", to: jobTestPath(organization, project, job) },
+              {
+                label: "Settings",
+                to: jobSettingsPath(organization, project, job),
+              },
+            ]}
+          />
+        </div>
         <Outlet />
       </PageBody>
     </PageContainer>

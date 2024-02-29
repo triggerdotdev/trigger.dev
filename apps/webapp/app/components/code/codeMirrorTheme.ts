@@ -21,11 +21,11 @@ export function darkTheme(): Extension {
     tooltipBackground = "#353a42",
     selection = "rgb(71 85 105)",
     cursor = "#528bff",
-    scrollbarTrack = "#0E1521",
+    scrollbarTrack = "rgba(0,0,0,0)",
     scrollbarTrackActive = "#131B2B",
     scrollbarThumb = "#293649",
     scrollbarThumbActive = "#3C4B62",
-    scrollbarBg = "#0E1521";
+    scrollbarBg = "rgba(0,0,0,0)";
 
   const jsonHeroEditorTheme = EditorView.theme(
     {

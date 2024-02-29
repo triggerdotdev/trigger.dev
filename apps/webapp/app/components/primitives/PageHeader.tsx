@@ -141,7 +141,7 @@ function PageInfoPropertyContent({
 
 export function PageTabs(props: TabsProps) {
   return (
-    <div className="mt-2">
+    <div className="mb-2 mt-2">
       <Tabs {...props} />
     </div>
   );

@@ -202,59 +202,100 @@ export default function Page() {
   }
 
   return (
-    <div className="grid h-full grid-cols-1 gap-4">
-      <div className="flex h-full max-h-full overflow-hidden">
-        <Form
-          className="flex h-full max-h-full grow flex-col gap-4 overflow-y-auto"
-          method="post"
-          {...form.props}
-          onSubmit={(e) => submitForm(e)}
-        >
-          <div className="grid h-full grid-cols-[1fr_auto] overflow-hidden">
-            <div className="relative h-full flex-1 overflow-hidden rounded-l border border-grid-bright">
-              <JSONEditor
-                defaultValue={defaultJson}
-                readOnly={false}
-                basicSetup
-                onChange={(v) => {
-                  currentJson.current = v;
+    <div className="grid grid-cols-1 gap-4 overflow-hidden">
+      <Form
+        className="grid grid-rows-[1fr_2.5rem] overflow-hidden"
+        method="post"
+        {...form.props}
+        onSubmit={(e) => submitForm(e)}
+      >
+        <div className="grid grid-cols-[1fr_auto] overflow-hidden">
+          <div className="relative h-full flex-1 overflow-hidden rounded-l border border-grid-bright">
+            <JSONEditor
+              defaultValue={defaultJson}
+              readOnly={false}
+              basicSetup
+              onChange={(v) => {
+                currentJson.current = v;
 
-                  //deselect the example if it's been edited
-                  if (selectedCodeSampleId) {
-                    if (v !== selectedCodeSample) {
-                      setDefaultJson(v);
-                      setSelectedCodeSampleId(undefined);
-                    }
+                //deselect the example if it's been edited
+                if (selectedCodeSampleId) {
+                  if (v !== selectedCodeSample) {
+                    setDefaultJson(v);
+                    setSelectedCodeSampleId(undefined);
                   }
-                }}
-                height="100%"
-                min-height="100%"
-                max-height="100%"
-                autoFocus
-                placeholder="Use your schema to enter valid JSON or add one of the example payloads then click 'Run test'"
-                className="h-full"
-              />
-            </div>
-            <div className="flex h-full w-fit min-w-[20rem] flex-col gap-4 overflow-y-auto rounded-r border border-l-0 border-grid-bright p-4">
-              {examples.length > 0 && (
+                }
+              }}
+              height="100%"
+              min-height="100%"
+              max-height="100%"
+              autoFocus
+              placeholder="Use your schema to enter valid JSON or add one of the example payloads then click 'Run test'"
+              className="h-full"
+            />
+          </div>
+          <div className="flex h-full w-fit min-w-[20rem] flex-col gap-4 overflow-y-auto rounded-r border border-l-0 border-grid-bright p-4">
+            {examples.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <Header2>Example payloads</Header2>
+                {examples.map((example) => (
+                  <button
+                    type="button"
+                    key={example.id}
+                    onClick={(e) => {
+                      setCode(example.payload ?? "");
+                      setSelectedCodeSampleId(example.id);
+                    }}
+                  >
+                    <DetailCell
+                      leadingIcon={isValidIcon(example.icon) ? example.icon : CodeBracketIcon}
+                      leadingIconClassName="text-blue-500"
+                      label={example.name}
+                      trailingIcon={example.id === selectedCodeSampleId ? "check" : "plus"}
+                      trailingIconClassName={
+                        example.id === selectedCodeSampleId
+                          ? "text-green-500 group-hover:text-green-400"
+                          : "text-charcoal-500 group-hover:text-text-bright"
+                      }
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              <Header2>Recent payloads</Header2>
+              {runs.length === 0 ? (
+                <Callout variant="info">
+                  Recent payloads will show here once you've completed a Run.
+                </Callout>
+              ) : (
                 <div className="flex flex-col gap-2">
-                  <Header2>Example payloads</Header2>
-                  {examples.map((example) => (
+                  {runs.map((run) => (
                     <button
+                      key={run.id}
                       type="button"
-                      key={example.id}
                       onClick={(e) => {
-                        setCode(example.payload ?? "");
-                        setSelectedCodeSampleId(example.id);
+                        setCode(run.payload ?? "");
+                        setSelectedCodeSampleId(run.id);
                       }}
                     >
                       <DetailCell
-                        leadingIcon={isValidIcon(example.icon) ? example.icon : CodeBracketIcon}
-                        leadingIconClassName="text-blue-500"
-                        label={example.name}
-                        trailingIcon={example.id === selectedCodeSampleId ? "check" : "plus"}
+                        leadingIcon={ClockIcon}
+                        leadingIconClassName="text-charcoal-400"
+                        label={<DateTime date={run.created} />}
+                        description={
+                          <>
+                            {typeof run.number === "number"
+                              ? `Run #${run.number}`
+                              : `Run ${run.id.slice(0, 8)}`}
+                            <span className={runStatusClassNameColor(run.status)}>
+                              {runStatusTitle(run.status).toLocaleLowerCase()}
+                            </span>
+                          </>
+                        }
+                        trailingIcon={run.id === selectedCodeSampleId ? "check" : "plus"}
                         trailingIconClassName={
-                          example.id === selectedCodeSampleId
+                          run.id === selectedCodeSampleId
                             ? "text-green-500 group-hover:text-green-400"
                             : "text-charcoal-500 group-hover:text-text-bright"
                         }
@@ -263,119 +304,72 @@ export default function Page() {
                   ))}
                 </div>
               )}
-              <div className="flex flex-col gap-2">
-                <Header2>Recent payloads</Header2>
-                {runs.length === 0 ? (
-                  <Callout variant="info">
-                    Recent payloads will show here once you've completed a Run.
-                  </Callout>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {runs.map((run) => (
-                      <button
-                        key={run.id}
-                        type="button"
-                        onClick={(e) => {
-                          setCode(run.payload ?? "");
-                          setSelectedCodeSampleId(run.id);
-                        }}
-                      >
-                        <DetailCell
-                          leadingIcon={ClockIcon}
-                          leadingIconClassName="text-charcoal-400"
-                          label={<DateTime date={run.created} />}
-                          description={
-                            <>
-                              {typeof run.number === "number"
-                                ? `Run #${run.number}`
-                                : `Run ${run.id.slice(0, 8)}`}
-                              <span className={runStatusClassNameColor(run.status)}>
-                                {runStatusTitle(run.status).toLocaleLowerCase()}
-                              </span>
-                            </>
-                          }
-                          trailingIcon={run.id === selectedCodeSampleId ? "check" : "plus"}
-                          trailingIconClassName={
-                            run.id === selectedCodeSampleId
-                              ? "text-green-500 group-hover:text-green-400"
-                              : "text-charcoal-500 group-hover:text-text-bright"
-                          }
-                        />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+            </div>
 
-              {selectedEnvironment?.hasAuthResolver && (
-                <div className="flex flex-col gap-2">
-                  <Header2>Account ID</Header2>
-                  <InputGroup fullWidth>
-                    <Input
-                      type="text"
-                      fullWidth
-                      variant="large"
-                      value={currentAccountId}
-                      placeholder={`e.g. abc_1234`}
-                      onChange={(e) => setCurrentAccountId(e.target.value)}
-                    />
-                    <FormError>{accountId.error}</FormError>
-                    <Hint>
-                      Learn about testing Jobs with an Account ID in our{" "}
-                      <TextLink href="https://trigger.dev/docs/documentation/guides/using-integrations-byo-auth#testing-jobs-with-account-id">
-                        BYOAuth docs
-                      </TextLink>
-                    </Hint>
-                  </InputGroup>
-                </div>
-              )}
-            </div>
+            {selectedEnvironment?.hasAuthResolver && (
+              <div className="flex flex-col gap-2">
+                <Header2>Account ID</Header2>
+                <InputGroup fullWidth>
+                  <Input
+                    type="text"
+                    fullWidth
+                    variant="large"
+                    value={currentAccountId}
+                    placeholder={`e.g. abc_1234`}
+                    onChange={(e) => setCurrentAccountId(e.target.value)}
+                  />
+                  <FormError>{accountId.error}</FormError>
+                  <Hint>
+                    Learn about testing Jobs with an Account ID in our{" "}
+                    <TextLink href="https://trigger.dev/docs/documentation/guides/using-integrations-byo-auth#testing-jobs-with-account-id">
+                      BYOAuth docs
+                    </TextLink>
+                  </Hint>
+                </InputGroup>
+              </div>
+            )}
           </div>
-          <div className="flex items-center justify-between">
-            <LinkButton
-              variant="tertiary/medium"
-              to="https://trigger.dev/docs/documentation/guides/testing-jobs"
-              TrailingIcon="external-link"
-            >
-              Learn more about running tests
-            </LinkButton>
-            <div className="flex flex-none items-center justify-end gap-2">
-              {payload.error ? (
-                <FormError id={payload.errorId}>{payload.error}</FormError>
-              ) : (
-                <div />
-              )}
-              <SelectGroup>
-                <Select
-                  name="environment"
-                  value={selectedEnvironmentId}
-                  onValueChange={setSelectedEnvironmentId}
-                >
-                  <SelectTrigger size="medium">
-                    <SelectValue placeholder="Select environment" className="m-0 p-0" /> Environment
-                  </SelectTrigger>
-                  <SelectContent>
-                    {environments.map((environment) => (
-                      <SelectItem key={environment.id} value={environment.id}>
-                        <EnvironmentLabel environment={environment} />
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </SelectGroup>
-              <Button
-                type="submit"
-                variant="primary/medium"
-                LeadingIcon="beaker"
-                leadingIconClassName="text-text-bright"
-                shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
+        </div>
+        <div className="flex items-center justify-between">
+          <LinkButton
+            variant="tertiary/medium"
+            to="https://trigger.dev/docs/documentation/guides/testing-jobs"
+            TrailingIcon="external-link"
+          >
+            Learn more about running tests
+          </LinkButton>
+          <div className="flex flex-none items-center justify-end gap-2">
+            {payload.error ? <FormError id={payload.errorId}>{payload.error}</FormError> : <div />}
+            <SelectGroup>
+              <Select
+                name="environment"
+                value={selectedEnvironmentId}
+                onValueChange={setSelectedEnvironmentId}
               >
-                Run test
-              </Button>
-            </div>
+                <SelectTrigger size="medium">
+                  <SelectValue placeholder="Select environment" className="m-0 p-0" /> Environment
+                </SelectTrigger>
+                <SelectContent>
+                  {environments.map((environment) => (
+                    <SelectItem key={environment.id} value={environment.id}>
+                      <EnvironmentLabel environment={environment} />
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </SelectGroup>
+            <Button
+              type="submit"
+              variant="primary/small"
+              LeadingIcon="beaker"
+              leadingIconClassName="text-text-bright"
+              shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
+            >
+              Run test
+            </Button>
           </div>
-        </Form>
-      </div>
+        </div>
+      </Form>
     </div>
   );
 }
