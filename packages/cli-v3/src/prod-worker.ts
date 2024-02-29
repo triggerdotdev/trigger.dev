@@ -3,20 +3,10 @@ import {
   ProdWorkerToCoordinatorEvents,
   TaskResource,
 } from "@trigger.dev/core/v3";
-import { HttpReply, getTextBody, SimpleLogger } from "@trigger.dev/core-apps";
+import { HttpReply, getTextBody, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
 import { createServer } from "node:http";
 import { io, Socket } from "socket.io-client";
 import { ProdBackgroundWorker } from "./prod/backgroundWorker";
-
-function getRandomInteger(min: number, max: number) {
-  const intMin = Math.ceil(min);
-  const intMax = Math.floor(max);
-  return Math.floor(Math.random() * (intMax - intMin + 1)) + intMin;
-}
-
-function getRandomPortNumber() {
-  return getRandomInteger(8000, 9999);
-}
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
 const COORDINATOR_HOST = process.env.COORDINATOR_HOST || "127.0.0.1";

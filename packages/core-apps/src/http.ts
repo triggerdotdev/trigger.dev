@@ -27,3 +27,13 @@ export class HttpReply {
       .end(text.endsWith("\n") ? text : `${text}\n`);
   }
 }
+
+function getRandomInteger(min: number, max: number) {
+  const intMin = Math.ceil(min);
+  const intMax = Math.floor(max);
+  return Math.floor(Math.random() * (intMax - intMin + 1)) + intMin;
+}
+
+export function getRandomPortNumber() {
+  return getRandomInteger(8000, 9999);
+}

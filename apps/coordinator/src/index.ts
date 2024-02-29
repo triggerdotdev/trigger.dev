@@ -13,21 +13,21 @@ import {
   ProdWorkerToCoordinatorEvents,
   CliApiClient,
 } from "@trigger.dev/core/v3";
-import { HttpReply, getTextBody, SimpleLogger } from "@trigger.dev/core-apps";
+import { HttpReply, getTextBody, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
 collectDefaultMetrics();
 
-const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8000);
+const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8020);
 const NODE_NAME = process.env.NODE_NAME || "coordinator";
 const REGISTRY_FQDN = process.env.REGISTRY_FQDN || "localhost:5000";
 const REPO_NAME = process.env.REPO_NAME || "checkpoints";
 const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
 const REGISTRY_TLS_VERIFY = process.env.REGISTRY_TLS_VERIFY === "false" ? "false" : "true";
 
-const PLATFORM_ENABLED = ["1", "true"].includes(process.env.PLATFORM_ENABLED ?? "") || false;
+const PLATFORM_ENABLED = ["1", "true"].includes(process.env.PLATFORM_ENABLED ?? "true");
 const PLATFORM_HOST = process.env.PLATFORM_HOST || "127.0.0.1";
-const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 5080;
+const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 3030;
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);

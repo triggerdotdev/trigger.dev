@@ -11,14 +11,16 @@ import {
   ZodMessageHandler,
   ZodMessageSender,
 } from "@trigger.dev/core/v3";
-import { HttpReply, SimpleLogger, getTextBody } from "@trigger.dev/core-apps";
+import { HttpReply, SimpleLogger, getTextBody, getRandomPortNumber } from "@trigger.dev/core-apps";
 
-const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8000);
+const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
 
 const PLATFORM_HOST = process.env.PLATFORM_HOST || "127.0.0.1";
-const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 5080;
+const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 3030;
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "provider-secret";
+
+const COORDINATOR_PORT = process.env.COORDINATOR_PORT || 8020;
 
 const logger = new SimpleLogger(`[${MACHINE_NAME}]`);
 
@@ -35,7 +37,7 @@ class DockerTaskOperations implements TaskOperations {
     const containerName = this.#getIndexContainerName(opts.contentHash);
 
     const { exitCode } = logger.debug(
-      await $`docker run --rm -e COORDINATOR_PORT=8020 -e POD_NAME=${containerName} -e INDEX_TASKS=true --network=host --pull=never --name=${containerName} ${opts.imageTag}`
+      await $`docker run --rm -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e INDEX_TASKS=true --network=host --pull=never --name=${containerName} ${opts.imageTag}`
     );
 
     if (exitCode !== 0) {
@@ -47,7 +49,7 @@ class DockerTaskOperations implements TaskOperations {
     const containerName = this.#getRunContainerName(opts.attemptId);
 
     const { exitCode } = logger.debug(
-      await $`docker run -d -e COORDINATOR_PORT=8020 -e POD_NAME=${containerName} -e TRIGGER_ATTEMPT_ID=${opts.attemptId} --network=host --pull=never --name=${containerName} ${opts.image}`
+      await $`docker run -d -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ATTEMPT_ID=${opts.attemptId} --network=host --pull=never --name=${containerName} ${opts.image}`
     );
 
     if (exitCode !== 0) {
