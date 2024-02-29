@@ -6,7 +6,6 @@ import { Button } from "../primitives/Buttons";
 
 const meta: Meta = {
   title: "Primitives/Checkboxes",
-  decorators: [withDesign],
 };
 
 export default meta;

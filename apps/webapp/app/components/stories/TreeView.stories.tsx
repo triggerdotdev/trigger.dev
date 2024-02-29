@@ -9,7 +9,6 @@ import { Tree, TreeView, flattenTree, useTree } from "../primitives/TreeView/Tre
 
 const meta: Meta = {
   title: "Primitives/TreeView",
-  decorators: [withDesign],
 };
 export default meta;
 type Story = StoryObj<typeof TreeViewsSet>;

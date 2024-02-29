@@ -7,7 +7,6 @@ import { TextLink } from "../primitives/TextLink";
 const meta: Meta<typeof Typography> = {
   title: "Primitives/Typography",
   component: Typography,
-  decorators: [withDesign],
 };
 
 export default meta;

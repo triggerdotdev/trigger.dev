@@ -14,7 +14,6 @@ import {
 const meta: Meta<typeof Tooltips> = {
   title: "Primitives/Tooltips",
   component: Tooltips,
-  decorators: [withDesign],
 };
 
 export default meta;

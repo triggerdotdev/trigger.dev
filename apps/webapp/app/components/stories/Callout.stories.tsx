@@ -7,7 +7,6 @@ import { EnvelopeIcon } from "@heroicons/react/24/solid";
 
 const meta: Meta = {
   title: "Primitives/Callout",
-  decorators: [withDesign],
 };
 
 export default meta;

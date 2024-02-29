@@ -9,7 +9,6 @@ import { NamedIcon } from "../primitives/NamedIcon";
 const meta: Meta<typeof ButtonList> = {
   title: "Primitives/Buttons",
   component: ButtonList,
-  decorators: [withDesign],
 };
 
 export default meta;

@@ -5,7 +5,6 @@ import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 
 const meta: Meta = {
   title: "Primitives/ClipboardField",
-  decorators: [withDesign],
 };
 
 export default meta;

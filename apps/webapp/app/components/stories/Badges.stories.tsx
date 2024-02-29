@@ -4,7 +4,6 @@ import { Badge } from "../primitives/Badge";
 
 const meta: Meta = {
   title: "Primitives/Badges",
-  decorators: [withDesign],
 };
 
 export default meta;

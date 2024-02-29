@@ -1,14 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { withDesign } from "storybook-addon-designs";
-import { CodeBlock } from "../code/CodeBlock";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
+import { CodeBlock } from "../code/CodeBlock";
 
 const meta: Meta<typeof CodeBlock> = {
   title: "code/CodeBlock",
   component: CodeBlock,
-  decorators: [withDesign],
-  tags: ["autodocs"],
 };
 
 export default meta;
@@ -42,13 +39,6 @@ export const Block: Story = {
   },
 
   render: (args) => <CodeBlock {...args} />,
-};
-
-Block.parameters = {
-  design: {
-    type: "figma",
-    url: "https://www.figma.com/file/LKQ4FJ4bTnCSjedbRpk931/Sample-File",
-  },
 };
 
 export const OneLiner: Story = {

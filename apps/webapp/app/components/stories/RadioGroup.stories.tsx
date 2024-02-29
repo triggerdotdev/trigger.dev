@@ -7,7 +7,6 @@ import { NamedIcon } from "../primitives/NamedIcon";
 
 const meta: Meta = {
   title: "Primitives/RadioGroup",
-  decorators: [withDesign],
 };
 
 export default meta;
