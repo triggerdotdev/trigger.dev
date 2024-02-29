@@ -7,11 +7,11 @@ import { ShortcutKey } from "./ShortcutKey";
 
 const sizes = {
   small: {
-    button: "h-6 px-2 text-xs",
+    button: "h-6 px-2.5 text-xs",
     icon: "h-3.5",
-    iconSpacing: "gap-x-0.5",
+    iconSpacing: "gap-x-1",
     shortcutVariant: "small" as const,
-    shortcut: "ml-1 -mr-0.5 justify-self-center",
+    shortcut: "ml-2 -mr-1.5 justify-self-center",
   },
   medium: {
     button: "h-8 px-2 text-sm",
@@ -41,22 +41,29 @@ type Size = keyof typeof sizes;
 const theme = {
   primary: {
     textColor:
-      "text-charcoal-900 group-hover:text-white transition group-disabled:text-text-bright/80 px-1",
+      "text-charcoal-900 group-hover:text-charcoal-900 transition group-disabled:text-charcoal-900",
     button:
       "bg-primary group-hover:bg-apple-200 group-disabled:opacity-50 group-disabled:pointer-events-none",
-    shortcut: "border-black/40 text-charcoal-800 group-hover:border-black/60",
+    shortcut:
+      "border-black/40 text-charcoal-900 group-hover:border-black/60 group-hover:text-charcoal-900",
   },
   secondary: {
-    textColor:
-      "text-text-dimmed group-hover:text-text-bright transition group-disabled:text-text-dimmed/80 px-1",
+    textColor: "text-primary group-hover:text-apple-200 transition group-disabled:text-primary",
     button:
-      "bg-charcoal-800 group-hover:bg-charcoal-700/70 disabled:opacity-50 group-disabled:pointer-events-none",
+      "bg-transparent border border-primary group-hover:border-apple-200 group-hover:bg-apple-950 disabled:opacity-20 group-disabled:pointer-events-none",
     shortcut:
-      "border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60",
+      "border-primary/30 text-apple-200 group-hover:text-text-bright/80 group-hover:border-dimmed/60",
   },
   tertiary: {
+    textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
+    button:
+      "bg-tertiary group-hover:bg-charcoal-600 disabled:opacity-50 group-disabled:pointer-events-none",
+    shortcut:
+      "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright group-hover:border-text-dimmed",
+  },
+  minimal: {
     textColor:
-      "text-text-dimmed group-hover:text-text-bright transition group-disabled:text-text-dimmed/80 px-1",
+      "text-text-dimmed group-hover:text-text-bright transition group-disabled:text-text-dimmed/80",
     button:
       "bg-transparent group-hover:bg-charcoal-850 disabled:opacity-50 group-disabled:pointer-events-none",
     shortcut:
@@ -64,7 +71,7 @@ const theme = {
   },
   danger: {
     textColor:
-      "text-text-bright group-hover:text-white transition group-disabled:text-text-bright/80 px-1",
+      "text-text-bright group-hover:text-white transition group-disabled:text-text-bright/80",
     button:
       "bg-rose-600 group-hover:bg-rose-500 disabled:opacity-50 group-disabled:pointer-events-none",
     shortcut: "border-bright/40 text-text-bright group-hover:border-bright/60",
@@ -80,7 +87,7 @@ function createVariant(sizeName: Size, themeName: Theme) {
     icon: sizes[sizeName].icon,
     iconSpacing: sizes[sizeName].iconSpacing,
     shortcutVariant: sizes[sizeName].shortcutVariant,
-    shortcut: sizes[sizeName].shortcut,
+    shortcut: cn(sizes[sizeName].shortcut, theme[themeName].shortcut),
   };
 }
 
@@ -97,6 +104,10 @@ const variant = {
   "tertiary/medium": createVariant("medium", "tertiary"),
   "tertiary/large": createVariant("large", "tertiary"),
   "tertiary/extra-large": createVariant("extra-large", "tertiary"),
+  "minimal/small": createVariant("small", "minimal"),
+  "minimal/medium": createVariant("medium", "minimal"),
+  "minimal/large": createVariant("large", "minimal"),
+  "minimal/extra-large": createVariant("extra-large", "minimal"),
   "danger/small": createVariant("small", "danger"),
   "danger/medium": createVariant("medium", "danger"),
   "danger/large": createVariant("large", "danger"),
@@ -167,6 +178,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
   const iconClassName = variation.icon;
   const iconSpacingClassName = variation.iconSpacing;
   const shortcutClassName = variation.shortcut;
+  console.log({ shortcutClassName });
   const textColorClassName = variation.textColor;
 
   return (

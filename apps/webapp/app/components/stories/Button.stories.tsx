@@ -35,7 +35,7 @@ function ButtonList({ primary }: { primary: string }) {
   const isSelected = true;
   const disabled = true;
   return (
-    <div>
+    <div className="bg-background-dimmed p-12">
       <Header1 className="mb-2">Small buttons</Header1>
       <div className="grid grid-cols-4 gap-8 border-b border-charcoal-700 pb-8">
         <div className="flex flex-col items-start gap-2">
@@ -43,6 +43,7 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="primary/small">Primary button</Button>
           <Button variant="secondary/small">Secondary button</Button>
           <Button variant="tertiary/small">Tertiary button</Button>
+          <Button variant="minimal/small">Minimal button</Button>
           <Button variant="danger/small">Danger button</Button>
         </div>
         <div className="flex flex-col items-start gap-2">
@@ -55,6 +56,9 @@ function ButtonList({ primary }: { primary: string }) {
           </Button>
           <Button variant="tertiary/small" LeadingIcon={ArrowLeftIcon}>
             Tertiary button
+          </Button>
+          <Button variant="minimal/small" LeadingIcon={ArrowLeftIcon}>
+            Minimal button
           </Button>
           <Button variant="danger/small" LeadingIcon={ArrowLeftIcon}>
             Danger button
@@ -71,6 +75,9 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="tertiary/small" TrailingIcon={ArrowRightIcon}>
             Tertiary button
           </Button>
+          <Button variant="minimal/small" TrailingIcon={ArrowRightIcon}>
+            Minimal button
+          </Button>
           <Button variant="danger/small" TrailingIcon={ArrowRightIcon}>
             Danger button
           </Button>
@@ -85,6 +92,9 @@ function ButtonList({ primary }: { primary: string }) {
           </Button>
           <Button variant="tertiary/small" shortcut={{ key: "i" }}>
             Tertiary button
+          </Button>
+          <Button variant="minimal/small" shortcut={{ key: "i" }}>
+            Minimal button
           </Button>
           <Button variant="danger/small" shortcut={{ key: "s", modifiers: ["meta"] }}>
             Danger button
@@ -102,21 +112,24 @@ function ButtonList({ primary }: { primary: string }) {
             Connect to Slack
           </Button>
           <Button TrailingIcon="warning" variant="secondary/small">
-            Connect to Slack
+            Trailing icon
           </Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Loading</Header3>
-          <Button variant="primary/small" LeadingIcon="spinner-white" disabled>
+          <Button variant="primary/small" LeadingIcon="spinner">
             Loading Primary…
           </Button>
-          <Button variant="secondary/small" LeadingIcon="spinner" disabled>
+          <Button variant="secondary/small" LeadingIcon="spinner">
             Loading Secondary…
           </Button>
-          <Button variant="tertiary/small" LeadingIcon="spinner" disabled>
+          <Button variant="tertiary/small" LeadingIcon="spinner">
             Loading Tertiary…
           </Button>
-          <Button variant="danger/small" LeadingIcon="spinner-white" disabled>
+          <Button variant="minimal/small" LeadingIcon="spinner">
+            Loading Minimal…
+          </Button>
+          <Button variant="danger/small" LeadingIcon="spinner-white">
             Loading Danger…
           </Button>
         </div>
@@ -131,6 +144,9 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="tertiary/small" disabled>
             Tertiary button
           </Button>
+          <Button variant="minimal/small" disabled>
+            Minimal button
+          </Button>
           <Button variant="danger/small" disabled>
             Danger button
           </Button>
@@ -140,6 +156,7 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="primary/small" LeadingIcon={ArrowRightIcon} />
           <Button variant="secondary/small" LeadingIcon={LightBulbIcon} />
           <Button variant="tertiary/small" LeadingIcon="warning" />
+          <Button variant="minimal/small" LeadingIcon="warning" />
           <Button variant="danger/small" LeadingIcon={ExclamationTriangleIcon} />
         </div>
       </div>
@@ -163,6 +180,9 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="tertiary/medium" LeadingIcon={ArrowLeftIcon}>
             Tertiary button
           </Button>
+          <Button variant="minimal/medium" LeadingIcon={ArrowLeftIcon}>
+            Minimal button
+          </Button>
           <Button variant="danger/medium" LeadingIcon={ArrowLeftIcon}>
             Danger button
           </Button>
@@ -178,6 +198,9 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="tertiary/medium" TrailingIcon={ArrowRightIcon}>
             Tertiary button
           </Button>
+          <Button variant="minimal/medium" TrailingIcon={ArrowRightIcon}>
+            Minimal button
+          </Button>
           <Button variant="danger/medium" TrailingIcon={ArrowRightIcon}>
             Danger button
           </Button>
@@ -192,6 +215,9 @@ function ButtonList({ primary }: { primary: string }) {
           </Button>
           <Button variant="tertiary/medium" shortcut={{ key: "s", modifiers: ["meta"] }}>
             Tertiary button
+          </Button>
+          <Button variant="minimal/medium" shortcut={{ key: "s", modifiers: ["meta"] }}>
+            Minimal button
           </Button>
           <Button variant="danger/medium" shortcut={{ key: "s", modifiers: ["meta"] }}>
             Danger button
@@ -214,16 +240,19 @@ function ButtonList({ primary }: { primary: string }) {
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Loading</Header3>
-          <Button variant="primary/medium" LeadingIcon="spinner-white" disabled>
+          <Button variant="primary/medium" LeadingIcon="spinner">
             Loading Primary…
           </Button>
-          <Button variant="secondary/medium" LeadingIcon="spinner" disabled>
+          <Button variant="secondary/medium" LeadingIcon="spinner">
             Loading Secondary…
           </Button>
-          <Button variant="tertiary/medium" LeadingIcon="spinner" disabled>
+          <Button variant="tertiary/medium" LeadingIcon="spinner">
             Loading Tertiary…
           </Button>
-          <Button variant="danger/medium" LeadingIcon="spinner-white" disabled>
+          <Button variant="minimal/medium" LeadingIcon="spinner">
+            Loading Minimal…
+          </Button>
+          <Button variant="danger/medium" LeadingIcon="spinner-white">
             Loading Danger…
           </Button>
         </div>
@@ -238,6 +267,9 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="tertiary/medium" disabled>
             Tertiary button
           </Button>
+          <Button variant="tertiary/medium" disabled>
+            Minimal button
+          </Button>
           <Button variant="danger/medium" disabled>
             Danger button
           </Button>
@@ -247,6 +279,7 @@ function ButtonList({ primary }: { primary: string }) {
           <Button variant="primary/medium" LeadingIcon={ArrowRightIcon} />
           <Button variant="secondary/medium" LeadingIcon={LightBulbIcon} />
           <Button variant="tertiary/medium" LeadingIcon="warning" />
+          <Button variant="minimal/medium" LeadingIcon="warning" />
           <Button variant="danger/medium" LeadingIcon={ExclamationTriangleIcon} />
         </div>
       </div>
