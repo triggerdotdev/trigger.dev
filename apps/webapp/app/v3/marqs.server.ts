@@ -783,9 +783,9 @@ local currentTime = tonumber(ARGV[3])
 local messageScore = tonumber(ARGV[4])
 
 -- Check to see if the message is still in the visibilityQueue
-local messageVisibility = redis.call('ZSCORE', visibilityQueue, messageId)
+local messageVisibility = tonumber(redis.call('ZSCORE', visibilityQueue, messageId)) or 0
 
-if messageVisibility == nil then
+if messageVisibility == 0 then
     return
 end
 
@@ -820,9 +820,9 @@ local milliseconds = tonumber(ARGV[2])
 local maxVisibilityTimeout = tonumber(ARGV[3])
 
 -- Get the current visibility timeout
-local currentVisibilityTimeout = redis.call('ZSCORE', visibilityQueue, messageId)
+local currentVisibilityTimeout = tonumber(redis.call('ZSCORE', visibilityQueue, messageId)) or 0
 
-if currentVisibilityTimeout == nil then
+if currentVisibilityTimeout == 0 then
     return
 end
 
