@@ -252,6 +252,12 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName, debugg
       });
     });
 
+    backgroundWorkerCoordinator.onWorkerDeprecated.attach(async ({ id, worker }) => {
+      await sender.send("BACKGROUND_WORKER_DEPRECATED", {
+        backgroundWorkerId: id,
+      });
+    });
+
     websocket.addEventListener("message", async (event) => {
       const data = JSON.parse(
         typeof event.data === "string" ? event.data : new TextDecoder("utf-8").decode(event.data)
