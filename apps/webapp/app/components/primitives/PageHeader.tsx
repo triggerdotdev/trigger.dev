@@ -1,11 +1,10 @@
 import { ArrowUpRightIcon } from "@heroicons/react/20/solid";
 import { ChevronLeftIcon } from "@heroicons/react/24/solid";
-import { Link } from "@remix-run/react";
+import { Link, useNavigation } from "@remix-run/react";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
 import { plansPath } from "~/utils/pathBuilder";
 import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
-import { PageNavigationIndicator } from "../navigation/PageNavigationIndicator";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { LinkButton } from "./Buttons";
 import { Header2, Header3 } from "./Headers";
@@ -21,6 +20,8 @@ type WithChildren = {
 export function NavBar({ children }: WithChildren) {
   const organization = useOptionalOrganization();
   const showUpgradePrompt = useShowUpgradePrompt(organization);
+  const navigation = useNavigation();
+  const isLoading = navigation.state === "loading" || navigation.state === "submitting";
 
   return (
     <div>

@@ -21,11 +21,12 @@ export function AnimationDivider({ isLoading }: LoadingBarDividerProps) {
     if (isPresent) {
       const enterAnimation = async () => {
         await animate(
-          scope.current,
-          { width: "50%", left: "25%" },
-          { duration: 1, ease: "easeIn" }
+          [
+            [scope.current, { width: "30%", left: "35%" }, { duration: 1, ease: "easeIn" }],
+            [scope.current, { width: 0, left: "100%" }, { duration: 1, ease: "easeOut" }],
+          ],
+          { repeat: Infinity, repeatType: "reverse" }
         );
-        await animate(scope.current, { width: 0, left: "100%" }, { duration: 1, ease: "easeOut" });
       };
       enterAnimation();
     } else {
@@ -41,17 +42,11 @@ export function AnimationDivider({ isLoading }: LoadingBarDividerProps) {
   return (
     <AnimatePresence>
       {isLoading && (
-        <div ref={scope} className="width-0 absolute left-0 top-0 h-full bg-blue-500" />
+        <div
+          ref={scope}
+          className="width-0 absolute left-0 top-0 h-full bg-gradient-to-r from-transparent from-5% via-blue-500 to-transparent to-95%"
+        />
       )}
     </AnimatePresence>
   );
 }
-
-// initial={{ width: 0, left: 0, translateX: 0 }}
-//           animate={{
-//             width: ["0%", "50%", "0%", "50%", "0%"],
-//             left: ["0%", "50%", "0%"],
-//             translateX: ["0%", "-50%", "0%"],
-//           }}
-//           transition={{ duration: 6, repeat: 1, repeatType: "reverse", ease: "easeInOut" }}
-//           exit={{ opacity: 0 }}
