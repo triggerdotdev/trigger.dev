@@ -218,7 +218,7 @@ export default function Page() {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="bg-midnight-900 flex items-center justify-end gap-2 border-t border-grid-bright px-2">
+      <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed px-2">
         <div className="flex items-center gap-1">
           <TaskPath
             filePath={task.filePath}

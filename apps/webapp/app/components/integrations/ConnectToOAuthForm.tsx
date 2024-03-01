@@ -232,7 +232,7 @@ export function ConnectToOAuthForm({
         )}
       </Fieldset>
 
-      <div className="bg-midnight-900 absolute bottom-0 left-0 flex w-full items-center justify-end gap-x-4 rounded-b-md border-t border-charcoal-800 p-4">
+      <div className="absolute bottom-0 left-0 flex w-full items-center justify-end gap-x-4 rounded-b-md border-t border-charcoal-800 bg-background-dimmed p-4">
         <FormError>{scopes.error}</FormError>
         <Button
           type="submit"

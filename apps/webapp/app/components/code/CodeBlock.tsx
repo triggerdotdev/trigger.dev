@@ -357,7 +357,7 @@ function Chrome({ title }: { title?: string }) {
         <div
           className={cn(
             "rounded-sm px-3 py-0.5 text-xs text-charcoal-500",
-            title && "bg-midnight-900"
+            title && "bg-background-dimmed"
           )}
         >
           {title}

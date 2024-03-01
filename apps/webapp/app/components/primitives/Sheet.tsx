@@ -41,7 +41,7 @@ const SheetOverlay = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      "bg-midnight-900/80 fixed inset-0 z-50 transition duration-200 animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
+      "fixed inset-0 z-50 bg-background-dimmed/80 transition duration-200 animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
       className
     )}
     {...props}
@@ -51,7 +51,7 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  "fixed z-50 scale-100 gap-4 bg-midnight-900 shadow-lg shadow-white/10 opacity-100 border-l border-grid-bright",
+  "fixed z-50 scale-100 gap-4 bg-background-dimmed shadow-lg shadow-white/10 opacity-100 border-l border-grid-bright",
   {
     variants: {
       position: {

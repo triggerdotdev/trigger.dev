@@ -280,10 +280,10 @@ function EndpointRow({
           </TableCell>
           <TableCell onClick={onClick} colSpan={5} alignment="right">
             <div className="flex items-center justify-end gap-4">
-              <span className="text-amber-500">
+              <span className="text-sun-400/50">
                 The {environmentTitle({ type })} environment is not configured
               </span>
-              <ButtonContent variant="secondary/small">Configure</ButtonContent>
+              <ButtonContent variant="tertiary/small">Configure</ButtonContent>
             </div>
           </TableCell>
         </TableRow>

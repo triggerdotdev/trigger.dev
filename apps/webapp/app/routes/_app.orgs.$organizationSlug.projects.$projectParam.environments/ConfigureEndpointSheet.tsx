@@ -169,9 +169,8 @@ export function ConfigureEndpointSheet({ slug, endpoint, onClose }: ConfigureEnd
                     </div>
 
                     <Button
-                      variant="primary/small"
+                      variant="secondary/small"
                       type="submit"
-                      className="bg-green-700 group-hover:bg-green-600/90"
                       disabled={refreshingEndpoint}
                       LeadingIcon={refreshingEndpoint ? "spinner-white" : undefined}
                     >

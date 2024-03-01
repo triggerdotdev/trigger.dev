@@ -228,7 +228,6 @@ export default function Page() {
                     {...conform.input(projectSlug, { type: "text" })}
                     placeholder="Your project slug"
                     icon="warning"
-                    autoFocus
                   />
                   <FormError id={projectSlug.errorId}>{projectSlug.error}</FormError>
                   <FormError>{deleteForm.error}</FormError>
