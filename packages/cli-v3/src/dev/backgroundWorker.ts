@@ -20,7 +20,7 @@ import chalk from "chalk";
 import dotenv from "dotenv";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import terminalLink from "terminal-link";
 import { logger } from "../utilities/logger.js";
 import { safeDeleteFileSync } from "../utilities/fileSystem.js";
@@ -469,6 +469,7 @@ class TaskRunProcess {
   async initialize() {
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
+      cwd: dirname(this.path),
       env: {
         ...this.env,
         OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
@@ -478,7 +479,7 @@ class TaskRunProcess {
       },
       execArgv: this.worker.debuggerOn
         ? ["--inspect-brk", "--trace-uncaught"]
-        : ["--trace-uncaught"],
+        : ["--trace-uncaught", "--experimental-loader=@opentelemetry/instrumentation/hook.mjs"],
     });
 
     this._child.on("message", this.#handleMessage.bind(this));

@@ -36379,7 +36379,7 @@ packages:
     dependencies:
       bs-logger: 0.2.6
       fast-json-stable-stringify: 2.1.0
-      jest: 29.6.2_@types+node@18.15.13
+      jest: 29.6.2_@types+node@16.18.11
       jest-util: 29.6.2
       json5: 2.2.3
       lodash.memoize: 4.1.2

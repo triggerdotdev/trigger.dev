@@ -318,6 +318,7 @@ function useDev({
         write: false,
         minify: false,
         sourcemap: "external", // does not set the //# sourceMappingURL= comment in the file, we handle it ourselves
+        packages: "external", // https://esbuild.github.io/api/#packages
         logLevel: "warning",
         platform: "node",
         format: "esm",
@@ -388,6 +389,8 @@ function useDev({
 
                 await fs.promises.mkdir(dirname(fullPath), { recursive: true });
                 await fs.promises.writeFile(fullPath, outputFileWithSourceMap);
+
+                logger.debug(`Wrote background worker to ${fullPath}`);
 
                 if (sourceMapFile) {
                   const sourceMapPath = `${fullPath}.map`;
