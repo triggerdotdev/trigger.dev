@@ -241,7 +241,7 @@ export function ConnectToOAuthForm({
           variant="primary/medium"
           LeadingIcon={integration.icon ?? integration.identifier}
         >
-          Connect to {integration.name}
+          {`Connect to ${integration.name}`}
         </Button>
       </div>
     </fetcher.Form>

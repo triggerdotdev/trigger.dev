@@ -230,7 +230,7 @@ export function UpdateOAuthForm({
           variant="primary/medium"
           LeadingIcon={integration.identifier}
         >
-          Connect to {integration.name}
+          {`Connect to ${integration.name}`}
         </Button>
       </div>
     </fetcher.Form>
