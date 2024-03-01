@@ -50,7 +50,7 @@ export function ConnectToIntegrationSheet({
           </div>
           <LinkButton
             to={apiReferencePath(integration.identifier)}
-            variant="secondary/small"
+            variant="tertiary/small"
             TrailingIcon="arrow-up-right"
             trailingIconClassName="h-4 w-4 text-charcoal-400"
             target="_blank"
@@ -59,7 +59,7 @@ export function ConnectToIntegrationSheet({
           </LinkButton>
           <LinkButton
             to={docsIntegrationPath(integration.identifier)}
-            variant="secondary/small"
+            variant="tertiary/small"
             LeadingIcon="docs"
             target="_blank"
           >

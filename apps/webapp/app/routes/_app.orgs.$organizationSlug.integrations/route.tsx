@@ -133,7 +133,6 @@ function PossibleIntegrationsList({
         </div>
         <Input
           placeholder="Search APIs"
-          className="mb-2"
           variant="medium"
           icon="search"
           fullWidth={true}
