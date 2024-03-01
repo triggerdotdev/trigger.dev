@@ -140,6 +140,89 @@ export class CompleteAttemptService extends BaseService {
 
       const { batchItem, dependency } = taskRunAttempt.taskRun;
 
+      // This run is part of a batch so we should update its status
+      if (batchItem) {
+        logger.debug("Completing attempt with batch item", { batchItem });
+
+        await this._prisma.batchTaskRunItem.update({
+          where: {
+            id: batchItem.id,
+          },
+          data: {
+            status: completion.ok ? "COMPLETED" : "FAILED",
+          },
+        });
+
+        const finalizedBatchRun = await this._prisma.batchTaskRun.findFirst({
+          where: {
+            id: batchItem.batchTaskRunId,
+            dependentTaskAttemptId: {
+              not: null,
+            },
+            items: {
+              every: {
+                status: {
+                  not: "PENDING",
+                },
+              },
+            },
+          },
+          include: {
+            dependentTaskAttempt: true,
+            items: {
+              include: {
+                taskRun: {
+                  include: {
+                    attempts: {
+                      orderBy: {
+                        completedAt: "desc",
+                      },
+                      take: 1,
+                      select: {
+                        id: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        // This batch has a dependent attempt and just finalized, we should resume that attempt
+        if (finalizedBatchRun && finalizedBatchRun.dependentTaskAttempt) {
+          const environment = await this.#getEnvironment(
+            taskRunAttempt.taskRun.runtimeEnvironmentId
+          );
+
+          if (!environment) {
+            logger.error("Environment not found", {
+              attemptId: taskRunAttempt.id,
+              envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
+            });
+            return "FAILED";
+          }
+
+          if (environment.type === "DEVELOPMENT") {
+            return "ACKNOWLEDGED";
+          }
+
+          await marqs?.acknowledgeMessage(finalizedBatchRun.dependentTaskAttempt.taskRunId);
+          await marqs?.enqueueMessage(
+            environment,
+            taskRunAttempt.taskRun.queue,
+            finalizedBatchRun.dependentTaskAttempt.taskRunId,
+            {
+              type: "RESUME",
+              completedAttemptIds: finalizedBatchRun.items.map(
+                (item) => item.taskRun.attempts[0]?.id
+              ),
+            },
+            taskRunAttempt.taskRun.concurrencyKey ?? undefined
+          );
+        }
+      }
+
       if (dependency) {
         logger.debug("Completing attempt with dependency", { dependency });
 
@@ -178,55 +261,10 @@ export class CompleteAttemptService extends BaseService {
             environment,
             taskRunAttempt.taskRun.queue,
             dependentRun.id,
-            { type: "RESUME", completedAttemptId: taskRunAttempt.id },
-            taskRunAttempt.taskRun.concurrencyKey ?? undefined
-          );
-        } else if (dependency.dependentBatchRun) {
-          const batchTaskRun = await this._prisma.batchTaskRun.findFirst({
-            where: {
-              id: dependency.dependentBatchRun.id,
-            },
-            include: {
-              items: {},
-            },
-          });
-
-          if (!batchTaskRun) {
-            logger.error("Batch task run does not exist", {
-              attemptId: taskRunAttempt.id,
-              envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
-              batchTaskRunId: dependency.dependentBatchRunId,
-            });
-            return "FAILED";
-          }
-
-          if (!batchTaskRun.dependentTaskAttemptId) {
-            logger.error("Dependent attempt ID shouldn't be null", {
-              attemptId: taskRunAttempt.id,
-              envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
-            });
-            return "FAILED";
-          }
-
-          // FIXME: This won't work as the messageIds will be the same for every batch item completion. We should only resume once they're all done.
-
-          await marqs?.enqueueMessage(
-            environment,
-            taskRunAttempt.taskRun.queue,
-            // TODO: switch to task run id + set correct resume time
-            batchTaskRun.dependentTaskAttemptId,
-            { type: "RESUME", completedAttemptIds: taskRunAttempt.id },
+            { type: "RESUME", completedAttemptIds: [taskRunAttempt.id] },
             taskRunAttempt.taskRun.concurrencyKey ?? undefined
           );
         }
-
-        logger.error("Invalid dependency", {
-          attemptId: taskRunAttempt.id,
-          dependencyId: dependency.id,
-          envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
-        });
-
-        return "FAILED";
       }
 
       return "ACKNOWLEDGED";

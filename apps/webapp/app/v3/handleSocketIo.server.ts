@@ -58,7 +58,6 @@ function createCoordinatorNamespace(io: Server) {
         await completeAttempt.call(message.completion, message.execution);
       },
       TASK_HEARTBEAT: async (message) => {
-        // TODO: handle RESUME message heartbeats
         await sharedQueueTasks.taskHeartbeat(message.attemptFriendlyId);
       },
       CHECKPOINT_CREATED: async (message) => {

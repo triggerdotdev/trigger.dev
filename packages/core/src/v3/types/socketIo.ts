@@ -59,8 +59,8 @@ export interface CoordinatorToProdWorkerEvents {
     message: VersionedMessage<{
       attemptId: string;
       image: string;
-      completion: TaskRunExecutionResult;
-      execution: TaskRunExecution;
+      completions: TaskRunExecutionResult[];
+      executions: TaskRunExecution[];
     }>
   ) => void;
   EXECUTE_TASK_RUN: (

@@ -128,7 +128,14 @@ class ProdWorker {
     socket.on("RESUME", async (message) => {
       logger.log("[RESUME]", message);
 
-      this.#backgroundWorker.taskRunCompletedNotification(message.completion, message.execution);
+      for (let i = 0; i < message.completions.length; i++) {
+        const completion = message.completions[i];
+        const execution = message.executions[i];
+
+        if (!completion || !execution) continue;
+
+        this.#backgroundWorker.taskRunCompletedNotification(completion, execution);
+      }
     });
 
     socket.on("EXECUTE_TASK_RUN", async (message, callback) => {

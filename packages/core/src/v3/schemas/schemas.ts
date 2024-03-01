@@ -102,7 +102,7 @@ export const PlatformToCoordinatorMessages = {
     version: z.literal("v1").default("v1"),
     attemptId: z.string(),
     image: z.string(),
-    completion: TaskRunExecutionResult,
-    execution: TaskRunExecution,
+    completions: TaskRunExecutionResult.array(),
+    executions: TaskRunExecution.array(),
   }),
 };

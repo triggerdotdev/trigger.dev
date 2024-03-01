@@ -3,6 +3,7 @@ import {
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   TaskRunError,
+  TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
@@ -29,7 +30,7 @@ const MessageBody = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("RESUME"),
-    completedAttemptId: z.string().optional(),
+    completedAttemptIds: z.string().array(),
   }),
 ]);
 
@@ -446,8 +447,8 @@ export class SharedQueueConsumer {
       }
       // Resume after dependency completed with no remaining retries
       case "RESUME": {
-        if (!messageBody.data.completedAttemptId) {
-          logger.error("Resuming without dependent attempt currently unsupported", {
+        if (messageBody.data.completedAttemptIds.length < 1) {
+          logger.error("No attempt IDs provided", {
             queueMessage: message.data,
             messageId: message.messageId,
           });
@@ -466,6 +467,14 @@ export class SharedQueueConsumer {
                 createdAt: "desc",
               },
               take: 1,
+              include: {
+                checkpoints: {
+                  take: 1,
+                  orderBy: {
+                    createdAt: "desc",
+                  },
+                },
+              },
             },
           },
         });
@@ -482,46 +491,10 @@ export class SharedQueueConsumer {
           return;
         }
 
-        // TODO: handle resume with multiple completions, i.e. batch run
-        const completedAttempt = await prisma.taskRunAttempt.findUnique({
-          where: {
-            id: messageBody.data.completedAttemptId,
-            taskRun: {
-              lockedAt: {
-                not: null,
-              },
-              lockedById: {
-                not: null,
-              },
-            },
-          },
-          include: {
-            taskRun: true,
-            checkpoints: {
-              take: 1,
-              orderBy: {
-                createdAt: "desc",
-              },
-            },
-          },
-        });
-
-        if (!completedAttempt) {
-          logger.error("Completed attempt not found", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-          });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 100);
-          return;
-        }
-
-        const { taskRun: completedRun } = completedAttempt;
-
         const backgroundWorker = await prisma.backgroundWorker.findFirst({
           where: {
-            runtimeEnvironmentId: completedRun.runtimeEnvironmentId,
-            projectId: completedRun.projectId,
+            runtimeEnvironmentId: resumableRun.runtimeEnvironmentId,
+            projectId: resumableRun.projectId,
             imageDetails: {
               some: {},
             },
@@ -588,27 +561,60 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const completion = await this._tasks.getCompletionPayloadFromAttempt(completedAttempt.id);
+        const completions: TaskRunExecutionResult[] = [];
+        const executions: TaskRunExecution[] = [];
 
-        if (!completion) {
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 100);
-          return;
-        }
+        for (const completedAttemptId of messageBody.data.completedAttemptIds) {
+          const completedAttempt = await prisma.taskRunAttempt.findUnique({
+            where: {
+              id: completedAttemptId,
+              taskRun: {
+                lockedAt: {
+                  not: null,
+                },
+                lockedById: {
+                  not: null,
+                },
+              },
+            },
+          });
 
-        const execution = await this._tasks.getExecutionPayloadFromAttempt(
-          completedAttempt.id,
-          false
-        );
+          if (!completedAttempt) {
+            logger.error("Completed attempt not found", {
+              queueMessage: message.data,
+              messageId: message.messageId,
+            });
+            await marqs?.acknowledgeMessage(message.messageId);
+            setTimeout(() => this.#doWork(), 100);
+            return;
+          }
 
-        if (!execution) {
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 100);
-          return;
+          const completion = await this._tasks.getCompletionPayloadFromAttempt(completedAttempt.id);
+
+          if (!completion) {
+            await marqs?.acknowledgeMessage(message.messageId);
+            setTimeout(() => this.#doWork(), 100);
+            return;
+          }
+
+          completions.push(completion);
+
+          const executionPayload = await this._tasks.getExecutionPayloadFromAttempt(
+            completedAttempt.id,
+            false
+          );
+
+          if (!executionPayload) {
+            await marqs?.acknowledgeMessage(message.messageId);
+            setTimeout(() => this.#doWork(), 100);
+            return;
+          }
+
+          executions.push(executionPayload.execution);
         }
 
         try {
-          const latestCheckpoint = completedAttempt.checkpoints[0];
+          const latestCheckpoint = resumableAttempt.checkpoints[0];
 
           if (!latestCheckpoint) {
             // No checkpoint means the task should still be running
@@ -617,8 +623,8 @@ export class SharedQueueConsumer {
               version: "v1",
               attemptId: resumableAttempt.id,
               image: backgroundWorker.imageDetails[0].tag,
-              completion,
-              execution: execution.execution,
+              completions,
+              executions,
             });
           } else {
             // There's a checkpoint we need to restore first
