@@ -224,6 +224,9 @@ module.exports = {
         "glow-secondary": "0 0 10px 5px rgba(79, 70, 229, 0.2)",
         "glow-pink": "0 0 10px 5px rgba(236, 72, 153, 0.2)",
       },
+      outlineWidth: {
+        3: "3px",
+      },
       keyframes: {
         "accordion-down": {
           from: { height: 0 },
