@@ -1,22 +1,9 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { Switch } from "../primitives/Switch";
-import { ShortcutKey } from "../primitives/ShortcutKey";
+import { platform } from "os";
+import { Button } from "~/components/primitives/Buttons";
+import { Header1 } from "~/components/primitives/Headers";
+import { OperatingSystemContextProvider } from "~/components/primitives/OperatingSystemProvider";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
-import { Button } from "../primitives/Buttons";
-import { OperatingSystemContextProvider } from "../primitives/OperatingSystemProvider";
-import { Header1 } from "../primitives/Headers";
-
-const meta: Meta = {
-  title: "Primitives/ShortcutKey",
-};
-
-export default meta;
-
-type Story = StoryObj<typeof Collection>;
-
-export const ShortcutKeys: Story = {
-  render: () => <Collection />,
-};
 
 const shortcuts: ShortcutDefinition[] = [
   { key: "esc" },
@@ -28,16 +15,16 @@ const shortcuts: ShortcutDefinition[] = [
   { key: "enter", modifiers: ["mod"] },
 ];
 
-function Collection() {
+export default function Story() {
   return (
-    <div className="flex flex-col items-start gap-y-4">
-      <Set platform="mac" />
-      <Set platform="windows" />
+    <div className="flex flex-col items-start gap-y-4 p-12">
+      <Collection platform="mac" />
+      <Collection platform="windows" />
     </div>
   );
 }
 
-function Set({ platform }: { platform: "mac" | "windows" }) {
+function Collection({ platform }: { platform: "mac" | "windows" }) {
   return (
     <OperatingSystemContextProvider platform={platform}>
       <Header1>{platform}</Header1>
