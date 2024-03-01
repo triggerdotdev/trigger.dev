@@ -61,6 +61,10 @@ const stories: Story[] = [
     slug: "pricing-callout",
   },
   {
+    name: "Radio group",
+    slug: "radio-group",
+  },
+  {
     name: "Typography",
     slug: "typography",
   },

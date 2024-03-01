@@ -1,23 +1,9 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { withDesign } from "storybook-addon-designs";
 import { useState } from "react";
-import { Button } from "../primitives/Buttons";
-import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
-import { NamedIcon } from "../primitives/NamedIcon";
+import { Button } from "~/components/primitives/Buttons";
+import { NamedIcon } from "~/components/primitives/NamedIcon";
+import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 
-const meta: Meta = {
-  title: "Primitives/RadioGroup",
-};
-
-export default meta;
-
-type Story = StoryObj<typeof RadioGroupExample>;
-
-export const Basic: Story = {
-  render: () => <RadioGroupExample />,
-};
-
-function RadioGroupExample() {
+export default function Story() {
   const [isDisabled, setIsDisabled] = useState(false);
 
   return (
