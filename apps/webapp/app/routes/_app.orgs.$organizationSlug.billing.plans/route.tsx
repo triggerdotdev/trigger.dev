@@ -46,7 +46,7 @@ export default function Page() {
     : false;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 px-4">
       {hitConcurrencyLimit && (
         <Callout variant={"pricing"}>
           Some of your runs are being queued because your run concurrency is limited to{" "}

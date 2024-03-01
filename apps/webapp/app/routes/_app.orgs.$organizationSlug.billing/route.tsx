@@ -75,49 +75,52 @@ export default function Page() {
             </>
           )}
         </PageAccessories>
-
-        <PageInfoRow>
-          <PageInfoGroup>
-            {currentPlan?.subscription && (
-              <PageInfoProperty
-                icon={<ReceiptRefundIcon className="h-4 w-4 text-green-600" />}
-                value={planLabel(currentPlan.subscription, currentPlan.usage.periodEnd)}
-              />
-            )}
-            {currentPlan?.subscription?.isPaying && (
-              <PageInfoProperty
-                icon={<CalendarDaysIcon className="h-4 w-4 text-green-600" />}
-                label={"Billing period"}
-                value={
-                  <>
-                    <DateTime date={currentPlan.usage.periodStart} includeTime={false} /> to{" "}
-                    <DateTime date={currentPlan.usage.periodEnd} includeTime={false} /> (
-                    {formatDurationInDays(currentPlan.usage.periodRemainingDuration)} remaining)
-                  </>
-                }
-              />
-            )}
-          </PageInfoGroup>
-        </PageInfoRow>
-        {isManagedCloud && (
-          <PageTabs
-            tabs={[
-              {
-                label: "Usage",
-                to: usagePath(organization),
-              },
-              {
-                label: "Plans",
-                to: plansPath(organization),
-              },
-            ]}
-            layoutId="usage-and-billing"
-          />
-        )}
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-          <Outlet />
+        <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+          <div className="px-4 pt-4">
+            <PageInfoRow>
+              <PageInfoGroup>
+                {currentPlan?.subscription && (
+                  <PageInfoProperty
+                    icon={<ReceiptRefundIcon className="h-4 w-4 text-green-600" />}
+                    value={planLabel(currentPlan.subscription, currentPlan.usage.periodEnd)}
+                  />
+                )}
+                {currentPlan?.subscription?.isPaying && (
+                  <PageInfoProperty
+                    icon={<CalendarDaysIcon className="h-4 w-4 text-green-600" />}
+                    label={"Billing period"}
+                    value={
+                      <>
+                        <DateTime date={currentPlan.usage.periodStart} includeTime={false} /> to{" "}
+                        <DateTime date={currentPlan.usage.periodEnd} includeTime={false} /> (
+                        {formatDurationInDays(currentPlan.usage.periodRemainingDuration)} remaining)
+                      </>
+                    }
+                  />
+                )}
+              </PageInfoGroup>
+            </PageInfoRow>
+            {isManagedCloud && (
+              <PageTabs
+                tabs={[
+                  {
+                    label: "Usage",
+                    to: usagePath(organization),
+                  },
+                  {
+                    label: "Plans",
+                    to: plansPath(organization),
+                  },
+                ]}
+                layoutId="usage-and-billing"
+              />
+            )}
+          </div>
+          <div className="overflow-y-auto pb-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <Outlet />
+          </div>
         </div>
       </PageBody>
     </PageContainer>

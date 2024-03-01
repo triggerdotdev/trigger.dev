@@ -144,7 +144,7 @@ export function TierFree({
         <div className="py-6">
           {buttonPath ? (
             <LinkButton
-              variant="secondary/large"
+              variant="tertiary/large"
               fullWidth
               className="text-md font-medium"
               to={buttonPath}
@@ -153,7 +153,7 @@ export function TierFree({
             </LinkButton>
           ) : (
             <Button
-              variant="secondary/large"
+              variant="tertiary/large"
               fullWidth
               className="text-md font-medium"
               disabled={isLoading || isCurrentPlan}
@@ -460,7 +460,7 @@ function TierContainer({
     <div
       className={cn(
         "flex w-full min-w-[16rem] flex-col rounded-md border p-6",
-        isHighlighted ? "border-indigo-500" : "border-grid-bright"
+        isHighlighted ? "border-primary" : "border-grid-bright"
       )}
     >
       {children}
@@ -480,10 +480,7 @@ function Header({
   return (
     <div className="flex flex-col gap-2">
       <h2
-        className={cn(
-          "text-xl font-medium",
-          isHighlighted ? "text-indigo-500" : "text-text-dimmed"
-        )}
+        className={cn("text-xl font-medium", isHighlighted ? "text-primary" : "text-text-dimmed")}
       >
         {title}
       </h2>
