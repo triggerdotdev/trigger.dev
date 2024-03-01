@@ -37,7 +37,7 @@ export default function Story() {
           <Timeline
             totalDurationMs={durationMs}
             scale={scale}
-            className="h-9 bg-rose-500/10"
+            className="h-9"
             tickCount={tickCount}
             renderTick={({ durationMs }) => (
               <div className="relative h-full">
@@ -53,7 +53,7 @@ export default function Story() {
           <Timeline
             totalDurationMs={durationMs}
             scale={scale}
-            className="h-9 bg-rose-500/10"
+            className="h-9"
             tickCount={tickCount}
             renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
             spanStartMs={36}
@@ -63,12 +63,24 @@ export default function Story() {
           <Timeline
             totalDurationMs={durationMs}
             scale={scale}
-            className="h-9 bg-rose-500/10"
+            className="group h-9 hover:bg-charcoal-500/50"
             tickCount={tickCount}
             renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
             spanStartMs={36 + 287 + 5}
             spanDurationMs={100}
-            renderSpan={() => <div className="mt-2 h-5 w-full rounded-sm bg-sky-500"></div>}
+            renderSpan={() => (
+              <div className="relative mt-2 h-5 w-full">
+                <div className="h-full w-full rounded-sm bg-sky-500"></div>
+                <div className="absolute left-0 top-0 hidden h-full items-center group-hover:flex">
+                  <div className="absolute right-1 text-xxs text-text-dimmed">
+                    {formatDurationMilliseconds(100, {
+                      style: "short",
+                      maxDecimalPoints: durationMs < 1000 ? 0 : 1,
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           />
         </div>
       </div>
