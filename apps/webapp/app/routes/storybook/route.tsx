@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Fragment } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AppContainer } from "~/components/layout/AppLayout";
 import { env } from "~/env.server";
@@ -100,13 +101,13 @@ function SideMenu({ stories }: { stories: Story[] }) {
         <div className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           {stories.map((story) => {
             return (
-              <>
+              <Fragment key={story.slug}>
                 {story.sectionTitle && (
                   <div className="mx-1 mb-1 mt-4 border-b border-text-dimmed/30 px-1 pb-1 text-xs uppercase text-text-dimmed/60">
                     {story.sectionTitle}
                   </div>
                 )}
-                <NavLink key={story.slug} to={`/storybook/${story.slug}`} className={"text-sm"}>
+                <NavLink to={`/storybook/${story.slug}`} className={"text-sm"}>
                   {({ isActive, isPending }) => (
                     <div
                       className={cn(
@@ -118,7 +119,7 @@ function SideMenu({ stories }: { stories: Story[] }) {
                     </div>
                   )}
                 </NavLink>
-              </>
+              </Fragment>
             );
           })}
         </div>
