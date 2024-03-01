@@ -45,6 +45,10 @@ const stories: Story[] = [
     slug: "free-plan-usage",
   },
   {
+    name: "Inline code",
+    slug: "inline-code",
+  },
+  {
     name: "Typography",
     slug: "typography",
   },
