@@ -35,6 +35,15 @@ const stories: Story[] = [
     name: "Detail cell",
     slug: "detail-cell",
   },
+  {
+    sectionTitle: "Forms",
+    name: "Forms",
+    slug: "forms",
+  },
+  {
+    name: "Inputs",
+    slug: "inputs",
+  },
 ];
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -69,6 +78,7 @@ export default function App() {
 type Story = {
   name: string;
   slug: string;
+  sectionTitle?: string;
 };
 
 function SideMenu({ stories }: { stories: Story[] }) {
@@ -80,20 +90,29 @@ function SideMenu({ stories }: { stories: Story[] }) {
     >
       <div className="flex h-full flex-col">
         <div className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-          {stories.map((story) => (
-            <NavLink key={story.slug} to={`/storybook/${story.slug}`} className={"text-sm"}>
-              {({ isActive, isPending }) => (
-                <div
-                  className={cn(
-                    "relative flex items-center gap-2 overflow-hidden truncate rounded-sm px-2 py-2 text-sm text-text-dimmed",
-                    (isActive || isPending) && "bg-tertiary text-text-bright"
+          {stories.map((story) => {
+            return (
+              <>
+                {story.sectionTitle && (
+                  <div className="mx-1 mb-1 mt-4 border-b border-text-dimmed/30 px-1 pb-1 text-xs uppercase text-text-dimmed/60">
+                    {story.sectionTitle}
+                  </div>
+                )}
+                <NavLink key={story.slug} to={`/storybook/${story.slug}`} className={"text-sm"}>
+                  {({ isActive, isPending }) => (
+                    <div
+                      className={cn(
+                        "relative flex items-center gap-2 overflow-hidden truncate rounded-sm px-2 py-2 text-sm text-text-dimmed",
+                        (isActive || isPending) && "bg-tertiary text-text-bright"
+                      )}
+                    >
+                      {story.name}
+                    </div>
                   )}
-                >
-                  {story.name}
-                </div>
-              )}
-            </NavLink>
-          ))}
+                </NavLink>
+              </>
+            );
+          })}
         </div>
       </div>
     </div>
