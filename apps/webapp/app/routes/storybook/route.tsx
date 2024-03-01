@@ -53,6 +53,10 @@ const stories: Story[] = [
     slug: "named-icon",
   },
   {
+    name: "Page header",
+    slug: "page-header",
+  },
+  {
     name: "Typography",
     slug: "typography",
   },

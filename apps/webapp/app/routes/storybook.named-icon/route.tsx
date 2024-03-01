@@ -4,7 +4,7 @@ import { tablerIcons } from "~/utils/tablerIcons";
 
 export default function Story() {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 p-12">
       <div>
         <Header1 spacing>Internal</Header1>
         <div className="grid grid-cols-8 gap-4">
