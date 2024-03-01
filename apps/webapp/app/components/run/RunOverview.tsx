@@ -125,45 +125,47 @@ export function RunOverview({ run, trigger, showRerun, paths, currentUser }: Run
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <PageInfoRow>
-          <PageInfoGroup>
-            <PageInfoProperty
-              icon={<RunStatusIcon status={run.status} className="h-4 w-4" />}
-              label={"Status"}
-              value={runStatusTitle(run.status)}
-            />
-            <PageInfoProperty
-              icon={"calendar"}
-              label={"Started"}
-              value={run.startedAt ? <DateTime date={run.startedAt} /> : "Not started yet"}
-            />
-            <PageInfoProperty icon={"property"} label={"Version"} value={`v${run.version}`} />
-            <PageInfoProperty
-              label={"Env"}
-              value={<EnvironmentLabel environment={run.environment} userName={usernameForEnv} />}
-            />
-            <PageInfoProperty
-              icon={"clock"}
-              label={"Duration"}
-              value={formatDuration(run.startedAt, run.completedAt, { style: "short" })}
-            />
-            <PageInfoProperty
-              icon={<Icon icon="alarm-filled" className="h-4 w-4 text-blue-500" />}
-              label={"Execution Time"}
-              value={formatDurationMilliseconds(run.executionDuration, { style: "short" })}
-            />
-            <PageInfoProperty
-              icon={<Icon icon="list-numbers" className="h-4 w-4 text-yellow-500" />}
-              label={"Execution Count"}
-              value={<>{run.executionCount}</>}
-            />
-          </PageInfoGroup>
-          <PageInfoGroup alignment="right">
-            <Paragraph variant="extra-small" className="whitespace-nowrap text-charcoal-600">
-              RUN ID: {run.id}
-            </Paragraph>
-          </PageInfoGroup>
-        </PageInfoRow>
+        <div className="px-4 pt-4">
+          <PageInfoRow>
+            <PageInfoGroup>
+              <PageInfoProperty
+                icon={<RunStatusIcon status={run.status} className="h-4 w-4" />}
+                label={"Status"}
+                value={runStatusTitle(run.status)}
+              />
+              <PageInfoProperty
+                icon={"calendar"}
+                label={"Started"}
+                value={run.startedAt ? <DateTime date={run.startedAt} /> : "Not started yet"}
+              />
+              <PageInfoProperty icon={"property"} label={"Version"} value={`v${run.version}`} />
+              <PageInfoProperty
+                label={"Env"}
+                value={<EnvironmentLabel environment={run.environment} userName={usernameForEnv} />}
+              />
+              <PageInfoProperty
+                icon={"clock"}
+                label={"Duration"}
+                value={formatDuration(run.startedAt, run.completedAt, { style: "short" })}
+              />
+              <PageInfoProperty
+                icon={<Icon icon="alarm-filled" className="h-4 w-4 text-blue-500" />}
+                label={"Execution Time"}
+                value={formatDurationMilliseconds(run.executionDuration, { style: "short" })}
+              />
+              <PageInfoProperty
+                icon={<Icon icon="list-numbers" className="h-4 w-4 text-yellow-500" />}
+                label={"Execution Count"}
+                value={<>{run.executionCount}</>}
+              />
+            </PageInfoGroup>
+            <PageInfoGroup alignment="right">
+              <Paragraph variant="extra-small" className="whitespace-nowrap text-charcoal-600">
+                RUN ID: {run.id}
+              </Paragraph>
+            </PageInfoGroup>
+          </PageInfoRow>
+        </div>
         <div className="grid h-full grid-cols-2 gap-2">
           <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <div>
