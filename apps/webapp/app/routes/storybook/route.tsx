@@ -57,6 +57,10 @@ const stories: Story[] = [
     slug: "page-header",
   },
   {
+    name: "Pricing callout",
+    slug: "pricing-callout",
+  },
+  {
     name: "Typography",
     slug: "typography",
   },

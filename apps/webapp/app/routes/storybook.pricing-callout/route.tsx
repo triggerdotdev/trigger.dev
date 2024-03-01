@@ -1,22 +1,8 @@
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
-import type { Meta, StoryObj } from "@storybook/react";
-import { LinkButton } from "../primitives/Buttons";
-import { Callout } from "../primitives/Callout";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 
-const meta: Meta<typeof PricingCallouts> = {
-  title: "Billing/PricingCallouts",
-  component: PricingCallouts,
-};
-
-export default meta;
-
-type Story = StoryObj<typeof PricingCallouts>;
-
-export const Callouts: Story = {
-  render: (args) => <PricingCallouts />,
-};
-
-function PricingCallouts() {
+export default function Story() {
   return (
     <div className="mx-4 flex h-screen flex-col items-center justify-center gap-4">
       <Callout
