@@ -1,6 +1,6 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import {
   ActionFunctionArgs,
@@ -165,7 +165,7 @@ export default function Page() {
         <PageTitle title="Environment variables" />
         <PageAccessories>
           <LinkButton
-            LeadingIcon={"docs"}
+            LeadingIcon={BookOpenIcon}
             to={docsPath("/documentation/concepts/environments-endpoints#environments")}
             variant="secondary/small"
           >

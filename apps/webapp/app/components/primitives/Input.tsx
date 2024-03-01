@@ -15,28 +15,28 @@ const shortcutBase =
 const variants = {
   large: {
     container:
-      "px-1 w-full h-10 rounded-[3px] border border-charcoal-800 bg-charcoal-850 hover:border-charcoal-750 hover:bg-charcoal-800",
+      "px-1 w-full h-10 rounded-[3px] border border-charcoal-800 bg-charcoal-750 hover:border-charcoal-750 hover:bg-charcoal-650",
     input: "px-2 text-sm",
     iconSize: "h-4 w-4 ml-1",
     shortcut: "mr-1 min-w-[22px] rounded-sm py-[3px] px-[5px] text-[0.6rem] select-none",
   },
   medium: {
     container:
-      "px-1 h-8 w-full rounded border border-charcoal-800 bg-charcoal-850 hover:border-charcoal-750 hover:bg-charcoal-800",
+      "px-1 h-8 w-full rounded border border-charcoal-800 bg-charcoal-750 hover:border-charcoal-750 hover:bg-charcoal-650",
     input: "px-1.5 rounded text-sm",
     iconSize: "h-4 w-4 ml-0.5",
     shortcut: "min-w-[22px] rounded-sm py-[3px] px-[5px] text-[0.6rem]",
   },
   small: {
     container:
-      "px-0.5 h-6 w-full rounded border border-charcoal-800 bg-charcoal-850 hover:border-charcoal-750 hover:bg-charcoal-800",
+      "px-0.5 h-6 w-full rounded border border-charcoal-800 bg-charcoal-750 hover:border-charcoal-750 hover:bg-charcoal-650",
     input: "px-1 rounded text-xs",
     iconSize: "h-3 w-3 ml-0.5",
     shortcut: "min-w-[22px] rounded-[2px] py-px px-[3px] text-[0.5rem]",
   },
   tertiary: {
     container:
-      "px-0.5 h-6 w-full rounded border border-transparent hover:border-charcoal-800 hover:bg-charcoal-850",
+      "px-0.5 h-6 w-full rounded border border-transparent hover:border-charcoal-800 hover:bg-charcoal-750",
     input: "px-1 rounded text-xs",
     iconSize: "h-3 w-3 ml-0.5",
     shortcut: "min-w-[22px] rounded-[2px] py-px px-[3px] text-[0.5rem]",

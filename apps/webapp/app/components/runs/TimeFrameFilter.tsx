@@ -61,7 +61,7 @@ export function TimeFrameFilter({ from, to, onRangeChanged }: RunTimeFrameFilter
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="start" className="bg-popover p-2">
+      <PopoverContent align="start" className="bg-background-dimmed p-2">
         <ClientTabs
           value={activeTab}
           onValueChange={(v) => setActiveTab(v as Mode)}

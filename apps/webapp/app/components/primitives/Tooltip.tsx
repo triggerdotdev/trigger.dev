@@ -4,7 +4,7 @@ import { cn } from "~/utils/cn";
 
 const variantClasses = {
   basic:
-    "bg-popover border border-charcoal-800 rounded-md px-3 py-1.5 text-sm text-text-bright shadow-md fade-in-50",
+    "bg-background-dimmed border border-charcoal-800 rounded-md px-3 py-1.5 text-sm text-text-bright shadow-md fade-in-50",
   dark: "bg-background-dimmed border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50",
 };
 

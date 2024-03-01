@@ -98,7 +98,7 @@ export function DateField({
           {...fieldProps}
           ref={ref}
           className={cn(
-            "bg-midnight-900 flex rounded-sm border border-charcoal-800 p-0.5 px-1.5 transition-colors focus-within:border-charcoal-500 hover:border-charcoal-700 focus-within:hover:border-charcoal-500",
+            "flex rounded-sm border border-charcoal-800 bg-charcoal-750 p-0.5 px-1.5 transition-colors focus-within:border-charcoal-500 hover:border-charcoal-700 focus-within:hover:border-charcoal-500",
             fieldClassName
           )}
         >
@@ -118,7 +118,7 @@ export function DateField({
         </div>
         {showNowButton && (
           <Button
-            variant="secondary/small"
+            variant="tertiary/small"
             onClick={() => {
               const now = new Date();
               setValue(utcDateToCalendarDate(new Date()));
@@ -130,7 +130,7 @@ export function DateField({
         )}
         {showClearButton && (
           <Button
-            variant="secondary/small"
+            variant="tertiary/small"
             LeadingIcon={"close"}
             onClick={() => {
               setValue(undefined);
