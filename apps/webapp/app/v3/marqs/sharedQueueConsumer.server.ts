@@ -29,7 +29,7 @@ const MessageBody = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("RESUME"),
-    dependentAttempt: z.string().optional(),
+    completedAttemptId: z.string().optional(),
   }),
 ]);
 
@@ -119,8 +119,10 @@ export class SharedQueueConsumer {
     logger.debug("Stopping shared queue consumer");
     this._enabled = false;
 
+    // TODO: think about automatic prod cancellation
+
     // We need to cancel all the in progress task run attempts and ack the messages so they will stop processing
-    await this.#cancelInProgressAttempts(reason);
+    // await this.#cancelInProgressAttempts(reason);
   }
 
   async #cancelInProgressAttempts(reason: string) {
@@ -444,7 +446,7 @@ export class SharedQueueConsumer {
       }
       // Resume after dependency completed with no remaining retries
       case "RESUME": {
-        if (!messageBody.data.dependentAttempt) {
+        if (!messageBody.data.completedAttemptId) {
           logger.error("Resuming without dependent attempt currently unsupported", {
             queueMessage: message.data,
             messageId: message.messageId,
@@ -454,14 +456,24 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const completedAttempt = await prisma.taskRunAttempt.findUnique({
+        const resumableRun = await prisma.taskRun.findFirst({
           where: {
             id: message.messageId,
           },
+          include: {
+            attempts: {
+              orderBy: {
+                createdAt: "desc",
+              },
+              take: 1,
+            },
+          },
         });
 
-        if (!completedAttempt) {
-          logger.error("Completed attempt not found", {
+        const resumableAttempt = resumableRun?.attempts[0];
+
+        if (!resumableAttempt) {
+          logger.error("Task run attempt to resume not found", {
             queueMessage: message.data,
             messageId: message.messageId,
           });
@@ -470,9 +482,10 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const dependentAttempt = await prisma.taskRunAttempt.findUnique({
+        // TODO: handle resume with multiple completions, i.e. batch run
+        const completedAttempt = await prisma.taskRunAttempt.findUnique({
           where: {
-            id: messageBody.data.dependentAttempt,
+            id: messageBody.data.completedAttemptId,
             taskRun: {
               lockedAt: {
                 not: null,
@@ -493,8 +506,8 @@ export class SharedQueueConsumer {
           },
         });
 
-        if (!dependentAttempt) {
-          logger.error("Dependent attempt not found", {
+        if (!completedAttempt) {
+          logger.error("Completed attempt not found", {
             queueMessage: message.data,
             messageId: message.messageId,
           });
@@ -503,12 +516,12 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const { taskRun: dependentRun } = dependentAttempt;
+        const { taskRun: completedRun } = completedAttempt;
 
         const backgroundWorker = await prisma.backgroundWorker.findFirst({
           where: {
-            runtimeEnvironmentId: dependentRun.runtimeEnvironmentId,
-            projectId: dependentRun.projectId,
+            runtimeEnvironmentId: completedRun.runtimeEnvironmentId,
+            projectId: completedRun.projectId,
             imageDetails: {
               some: {},
             },
@@ -538,13 +551,13 @@ export class SharedQueueConsumer {
         }
 
         const backgroundTask = backgroundWorker.tasks.find(
-          (task) => task.slug === dependentRun.taskIdentifier
+          (task) => task.slug === resumableRun.taskIdentifier
         );
 
         if (!backgroundTask) {
           logger.warn("No matching background task found for task run", {
-            taskRun: dependentRun.id,
-            taskIdentifier: dependentRun.taskIdentifier,
+            taskRun: resumableRun.id,
+            taskIdentifier: resumableRun.taskIdentifier,
             backgroundWorker: backgroundWorker.id,
             taskSlugs: backgroundWorker.tasks.map((task) => task.slug),
           });
@@ -559,7 +572,7 @@ export class SharedQueueConsumer {
           where: {
             runtimeEnvironmentId_name: {
               runtimeEnvironmentId: environment.id,
-              name: dependentRun.queue,
+              name: resumableRun.queue,
             },
           },
         });
@@ -595,14 +608,14 @@ export class SharedQueueConsumer {
         }
 
         try {
-          const latestCheckpoint = dependentAttempt.checkpoints[0];
+          const latestCheckpoint = completedAttempt.checkpoints[0];
 
           if (!latestCheckpoint) {
             // No checkpoint means the task should still be running
             // We can broadcast to all coordinators to resume immediately
             socketIo.coordinatorNamespace.emit("RESUME", {
               version: "v1",
-              attemptId: dependentAttempt.id,
+              attemptId: resumableAttempt.id,
               image: backgroundWorker.imageDetails[0].tag,
               completion,
               execution: execution.execution,
