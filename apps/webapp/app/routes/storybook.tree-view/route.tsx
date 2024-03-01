@@ -1,23 +1,9 @@
 import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
-import type { Meta, StoryObj } from "@storybook/react";
-import { useCallback, useRef, useState } from "react";
-import { withDesign } from "storybook-addon-designs";
+import { useRef, useState } from "react";
+import { Button } from "~/components/primitives/Buttons";
+import { Input } from "~/components/primitives/Input";
+import { Tree, TreeView, flattenTree, useTree } from "~/components/primitives/TreeView/TreeView";
 import { cn } from "~/utils/cn";
-import { Button } from "../primitives/Buttons";
-import { Input } from "../primitives/Input";
-import { Tree, TreeView, flattenTree, useTree } from "../primitives/TreeView/TreeView";
-
-const meta: Meta = {
-  title: "Primitives/TreeView",
-};
-export default meta;
-type Story = StoryObj<typeof TreeViewsSet>;
-
-export const TreeViews: Story = {
-  render: () => {
-    return <TreeViewsSet />;
-  },
-};
 
 const words = [
   "lorem",
@@ -112,7 +98,7 @@ function generateTree(): Tree<{ title: string }> {
 const data = generateTree();
 const tree = flattenTree(data);
 
-function TreeViewsSet() {
+export default function Story() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
 
