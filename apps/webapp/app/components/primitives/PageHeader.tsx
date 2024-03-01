@@ -55,14 +55,11 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
         <div className="group flex items-center gap-2">
           <Link
             to={backButton.to}
-            className="flex items-center gap-1 text-charcoal-400 transition group-hover:text-white"
+            className="text-xs text-text-dimmed transition group-hover:text-text-bright"
           >
-            <ChevronLeftIcon className="h-6" />
-            <Header3 textColor="dimmed" className="transition group-hover:text-white">
-              {backButton.text}
-            </Header3>
+            {backButton.text}
           </Link>
-          <BreadcrumbIcon className="h-6" />
+          <BreadcrumbIcon className="h-5" />
         </div>
       )}
       <Header2 className="flex items-center gap-1">{title}</Header2>
