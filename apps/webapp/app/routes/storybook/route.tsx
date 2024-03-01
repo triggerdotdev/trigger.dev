@@ -49,6 +49,10 @@ const stories: Story[] = [
     slug: "inline-code",
   },
   {
+    name: "NamedIcon",
+    slug: "named-icon",
+  },
+  {
     name: "Typography",
     slug: "typography",
   },

@@ -1,31 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { withDesign } from "storybook-addon-designs";
-import { NamedIcon, iconNames } from "../primitives/NamedIcon";
+import { Header1 } from "~/components/primitives/Headers";
+import { NamedIcon, iconNames } from "~/components/primitives/NamedIcon";
 import { tablerIcons } from "~/utils/tablerIcons";
-import { Header1 } from "../primitives/Headers";
 
-const meta: Meta<typeof NamedIcons> = {
-  title: "Icons",
-  // @ts-ignore
-  component: NamedIcons,
-  decorators: [withDesign],
-};
-
-export default meta;
-
-type Story = StoryObj<typeof NamedIcons>;
-
-export const Basic: Story = {
-  args: {
-    // @ts-ignore
-    appear: true,
-    show: true,
-    title: "NamedIcons Title",
-  },
-  render: (args) => <NamedIcons />,
-};
-
-function NamedIcons() {
+export default function Story() {
   return (
     <div className="flex flex-col gap-4">
       <div>
