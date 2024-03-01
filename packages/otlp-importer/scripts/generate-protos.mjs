@@ -2,6 +2,8 @@ import { exec } from "child_process";
 import { promises as fs } from "fs";
 import path from "path";
 
+const isWindows = process.platform === "win32";
+
 // Helper function to execute shell commands
 const execPromise = (command) =>
   new Promise((resolve, reject) => {
@@ -18,7 +20,12 @@ const execPromise = (command) =>
 const appRoot = process.cwd();
 const generatedPath = path.join(appRoot, "src", "generated");
 const protosPath = path.join(appRoot, "protos");
-const pluginPath = path.join(appRoot, "node_modules", ".bin", "protoc-gen-ts_proto.cmd");
+const pluginPath = path.join(
+  appRoot,
+  "node_modules",
+  ".bin",
+  isWindows ? "protoc-gen-ts_proto.cmd" : "protoc-gen-ts_proto"
+);
 
 // Ensure the generated directory exists
 await fs.mkdir(generatedPath, { recursive: true });
