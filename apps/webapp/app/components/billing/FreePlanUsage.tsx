@@ -18,7 +18,7 @@ export function FreePlanUsage({ to, percentage }: { to: string; percentage: numb
   return (
     <div
       className={cn(
-        "rounded border border-charcoal-900 bg-[#101722] p-2.5",
+        "rounded border border-charcoal-700 bg-charcoal-750 p-2.5",
         hasHitLimit && "border-rose-800/60"
       )}
     >
