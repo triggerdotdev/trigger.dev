@@ -7,8 +7,13 @@ type TimelineProps = {
   minWidth?: number;
   maxWidth?: number;
   className?: string;
+  /** Tick marks */
   tickCount?: number;
   renderTick?: (options: { index: number; durationMs: number }) => ReactNode;
+  /** Spans */
+  spanStartMs?: number;
+  spanDurationMs?: number;
+  renderSpan?: () => ReactNode;
 };
 
 export function Timeline({
@@ -19,6 +24,9 @@ export function Timeline({
   maxWidth = 2000,
   className,
   renderTick,
+  spanStartMs = 0,
+  spanDurationMs,
+  renderSpan,
 }: TimelineProps) {
   const pixelWidth = calculatePixelWidth(minWidth, maxWidth, scale);
   return (
@@ -42,6 +50,24 @@ export function Timeline({
             </div>
           );
         })}
+      {renderSpan !== undefined && (
+        <div
+          className="absolute h-full"
+          style={{
+            top: 0,
+            left: `${inverseLerp(0, totalDurationMs, spanStartMs) * 100}%`,
+            width: `${
+              inverseLerp(
+                0,
+                totalDurationMs,
+                getSpanDurationMs(spanStartMs, totalDurationMs, spanDurationMs)
+              ) * 100
+            }%`,
+          }}
+        >
+          {renderSpan()}
+        </div>
+      )}
     </div>
   );
 }
@@ -50,10 +76,22 @@ function calculatePixelWidth(minWidth: number, maxWidth: number, scale: number) 
   return lerp(minWidth, maxWidth, scale);
 }
 
+function getSpanDurationMs(spanStartMs: number, totalDurationMs: number, spanDurationMs?: number) {
+  if (spanDurationMs !== undefined) {
+    return spanDurationMs;
+  }
+  return totalDurationMs - spanStartMs;
+}
+
 /** Linearly interpolates between the min/max values, using t.
  * It can't go outside the range   */
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * clamp(t, 0, 1);
+function lerp(min: number, max: number, t: number) {
+  return min + (max - min) * clamp(t, 0, 1);
+}
+
+/** Inverse lerp */
+function inverseLerp(min: number, max: number, value: number) {
+  return (value - min) / (max - min);
 }
 
 /** Clamps a value between a min and max */

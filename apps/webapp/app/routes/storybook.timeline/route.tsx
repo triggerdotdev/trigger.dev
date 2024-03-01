@@ -56,6 +56,19 @@ export default function Story() {
             className="h-9 bg-rose-500/10"
             tickCount={tickCount}
             renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
+            spanStartMs={36}
+            spanDurationMs={287}
+            renderSpan={() => <div className="mt-2 h-5 w-full rounded-sm bg-sky-500"></div>}
+          />
+          <Timeline
+            totalDurationMs={durationMs}
+            scale={scale}
+            className="h-9 bg-rose-500/10"
+            tickCount={tickCount}
+            renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
+            spanStartMs={36 + 287 + 5}
+            spanDurationMs={100}
+            renderSpan={() => <div className="mt-2 h-5 w-full rounded-sm bg-sky-500"></div>}
           />
         </div>
       </div>
