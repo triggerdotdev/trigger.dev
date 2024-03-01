@@ -89,6 +89,10 @@ const stories: Story[] = [
     slug: "tree-view",
   },
   {
+    name: "Timeline",
+    slug: "timeline",
+  },
+  {
     name: "Typography",
     slug: "typography",
   },
