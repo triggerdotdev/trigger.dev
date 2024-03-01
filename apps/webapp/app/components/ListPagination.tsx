@@ -25,12 +25,13 @@ function NextButton({ cursor }: { cursor?: string }) {
   return (
     <LinkButton
       to={path ?? "#"}
-      variant={"tertiary/small"}
-      TrailingIcon="chevron-right"
+      variant={"minimal/small"}
+      TrailingIcon="arrow-right"
+      trailingIconClassName="text-text-dimmed"
       className={cn(
         "flex items-center",
         !path &&
-          "cursor-default opacity-50 group-hover:bg-transparent group-hover:text-charcoal-800"
+          "cursor-not-allowed opacity-50 group-hover:bg-transparent group-hover:text-text-dimmed"
       )}
       onClick={(e) => !path && e.preventDefault()}
     >
@@ -45,12 +46,13 @@ function PreviousButton({ cursor }: { cursor?: string }) {
   return (
     <LinkButton
       to={path ?? "#"}
-      variant={"tertiary/small"}
-      LeadingIcon="chevron-left"
+      variant={"minimal/small"}
+      LeadingIcon="arrow-left"
+      leadingIconClassName="text-text-dimmed"
       className={cn(
         "flex items-center",
         !path &&
-          "cursor-default opacity-50 group-hover:bg-transparent group-hover:text-charcoal-800"
+          "cursor-not-allowed opacity-50 group-hover:bg-transparent group-hover:text-text-dimmed"
       )}
       onClick={(e) => !path && e.preventDefault()}
     >
