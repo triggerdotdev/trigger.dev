@@ -14,7 +14,8 @@ import { isLoggedIn } from "../utilities/session.js";
 import { CommonCommandOptions } from "../cli/common.js";
 import { getConfigPath, readConfig } from "../utilities/configFiles.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles.js";
-import { CliApiClient, ResolvedConfig } from "@trigger.dev/core/v3";
+import { ResolvedConfig } from "@trigger.dev/core/v3";
+import { CliApiClient } from "../apiClient";
 
 const BuildCommandOptions = CommonCommandOptions.extend({
   registry: z.string(),

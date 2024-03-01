@@ -6,7 +6,7 @@ import { chalkLink } from "../utilities/colors.js";
 import { readAuthConfigFile, writeAuthConfigFile } from "../utilities/configFiles.js";
 import { logger } from "../utilities/logger.js";
 import { whoAmI } from "./whoami.js";
-import { CliApiClient } from "@trigger.dev/core/v3";
+import { CliApiClient } from "../apiClient.js";
 
 export async function loginCommand(options: any) {
   const result = ApiUrlOptionsSchema.safeParse(options);

@@ -5,11 +5,11 @@ import {
   WhoAmIResponseSchema,
   CreateBackgroundWorkerRequestBody,
   CreateBackgroundWorkerResponse,
-  GetProjectDevResponse,
   CreateImageDetailsRequestBody,
   CreateImageDetailsResponse,
+  GetProjectDevResponse,
   GetEnvironmentVariablesResponseBody,
-} from "../schemas";
+} from "@trigger.dev/core/v3";
 
 export class CliApiClient {
   private readonly apiURL: string;

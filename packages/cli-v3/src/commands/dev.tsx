@@ -1,5 +1,4 @@
 import {
-  CliApiClient,
   CreateBackgroundWorkerRequestBody,
   ResolvedConfig,
   TaskResource,
@@ -31,6 +30,7 @@ import { isLoggedIn } from "../utilities/session.js";
 import { CommonCommandOptions } from "../cli/common.js";
 import { getConfigPath, readConfig } from "../utilities/configFiles";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
+import { CliApiClient } from "../apiClient";
 
 let apiClient: CliApiClient | undefined;
 
