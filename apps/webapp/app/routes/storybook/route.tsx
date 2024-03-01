@@ -41,6 +41,10 @@ const stories: Story[] = [
     slug: "dialog",
   },
   {
+    name: "Typography",
+    slug: "typography",
+  },
+  {
     sectionTitle: "Forms",
     name: "Simple form",
     slug: "simple-form",

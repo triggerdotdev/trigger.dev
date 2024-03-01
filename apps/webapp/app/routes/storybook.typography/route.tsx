@@ -1,35 +1,6 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { withDesign } from "storybook-addon-designs";
-import { Header1, Header2, Header3 } from "../primitives/Headers";
-import { Paragraph } from "../primitives/Paragraph";
-import { TextLink } from "../primitives/TextLink";
-
-const meta: Meta<typeof Typography> = {
-  title: "Primitives/Typography",
-  component: Typography,
-};
-
-export default meta;
-
-type Story = StoryObj<typeof Typography>;
-
-export const Basic: Story = {
-  args: {
-    header1: "Header 1 text",
-    header2: "Header 2 text",
-    header3: "Header 3 text",
-    paragraph: "Paragraph text",
-  },
-
-  render: (args) => <Typography {...args} />,
-};
-
-Basic.parameters = {
-  design: {
-    type: "figma",
-    url: "https://www.figma.com/file/jBqUJJ2d4lU6aSeKIIOBMY/Trigger.dev?type=design&node-id=2182%3A44955&t=ufnsmP3ns5zCviTT-1",
-  },
-};
+import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { TextLink } from "~/components/primitives/TextLink";
 
 type TypographyProps = {
   header1: string;
@@ -38,10 +9,15 @@ type TypographyProps = {
   paragraph: string;
 };
 
-function Typography({ header1, header2, header3, paragraph }: TypographyProps) {
+export default function Story({
+  header1 = "This is a Header 1",
+  header2 = "This is a Header 2",
+  header3 = "This is a Header 3",
+  paragraph = "This is paragraph text",
+}: TypographyProps) {
   return (
     <div className="flex flex-col gap-8">
-      <div>
+      <div className="flex flex-col gap-2">
         <Header1>{header1}</Header1>
         <Header1 textColor="dimmed">{header1}</Header1>
         <Header2>{header2}</Header2>
