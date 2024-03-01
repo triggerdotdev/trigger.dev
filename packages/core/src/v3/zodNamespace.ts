@@ -11,6 +11,14 @@ interface ExtendedError extends Error {
   data?: any;
 }
 
+export type ZodSocket<
+  TClientMessages extends ZodMessageCatalogSchema,
+  TServerMessages extends ZodMessageCatalogSchema,
+> = Socket<
+  MessageCatalogToSocketIoEvents<TClientMessages>,
+  MessageCatalogToSocketIoEvents<TServerMessages>
+>;
+
 interface ZodNamespaceOptions<
   TClientMessages extends ZodMessageCatalogSchema,
   TServerMessages extends ZodMessageCatalogSchema,
@@ -22,34 +30,30 @@ interface ZodNamespaceOptions<
   messageHandler?: ZodMessageHandlerOptions<TClientMessages>["messages"];
   authToken?: string;
   preAuth?: (
-    socket: Socket<
-      MessageCatalogToSocketIoEvents<TClientMessages>,
-      MessageCatalogToSocketIoEvents<TServerMessages>
-    >,
+    socket: ZodSocket<TClientMessages, TServerMessages>,
     next: (err?: ExtendedError) => void
   ) => void;
   postAuth?: (
-    socket: Socket<
-      MessageCatalogToSocketIoEvents<TClientMessages>,
-      MessageCatalogToSocketIoEvents<TServerMessages>
-    >,
+    socket: ZodSocket<TClientMessages, TServerMessages>,
     next: (err?: ExtendedError) => void
   ) => void;
   onConnection?: (
-    socket: Socket<
-      MessageCatalogToSocketIoEvents<TClientMessages>,
-      MessageCatalogToSocketIoEvents<TServerMessages>
-    >,
+    socket: ZodSocket<TClientMessages, TServerMessages>,
     handler: ZodMessageHandler<TClientMessages>,
     sender: ZodMessageSender<TServerMessages>,
     logger: (...args: any[]) => void
   ) => Promise<void>;
   onDisconnect?: (
+    socket: ZodSocket<TClientMessages, TServerMessages>,
     reason: DisconnectReason,
     description: any,
     logger: (...args: any[]) => void
   ) => Promise<void>;
-  onError?: (err: Error, logger: (...args: any[]) => void) => Promise<void>;
+  onError?: (
+    socket: ZodSocket<TClientMessages, TServerMessages>,
+    err: Error,
+    logger: (...args: any[]) => void
+  ) => Promise<void>;
 }
 
 export class ZodNamespace<
@@ -130,7 +134,7 @@ export class ZodNamespace<
         logger("disconnect", { reason, description });
 
         if (opts.onDisconnect) {
-          await opts.onDisconnect(reason, description, logger);
+          await opts.onDisconnect(socket, reason, description, logger);
         }
       });
 
@@ -138,7 +142,7 @@ export class ZodNamespace<
         logger("error", error);
 
         if (opts.onError) {
-          await opts.onError(error, logger);
+          await opts.onError(socket, error, logger);
         }
       });
 
