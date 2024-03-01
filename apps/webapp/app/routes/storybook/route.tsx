@@ -37,12 +37,20 @@ const stories: Story[] = [
   },
   {
     sectionTitle: "Forms",
-    name: "Forms",
-    slug: "forms",
+    name: "Simple form",
+    slug: "simple-form",
   },
   {
-    name: "Inputs",
-    slug: "inputs",
+    name: "Login form",
+    slug: "login-form",
+  },
+  {
+    name: "Search fields",
+    slug: "search-fields",
+  },
+  {
+    name: "Input fields",
+    slug: "input-fields",
   },
 ];
 
