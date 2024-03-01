@@ -485,7 +485,7 @@ function Header({
         {title}
       </h2>
       {flatCost === 0 || flatCost ? (
-        <h3 className="text-4xl font-medium">
+        <h3 className="text-4xl font-medium text-text-bright">
           ${flatCost}
           <span className="text-2sm font-normal tracking-wide text-text-dimmed">/month</span>
         </h3>
@@ -511,7 +511,7 @@ function FeatureItem({ checked, children }: { checked?: boolean; children: React
   return (
     <li className="flex items-center gap-2">
       {checked ? (
-        <CheckIcon className="h-4 w-4 text-green-500" />
+        <CheckIcon className="h-4 w-4 text-primary" />
       ) : (
         <XMarkIcon className="h-4 w-4 text-charcoal-500" />
       )}
