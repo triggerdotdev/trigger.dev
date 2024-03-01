@@ -1,6 +1,6 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { BookOpenIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, PencilSquareIcon, PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import {
   ActionFunctionArgs,
@@ -16,6 +16,7 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -185,8 +186,7 @@ export default function Page() {
             <LinkButton
               to={v3NewEnvironmentVariablesPath(organization, project)}
               variant="primary/small"
-              LeadingIcon="plus"
-              leadingIconClassName="text-white"
+              LeadingIcon={PlusIcon}
             >
               New environment variable
             </LinkButton>
@@ -245,6 +245,11 @@ export default function Page() {
               )}
             </TableBody>
           </Table>
+
+          <Callout variant="info" className="mb-4">
+            Dev environment variables specified here will be overriden by ones in your .env file
+            when running locally.
+          </Callout>
         </div>
         <Outlet />
       </PageBody>

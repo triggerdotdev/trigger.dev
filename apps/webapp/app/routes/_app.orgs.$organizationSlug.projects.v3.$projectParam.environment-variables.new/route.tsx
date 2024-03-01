@@ -7,6 +7,7 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -189,6 +190,11 @@ export default function Page() {
                 })}
               </div>
             </InputGroup>
+
+            <Callout variant="info">
+              Dev environment variables specified here will be overriden by ones in your .env file
+              when running locally.
+            </Callout>
 
             <FormError id={key.errorId}>{key.error}</FormError>
             <FormError>{form.error}</FormError>
