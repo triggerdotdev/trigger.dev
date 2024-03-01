@@ -69,6 +69,15 @@ const stories: Story[] = [
     name: "Input fields",
     slug: "input-fields",
   },
+  {
+    sectionTitle: "Menus",
+    name: "Select",
+    slug: "select",
+  },
+  {
+    name: "Popover",
+    slug: "popover",
+  },
 ];
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
