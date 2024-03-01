@@ -34,7 +34,7 @@ import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3RunParamsSchema, v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
+import { v3RunParamsSchema, v3RunPath, v3RunSpanPath, v3RunsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -84,9 +84,15 @@ export default function Page() {
   return (
     <>
       <NavBar>
-        <PageTitle title={`Run #${run.number}`} />
+        <PageTitle
+          backButton={{
+            to: v3RunsPath(organization, project),
+            text: "Runs",
+          }}
+          title={`Run #${run.number}`}
+        />
         <PageAccessories>
-          <EnvironmentLabel environment={run.environment} userName={usernameForEnv} />
+          <EnvironmentLabel size="large" environment={run.environment} userName={usernameForEnv} />
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
