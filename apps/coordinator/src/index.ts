@@ -11,9 +11,8 @@ import {
   PlatformToCoordinatorEvents,
   ProdWorkerSocketData,
   ProdWorkerToCoordinatorEvents,
-  CliApiClient,
 } from "@trigger.dev/core/v3";
-import { HttpReply, getTextBody, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
+import { HttpReply, getTextBody, SimpleLogger } from "@trigger.dev/core-apps";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
 collectDefaultMetrics();
@@ -294,7 +293,10 @@ class TaskCoordinator {
 
       this.#platformSocket?.emit("LOG", {
         version: "v1",
-        taskId: socket.data.taskId,
+        metadata: {
+          projectRef: socket.data.projectRef,
+          attemptId: socket.data.attemptId,
+        },
         text: "connected",
       });
 
@@ -305,7 +307,10 @@ class TaskCoordinator {
 
         this.#platformSocket?.emit("LOG", {
           version: "v1",
-          taskId: socket.data.taskId,
+          metadata: {
+            projectRef: socket.data.projectRef,
+            attemptId: socket.data.attemptId,
+          },
           text: "disconnect",
         });
       });
@@ -321,18 +326,13 @@ class TaskCoordinator {
 
         this.#platformSocket?.emit("LOG", {
           version: "v1",
-          taskId: socket.data.taskId,
+          metadata: { attemptId: socket.data.attemptId },
           text: message.text,
         });
       });
 
       socket.on("READY_FOR_EXECUTION", async (message) => {
         logger.log("[READY_FOR_EXECUTION]", message);
-
-        this.#platformSocket?.emit("READY", {
-          version: "v1",
-          taskId: socket.data.taskId,
-        });
 
         const executionAck = await this.#platformSocket?.emitWithAck("READY_FOR_EXECUTION", {
           version: "v1",
@@ -407,54 +407,29 @@ class TaskCoordinator {
       socket.on("INDEX_TASKS", async (message, callback) => {
         logger.log("[INDEX_TASKS]", message);
 
-        const environmentClient = new CliApiClient(socket.data.apiUrl, socket.data.apiKey);
+        const workerAck = await this.#platformSocket?.emitWithAck("CREATE_WORKER", {
+          version: "v1",
+          projectRef: socket.data.projectRef,
+          envId: socket.data.envId,
+          metadata: {
+            cliPackageVersion: socket.data.cliPackageVersion,
+            contentHash: socket.data.contentHash,
+            packageVersion: message.packageVersion,
+            tasks: message.tasks,
+          },
+        });
 
-        // TODO: should do this via socket instead
-        const createResponse = await environmentClient.createBackgroundWorker(
-          socket.data.projectRef,
-          {
-            localOnly: false,
-            metadata: {
-              cliPackageVersion: socket.data.cliPackageVersion,
-              contentHash: socket.data.contentHash,
-              packageVersion: message.packageVersion,
-              tasks: message.tasks,
-            },
-          }
-        );
+        if (!workerAck) {
+          logger.debug("no worker ack while indexing", message);
+        }
 
-        logger.log("created background worker", createResponse);
-
-        callback({ success: createResponse.success });
+        callback({ success: !!workerAck?.success });
       });
     });
 
     // auth middleware
     namespace.use(async (socket, next) => {
       const logger = new SimpleLogger(`[task][${socket.id}][auth]`);
-
-      const { auth } = socket.handshake;
-
-      if (!("apiKey" in auth)) {
-        logger.error("no api key");
-        return socket.disconnect(true);
-      }
-
-      if (!("apiUrl" in auth)) {
-        logger.error("no api url");
-        return socket.disconnect(true);
-      }
-
-      // TODO: remove this section once worker creation via socket
-      async function validateApiKey(apiKey: string, apiUrl: string) {
-        return true;
-      }
-      if (!(await validateApiKey(auth.apiKey, auth.apiUrl))) {
-        logger.error("invalid api key");
-        return socket.disconnect(true);
-      }
-      socket.data.apiKey = auth.apiKey;
-      socket.data.apiUrl = auth.apiUrl;
 
       function setSocketDataFromHeader(dataKey: keyof typeof socket.data, headerName: string) {
         const value = socket.handshake.headers[headerName];
@@ -466,11 +441,12 @@ class TaskCoordinator {
       }
 
       try {
+        setSocketDataFromHeader("podName", "x-pod-name");
         setSocketDataFromHeader("contentHash", "x-trigger-content-hash");
         setSocketDataFromHeader("cliPackageVersion", "x-trigger-cli-package-version");
         setSocketDataFromHeader("projectRef", "x-trigger-project-ref");
         setSocketDataFromHeader("attemptId", "x-trigger-attempt-id");
-        setSocketDataFromHeader("podName", "x-pod-name");
+        setSocketDataFromHeader("envId", "x-trigger-env-id");
       } catch (error) {
         return socket.disconnect(true);
       }

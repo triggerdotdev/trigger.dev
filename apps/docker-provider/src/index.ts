@@ -33,11 +33,11 @@ interface TaskOperations {
 }
 
 class DockerTaskOperations implements TaskOperations {
-  async index(opts: { contentHash: string; imageTag: string }) {
+  async index(opts: { contentHash: string; imageTag: string; envId: string }) {
     const containerName = this.#getIndexContainerName(opts.contentHash);
 
     const { exitCode } = logger.debug(
-      await $`docker run --rm -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e INDEX_TASKS=true --network=host --pull=never --name=${containerName} ${opts.imageTag}`
+      await $`docker run --rm -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ENV_ID=${opts.envId} -e INDEX_TASKS=true --network=host --pull=never --name=${containerName} ${opts.imageTag}`
     );
 
     if (exitCode !== 0) {
@@ -45,11 +45,11 @@ class DockerTaskOperations implements TaskOperations {
     }
   }
 
-  async create(opts: { attemptId: string; image: string; machine: Machine }) {
+  async create(opts: { attemptId: string; image: string; machine: Machine; envId: string }) {
     const containerName = this.#getRunContainerName(opts.attemptId);
 
     const { exitCode } = logger.debug(
-      await $`docker run -d -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ATTEMPT_ID=${opts.attemptId} --network=host --pull=never --name=${containerName} ${opts.image}`
+      await $`docker run -d -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ENV_ID=${opts.envId} -e TRIGGER_ATTEMPT_ID=${opts.attemptId} --network=host --pull=never --name=${containerName} ${opts.image}`
     );
 
     if (exitCode !== 0) {
@@ -172,6 +172,7 @@ class DockerProvider implements Provider {
 
           if (payload.data.type === "SCHEDULE_ATTEMPT") {
             this.tasks.create({
+              envId: payload.data.envId,
               attemptId: payload.data.id,
               image: payload.data.image,
               machine: {},
@@ -235,19 +236,11 @@ class DockerProvider implements Provider {
         await this.tasks.index({
           contentHash: message.contentHash,
           imageTag: message.imageTag,
+          envId: message.envId,
         });
       } catch (error) {
         logger.error("task index failed", error);
       }
-    });
-
-    socket.on("INVOKE", async (message) => {
-      logger.log("[INVOKE]", message);
-      await this.tasks.create({
-        attemptId: message.name,
-        image: message.name,
-        machine: message.machine,
-      });
     });
 
     socket.on("RESTORE", async (message) => {
@@ -291,6 +284,7 @@ class DockerProvider implements Provider {
 
           await this.tasks.create({
             attemptId: body,
+            envId: "placeholder",
             image: body,
             machine: {
               cpu: "1",

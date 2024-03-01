@@ -14,6 +14,9 @@ import { SharedSocketConnection } from "./sharedSocketConnection";
 import { CreateCheckpointService } from "./services/createCheckpoint.server";
 import { sharedQueueTasks } from "./marqs/sharedQueueConsumer.server";
 import { CompleteAttemptService } from "./services/completeAttempt.server";
+import { CreateBackgroundWorkerService } from "./services/createBackgroundWorker.server";
+import { logger } from "~/services/logger.server";
+import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -63,6 +66,27 @@ function createCoordinatorNamespace(io: Server) {
       CHECKPOINT_CREATED: async (message) => {
         const createCheckpoint = new CreateCheckpointService();
         await createCheckpoint.call(message);
+      },
+      CREATE_WORKER: async (message) => {
+        try {
+          const environment = await findEnvironmentById(message.envId);
+
+          if (!environment) {
+            logger.error("Environment not found", { id: message.envId });
+            return { success: false };
+          }
+
+          const createCheckpoint = new CreateBackgroundWorkerService();
+          await createCheckpoint.call(message.projectRef, environment, {
+            localOnly: true,
+            metadata: message.metadata,
+          });
+
+          return { success: true };
+        } catch (error) {
+          logger.error("Error while creating worker", { error });
+          return { success: false };
+        }
       },
     },
   });

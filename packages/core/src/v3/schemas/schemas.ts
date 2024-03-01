@@ -2,6 +2,7 @@ import { z } from "zod";
 import { RequireKeys } from "../types";
 import { TaskRunExecution, TaskRunExecutionResult } from "./common";
 import { ProdTaskRunExecution } from "./messages";
+import { TaskResource } from "./resources";
 
 export const Config = z.object({
   project: z.string(),
@@ -39,6 +40,7 @@ export const PlatformToProviderMessages = {
     version: z.literal("v1").default("v1"),
     imageTag: z.string(),
     contentHash: z.string(),
+    envId: z.string(),
   }),
   INVOKE: z.object({
     version: z.literal("v1").default("v1"),
@@ -67,12 +69,19 @@ export const PlatformToProviderMessages = {
 export const CoordinatorToPlatformMessages = {
   LOG: z.object({
     version: z.literal("v1").default("v1"),
-    taskId: z.string().optional(),
+    metadata: z.any(),
     text: z.string(),
   }),
-  READY: z.object({
+  CREATE_WORKER: z.object({
     version: z.literal("v1").default("v1"),
-    taskId: z.string().optional(),
+    projectRef: z.string(),
+    envId: z.string(),
+    metadata: z.object({
+      cliPackageVersion: z.string(),
+      contentHash: z.string(),
+      packageVersion: z.string(),
+      tasks: TaskResource.array(),
+    }),
   }),
   // TODO: callback: (ack: { success: false } | { success: true; payload: ProdTaskRunExecutionPayload }) => void
   READY_FOR_EXECUTION: z.object({

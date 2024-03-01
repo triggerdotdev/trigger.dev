@@ -23,6 +23,7 @@ class ProdWorker {
   private contentHash = process.env.TRIGGER_CONTENT_HASH!;
   private projectDir = process.env.TRIGGER_PROJECT_DIR!;
   private projectRef = process.env.TRIGGER_PROJECT_REF!;
+  private envId = process.env.TRIGGER_ENV_ID!;
   private cliPackageVersion = process.env.TRIGGER_CLI_PACKAGE_VERSION!;
   private attemptId = process.env.TRIGGER_ATTEMPT_ID || "index-only";
 
@@ -76,10 +77,6 @@ class ProdWorker {
       `ws://${COORDINATOR_HOST}:${COORDINATOR_PORT}/prod-worker`,
       {
         transports: ["websocket"],
-        auth: {
-          apiKey: this.apiKey,
-          apiUrl: this.apiUrl,
-        },
         extraHeaders: {
           "x-machine-name": MACHINE_NAME,
           "x-pod-name": POD_NAME,
@@ -87,6 +84,7 @@ class ProdWorker {
           "x-trigger-cli-package-version": this.cliPackageVersion,
           "x-trigger-project-ref": this.projectRef,
           "x-trigger-attempt-id": this.attemptId,
+          "x-trigger-env-id": this.envId,
         },
       }
     );

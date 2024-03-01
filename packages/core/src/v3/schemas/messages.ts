@@ -36,6 +36,7 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     type: z.literal("SCHEDULE_ATTEMPT"),
     id: z.string(),
     image: z.string(),
+    envId: z.string(),
   }),
 ]);
 

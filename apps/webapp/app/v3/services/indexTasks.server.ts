@@ -47,6 +47,7 @@ export class IndexTasksService {
       version: "v1",
       contentHash: imageDetails.contentHash,
       imageTag: imageDetails.tag,
+      envId: imageDetails.runtimeEnvironmentId,
     });
   }
 }

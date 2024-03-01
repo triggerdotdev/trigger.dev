@@ -1,5 +1,4 @@
 import {
-  Machine,
   TaskResource,
   ProdTaskRunExecutionPayload,
   TaskRunExecutionResult,
@@ -16,8 +15,9 @@ export interface ProviderClientToServerEvents {
 
 export interface ProviderServerToClientEvents {
   HEALTH: (message: VersionedMessage<{}>, callback: (ack: { status: "ok" }) => void) => void;
-  INDEX: (message: VersionedMessage<{ imageTag: string; contentHash: string }>) => void;
-  INVOKE: (message: VersionedMessage<{ name: string; machine: Machine }>) => void;
+  INDEX: (
+    message: VersionedMessage<{ imageTag: string; contentHash: string; envId: string }>
+  ) => void;
   RESTORE: (
     message: VersionedMessage<{
       id: string;
@@ -70,20 +70,30 @@ export interface CoordinatorToProdWorkerEvents {
 }
 
 export interface ProdWorkerSocketData {
-  taskId: string;
-  apiKey: string;
-  apiUrl: string;
   cliPackageVersion: string;
   contentHash: string;
   projectRef: string;
+  envId: string;
   attemptId: string;
   podName: string;
 }
 
 // coordinator <--> platform
 export interface CoordinatorToPlatformEvents {
-  LOG: (message: VersionedMessage<{ taskId: string; text: string }>) => void;
-  READY: (message: VersionedMessage<{ taskId: string }>) => void;
+  LOG: (message: VersionedMessage<{ metadata: any; text: string }>) => void;
+  CREATE_WORKER: (
+    message: VersionedMessage<{
+      projectRef: string;
+      envId: string;
+      metadata: {
+        cliPackageVersion: string;
+        contentHash: string;
+        packageVersion: string;
+        tasks: TaskResource[];
+      };
+    }>,
+    callback: (ack: { success: boolean }) => void
+  ) => void;
   READY_FOR_EXECUTION: (
     message: VersionedMessage<{ attemptId: string }>,
     callback: (
@@ -112,8 +122,8 @@ export interface PlatformToCoordinatorEvents {
     message: VersionedMessage<{
       attemptId: string;
       image: string;
-      completion: TaskRunExecutionResult;
-      execution: TaskRunExecution;
+      completions: TaskRunExecutionResult[];
+      executions: TaskRunExecution[];
     }>
   ) => void;
 }

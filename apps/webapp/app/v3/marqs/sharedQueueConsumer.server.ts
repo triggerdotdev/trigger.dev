@@ -407,6 +407,7 @@ export class SharedQueueConsumer {
               type: "SCHEDULE_ATTEMPT",
               id: taskRunAttempt.id,
               image: backgroundWorker.imageDetails[0].tag,
+              envId: environment.id,
             },
           });
 
