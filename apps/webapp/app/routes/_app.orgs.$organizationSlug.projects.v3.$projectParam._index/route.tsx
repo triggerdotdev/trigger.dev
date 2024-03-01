@@ -16,6 +16,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -92,7 +93,10 @@ export default function Page() {
                           <TableRow key={task.id} className="group">
                             <TableCell to={path}>{task.slug}</TableCell>
                             <TableCell to={path}>
-                              {task.filePath} {task.exportName}()
+                              <TaskPath
+                                filePath={task.filePath}
+                                functionName={`${task.exportName}()`}
+                              />
                             </TableCell>
                             <TableCell to={path}>
                               <EnvironmentLabel
