@@ -37,7 +37,7 @@ export function AnimationDivider({ isLoading }: LoadingBarDividerProps) {
 
       exitAnimation();
     }
-  }, [isPresent]);
+  }, [isPresent, isLoading]);
 
   return (
     <AnimatePresence>

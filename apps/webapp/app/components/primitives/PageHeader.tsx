@@ -27,7 +27,7 @@ export function NavBar({ children }: WithChildren) {
     <div>
       <div className="grid h-10 w-full grid-rows-[auto_1px] bg-background-bright">
         <div className="flex w-full items-center justify-between pl-3 pr-1">{children}</div>
-        <LoadingBarDivider isLoading={true} />
+        <LoadingBarDivider isLoading={isLoading} />
       </div>
       {showUpgradePrompt.shouldShow && organization && (
         <UpgradePrompt
