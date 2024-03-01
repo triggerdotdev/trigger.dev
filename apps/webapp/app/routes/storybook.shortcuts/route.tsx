@@ -1,4 +1,3 @@
-import { platform } from "os";
 import { Button } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
 import { OperatingSystemContextProvider } from "~/components/primitives/OperatingSystemProvider";
