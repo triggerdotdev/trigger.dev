@@ -94,9 +94,10 @@ const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: Mod
               <Button
                 type="submit"
                 variant={"primary/small"}
+                LeadingIcon={isSubmitting ? Spinner : undefined}
                 disabled={confirmationText !== randomWord}
               >
-                {isSubmitting ? <Spinner color="white" /> : <>Regenerate</>}
+                Regenerate
               </Button>
             }
             cancelButton={<Button variant={"tertiary/small"}>Cancel</Button>}
