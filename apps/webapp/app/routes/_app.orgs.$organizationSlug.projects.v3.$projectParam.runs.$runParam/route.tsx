@@ -189,8 +189,8 @@ function TasksTreeView({
   });
 
   return (
-    <div className="h-full overflow-y-clip px-3">
-      <div className="flex h-8 items-center justify-between gap-2 border-b border-charcoal-850">
+    <div className="grid grid-rows-[2.5rem_1fr] overflow-y-clip">
+      <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Input
           placeholder="Search log"
           variant="tertiary"
@@ -206,88 +206,125 @@ function TasksTreeView({
           onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
         />
       </div>
-      {parentRunFriendlyId && <ShowParentLink runFriendlyId={parentRunFriendlyId} />}
-      <TreeView
-        parentRef={parentRef}
-        virtualizer={virtualizer}
-        autoFocus
-        tree={events}
-        nodes={nodes}
-        getNodeProps={getNodeProps}
-        getTreeProps={getTreeProps}
-        parentClassName="h-full mt-2"
-        renderNode={({ node, state, index, virtualizer, virtualItem }) => (
-          <div
-            className={cn(
-              "flex h-8 cursor-pointer items-center rounded-sm border border-transparent",
-              node.data.isError ? "bg-rose-500/10 hover:bg-rose-500/20" : "hover:bg-charcoal-900",
-              state.selected && (node.data.isError ? "border-rose-500" : "border-indigo-500")
-            )}
-            onClick={() => {
-              toggleNodeSelection(node.id);
-            }}
-          >
-            <div className="flex h-8 items-center">
-              {Array.from({ length: node.level }).map((_, index) => (
-                <TaskLine key={index} isError={node.data.isError} isSelected={state.selected} />
-              ))}
+      <ResizablePanelGroup
+        direction="horizontal"
+        onLayout={(layout) => {
+          if (layout.length !== 2) return;
+          setResizableRunSettings(document, layout);
+        }}
+      >
+        {/* Tree list */}
+        <ResizablePanel order={1} minSize={20} defaultSize={50} className="pl-3">
+          {parentRunFriendlyId && <ShowParentLink runFriendlyId={parentRunFriendlyId} />}
+          <TreeView
+            parentRef={parentRef}
+            virtualizer={virtualizer}
+            autoFocus
+            tree={events}
+            nodes={nodes}
+            getNodeProps={getNodeProps}
+            getTreeProps={getTreeProps}
+            parentClassName="h-full pt-2"
+            renderNode={({ node, state, index, virtualizer, virtualItem }) => (
               <div
                 className={cn(
-                  "flex h-8 w-4 items-center",
-                  node.hasChildren &&
-                    (node.data.isError ? "hover:bg-rose-500/30" : "hover:bg-charcoal-800")
+                  "flex h-8 cursor-pointer items-center rounded-l-sm pr-3",
+                  state.selected
+                    ? "bg-grid-dimmed hover:bg-grid-bright"
+                    : "bg-transparent hover:bg-grid-dimmed"
                 )}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleExpandNode(node.id);
-                  selectNode(node.id);
-                  scrollToNode(node.id);
-                }}
-                onKeyDown={(e) => {
-                  console.log(e.key);
+                onClick={() => {
+                  toggleNodeSelection(node.id);
                 }}
               >
-                {node.hasChildren ? (
-                  state.expanded ? (
-                    <ChevronDownIcon className="h-4 w-4 text-charcoal-400" />
-                  ) : (
-                    <ChevronRightIcon className="h-4 w-4 text-charcoal-400" />
-                  )
-                ) : (
-                  <div className="h-8 w-4" />
-                )}
-              </div>
-            </div>
-
-            <div className="flex w-full items-center justify-between gap-2 px-1">
-              <div className="flex items-center gap-2 overflow-x-hidden">
-                <RunIcon name={node.data.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
-                <NodeText node={node} />
-              </div>
-              <div className="flex items-center gap-2">
-                {node.data.isError ? (
-                  <div className="flex items-center gap-1">
-                    <Paragraph variant="extra-small" className="text-rose-500">
-                      Error
-                    </Paragraph>
-                    <ExclamationCircleIcon className="h-3 w-3 text-rose-500" />
+                <div className="flex h-8 items-center">
+                  {Array.from({ length: node.level }).map((_, index) => (
+                    <TaskLine key={index} isError={node.data.isError} isSelected={state.selected} />
+                  ))}
+                  <div
+                    className={cn(
+                      "flex h-8 w-4 items-center",
+                      node.hasChildren &&
+                        (node.data.isError ? "hover:bg-rose-500/30" : "hover:bg-charcoal-800")
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleExpandNode(node.id);
+                      selectNode(node.id);
+                      scrollToNode(node.id);
+                    }}
+                    onKeyDown={(e) => {
+                      console.log(e.key);
+                    }}
+                  >
+                    {node.hasChildren ? (
+                      state.expanded ? (
+                        <ChevronDownIcon className="h-4 w-4 text-charcoal-400" />
+                      ) : (
+                        <ChevronRightIcon className="h-4 w-4 text-charcoal-400" />
+                      )
+                    ) : (
+                      <div className="h-8 w-4" />
+                    )}
                   </div>
-                ) : null}
-                {node.data.isPartial ? (
-                  <LiveDuration startTime={node.data.startTime} />
-                ) : node.data.duration > 0 ? (
-                  <Duration duration={node.data.duration} />
-                ) : null}
-                {node.data.isCancelled ? (
-                  <Paragraph variant="extra-small" className="text-amber-500">
-                    Cancelled
-                  </Paragraph>
-                ) : null}
+                </div>
+
+                <div className="flex w-full items-center justify-between gap-2 px-1">
+                  <div className="flex items-center gap-2 overflow-x-hidden">
+                    <RunIcon name={node.data.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
+                    <NodeText node={node} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {node.data.isError ? (
+                      <div className="flex items-center gap-1">
+                        <Paragraph variant="extra-small" className="text-rose-500">
+                          Error
+                        </Paragraph>
+                        <ExclamationCircleIcon className="h-3 w-3 text-rose-500" />
+                      </div>
+                    ) : null}
+                    {node.data.isPartial ? (
+                      <LiveDuration startTime={node.data.startTime} />
+                    ) : node.data.duration > 0 ? (
+                      <Duration duration={node.data.duration} />
+                    ) : null}
+                    {node.data.isCancelled ? (
+                      <Paragraph variant="extra-small" className="text-amber-500">
+                        Cancelled
+                      </Paragraph>
+                    ) : null}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
-      />
+            )}
+          />
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        {/* Timeline */}
+        <ResizablePanel order={2} minSize={20} defaultSize={50}>
+          {parentRunFriendlyId && <div className="h-8" />}
+          <TreeView
+            parentRef={parentRef}
+            virtualizer={virtualizer}
+            autoFocus
+            tree={events}
+            nodes={nodes}
+            getNodeProps={getNodeProps}
+            getTreeProps={getTreeProps}
+            parentClassName="h-full pt-2"
+            renderNode={({ node, state, index, virtualizer, virtualItem }) => (
+              <div
+                className={cn(
+                  "h-8 cursor-pointer items-center rounded-r-sm pr-3",
+                  state.selected
+                    ? "bg-grid-dimmed hover:bg-grid-bright"
+                    : "bg-transparent hover:bg-grid-dimmed"
+                )}
+              ></div>
+            )}
+          />
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 }
