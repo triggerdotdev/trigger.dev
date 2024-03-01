@@ -177,13 +177,13 @@ export default function Page() {
                         name={`values[${index}].environmentId`}
                         value={environment.id}
                       />
-                      <label className="flex items-center justify-end" htmlFor={`values[${index}].value`}>
+                      <label
+                        className="flex items-center justify-end"
+                        htmlFor={`values[${index}].value`}
+                      >
                         <EnvironmentLabel environment={environment} className="h-5 px-2" />
                       </label>
-                      <Input
-                        name={`values[${index}].value`}
-                        placeholder="Not set"
-                      />
+                      <Input name={`values[${index}].value`} placeholder="Not set" />
                     </Fragment>
                   );
                 })}
@@ -217,7 +217,7 @@ export default function Page() {
               cancelButton={
                 <LinkButton
                   to={v3EnvironmentVariablesPath(organization, project)}
-                  variant="secondary/small"
+                  variant="tertiary/small"
                 >
                   Cancel
                 </LinkButton>

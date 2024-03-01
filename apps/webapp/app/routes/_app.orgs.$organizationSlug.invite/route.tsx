@@ -141,7 +141,7 @@ export default function Page() {
                 </Button>
               }
               cancelButton={
-                <LinkButton to={organizationTeamPath(organization)} variant={"secondary/small"}>
+                <LinkButton to={organizationTeamPath(organization)} variant={"tertiary/small"}>
                   Cancel
                 </LinkButton>
               }

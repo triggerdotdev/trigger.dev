@@ -194,18 +194,13 @@ export default function NewOrganizationPage() {
 
           <FormButtons
             confirmButton={
-              <Button
-                type="submit"
-                variant={"primary/small"}
-                TrailingIcon="arrow-right"
-                disabled={isLoading}
-              >
+              <Button type="submit" variant={"primary/small"} disabled={isLoading}>
                 Create
               </Button>
             }
             cancelButton={
               hasOrganizations ? (
-                <LinkButton to={rootPath()} variant={"secondary/small"}>
+                <LinkButton to={rootPath()} variant={"tertiary/small"}>
                   Cancel
                 </LinkButton>
               ) : null

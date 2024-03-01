@@ -186,7 +186,7 @@ function LeaveRemoveButton({
       return (
         <SimpleTooltip
           button={
-            <ButtonContent variant="secondary/small" className="cursor-not-allowed">
+            <ButtonContent variant="minimal/small" className="cursor-not-allowed">
               Leave team
             </ButtonContent>
           }
@@ -247,7 +247,7 @@ function LeaveTeamModal({
   return (
     <Alert open={open} onOpenChange={(o) => setOpen(o)}>
       <AlertTrigger asChild>
-        <Button variant="secondary/small">{buttonText}</Button>
+        <Button variant="tertiary/small">{buttonText}</Button>
       </AlertTrigger>
       <AlertContent>
         <AlertHeader>
@@ -274,7 +274,7 @@ function ResendButton({ invite }: { invite: Invite }) {
   return (
     <Form method="post" action={resendInvitePath()}>
       <input type="hidden" value={invite.id} name="inviteId" />
-      <Button type="submit" variant="secondary/small">
+      <Button type="submit" variant="tertiary/small">
         Resend invite
       </Button>
     </Form>

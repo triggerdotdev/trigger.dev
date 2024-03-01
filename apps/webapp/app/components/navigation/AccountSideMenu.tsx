@@ -22,7 +22,7 @@ export function AccountSideMenu({ user }: { user: User }) {
       <div className="flex h-full flex-col">
         <div className={cn("flex items-center justify-between border-b p-px transition")}>
           <LinkButton
-            variant="tertiary/medium"
+            variant="minimal/medium"
             LeadingIcon={ArrowLeftIcon}
             to={rootPath()}
             fullWidth

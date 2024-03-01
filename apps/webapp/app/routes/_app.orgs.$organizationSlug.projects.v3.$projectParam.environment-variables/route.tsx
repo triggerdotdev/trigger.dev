@@ -344,7 +344,7 @@ function EditEnvironmentVariablePanel({
                 </Button>
               }
               cancelButton={
-                <Button onClick={() => setIsOpen(false)} variant="secondary/small" type="button">
+                <Button onClick={() => setIsOpen(false)} variant="tertiary/small" type="button">
                   Cancel
                 </Button>
               }
