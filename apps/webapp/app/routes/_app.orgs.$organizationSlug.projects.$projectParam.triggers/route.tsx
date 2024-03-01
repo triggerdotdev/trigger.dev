@@ -1,3 +1,4 @@
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { Outlet } from "@remix-run/react";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -21,36 +22,37 @@ export default function Page() {
         <PageTitle title="Triggers" />
         <PageAccessories>
           <LinkButton
-            LeadingIcon={"docs"}
+            LeadingIcon={BookOpenIcon}
             to={docsPath("documentation/concepts/triggers")}
-            variant="secondary/small"
+            variant="minimal/small"
           >
             Triggers documentation
           </LinkButton>
         </PageAccessories>
-
-        <PageTabs
-          layoutId="triggers"
-          tabs={[
-            {
-              label: "External Triggers",
-              to: projectTriggersPath(organization, project),
-            },
-            {
-              label: "Scheduled Triggers",
-              to: projectScheduledTriggersPath(organization, project),
-            },
-            {
-              label: "Webhook Triggers",
-              to: projectWebhookTriggersPath(organization, project),
-            },
-          ]}
-        />
       </NavBar>
 
       <PageBody scrollable={false}>
-        <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-          <Outlet />
+        <div className="grid grid-rows-[auto_1fr] gap-y-4 px-4">
+          <PageTabs
+            layoutId="triggers"
+            tabs={[
+              {
+                label: "External Triggers",
+                to: projectTriggersPath(organization, project),
+              },
+              {
+                label: "Scheduled Triggers",
+                to: projectScheduledTriggersPath(organization, project),
+              },
+              {
+                label: "Webhook Triggers",
+                to: projectWebhookTriggersPath(organization, project),
+              },
+            ]}
+          />
+          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <Outlet />
+          </div>
         </div>
       </PageBody>
     </PageContainer>

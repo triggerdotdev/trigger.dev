@@ -21,6 +21,7 @@ import selectExample from "./select-example.png";
 import { StepContentContainer } from "../StepContentContainer";
 import { TriggerDevCommand } from "../SetupCommands";
 import { IntegrationIcon } from "~/assets/icons/IntegrationIcon";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 
 export function HowToRunYourJob() {
   const organization = useOrganization();
@@ -55,8 +56,8 @@ export function HowToRunYourJob() {
 
         <LinkButton
           to="https://trigger.dev/docs/documentation/guides/running-jobs"
-          variant={"primary/small"}
-          LeadingIcon={"docs"}
+          variant={"tertiary/small"}
+          LeadingIcon={BookOpenIcon}
           leadingIconClassName="text-text-bright"
         >
           How to run a Job

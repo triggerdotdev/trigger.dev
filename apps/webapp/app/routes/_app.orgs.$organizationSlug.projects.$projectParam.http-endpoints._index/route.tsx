@@ -1,3 +1,4 @@
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
@@ -47,9 +48,9 @@ export default function Page() {
         <PageTitle title="HTTP endpoints" />
         <PageAccessories>
           <LinkButton
-            LeadingIcon={"docs"}
+            variant={"minimal/small"}
+            LeadingIcon={BookOpenIcon}
             to={docsPath("documentation/concepts/http-endpoints")}
-            variant="secondary/small"
           >
             HTTP endpoints documentation
           </LinkButton>

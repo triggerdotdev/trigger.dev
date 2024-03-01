@@ -1,3 +1,4 @@
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
@@ -57,9 +58,9 @@ export default function Page() {
         <PageTitle title="API Keys" />
         <PageAccessories>
           <LinkButton
-            LeadingIcon={"docs"}
+            variant={"minimal/small"}
+            LeadingIcon={BookOpenIcon}
             to={docsPath("/documentation/concepts/environments-endpoints#environments")}
-            variant="secondary/small"
           >
             API keys docs
           </LinkButton>

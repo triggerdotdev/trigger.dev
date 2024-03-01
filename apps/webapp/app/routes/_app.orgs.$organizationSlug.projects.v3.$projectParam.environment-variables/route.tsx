@@ -167,7 +167,7 @@ export default function Page() {
           <LinkButton
             LeadingIcon={BookOpenIcon}
             to={docsPath("/documentation/concepts/environments-endpoints#environments")}
-            variant="secondary/small"
+            variant="minimal/small"
           >
             Environment variables docs
           </LinkButton>

@@ -1,4 +1,4 @@
-import { CheckIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, CheckIcon } from "@heroicons/react/20/solid";
 import { StopIcon } from "@heroicons/react/24/outline";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -77,9 +77,9 @@ export default function Page() {
         />
         <PageAccessories>
           <LinkButton
-            LeadingIcon={"docs"}
+            variant={"minimal/small"}
+            LeadingIcon={BookOpenIcon}
             to={docsPath("documentation/concepts/http-endpoints")}
-            variant="secondary/small"
           >
             HTTP endpoints documentation
           </LinkButton>

@@ -42,6 +42,7 @@ import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
 import { FirstEndpointSheet } from "./FirstEndpointSheet";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -123,9 +124,9 @@ export default function Page() {
         <PageTitle title="Environments & API Keys" />
         <PageAccessories>
           <LinkButton
-            LeadingIcon={"docs"}
+            variant={"minimal/small"}
+            LeadingIcon={BookOpenIcon}
             to={docsPath("/documentation/concepts/environments-endpoints#environments")}
-            variant="secondary/small"
           >
             Environments documentation
           </LinkButton>

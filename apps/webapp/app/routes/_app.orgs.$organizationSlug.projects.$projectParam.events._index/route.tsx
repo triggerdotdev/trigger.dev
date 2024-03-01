@@ -14,6 +14,7 @@ import { EventListPresenter } from "~/presenters/EventListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema, docsPath, projectPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -55,9 +56,9 @@ export default function Page() {
         <PageTitle title={`${project.name} events`} />
         <PageAccessories>
           <LinkButton
-            LeadingIcon={"docs"}
+            variant={"minimal/small"}
+            LeadingIcon={BookOpenIcon}
             to={docsPath("documentation/concepts/triggers/events")}
-            variant="secondary/small"
           >
             Event documentation
           </LinkButton>

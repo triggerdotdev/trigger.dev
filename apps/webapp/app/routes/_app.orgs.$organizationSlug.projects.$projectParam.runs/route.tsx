@@ -14,6 +14,7 @@ import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema, docsPath, projectPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -57,9 +58,9 @@ export default function Page() {
         <PageTitle title={`${project.name} runs`} />
         <PageAccessories>
           <LinkButton
-            LeadingIcon={"docs"}
+            variant={"minimal/small"}
+            LeadingIcon={BookOpenIcon}
             to={docsPath("documentation/concepts/runs")}
-            variant="secondary/small"
           >
             Run documentation
           </LinkButton>

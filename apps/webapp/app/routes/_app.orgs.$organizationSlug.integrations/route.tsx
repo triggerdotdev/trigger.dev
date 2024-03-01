@@ -65,7 +65,7 @@ export default function Integrations() {
         <PageAccessories>
           <LinkButton
             to={docsPath("/integrations/introduction")}
-            variant="secondary/small"
+            variant="minimal/small"
             LeadingIcon="docs"
           >
             Integrations documentation

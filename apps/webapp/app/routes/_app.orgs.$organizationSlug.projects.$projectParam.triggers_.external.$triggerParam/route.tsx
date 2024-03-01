@@ -124,92 +124,96 @@ export default function Page() {
             text: "External Triggers",
           }}
         />
-
-        <PageInfoRow>
-          <PageInfoGroup>
-            <PageInfoProperty
-              icon={trigger.integration.definition.icon ?? trigger.integration.definitionId}
-              label={trigger.integration.title ?? ""}
-              value={trigger.integration.slug}
-            />
-            <PageInfoProperty
-              label={trigger.active ? "Active" : "Inactive"}
-              value={
-                <NamedIcon name={trigger.active ? "active" : "inactive"} className="h-4 w-4" />
-              }
-            />
-            {trigger.dynamic && (
-              <PageInfoProperty
-                label="Dynamic"
-                value={
-                  <span className="flex items-center gap-0.5">
-                    <NamedIcon name="dynamic" className="h-4 w-4" />
-                    {trigger.dynamic.slug}
-                  </span>
-                }
-              />
-            )}
-            <PageInfoProperty
-              label="Environment"
-              value={<EnvironmentLabel environment={trigger.environment} />}
-            />
-          </PageInfoGroup>
-        </PageInfoRow>
       </NavBar>
 
       <PageBody scrollable={false}>
-        <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-          <Header2 spacing>External Trigger registration runs</Header2>
-          <Paragraph variant="small" spacing>
-            External Triggers need to be registered with the external service. You can see the list
-            of attempted registrations below.
-          </Paragraph>
-
-          {!trigger.active &&
-            (trigger.registrationJob ? (
-              <Form method="post" {...form.props}>
-                <Callout variant="error" className="justiy-between mb-4 items-center">
-                  <Paragraph variant="small" className={cn(variantClasses.error.textColor, "grow")}>
-                    Registration hasn't succeeded yet, check the runs below.
-                  </Paragraph>
-                  <input
-                    {...conform.input(jobId, { type: "hidden" })}
-                    defaultValue={trigger.registrationJob?.id}
-                  />
-                  <Button
-                    variant="danger/small"
-                    type="submit"
-                    name={conform.INTENT}
-                    value="retry"
-                    disabled={isLoading}
-                    LeadingIcon={isLoading ? "spinner-white" : undefined}
-                  >
-                    {isLoading ? "Retrying…" : "Retry now"}
-                  </Button>
-                </Callout>
-              </Form>
-            ) : trigger.dynamic ? null : (
-              <Callout variant="error" className="justiy-between mb-4 items-center">
-                This External Trigger hasn't registered successfully. Contact support for help:{" "}
-                {trigger.id}
-              </Callout>
-            ))}
-
-          {trigger.runList ? (
-            <>
-              <ListPagination list={trigger.runList} className="mb-2 justify-end" />
-              <RunsTable
-                runs={trigger.runList.runs}
-                total={trigger.runList.runs.length}
-                hasFilters={false}
-                runsParentPath={externalTriggerRunsParentPath(organization, project, trigger)}
-                currentUser={user}
+        <div className="grid grid-rows-[auto_1fr] gap-y-4 p-4">
+          <PageInfoRow>
+            <PageInfoGroup>
+              <PageInfoProperty
+                icon={trigger.integration.definition.icon ?? trigger.integration.definitionId}
+                label={trigger.integration.title ?? ""}
+                value={trigger.integration.slug}
               />
-              <ListPagination list={trigger.runList} className="mt-2 justify-end" />
-            </>
-          ) : (
-            <Callout variant="warning">No registration runs found</Callout>
-          )}
+              <PageInfoProperty
+                label={trigger.active ? "Active" : "Inactive"}
+                value={
+                  <NamedIcon name={trigger.active ? "active" : "inactive"} className="h-4 w-4" />
+                }
+              />
+              {trigger.dynamic && (
+                <PageInfoProperty
+                  label="Dynamic"
+                  value={
+                    <span className="flex items-center gap-0.5">
+                      <NamedIcon name="dynamic" className="h-4 w-4" />
+                      {trigger.dynamic.slug}
+                    </span>
+                  }
+                />
+              )}
+              <PageInfoProperty
+                label="Environment"
+                value={<EnvironmentLabel environment={trigger.environment} />}
+              />
+            </PageInfoGroup>
+          </PageInfoRow>
+          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <Header2 spacing>External Trigger registration runs</Header2>
+            <Paragraph variant="small" spacing>
+              External Triggers need to be registered with the external service. You can see the
+              list of attempted registrations below.
+            </Paragraph>
+
+            {!trigger.active &&
+              (trigger.registrationJob ? (
+                <Form method="post" {...form.props}>
+                  <Callout variant="error" className="justiy-between mb-4 items-center">
+                    <Paragraph
+                      variant="small"
+                      className={cn(variantClasses.error.textColor, "grow")}
+                    >
+                      Registration hasn't succeeded yet, check the runs below.
+                    </Paragraph>
+                    <input
+                      {...conform.input(jobId, { type: "hidden" })}
+                      defaultValue={trigger.registrationJob?.id}
+                    />
+                    <Button
+                      variant="danger/small"
+                      type="submit"
+                      name={conform.INTENT}
+                      value="retry"
+                      disabled={isLoading}
+                      LeadingIcon={isLoading ? "spinner-white" : undefined}
+                    >
+                      {isLoading ? "Retrying…" : "Retry now"}
+                    </Button>
+                  </Callout>
+                </Form>
+              ) : trigger.dynamic ? null : (
+                <Callout variant="error" className="justiy-between mb-4 items-center">
+                  This External Trigger hasn't registered successfully. Contact support for help:{" "}
+                  {trigger.id}
+                </Callout>
+              ))}
+
+            {trigger.runList ? (
+              <>
+                <ListPagination list={trigger.runList} className="mb-2 justify-end" />
+                <RunsTable
+                  runs={trigger.runList.runs}
+                  total={trigger.runList.runs.length}
+                  hasFilters={false}
+                  runsParentPath={externalTriggerRunsParentPath(organization, project, trigger)}
+                  currentUser={user}
+                />
+                <ListPagination list={trigger.runList} className="mt-2 justify-end" />
+              </>
+            ) : (
+              <Callout variant="warning">No registration runs found</Callout>
+            )}
+          </div>
         </div>
       </PageBody>
     </PageContainer>
