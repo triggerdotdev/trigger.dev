@@ -1,21 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
 import { Toaster, toast } from "sonner";
-import { ToastUI } from "../primitives/Toast";
-import { Button } from "../primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
+import { ToastUI } from "~/components/primitives/Toast";
 
-const meta: Meta = {
-  title: "Primitives/Toast",
-};
-
-export default meta;
-
-type Story = StoryObj<typeof Collection>;
-
-export const Toasts: Story = {
-  render: () => <Collection />,
-};
-
-function Collection() {
+export default function Story() {
   return (
     <div className="flex flex-col items-start gap-y-4 p-4">
       <ToastUI variant="success" message="Success UI" t="-" />
@@ -34,17 +21,17 @@ function Collection() {
           })
         }
       >
-        Success
+        Trigger success toast
       </Button>
       <Button
-        variant="primary/large"
+        variant="danger/large"
         onClick={() =>
           toast.custom((t) => <ToastUI variant="error" message="Error" t={t as string} />, {
             duration: Infinity,
           })
         }
       >
-        Error
+        Trigger error toast
       </Button>
 
       <Toaster />
