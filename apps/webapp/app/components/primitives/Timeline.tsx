@@ -1,20 +1,24 @@
+import { ReactNode } from "react";
+
 type TimelineProps = {
   totalDurationMs: number;
-  tickCount: number;
   /** A number between 0 and 1 */
   scale: number;
   minWidth?: number;
   maxWidth?: number;
   className?: string;
+  tickCount?: number;
+  renderTick?: (options: { index: number; durationMs: number }) => ReactNode;
 };
 
 export function Timeline({
   totalDurationMs,
-  tickCount,
+  tickCount = 5,
   scale = 0.5,
   minWidth = 300,
   maxWidth = 2000,
   className,
+  renderTick,
 }: TimelineProps) {
   const pixelWidth = calculatePixelWidth(minWidth, maxWidth, scale);
   return (
@@ -24,7 +28,21 @@ export function Timeline({
         position: "relative",
         width: `${pixelWidth}px`,
       }}
-    ></div>
+    >
+      {renderTick !== undefined &&
+        Array.from({ length: tickCount }).map((_, index) => {
+          const position = (100 / (tickCount - 1)) * index;
+          const durationMs = (totalDurationMs / tickCount) * index;
+          return (
+            <div key={index} className="absolute h-full" style={{ top: 0, left: `${position}%` }}>
+              {renderTick({
+                index,
+                durationMs,
+              })}
+            </div>
+          );
+        })}
+    </div>
   );
 }
 
