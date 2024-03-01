@@ -41,6 +41,10 @@ const stories: Story[] = [
     slug: "dialog",
   },
   {
+    name: "Free plan usage",
+    slug: "free-plan-usage",
+  },
+  {
     name: "Typography",
     slug: "typography",
   },

@@ -1,16 +1,6 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { FreePlanUsage } from "../billing/FreePlanUsage";
-import { organizationBillingPath } from "~/utils/pathBuilder";
+import { FreePlanUsage } from "~/components/billing/FreePlanUsage";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
-
-const meta: Meta<typeof FreePlanUsageBar> = {
-  title: "Billing/FreePlanUsage",
-  component: FreePlanUsageBar,
-};
-
-export default meta;
-
-type Story = StoryObj<typeof FreePlanUsageBar>;
+import { organizationBillingPath } from "~/utils/pathBuilder";
 
 const mockOrganization: MatchedOrganization = {
   id: "mockID",
@@ -24,18 +14,11 @@ const mockOrganization: MatchedOrganization = {
   runsEnabled: true,
 };
 
-export const ProgressBar: Story = {
-  args: {
-    organization: mockOrganization,
-  },
-  render: (args) => <FreePlanUsageBar {...args} />,
-};
-
 type FreePlanUsageBarProps = {
   organization: MatchedOrganization;
 };
 
-function FreePlanUsageBar({ organization }: FreePlanUsageBarProps) {
+export default function Story({ organization = mockOrganization }: FreePlanUsageBarProps) {
   return (
     <div className="flex h-screen flex-col items-center justify-center p-12">
       <div className="w-fit">
