@@ -18,7 +18,7 @@ const execPromise = (command) =>
 const appRoot = process.cwd();
 const generatedPath = path.join(appRoot, "src", "generated");
 const protosPath = path.join(appRoot, "protos");
-const pluginPath = path.join(appRoot, "node_modules", ".bin", "protoc-gen-ts_proto");
+const pluginPath = path.join(appRoot, "node_modules", ".bin", "protoc-gen-ts_proto.cmd");
 
 // Ensure the generated directory exists
 await fs.mkdir(generatedPath, { recursive: true });
@@ -39,7 +39,7 @@ const protos = [
 for (const proto of protos) {
   const protosFullPath = path.join(protosPath, proto);
   const command =
-    `protoc --plugin=${pluginPath} ` +
+    `protoc --plugin=protoc-gen-ts_proto=${pluginPath} ` +
     `--ts_proto_out=${generatedPath} ` +
     `--proto_path=${protosPath} ` +
     `--ts_proto_opt=forceLong=bigint ` +
