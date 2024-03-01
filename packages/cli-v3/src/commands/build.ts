@@ -241,8 +241,6 @@ async function runBuild(
   );
 
   const containerfileContents = containerfile
-    .replace("__API_URL__", auth.apiUrl)
-    .replace("__API_KEY__", auth.apiKey)
     .replace("__CONTENT_HASH__", contentHash)
     .replace("__PROJECT_DIR__", config.projectDir)
     .replace("__PROJECT_REF__", config.project)
