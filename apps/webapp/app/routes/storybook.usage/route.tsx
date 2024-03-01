@@ -1,21 +1,7 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { UsageBar } from "../billing/UsageBar";
-import { Paragraph } from "../primitives/Paragraph";
+import { UsageBar } from "~/components/billing/UsageBar";
+import { Paragraph } from "~/components/primitives/Paragraph";
 
-const meta: Meta<typeof UsageProgressBar> = {
-  title: "Billing/UsageBar",
-  component: UsageProgressBar,
-};
-
-export default meta;
-
-type Story = StoryObj<typeof UsageProgressBar>;
-
-export const JobsUsageBar: Story = {
-  render: () => <UsageProgressBar />,
-};
-
-function UsageProgressBar() {
+export default function Story() {
   return (
     <div className="flex flex-col justify-center gap-4 p-12">
       <UsageBarWrapper title="Usage within the free tier limit">
