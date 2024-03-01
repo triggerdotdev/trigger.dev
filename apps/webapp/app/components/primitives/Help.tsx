@@ -46,7 +46,7 @@ export function HelpTrigger({ title }: { title: string }) {
     <></>
   ) : (
     <Button
-      variant="tertiary/small"
+      variant="minimal/small"
       LeadingIcon="lightbulb"
       leadingIconClassName="text-amber-400"
       onClick={() => setOpen(true)}
@@ -78,7 +78,7 @@ export function HelpContent({
             </div>
             {allowDismissing && (
               <Button
-                variant="tertiary/small"
+                variant="minimal/small"
                 TrailingIcon="close"
                 trailingIconClassName="text-charcoal-400"
                 onClick={() => setOpen(false)}
