@@ -8,17 +8,17 @@ import { ShortcutKey } from "./ShortcutKey";
 const sizes = {
   small: {
     button: "h-6 px-2.5 text-xs",
-    icon: "h-3.5",
-    iconSpacing: "gap-x-1",
+    icon: "h-3.5 -mx-1",
+    iconSpacing: "gap-x-2.5",
     shortcutVariant: "small" as const,
     shortcut: "ml-2 -mr-1.5 justify-self-center",
   },
   medium: {
-    button: "h-8 px-2 text-sm",
-    icon: "h-4",
-    iconSpacing: "gap-x-0.5",
+    button: "h-8 px-2.5 text-sm",
+    icon: "h-4 -mx-1",
+    iconSpacing: "gap-x-2.5",
     shortcutVariant: "medium" as const,
-    shortcut: "ml-1.5 -mr-0.5 justify-self-center",
+    shortcut: "ml-2 -mr-1.5 rounded justify-self-center",
   },
   large: {
     button: "h-10 px-2 text-sm font-medium",
@@ -43,21 +43,21 @@ const theme = {
     textColor:
       "text-charcoal-900 group-hover:text-charcoal-900 transition group-disabled:text-charcoal-900",
     button:
-      "bg-primary group-hover:bg-apple-200 group-disabled:opacity-50 group-disabled:pointer-events-none",
+      "bg-primary group-hover:bg-apple-200 group-disabled:opacity-50 group-disabled:bg-primary group-disabled:pointer-events-none",
     shortcut:
       "border-black/40 text-charcoal-900 group-hover:border-black/60 group-hover:text-charcoal-900",
   },
   secondary: {
     textColor: "text-primary group-hover:text-apple-200 transition group-disabled:text-primary",
     button:
-      "bg-transparent border border-primary group-hover:border-apple-200 group-hover:bg-apple-950 disabled:opacity-20 group-disabled:pointer-events-none",
+      "bg-transparent border border-primary group-hover:border-apple-200 group-hover:bg-apple-950 group-disabled:opacity-30 group-disabled:border-primary group-disabled:bg-transparent group-disabled:pointer-events-none",
     shortcut:
       "border-primary/30 text-apple-200 group-hover:text-text-bright/80 group-hover:border-dimmed/60",
   },
   tertiary: {
     textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
     button:
-      "bg-tertiary group-hover:bg-charcoal-600 disabled:opacity-50 group-disabled:pointer-events-none",
+      "bg-tertiary group-hover:bg-charcoal-600 group-disabled:bg-tertiary group-disabled:opacity-60 group-disabled:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright group-hover:border-text-dimmed",
   },
@@ -65,7 +65,7 @@ const theme = {
     textColor:
       "text-text-dimmed group-hover:text-text-bright transition group-disabled:text-text-dimmed/80",
     button:
-      "bg-transparent group-hover:bg-charcoal-850 disabled:opacity-50 group-disabled:pointer-events-none",
+      "bg-transparent group-hover:bg-tertiary disabled:opacity-50 group-disabled:bg-transparent group-disabled:pointer-events-none",
     shortcut:
       "border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60",
   },
@@ -73,8 +73,8 @@ const theme = {
     textColor:
       "text-text-bright group-hover:text-white transition group-disabled:text-text-bright/80",
     button:
-      "bg-rose-600 group-hover:bg-rose-500 disabled:opacity-50 group-disabled:pointer-events-none",
-    shortcut: "border-bright/40 text-text-bright group-hover:border-bright/60",
+      "bg-error group-hover:bg-rose-500 disabled:opacity-50 group-disabled:bg-error group-disabled:pointer-events-none",
+    shortcut: "border-text-bright text-text-bright group-hover:border-bright/60",
   },
 };
 
