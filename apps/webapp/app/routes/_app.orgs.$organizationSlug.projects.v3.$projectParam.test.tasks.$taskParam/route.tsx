@@ -1,5 +1,6 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { BeakerIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigation, useSubmit } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useRef, useState } from "react";
@@ -232,8 +233,7 @@ export default function Page() {
         <Button
           type="submit"
           variant="primary/small"
-          LeadingIcon="beaker"
-          leadingIconClassName="text-text-bright"
+          LeadingIcon={BeakerIcon}
           shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
         >
           Run test
