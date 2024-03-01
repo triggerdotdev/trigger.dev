@@ -74,38 +74,42 @@ export default function Integrations() {
             text: "Integrations",
           }}
         />
-
-        <PageInfoRow>
-          <PageInfoGroup>
-            <PageInfoProperty
-              label="ID"
-              value={<ClipboardField value={client.slug} variant="tertiary/small" />}
-            />
-            <PageInfoProperty
-              icon={client.integration.icon ?? client.integration.identifier}
-              label="API"
-              value={client.integration.name}
-            />
-            <PageInfoProperty label="Method" value={client.authMethod.name} />
-            <PageInfoProperty label="Type" value={connectionType(client.type)} />
-            <PageInfoProperty icon="job" label="Jobs" value={client.jobCount} />
-            <PageInfoProperty
-              icon="key"
-              label="Client id"
-              value={client.customClientId ? client.customClientId : "Auto"}
-            />
-            <PageInfoProperty
-              icon="calendar"
-              label="Added"
-              value={<DateTime date={client.createdAt} />}
-            />
-          </PageInfoGroup>
-        </PageInfoRow>
-        <PageTabs layoutId="integrations" tabs={tabs} />
       </NavBar>
 
-      <PageBody scrollable={true}>
-        <Outlet />
+      <PageBody>
+        <div className="grid grid-rows-[auto_1fr]">
+          <div>
+            <PageInfoRow>
+              <PageInfoGroup>
+                <PageInfoProperty
+                  label="ID"
+                  value={<ClipboardField value={client.slug} variant="tertiary/small" />}
+                />
+                <PageInfoProperty
+                  icon={client.integration.icon ?? client.integration.identifier}
+                  label="API"
+                  value={client.integration.name}
+                />
+                <PageInfoProperty label="Method" value={client.authMethod.name} />
+                <PageInfoProperty label="Type" value={connectionType(client.type)} />
+                <PageInfoProperty icon="job" label="Jobs" value={client.jobCount} />
+                <PageInfoProperty
+                  icon="key"
+                  label="Client id"
+                  value={client.customClientId ? client.customClientId : "Auto"}
+                />
+                <PageInfoProperty
+                  icon="calendar"
+                  label="Added"
+                  value={<DateTime date={client.createdAt} />}
+                />
+              </PageInfoGroup>
+            </PageInfoRow>
+            <PageTabs layoutId="integrations" tabs={tabs} />
+          </div>
+
+          <Outlet />
+        </div>
       </PageBody>
     </PageContainer>
   );
