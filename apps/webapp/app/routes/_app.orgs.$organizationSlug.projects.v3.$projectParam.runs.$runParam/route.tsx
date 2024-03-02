@@ -43,6 +43,8 @@ import { getResizableRunSettings, setResizableRunSettings } from "~/services/res
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3RunParamsSchema, v3RunPath, v3RunSpanPath, v3RunsPath } from "~/utils/pathBuilder";
+import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
+import { Badge } from "~/components/primitives/Badge";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -181,7 +183,7 @@ function TasksTreeView({
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
   const [showDurations, setShowDurations] = useState(false);
-  const [scale, setScale] = useState(0.5);
+  const [scale, setScale] = useState(0.25);
   const parentRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -316,21 +318,9 @@ function TasksTreeView({
                   <div className="flex items-center gap-2 overflow-x-hidden">
                     <RunIcon name={node.data.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
                     <NodeText node={node} />
+                    {node.data.isRoot && <Badge variant="outline-rounded">Root</Badge>}
                   </div>
                   <div className="flex items-center gap-2">
-                    {node.data.isError ? (
-                      <div className="flex items-center gap-1">
-                        <Paragraph variant="extra-small" className="text-rose-500">
-                          Error
-                        </Paragraph>
-                        <ExclamationCircleIcon className="h-3 w-3 text-rose-500" />
-                      </div>
-                    ) : null}
-                    {node.data.isPartial ? (
-                      <LiveDuration startTime={node.data.startTime} />
-                    ) : node.data.duration > 0 ? (
-                      <Duration duration={node.data.duration} />
-                    ) : null}
                     {node.data.isCancelled ? (
                       <Paragraph variant="extra-small" className="text-amber-500">
                         Cancelled
@@ -439,11 +429,15 @@ function TasksTreeView({
                               showDuration={state.selected ? true : showDurations}
                               startMs={nanosecondsToMilliseconds(node.data.offset)}
                               durationMs={nanosecondsToMilliseconds(node.data.duration)}
+                              node={node}
                             />
                           ) : (
                             <Timeline.Point
                               ms={nanosecondsToMilliseconds(node.data.offset)}
-                              className="-ml-1.5 h-3 w-3 rounded-full border-2 border-background-bright bg-text-dimmed"
+                              className={cn(
+                                "-ml-1.5 h-3 w-3 rounded-full border-2 border-background-bright",
+                                node.data.isError ? "bg-error" : "bg-text-dimmed"
+                              )}
                             />
                           )}
                         </Timeline.Row>
@@ -525,11 +519,21 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
 
 function SpanWithDuration({
   showDuration,
+  node,
   ...props
-}: Timeline.SpanProps & { showDuration: boolean }) {
+}: Timeline.SpanProps & { node: RunEvent; showDuration: boolean }) {
+  const backgroundColor = node.data.isError ? "bg-error" : "bg-blue-500";
+
   return (
     <Timeline.Span {...props}>
-      <div className="relative flex h-5 w-full min-w-px items-center rounded-sm bg-blue-500">
+      <div
+        className={cn("relative flex h-5 w-full min-w-px items-center rounded-sm", backgroundColor)}
+        style={
+          node.data.isPartial
+            ? { backgroundImage: `url(${tileBgPath})`, backgroundSize: "8px 8px" }
+            : undefined
+        }
+      >
         <div
           className={cn(
             "sticky left-0 z-10 transition group-hover:opacity-100",

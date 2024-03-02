@@ -79,7 +79,7 @@ export class RunPresenter {
             n.data.startTime.getTime() - treeRootStartTimeMs
           );
           duration = Math.max(duration, offset + n.data.duration);
-          return { ...n, data: { ...n.data, offset } };
+          return { ...n, data: { ...n.data, offset, isRoot: n.id === traceSummary.rootSpan.id } };
         })
       : [];
 
