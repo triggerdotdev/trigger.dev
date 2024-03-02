@@ -25,7 +25,6 @@ import {
   CreatableEventEnvironmentType,
 } from "./eventRepository.server";
 import { logger } from "~/services/logger.server";
-import { env } from "~/env.server";
 
 export type OTLPExporterConfig = {
   batchSize: number;
@@ -39,6 +38,8 @@ class OTLPExporter {
   ) {}
 
   async exportTraces(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse> {
+    this.#logExportTracesVerbose(request);
+
     const events = this.#filterResourceSpans(request.resourceSpans).flatMap((resourceSpan) => {
       return convertSpansToCreateableEvents(resourceSpan);
     });
@@ -51,6 +52,8 @@ class OTLPExporter {
   }
 
   async exportLogs(request: ExportLogsServiceRequest): Promise<ExportLogsServiceResponse> {
+    this.#logExportLogsVerbose(request);
+
     const events = this.#filterResourceLogs(request.resourceLogs).flatMap((resourceLog) => {
       return convertLogsToCreateableEvents(resourceLog);
     });
@@ -67,6 +70,32 @@ class OTLPExporter {
 
     events.forEach((event) => {
       logger.debug("Exporting event", { event });
+    });
+  }
+
+  #logExportTracesVerbose(request: ExportTraceServiceRequest) {
+    if (!this._verbose) return;
+
+    logger.debug("Exporting traces", {
+      resourceSpans: request.resourceSpans.length,
+      totalSpans: request.resourceSpans.reduce(
+        (acc, resourceSpan) => acc + resourceSpan.scopeSpans.length,
+        0
+      ),
+    });
+  }
+
+  #logExportLogsVerbose(request: ExportLogsServiceRequest) {
+    if (!this._verbose) return;
+
+    logger.debug("Exporting logs", {
+      resourceLogs: request.resourceLogs.length,
+      totalLogs: request.resourceLogs.reduce(
+        (acc, resourceLog) =>
+          acc +
+          resourceLog.scopeLogs.reduce((acc, scopeLog) => acc + scopeLog.logRecords.length, 0),
+        0
+      ),
     });
   }
 
@@ -263,6 +292,7 @@ function extractResourceProperties(attributes: KeyValue[]) {
       "unknown"
     ),
     runId: extractStringAttribute(attributes, SemanticInternalAttributes.RUN_ID, "unknown"),
+    runIsTest: extractBooleanAttribute(attributes, SemanticInternalAttributes.RUN_IS_TEST, false),
     attemptId: extractStringAttribute(attributes, SemanticInternalAttributes.ATTEMPT_ID),
     attemptNumber: extractNumberAttribute(attributes, SemanticInternalAttributes.ATTEMPT_NUMBER),
     taskSlug: extractStringAttribute(attributes, SemanticInternalAttributes.TASK_SLUG, "unknown"),
@@ -272,6 +302,7 @@ function extractResourceProperties(attributes: KeyValue[]) {
     workerVersion: extractStringAttribute(attributes, SemanticInternalAttributes.WORKER_VERSION),
     queueId: extractStringAttribute(attributes, SemanticInternalAttributes.QUEUE_ID),
     queueName: extractStringAttribute(attributes, SemanticInternalAttributes.QUEUE_NAME),
+    batchId: extractStringAttribute(attributes, SemanticInternalAttributes.BATCH_ID),
   };
 }
 
@@ -506,6 +537,20 @@ function extractNumberAttribute(
   return isIntValue(attribute?.value) ? Number(attribute.value.value.intValue) : fallback;
 }
 
+function extractBooleanAttribute(attributes: KeyValue[], name: string): boolean | undefined;
+function extractBooleanAttribute(attributes: KeyValue[], name: string, fallback: boolean): boolean;
+function extractBooleanAttribute(
+  attributes: KeyValue[],
+  name: string,
+  fallback?: boolean
+): boolean | undefined {
+  const attribute = attributes.find((attribute) => attribute.key === name);
+
+  if (!attribute) return fallback;
+
+  return isBoolValue(attribute?.value) ? attribute.value.value.boolValue : fallback;
+}
+
 function isPartialSpan(span: Span): boolean {
   if (!span.attributes) return false;
 
@@ -566,4 +611,7 @@ function binaryToHex(buffer: Buffer | undefined): string | undefined {
   return Buffer.from(Array.from(buffer)).toString("hex");
 }
 
-export const otlpExporter = new OTLPExporter(eventRepository, false);
+export const otlpExporter = new OTLPExporter(
+  eventRepository,
+  process.env.OTL_EXPORTER_VERBOSE === "1"
+);

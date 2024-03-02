@@ -1,25 +1,15 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import {
-  parseBatchTriggerTaskRequestBody,
-  parseTriggerTaskRequestBody,
-} from "@trigger.dev/core/v3";
+import { parseBatchTriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { MAX_BATCH_TRIGGER_ITEMS } from "~/consts";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { BatchTriggerTaskService } from "~/v3/services/batchTriggerTask.server";
-import { TriggerTaskService } from "~/v3/services/triggerTask.server";
+import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 
 const ParamsSchema = z.object({
   taskId: z.string(),
-});
-
-const HeadersSchema = z.object({
-  "idempotency-key": z.string().optional().nullable(),
-  "trigger-version": z.string().optional().nullable(),
-  traceparent: z.string().optional(),
-  tracestate: z.string().optional(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -46,6 +36,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const {
     "idempotency-key": idempotencyKey,
     "trigger-version": triggerVersion,
+    "x-trigger-span-parent-as-link": spanParentAsLink,
     traceparent,
     tracestate,
   } = headers.data;
@@ -89,6 +80,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       idempotencyKey: idempotencyKey ?? undefined,
       triggerVersion: triggerVersion ?? undefined,
       traceContext: traceparent ? { traceparent, tracestate } : undefined,
+      spanParentAsLink: spanParentAsLink === 1,
     });
 
     if (!result) {

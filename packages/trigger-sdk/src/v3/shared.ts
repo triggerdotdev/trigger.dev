@@ -160,13 +160,18 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
       const handle = await tracer.startActiveSpan(
         taskMetadata ? "Trigger" : `${params.id} trigger()`,
         async (span) => {
-          const response = await apiClient.triggerTask(params.id, {
-            payload: payload,
-            options: {
-              queue: params.queue,
-              concurrencyKey: options?.concurrencyKey,
+          const response = await apiClient.triggerTask(
+            params.id,
+            {
+              payload: payload,
+              options: {
+                queue: params.queue,
+                concurrencyKey: options?.concurrencyKey,
+                test: taskContextManager.ctx?.run.isTest,
+              },
             },
-          });
+            { spanParentAsLink: true }
+          );
 
           if (!response.ok) {
             throw new Error(response.error);
@@ -215,15 +220,20 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
       const response = await tracer.startActiveSpan(
         taskMetadata ? "Batch trigger" : `${params.id} batchTrigger()`,
         async (span) => {
-          const response = await apiClient.batchTriggerTask(params.id, {
-            items: items.map((item) => ({
-              payload: item.payload,
-              options: {
-                queue: item.options?.queue ?? params.queue,
-                concurrencyKey: item.options?.concurrencyKey,
-              },
-            })),
-          });
+          const response = await apiClient.batchTriggerTask(
+            params.id,
+            {
+              items: items.map((item) => ({
+                payload: item.payload,
+                options: {
+                  queue: item.options?.queue ?? params.queue,
+                  concurrencyKey: item.options?.concurrencyKey,
+                  test: taskContextManager.ctx?.run.isTest,
+                },
+              })),
+            },
+            { spanParentAsLink: true }
+          );
 
           if (!response.ok) {
             throw new Error(response.error);
@@ -244,7 +254,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
               .map((item) => JSON.stringify(item.payload))
               .join("").length,
             [SemanticAttributes.MESSAGING_SYSTEM]: "trigger.dev",
-            [SemanticInternalAttributes.STYLE_ICON]: "batch-trigger",
+            [SemanticInternalAttributes.STYLE_ICON]: "trigger",
             ...(taskMetadata
               ? accessoryAttributes({
                   items: [
@@ -287,6 +297,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
               lockToVersion: taskContextManager.worker?.version, // Lock to current version because we're waiting for it to finish
               queue: params.queue,
               concurrencyKey: options?.concurrencyKey,
+              test: taskContextManager.ctx?.run.isTest,
             },
           });
 
@@ -305,7 +316,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             throw createErrorTaskError(result.error);
           }
 
-          return JSON.parse(result.output);
+          return typeof result.output === "string" ? JSON.parse(result.output) : result.output;
         },
         {
           kind: SpanKind.PRODUCER,
@@ -357,6 +368,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
                 lockToVersion: taskContextManager.worker?.version,
                 queue: item.options?.queue ?? params.queue,
                 concurrencyKey: item.options?.concurrencyKey,
+                test: taskContextManager.ctx?.run.isTest,
               },
             })),
             dependentAttempt: ctx.attempt.id,
@@ -379,7 +391,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
               return {
                 ok: true,
                 id: item.id,
-                output: JSON.parse(item.output),
+                output: typeof item.output === "string" ? JSON.parse(item.output) : item.output,
               } satisfies TaskRunResult<TOutput>;
             } else {
               return {
@@ -406,7 +418,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
               .map((item) => JSON.stringify(item.payload))
               .join("").length,
             [SemanticAttributes.MESSAGING_SYSTEM]: "trigger.dev",
-            [SemanticInternalAttributes.STYLE_ICON]: "batch-trigger",
+            [SemanticInternalAttributes.STYLE_ICON]: "trigger",
             ...(taskMetadata
               ? accessoryAttributes({
                   items: [

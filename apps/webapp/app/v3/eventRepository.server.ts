@@ -1,4 +1,4 @@
-import { Attributes } from "@opentelemetry/api";
+import { Attributes, Link, TraceFlags } from "@opentelemetry/api";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import {
@@ -42,12 +42,14 @@ export type TraceAttributes = Partial<
     | "attemptId"
     | "isError"
     | "runId"
+    | "runIsTest"
     | "output"
     | "metadata"
     | "properties"
     | "style"
     | "queueId"
     | "queueName"
+    | "batchId"
   >
 >;
 
@@ -56,6 +58,7 @@ export type SetAttribute<T extends TraceAttributes> = (key: keyof T, value: T[ke
 export type TraceEventOptions = {
   kind?: CreatableEventKind;
   context?: Record<string, string | undefined>;
+  spanParentAsLink?: boolean;
   spanIdSeed?: string;
   attributes: TraceAttributes;
   environment: AuthenticatedEnvironment;
@@ -376,6 +379,8 @@ export class EventRepository {
       [SemanticInternalAttributes.PROJECT_ID]: options.environment.projectId,
       [SemanticInternalAttributes.PROJECT_REF]: options.environment.project.externalRef,
       [SemanticInternalAttributes.RUN_ID]: options.attributes.runId,
+      [SemanticInternalAttributes.RUN_IS_TEST]: options.attributes.runIsTest ?? false,
+      [SemanticInternalAttributes.BATCH_ID]: options.attributes.batchId ?? undefined,
       [SemanticInternalAttributes.TASK_SLUG]: options.taskSlug,
       [SemanticResourceAttributes.SERVICE_NAME]: "api server",
       [SemanticResourceAttributes.SERVICE_NAMESPACE]: "trigger.dev",
@@ -410,9 +415,11 @@ export class EventRepository {
       projectId: options.environment.projectId,
       projectRef: options.environment.project.externalRef,
       runId: options.attributes.runId,
+      runIsTest: options.attributes.runIsTest ?? false,
       taskSlug: options.taskSlug,
       queueId: options.attributes.queueId,
       queueName: options.attributes.queueName,
+      batchId: options.attributes.batchId ?? undefined,
       properties: {
         ...style,
         ...(flattenAttributes(metadata, SemanticInternalAttributes.METADATA) as Record<
@@ -448,9 +455,11 @@ export class EventRepository {
     const start = process.hrtime.bigint();
     const startTime = new Date();
 
-    const traceId = propagatedContext?.traceparent?.traceId ?? this.generateTraceId();
-    const parentId = propagatedContext?.traceparent?.spanId;
-    const tracestate = propagatedContext?.tracestate;
+    const traceId = options.spanParentAsLink
+      ? this.generateTraceId()
+      : propagatedContext?.traceparent?.traceId ?? this.generateTraceId();
+    const parentId = options.spanParentAsLink ? undefined : propagatedContext?.traceparent?.spanId;
+    const tracestate = options.spanParentAsLink ? undefined : propagatedContext?.tracestate;
     const spanId = options.spanIdSeed
       ? this.#generateDeterministicSpanId(traceId, options.spanIdSeed)
       : this.generateSpanId();
@@ -458,6 +467,19 @@ export class EventRepository {
     const traceContext = {
       traceparent: `00-${traceId}-${spanId}-01`,
     };
+
+    const links: Link[] =
+      options.spanParentAsLink && propagatedContext?.traceparent
+        ? [
+            {
+              context: {
+                traceId: propagatedContext.traceparent.traceId,
+                spanId: propagatedContext.traceparent.spanId,
+                traceFlags: TraceFlags.SAMPLED,
+              },
+            },
+          ]
+        : [];
 
     const eventBuilder = {
       traceId,
@@ -489,6 +511,8 @@ export class EventRepository {
       [SemanticInternalAttributes.PROJECT_ID]: options.environment.projectId,
       [SemanticInternalAttributes.PROJECT_REF]: options.environment.project.externalRef,
       [SemanticInternalAttributes.RUN_ID]: options.attributes.runId,
+      [SemanticInternalAttributes.RUN_IS_TEST]: options.attributes.runIsTest ?? false,
+      [SemanticInternalAttributes.BATCH_ID]: options.attributes.batchId ?? undefined,
       [SemanticInternalAttributes.TASK_SLUG]: options.taskSlug,
       [SemanticResourceAttributes.SERVICE_NAME]: "api server",
       [SemanticResourceAttributes.SERVICE_NAMESPACE]: "trigger.dev",
@@ -524,9 +548,11 @@ export class EventRepository {
       projectId: options.environment.projectId,
       projectRef: options.environment.project.externalRef,
       runId: options.attributes.runId,
+      runIsTest: options.attributes.runIsTest ?? false,
       taskSlug: options.taskSlug,
       queueId: options.attributes.queueId,
       queueName: options.attributes.queueName,
+      batchId: options.attributes.batchId ?? undefined,
       properties: {
         ...style,
         ...(flattenAttributes(metadata, SemanticInternalAttributes.METADATA) as Record<
@@ -538,6 +564,7 @@ export class EventRepository {
       metadata: metadata,
       style: stripAttributePrefix(style, SemanticInternalAttributes.STYLE),
       output: undefined,
+      links: links as unknown as Prisma.InputJsonValue,
     };
 
     if (options.immediate) {

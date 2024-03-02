@@ -27,11 +27,21 @@ export const TaskRunErrorCodes = {
   COULD_NOT_FIND_EXECUTOR: "COULD_NOT_FIND_EXECUTOR",
   CONFIGURED_INCORRECTLY: "CONFIGURED_INCORRECTLY",
   TASK_ALREADY_RUNNING: "TASK_ALREADY_RUNNING",
+  TASK_EXECUTION_FAILED: "TASK_EXECUTION_FAILED",
+  TASK_EXECUTION_ABORTED: "TASK_EXECUTION_ABORTED",
+  TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE: "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE",
 } as const;
 
 export const TaskRunInternalError = z.object({
   type: z.literal("INTERNAL_ERROR"),
-  code: z.enum(["COULD_NOT_FIND_EXECUTOR", "CONFIGURED_INCORRECTLY", "TASK_ALREADY_RUNNING"]),
+  code: z.enum([
+    "COULD_NOT_FIND_EXECUTOR",
+    "CONFIGURED_INCORRECTLY",
+    "TASK_ALREADY_RUNNING",
+    "TASK_EXECUTION_FAILED",
+    "TASK_EXECUTION_ABORTED",
+    "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE",
+  ]),
 });
 
 export type TaskRunInternalError = z.infer<typeof TaskRunInternalError>;
@@ -51,6 +61,7 @@ export const TaskRun = z.object({
   payloadType: z.string(),
   context: z.any(),
   tags: z.array(z.string()),
+  isTest: z.boolean().default(false),
   createdAt: z.coerce.date(),
 });
 
@@ -107,6 +118,10 @@ export const TaskRunExecutionQueue = z.object({
 
 export type TaskRunExecutionQueue = z.infer<typeof TaskRunExecutionQueue>;
 
+export const TaskRunExecutionBatch = z.object({
+  id: z.string(),
+});
+
 export const TaskRunExecution = z.object({
   task: TaskRunExecutionTask,
   attempt: TaskRunExecutionAttempt,
@@ -115,18 +130,23 @@ export const TaskRunExecution = z.object({
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,
   project: TaskRunExecutionProject,
+  batch: TaskRunExecutionBatch.optional(),
 });
 
 export type TaskRunExecution = z.infer<typeof TaskRunExecution>;
 
 export const TaskRunContext = z.object({
   task: TaskRunExecutionTask,
-  attempt: TaskRunExecutionAttempt.omit({ backgroundWorkerId: true, backgroundWorkerTaskId: true }),
+  attempt: TaskRunExecutionAttempt.omit({
+    backgroundWorkerId: true,
+    backgroundWorkerTaskId: true,
+  }),
   run: TaskRun.omit({ payload: true, payloadType: true }),
   queue: TaskRunExecutionQueue,
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,
   project: TaskRunExecutionProject,
+  batch: TaskRunExecutionBatch.optional(),
 });
 
 export type TaskRunContext = z.infer<typeof TaskRunContext>;
@@ -150,7 +170,7 @@ export type TaskRunFailedExecutionResult = z.infer<typeof TaskRunFailedExecution
 export const TaskRunSuccessfulExecutionResult = z.object({
   ok: z.literal(true),
   id: z.string(),
-  output: z.string(),
+  output: z.string().optional(),
   outputType: z.string(),
 });
 

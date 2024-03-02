@@ -41,6 +41,7 @@ export const TriggerTaskRequestBody = z.object({
       lockToVersion: z.string().optional(),
       queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),
+      test: z.boolean().optional(),
     })
     .optional(),
 });

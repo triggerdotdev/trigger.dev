@@ -16,13 +16,11 @@ export class TestTaskService extends BaseService {
     }
 
     const triggerTaskService = new TriggerTaskService();
-    return await triggerTaskService.call(
-      data.taskIdentifier,
-      authenticatedEnvironment,
-      { payload: data.payload },
-      {
-        isTest: true,
-      }
-    );
+    return await triggerTaskService.call(data.taskIdentifier, authenticatedEnvironment, {
+      payload: data.payload,
+      options: {
+        test: true,
+      },
+    });
   }
 }

@@ -4,12 +4,12 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { BaseService } from "./baseService.server";
 import { TriggerTaskService } from "./triggerTask.server";
-import { BatchTaskRunItem } from "@trigger.dev/database";
 
 export type BatchTriggerTaskServiceOptions = {
   idempotencyKey?: string;
   triggerVersion?: string;
   traceContext?: Record<string, string | undefined>;
+  spanParentAsLink?: boolean;
 };
 
 export class BatchTriggerTaskService extends BaseService {
@@ -67,6 +67,7 @@ export class BatchTriggerTaskService extends BaseService {
       const triggerTaskService = new TriggerTaskService();
 
       const runs: string[] = [];
+      let index = 0;
 
       for (const item of body.items) {
         const idempotencyKey = nanoid();
@@ -85,6 +86,8 @@ export class BatchTriggerTaskService extends BaseService {
             idempotencyKey,
             triggerVersion: options.triggerVersion,
             traceContext: options.traceContext,
+            spanParentAsLink: options.spanParentAsLink,
+            batchId: batch.friendlyId,
           }
         );
 
@@ -98,6 +101,8 @@ export class BatchTriggerTaskService extends BaseService {
 
           runs.push(run.friendlyId);
         }
+
+        index++;
       }
 
       span.setAttribute("batchId", batch.friendlyId);

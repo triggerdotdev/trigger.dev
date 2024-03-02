@@ -80,8 +80,10 @@ export class TaskContextManager {
         [SemanticInternalAttributes.PROJECT_REF]: this.ctx.project.ref,
         [SemanticInternalAttributes.PROJECT_NAME]: this.ctx.project.name,
         [SemanticInternalAttributes.RUN_ID]: this.ctx.run.id,
+        [SemanticInternalAttributes.RUN_IS_TEST]: this.ctx.run.isTest,
         [SemanticInternalAttributes.ORGANIZATION_SLUG]: this.ctx.organization.slug,
         [SemanticInternalAttributes.ORGANIZATION_NAME]: this.ctx.organization.name,
+        [SemanticInternalAttributes.BATCH_ID]: this.ctx.batch?.id,
       };
     }
 
