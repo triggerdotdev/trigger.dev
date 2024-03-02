@@ -37,14 +37,14 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
         ) : null}
         <div
           className={cn(
-            "group-focus-visible:ring-ring group-focus-visible:ring-offset-background peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-focus-visible:ring-2 group-focus-visible:ring-offset-2 group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-primary group-data-[state=unchecked]:bg-charcoal-700 focus-visible:outline-none",
+            "group-focus-visible:ring-ring group-focus-visible:ring-offset-background peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-focus-visible:ring-2 group-focus-visible:ring-offset-2 group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-secondary group-data-[state=unchecked]:bg-charcoal-700 focus-visible:outline-none",
             root
           )}
         >
           <SwitchPrimitives.Thumb
             className={cn(
               thumb,
-              "pointer-events-none block rounded-full bg-charcoal-200 shadow-lg ring-0 transition-transform"
+              "pointer-events-none block rounded-full bg-charcoal-200 shadow-lg ring-0 transition group-data-[state=checked]:bg-charcoal-700"
             )}
           />
         </div>

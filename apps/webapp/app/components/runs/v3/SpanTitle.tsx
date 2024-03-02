@@ -89,19 +89,19 @@ export function SpanCodePathAccessory({
   );
 }
 
-function eventTextClassName(event: SpanTitleProps) {
+function eventTextClassName(event: Pick<SpanTitleProps, "isError" | "style" | "level">) {
   if (event.isError) {
     return "text-rose-500";
   }
 
   switch (event.level) {
     case "TRACE": {
-      return classNameForVariant(event.style.variant);
+      return textClassNameForVariant(event.style.variant);
     }
     case "LOG":
     case "INFO":
     case "DEBUG": {
-      return classNameForVariant(event.style.variant);
+      return textClassNameForVariant(event.style.variant);
     }
     case "WARN": {
       return "text-amber-400";
@@ -110,18 +110,57 @@ function eventTextClassName(event: SpanTitleProps) {
       return "text-rose-500";
     }
     default: {
-      return classNameForVariant(event.style.variant);
+      return textClassNameForVariant(event.style.variant);
     }
   }
 }
 
-function classNameForVariant(variant: TaskEventStyle["variant"]) {
+export function eventBackgroundClassName(
+  event: Pick<SpanTitleProps, "isError" | "style" | "level">
+) {
+  if (event.isError) {
+    return "bg-rose-500";
+  }
+
+  switch (event.level) {
+    case "TRACE": {
+      return backgroundClassNameForVariant(event.style.variant);
+    }
+    case "LOG":
+    case "INFO":
+    case "DEBUG": {
+      return backgroundClassNameForVariant(event.style.variant);
+    }
+    case "WARN": {
+      return "bg-amber-400";
+    }
+    case "ERROR": {
+      return "bg-rose-500";
+    }
+    default: {
+      return backgroundClassNameForVariant(event.style.variant);
+    }
+  }
+}
+
+function textClassNameForVariant(variant: TaskEventStyle["variant"]) {
   switch (variant) {
     case "primary": {
       return "text-blue-500";
     }
     default: {
       return "text-text-dimmed";
+    }
+  }
+}
+
+function backgroundClassNameForVariant(variant: TaskEventStyle["variant"]) {
+  switch (variant) {
+    case "primary": {
+      return "bg-blue-500";
+    }
+    default: {
+      return "bg-charcoal-500";
     }
   }
 }

@@ -227,6 +227,9 @@ module.exports = {
       outlineWidth: {
         3: "3px",
       },
+      textShadow: {
+        custom: "1px 1px 1px rgba(0, 0, 0, 0.5)", // Offset-X | Offset-Y | Blur radius | Color
+      },
       keyframes: {
         "accordion-down": {
           from: { height: 0 },
@@ -241,10 +244,15 @@ module.exports = {
           "50%": { transform: "translatey(7px)" },
           "100%": { transform: "translatey(0px)" },
         },
+        "tile-move": {
+          "0%": { "background-position": "0px" },
+          "100%": { "background-position": "8px" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "tile-scroll": "tile-move 0.5s infinite linear",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(closest-side, var(--tw-gradient-stops))",
@@ -275,5 +283,6 @@ module.exports = {
     require("tailwindcss-animate"),
     require("tailwind-scrollbar"),
     require("tailwind-scrollbar-hide"),
+    require("tailwindcss-textshadow"),
   ],
 };
