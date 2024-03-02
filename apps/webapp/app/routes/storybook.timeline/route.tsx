@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
+import { SpanProps } from "~/components/primitives/Timeline";
 import { cn } from "~/utils/cn";
 
 const maxDuration = 20_000;
@@ -115,7 +116,8 @@ export default function Story() {
                   }}
                 </Timeline.EquallyDistribute>
                 <Timeline.Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
-                  <Timeline.Span
+                  <SpanWithDuration
+                    showDuration={showDuration}
                     startMs={100}
                     durationMs={232}
                     className="h-5 rounded-sm bg-blue-500"
@@ -126,11 +128,12 @@ export default function Story() {
                   ></Timeline.Point>
                 </Timeline.Row>
                 <Timeline.Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
-                  <Timeline.Span
+                  <SpanWithDuration
+                    showDuration={showDuration}
                     startMs={100}
                     durationMs={232}
                     className="flex h-5 items-center rounded-sm bg-blue-500"
-                  ></Timeline.Span>
+                  ></SpanWithDuration>
                   <Timeline.Point
                     ms={100}
                     className="-ml-1 h-2 w-2 rounded-full border border-background-bright/70 bg-text-dimmed"
@@ -155,22 +158,24 @@ export default function Story() {
   );
 }
 
-function SpanComp({ durationMs, showDuration }: { durationMs: number; showDuration: boolean }) {
+function SpanWithDuration({ showDuration, ...props }: SpanProps & { showDuration: boolean }) {
   return (
-    <div className="relative mt-2 flex h-5 w-full items-center rounded-sm bg-blue-500">
-      <div
-        className={cn(
-          "sticky left-0 z-10 transition group-hover:opacity-100",
-          !showDuration && "opacity-0"
-        )}
-      >
-        <div className="rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom">
-          {formatDurationMilliseconds(durationMs, {
-            style: "short",
-            maxDecimalPoints: durationMs < 1000 ? 0 : 1,
-          })}
+    <Timeline.Span {...props} className="flex h-5 items-center rounded-sm bg-blue-500">
+      <div className="relative w-full">
+        <div
+          className={cn(
+            "sticky left-0 z-10 transition group-hover:opacity-100",
+            !showDuration && "opacity-0"
+          )}
+        >
+          <div className="rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom">
+            {formatDurationMilliseconds(props.durationMs, {
+              style: "short",
+              maxDecimalPoints: props.durationMs < 1000 ? 0 : 1,
+            })}
+          </div>
         </div>
       </div>
-    </div>
+    </Timeline.Span>
   );
 }
