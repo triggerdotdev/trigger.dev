@@ -99,9 +99,16 @@ export class ProdRuntimeManager implements RuntimeManager {
   resumeTask(completion: TaskRunExecutionResult, execution: TaskRunExecution): void {
     const wait = this._taskWaits.get(execution.run.id);
 
-    if (wait) {
-      wait.resolve(completion);
-      this._taskWaits.delete(execution.run.id);
+    if (!wait) {
+      return;
     }
+
+    if (completion.ok) {
+      wait.resolve(completion);
+    } else {
+      wait.reject(completion);
+    }
+
+    this._taskWaits.delete(execution.run.id);
   }
 }

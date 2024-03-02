@@ -383,9 +383,10 @@ class TaskRunProcess {
   }
 
   taskRunCompletedNotification(completion: TaskRunExecutionResult, execution: TaskRunExecution) {
-    if (!completion.ok && typeof completion.retry === "undefined") {
+    if (!completion.ok && typeof completion.retry !== "undefined") {
       return;
     }
+
     this._sender.send("TASK_RUN_COMPLETED_NOTIFICATION", {
       completion,
       execution,

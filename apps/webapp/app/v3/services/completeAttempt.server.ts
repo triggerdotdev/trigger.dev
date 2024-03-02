@@ -109,6 +109,8 @@ export class CompleteAttemptService extends BaseService {
         }
       );
 
+      logger.debug("Retrying", { taskRun: taskRunAttempt.taskRun.friendlyId });
+
       // TODO: If this is a resumed attempt, we need to ack the RESUME and enqueue another EXECUTE (as it will no longer exist)
       await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
 
@@ -116,7 +118,7 @@ export class CompleteAttemptService extends BaseService {
     }
     // Attempt succeeded or this was the last retry
     else {
-      console.log("Completed attempt - ACK message", taskRunAttempt);
+      logger.debug("Completed attempt, ACKing message", taskRunAttempt);
 
       await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
