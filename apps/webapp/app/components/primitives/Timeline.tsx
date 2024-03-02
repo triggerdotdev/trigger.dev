@@ -10,7 +10,7 @@ function useTimeline() {
   return useContext(TimelineContext);
 }
 
-type RootProps = {
+export type RootProps = {
   /** If the timeline doesn't start at zero. Doesn't impact layout but gives you the times back */
   startMs?: number;
   durationMs: number;
@@ -47,7 +47,7 @@ export function Root({
   );
 }
 
-type PointProps = {
+export type PointProps = {
   ms: number;
   className?: string;
   children?: (ms: number) => ReactNode;
@@ -69,17 +69,14 @@ export function Point({ ms, className, children }: PointProps) {
   );
 }
 
-export function Span({
-  startMs,
-  durationMs,
-  className,
-  children,
-}: {
+export type SpanProps = {
   startMs: number;
   durationMs: number;
   className?: string;
   children?: ReactNode;
-}) {
+};
+
+export function Span({ startMs, durationMs, className, children }: SpanProps) {
   const { startMs: rootStartMs, durationMs: rootDurationMs } = useTimeline();
   const position = inverseLerp(rootStartMs, rootStartMs + rootDurationMs, startMs);
   const width =
@@ -98,13 +95,12 @@ export function Span({
   );
 }
 
-export function EquallyDistribute({
-  count,
-  children,
-}: {
+export type EquallyDistributeProps = {
   count: number;
   children: (ms: number, index: number) => ReactNode;
-}) {
+};
+
+export function EquallyDistribute({ count, children }: EquallyDistributeProps) {
   const { startMs, durationMs } = useTimeline();
 
   return (
@@ -117,7 +113,9 @@ export function EquallyDistribute({
   );
 }
 
-export function Row({ className, children }: { className?: string; children?: ReactNode }) {
+export type RowProps = { className?: string; children?: ReactNode };
+
+export function Row({ className, children }: RowProps) {
   return (
     <div className={className} style={{ position: "relative" }}>
       {children}
@@ -127,13 +125,6 @@ export function Row({ className, children }: { className?: string; children?: Re
 
 function calculatePixelWidth(minWidth: number, maxWidth: number, scale: number) {
   return lerp(minWidth, maxWidth, scale);
-}
-
-function getSpanDurationMs(spanStartMs: number, totalDurationMs: number, spanDurationMs?: number) {
-  if (spanDurationMs !== undefined) {
-    return spanDurationMs;
-  }
-  return totalDurationMs - spanStartMs;
 }
 
 /** Linearly interpolates between the min/max values, using t.
