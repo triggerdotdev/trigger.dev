@@ -2,6 +2,8 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ExclamationCircleIcon,
+  MagnifyingGlassMinusIcon,
+  MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
 import { Link, Outlet, useNavigate } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -19,6 +21,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
+import { Slider } from "~/components/primitives/Slider";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
@@ -164,6 +167,8 @@ function TasksTreeView({
 }) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
+  const [showDurations, setShowDurations] = useState(false);
+  const [scale, setScale] = useState(0.5);
   const parentRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -205,12 +210,31 @@ function TasksTreeView({
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
         />
-        <Switch
-          variant="small"
-          label="Errors only"
-          checked={errorsOnly}
-          onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
-        />
+        <div className="flex items-center gap-2">
+          <Switch
+            variant="small"
+            label="Errors only"
+            checked={errorsOnly}
+            onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
+          />
+          <Switch
+            variant="small"
+            label="Show durations"
+            checked={showDurations}
+            onCheckedChange={(e) => setShowDurations(e.valueOf())}
+          />
+          <Slider
+            variant={"tertiary"}
+            className="w-20"
+            LeadingIcon={MagnifyingGlassMinusIcon}
+            TrailingIcon={MagnifyingGlassPlusIcon}
+            value={[scale]}
+            onValueChange={(value) => setScale(value[0])}
+            min={0}
+            max={1}
+            step={0.05}
+          />
+        </div>
       </div>
       <ResizablePanelGroup
         direction="horizontal"
