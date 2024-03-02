@@ -44,11 +44,10 @@ const protos = [
 
 // Use protoc with ts-proto to generate TypeScript files from proto files
 for (const proto of protos) {
-  const protosFullPath = path.join(protosPath, proto);
   const command =
-    `protoc --plugin=protoc-gen-ts_proto=${pluginPath} ` +
-    `--ts_proto_out=${generatedPath} ` +
-    `--proto_path=${protosPath} ` +
+    `protoc --plugin=protoc-gen-ts_proto="${pluginPath}" ` +
+    `--ts_proto_out="${generatedPath}" ` +
+    `--proto_path="${protosPath}" ` +
     `--ts_proto_opt=forceLong=bigint ` +
     `--ts_proto_opt=esModuleInterop=true ` +
     `--ts_proto_opt=env=node ` +
@@ -56,7 +55,7 @@ for (const proto of protos) {
     `--ts_proto_opt=lowerCaseServiceMethods=true ` +
     `--ts_proto_opt=oneof=unions ` +
     `--experimental_allow_proto3_optional ` +
-    `"${protosFullPath}"`;
+    `"${path.join(protosPath, proto)}"`;
   try {
     const { stdout, stderr } = await execPromise(command);
     console.log(stdout);
