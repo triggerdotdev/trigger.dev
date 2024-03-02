@@ -32,57 +32,81 @@ export default function Story() {
           </Slider.Root>
         </div>
       </div>
-      <div className="overflow-x-auto bg-grid-dimmed">
-        <div className="px-4">
-          <Timeline
-            totalDurationMs={durationMs}
-            scale={scale}
-            className="h-9"
-            tickCount={tickCount}
-            renderTick={({ durationMs }) => (
-              <div className="relative h-full">
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-xxs text-text-dimmed">
-                  {formatDurationMilliseconds(durationMs, {
-                    style: "short",
-                    maxDecimalPoints: durationMs < 1000 ? 0 : 1,
-                  })}
-                </div>
-              </div>
-            )}
-          />
-          <Timeline
-            totalDurationMs={durationMs}
-            scale={scale}
-            className="h-9"
-            tickCount={tickCount}
-            renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
-            spanStartMs={36}
-            spanDurationMs={287}
-            renderSpan={() => <div className="mt-2 h-5 w-full rounded-sm bg-sky-500"></div>}
-          />
-          <Timeline
-            totalDurationMs={durationMs}
-            scale={scale}
-            className="group h-9 hover:bg-charcoal-500/50"
-            tickCount={tickCount}
-            renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
-            spanStartMs={36 + 287 + 5}
-            spanDurationMs={100}
-            renderSpan={() => (
-              <div className="relative mt-2 h-5 w-full">
-                <div className="h-full w-full rounded-sm bg-sky-500"></div>
-                <div className="absolute left-0 top-0 hidden h-full items-center group-hover:flex">
-                  <div className="absolute right-1 text-xxs text-text-dimmed">
-                    {formatDurationMilliseconds(100, {
+      <div className="grid grid-cols-[200px_1fr]">
+        <div></div>
+        <div className="overflow-x-auto bg-grid-dimmed">
+          <div className="px-6">
+            <Timeline
+              totalDurationMs={durationMs}
+              scale={scale}
+              className="h-9"
+              tickCount={tickCount}
+              renderTick={({ durationMs }) => (
+                <div className="relative h-full">
+                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-xxs text-text-dimmed">
+                    {formatDurationMilliseconds(durationMs, {
                       style: "short",
                       maxDecimalPoints: durationMs < 1000 ? 0 : 1,
                     })}
                   </div>
                 </div>
-              </div>
-            )}
-          />
+              )}
+            />
+            <Timeline
+              totalDurationMs={durationMs}
+              scale={scale}
+              className="group h-9 hover:bg-charcoal-500/50"
+              tickCount={tickCount}
+              renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
+              spanStartMs={36}
+              spanDurationMs={287}
+              renderSpan={() => <Span durationMs={287} />}
+            />
+            <Timeline
+              totalDurationMs={durationMs}
+              scale={scale}
+              className="group h-9 hover:bg-charcoal-500/50"
+              tickCount={tickCount}
+              renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
+              spanStartMs={36 + 287 + 5}
+              spanDurationMs={100}
+              renderSpan={() => <Span durationMs={100} />}
+            />
+            <Timeline
+              totalDurationMs={durationMs}
+              scale={scale}
+              className="group h-9 hover:bg-charcoal-500/50"
+              tickCount={tickCount}
+              renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
+              spanStartMs={36 + 287 + 5 + 100 + 2}
+              spanDurationMs={1}
+              renderSpan={() => <Span durationMs={1} />}
+            />
+            <Timeline
+              totalDurationMs={durationMs}
+              scale={scale}
+              className="group h-9 hover:bg-charcoal-500/50"
+              tickCount={tickCount}
+              renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
+              spanStartMs={36 + 287 + 5 + 100 + 2 + 1 + 2}
+              spanDurationMs={40}
+              renderSpan={() => <Span durationMs={40} />}
+            />
+          </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function Span({ durationMs }: { durationMs: number }) {
+  return (
+    <div className="relative mt-2 flex h-5 w-full items-center rounded-sm bg-sky-500">
+      <div className="sticky left-0 z-10 items-center rounded-sm px-2 text-xxs text-text-bright hover:visible">
+        {formatDurationMilliseconds(durationMs, {
+          style: "short",
+          maxDecimalPoints: durationMs < 1000 ? 0 : 1,
+        })}
       </div>
     </div>
   );
