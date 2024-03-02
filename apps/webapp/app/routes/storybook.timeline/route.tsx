@@ -7,13 +7,80 @@ import * as Timeline from "~/components/primitives/Timeline";
 import { SpanProps } from "~/components/primitives/Timeline";
 import { cn } from "~/utils/cn";
 
-const maxDuration = 20_000;
+const maxDuration = 10_000;
+
+type Element = {
+  span?: {
+    startMs: number;
+    durationMs: number;
+  };
+  points?: {
+    ms: number;
+  }[];
+};
+
+const elements: Element[] = [
+  {
+    span: {
+      startMs: 0,
+      durationMs: 1_121,
+    },
+  },
+  {
+    span: {
+      startMs: 19,
+      durationMs: 1_121 - 19,
+    },
+  },
+  {
+    span: {
+      startMs: 19 + 22,
+      durationMs: 412,
+    },
+  },
+  {
+    span: {
+      startMs: 19 + 22 + 3,
+      durationMs: 412 - 3,
+    },
+    points: [
+      {
+        ms: 19 + 22 + 3 + 412 - 3,
+      },
+    ],
+  },
+  {
+    points: [
+      {
+        ms: 19 + 22 + 3 + 94,
+      },
+    ],
+  },
+  {
+    span: {
+      startMs: 19 + 22 + 3 + 94 + 3,
+      durationMs: 3,
+    },
+  },
+  {
+    span: {
+      startMs: 19 + 22 + 3 + 94 + 3 + 3,
+      durationMs: 39,
+    },
+  },
+  {
+    span: {
+      startMs: 19 + 22 + 3 + 94 + 3 + 3 + 40,
+      durationMs: 192,
+    },
+  },
+];
 
 export default function Story() {
   const [scale, setScale] = useState(0.5);
   const [durationScale, setDurationScale] = useState(0.2);
   const [tickCount, setTickCount] = useState(5);
-  const [showDuration, setShowDurations] = useState(false);
+  const [showDuration, setShowDurations] = useState(true);
 
   const durationMs = maxDuration * durationScale;
 
@@ -31,10 +98,29 @@ export default function Story() {
             step={0.01}
           >
             <Slider.Track className="relative h-[3px] grow rounded-full bg-grid-bright">
-              <Slider.Range className="absolute h-full rounded-full bg-primary" />
+              <Slider.Range className="absolute h-full rounded-full bg-secondary" />
             </Slider.Track>
             <Slider.Thumb
-              className="block h-3 w-3 rounded-full border-4 border-primary bg-charcoal-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-primary hover:bg-charcoal-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
+              className="block h-3 w-3 rounded-full border-4 border-secondary bg-charcoal-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-secondary hover:bg-charcoal-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
+              aria-label="Concurrent runs slider"
+            />
+          </Slider.Root>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <Paragraph>Ticks {tickCount}</Paragraph>
+          <Slider.Root
+            className="relative flex h-3 w-72 touch-none select-none items-center"
+            value={[tickCount]}
+            onValueChange={(value) => setTickCount(value[0])}
+            min={0}
+            max={10}
+            step={1}
+          >
+            <Slider.Track className="relative h-[3px] grow rounded-full bg-grid-bright">
+              <Slider.Range className="absolute h-full rounded-full bg-secondary" />
+            </Slider.Track>
+            <Slider.Thumb
+              className="block h-3 w-3 rounded-full border-4 border-secondary bg-charcoal-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-secondary hover:bg-charcoal-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
               aria-label="Concurrent runs slider"
             />
           </Slider.Root>
@@ -52,10 +138,10 @@ export default function Story() {
             step={0.01}
           >
             <Slider.Track className="relative h-[3px] grow rounded-full bg-grid-bright">
-              <Slider.Range className="absolute h-full rounded-full bg-primary" />
+              <Slider.Range className="absolute h-full rounded-full bg-secondary" />
             </Slider.Track>
             <Slider.Thumb
-              className="block h-3 w-3 rounded-full border-4 border-primary bg-charcoal-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-primary hover:bg-charcoal-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
+              className="block h-3 w-3 rounded-full border-4 border-secondary bg-charcoal-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-secondary hover:bg-charcoal-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
               aria-label="Concurrent runs slider"
             />
           </Slider.Root>
@@ -67,6 +153,7 @@ export default function Story() {
           label={"Show durations"}
         />
       </div>
+
       {/* The main body */}
       <div className="grid grid-cols-[100px_1fr]">
         <div></div>
@@ -79,6 +166,7 @@ export default function Story() {
               minWidth={300}
               maxWidth={2000}
             >
+              {/* The duration labels */}
               <Timeline.Row className="flex h-9 items-end border-b">
                 <Timeline.EquallyDistribute count={tickCount}>
                   {(ms: number, index: number) => (
@@ -106,7 +194,9 @@ export default function Story() {
                   )}
                 </Timeline.EquallyDistribute>
               </Timeline.Row>
+              {/* Main timeline body */}
               <Timeline.Row className="h-full">
+                {/* The vertical tick lines */}
                 <Timeline.EquallyDistribute count={tickCount}>
                   {(ms: number, index: number) => {
                     if (index === 0) return null;
@@ -115,34 +205,23 @@ export default function Story() {
                     );
                   }}
                 </Timeline.EquallyDistribute>
-                <Timeline.Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
-                  <SpanWithDuration showDuration={showDuration} startMs={100} durationMs={232} />
-                  <Timeline.Point
-                    ms={0}
-                    className="-ml-1 h-2 w-2 rounded-full border border-background-bright/70 bg-text-dimmed"
-                  ></Timeline.Point>
-                </Timeline.Row>
-                <Timeline.Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
-                  <SpanWithDuration
-                    showDuration={showDuration}
-                    startMs={100}
-                    durationMs={232}
-                  ></SpanWithDuration>
-                  <Timeline.Point
-                    ms={100}
-                    className="-ml-1 h-2 w-2 rounded-full border border-background-bright/70 bg-text-dimmed"
-                  ></Timeline.Point>
-                  <Timeline.Point
-                    ms={200}
-                    className="-ml-1 h-2 w-2 rounded-full border border-background-bright/70 bg-text-dimmed"
-                  />
-                </Timeline.Row>
-                <Timeline.Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
-                  <Timeline.Point
-                    ms={200}
-                    className="-ml-1 h-2 w-2 rounded-full border border-background-bright/70 bg-text-dimmed"
-                  ></Timeline.Point>
-                </Timeline.Row>
+                <>
+                  {elements.map((element) => {
+                    return (
+                      <Timeline.Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
+                        {element.span && (
+                          <SpanWithDuration showDuration={showDuration} {...element.span} />
+                        )}
+                        {element.points?.map((point) => (
+                          <Timeline.Point
+                            ms={point.ms}
+                            className="-ml-1.5 h-3 w-3 rounded-full border-2 border-background-bright bg-text-dimmed"
+                          />
+                        ))}
+                      </Timeline.Row>
+                    );
+                  })}
+                </>
               </Timeline.Row>
             </Timeline.Root>
           </div>
