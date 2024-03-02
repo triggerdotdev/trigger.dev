@@ -1,3 +1,4 @@
+import * as Timeline from "~/components/primitives/Timeline";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -7,7 +8,11 @@ import {
 } from "@heroicons/react/20/solid";
 import { Link, Outlet, useNavigate } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
+import {
+  formatDurationMilliseconds,
+  formatDurationNanoseconds,
+  nanosecondsToMilliseconds,
+} from "@trigger.dev/core/v3";
 import { useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
@@ -44,7 +49,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, runParam } = v3RunParamsSchema.parse(params);
 
   const presenter = new RunPresenter();
-  const { run, events, parentRunFriendlyId } = await presenter.call({
+  const { run, events, parentRunFriendlyId, duration } = await presenter.call({
     userId,
     organizationSlug,
     projectSlug: projectParam,
@@ -59,6 +64,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     events,
     parentRunFriendlyId,
     resizeSettings,
+    duration,
   });
 };
 
@@ -69,7 +75,8 @@ function getSpanId(path: string): string | undefined {
 }
 
 export default function Page() {
-  const { run, events, parentRunFriendlyId, resizeSettings } = useTypedLoaderData<typeof loader>();
+  const { run, events, parentRunFriendlyId, resizeSettings, duration } =
+    useTypedLoaderData<typeof loader>();
   const navigate = useNavigate();
   const organization = useOrganization();
   const pathName = usePathName();
@@ -115,6 +122,7 @@ export default function Page() {
 
                 changeToSpan(selectedSpan);
               }}
+              totalDuration={duration}
             />
           ) : (
             <ResizablePanelGroup
@@ -140,6 +148,7 @@ export default function Page() {
 
                     changeToSpan(selectedSpan);
                   }}
+                  totalDuration={duration}
                 />
               </ResizablePanel>
               <ResizableHandle withHandle />
@@ -154,16 +163,20 @@ export default function Page() {
   );
 }
 
+const tickCount = 5;
+
 function TasksTreeView({
   events,
   selectedId,
   parentRunFriendlyId,
   onSelectedIdChanged,
+  totalDuration,
 }: {
   events: RunEvent[];
   selectedId?: string;
   parentRunFriendlyId?: string;
   onSelectedIdChanged: (selectedId: string | undefined) => void;
+  totalDuration: number;
 }) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -200,7 +213,7 @@ function TasksTreeView({
   });
 
   return (
-    <div className="grid grid-rows-[2.5rem_1fr] overflow-y-clip">
+    <div className="grid h-full grid-rows-[2.5rem_1fr] overflow-y-clip">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Input
           placeholder="Search log"
@@ -237,6 +250,7 @@ function TasksTreeView({
         </div>
       </div>
       <ResizablePanelGroup
+        className="h-full"
         direction="horizontal"
         onLayout={(layout) => {
           if (layout.length !== 2) return;
@@ -245,7 +259,9 @@ function TasksTreeView({
       >
         {/* Tree list */}
         <ResizablePanel order={1} minSize={20} defaultSize={50} className="pl-3">
-          {parentRunFriendlyId && <ShowParentLink runFriendlyId={parentRunFriendlyId} />}
+          <div className="h-8">
+            {parentRunFriendlyId && <ShowParentLink runFriendlyId={parentRunFriendlyId} />}
+          </div>
           <TreeView
             parentRef={parentRef}
             virtualizer={virtualizer}
@@ -282,9 +298,6 @@ function TasksTreeView({
                       toggleExpandNode(node.id);
                       selectNode(node.id);
                       scrollToNode(node.id);
-                    }}
-                    onKeyDown={(e) => {
-                      console.log(e.key);
                     }}
                   >
                     {node.hasChildren ? (
@@ -331,28 +344,116 @@ function TasksTreeView({
         </ResizablePanel>
         <ResizableHandle withHandle />
         {/* Timeline */}
-        <ResizablePanel order={2} minSize={20} defaultSize={50}>
-          {parentRunFriendlyId && <div className="h-8" />}
-          <TreeView
-            parentRef={parentRef}
-            virtualizer={virtualizer}
-            autoFocus
-            tree={events}
-            nodes={nodes}
-            getNodeProps={getNodeProps}
-            getTreeProps={getTreeProps}
-            parentClassName="h-full pt-2"
-            renderNode={({ node, state, index, virtualizer, virtualItem }) => (
-              <div
-                className={cn(
-                  "h-8 cursor-pointer items-center rounded-r-sm pr-3",
-                  state.selected
-                    ? "bg-grid-dimmed hover:bg-grid-bright"
-                    : "bg-transparent hover:bg-grid-dimmed"
+        <ResizablePanel order={2} minSize={20} defaultSize={50} className="h-full">
+          <div className="h-full overflow-x-auto pr-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <Timeline.Root
+              durationMs={nanosecondsToMilliseconds(totalDuration)}
+              scale={scale}
+              className="h-full pt-2"
+              minWidth={300}
+              maxWidth={2000}
+            >
+              {/* Follows the cursor */}
+              <Timeline.FollowCursor>
+                {(ms) => (
+                  <div className="relative z-50 flex h-full flex-col">
+                    <div className="relative flex h-9 items-end">
+                      <div className="absolute left-1/2 w-fit -translate-x-1/2 rounded-sm border border-charcoal-600 bg-charcoal-750 px-0.5 py-0.5 text-xxs tabular-nums text-text-bright">
+                        {formatDurationMilliseconds(ms, {
+                          style: "short",
+                          maxDecimalPoints: ms < 1000 ? 0 : 1,
+                        })}
+                      </div>
+                    </div>
+                    <div className="w-px grow border-r border-charcoal-600" />
+                  </div>
                 )}
-              ></div>
-            )}
-          />
+              </Timeline.FollowCursor>
+
+              <Timeline.Row className="grid h-full grid-rows-[2rem_1fr]">
+                {/* The duration labels */}
+                <Timeline.Row className="flex items-end border-b">
+                  <Timeline.EquallyDistribute count={tickCount}>
+                    {(ms: number, index: number) => (
+                      <Timeline.Point
+                        ms={ms}
+                        className={"relative bottom-0 text-xxs text-text-dimmed"}
+                      >
+                        {(ms) => (
+                          <div
+                            className={
+                              index === 0
+                                ? "left-0.5"
+                                : index === tickCount - 1
+                                ? "-right-0 -translate-x-full"
+                                : "left-1/2 -translate-x-1/2"
+                            }
+                          >
+                            {formatDurationMilliseconds(ms, {
+                              style: "short",
+                              maxDecimalPoints: ms < 1000 ? 0 : 1,
+                            })}
+                          </div>
+                        )}
+                      </Timeline.Point>
+                    )}
+                  </Timeline.EquallyDistribute>
+                </Timeline.Row>
+                {/* Main timeline body */}
+                <Timeline.Row>
+                  {/* The vertical tick lines */}
+                  <Timeline.EquallyDistribute count={tickCount}>
+                    {(ms: number, index: number) => {
+                      if (index === 0) return null;
+                      return (
+                        <Timeline.Point ms={ms} className={"h-full border-r border-grid-dimmed"} />
+                      );
+                    }}
+                  </Timeline.EquallyDistribute>
+                  <TreeView
+                    parentRef={parentRef}
+                    virtualizer={virtualizer}
+                    autoFocus
+                    tree={events}
+                    nodes={nodes}
+                    getNodeProps={getNodeProps}
+                    getTreeProps={getTreeProps}
+                    // parentClassName="h-full"
+                    renderNode={({ node, state, index, virtualizer, virtualItem }) => {
+                      return (
+                        <Timeline.Row
+                          key={index}
+                          className={cn(
+                            "group flex h-8 items-center",
+                            state.selected
+                              ? "bg-grid-dimmed hover:bg-grid-bright"
+                              : "bg-transparent hover:bg-grid-dimmed"
+                          )}
+                          onMouseOver={() => console.log(`hover ${index}`)}
+                          onClick={(e) => {
+                            toggleNodeSelection(node.id);
+                          }}
+                        >
+                          {node.data.level === "TRACE" ? (
+                            <SpanWithDuration
+                              showDuration={state.selected ? true : showDurations}
+                              startMs={nanosecondsToMilliseconds(node.data.offset)}
+                              durationMs={nanosecondsToMilliseconds(node.data.duration)}
+                            />
+                          ) : (
+                            <Timeline.Point
+                              ms={nanosecondsToMilliseconds(node.data.offset)}
+                              className="-ml-1.5 h-3 w-3 rounded-full border-2 border-background-bright bg-text-dimmed"
+                            />
+                          )}
+                        </Timeline.Row>
+                      );
+                    }}
+                  />
+                </Timeline.Row>
+              </Timeline.Row>
+            </Timeline.Root>
+          </div>
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>
@@ -419,5 +520,30 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
         Show parent items
       </Paragraph>
     </Link>
+  );
+}
+
+function SpanWithDuration({
+  showDuration,
+  ...props
+}: Timeline.SpanProps & { showDuration: boolean }) {
+  return (
+    <Timeline.Span {...props}>
+      <div className="relative flex h-5 w-full min-w-px items-center rounded-sm bg-blue-500">
+        <div
+          className={cn(
+            "sticky left-0 z-10 transition group-hover:opacity-100",
+            !showDuration && "opacity-0"
+          )}
+        >
+          <div className="rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom">
+            {formatDurationMilliseconds(props.durationMs, {
+              style: "short",
+              maxDecimalPoints: props.durationMs < 1000 ? 0 : 1,
+            })}
+          </div>
+        </div>
+      </div>
+    </Timeline.Span>
   );
 }

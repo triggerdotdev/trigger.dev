@@ -46,6 +46,7 @@ export function MousePositionProvider({ children }: { children: ReactNode }) {
       onMouseEnter={handleMouseMove}
       onMouseLeave={() => setPosition(undefined)}
       onMouseMove={handleMouseMove}
+      style={{ width: "100%", height: "100%" }}
     >
       <MousePositionContext.Provider value={position}>{children}</MousePositionContext.Provider>
     </div>
