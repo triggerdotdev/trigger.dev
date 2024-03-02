@@ -78,7 +78,7 @@ const elements: Element[] = [
 
 export default function Story() {
   const [scale, setScale] = useState(0.5);
-  const [durationScale, setDurationScale] = useState(0.2);
+  const [durationScale, setDurationScale] = useState(0.12);
   const [tickCount, setTickCount] = useState(5);
   const [showDuration, setShowDurations] = useState(true);
 
