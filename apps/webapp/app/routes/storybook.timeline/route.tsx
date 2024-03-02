@@ -116,12 +116,7 @@ export default function Story() {
                   }}
                 </Timeline.EquallyDistribute>
                 <Timeline.Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
-                  <SpanWithDuration
-                    showDuration={showDuration}
-                    startMs={100}
-                    durationMs={232}
-                    className="h-5 rounded-sm bg-blue-500"
-                  />
+                  <SpanWithDuration showDuration={showDuration} startMs={100} durationMs={232} />
                   <Timeline.Point
                     ms={0}
                     className="-ml-1 h-2 w-2 rounded-full border border-background-bright/70 bg-text-dimmed"
@@ -132,7 +127,6 @@ export default function Story() {
                     showDuration={showDuration}
                     startMs={100}
                     durationMs={232}
-                    className="flex h-5 items-center rounded-sm bg-blue-500"
                   ></SpanWithDuration>
                   <Timeline.Point
                     ms={100}
@@ -160,8 +154,8 @@ export default function Story() {
 
 function SpanWithDuration({ showDuration, ...props }: SpanProps & { showDuration: boolean }) {
   return (
-    <Timeline.Span {...props} className="flex h-5 items-center rounded-sm bg-blue-500">
-      <div className="relative w-full">
+    <Timeline.Span {...props}>
+      <div className="relative flex h-5 w-full items-center rounded-sm bg-blue-500">
         <div
           className={cn(
             "sticky left-0 z-10 transition group-hover:opacity-100",
