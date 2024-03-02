@@ -1,5 +1,35 @@
 import { ReactNode } from "react";
 
+// const TimelineContext = createContext<>();
+
+/* <Timeline.Root startMs={} durationMs={} scale={}>
+    <Timeline.Row className="h-9">
+      //duration labels
+      <Timeline.EqualDistribution count={5}>
+        {({ index, timeMs }) => (
+          <div>{timeMs}</div>  
+        )}
+      </Timeline.EqualDistribution>
+    </Timeline.Row>
+    <Timeline.Row className="">
+      //tick marks, or labels
+      <Timeline.EqualDistribution count={5}>
+        {({ index, timeMs }) => (
+          <div>Tick mark</div>  
+        )}
+      </Timeline.EqualDistribution>
+      {{items.map(item => (
+        <Timeline.Row className="">
+          <TimelineSpan startMs={} durationMs={}><div /></TimelineSpan>
+          <TimelinePoint ms={}><div /></TimelinePoint>
+        </Timeline.Row>
+      )}}
+    </Timeline.Row>
+    //used for the hover effect
+    <Timeline.Cursor>{({ ms }) => ()</Timeline.Cursor>
+  </Timeline.Root>
+*/
+
 type TimelineProps = {
   totalDurationMs: number;
   /** A number between 0 and 1 */

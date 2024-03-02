@@ -2,12 +2,15 @@ import * as Slider from "@radix-ui/react-slider";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { useState } from "react";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Switch } from "~/components/primitives/Switch";
 import { Timeline } from "~/components/primitives/Timeline";
+import { cn } from "~/utils/cn";
 
 export default function Story() {
   const [scale, setScale] = useState(0.5);
   const [durationMs, setDurationMs] = useState(2_346);
   const [tickCount, setTickCount] = useState(5);
+  const [showDuration, setShowDurations] = useState(false);
 
   return (
     <div className="m-4 grid h-full grid-rows-[4rem_1fr] overflow-hidden">
@@ -31,19 +34,30 @@ export default function Story() {
             />
           </Slider.Root>
         </div>
+        <Switch
+          checked={showDuration}
+          onCheckedChange={setShowDurations}
+          variant="small"
+          label={"Show durations"}
+        />
       </div>
-      <div className="grid grid-cols-[200px_1fr]">
+      <div className="grid grid-cols-[100px_1fr] bg-grid-dimmed">
         <div></div>
-        <div className="overflow-x-auto bg-grid-dimmed">
-          <div className="px-6">
+        <div className="overflow-x-auto border-l border-charcoal-600 bg-grid-dimmed">
+          <div className="pr-6">
             <Timeline
               totalDurationMs={durationMs}
               scale={scale}
               className="h-9"
               tickCount={tickCount}
-              renderTick={({ durationMs }) => (
+              renderTick={({ index, durationMs }) => (
                 <div className="relative h-full">
-                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-xxs text-text-dimmed">
+                  <div
+                    className={cn(
+                      "absolute bottom-0 text-xxs text-text-dimmed",
+                      index === 0 ? "left-0.5" : "left-1/2 -translate-x-1/2"
+                    )}
+                  >
                     {formatDurationMilliseconds(durationMs, {
                       style: "short",
                       maxDecimalPoints: durationMs < 1000 ? 0 : 1,
@@ -57,40 +71,52 @@ export default function Story() {
               scale={scale}
               className="group h-9 hover:bg-charcoal-500/50"
               tickCount={tickCount}
-              renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
+              renderTick={({ index }) => {
+                if (index === 0) return null;
+                return <div className="h-full w-px bg-charcoal-600"></div>;
+              }}
               spanStartMs={36}
               spanDurationMs={287}
-              renderSpan={() => <Span durationMs={287} />}
+              renderSpan={() => <Span durationMs={287} showDuration={showDuration} />}
             />
             <Timeline
               totalDurationMs={durationMs}
               scale={scale}
               className="group h-9 hover:bg-charcoal-500/50"
               tickCount={tickCount}
-              renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
+              renderTick={({ index }) => {
+                if (index === 0) return null;
+                return <div className="h-full w-px bg-charcoal-600"></div>;
+              }}
               spanStartMs={36 + 287 + 5}
               spanDurationMs={100}
-              renderSpan={() => <Span durationMs={100} />}
+              renderSpan={() => <Span durationMs={100} showDuration={showDuration} />}
             />
             <Timeline
               totalDurationMs={durationMs}
               scale={scale}
               className="group h-9 hover:bg-charcoal-500/50"
               tickCount={tickCount}
-              renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
+              renderTick={({ index }) => {
+                if (index === 0) return null;
+                return <div className="h-full w-px bg-charcoal-600"></div>;
+              }}
               spanStartMs={36 + 287 + 5 + 100 + 2}
               spanDurationMs={1}
-              renderSpan={() => <Span durationMs={1} />}
+              renderSpan={() => <Span durationMs={1} showDuration={showDuration} />}
             />
             <Timeline
               totalDurationMs={durationMs}
               scale={scale}
               className="group h-9 hover:bg-charcoal-500/50"
               tickCount={tickCount}
-              renderTick={({}) => <div className="h-full w-px bg-charcoal-600"></div>}
+              renderTick={({ index }) => {
+                if (index === 0) return null;
+                return <div className="h-full w-px bg-charcoal-600"></div>;
+              }}
               spanStartMs={36 + 287 + 5 + 100 + 2 + 1 + 2}
               spanDurationMs={40}
-              renderSpan={() => <Span durationMs={40} />}
+              renderSpan={() => <Span durationMs={40} showDuration={showDuration} />}
             />
           </div>
         </div>
@@ -99,14 +125,21 @@ export default function Story() {
   );
 }
 
-function Span({ durationMs }: { durationMs: number }) {
+function Span({ durationMs, showDuration }: { durationMs: number; showDuration: boolean }) {
   return (
-    <div className="relative mt-2 flex h-5 w-full items-center rounded-sm bg-sky-500">
-      <div className="sticky left-0 z-10 items-center rounded-sm px-2 text-xxs text-text-bright hover:visible">
-        {formatDurationMilliseconds(durationMs, {
-          style: "short",
-          maxDecimalPoints: durationMs < 1000 ? 0 : 1,
-        })}
+    <div className="relative mt-2 flex h-5 w-full items-center rounded-sm bg-blue-500">
+      <div
+        className={cn(
+          "sticky left-0 z-10 transition group-hover:opacity-100",
+          !showDuration && "opacity-0"
+        )}
+      >
+        <div className="rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom">
+          {formatDurationMilliseconds(durationMs, {
+            style: "short",
+            maxDecimalPoints: durationMs < 1000 ? 0 : 1,
+          })}
+        </div>
       </div>
     </div>
   );

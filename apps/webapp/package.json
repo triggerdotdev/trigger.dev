@@ -147,6 +147,7 @@
     "tailwind-merge": "^1.12.0",
     "tailwind-scrollbar-hide": "^1.1.7",
     "tailwindcss-animate": "^1.0.5",
+    "tailwindcss-textshadow": "^2.1.3",
     "tiny-invariant": "^1.2.0",
     "ulid": "^2.3.0",
     "ulidx": "^2.2.1",
