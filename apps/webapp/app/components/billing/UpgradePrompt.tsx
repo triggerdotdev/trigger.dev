@@ -1,14 +1,12 @@
+import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
+import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { formatNumberCompact } from "~/utils/numberFormatter";
-import { plansPath } from "~/utils/pathBuilder";
 import { LinkButton } from "../primitives/Buttons";
-import { Paragraph } from "../primitives/Paragraph";
-import { Callout } from "../primitives/Callout";
-import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import { Icon } from "../primitives/Icon";
-import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
+import { Paragraph } from "../primitives/Paragraph";
 
 type UpgradePromptProps = {
   runsEnabled: boolean;
