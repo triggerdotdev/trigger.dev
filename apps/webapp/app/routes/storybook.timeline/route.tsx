@@ -1,16 +1,9 @@
 import * as Slider from "@radix-ui/react-slider";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
-import { ReactNode, useState } from "react";
+import { useState } from "react";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Switch } from "~/components/primitives/Switch";
-import {
-  Timeline,
-  Root,
-  Point,
-  Row,
-  Span,
-  EquallyDistribute,
-} from "~/components/primitives/Timeline";
+import * as Timeline from "~/components/primitives/Timeline";
 import { cn } from "~/utils/cn";
 
 const maxDuration = 20_000;
@@ -73,102 +66,25 @@ export default function Story() {
           label={"Show durations"}
         />
       </div>
-      {/* <div className="grid grid-cols-[100px_1fr] bg-grid-dimmed">
-        <div></div>
-        <div className="overflow-x-auto border-l border-charcoal-600 bg-grid-dimmed">
-          <div className="pr-6">
-            <Timeline
-              totalDurationMs={durationMs}
-              scale={scale}
-              className="h-9"
-              tickCount={tickCount}
-              renderTick={({ index, durationMs }) => (
-                <div className="relative h-full">
-                  <div
-                    className={cn(
-                      "absolute bottom-0 text-xxs text-text-dimmed",
-                      index === 0 ? "left-0.5" : "left-1/2 -translate-x-1/2"
-                    )}
-                  >
-                    {formatDurationMilliseconds(durationMs, {
-                      style: "short",
-                      maxDecimalPoints: durationMs < 1000 ? 0 : 1,
-                    })}
-                  </div>
-                </div>
-              )}
-            />
-            <Timeline
-              totalDurationMs={durationMs}
-              scale={scale}
-              className="group h-9 hover:bg-charcoal-500/50"
-              tickCount={tickCount}
-              renderTick={({ index }) => {
-                if (index === 0) return null;
-                return <div className="h-full w-px bg-charcoal-600"></div>;
-              }}
-              spanStartMs={36}
-              spanDurationMs={287}
-              renderSpan={() => <Span durationMs={287} showDuration={showDuration} />}
-            />
-            <Timeline
-              totalDurationMs={durationMs}
-              scale={scale}
-              className="group h-9 hover:bg-charcoal-500/50"
-              tickCount={tickCount}
-              renderTick={({ index }) => {
-                if (index === 0) return null;
-                return <div className="h-full w-px bg-charcoal-600"></div>;
-              }}
-              spanStartMs={36 + 287 + 5}
-              spanDurationMs={100}
-              renderSpan={() => <Span durationMs={100} showDuration={showDuration} />}
-            />
-            <Timeline
-              totalDurationMs={durationMs}
-              scale={scale}
-              className="group h-9 hover:bg-charcoal-500/50"
-              tickCount={tickCount}
-              renderTick={({ index }) => {
-                if (index === 0) return null;
-                return <div className="h-full w-px bg-charcoal-600"></div>;
-              }}
-              spanStartMs={36 + 287 + 5 + 100 + 2}
-              spanDurationMs={1}
-              renderSpan={() => <Span durationMs={1} showDuration={showDuration} />}
-            />
-            <Timeline
-              totalDurationMs={durationMs}
-              scale={scale}
-              className="group h-9 hover:bg-charcoal-500/50"
-              tickCount={tickCount}
-              renderTick={({ index }) => {
-                if (index === 0) return null;
-                return <div className="h-full w-px bg-charcoal-600"></div>;
-              }}
-              spanStartMs={36 + 287 + 5 + 100 + 2 + 1 + 2}
-              spanDurationMs={40}
-              renderSpan={() => <Span durationMs={40} showDuration={showDuration} />}
-            />
-          </div>
-        </div>
-      </div> */}
-
+      {/* The main body */}
       <div className="grid grid-cols-[100px_1fr]">
         <div></div>
         <div className="overflow-x-auto border-l border-grid-dimmed bg-background-bright">
           <div className="pr-6">
-            <Root
+            <Timeline.Root
               durationMs={durationMs}
               scale={scale}
               className="h-full"
               minWidth={300}
               maxWidth={2000}
             >
-              <Row className="flex h-9 items-end border-b">
-                <EquallyDistribute count={tickCount}>
+              <Timeline.Row className="flex h-9 items-end border-b">
+                <Timeline.EquallyDistribute count={tickCount}>
                   {(ms: number, index: number) => (
-                    <Point ms={ms} className={"relative bottom-0 text-xxs text-text-dimmed"}>
+                    <Timeline.Point
+                      ms={ms}
+                      className={"relative bottom-0 text-xxs text-text-dimmed"}
+                    >
                       {(ms) => (
                         <div
                           className={
@@ -185,47 +101,53 @@ export default function Story() {
                           })}
                         </div>
                       )}
-                    </Point>
+                    </Timeline.Point>
                   )}
-                </EquallyDistribute>
-              </Row>
-              <Row className="h-full">
-                <EquallyDistribute count={tickCount}>
+                </Timeline.EquallyDistribute>
+              </Timeline.Row>
+              <Timeline.Row className="h-full">
+                <Timeline.EquallyDistribute count={tickCount}>
                   {(ms: number, index: number) => {
                     if (index === 0) return null;
-                    return <Point ms={ms} className={"h-full border-r border-grid-dimmed"} />;
+                    return (
+                      <Timeline.Point ms={ms} className={"h-full border-r border-grid-dimmed"} />
+                    );
                   }}
-                </EquallyDistribute>
-                <Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
-                  <Span startMs={100} durationMs={232} className="h-5 rounded-sm bg-blue-500" />
-                  <Point
+                </Timeline.EquallyDistribute>
+                <Timeline.Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
+                  <Timeline.Span
+                    startMs={100}
+                    durationMs={232}
+                    className="h-5 rounded-sm bg-blue-500"
+                  />
+                  <Timeline.Point
                     ms={0}
                     className="-ml-1 h-2 w-2 rounded-full border border-background-bright/70 bg-text-dimmed"
-                  ></Point>
-                </Row>
-                <Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
-                  <Span
+                  ></Timeline.Point>
+                </Timeline.Row>
+                <Timeline.Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
+                  <Timeline.Span
                     startMs={100}
                     durationMs={232}
                     className="flex h-5 items-center rounded-sm bg-blue-500"
-                  ></Span>
-                  <Point
+                  ></Timeline.Span>
+                  <Timeline.Point
                     ms={100}
                     className="-ml-1 h-2 w-2 rounded-full border border-background-bright/70 bg-text-dimmed"
-                  ></Point>
-                  <Point
+                  ></Timeline.Point>
+                  <Timeline.Point
                     ms={200}
                     className="-ml-1 h-2 w-2 rounded-full border border-background-bright/70 bg-text-dimmed"
                   />
-                </Row>
-                <Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
-                  <Point
+                </Timeline.Row>
+                <Timeline.Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
+                  <Timeline.Point
                     ms={200}
                     className="-ml-1 h-2 w-2 rounded-full border border-background-bright/70 bg-text-dimmed"
-                  ></Point>
-                </Row>
-              </Row>
-            </Root>
+                  ></Timeline.Point>
+                </Timeline.Row>
+              </Timeline.Row>
+            </Timeline.Root>
           </div>
         </div>
       </div>
