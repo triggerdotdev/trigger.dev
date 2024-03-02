@@ -1,4 +1,6 @@
 import {
+  Component,
+  ComponentPropsWithoutRef,
   Fragment,
   ReactNode,
   createContext,
@@ -7,17 +9,66 @@ import {
   useRef,
   useState,
 } from "react";
-import { u } from "tar";
+
+interface MousePosition {
+  x: number;
+  y: number;
+}
+const MousePositionContext = createContext<MousePosition | undefined>(undefined);
+export function MousePositionProvider({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<MousePosition | undefined>(undefined);
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!ref.current) {
+        setPosition(undefined);
+        return;
+      }
+
+      const { top, left, width, height } = ref.current.getBoundingClientRect();
+      const x = (e.clientX - left) / width;
+      const y = (e.clientY - top) / height;
+
+      if (x < 0 || x > 1 || y < 0 || y > 1) {
+        setPosition(undefined);
+        return;
+      }
+
+      setPosition({ x, y });
+    },
+    [ref.current]
+  );
+
+  return (
+    <div
+      ref={ref}
+      onMouseEnter={handleMouseMove}
+      onMouseLeave={() => setPosition(undefined)}
+      onMouseMove={handleMouseMove}
+    >
+      <MousePositionContext.Provider value={position}>{children}</MousePositionContext.Provider>
+    </div>
+  );
+}
+export const useMousePosition = () => {
+  return useContext(MousePositionContext);
+};
 
 type TimelineContextState = {
   startMs: number;
   durationMs: number;
-  ref: React.RefObject<HTMLDivElement>;
 };
 const TimelineContext = createContext<TimelineContextState>({} as TimelineContextState);
 
 function useTimeline() {
   return useContext(TimelineContext);
+}
+
+type TimelineMousePositionContextState = { x: number; y: number } | undefined;
+const TimelineMousePositionContext = createContext<TimelineMousePositionContextState>(undefined);
+function useTimelineMousePosition() {
+  return useContext(TimelineMousePositionContext);
 }
 
 export type RootProps = {
@@ -43,30 +94,29 @@ export function Root({
   className,
 }: RootProps) {
   const pixelWidth = calculatePixelWidth(minWidth, maxWidth, scale);
-  const ref = useRef<HTMLDivElement>(null);
+
   return (
-    <TimelineContext.Provider value={{ startMs, durationMs, ref }}>
+    <TimelineContext.Provider value={{ startMs, durationMs }}>
       <div
-        ref={ref}
         className={className}
         style={{
           position: "relative",
           width: `${pixelWidth}px`,
         }}
       >
-        {children}
+        <MousePositionProvider>{children}</MousePositionProvider>
       </div>
     </TimelineContext.Provider>
   );
 }
 
-export type RowProps = { className?: string; children?: ReactNode };
+export type RowProps = ComponentPropsWithoutRef<"div">;
 
 /** This simply acts as a container, with position relative.
  *  This allows you to nest "Rows" and put heights on them */
-export function Row({ className, children }: RowProps) {
+export function Row({ className, children, ...props }: RowProps) {
   return (
-    <div className={className} style={{ position: "relative" }}>
+    <div {...props} className={className} style={{ ...props.style, position: "relative" }}>
       {children}
     </div>
   );
@@ -147,31 +197,25 @@ export type FollowCursorProps = {
 
 /** Renders a child that follows the cursor */
 export function FollowCursor({ children }: FollowCursorProps) {
-  const { startMs, durationMs, ref } = useTimeline();
-  const [mousePosition, setMousePosition] = useState<undefined | { x: number; y: number }>(
-    undefined
-  );
+  const { startMs, durationMs } = useTimeline();
+  const relativeMousePosition = useMousePosition();
+  const ms = relativeMousePosition?.x
+    ? lerp(startMs, startMs + durationMs, relativeMousePosition.x)
+    : undefined;
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    setMousePosition({ x: e.clientX, y: e.clientY });
-  }, []);
-
-  const ms = calculateMsFromCursorX(mousePosition?.x, startMs, durationMs, ref);
-  console.log(ms);
+  if (ms === undefined) return null;
 
   return (
     <div
       style={{
         position: "absolute",
         top: 0,
-        left: mousePosition?.x,
+        left: relativeMousePosition ? `${relativeMousePosition?.x * 100}%` : 0,
         height: "100%",
+        pointerEvents: "none",
       }}
-      onMouseEnter={handleMouseMove}
-      onMouseLeave={(e) => setMousePosition(undefined)}
-      onMouseMove={handleMouseMove}
     >
-      {ms && children(ms)}
+      {children(ms)}
     </div>
   );
 }
@@ -195,18 +239,4 @@ function inverseLerp(min: number, max: number, value: number) {
 /** Clamps a value between a min and max */
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
-}
-
-function calculateMsFromCursorX(
-  x: number | undefined,
-  startMs: number,
-  totalDurationMs: number,
-  ref: React.RefObject<HTMLDivElement>
-) {
-  if (x === undefined || !ref.current) return undefined;
-
-  const { top, left, width, height } = ref.current.getBoundingClientRect();
-  const relativeX = (x - left) / width;
-
-  return lerp(startMs, startMs + totalDurationMs, relativeX);
 }
