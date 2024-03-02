@@ -252,7 +252,7 @@ function TasksTreeView({
         </div>
       </div>
       <ResizablePanelGroup
-        className="h-full"
+        className="overflow-y-auto"
         direction="horizontal"
         onLayout={(layout) => {
           if (layout.length !== 2) return;
@@ -419,7 +419,7 @@ function TasksTreeView({
                               ? "bg-grid-dimmed hover:bg-grid-bright"
                               : "bg-transparent hover:bg-grid-dimmed"
                           )}
-                          onMouseOver={() => console.log(`hover ${index}`)}
+                          // onMouseOver={() => console.log(`hover ${index}`)}
                           onClick={(e) => {
                             toggleNodeSelection(node.id);
                           }}
@@ -471,23 +471,6 @@ function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boole
   );
 }
 
-function Duration({ duration }: { duration: number }) {
-  return (
-    <Paragraph variant="extra-small" className="whitespace-nowrap">
-      {formatDurationNanoseconds(duration, { style: "short" })}
-    </Paragraph>
-  );
-}
-
-function LiveDuration({ startTime }: { startTime: Date }) {
-  return (
-    <div className="flex items-center gap-1">
-      <LiveTimer startTime={startTime} />
-      <Spinner color="blue" className="h-4 w-4" />
-    </div>
-  );
-}
-
 function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
   const [mouseOver, setMouseOver] = useState(false);
   const organization = useOrganization();
@@ -528,12 +511,13 @@ function SpanWithDuration({
     <Timeline.Span {...props}>
       <div
         className={cn("relative flex h-5 w-full min-w-px items-center rounded-sm", backgroundColor)}
-        style={
-          node.data.isPartial
-            ? { backgroundImage: `url(${tileBgPath})`, backgroundSize: "8px 8px" }
-            : undefined
-        }
       >
+        {node.data.isPartial && (
+          <div
+            className="absolute left-0 top-0 h-full w-full animate-tile-scroll rounded-sm opacity-50"
+            style={{ backgroundImage: `url(${tileBgPath})`, backgroundSize: "8px 8px" }}
+          />
+        )}
         <div
           className={cn(
             "sticky left-0 z-10 transition group-hover:opacity-100",
