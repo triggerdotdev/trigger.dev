@@ -1,8 +1,18 @@
-import { ReactNode, createContext, useContext } from "react";
+import {
+  Fragment,
+  ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useRef,
+  useState,
+} from "react";
+import { u } from "tar";
 
 type TimelineContextState = {
   startMs: number;
   durationMs: number;
+  ref: React.RefObject<HTMLDivElement>;
 };
 const TimelineContext = createContext<TimelineContextState>({} as TimelineContextState);
 
@@ -22,6 +32,7 @@ export type RootProps = {
   className?: string;
 };
 
+/** The main element that determines the dimensions for all sub-elements */
 export function Root({
   startMs = 0,
   durationMs,
@@ -32,9 +43,11 @@ export function Root({
   className,
 }: RootProps) {
   const pixelWidth = calculatePixelWidth(minWidth, maxWidth, scale);
+  const ref = useRef<HTMLDivElement>(null);
   return (
-    <TimelineContext.Provider value={{ startMs, durationMs }}>
+    <TimelineContext.Provider value={{ startMs, durationMs, ref }}>
       <div
+        ref={ref}
         className={className}
         style={{
           position: "relative",
@@ -47,12 +60,25 @@ export function Root({
   );
 }
 
+export type RowProps = { className?: string; children?: ReactNode };
+
+/** This simply acts as a container, with position relative.
+ *  This allows you to nest "Rows" and put heights on them */
+export function Row({ className, children }: RowProps) {
+  return (
+    <div className={className} style={{ position: "relative" }}>
+      {children}
+    </div>
+  );
+}
+
 export type PointProps = {
   ms: number;
   className?: string;
   children?: (ms: number) => ReactNode;
 };
 
+/** A point in time, it has no duration */
 export function Point({ ms, className, children }: PointProps) {
   const { startMs, durationMs } = useTimeline();
   const position = inverseLerp(startMs, startMs + durationMs, ms);
@@ -76,6 +102,7 @@ export type SpanProps = {
   children?: ReactNode;
 };
 
+/** As span of time with a start and duration */
 export function Span({ startMs, durationMs, className, children }: SpanProps) {
   const { startMs: rootStartMs, durationMs: rootDurationMs } = useTimeline();
   const position = inverseLerp(rootStartMs, rootStartMs + rootDurationMs, startMs);
@@ -100,6 +127,7 @@ export type EquallyDistributeProps = {
   children: (ms: number, index: number) => ReactNode;
 };
 
+/** Render a child equally distributed across the duration */
 export function EquallyDistribute({ count, children }: EquallyDistributeProps) {
   const { startMs, durationMs } = useTimeline();
 
@@ -107,22 +135,48 @@ export function EquallyDistribute({ count, children }: EquallyDistributeProps) {
     <>
       {Array.from({ length: count }).map((_, index) => {
         const ms = startMs + (durationMs / (count - 1)) * index;
-        return children(ms, index);
+        return <Fragment key={index}>{children(ms, index)}</Fragment>;
       })}
     </>
   );
 }
 
-export type RowProps = { className?: string; children?: ReactNode };
+export type FollowCursorProps = {
+  children: (ms: number) => ReactNode;
+};
 
-export function Row({ className, children }: RowProps) {
+/** Renders a child that follows the cursor */
+export function FollowCursor({ children }: FollowCursorProps) {
+  const { startMs, durationMs, ref } = useTimeline();
+  const [mousePosition, setMousePosition] = useState<undefined | { x: number; y: number }>(
+    undefined
+  );
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    setMousePosition({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const ms = calculateMsFromCursorX(mousePosition?.x, startMs, durationMs, ref);
+  console.log(ms);
+
   return (
-    <div className={className} style={{ position: "relative" }}>
-      {children}
+    <div
+      style={{
+        position: "absolute",
+        top: 0,
+        left: mousePosition?.x,
+        height: "100%",
+      }}
+      onMouseEnter={handleMouseMove}
+      onMouseLeave={(e) => setMousePosition(undefined)}
+      onMouseMove={handleMouseMove}
+    >
+      {ms && children(ms)}
     </div>
   );
 }
 
+/** Gives the total width of the root */
 function calculatePixelWidth(minWidth: number, maxWidth: number, scale: number) {
   return lerp(minWidth, maxWidth, scale);
 }
@@ -141,4 +195,18 @@ function inverseLerp(min: number, max: number, value: number) {
 /** Clamps a value between a min and max */
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function calculateMsFromCursorX(
+  x: number | undefined,
+  startMs: number,
+  totalDurationMs: number,
+  ref: React.RefObject<HTMLDivElement>
+) {
+  if (x === undefined || !ref.current) return undefined;
+
+  const { top, left, width, height } = ref.current.getBoundingClientRect();
+  const relativeX = (x - left) / width;
+
+  return lerp(startMs, startMs + totalDurationMs, relativeX);
 }

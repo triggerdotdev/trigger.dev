@@ -206,14 +206,18 @@ export default function Story() {
                   }}
                 </Timeline.EquallyDistribute>
                 <>
-                  {elements.map((element) => {
+                  {elements.map((element, index) => {
                     return (
-                      <Timeline.Row className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed">
+                      <Timeline.Row
+                        key={index}
+                        className="group flex h-9 items-center border-b border-b-white/10 hover:bg-grid-dimmed"
+                      >
                         {element.span && (
                           <SpanWithDuration showDuration={showDuration} {...element.span} />
                         )}
-                        {element.points?.map((point) => (
+                        {element.points?.map((point, pointIndex) => (
                           <Timeline.Point
+                            key={pointIndex}
                             ms={point.ms}
                             className="-ml-1.5 h-3 w-3 rounded-full border-2 border-background-bright bg-text-dimmed"
                           />
@@ -223,6 +227,9 @@ export default function Story() {
                   })}
                 </>
               </Timeline.Row>
+
+              {/* Follows the cursor */}
+              <Timeline.FollowCursor>{(ms) => <div>{ms}</div>}</Timeline.FollowCursor>
             </Timeline.Root>
           </div>
         </div>
