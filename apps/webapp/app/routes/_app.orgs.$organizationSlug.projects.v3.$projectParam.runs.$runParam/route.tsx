@@ -32,7 +32,7 @@ import { Switch } from "~/components/primitives/Switch";
 import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
-import { SpanTitle } from "~/components/runs/v3/SpanTitle";
+import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
 import { useDebounce } from "~/hooks/useDebounce";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
@@ -436,7 +436,7 @@ function TasksTreeView({
                               ms={nanosecondsToMilliseconds(node.data.offset)}
                               className={cn(
                                 "-ml-1.5 h-3 w-3 rounded-full border-2 border-background-bright",
-                                node.data.isError ? "bg-error" : "bg-text-dimmed"
+                                eventBackgroundClassName(node.data)
                               )}
                             />
                           )}
@@ -505,12 +505,13 @@ function SpanWithDuration({
   node,
   ...props
 }: Timeline.SpanProps & { node: RunEvent; showDuration: boolean }) {
-  const backgroundColor = node.data.isError ? "bg-error" : "bg-blue-500";
-
   return (
     <Timeline.Span {...props}>
       <div
-        className={cn("relative flex h-5 w-full min-w-px items-center rounded-sm", backgroundColor)}
+        className={cn(
+          "relative flex h-5 w-full min-w-px items-center rounded-sm",
+          eventBackgroundClassName(node.data)
+        )}
       >
         {node.data.isPartial && (
           <div
