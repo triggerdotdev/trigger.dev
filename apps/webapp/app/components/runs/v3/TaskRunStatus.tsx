@@ -10,9 +10,15 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 import { ExtendedTaskAttemptStatus } from "./RunFilters";
 
-export function TaskRunStatus({ status }: { status: ExtendedTaskAttemptStatus | null }) {
+export function TaskRunStatus({
+  status,
+  className,
+}: {
+  status: ExtendedTaskAttemptStatus | null;
+  className?: string;
+}) {
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className={cn("flex items-center gap-1", className)}>
       <TaskRunStatusIcon status={status} className="h-4 w-4" />
       <TaskRunStatusLabel status={status} />
     </span>

@@ -166,8 +166,8 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
               </Paragraph>
             </SelectItem>
             {allTaskRunStatuses.map((status) => (
-              <SelectItem key={status} value={status} className="text-xs">
-                <TaskRunStatus status={status} />
+              <SelectItem key={status} value={status}>
+                <TaskRunStatus status={status} className="text-xs" />
               </SelectItem>
             ))}
           </SelectContent>
