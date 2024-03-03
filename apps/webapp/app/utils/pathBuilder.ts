@@ -342,6 +342,14 @@ export function v3RunSpanPath(
   return `${v3RunPath(organization, project, run)}/spans/${span.spanId}`;
 }
 
+export function v3RunStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  run: v3RunForPath
+) {
+  return `${v3RunPath(organization, project, run)}/stream`;
+}
+
 // Integration
 export function integrationClientPath(organization: OrgForPath, client: IntegrationForPath) {
   return `${organizationIntegrationsPath(organization)}/${clientParam(client)}`;

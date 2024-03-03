@@ -1,25 +1,21 @@
-import * as Timeline from "~/components/primitives/Timeline";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
-  ExclamationCircleIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
-import { Link, Outlet, useNavigate } from "@remix-run/react";
+import { Link, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import {
-  formatDurationMilliseconds,
-  formatDurationNanoseconds,
-  nanosecondsToMilliseconds,
-} from "@trigger.dev/core/v3";
-import { useRef, useState } from "react";
+import { formatDurationMilliseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
+import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
+import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody } from "~/components/layout/AppLayout";
+import { Badge } from "~/components/primitives/Badge";
 import { Input } from "~/components/primitives/Input";
-import { PageAccessories, NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ResizableHandle,
@@ -27,13 +23,13 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { Slider } from "~/components/primitives/Slider";
-import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
+import * as Timeline from "~/components/primitives/Timeline";
 import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
-import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
 import { useDebounce } from "~/hooks/useDebounce";
+import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
@@ -42,9 +38,13 @@ import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3RunParamsSchema, v3RunPath, v3RunSpanPath, v3RunsPath } from "~/utils/pathBuilder";
-import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
-import { Badge } from "~/components/primitives/Badge";
+import {
+  v3RunParamsSchema,
+  v3RunPath,
+  v3RunSpanPath,
+  v3RunStreamingPath,
+  v3RunsPath,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -92,6 +92,17 @@ export default function Page() {
   }, 250);
 
   const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
+
+  const revalidator = useRevalidator();
+  const streamedEvents = useEventSource(v3RunStreamingPath(organization, project, run), {
+    event: "message",
+  });
+  useEffect(() => {
+    if (streamedEvents !== null) {
+      revalidator.revalidate();
+    }
+    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
+  }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
