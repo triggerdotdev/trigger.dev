@@ -75,7 +75,10 @@ export function TreeView<TData>({
           }}
         >
           {virtualItems.map((virtualItem) => {
-            const node = tree.find((node) => node.id === virtualItem.key)!;
+            const node = tree.find((node) => node.id === virtualItem.key);
+            if (!node) return null;
+            const state = nodes[node.id];
+            if (!state) return null;
             return (
               <div
                 key={node.id}
@@ -84,10 +87,10 @@ export function TreeView<TData>({
                 className="overflow-clip [&_.ReactCollapse--collapse]:transition-all"
                 {...getNodeProps(node.id)}
               >
-                <UnmountClosed key={node.id} isOpened={nodes[node.id].visible}>
+                <UnmountClosed key={node.id} isOpened={state.visible}>
                   {renderNode({
                     node,
-                    state: nodes[node.id],
+                    state,
                     index: virtualItem.index,
                     virtualizer: virtualizer,
                     virtualItem,
@@ -365,6 +368,7 @@ export function useTree<TData>({
   const getNodeProps = useCallback(
     (id: string) => {
       const node = state.nodes[id];
+      if (!node) return {};
       const treeItemIndex = tree.findIndex((node) => node.id === id);
       const treeItem = tree[treeItemIndex];
       return {
