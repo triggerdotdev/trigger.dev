@@ -121,6 +121,23 @@ async function runBuild(
   );
   const entryPointContents = prodFacade.replace("__TASKS__", createTaskFileImports(taskFiles));
 
+  logger.log(chalk.dim("⎔ Typecheck..."));
+
+  const tscTypecheck = execa("npm", ["exec", "tsc", "--", "--noEmit"]);
+
+  tscTypecheck.stdout?.on("data", (chunk) => logger.log(chunk.toString()));
+  tscTypecheck.stderr?.on("data", (chunk) => logger.error(chunk.toString()));
+
+  try {
+    await new Promise((resolve, reject) => {
+      tscTypecheck.addListener("exit", (code) => (code === 0 ? resolve(code) : reject(code)));
+    });
+  } catch (error) {
+    throw new Error("Typecheck failed.");
+  }
+
+  logger.log(chalk.green(`Typecheck succeeded.\n`));
+
   logger.log(chalk.dim("⎔ Bundling tasks..."));
 
   const result = await build({
@@ -221,7 +238,7 @@ async function runBuild(
     const dockerLogin = execa("docker", ["login", registryWithRepo]);
 
     dockerLogin.stdout?.on("data", (chunk) => logger.debug(chunk.toString()));
-    dockerLogin.stderr?.on("data", (chunk) => logger.debug(chunk.toString()));
+    dockerLogin.stderr?.on("data", (chunk) => logger.error(chunk.toString()));
 
     try {
       await new Promise((resolve, reject) => {
