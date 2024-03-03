@@ -156,9 +156,6 @@ async function runBuild(
     format: "esm",
     target: ["node18", "es2020"],
     outdir: "out",
-    define: {
-      TRIGGER_API_URL: `"${config.triggerUrl}"`,
-    },
     banner: {
       js: "import { createRequire } from 'module';const require = createRequire(import.meta.url);",
     },
