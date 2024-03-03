@@ -111,9 +111,20 @@ export class CompleteAttemptService extends BaseService {
 
       logger.debug("Retrying", { taskRun: taskRunAttempt.taskRun.friendlyId });
 
-      // TODO: If this is a resumed attempt, we need to ack the RESUME and enqueue another EXECUTE (as it will no longer exist)
-      //                                                           ^ there are currently no resume message during dev
-      await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
+      if (environment.type === "DEVELOPMENT") {
+        // This is already an EXECUTE message so we can just NACK
+        await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
+      } else {
+        // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
+        await marqs?.replaceMessage(
+          taskRunAttempt.taskRunId,
+          {
+            type: "EXECUTE",
+            taskIdentifier: taskRunAttempt.taskRun.taskIdentifier,
+          },
+          completion.retry.timestamp
+        );
+      }
 
       return "RETRIED";
     }
