@@ -20,6 +20,7 @@ import { CliApiClient } from "../apiClient";
 const BuildCommandOptions = CommonCommandOptions.extend({
   registry: z.string(),
   repo: z.string(),
+  skipTypecheck: z.boolean().optional(),
 });
 
 type BuildCommandOptions = z.infer<typeof BuildCommandOptions>;
@@ -30,7 +31,8 @@ export function configureBuildCommand(program: Command) {
     .description("Build your Trigger.dev tasks locally")
     .argument("[path]", "The path to the project", ".")
     .option("-r, --repo <repo_name>", "The repo to push images to", "task")
-    .option("-rr, --registry <registry_address>", "The registry to push images to", "")
+    .option("-R, --registry <registry_address>", "The registry to push images to", "")
+    .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
     .option(
       "-l, --log-level <level>",
       "The log level to use (debug, info, log, warn, error, none)",
@@ -121,22 +123,24 @@ async function runBuild(
   );
   const entryPointContents = prodFacade.replace("__TASKS__", createTaskFileImports(taskFiles));
 
-  logger.log(chalk.dim("⎔ Typecheck..."));
+  if (!options.skipTypecheck) {
+    logger.log(chalk.dim("⎔ Typecheck..."));
 
-  const tscTypecheck = execa("npm", ["exec", "tsc", "--", "--noEmit"]);
+    const tscTypecheck = execa("npm", ["exec", "tsc", "--", "--noEmit"]);
 
-  tscTypecheck.stdout?.on("data", (chunk) => logger.log(chunk.toString()));
-  tscTypecheck.stderr?.on("data", (chunk) => logger.error(chunk.toString()));
+    tscTypecheck.stdout?.on("data", (chunk) => logger.log(chunk.toString()));
+    tscTypecheck.stderr?.on("data", (chunk) => logger.error(chunk.toString()));
 
-  try {
-    await new Promise((resolve, reject) => {
-      tscTypecheck.addListener("exit", (code) => (code === 0 ? resolve(code) : reject(code)));
-    });
-  } catch (error) {
-    throw new Error("Typecheck failed.");
+    try {
+      await new Promise((resolve, reject) => {
+        tscTypecheck.addListener("exit", (code) => (code === 0 ? resolve(code) : reject(code)));
+      });
+    } catch (error) {
+      throw new Error("Typecheck failed.");
+    }
+
+    logger.log(chalk.green(`Typecheck succeeded.\n`));
   }
-
-  logger.log(chalk.green(`Typecheck succeeded.\n`));
 
   logger.log(chalk.dim("⎔ Bundling tasks..."));
 
