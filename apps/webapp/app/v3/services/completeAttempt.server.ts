@@ -74,7 +74,7 @@ export class CompleteAttemptService extends BaseService {
           }
         : undefined;
 
-      const environment = await this.#getEnvironment(execution.environment.id);
+      const environment = env ?? (await this.#getEnvironment(execution.environment.id));
 
       const retryAt = new Date(completion.retry.timestamp);
 
@@ -112,6 +112,7 @@ export class CompleteAttemptService extends BaseService {
       logger.debug("Retrying", { taskRun: taskRunAttempt.taskRun.friendlyId });
 
       // TODO: If this is a resumed attempt, we need to ack the RESUME and enqueue another EXECUTE (as it will no longer exist)
+      //                                                           ^ there are currently no resume message during dev
       await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
 
       return "RETRIED";
@@ -193,9 +194,8 @@ export class CompleteAttemptService extends BaseService {
 
         // This batch has a dependent attempt and just finalized, we should resume that attempt
         if (finalizedBatchRun && finalizedBatchRun.dependentTaskAttempt) {
-          const environment = await this.#getEnvironment(
-            taskRunAttempt.taskRun.runtimeEnvironmentId
-          );
+          const environment =
+            env ?? (await this.#getEnvironment(taskRunAttempt.taskRun.runtimeEnvironmentId));
 
           if (!environment) {
             logger.error("Environment not found", {
@@ -209,26 +209,20 @@ export class CompleteAttemptService extends BaseService {
             return "ACKNOWLEDGED";
           }
 
-          await marqs?.acknowledgeMessage(finalizedBatchRun.dependentTaskAttempt.taskRunId);
-          await marqs?.enqueueMessage(
-            environment,
-            taskRunAttempt.taskRun.queue,
-            finalizedBatchRun.dependentTaskAttempt.taskRunId,
-            {
-              type: "RESUME",
-              completedAttemptIds: finalizedBatchRun.items.map(
-                (item) => item.taskRun.attempts[0]?.id
-              ),
-            },
-            taskRunAttempt.taskRun.concurrencyKey ?? undefined
-          );
+          await marqs?.replaceMessage(finalizedBatchRun.dependentTaskAttempt.taskRunId, {
+            type: "RESUME",
+            completedAttemptIds: finalizedBatchRun.items.map(
+              (item) => item.taskRun.attempts[0]?.id
+            ),
+          });
         }
       }
 
       if (dependency) {
         logger.debug("Completing attempt with dependency", { dependency });
 
-        const environment = await this.#getEnvironment(taskRunAttempt.taskRun.runtimeEnvironmentId);
+        const environment =
+          env ?? (await this.#getEnvironment(taskRunAttempt.taskRun.runtimeEnvironmentId));
 
         if (!environment) {
           logger.error("Environment not found", {
@@ -258,14 +252,10 @@ export class CompleteAttemptService extends BaseService {
             return "FAILED";
           }
 
-          await marqs?.acknowledgeMessage(dependentRun.id);
-          await marqs?.enqueueMessage(
-            environment,
-            taskRunAttempt.taskRun.queue,
-            dependentRun.id,
-            { type: "RESUME", completedAttemptIds: [taskRunAttempt.id] },
-            taskRunAttempt.taskRun.concurrencyKey ?? undefined
-          );
+          await marqs?.replaceMessage(dependentRun.id, {
+            type: "RESUME",
+            completedAttemptIds: [taskRunAttempt.id],
+          });
         }
       }
 
