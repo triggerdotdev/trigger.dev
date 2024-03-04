@@ -15,9 +15,15 @@ import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3SpanParamsSchema } from "~/utils/pathBuilder";
+import { v3RunPath, v3SpanParamsSchema } from "~/utils/pathBuilder";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { AlignRightIcon } from "lucide-react";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { useParams } from "@remix-run/react";
+import { ExitIcon } from "~/assets/icons/ExitIcon";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -38,6 +44,9 @@ export default function Page() {
   const {
     span: { event },
   } = useTypedLoaderData<typeof loader>();
+  const organization = useOrganization();
+  const project = useProject();
+  const { runParam } = useParams();
 
   return (
     <div className="grid max-h-full grid-rows-[2.5rem_1fr] overflow-hidden">
@@ -48,7 +57,14 @@ export default function Page() {
             <SpanTitle {...event} size="large" />
           </Header2>
         </div>
-        <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
+        {runParam && (
+          <LinkButton
+            to={v3RunPath(organization, project, { friendlyId: runParam })}
+            variant="minimal/medium"
+            LeadingIcon={ExitIcon}
+            shortcut={{ key: "esc" }}
+          />
+        )}
       </div>
       <div className="overflow-y-auto px-2 pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div className="flex flex-col gap-4">
