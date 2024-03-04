@@ -61,7 +61,7 @@
     "build:prod-containerfile": "src/Containerfile.prod"
   },
   "scripts": {
-    "typecheck": "tsc",
+    "typecheck": "tsc -p tsconfig.check.json",
     "build": "npm run clean && run-p build:**",
     "build:main": "tsup",
     "build:facade": "tsup --config tsup.facade.config.ts",
@@ -97,6 +97,7 @@
     "@opentelemetry/semantic-conventions": "^1.21.0",
     "@traceloop/instrumentation-openai": "^0.3.9",
     "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/core-apps": "workspace:*",
     "@types/degit": "^2.8.3",
     "chalk": "^5.2.0",
     "chokidar": "^3.5.3",

@@ -1,5 +1,5 @@
 // import "source-map-support/register";
-import { TracingSDK } from "@trigger.dev/core/v3/otel";
+import { TracingSDK } from "@trigger.dev/core/v3";
 // import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
 // IMPORTANT: this needs to be the first import to work properly
@@ -48,7 +48,7 @@ import * as packageJson from "../package.json";
 import { Resource } from "@opentelemetry/resources";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import { TaskMetadataWithFunctions } from "./types";
-import { TracingDiagnosticLogLevel } from "@trigger.dev/core/v3/otel/tracingSDK";
+import { TracingDiagnosticLogLevel } from "@trigger.dev/core/v3";
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);

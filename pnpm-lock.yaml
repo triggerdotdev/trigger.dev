@@ -1046,6 +1046,7 @@ importers:
       '@opentelemetry/semantic-conventions': ^1.21.0
       '@traceloop/instrumentation-openai': ^0.3.9
       '@trigger.dev/core': workspace:*
+      '@trigger.dev/core-apps': workspace:*
       '@trigger.dev/tsconfig': workspace:*
       '@types/degit': ^2.8.3
       '@types/gradient-string': ^1.1.2
@@ -1122,6 +1123,7 @@ importers:
       '@opentelemetry/semantic-conventions': 1.21.0
       '@traceloop/instrumentation-openai': 0.3.9_rr4fxqkzz7nhz3auplkqn4p6em
       '@trigger.dev/core': link:../core
+      '@trigger.dev/core-apps': link:../core-apps
       '@types/degit': 2.8.3
       chalk: 5.3.0
       chokidar: 3.5.3
