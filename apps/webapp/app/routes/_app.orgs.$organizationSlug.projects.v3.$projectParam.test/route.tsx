@@ -4,7 +4,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Header2 } from "~/components/primitives/Headers";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import {
   ResizableHandle,
@@ -37,25 +37,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   const { tasks } = useTypedLoaderData<typeof loader>();
-  const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
-  const project = useProject();
-  const user = useUser();
   const { taskParam } = useParams();
 
   return (
     <PageContainer>
-      <PageHeader hideBorder>
-        <PageTitleRow>
-          <PageTitle title="Test" />
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Test" />
+      </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("grid h-full max-h-full grid-cols-1")}>
           <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
             <ResizablePanel order={1} minSize={20} defaultSize={30}>
               <div className="flex flex-col px-3">
-                <Header2>Select a task</Header2>
+                <div className="flex h-10 items-center border-b border-grid-dimmed">
+                  <Header2>Select a task</Header2>
+                </div>
                 <TaskSelector tasks={tasks} />
               </div>
             </ResizablePanel>
@@ -75,7 +71,7 @@ function TaskSelector({ tasks }: { tasks: TaskListItem[] }) {
   const project = useProject();
 
   return (
-    <div className="flex flex-col divide-y divide-slate-800">
+    <div className="flex flex-col divide-y divide-charcoal-800">
       {tasks.map((t) => (
         <NavLink key={t.id} to={v3TestTaskPath(organization, project, t)}>
           {({ isActive, isPending }) => (

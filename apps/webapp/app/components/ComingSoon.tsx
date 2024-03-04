@@ -13,10 +13,10 @@ type ComingSoonProps = {
 export function ComingSoon({ title, description, icon }: ComingSoonProps) {
   return (
     <MainCenteredContainer>
-      <div className="flex flex-col justify-center rounded border border-slate-800 bg-slate-850">
-        <div className="flex items-center gap-2 border-b border-slate-750 px-4 py-4">
+      <div className="flex flex-col justify-center rounded border border-charcoal-800 bg-charcoal-850">
+        <div className="flex items-center gap-2 border-b border-charcoal-750 px-4 py-4">
           {typeof icon === "string" ? (
-            <NamedIconInBox name={icon} className={"h-10 w-10 bg-midnight-800"} />
+            <NamedIconInBox name={icon} className={"bg-midnight-800 h-10 w-10"} />
           ) : (
             icon
           )}

@@ -1,12 +1,12 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, PencilSquareIcon, PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import {
   ActionFunctionArgs,
   LoaderFunctionArgs,
   json,
-  redirectDocument
+  redirectDocument,
 } from "@remix-run/server-runtime";
 import { RuntimeEnvironment } from "@trigger.dev/database";
 import { Fragment, useState } from "react";
@@ -15,8 +15,8 @@ import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -25,12 +25,7 @@ import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import {
-  PageButtons,
-  PageHeader,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { PageAccessories, NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Switch } from "~/components/primitives/Switch";
 import {
@@ -52,7 +47,6 @@ import {
 } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
 import {
   ProjectParamSchema,
   docsPath,
@@ -62,7 +56,7 @@ import {
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
   DeleteEnvironmentVariable,
-  EditEnvironmentVariable
+  EditEnvironmentVariable,
 } from "~/v3/environmentVariables/repository";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -160,10 +154,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Environments & API Keys" />,
-};
-
 export default function Page() {
   const [revealAll, setRevealAll] = useState(false);
   const { environmentVariables, environments } = useTypedLoaderData<typeof loader>();
@@ -172,20 +162,18 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Environment variables" />
-          <PageButtons>
-            <LinkButton
-              LeadingIcon={"docs"}
-              to={docsPath("/documentation/concepts/environments-endpoints#environments")}
-              variant="secondary/small"
-            >
-              Environment variables docs
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Environment variables" />
+        <PageAccessories>
+          <LinkButton
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("/documentation/concepts/environments-endpoints#environments")}
+            variant="minimal/small"
+          >
+            Environment variables docs
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
       <PageBody>
         <div className={cn("flex h-full flex-col gap-3")}>
           <div className="flex items-center justify-end gap-2">
@@ -198,8 +186,7 @@ export default function Page() {
             <LinkButton
               to={v3NewEnvironmentVariablesPath(organization, project)}
               variant="primary/small"
-              LeadingIcon="plus"
-              leadingIconClassName="text-white"
+              LeadingIcon={PlusIcon}
             >
               New environment variable
             </LinkButton>
@@ -258,6 +245,11 @@ export default function Page() {
               )}
             </TableBody>
           </Table>
+
+          <Callout variant="info" className="mb-4">
+            Dev environment variables specified here will be overriden by ones in your .env file
+            when running locally.
+          </Callout>
         </div>
         <Outlet />
       </PageBody>
@@ -297,7 +289,7 @@ function EditEnvironmentVariablePanel({
         <Button
           variant="small-menu-item"
           LeadingIcon={PencilSquareIcon}
-          leadingIconClassName="text-slate-500"
+          leadingIconClassName="text-charcoal-500"
           className="text-xs"
           fullWidth
           textAlignLeft
@@ -306,16 +298,14 @@ function EditEnvironmentVariablePanel({
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader>
-            Edit {variable.key}
-        </DialogHeader>
+        <DialogHeader>Edit {variable.key}</DialogHeader>
         <Form method="post" {...form.props}>
           <input type="hidden" name="action" value="edit" />
           <input type="hidden" name="id" value={variable.id} />
           <input type="hidden" name="key" value={variable.key} />
           <FormError id={id.errorId}>{id.error}</FormError>
           <Fieldset>
-            <InputGroup fullWidth className="mt-2 mb-4">
+            <InputGroup fullWidth className="mb-4 mt-2">
               <Label>Key</Label>
               <InlineCode>{variable.key}</InlineCode>
             </InputGroup>
@@ -333,7 +323,10 @@ function EditEnvironmentVariablePanel({
                         name={`values[${index}].environmentId`}
                         value={environment.id}
                       />
-                      <label className="flex items-center justify-end" htmlFor={`values[${index}].value`}>
+                      <label
+                        className="flex items-center justify-end"
+                        htmlFor={`values[${index}].value`}
+                      >
                         <EnvironmentLabel environment={environment} className="h-5 px-2" />
                       </label>
                       <Input
@@ -347,25 +340,20 @@ function EditEnvironmentVariablePanel({
               </div>
             </InputGroup>
 
-          <FormError>{form.error}</FormError>
+            <FormError>{form.error}</FormError>
 
-          <FormButtons
-            confirmButton={
-              <Button type="submit" variant="primary/small" disabled={isLoading}>
-                {isLoading ? "Saving" : "Edit"}
-              </Button>
-            }
-            cancelButton={
-              <Button
-              onClick={() => setIsOpen(false)}
-              variant="secondary/small"
-              type="button"
-              >
-                Cancel
-              </Button>
-            }
+            <FormButtons
+              confirmButton={
+                <Button type="submit" variant="primary/small" disabled={isLoading}>
+                  {isLoading ? "Saving" : "Edit"}
+                </Button>
+              }
+              cancelButton={
+                <Button onClick={() => setIsOpen(false)} variant="tertiary/small" type="button">
+                  Cancel
+                </Button>
+              }
             />
-
           </Fieldset>
         </Form>
       </DialogContent>

@@ -63,7 +63,7 @@ export function endpointIndexStatusTitle(status: EndpointIndexStatus): string {
 export function endpointIndexStatusClassNameColor(status: EndpointIndexStatus): string {
   switch (status) {
     case "PENDING":
-      return "text-dimmed";
+      return "text-text-dimmed";
     case "STARTED":
       return "text-blue-500";
     case "SUCCESS":

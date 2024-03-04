@@ -36,18 +36,18 @@ export function FrameworkComingSoon({
           Choose a different framework
         </LinkButton>
       </div>
-      <Paragraph spacing className="border-b border-slate-800 pb-4">
+      <Paragraph spacing className="border-b border-charcoal-800 pb-4">
         We're working hard to bring support for {frameworkName} in Trigger.dev. Follow along with
         the GitHub issue or contribute and help us bring it to Trigger.dev faster.
       </Paragraph>
       <a
         href={githubIssueUrl}
         target="_blank"
-        className="group mt-4 block max-w-sm rounded-md bg-bright px-10 py-8 transition hover:bg-slate-100"
+        className="bg-bright group mt-4 block max-w-sm rounded-md px-10 py-8 transition hover:bg-charcoal-100"
       >
         <Paragraph spacing>triggerdotdev/trigger.dev</Paragraph>
         <h2 className="text-2xl font-semibold text-black">
-          <span className="mr-1 font-normal text-dimmed">#{githubIssueNumber}</span>Framework:
+          <span className="mr-1 font-normal text-text-dimmed">#{githubIssueNumber}</span>Framework:
           support for {frameworkName}
         </h2>
         <div className="mt-4 flex items-center gap-1.5">
@@ -55,7 +55,7 @@ export function FrameworkComingSoon({
           <Paragraph variant="small">View on GitHub</Paragraph>
           <NamedIcon
             name="arrow-right"
-            className="h-4 w-4 text-dimmed transition group-hover:translate-x-1"
+            className="h-4 w-4 text-text-dimmed transition group-hover:translate-x-1"
           />
         </div>
       </a>

@@ -2,28 +2,21 @@ import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEventSource } from "~/hooks/useEventSource";
 import {
   EndpointIndexStatusIcon,
   EndpointIndexStatusLabel,
 } from "~/components/environments/EndpointIndexStatus";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
+import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import { HowToUseApiKeysAndEndpoints } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Badge } from "~/components/primitives/Badge";
 import { ButtonContent, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
-import {
-  PageButtons,
-  PageDescription,
-  PageHeader,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
@@ -34,12 +27,12 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { ClientEndpoint, EnvironmentsPresenter } from "~/presenters/EnvironmentsPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
 import {
   ProjectParamSchema,
   docsPath,
@@ -49,7 +42,7 @@ import { requestUrl } from "~/utils/requestUrl.server";
 import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
 import { FirstEndpointSheet } from "./FirstEndpointSheet";
-import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -76,10 +69,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: "Something went wrong, if this problem persists please contact support.",
     });
   }
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Environments & API Keys" />,
 };
 
 export default function Page() {
@@ -131,21 +120,18 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Environments & API Keys" />
-          <PageButtons>
-            <LinkButton
-              LeadingIcon={"docs"}
-              to={docsPath("/documentation/concepts/environments-endpoints#environments")}
-              variant="secondary/small"
-            >
-              Environments documentation
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
-        <PageDescription>API Keys and endpoints for your environments.</PageDescription>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Environments & API Keys" />
+        <PageAccessories>
+          <LinkButton
+            variant={"minimal/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("/documentation/concepts/environments-endpoints#environments")}
+          >
+            Environments documentation
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
       <PageBody>
         <Help defaultOpen={!isAnyClientFullyConfigured}>
           {(open) => (
@@ -294,10 +280,10 @@ function EndpointRow({
           </TableCell>
           <TableCell onClick={onClick} colSpan={5} alignment="right">
             <div className="flex items-center justify-end gap-4">
-              <span className="text-amber-500">
+              <span className="text-sun-400/50">
                 The {environmentTitle({ type })} environment is not configured
               </span>
-              <ButtonContent variant="secondary/small">Configure</ButtonContent>
+              <ButtonContent variant="tertiary/small">Configure</ButtonContent>
             </div>
           </TableCell>
         </TableRow>

@@ -96,7 +96,7 @@ export function EventsFilters() {
 
       <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} />
 
-      <Button variant="tertiary/small" onClick={() => clearFilters()} LeadingIcon={"close"}>
+      <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={"close"}>
         Clear
       </Button>
     </div>

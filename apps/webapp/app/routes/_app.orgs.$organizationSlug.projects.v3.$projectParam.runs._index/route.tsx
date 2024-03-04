@@ -11,7 +11,7 @@ import { cn } from "~/utils/cn";
 import { ProjectParamSchema } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
 import { PageBody } from "~/components/layout/AppLayout";
-import { PageHeader, PageTitleRow, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -50,11 +50,9 @@ export default function Page() {
 
   return (
     <>
-      <PageHeader hideBorder>
-        <PageTitleRow>
-          <PageTitle title="Runs" />
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Runs" />
+      </NavBar>
       <PageBody>
         <div className={cn("grid h-fit grid-cols-1 gap-4")}>
           <div>

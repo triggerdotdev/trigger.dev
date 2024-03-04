@@ -51,19 +51,19 @@ export function DetailCell({
   return (
     <div
       className={cn(
-        "group flex h-11 w-full items-center gap-3 rounded-md p-1 pr-3 transition hover:bg-slate-900",
+        "group flex h-11 w-full items-center gap-3 rounded-md p-1 pr-3 transition hover:bg-charcoal-900",
         className
       )}
     >
       <IconInBox
         icon={leadingIcon}
-        className={cn("flex-none transition group-hover:border-slate-750", leadingIconClassName)}
+        className={cn("flex-none transition group-hover:border-charcoal-750", leadingIconClassName)}
       />
       <div className="flex flex-1 flex-col">
         <Paragraph
           variant={variation.label.variant}
           className={cn(
-            "flex-1 text-left transition group-hover:text-bright",
+            "flex-1 text-left transition group-hover:text-text-bright",
             variation.label.className
           )}
         >
@@ -73,7 +73,7 @@ export function DetailCell({
           <Paragraph
             variant={variation.description.variant}
             className={cn(
-              "flex-1 text-left text-dimmed transition group-hover:text-bright",
+              "flex-1 text-left text-text-dimmed transition group-hover:text-text-bright",
               variation.description.className
             )}
           >
@@ -85,7 +85,7 @@ export function DetailCell({
         <Icon
           icon={trailingIcon}
           className={cn(
-            "h-6 w-6 flex-none transition group-hover:border-slate-750",
+            "h-6 w-6 flex-none transition group-hover:border-charcoal-750",
             trailingIconClassName
           )}
         />

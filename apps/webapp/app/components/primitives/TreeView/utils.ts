@@ -195,7 +195,7 @@ function difference<T>(a: Set<T>, b: Set<T>): Set<T> {
   return new Set([...a].filter((x) => !b.has(x)));
 }
 
-function collapsedIdsFromState(state: NodesState): string[] {
+export function collapsedIdsFromState(state: NodesState): string[] {
   return Object.entries(state)
     .filter(([_, s]) => s.expanded === false)
     .map(([id]) => id);

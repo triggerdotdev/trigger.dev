@@ -1,3 +1,4 @@
+import { millisecondsToNanoseconds } from "@trigger.dev/core/v3/utils/durations";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
@@ -66,7 +67,36 @@ export class RunPresenter {
       throw new Error("Trace not found");
     }
 
+    //this tree starts at the passed in span (hides parent elements if there are any)
     const tree = createTreeFromFlatItems(traceSummary.spans, run.spanId);
+
+    //we need the start offset for each item, and the total duration of the entire tree
+    const treeRootStartTimeMs = tree ? tree?.data.startTime.getTime() : 0;
+    let totalDuration = tree?.data.duration ?? 0;
+    const events = tree
+      ? flattenTree(tree).map((n) => {
+          const offset = millisecondsToNanoseconds(
+            n.data.startTime.getTime() - treeRootStartTimeMs
+          );
+          totalDuration = Math.max(totalDuration, offset + n.data.duration);
+          return { ...n, data: { ...n.data, offset, isRoot: n.id === traceSummary.rootSpan.id } };
+        })
+      : [];
+
+    //if any elements are partial we want the total duration to represent all of the time until now
+    totalDuration = events.some((e) => e.data.isPartial)
+      ? millisecondsToNanoseconds(Date.now() - treeRootStartTimeMs)
+      : totalDuration;
+
+    //total duration should be a minimum of 1ms
+    totalDuration = Math.max(totalDuration, millisecondsToNanoseconds(1));
+
+    //we need to adjust any partial nodes so they run the full duration
+    for (const event of events) {
+      if (event.data.isPartial) {
+        event.data.duration = totalDuration - event.data.offset;
+      }
+    }
 
     return {
       run: {
@@ -79,9 +109,10 @@ export class RunPresenter {
           userName: getUsername(run.runtimeEnvironment.orgMember?.user),
         },
       },
-      events: tree ? flattenTree(tree) : [],
+      events: events,
       parentRunFriendlyId:
         tree?.id === traceSummary.rootSpan.id ? undefined : traceSummary.rootSpan.runId,
+      duration: totalDuration,
     };
   }
 }

@@ -1,4 +1,4 @@
-import { conform, useFieldList, useForm, list, requestIntent } from "@conform-to/react";
+import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import type { ActionFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
@@ -8,7 +8,6 @@ import simplur from "simplur";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -18,16 +17,12 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { env } from "~/env.server";
-import { organizationMatchId, useOrganization } from "~/hooks/useOrganizations";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { inviteMembers } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { scheduleEmail } from "~/services/email.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
 import { acceptInvitePath, organizationTeamPath } from "~/utils/pathBuilder";
-import { loader } from "../_app.orgs.$organizationSlug/route";
-import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 
 const schema = z.object({
   emails: z.preprocess((i) => {
@@ -90,20 +85,6 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 };
 
-export const handle: Handle = {
-  breadcrumb: (match, matches) => {
-    const orgMatch = matches.find((m) => m.id === organizationMatchId);
-    const data = useTypedMatchData<typeof loader>(orgMatch);
-    return (
-      <Fragment>
-        {data && <BreadcrumbLink to={organizationTeamPath(data?.organization)} title="Team" />}
-        <BreadcrumbIcon />
-        <BreadcrumbLink to={match.pathname} title="Invite" />
-      </Fragment>
-    );
-  },
-};
-
 export default function Page() {
   const organization = useOrganization();
   const lastSubmission = useActionData();
@@ -160,7 +141,7 @@ export default function Page() {
                 </Button>
               }
               cancelButton={
-                <LinkButton to={organizationTeamPath(organization)} variant={"secondary/small"}>
+                <LinkButton to={organizationTeamPath(organization)} variant={"tertiary/small"}>
                   Cancel
                 </LinkButton>
               }

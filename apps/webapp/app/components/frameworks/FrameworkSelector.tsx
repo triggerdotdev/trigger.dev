@@ -89,7 +89,7 @@ function FrameworkLink({ children, to, supported = false }: FrameworkLinkProps) 
     <Link
       to={to}
       className={cn(
-        "flex h-28 w-full items-center justify-center rounded-md border border-slate-750 px-8 py-4 transition hover:bg-slate-850",
+        "flex h-28 w-full items-center justify-center rounded-md border border-charcoal-750 px-8 py-4 transition hover:bg-charcoal-850",
         !supported && "border opacity-30 grayscale transition hover:opacity-100 hover:grayscale-0"
       )}
     >

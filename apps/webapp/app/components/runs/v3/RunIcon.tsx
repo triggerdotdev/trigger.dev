@@ -16,22 +16,22 @@ type TaskIconProps = {
 };
 
 export function RunIcon({ name, className }: TaskIconProps) {
-  if (!name) return <Squares2X2Icon className={cn(className, "text-slate-700")} />;
+  if (!name) return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
 
   switch (name) {
     case "task":
       return <TaskIcon className={cn(className, "text-blue-500")} />;
     case "attempt":
-      return <AttemptIcon className={cn(className, "text-slate-700")} />;
+      return <AttemptIcon className={cn(className, "text-text-dimmed")} />;
     case "wait":
       return <ClockIcon className={cn(className, "text-teal-500")} />;
     case "trace":
-      return <Squares2X2Icon className={cn(className, "text-slate-700")} />;
+      return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
     //log levels
     case "debug":
     case "log":
     case "info":
-      return <InformationCircleIcon className={cn(className, "text-slate-700")} />;
+      return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
     case "warn":
       return <InformationCircleIcon className={cn(className, "text-amber-400")} />;
     case "error":
@@ -44,7 +44,7 @@ export function RunIcon({ name, className }: TaskIconProps) {
     <NamedIcon
       name={name}
       className={cn(className)}
-      fallback={<InformationCircleIcon className={cn(className, "text-slate-700")} />}
+      fallback={<InformationCircleIcon className={cn(className, "text-text-dimmed")} />}
     />
   );
 }

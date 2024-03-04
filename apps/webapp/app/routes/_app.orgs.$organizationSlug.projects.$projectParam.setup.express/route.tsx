@@ -4,7 +4,6 @@ import { ExpressLogo } from "~/assets/logos/ExpressLogo";
 import { Feedback } from "~/components/Feedback";
 import { RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -17,12 +16,7 @@ import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useProjectSetupComplete } from "~/hooks/useProjectSetupComplete";
-import { Handle } from "~/utils/handle";
-import { projectSetupPath, trimTrailingSlash } from "~/utils/pathBuilder";
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Express" />,
-};
+import { projectSetupPath } from "~/utils/pathBuilder";
 
 export default function Page() {
   const organization = useOrganization();
@@ -38,7 +32,7 @@ export default function Page() {
         <ExpressLogo className="w-64" />
       </div>
       <div className="flex items-center justify-between">
-        <Header1 spacing className="text-bright">
+        <Header1 spacing className="text-text-bright">
           Get setup in 5 minutes
         </Header1>
         <div className="flex items-center gap-2">

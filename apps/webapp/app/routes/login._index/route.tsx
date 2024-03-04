@@ -98,7 +98,9 @@ export default function LoginPage() {
               >
                 <NamedIcon
                   name={"envelope"}
-                  className={"mr-1.5 h-4 w-4 text-dimmed transition group-hover:text-bright"}
+                  className={
+                    "mr-1.5 h-4 w-4 text-text-dimmed transition group-hover:text-text-bright"
+                  }
                 />
                 Continue with Email
               </LinkButton>

@@ -3,7 +3,7 @@ import { cn } from "~/utils/cn";
 export function BreadcrumbIcon({ className }: { className?: string }) {
   return (
     <svg
-      className={cn("text-slate-650", className)}
+      className={cn("text-charcoal-600", className)}
       width="9"
       height="20"
       viewBox="0 0 9 26"

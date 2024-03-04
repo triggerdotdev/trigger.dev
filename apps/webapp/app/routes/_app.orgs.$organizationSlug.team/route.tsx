@@ -20,8 +20,10 @@ import {
   AlertTrigger,
 } from "~/components/primitives/Alert";
 import { Button, ButtonContent, LinkButton } from "~/components/primitives/Buttons";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -30,10 +32,6 @@ import { getTeamMembersAndInvites, removeTeamMember } from "~/models/member.serv
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUserId } from "~/services/session.server";
 import { inviteTeamMemberPath, organizationTeamPath, resendInvitePath } from "~/utils/pathBuilder";
-import { DateTime } from "~/components/primitives/DateTime";
-import { PageHeader, PageTitleRow, PageTitle } from "~/components/primitives/PageHeader";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { Handle } from "~/utils/handle";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -95,10 +93,6 @@ export const action: ActionFunction = async ({ request, params }) => {
 type Member = UseDataFunctionReturn<typeof loader>["members"][number];
 type Invite = UseDataFunctionReturn<typeof loader>["invites"][number];
 
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Team" />,
-};
-
 export default function Page() {
   const user = useUser();
   const { members, invites } = useTypedLoaderData<typeof loader>();
@@ -106,14 +100,12 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Team" />
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Team" />
+      </NavBar>
       <PageBody>
         <Header2>Members</Header2>
-        <ul className="flex w-full max-w-md flex-col divide-y divide-ui-border border-b border-ui-border">
+        <ul className="divide-ui-border flex w-full max-w-md flex-col divide-y border-b border-grid-bright">
           {members.map((member) => (
             <li key={member.user.id} className="flex items-center gap-x-4 py-4">
               <UserAvatar
@@ -124,7 +116,7 @@ export default function Page() {
               <div className="flex flex-col gap-0.5">
                 <Header3>
                   {member.user.name}{" "}
-                  {member.user.id === user.id && <span className="text-dimmed">(You)</span>}
+                  {member.user.id === user.id && <span className="text-text-dimmed">(You)</span>}
                 </Header3>
                 <Paragraph variant="small">{member.user.email}</Paragraph>
               </div>
@@ -143,10 +135,10 @@ export default function Page() {
         {invites.length > 0 && (
           <>
             <Header2 className="mt-4">Pending invites</Header2>
-            <ul className="flex w-full max-w-md flex-col divide-y divide-slate-800 border-b border-slate-800">
+            <ul className="flex w-full max-w-md flex-col divide-y divide-charcoal-800 border-b border-charcoal-800">
               {invites.map((invite) => (
                 <li key={invite.id} className="flex items-center gap-4 py-4">
-                  <div className="rounded-md border border-slate-750 bg-slate-800 p-1.5">
+                  <div className="rounded-md border border-charcoal-750 bg-charcoal-800 p-1.5">
                     <NamedIcon name="envelope" className="h-7 w-7" />
                   </div>
                   <div className="flex flex-col gap-0.5">
@@ -194,7 +186,7 @@ function LeaveRemoveButton({
       return (
         <SimpleTooltip
           button={
-            <ButtonContent variant="secondary/small" className="cursor-not-allowed">
+            <ButtonContent variant="minimal/small" className="cursor-not-allowed">
               Leave team
             </ButtonContent>
           }
@@ -255,7 +247,7 @@ function LeaveTeamModal({
   return (
     <Alert open={open} onOpenChange={(o) => setOpen(o)}>
       <AlertTrigger asChild>
-        <Button variant="secondary/small">{buttonText}</Button>
+        <Button variant="tertiary/small">{buttonText}</Button>
       </AlertTrigger>
       <AlertContent>
         <AlertHeader>
@@ -282,7 +274,7 @@ function ResendButton({ invite }: { invite: Invite }) {
   return (
     <Form method="post" action={resendInvitePath()}>
       <input type="hidden" value={invite.id} name="inviteId" />
-      <Button type="submit" variant="secondary/small">
+      <Button type="submit" variant="tertiary/small">
         Resend invite
       </Button>
     </Form>

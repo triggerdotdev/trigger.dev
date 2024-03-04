@@ -1,5 +1,6 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { BeakerIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigation, useSubmit } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useCallback, useRef, useState } from "react";
@@ -154,39 +155,43 @@ export default function Page() {
     >
       <ResizablePanelGroup direction="horizontal">
         <ResizablePanel order={1} minSize={30} defaultSize={60}>
-          <JSONEditor
-            defaultValue={defaultJson}
-            readOnly={false}
-            basicSetup
-            onChange={(v) => {
-              currentJson.current = v;
+          <div className="h-full bg-charcoal-900">
+            <JSONEditor
+              defaultValue={defaultJson}
+              readOnly={false}
+              basicSetup
+              onChange={(v) => {
+                currentJson.current = v;
 
-              //deselect the example if it's been edited
-              if (selectedCodeSampleId) {
-                if (v !== selectedCodeSample) {
-                  setDefaultJson(v);
-                  setSelectedCodeSampleId(undefined);
+                //deselect the example if it's been edited
+                if (selectedCodeSampleId) {
+                  if (v !== selectedCodeSample) {
+                    setDefaultJson(v);
+                    setSelectedCodeSampleId(undefined);
+                  }
                 }
-              }
-            }}
-            height="100%"
-            min-height="100%"
-            max-height="100%"
-            autoFocus
-            placeholder="Use your schema to enter valid JSON or add one of the example payloads then click 'Run test'"
-            className="h-full"
-          />
+              }}
+              height="100%"
+              min-height="100%"
+              max-height="100%"
+              autoFocus
+              placeholder="Use your schema to enter valid JSON or add one of the recent payloads then click 'Run test'"
+              className="h-full"
+            />
+          </div>
         </ResizablePanel>
         <ResizableHandle withHandle />
         <ResizablePanel order={2} minSize={20} defaultSize={40}>
           <div className="flex flex-col gap-2 pl-4">
-            <Header2>Recent payloads</Header2>
+            <div className="flex h-10 items-center border-b border-grid-dimmed">
+              <Header2>Recent payloads</Header2>
+            </div>
             {runs.length === 0 ? (
               <Callout variant="info">
                 Recent payloads will show here once you've completed a Run.
               </Callout>
             ) : (
-              <div className="flex flex-col divide-y divide-slate-850">
+              <div className="flex flex-col divide-y divide-charcoal-850">
                 {runs.map((run) => (
                   <button
                     key={run.id}
@@ -202,7 +207,7 @@ export default function Page() {
                       <Paragraph variant="small">
                         <DateTime date={run.createdAt} />
                       </Paragraph>
-                      <div className="flex items-center gap-1 text-xs text-dimmed">
+                      <div className="flex items-center gap-1 text-xs text-text-dimmed">
                         <div>Run #{run.number}</div>
                         <TaskRunStatus status={run.status} />
                       </div>
@@ -214,7 +219,7 @@ export default function Page() {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="flex items-center justify-end gap-2 border-t border-border bg-midnight-900">
+      <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed px-2">
         <div className="flex items-center gap-1">
           <TaskPath
             filePath={task.filePath}
@@ -227,9 +232,8 @@ export default function Page() {
         </div>
         <Button
           type="submit"
-          variant="primary/medium"
-          LeadingIcon="beaker"
-          leadingIconClassName="text-bright"
+          variant="primary/small"
+          LeadingIcon={BeakerIcon}
           shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
         >
           Run test

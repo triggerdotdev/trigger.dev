@@ -1,61 +1,52 @@
 import { Link } from "@remix-run/react";
 import simplur from "simplur";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
-  PageHeader,
-  PageTitleRow,
-  PageTitle,
-  PageButtons,
-  PageInfoRow,
+  PageAccessories,
+  NavBar,
   PageInfoGroup,
+  PageInfoRow,
+  PageTitle,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { Handle } from "~/utils/handle";
 import { newProjectPath, projectPath } from "~/utils/pathBuilder";
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Projects" />,
-};
 
 export default function Page() {
   const organization = useOrganization();
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title={`${organization.title} projects`} />
-          <PageButtons>
-            <LinkButton
-              to={newProjectPath(organization)}
-              variant="primary/small"
-              shortcut={{ key: "n" }}
-            >
-              Create a new project
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
+      <NavBar>
+        <PageTitle title={`${organization.title} projects`} />
+        <PageAccessories>
+          <LinkButton
+            to={newProjectPath(organization)}
+            variant="primary/small"
+            shortcut={{ key: "n" }}
+          >
+            Create a new project
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
+      <PageBody>
         <PageInfoRow>
           <PageInfoGroup alignment="right">
-            <Paragraph variant="extra-small" className="text-slate-600">
+            <Paragraph variant="extra-small" className="text-charcoal-600">
               UID: {organization.id}
             </Paragraph>
           </PageInfoGroup>
         </PageInfoRow>
-      </PageHeader>
-      <PageBody>
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {organization.projects.length > 0 ? (
             organization.projects.map((project) => {
               return (
                 <li key={project.id}>
                   <Link
-                    className="flex gap-4 rounded-md border border-ui-border-dimmed p-4 transition hover:bg-slate-900 "
+                    className="border-grid-bright-dimmed flex gap-4 rounded-md border p-4 transition hover:bg-charcoal-900 "
                     to={projectPath(organization, project)}
                   >
                     <NamedIcon name="folder" className="h-10 w-10 flex-none" />
