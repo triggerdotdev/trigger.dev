@@ -177,7 +177,6 @@ export default function Page() {
 }
 
 const tickCount = 5;
-const minimumDurationMs = 5;
 
 function TasksTreeView({
   events,
@@ -349,7 +348,7 @@ function TasksTreeView({
         <ResizablePanel order={2} minSize={20} defaultSize={50} className="h-full">
           <div className="h-full overflow-x-auto pr-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <Timeline.Root
-              durationMs={Math.max(nanosecondsToMilliseconds(totalDuration), minimumDurationMs)}
+              durationMs={nanosecondsToMilliseconds(totalDuration)}
               scale={scale}
               className="h-full pt-2"
               minWidth={300}
@@ -359,8 +358,8 @@ function TasksTreeView({
               <Timeline.FollowCursor>
                 {(ms) => (
                   <div className="relative z-50 flex h-full flex-col">
-                    <div className="relative flex h-9 items-end">
-                      <div className="absolute left-1/2 w-fit -translate-x-1/2 rounded-sm border border-charcoal-600 bg-charcoal-750 px-0.5 py-0.5 text-xxs tabular-nums text-text-bright">
+                    <div className="relative flex h-8 items-end">
+                      <div className="absolute left-1/2 w-fit -translate-x-1/2 rounded-sm border border-charcoal-600 bg-charcoal-750 px-1 py-0.5 text-xxs tabular-nums text-text-bright">
                         {formatDurationMilliseconds(ms, {
                           style: "short",
                           maxDecimalPoints: ms < 1000 ? 0 : 1,
@@ -374,32 +373,48 @@ function TasksTreeView({
 
               <Timeline.Row className="grid h-full grid-rows-[2rem_1fr]">
                 {/* The duration labels */}
-                <Timeline.Row className="flex items-end border-b">
-                  <Timeline.EquallyDistribute count={tickCount}>
-                    {(ms: number, index: number) => (
-                      <Timeline.Point
-                        ms={ms}
-                        className={"relative bottom-0 text-xxs text-text-dimmed"}
-                      >
-                        {(ms) => (
-                          <div
-                            className={
-                              index === 0
-                                ? "left-0.5"
-                                : index === tickCount - 1
-                                ? "-right-0 -translate-x-full"
-                                : "left-1/2 -translate-x-1/2"
-                            }
-                          >
-                            {formatDurationMilliseconds(ms, {
-                              style: "short",
-                              maxDecimalPoints: ms < 1000 ? 0 : 1,
-                            })}
-                          </div>
-                        )}
-                      </Timeline.Point>
-                    )}
-                  </Timeline.EquallyDistribute>
+                <Timeline.Row>
+                  <Timeline.Row className="h-5">
+                    <Timeline.EquallyDistribute count={tickCount}>
+                      {(ms: number, index: number) => (
+                        <Timeline.Point
+                          ms={ms}
+                          className={"relative bottom-0 text-xxs text-text-dimmed"}
+                        >
+                          {(ms) => (
+                            <div
+                              className={cn(
+                                "",
+                                index === 0
+                                  ? "ml-0.5"
+                                  : index === tickCount - 1
+                                  ? "-translate-x-full"
+                                  : "-translate-x-1/2"
+                              )}
+                            >
+                              {formatDurationMilliseconds(ms, {
+                                style: "short",
+                                maxDecimalPoints: ms < 1000 ? 0 : 1,
+                              })}
+                            </div>
+                          )}
+                        </Timeline.Point>
+                      )}
+                    </Timeline.EquallyDistribute>
+                  </Timeline.Row>
+                  <Timeline.Row className="h-3">
+                    <Timeline.EquallyDistribute count={tickCount}>
+                      {(ms: number, index: number) => {
+                        if (index === 0) return null;
+                        return (
+                          <Timeline.Point
+                            ms={ms}
+                            className={"h-full border-r border-grid-dimmed"}
+                          />
+                        );
+                      }}
+                    </Timeline.EquallyDistribute>
+                  </Timeline.Row>
                 </Timeline.Row>
                 {/* Main timeline body */}
                 <Timeline.Row>
@@ -521,7 +536,7 @@ function SpanWithDuration({
     <Timeline.Span {...props}>
       <div
         className={cn(
-          "relative flex h-5 w-full min-w-px items-center rounded-sm",
+          "relative flex h-4 w-full min-w-px items-center rounded-sm",
           eventBackgroundClassName(node.data)
         )}
       >
