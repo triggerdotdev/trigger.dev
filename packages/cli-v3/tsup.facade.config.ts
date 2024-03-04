@@ -2,15 +2,14 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
   clean: false,
-  dts: true,
+  dts: false,
   tsconfig: "tsconfig.json",
   splitting: false,
-  entry: ["src/worker-facade.ts"],
+  entry: ["src/dev/worker-facade.ts", "src/dev/register-tracing.ts"],
   format: ["esm"],
   minify: false,
   metafile: false,
-  sourcemap: true,
+  sourcemap: false,
   target: "esnext",
   outDir: "dist",
-  noExternal: ["zod", /traceloop/, /opentelemetry/, /source-map/],
 });

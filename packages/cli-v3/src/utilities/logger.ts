@@ -62,7 +62,7 @@ export class Logger {
   log = (...args: unknown[]) => this.doLog("log", args);
   warn = (...args: unknown[]) => this.doLog("warn", args);
   error = (...args: unknown[]) => this.doLog("error", args);
-  table<Keys extends string>(data: TableRow<Keys>[]) {
+  table<Keys extends string>(data: TableRow<Keys>[], level?: Exclude<LoggerLevel, "none">) {
     const keys: Keys[] = data.length === 0 ? [] : (Object.keys(data[0]!) as Keys[]);
     const t = new CLITable({
       head: keys,
@@ -72,7 +72,7 @@ export class Logger {
       },
     });
     t.push(...data.map((row) => keys.map((k) => row[k])));
-    return this.doLog("log", [t.toString()]);
+    return this.doLog(level ?? "log", [t.toString()]);
   }
 
   private doLog(messageLevel: Exclude<LoggerLevel, "none">, args: unknown[]) {

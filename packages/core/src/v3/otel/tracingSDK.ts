@@ -117,6 +117,7 @@ export class TracingSDK {
 
     registerInstrumentations({
       instrumentations: config.instrumentations ?? [],
+      tracerProvider: traceProvider,
     });
 
     const logExporter = new OTLPLogExporter({

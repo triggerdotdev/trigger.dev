@@ -10,7 +10,7 @@ import {
 import chalk from "chalk";
 import { watch } from "chokidar";
 import { Command } from "commander";
-import { BuildContext, context } from "esbuild";
+import { BuildContext, Metafile, context } from "esbuild";
 import { resolve as importResolve } from "import-meta-resolve";
 import { Box, Text, render, useApp, useInput } from "ink";
 import { createHash } from "node:crypto";
@@ -23,14 +23,14 @@ import React, { Suspense, useEffect } from "react";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
+import { CliApiClient } from "../apiClient";
+import { CommonCommandOptions } from "../cli/common.js";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "../dev/backgroundWorker.js";
+import { getConfigPath, readConfig } from "../utilities/configFiles";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
-import { CommonCommandOptions } from "../cli/common.js";
-import { getConfigPath, readConfig } from "../utilities/configFiles";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
-import { CliApiClient } from "../apiClient";
 
 let apiClient: CliApiClient | undefined;
 
@@ -298,10 +298,14 @@ function useDev({
         new URL(importResolve("./worker-facade.js", import.meta.url)).href.replace("file://", ""),
         "utf-8"
       );
-      const entryPointContents = workerFacade.replace(
-        "__TASKS__",
-        createTaskFileImports(taskFiles)
-      );
+
+      const registerTracingPath = new URL(
+        importResolve("./register-tracing.js", import.meta.url)
+      ).href.replace("file://", "");
+
+      const entryPointContents = workerFacade
+        .replace("__TASKS__", createTaskFileImports(taskFiles))
+        .replace("__REGISTER_TRACING__", `import { tracingSDK } from "${registerTracingPath}";`);
 
       let firstBuild = true;
 
@@ -318,16 +322,14 @@ function useDev({
         write: false,
         minify: false,
         sourcemap: "external", // does not set the //# sourceMappingURL= comment in the file, we handle it ourselves
+        packages: "external", // https://esbuild.github.io/api/#packages
         logLevel: "warning",
         platform: "node",
-        format: "esm",
+        format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
         target: ["node18", "es2020"],
         outdir: "out",
         define: {
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
-        },
-        banner: {
-          js: `import { createRequire } from 'module';const require = createRequire(import.meta.url);`,
         },
         plugins: [
           {
@@ -379,7 +381,7 @@ function useDev({
                 }
 
                 // Create a file at join(dir, ".trigger", path) with the fileContents
-                const fullPath = join(config.projectDir, ".trigger", `${contentHash}.mjs`);
+                const fullPath = join(config.projectDir, ".trigger", `${contentHash}.js`);
                 const sourceMapPath = `${fullPath}.map`;
 
                 const outputFileWithSourceMap = `${
@@ -388,6 +390,10 @@ function useDev({
 
                 await fs.promises.mkdir(dirname(fullPath), { recursive: true });
                 await fs.promises.writeFile(fullPath, outputFileWithSourceMap);
+
+                logger.debug(`Wrote background worker to ${fullPath}`);
+
+                const dependencies = gatherRequiredDependencies(metaOutput);
 
                 if (sourceMapFile) {
                   const sourceMapPath = `${fullPath}.map`;
@@ -399,6 +405,7 @@ function useDev({
 
                 const backgroundWorker = new BackgroundWorker(fullPath, {
                   projectDir: config.projectDir,
+                  dependencies,
                   env: {
                     TRIGGER_API_URL: apiUrl,
                     TRIGGER_API_KEY: apiKey,
@@ -607,4 +614,49 @@ function WebsocketFactory(apiKey: string) {
       super(address, { ...(options ?? {}), headers: { Authorization: `Bearer ${apiKey}` } });
     }
   };
+}
+
+// Returns the dependencies that are required by the output that are found in output and the CLI package dependencies
+// Returns the dependency names and the version to use (taken from the CLI deps package.json)
+function gatherRequiredDependencies(outputMeta: Metafile["outputs"][string]) {
+  const dependencies: Record<string, string> = {};
+
+  for (const file of outputMeta.imports) {
+    if (file.kind !== "require-call" || !file.external) {
+      continue;
+    }
+
+    const packageName = detectPackageNameFromImportPath(file.path);
+
+    if (dependencies[packageName]) {
+      continue;
+    }
+
+    const internalDependencyVersion = (packageJson.dependencies as Record<string, string>)[
+      packageName
+    ];
+
+    if (internalDependencyVersion) {
+      dependencies[packageName] = internalDependencyVersion;
+    }
+  }
+
+  return dependencies;
+}
+
+// Expects path to be in the format:
+//  - source-map-support/register.js
+//  - @opentelemetry/api
+//  - zod
+//
+// With the result being:
+//  - source-map-support
+//  - @opentelemetry/api
+//  - zod
+function detectPackageNameFromImportPath(path: string): string {
+  if (path.startsWith("@")) {
+    return path.split("/").slice(0, 2).join("/");
+  } else {
+    return path.split("/")[0] as string;
+  }
 }
