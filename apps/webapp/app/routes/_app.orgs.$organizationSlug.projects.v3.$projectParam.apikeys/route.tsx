@@ -98,7 +98,7 @@ export default function Page() {
                     <TableCell>
                       <ClipboardField
                         className="w-full max-w-none"
-                        secure
+                        secure={`tr_${environment.apiKey.split("_")[1]}_••••••••`}
                         value={environment.apiKey}
                         variant={"tertiary/small"}
                       />
