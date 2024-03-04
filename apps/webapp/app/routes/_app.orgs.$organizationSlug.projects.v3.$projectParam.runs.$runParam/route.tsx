@@ -401,7 +401,7 @@ function TasksTreeView({
                           {(ms) => (
                             <div
                               className={cn(
-                                "",
+                                "whitespace-nowrap",
                                 index === 0
                                   ? "ml-0.5"
                                   : index === tickCount - 1
