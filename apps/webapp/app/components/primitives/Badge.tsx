@@ -20,7 +20,7 @@ type BadgeProps = React.HTMLAttributes<HTMLDivElement> & {
 export function Badge({ className, variant = "default", children, ...props }: BadgeProps) {
   return (
     <div className={cn(variants[variant], className)} {...props}>
-      <span className="-mb-0.5">{children}</span>
+      <span>{children}</span>
     </div>
   );
 }
