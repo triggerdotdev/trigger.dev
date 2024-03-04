@@ -6,6 +6,8 @@ import {
   LightBulbIcon,
   NoSymbolIcon,
 } from "@heroicons/react/20/solid";
+import { EnvelopeIcon } from "@heroicons/react/24/solid";
+import { AirtableIcon, GitHubDarkIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Button } from "~/components/primitives/Buttons";
 import { Header1, Header3 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
@@ -81,13 +83,13 @@ export default function Story() {
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Named icon</Header3>
-          <Button LeadingIcon="airtable" variant="primary/small">
+          <Button LeadingIcon={AirtableIcon} variant="primary/small">
             Connect to Airtable
           </Button>
-          <Button LeadingIcon="github" variant="primary/small">
+          <Button LeadingIcon={GitHubDarkIcon} variant="primary/small">
             Connect to GitHub
           </Button>
-          <Button TrailingIcon="slack" variant="secondary/small">
+          <Button TrailingIcon={SlackIcon} variant="secondary/small">
             Connect to Slack
           </Button>
           <Button TrailingIcon="warning" variant="secondary/small">
@@ -204,13 +206,13 @@ export default function Story() {
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Named icon</Header3>
-          <Button LeadingIcon="airtable" variant="primary/medium">
+          <Button LeadingIcon={AirtableIcon} variant="primary/medium">
             Connect to Airtable
           </Button>
-          <Button LeadingIcon="github" variant="primary/medium">
+          <Button LeadingIcon={GitHubDarkIcon} variant="primary/medium">
             Connect to GitHub
           </Button>
-          <Button TrailingIcon="slack" variant="secondary/medium">
+          <Button TrailingIcon={SlackIcon} variant="secondary/medium">
             Connect to Slack
           </Button>
           <Button TrailingIcon="warning" variant="secondary/medium">
@@ -263,19 +265,18 @@ export default function Story() {
         </div>
       </div>
       <Header1 className="mb-2 mt-8">Large buttons</Header1>
-      <div className="grid grid-cols-1 gap-8 border-b border-charcoal-700 pb-8">
+      <div className="grid grid-cols-1 gap-8 pb-8">
         <div className="flex flex-col gap-2">
           <div className="flex flex-col items-start gap-2">
             <Button variant="primary/large" fullWidth>
-              <NamedIcon name={"github"} className={"mr-1.5 h-4 w-4"} />
-              Continue with GitHub
+              <GitHubDarkIcon className={"mr-1.5 h-4 w-4"} />
+              <span className="text-charcoal-900">Continue with GitHub</span>
             </Button>
             <Button variant="secondary/large" fullWidth>
-              <NamedIcon
-                name={"envelope"}
-                className={"mr-1.5 h-4 w-4 transition group-hover:text-text-bright"}
+              <EnvelopeIcon
+                className={"mr-1.5 h-5 w-5 text-primary transition group-hover:text-apple-200"}
               />
-              Continue with Email
+              <span className="text-primary group-hover:text-apple-200">Continue with Email</span>
             </Button>
             <Button variant="danger/large" fullWidth>
               <NamedIcon
@@ -284,25 +285,24 @@ export default function Story() {
                   "mr-1.5 h-4 w-4 text-text-bright transition group-hover:text-text-bright"
                 }
               />
-              This is a delete button
+              <span className="text-text-bright">This is a delete button</span>
             </Button>
           </div>
         </div>
       </div>
       <Header1 className="mb-2 mt-8">Extra Large buttons</Header1>
-      <div className="grid grid-cols-1 gap-8 border-b border-charcoal-700 pb-8">
+      <div className="grid grid-cols-1 gap-8 pb-8">
         <div className="flex flex-col gap-2">
           <div className="flex flex-col items-start gap-2">
             <Button variant="primary/extra-large" fullWidth>
-              <NamedIcon name={"github"} className={"mr-1.5 h-5 w-5"} />
-              Continue with GitHub
+              <GitHubDarkIcon className={"mr-1.5 h-5 w-5"} />
+              <span className="text-charcoal-900">Continue with GitHub</span>
             </Button>
             <Button variant="secondary/extra-large" fullWidth>
-              <NamedIcon
-                name={"envelope"}
-                className={"mr-1.5 h-5 w-5 transition group-hover:text-text-bright"}
+              <EnvelopeIcon
+                className={"mr-1.5 h-5 w-5 text-primary transition group-hover:text-apple-200"}
               />
-              Continue with Email
+              <span className="text-primary group-hover:text-apple-200">Continue with Email</span>
             </Button>
             <Button variant="danger/extra-large" fullWidth>
               <NamedIcon
@@ -311,7 +311,7 @@ export default function Story() {
                   "mr-1.5 h-5 w-5 text-text-bright transition group-hover:text-text-bright"
                 }
               />
-              This is a delete button
+              <span className="text-text-bright">This is a delete button</span>
             </Button>
           </div>
         </div>
