@@ -1,33 +1,31 @@
 import { DisconnectReason, Namespace, Server, Socket } from "socket.io";
 import {
-  ZodMessageCatalogSchema,
-  ZodMessageHandlerOptions,
   MessageCatalogToSocketIoEvents,
-  ZodMessageHandler,
   ZodMessageSender,
 } from "./zodMessageHandler";
+import { ZodSocketMessageCatalogSchema, ZodSocketMessageHandler, ZodSocketMessageHandlers } from "./zodSocket";
 
 interface ExtendedError extends Error {
   data?: any;
 }
 
 export type ZodNamespaceSocket<
-  TClientMessages extends ZodMessageCatalogSchema,
-  TServerMessages extends ZodMessageCatalogSchema,
+  TClientMessages extends ZodSocketMessageCatalogSchema,
+  TServerMessages extends ZodSocketMessageCatalogSchema,
 > = Socket<
   MessageCatalogToSocketIoEvents<TClientMessages>,
   MessageCatalogToSocketIoEvents<TServerMessages>
 >;
 
 interface ZodNamespaceOptions<
-  TClientMessages extends ZodMessageCatalogSchema,
-  TServerMessages extends ZodMessageCatalogSchema,
+  TClientMessages extends ZodSocketMessageCatalogSchema,
+  TServerMessages extends ZodSocketMessageCatalogSchema,
 > {
   io: Server;
   name: string;
   clientMessages: TClientMessages;
   serverMessages: TServerMessages;
-  messageHandler?: ZodMessageHandlerOptions<TClientMessages>["messages"];
+  handlers?: ZodSocketMessageHandlers<TClientMessages>;
   authToken?: string;
   preAuth?: (
     socket: ZodNamespaceSocket<TClientMessages, TServerMessages>,
@@ -39,7 +37,7 @@ interface ZodNamespaceOptions<
   ) => void;
   onConnection?: (
     socket: ZodNamespaceSocket<TClientMessages, TServerMessages>,
-    handler: ZodMessageHandler<TClientMessages>,
+    handler: ZodSocketMessageHandler<TClientMessages>,
     sender: ZodMessageSender<TServerMessages>,
     logger: (...args: any[]) => void
   ) => Promise<void>;
@@ -57,10 +55,10 @@ interface ZodNamespaceOptions<
 }
 
 export class ZodNamespace<
-  TClientMessages extends ZodMessageCatalogSchema,
-  TServerMessages extends ZodMessageCatalogSchema,
+  TClientMessages extends ZodSocketMessageCatalogSchema,
+  TServerMessages extends ZodSocketMessageCatalogSchema,
 > {
-  #handler: ZodMessageHandler<TClientMessages>;
+  #handler: ZodSocketMessageHandler<TClientMessages>;
   sender: ZodMessageSender<TServerMessages>;
 
   io: Server;
@@ -70,9 +68,9 @@ export class ZodNamespace<
   >;
 
   constructor(opts: ZodNamespaceOptions<TClientMessages, TServerMessages>) {
-    this.#handler = new ZodMessageHandler({
+    this.#handler = new ZodSocketMessageHandler({
       schema: opts.clientMessages,
-      messages: opts.messageHandler,
+      handlers: opts.handlers,
     });
 
     this.io = opts.io;

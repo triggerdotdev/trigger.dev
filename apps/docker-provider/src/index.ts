@@ -5,11 +5,12 @@ import {
   clientWebsocketMessages,
   Machine,
   MessageCatalogToSocketIoEvents,
-  ProviderClientToServerEvents,
-  ProviderServerToClientEvents,
+  PlatformToProviderMessages,
+  ProviderToPlatformMessages,
   serverWebsocketMessages,
   ZodMessageHandler,
   ZodMessageSender,
+  ZodSocketConnection,
 } from "@trigger.dev/core/v3";
 import { HttpReply, SimpleLogger, getTextBody, getRandomPortNumber } from "@trigger.dev/core-apps";
 
@@ -107,7 +108,10 @@ class DockerProvider implements Provider {
   tasks: DockerTaskOperations;
 
   #httpServer: ReturnType<typeof createServer>;
-  #platformSocket: Socket<ProviderServerToClientEvents, ProviderClientToServerEvents>;
+  #platformSocket: ZodSocketConnection<
+    typeof ProviderToPlatformMessages,
+    typeof PlatformToProviderMessages
+  >;
 
   constructor(private options: DockerProviderOptions) {
     this.tasks = options.tasks;
@@ -187,72 +191,48 @@ class DockerProvider implements Provider {
   }
 
   #createPlatformSocket() {
-    const socket: Socket<ProviderServerToClientEvents, ProviderClientToServerEvents> = io(
-      `ws://${PLATFORM_HOST}:${PLATFORM_WS_PORT}/provider`,
-      {
-        transports: ["websocket"],
-        auth: {
-          token: PLATFORM_SECRET,
+    const platformConnection = new ZodSocketConnection({
+      namespace: "provider",
+      host: PLATFORM_HOST,
+      port: Number(PLATFORM_WS_PORT),
+      clientMessages: ProviderToPlatformMessages,
+      serverMessages: PlatformToProviderMessages,
+      authToken: PLATFORM_SECRET,
+      extraHeaders: {
+        "x-trigger-provider-type": "docker",
+      },
+      handlers: {
+        DELETE: async (message) => {
+          this.tasks.delete({ runId: message.name });
+
+          return {
+            message: "delete request received",
+          };
         },
-        extraHeaders: {
-          "x-trigger-provider-type": "docker",
+        GET: async (message) => {
+          this.tasks.get({ runId: message.name });
         },
-      }
-    );
-
-    const logger = new SimpleLogger(`[platform][${socket.id ?? "NO_ID"}]`);
-
-    socket.on("connect_error", (err) => {
-      logger.error(`connect_error: ${err.message}`);
+        HEALTH: async (message) => {
+          return {
+            status: "ok",
+          };
+        },
+        INDEX: async (message) => {
+          try {
+            await this.tasks.index({
+              contentHash: message.contentHash,
+              imageTag: message.imageTag,
+              envId: message.envId,
+            });
+          } catch (error) {
+            logger.error("task index failed", error);
+          }
+        },
+        RESTORE: async (message) => {},
+      },
     });
 
-    socket.on("connect", () => {
-      logger.log("connect");
-    });
-
-    socket.on("disconnect", () => {
-      logger.log("disconnect");
-    });
-
-    socket.on("GET", async (message) => {
-      logger.log("[GET]", message);
-
-      this.tasks.get({ runId: message.name });
-    });
-
-    socket.on("DELETE", async (message, callback) => {
-      logger.log("[DELETE]", message);
-
-      callback({
-        message: "delete request received",
-      });
-
-      this.tasks.delete({ runId: message.name });
-    });
-
-    socket.on("INDEX", async (message) => {
-      logger.log("[INDEX]", message);
-      try {
-        await this.tasks.index({
-          contentHash: message.contentHash,
-          imageTag: message.imageTag,
-          envId: message.envId,
-        });
-      } catch (error) {
-        logger.error("task index failed", error);
-      }
-    });
-
-    socket.on("RESTORE", async (message) => {
-      logger.log("[RESTORE]", message);
-      // await this.tasks.restore({});
-    });
-
-    socket.on("HEALTH", async (message) => {
-      logger.log("[HEALTH]", message);
-    });
-
-    return socket;
+    return platformConnection;
   }
 
   #createHttpServer() {

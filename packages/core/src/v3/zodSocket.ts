@@ -152,15 +152,6 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
   }
 }
 
-type ZodSocketMessageSenderFunction<
-  TMessageCatalog extends ZodSocketMessageCatalogSchema,
-  K extends keyof TMessageCatalog,
-> = (message: {
-  type: K;
-  payload: z.infer<GetSocketMessageSchema<TMessageCatalog, K>>;
-  version: "v1";
-}) => Promise<z.infer<GetSocketCallbackSchema<TMessageCatalog, K>>>;
-
 export type ZodSocketMessageSenderOptions<TMessageCatalog extends ZodSocketMessageCatalogSchema> = {
   schema: TMessageCatalog;
   socket: ZodSocket<any, TMessageCatalog>;
@@ -240,7 +231,7 @@ export type ZodSocket<
   MessageCatalogToSocketIoEvents<TEmitEvents>
 >;
 
-interface ZodNamespaceOptions<
+interface ZodSocketConnectionOptions<
   TClientMessages extends ZodSocketMessageCatalogSchema,
   TServerMessages extends ZodSocketMessageCatalogSchema,
 > {
@@ -283,7 +274,7 @@ export class ZodSocketConnection<
   #handler: ZodSocketMessageHandler<TServerMessages>;
   #logger: (...args: any[]) => void;
 
-  constructor(opts: ZodNamespaceOptions<TClientMessages, TServerMessages>) {
+  constructor(opts: ZodSocketConnectionOptions<TClientMessages, TServerMessages>) {
     this.socket = io(`ws://${opts.host}:${opts.port}/${opts.namespace}`, {
       transports: ["websocket"],
       auth: {
