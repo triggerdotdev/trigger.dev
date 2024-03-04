@@ -1,5 +1,15 @@
 import { VirtualItem, Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
-import { Fragment, RefObject, useCallback, useEffect, useReducer, useRef, useState } from "react";
+import {
+  Fragment,
+  MutableRefObject,
+  RefObject,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { UnmountClosed } from "react-collapse";
 import { cn } from "~/utils/cn";
 import { Changes, NodeState, NodesState, reducer } from "./reducer";
@@ -14,7 +24,6 @@ import {
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
   parentClassName?: string;
-
   renderNode: (params: {
     node: FlatTreeItem<TData>;
     state: NodeState;
@@ -25,7 +34,9 @@ export type TreeViewProps<TData> = {
   nodes: UseTreeStateOutput["nodes"];
   autoFocus?: boolean;
   virtualizer: Virtualizer<HTMLElement, Element>;
-  parentRef: RefObject<any>;
+  parentRef: MutableRefObject<HTMLElement | null>;
+  scrollRef?: MutableRefObject<HTMLElement | null>;
+  onScroll?: (scrollTop: number) => void;
 } & Pick<UseTreeStateOutput, "getTreeProps" | "getNodeProps">;
 
 export function TreeView<TData>({
@@ -38,18 +49,41 @@ export function TreeView<TData>({
   parentClassName,
   virtualizer,
   parentRef,
+  scrollRef,
+  onScroll,
 }: TreeViewProps<TData>) {
   useEffect(() => {
     if (autoFocus) {
       parentRef.current?.focus();
     }
-  }, [autoFocus, parentRef]);
+  }, [autoFocus, parentRef.current]);
 
   const virtualItems = virtualizer.getVirtualItems();
 
+  const scrollCallback = useCallback(
+    (event: Event) => {
+      if (!onScroll) return;
+      const target = event.target as HTMLElement;
+      onScroll?.(target.scrollTop);
+    },
+    [onScroll]
+  );
+
+  useEffect(() => {
+    //subscribe to parentRef scroll event
+    if (!scrollRef?.current || onScroll === undefined) return;
+    scrollRef.current.addEventListener("scroll", scrollCallback);
+    return () => scrollRef.current?.removeEventListener("scroll", scrollCallback);
+  }, [scrollRef?.current]);
+
   return (
     <div
-      ref={parentRef}
+      ref={(element) => {
+        parentRef.current = element;
+        if (scrollRef) {
+          scrollRef.current = element;
+        }
+      }}
       className={cn(
         "w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 focus-within:outline-none",
         parentClassName

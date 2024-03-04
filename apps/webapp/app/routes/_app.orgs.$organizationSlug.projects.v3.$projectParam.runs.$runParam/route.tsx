@@ -196,6 +196,8 @@ function TasksTreeView({
   const [showDurations, setShowDurations] = useState(false);
   const [scale, setScale] = useState(0.25);
   const parentRef = useRef<HTMLDivElement>(null);
+  const treeScrollRef = useRef<HTMLDivElement>(null);
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
 
   const {
     nodes,
@@ -224,6 +226,10 @@ function TasksTreeView({
       return false;
     },
   });
+
+  useEffect(() => {
+    console.log(virtualizer.scrollOffset);
+  }, [virtualizer.scrollOffset]);
 
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr] overflow-hidden">
@@ -277,6 +283,7 @@ function TasksTreeView({
             </div>
             <TreeView
               parentRef={parentRef}
+              scrollRef={treeScrollRef}
               virtualizer={virtualizer}
               autoFocus
               tree={events}
@@ -345,6 +352,7 @@ function TasksTreeView({
                   </div>
                 </div>
               )}
+              onScroll={(e) => console.log(e)}
             />
           </div>
         </ResizablePanel>
@@ -434,8 +442,8 @@ function TasksTreeView({
                   </Timeline.EquallyDistribute>
                   <TreeView
                     parentRef={parentRef}
+                    scrollRef={timelineScrollRef}
                     virtualizer={virtualizer}
-                    autoFocus
                     tree={events}
                     nodes={nodes}
                     getNodeProps={getNodeProps}
@@ -475,6 +483,7 @@ function TasksTreeView({
                         </Timeline.Row>
                       );
                     }}
+                    onScroll={(e) => console.log(e)}
                   />
                 </Timeline.Row>
               </Timeline.Row>
