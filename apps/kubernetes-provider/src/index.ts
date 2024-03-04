@@ -4,8 +4,9 @@ import { Machine } from "@trigger.dev/core/v3";
 import { ProviderShell, SimpleLogger, TaskOperations } from "@trigger.dev/core-apps";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
-
 const NODE_NAME = process.env.NODE_NAME || "some-node";
+const OTEL_EXPORTER_OTLP_ENDPOINT =
+  process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318";
 
 const REGISTRY_FQDN = process.env.REGISTRY_FQDN || "localhost:5000";
 const REPO_NAME = process.env.REPO_NAME || "test";
@@ -84,6 +85,10 @@ class KubernetesTaskOperations implements TaskOperations {
                     {
                       name: "TRIGGER_ENV_ID",
                       value: opts.envId,
+                    },
+                    {
+                      name: "OTEL_EXPORTER_OTLP_ENDPOINT",
+                      value: OTEL_EXPORTER_OTLP_ENDPOINT,
                     },
                     {
                       name: "HTTP_SERVER_PORT",
