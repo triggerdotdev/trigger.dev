@@ -1049,10 +1049,12 @@ importers:
       '@trigger.dev/tsconfig': workspace:*
       '@types/degit': ^2.8.3
       '@types/gradient-string': ^1.1.2
+      '@types/jsonlines': ^0.1.5
       '@types/mock-fs': ^4.13.1
       '@types/node': '18'
       '@types/object-hash': ^3.0.6
       '@types/react': ^18.2.48
+      '@types/semver': ^7.3.13
       '@types/ws': ^8.5.3
       chalk: ^5.2.0
       chokidar: ^3.5.3
@@ -1063,11 +1065,12 @@ importers:
       dotenv: ^16.4.4
       esbuild: ^0.19.11
       evt: ^2.4.13
-      execa: ^7.0.0
+      execa: ^8.0.0
       find-up: ^7.0.0
       gradient-string: ^2.0.2
       import-meta-resolve: ^4.0.0
       ink: ^4.4.1
+      jsonlines: ^0.1.1
       liquidjs: ^10.9.2
       mock-fs: ^5.2.0
       nanoid: ^4.0.2
@@ -1085,6 +1088,7 @@ importers:
       react: ^18.2.0
       react-error-boundary: ^4.0.12
       rimraf: ^3.0.2
+      semver: ^7.5.0
       simple-git: ^3.19.0
       socket.io-client: ^4.7.4
       source-map-support: ^0.5.21
@@ -1127,11 +1131,12 @@ importers:
       dotenv: 16.4.4
       esbuild: 0.19.11
       evt: 2.4.13
-      execa: 7.0.0
+      execa: 8.0.1
       find-up: 7.0.0
       gradient-string: 2.0.2
       import-meta-resolve: 4.0.0
       ink: 4.4.1_7kh72gklg5qjlh5zc6s6v3p6v4
+      jsonlines: 0.1.1
       liquidjs: 10.9.3
       mock-fs: 5.2.0
       nanoid: 4.0.2
@@ -1144,6 +1149,7 @@ importers:
       proxy-agent: 6.3.0_supports-color@9.4.0
       react: 18.2.0
       react-error-boundary: 4.0.12_react@18.2.0
+      semver: 7.5.4
       simple-git: 3.19.0_supports-color@9.4.0
       socket.io-client: 4.7.4_supports-color@9.4.0
       source-map-support: 0.5.21
@@ -1156,10 +1162,12 @@ importers:
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/gradient-string': 1.1.2
+      '@types/jsonlines': 0.1.5
       '@types/mock-fs': 4.13.1
       '@types/node': 18.17.1
       '@types/object-hash': 3.0.6
       '@types/react': 18.2.48
+      '@types/semver': 7.5.1
       '@types/ws': 8.5.4
       cpy-cli: 5.0.0
       npm-run-all: 4.1.5
@@ -7294,7 +7302,7 @@ packages:
     engines: {node: ^8.13.0 || >=10.10.0}
     dependencies:
       '@grpc/proto-loader': 0.7.7
-      '@types/node': 20.6.0
+      '@types/node': 20.11.20
     dev: false
 
   /@grpc/proto-loader/0.7.7:
@@ -17538,7 +17546,7 @@ packages:
     resolution: {integrity: sha512-ALYone6pm6QmwZoAgeyNksccT9Q4AWZQ6PvfwR37GT6r6FWUPguq6sUmNGSMV2Wr761oQoBxwGGa6DR5o1DC9g==}
     dependencies:
       '@types/connect': 3.4.35
-      '@types/node': 20.6.0
+      '@types/node': 20.11.20
 
   /@types/btoa-lite/1.0.0:
     resolution: {integrity: sha512-wJsiX1tosQ+J5+bY5LrSahHxr2wT+uME5UDwdN1kg4frt40euqA+wzECkmq4t5QbveHiJepfdThgQrPw6KiSlg==}
@@ -17589,7 +17597,7 @@ packages:
   /@types/connect/3.4.35:
     resolution: {integrity: sha512-cdeYyv4KWoEgpBISTxWvqYsVy444DOqehiF3fM3ne10AmJ62RSyNkUnxMJXHQWRQQX2eR94m5y1IZyDwBjV9FQ==}
     dependencies:
-      '@types/node': 20.6.0
+      '@types/node': 20.11.20
 
   /@types/connect/3.4.36:
     resolution: {integrity: sha512-P63Zd/JUGq+PdrM1lv0Wv5SBYeA2+CORvbrXbngriYY0jzLUWfQMQQxOhjONEz/wlHOAxOdY7CY65rgQdTjq2w==}
@@ -17744,7 +17752,7 @@ packages:
   /@types/express-serve-static-core/4.17.37:
     resolution: {integrity: sha512-ZohaCYTgGFcOP7u6aJOhY9uIZQgZ2vxC2yWoArY+FeDXlqeH66ZVBjgvg+RLVAS/DWNq4Ap9ZXu1+SUQiiWYMg==}
     dependencies:
-      '@types/node': 20.6.0
+      '@types/node': 20.11.20
       '@types/qs': 6.9.7
       '@types/range-parser': 1.2.4
       '@types/send': 0.17.2
@@ -17954,6 +17962,12 @@ packages:
 
   /@types/json5/0.0.30:
     resolution: {integrity: sha512-sqm9g7mHlPY/43fcSNrCYfOeX9zkTTK+euO5E6+CVijSMm5tTjkVdwdqRkY3ljjIAf8679vps5jKUoJBCLsMDA==}
+
+  /@types/jsonlines/0.1.5:
+    resolution: {integrity: sha512-/zOl7I350g4/G6fEW9dktpTrkcKqZDMRkr2SuDla0utgwkUXrm7OFXq2WZT0W9Jl7BYoisGbn1EZsV/Z2F9LGg==}
+    dependencies:
+      '@types/node': 20.11.20
+    dev: true
 
   /@types/jsonwebtoken/9.0.1:
     resolution: {integrity: sha512-c5ltxazpWabia/4UzhIoaDcIza4KViOQhdbjRlfcIGVnsE3c3brkz9Z+F/EeJIECOQP7W7US2hNE930cWWkPiw==}
@@ -18209,7 +18223,7 @@ packages:
   /@types/pg/8.6.1:
     resolution: {integrity: sha512-1Kc4oAGzAl7uqUStZCDvaLFqZrW9qWSjXOmBfdgyBP5La7Us6Mg4GBvRlSoaZMhQF/zSj1C8CtKMBkoiT8eL8w==}
     dependencies:
-      '@types/node': 20.6.0
+      '@types/node': 20.11.20
       pg-protocol: 1.6.0
       pg-types: 2.2.0
     dev: false
@@ -18217,7 +18231,7 @@ packages:
   /@types/pg/8.6.6:
     resolution: {integrity: sha512-O2xNmXebtwVekJDD+02udOncjVcMZQuTEQEMpKJ0ZRf5E7/9JJX3izhKUcUifBkyKpljyUM6BTgy2trmviKlpw==}
     dependencies:
-      '@types/node': 20.6.0
+      '@types/node': 20.11.20
       pg-protocol: 1.6.0
       pg-types: 2.2.0
     dev: false
@@ -18314,13 +18328,13 @@ packages:
     resolution: {integrity: sha512-aAG6yRf6r0wQ29bkS+x97BIs64ZLxeE/ARwyS6wrldMm3C1MdKwCcnnEwMC1slI8wuxJOpiUH9MioC0A0i+GJw==}
     dependencies:
       '@types/mime': 1.3.3
-      '@types/node': 20.6.0
+      '@types/node': 20.11.20
 
   /@types/serve-static/1.15.0:
     resolution: {integrity: sha512-z5xyF6uh8CbjAu9760KDKsH2FcDxZ2tFCsA4HIMWE6IkiYMXfVoa+4f9KX+FN0ZLsaMw1WNG2ETLA6N+/YA+cg==}
     dependencies:
       '@types/mime': 3.0.1
-      '@types/node': 20.6.0
+      '@types/node': 20.11.20
 
   /@types/set-cookie-parser/2.4.2:
     resolution: {integrity: sha512-fBZgytwhYAUkj/jC/FAV4RQ5EerRup1YQsXQCh8rZfiHkc4UahC192oH0smGwsXol3cL3A5oETuAHeQHmhXM4w==}
@@ -32663,7 +32677,7 @@ packages:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.0
-      '@types/node': 20.6.0
+      '@types/node': 20.11.20
       long: 5.2.3
 
   /proxy-addr/2.0.7:
@@ -36379,7 +36393,7 @@ packages:
     dependencies:
       bs-logger: 0.2.6
       fast-json-stable-stringify: 2.1.0
-      jest: 29.6.2_@types+node@16.18.11
+      jest: 29.6.2_@types+node@18.15.13
       jest-util: 29.6.2
       json5: 2.2.3
       lodash.memoize: 4.1.2

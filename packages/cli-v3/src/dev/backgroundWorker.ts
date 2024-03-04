@@ -20,10 +20,11 @@ import chalk from "chalk";
 import dotenv from "dotenv";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { basename, dirname, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import terminalLink from "terminal-link";
-import { logger } from "../utilities/logger.js";
 import { safeDeleteFileSync } from "../utilities/fileSystem.js";
+import { installPackages } from "../utilities/installPackages.js";
+import { logger } from "../utilities/logger.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -202,6 +203,7 @@ class CleanupProcessError extends Error {
 
 export type BackgroundWorkerParams = {
   env: Record<string, string>;
+  dependencies?: Record<string, string>;
   projectDir: string;
   debuggerOn: boolean;
   debugOtel?: boolean;
@@ -251,6 +253,11 @@ export class BackgroundWorker {
   async initialize() {
     if (this._initialized) {
       throw new Error("Worker already initialized");
+    }
+
+    // Install the dependencies in dirname(this.path) using npm and child_process
+    if (this.params.dependencies) {
+      await installPackages(this.params.dependencies, { cwd: dirname(this.path) });
     }
 
     let resolved = false;
@@ -479,7 +486,7 @@ class TaskRunProcess {
       },
       execArgv: this.worker.debuggerOn
         ? ["--inspect-brk", "--trace-uncaught"]
-        : ["--trace-uncaught", "--experimental-loader=@opentelemetry/instrumentation/hook.mjs"],
+        : ["--trace-uncaught"],
     });
 
     this._child.on("message", this.#handleMessage.bind(this));

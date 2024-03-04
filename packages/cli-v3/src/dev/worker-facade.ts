@@ -1,18 +1,9 @@
 import "source-map-support/register.js";
-import { TracingSDK } from "@trigger.dev/core/v3";
-import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
+import { type TracingSDK } from "@trigger.dev/core/v3";
 
-// IMPORTANT: this needs to be the first import to work properly
-// WARNING: [WARNING] Constructing "ImportInTheMiddle" will crash at run-time because it's an import namespace object, not a constructor [call-import-namespace]
-// TODO: https://github.com/open-telemetry/opentelemetry-js/issues/3954
-const tracingSDK = new TracingSDK({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
-  resource: new Resource({
-    [SemanticInternalAttributes.CLI_VERSION]: packageJson.version,
-  }),
-  instrumentations: [new OpenAIInstrumentation()],
-  diagLogLevel: (process.env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
-});
+__REGISTER_TRACING__;
+declare const __REGISTER_TRACING__: unknown;
+declare const tracingSDK: TracingSDK;
 
 const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
 const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.version);
@@ -42,11 +33,11 @@ import {
   type BackgroundWorkerProperties,
   type TracingDiagnosticLogLevel,
 } from "@trigger.dev/core/v3";
-import * as packageJson from "../package.json";
+import * as packageJson from "../../package.json";
 
 import { Resource } from "@opentelemetry/resources";
 import { flattenAttributes } from "@trigger.dev/core/v3";
-import { TaskMetadataWithFunctions } from "./types.js";
+import { TaskMetadataWithFunctions } from "../types.js";
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);

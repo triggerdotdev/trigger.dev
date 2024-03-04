@@ -5,7 +5,7 @@ export default defineConfig({
   dts: false,
   tsconfig: "tsconfig.json",
   splitting: false,
-  entry: ["src/worker-facade.ts"],
+  entry: ["src/dev/worker-facade.ts", "src/dev/register-tracing.ts"],
   format: ["esm"],
   minify: false,
   metafile: false,
