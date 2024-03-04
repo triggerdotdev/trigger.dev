@@ -35,7 +35,7 @@ class KubernetesTaskOperations implements TaskOperations {
     this.#k8sApi = this.#createK8sApi();
   }
 
-  async index(opts: { contentHash: string; imageTag: string }) {
+  async index(opts: { contentHash: string; imageTag: string; envId: string }) {
     await this.#createJob(
       {
         metadata: {
@@ -82,6 +82,10 @@ class KubernetesTaskOperations implements TaskOperations {
                       value: "true",
                     },
                     {
+                      name: "TRIGGER_ENV_ID",
+                      value: opts.envId,
+                    },
+                    {
                       name: "HTTP_SERVER_PORT",
                       value: "8000",
                     },
@@ -120,19 +124,24 @@ class KubernetesTaskOperations implements TaskOperations {
     );
   }
 
-  async create(opts: { runId: string; image: string; machine: Machine }) {
+  async create(opts: { attemptId: string; image: string; machine: Machine; envId: string }) {
     await this.#createPod(
       {
         metadata: {
-          name: `${opts.runId}-${randomUUID().slice(0, 5)}`,
+          name: `${opts.attemptId}-${randomUUID().slice(0, 5)}`,
           namespace: this.#namespace.metadata.name,
         },
         spec: {
           restartPolicy: "Never",
+          imagePullSecrets: [
+            {
+              name: "registry-trigger",
+            },
+          ],
           containers: [
             {
-              name: opts.runId,
-              image: this.#getImageFromRunId(opts.runId),
+              name: opts.attemptId,
+              image: opts.image,
               ports: [
                 {
                   containerPort: 8000,
@@ -145,6 +154,10 @@ class KubernetesTaskOperations implements TaskOperations {
                 {
                   name: "DEBUG",
                   value: "true",
+                },
+                {
+                  name: "TRIGGER_ENV_ID",
+                  value: opts.envId,
                 },
                 {
                   name: "POD_NAME",
@@ -180,6 +193,7 @@ class KubernetesTaskOperations implements TaskOperations {
   }
 
   async restore(opts: {
+    attemptId: string;
     runId: string;
     image: string;
     name: string;
