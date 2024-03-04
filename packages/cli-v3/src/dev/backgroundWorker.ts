@@ -20,10 +20,11 @@ import chalk from "chalk";
 import dotenv from "dotenv";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import terminalLink from "terminal-link";
-import { logger } from "../utilities/logger.js";
 import { safeDeleteFileSync } from "../utilities/fileSystem.js";
+import { installPackages } from "../utilities/installPackages.js";
+import { logger } from "../utilities/logger.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -202,6 +203,7 @@ class CleanupProcessError extends Error {
 
 export type BackgroundWorkerParams = {
   env: Record<string, string>;
+  dependencies?: Record<string, string>;
   projectDir: string;
   debuggerOn: boolean;
   debugOtel?: boolean;
@@ -251,6 +253,11 @@ export class BackgroundWorker {
   async initialize() {
     if (this._initialized) {
       throw new Error("Worker already initialized");
+    }
+
+    // Install the dependencies in dirname(this.path) using npm and child_process
+    if (this.params.dependencies) {
+      await installPackages(this.params.dependencies, { cwd: dirname(this.path) });
     }
 
     let resolved = false;
@@ -469,6 +476,7 @@ class TaskRunProcess {
   async initialize() {
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
+      cwd: dirname(this.path),
       env: {
         ...this.env,
         OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
@@ -532,7 +540,7 @@ class TaskRunProcess {
   }
 
   taskRunCompletedNotification(completion: TaskRunExecutionResult, execution: TaskRunExecution) {
-    if (!completion.ok && typeof completion.retry === "undefined") {
+    if (!completion.ok && typeof completion.retry !== "undefined") {
       return;
     }
 

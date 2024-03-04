@@ -5,6 +5,8 @@ import morgan from "morgan";
 import { createRequestHandler } from "@remix-run/express";
 import { WebSocketServer } from "ws";
 import { broadcastDevReady, logDevReady } from "@remix-run/server-runtime";
+import type { Server as IoServer } from "socket.io";
+import type { Server as EngineServer } from "engine.io";
 
 const app = express();
 
@@ -53,6 +55,7 @@ app.all(
 const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
 if (process.env.HTTP_SERVER_DISABLED !== "true") {
+  const socketIo: { io: IoServer } | undefined = build.entry.module.socketIo;
   const wss: WebSocketServer | undefined = build.entry.module.wss;
 
   const server = app.listen(port, () => {
@@ -77,6 +80,9 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     });
   });
 
+  socketIo?.io.attach(server);
+  server.removeAllListeners("upgrade"); // prevent duplicate upgrades from listeners created by io.attach()
+
   server.on("upgrade", async (req, socket, head) => {
     console.log(
       `Attemping to upgrade connection at url ${req.url} with headers: ${JSON.stringify(
@@ -85,6 +91,15 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     );
 
     const url = new URL(req.url ?? "", "http://localhost");
+
+    // Upgrade socket.io connection
+    if (url.pathname.startsWith("/socket.io/")) {
+      console.log(`Socket.io client connected, upgrading their connection...`);
+
+      // https://github.com/socketio/socket.io/issues/4693
+      (socketIo?.io.engine as EngineServer).handleUpgrade(req, socket, head);
+      return;
+    }
 
     // Only upgrade the connecting if the path is `/ws`
     if (url.pathname !== "/ws") {

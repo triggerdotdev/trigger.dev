@@ -1,5 +1,4 @@
 import { note, spinner } from "@clack/prompts";
-import { ApiClient } from "../apiClient.js";
 import { chalkLink } from "../utilities/colors.js";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
@@ -7,6 +6,7 @@ import { Command } from "commander";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import { CommonCommandOptions } from "../cli/common.js";
 import { z } from "zod";
+import { CliApiClient } from "../apiClient.js";
 
 type WhoAmIResult =
   | {
@@ -55,7 +55,11 @@ export async function whoAmI(options?: WhoamiCommandOptions): Promise<WhoAmIResu
   const authentication = await isLoggedIn();
 
   if (!authentication.ok) {
-    loadingSpinner.stop("You must login first. Use `trigger.dev login` to login.");
+    if (authentication.error === "fetch failed") {
+      loadingSpinner.stop("Fetch failed. Platform down?");
+    } else {
+      loadingSpinner.stop("You must login first. Use `trigger.dev login` to login.");
+    }
 
     return {
       success: false,
@@ -63,7 +67,10 @@ export async function whoAmI(options?: WhoamiCommandOptions): Promise<WhoAmIResu
     };
   }
 
-  const apiClient = new ApiClient(authentication.config.apiUrl, authentication.config.accessToken);
+  const apiClient = new CliApiClient(
+    authentication.config.apiUrl,
+    authentication.config.accessToken
+  );
   const userData = await apiClient.whoAmI();
 
   if (!userData.success) {

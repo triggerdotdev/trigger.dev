@@ -123,7 +123,7 @@ export class TriggerTaskService extends BaseService {
             span.setAttribute("runId", taskRun.friendlyId);
 
             if (body.options?.dependentAttempt) {
-              const dependentAttempt = await tx.taskRun.findUnique({
+              const dependentAttempt = await tx.taskRunAttempt.findUnique({
                 where: { friendlyId: body.options.dependentAttempt },
               });
 

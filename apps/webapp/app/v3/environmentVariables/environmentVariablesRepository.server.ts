@@ -4,6 +4,7 @@ import { $transaction, prisma } from "~/db.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { EnvironmentVariable, ProjectEnvironmentVariable, Repository, Result } from "./repository";
+import { env } from "~/env.server";
 
 function secretKeyProjectPrefix(projectId: string) {
   return `environmentvariable:${projectId}:`;
@@ -402,7 +403,34 @@ export class EnvironmentVariablesRepository implements Repository {
     return this.getEnvironmentVariables(projectId, environmentId);
   }
 
-  async getEnvironmentVariables(
+  async #getTriggerEnvironmentVariables(environmentId: string): Promise<EnvironmentVariable[]> {
+    const environment = await this.prismaClient.runtimeEnvironment.findFirst({
+      where: {
+        id: environmentId,
+      },
+    });
+
+    if (!environment) {
+      return [];
+    }
+
+    if (environment.type === "DEVELOPMENT") {
+      return [];
+    }
+
+    return [
+      {
+        key: "TRIGGER_API_KEY",
+        value: environment.apiKey,
+      },
+      {
+        key: "TRIGGER_API_URL",
+        value: env.APP_ORIGIN,
+      },
+    ];
+  }
+
+  async #getSecretEnvironmentVariables(
     projectId: string,
     environmentId: string
   ): Promise<EnvironmentVariable[]> {
@@ -422,6 +450,16 @@ export class EnvironmentVariablesRepository implements Repository {
         value: secret.value.secret,
       };
     });
+  }
+
+  async getEnvironmentVariables(
+    projectId: string,
+    environmentId: string
+  ): Promise<EnvironmentVariable[]> {
+    const secretEnvVars = await this.#getSecretEnvironmentVariables(projectId, environmentId);
+    const triggerEnvVars = await this.#getTriggerEnvironmentVariables(environmentId);
+
+    return [...secretEnvVars, ...triggerEnvVars];
   }
 
   async delete(projectId: string, userId: string, options: { id: string }): Promise<Result> {

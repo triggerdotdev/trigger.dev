@@ -1,12 +1,12 @@
 import { intro, log, outro, select, spinner } from "@clack/prompts";
 import open from "open";
 import pRetry, { AbortError } from "p-retry";
-import { ApiClient } from "../apiClient.js";
 import { ApiUrlOptionsSchema } from "../cli/index.js";
 import { chalkLink } from "../utilities/colors.js";
 import { readAuthConfigFile, writeAuthConfigFile } from "../utilities/configFiles.js";
 import { logger } from "../utilities/logger.js";
 import { whoAmI } from "./whoami.js";
+import { CliApiClient } from "../apiClient.js";
 
 export async function loginCommand(options: any) {
   const result = ApiUrlOptionsSchema.safeParse(options);
@@ -29,7 +29,7 @@ export type LoginResult =
     };
 
 export async function login(apiUrl: string): Promise<LoginResult> {
-  const apiClient = new ApiClient(apiUrl);
+  const apiClient = new CliApiClient(apiUrl);
 
   intro("Logging in to Trigger.dev");
 
@@ -118,7 +118,7 @@ export async function login(apiUrl: string): Promise<LoginResult> {
   }
 }
 
-async function getPersonalAccessToken(apiClient: ApiClient, authorizationCode: string) {
+async function getPersonalAccessToken(apiClient: CliApiClient, authorizationCode: string) {
   const token = await apiClient.getPersonalAccessToken(authorizationCode);
 
   if (!token.success) {

@@ -2,18 +2,24 @@ import { z } from "zod";
 import {
   CreateAuthorizationCodeResponseSchema,
   GetPersonalAccessTokenResponseSchema,
-  GetProjectDevResponse,
-  CreateBackgroundWorkerRequestBody,
   WhoAmIResponseSchema,
+  CreateBackgroundWorkerRequestBody,
   CreateBackgroundWorkerResponse,
+  CreateImageDetailsRequestBody,
+  CreateImageDetailsResponse,
+  GetProjectDevResponse,
   GetEnvironmentVariablesResponseBody,
 } from "@trigger.dev/core/v3";
 
-export class ApiClient {
+export class CliApiClient {
+  private readonly apiURL: string;
+
   constructor(
-    private readonly apiURL: string,
+    apiURL: string,
     private readonly accessToken?: string
-  ) {}
+  ) {
+    this.apiURL = apiURL.replace(/\/$/, "");
+  }
 
   async createAuthorizationCode() {
     return zodfetch(
@@ -49,12 +55,31 @@ export class ApiClient {
 
   async createBackgroundWorker(projectRef: string, body: CreateBackgroundWorkerRequestBody) {
     if (!this.accessToken) {
-      throw new Error("indexProject: No access token");
+      throw new Error("createBackgroundWorker: No access token");
     }
 
     return zodfetch(
       CreateBackgroundWorkerResponse,
       `${this.apiURL}/api/v1/projects/${projectRef}/background-workers`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async createImageDetails(projectRef: string, body: CreateImageDetailsRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("createImageDetails: No access token");
+    }
+
+    return zodfetch(
+      CreateImageDetailsResponse,
+      `${this.apiURL}/api/v1/projects/${projectRef}/image-details`,
       {
         method: "POST",
         headers: {
@@ -72,6 +97,19 @@ export class ApiClient {
     }
 
     return zodfetch(GetProjectDevResponse, `${this.apiURL}/api/v1/projects/${projectRef}/dev`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async getProjectProdEnv({ projectRef }: { projectRef: string }) {
+    if (!this.accessToken) {
+      throw new Error("getProjectDevEnv: No access token");
+    }
+
+    return zodfetch(GetProjectDevResponse, `${this.apiURL}/api/v1/projects/${projectRef}/prod`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",

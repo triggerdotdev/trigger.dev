@@ -1,15 +1,14 @@
 import { context, propagation } from "@opentelemetry/api";
 import { zodfetch } from "../../zodfetch";
-import {
-  BatchTriggerTaskRequestBody,
-  BatchTriggerTaskResponse,
-  GetBatchResponseBody,
-  TriggerTaskRequestBody,
-  TriggerTaskResponse,
-} from "../schemas/api";
 import { taskContextManager } from "../tasks/taskContextManager";
 import { SafeAsyncLocalStorage } from "../utils/safeAsyncLocalStorage";
 import { getEnvVar } from "../utils/getEnv";
+import {
+  TriggerTaskRequestBody,
+  TriggerTaskResponse,
+  BatchTriggerTaskRequestBody,
+  BatchTriggerTaskResponse,
+} from "../schemas";
 
 export type TriggerOptions = {
   spanParentAsLink?: boolean;
@@ -19,10 +18,14 @@ export type TriggerOptions = {
  * Trigger.dev v3 API client
  */
 export class ApiClient {
+  private readonly baseUrl: string;
+
   constructor(
-    private readonly baseUrl: string,
+    baseUrl: string,
     private readonly accessToken: string
-  ) {}
+  ) {
+    this.baseUrl = baseUrl.replace(/\/$/, "");
+  }
 
   triggerTask(taskId: string, body: TriggerTaskRequestBody, options?: TriggerOptions) {
     return zodfetch(TriggerTaskResponse, `${this.baseUrl}/api/v1/tasks/${taskId}/trigger`, {
@@ -75,7 +78,7 @@ export class ApiClientManager {
 
   get accessToken(): string | undefined {
     const store = this.#getStore();
-    return store?.accessToken ?? getEnvVar("TRIGGER_API_KEY");
+    return store?.accessToken ?? getEnvVar("TRIGGER_SECRET_KEY");
   }
 
   get client(): ApiClient | undefined {

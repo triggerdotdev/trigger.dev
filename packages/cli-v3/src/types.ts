@@ -8,3 +8,10 @@ export type TaskMetadataWithFunctions = TaskMetadataWithFilePath & {
     middleware?: (params: any) => Promise<void>;
   };
 };
+
+export type TaskFile = {
+  triggerDir: string;
+  filePath: string;
+  importPath: string;
+  importName: string;
+};

@@ -3,9 +3,11 @@ import { BatchTriggerTaskRequestBody, TriggerTaskRequestBody } from "./schemas";
 export * from "./schemas";
 export * from "./apiClient";
 export * from "./zodMessageHandler";
+export * from "./zodNamespace";
 export * from "./errors";
 export * from "./runtime-api";
 export * from "./logger-api";
+export * from "./types";
 export { SemanticInternalAttributes } from "./semanticInternalAttributes";
 export { iconStringForSeverity } from "./icons";
 export {
@@ -28,6 +30,7 @@ export function parseBatchTriggerTaskRequestBody(body: unknown) {
 export { taskContextManager, TaskContextSpanProcessor } from "./tasks/taskContextManager";
 export type { RuntimeManager } from "./runtime/manager";
 export { DevRuntimeManager } from "./runtime/devRuntimeManager";
+export { ProdRuntimeManager } from "./runtime/prodRuntimeManager";
 export { TriggerTracer } from "./tracer";
 
 export type { TaskLogger } from "./logger/taskLogger";
@@ -42,3 +45,4 @@ export { defaultRetryOptions, calculateNextRetryDelay, calculateResetAt } from "
 export { accessoryAttributes } from "./utils/styleAttributes";
 export { eventFilterMatches } from "../eventFilterMatches";
 export { omit } from "./utils/omit";
+export { TracingSDK, type TracingDiagnosticLogLevel } from "./otel";

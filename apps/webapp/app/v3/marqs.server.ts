@@ -29,7 +29,7 @@ const constants = {
   QUEUE_PART: "queue",
   CONCURRENCY_KEY_PART: "ck",
   MESSAGE_PART: "message",
-};
+} as const;
 
 const MessagePayload = z.object({
   version: z.literal("1"),
@@ -254,6 +254,50 @@ export class MarQS {
           concurrencyKey: `${message.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
           messageId,
         });
+      },
+      { kind: SpanKind.CONSUMER }
+    );
+  }
+
+  public async replaceMessage(
+    messageId: string,
+    messageData: Record<string, unknown>,
+    timestamp?: number
+  ) {
+    return this.#trace(
+      "replaceMessage",
+      async (span) => {
+        const oldMessage = await this.#readMessage(messageId);
+
+        if (!oldMessage) {
+          return;
+        }
+
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: oldMessage.queue,
+          [SemanticAttributes.MESSAGE_ID]: oldMessage.messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: oldMessage.concurrencyKey,
+          [SemanticAttributes.PARENT_QUEUE]: oldMessage.parentQueue,
+        });
+
+        await this.#callAcknowledgeMessage({
+          messageKey: `${constants.MESSAGE_PART}:${messageId}`,
+          visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+          concurrencyKey: `${oldMessage.queue}:${constants.CURRENT_CONCURRENCY_PART}`,
+          messageId,
+        });
+
+        const newMessage: MessagePayload = {
+          version: "1",
+          data: messageData,
+          queue: oldMessage.queue,
+          concurrencyKey: oldMessage.concurrencyKey,
+          timestamp: timestamp ?? Date.now(),
+          messageId,
+          parentQueue: oldMessage.parentQueue,
+        };
+
+        await this.#callEnqueueMessage(newMessage);
       },
       { kind: SpanKind.CONSUMER }
     );
@@ -783,9 +827,9 @@ local currentTime = tonumber(ARGV[3])
 local messageScore = tonumber(ARGV[4])
 
 -- Check to see if the message is still in the visibilityQueue
-local messageVisibility = redis.call('ZSCORE', visibilityQueue, messageId)
+local messageVisibility = tonumber(redis.call('ZSCORE', visibilityQueue, messageId)) or 0
 
-if messageVisibility == nil then
+if messageVisibility == 0 then
     return
 end
 
@@ -820,9 +864,9 @@ local milliseconds = tonumber(ARGV[2])
 local maxVisibilityTimeout = tonumber(ARGV[3])
 
 -- Get the current visibility timeout
-local currentVisibilityTimeout = redis.call('ZSCORE', visibilityQueue, messageId)
+local currentVisibilityTimeout = tonumber(redis.call('ZSCORE', visibilityQueue, messageId)) or 0
 
-if currentVisibilityTimeout == nil then
+if currentVisibilityTimeout == 0 then
     return
 end
 
