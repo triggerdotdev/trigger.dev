@@ -1,8 +1,7 @@
-import { EditorView } from "@codemirror/view";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
-import { HighlightStyle } from "@codemirror/language";
-import { tagHighlighter, tags } from "@lezer/highlight";
-import { syntaxHighlighting } from "@codemirror/language";
+import { EditorView } from "@codemirror/view";
+import { tags } from "@lezer/highlight";
 
 export function darkTheme(): Extension {
   const chalky = "#e5c07b",
@@ -21,11 +20,11 @@ export function darkTheme(): Extension {
     tooltipBackground = "#353a42",
     selection = "rgb(71 85 105)",
     cursor = "#528bff",
-    scrollbarTrack = "#0E1521",
+    scrollbarTrack = "rgba(0,0,0,0)",
     scrollbarTrackActive = "#131B2B",
     scrollbarThumb = "#293649",
     scrollbarThumbActive = "#3C4B62",
-    scrollbarBg = "#0E1521";
+    scrollbarBg = "rgba(0,0,0,0)";
 
   const jsonHeroEditorTheme = EditorView.theme(
     {
@@ -36,7 +35,7 @@ export function darkTheme(): Extension {
 
       ".cm-content": {
         caretColor: cursor,
-        fontFamily: "monospace",
+        fontFamily: "Geist Mono Variable",
         fontSize: "14px",
       },
 

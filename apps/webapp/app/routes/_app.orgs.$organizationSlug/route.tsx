@@ -3,20 +3,17 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
-import { UpgradePrompt } from "~/components/billing/UpgradePrompt";
-import { Breadcrumb, BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { PageNavigationIndicator } from "~/components/navigation/PageNavigationIndicator";
+import { MainBody } from "~/components/layout/AppLayout";
 import { SideMenu } from "~/components/navigation/SideMenu";
 import { featuresForRequest } from "~/features.server";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
-import { useTypedMatchData, useTypedMatchesData } from "~/hooks/useTypedMatchData";
+import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
 import { BillingService } from "~/services/billing.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { requireUserId } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
-import { Handle } from "~/utils/handle";
 import { organizationPath } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
@@ -62,15 +59,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    const data = useTypedMatchData<typeof loader>(match);
-    return (
-      <BreadcrumbLink to={match.pathname} title={data?.organization.title ?? "Organization"} />
-    );
-  },
-};
-
 export default function Organization() {
   const { organization, project, organizations, isImpersonating } =
     useTypedLoaderData<typeof loader>();
@@ -85,16 +73,9 @@ export default function Organization() {
           organization={organization}
           organizations={organizations}
         />
-        <div className="grid grid-rows-[2.25rem_1fr] overflow-hidden">
-          <div className="flex w-full items-center justify-between border-b border-ui-border">
-            <Breadcrumb />
-            <div className="flex h-full items-center gap-4">
-              <PageNavigationIndicator className="mr-2" />
-              <UpgradePrompt organization={organization} />
-            </div>
-          </div>
+        <MainBody>
           <Outlet />
-        </div>
+        </MainBody>
       </div>
     </>
   );

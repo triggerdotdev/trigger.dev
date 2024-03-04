@@ -2,7 +2,6 @@ import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -22,8 +21,7 @@ import { useProject } from "~/hooks/useProject";
 import { WebhookTriggersPresenter } from "~/presenters/WebhookTriggersPresenter.server";
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
-import { ProjectParamSchema, trimTrailingSlash, webhookTriggerPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, webhookTriggerPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -39,12 +37,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson(data);
 };
 
-export const handle: Handle = {
-  breadcrumb: (match) => (
-    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Webhook Triggers" />
-  ),
-};
-
 export default function Integrations() {
   const { webhooks } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
@@ -53,7 +45,8 @@ export default function Integrations() {
   return (
     <>
       <Paragraph variant="small" spacing>
-        A Webhook Trigger runs a Job when it receives a matching payload at a registered HTTP Endpoint.
+        A Webhook Trigger runs a Job when it receives a matching payload at a registered HTTP
+        Endpoint.
       </Paragraph>
 
       <Table containerClassName="mt-4">
@@ -73,7 +66,7 @@ export default function Integrations() {
               const path = webhookTriggerPath(organization, project, w);
               return (
                 <TableRow key={w.id} className={cn(!w.active && "bg-rose-500/30")}>
-                <TableCell to={path}>{w.key}</TableCell>
+                  <TableCell to={path}>{w.key}</TableCell>
                   <TableCell to={path}>
                     <div className="flex items-center gap-1">
                       <NamedIcon
@@ -115,10 +108,7 @@ export default function Integrations() {
                   <TableCell to={path}>
                     <div className="flex items-center justify-end gap-1">
                       {w.webhookEnvironments.map((env) => (
-                        <EnvironmentLabel
-                          key={env.id}
-                          environment={env.environment}
-                        />
+                        <EnvironmentLabel key={env.id} environment={env.environment} />
                       ))}
                     </div>
                   </TableCell>

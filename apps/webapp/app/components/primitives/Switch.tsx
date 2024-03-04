@@ -6,16 +6,16 @@ import { cn } from "~/utils/cn";
 
 const variations = {
   large: {
-    container: "flex items-center gap-x-2 rounded-md hover:bg-slate-850 p-2",
+    container: "flex items-center gap-x-2 rounded-md hover:bg-charcoal-850 p-2",
     root: "h-6 w-11",
     thumb: "h-5 w-5 data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
-    text: "text-sm text-slate-400 group-hover:text-slate-200",
+    text: "text-sm text-charcoal-400 group-hover:text-charcoal-200",
   },
   small: {
-    container: "flex items-center gap-x-1.5 rounded hover:bg-slate-850 pr-1 py-[0.1rem] pl-1.5",
+    container: "flex items-center gap-x-1.5 rounded hover:bg-charcoal-850 pr-1 py-[0.1rem] pl-1.5",
     root: "h-3 w-6",
     thumb: "h-2.5 w-2.5 data-[state=checked]:translate-x-2.5 data-[state=unchecked]:translate-x-0",
-    text: "text-xs text-slate-400 group-hover:text-slate-200 hover:cursor-pointer",
+    text: "text-xs text-charcoal-400 group-hover:text-charcoal-200 hover:cursor-pointer",
   },
 };
 
@@ -37,14 +37,14 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
         ) : null}
         <div
           className={cn(
-            "peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-focus-visible:ring-2 group-focus-visible:ring-ring group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-background group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-primary group-data-[state=unchecked]:bg-slate-700 focus-visible:outline-none",
+            "group-focus-visible:ring-ring group-focus-visible:ring-offset-background peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-focus-visible:ring-2 group-focus-visible:ring-offset-2 group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-secondary group-data-[state=unchecked]:bg-charcoal-700 focus-visible:outline-none",
             root
           )}
         >
           <SwitchPrimitives.Thumb
             className={cn(
               thumb,
-              "pointer-events-none block rounded-full bg-slate-200 shadow-lg ring-0 transition-transform"
+              "pointer-events-none block rounded-full bg-charcoal-200 shadow-lg ring-0 transition group-data-[state=checked]:bg-charcoal-700"
             )}
           />
         </div>

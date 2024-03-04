@@ -100,14 +100,14 @@ export function runStatusClassNameColor(status: JobRunStatus): string {
     case "SUCCESS":
       return "text-green-500";
     case "PENDING":
-      return "text-slate-500";
+      return "text-charcoal-500";
     case "STARTED":
     case "EXECUTING":
     case "WAITING_TO_CONTINUE":
     case "WAITING_TO_EXECUTE":
       return "text-blue-500";
     case "QUEUED":
-      return "text-slate-500";
+      return "text-charcoal-500";
     case "FAILURE":
     case "UNRESOLVED_AUTH":
     case "INVALID_PAYLOAD":
@@ -121,7 +121,7 @@ export function runStatusClassNameColor(status: JobRunStatus): string {
     case "PREPROCESSING":
       return "text-blue-500";
     case "CANCELED":
-      return "text-slate-500";
+      return "text-charcoal-500";
     default: {
       const _exhaustiveCheck: never = status;
       throw new Error(`Non-exhaustive match for value: ${status}`);

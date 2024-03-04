@@ -1,25 +1,22 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { TaskRunAttemptStatus } from "@trigger.dev/database";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { VersionLabel } from "~/components/VersionLabel";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header2 } from "~/components/primitives/Headers";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { PopoverMenuItem } from "~/components/primitives/Popover";
 import {
   Table,
   TableBlankRow,
   TableBody,
   TableCell,
   TableCellChevron,
-  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -61,12 +58,10 @@ export default function Page() {
   const hasTasks = tasks.length > 0;
 
   return (
-    <PageContainer className={hasTasks ? "" : "grid-rows-1"}>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Tasks" />
-        </PageTitleRow>
-      </PageHeader>
+    <PageContainer>
+      <NavBar>
+        <PageTitle title="Tasks" />
+      </NavBar>
       <PageBody>
         <div className={cn("grid h-full grid-cols-1 gap-4")}>
           <div className="h-full">
@@ -98,7 +93,10 @@ export default function Page() {
                           <TableRow key={task.id} className="group">
                             <TableCell to={path}>{task.slug}</TableCell>
                             <TableCell to={path}>
-                              {task.filePath} {task.exportName}()
+                              <TaskPath
+                                filePath={task.filePath}
+                                functionName={`${task.exportName}()`}
+                              />
                             </TableCell>
                             <TableCell to={path}>
                               <EnvironmentLabel

@@ -4,12 +4,12 @@ import { cn } from "~/utils/cn";
 import { Button } from "./Buttons";
 import { IconNames, NamedIcon } from "./NamedIcon";
 
-const variations = {
+const variants = {
   "primary/small": {
     container:
-      "flex items-center text-dimmed font-mono rounded border border-slate-800 bg-slate-850 text-xs transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "flex items-center text-text-dimmed font-mono rounded border bg-charcoal-850 text-xs transition hover:bg-charcoal-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
-      "bg-slate-850 border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
+      "bg-charcoal-750 border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "primary/small" as const,
     button: "rounded-l-none min-w-[3.1rem]",
     iconSize: "h-3 w-3",
@@ -17,29 +17,30 @@ const variations = {
   },
   "secondary/small": {
     container:
-      "flex items-center text-dimmed font-mono rounded border border-slate-750 bg-slate-850 text-xs transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "flex items-center text-text-dimmed font-mono rounded border bg-transparent text-xs transition hover:bg-charcoal-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
-      "bg-slate-850 border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
-    buttonVariant: "secondary/small" as const,
-    button: "rounded-l-none border-l border-slate-750 min-w-[3.1rem]",
+      "bg-charcoal-750 border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
+    buttonVariant: "tertiary/small" as const,
+    button: "rounded-l-none border-l border-charcoal-750 min-w-[3.1rem]",
     iconSize: "h-3 w-3",
     iconPadding: "pl-1",
   },
   "tertiary/small": {
     container:
-      "flex items-center text-dimmed font-mono rounded border border-slate-850 bg-transparent text-xs transition hover:border-slate-800 hover:bg-slate-950 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "group flex items-center text-text-dimmed font-mono rounded bg-transparent text-xs transition hover:border-charcoal-700 hover:bg-tertiary focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
-    buttonVariant: "tertiary/small" as const,
-    button: "rounded-l-none border-l border-slate-850 min-w-[3.1rem]",
+    buttonVariant: "minimal/small" as const,
+    button:
+      "rounded-l-none border-l border-transparent group-hover:border-charcoal-700 min-w-[3.1rem]",
     iconSize: "h-3 w-3",
     iconPadding: "pl-1",
   },
   "primary/medium": {
     container:
-      "flex items-center text-dimmed font-mono rounded border border-slate-800 bg-slate-850 text-sm transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "flex items-center text-text-dimmed font-mono rounded border border-charcoal-800 bg-charcoal-850 text-sm transition hover:border-charcoal-750 hover:bg-charcoal-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
-      "bg-slate-850 border-0 text-sm px-3 w-auto rounded-l h-8 leading-6 focus:ring-transparent",
+      "bg-charcoal-850 border-0 text-sm px-3 w-auto rounded-l h-8 leading-6 focus:ring-transparent",
     buttonVariant: "primary/medium" as const,
     button: "rounded-l-none min-w-[4rem]",
     iconSize: "h-4 w-4",
@@ -47,21 +48,21 @@ const variations = {
   },
   "secondary/medium": {
     container:
-      "flex items-center text-dimmed font-mono rounded border border-slate-750 bg-slate-850 text-sm transition hover:border-slate-750 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "flex items-center text-text-dimmed font-mono rounded border border-charcoal-750 bg-charcoal-850 text-sm transition hover:border-charcoal-750 hover:bg-charcoal-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
-      "bg-slate-850 border-0 text-sm px-3 w-auto rounded-l h-8 leading-6 focus:ring-transparent",
+      "bg-charcoal-850 border-0 text-sm px-3 w-auto rounded-l h-8 leading-6 focus:ring-transparent",
     buttonVariant: "secondary/medium" as const,
-    button: "rounded-l-none border-l border-slate-750 min-w-[4rem]",
+    button: "rounded-l-none border-l border-charcoal-750 min-w-[4rem]",
     iconSize: "h-4 w-4",
     iconPadding: "pl-2",
   },
   "tertiary/medium": {
     container:
-      "flex items-center text-dimmed font-mono rounded border border-slate-850 bg-transparent text-sm transition hover:border-slate-800 hover:bg-slate-950 focus:border-4 focus:border-solid focus:border-l-transparent",
+      "flex items-center text-text-dimmed font-mono rounded border border-charcoal-850 bg-transparent text-sm transition hover:border-charcoal-800 hover:bg-charcoal-950 focus:border-4 focus:border-solid focus:border-l-transparent",
     input:
       "bg-transparent border-0 text-sm px-3 w-auto rounded-l h-8 leading-6 focus:ring-transparent",
     buttonVariant: "tertiary/medium" as const,
-    button: "rounded-l-none border-l border-slate-850 min-w-[4rem]",
+    button: "rounded-l-none border-l border-charcoal-850 min-w-[4rem]",
     iconSize: "h-4 w-4",
     iconPadding: "pl-2",
   },
@@ -70,7 +71,7 @@ const variations = {
 type ClipboardFieldProps = {
   value: string;
   secure?: boolean | string;
-  variant: keyof typeof variations;
+  variant: keyof typeof variants;
   className?: string;
   icon?: IconNames | React.ReactNode;
   fullWidth?: boolean;
@@ -104,9 +105,9 @@ export function ClipboardField({
     setIsSecure(secure !== undefined && secure);
   }, [secure]);
 
-  const { container, input, buttonVariant, button } = variations[variant];
-  const iconClassName = variations[variant].iconSize;
-  const iconPosition = variations[variant].iconPadding;
+  const { container, input, buttonVariant, button } = variants[variant];
+  const iconClassName = variants[variant].iconSize;
+  const iconPosition = variants[variant].iconPadding;
   const inputIcon = useRef<HTMLInputElement>(null);
 
   return (

@@ -16,7 +16,7 @@ export const Table = forwardRef<HTMLTableElement, TableProps>(
     return (
       <div
         className={cn(
-          "overflow-x-auto whitespace-nowrap rounded-md border border-ui-border scrollbar-thin scrollbar-track-midnight-850 scrollbar-thumb-slate-700",
+          "overflow-x-auto whitespace-nowrap rounded-md border border-grid-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
           containerClassName,
           fullWidth && "w-full"
         )}
@@ -39,7 +39,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
     return (
       <thead
         ref={ref}
-        className={cn("rounded-t-md", "relative divide-y divide-ui-border bg-slate-850", className)}
+        className={cn("rounded-t-md", "relative divide-y divide-grid-dimmed", className)}
       >
         {children}
       </thead>
@@ -55,7 +55,7 @@ type TableBodyProps = {
 export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(
   ({ className, children }, ref) => {
     return (
-      <tbody ref={ref} className={cn("relative divide-y divide-ui-border", className)}>
+      <tbody ref={ref} className={cn("relative divide-y divide-grid-dimmed", className)}>
         {children}
       </tbody>
     );
@@ -106,7 +106,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         ref={ref}
         scope="col"
         className={cn(
-          "px-4 py-2 align-middle text-xxs font-normal uppercase tracking-wider text-dimmed",
+          "px-4 py-2 align-middle text-xxs font-normal uppercase tracking-wider text-text-dimmed",
           alignmentClassName,
           className
         )}
@@ -126,7 +126,7 @@ type TableCellProps = TableCellBasicProps & {
 };
 
 const stickyStyles =
-  "sticky right-0 z-10 w-[2.8rem] min-w-[2.8rem] bg-background before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover:before:to-slate-900";
+  "sticky right-0 z-10 w-[2.8rem] min-w-[2.8rem] bg-background-dimmed before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover:before:to-charcoal-900";
 
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
   (
@@ -153,7 +153,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
     }
 
     const flexClasses = cn(
-      "flex w-full whitespace-nowrap px-4 py-3 text-xs text-dimmed",
+      "flex w-full whitespace-nowrap px-4 py-3 text-xs text-text-dimmed",
       alignment === "left"
         ? "justify-start text-left"
         : alignment === "center"
@@ -165,9 +165,9 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       <td
         ref={ref}
         className={cn(
-          "text-xs text-slate-400",
+          "text-xs text-charcoal-400",
           to || onClick || hasAction
-            ? "cursor-pointer group-hover:bg-slate-900"
+            ? "cursor-pointer group-hover:bg-charcoal-900"
             : "px-4 py-3 align-middle",
           !to && !onClick && alignmentClassName,
           isSticky && stickyStyles,
@@ -211,7 +211,7 @@ export const TableCellChevron = forwardRef<
       alignment="right"
     >
       {children}
-      <ChevronRightIcon className="h-4 w-4 text-dimmed transition group-hover:text-bright" />
+      <ChevronRightIcon className="h-4 w-4 text-text-dimmed transition group-hover:text-text-bright" />
     </TableCell>
   );
 });
@@ -238,7 +238,7 @@ export const TableCellMenu = forwardRef<
       <Popover onOpenChange={(open) => setIsOpen(open)}>
         <PopoverVerticalEllipseTrigger isOpen={isOpen} />
         <PopoverContent
-          className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
           align="end"
         >
           <div className="flex flex-col gap-1 p-1">{children}</div>

@@ -6,7 +6,6 @@ import { TriggerDevStep } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { InlineCode } from "~/components/code/InlineCode";
 import { InstallPackages } from "~/components/code/InstallPackages";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -16,13 +15,8 @@ import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useProjectSetupComplete } from "~/hooks/useProjectSetupComplete";
-import { Handle } from "~/utils/handle";
-import { projectSetupPath, trimTrailingSlash } from "~/utils/pathBuilder";
+import { projectSetupPath } from "~/utils/pathBuilder";
 import { CodeBlock } from "../../components/code/CodeBlock";
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="NestJS" />,
-};
 
 const AppModuleCode = `
 import { Module } from '@nestjs/common';
@@ -131,7 +125,7 @@ export default function SetupNestJS() {
         <NestjsLogo className="w-52" />
       </div>
       <div className="flex items-center justify-between">
-        <Header1 spacing className="text-bright">
+        <Header1 spacing className="text-text-bright">
           Get setup in 5 minutes
         </Header1>
         <div className="flex items-center gap-2">

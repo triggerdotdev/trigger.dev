@@ -122,7 +122,7 @@ export default function LoginMagicLinkPage() {
                       value="reset"
                       variant="tertiary/small"
                       LeadingIcon="arrow-left"
-                      leadingIconClassName="text-dimmed group-hover:text-bright transition"
+                      leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
                       data-action="re-enter email"
                     >
                       Re-enter email
@@ -172,7 +172,7 @@ export default function LoginMagicLinkPage() {
                 >
                   <NamedIcon
                     name={isLoading ? "spinner-white" : "envelope"}
-                    className={"mr-1.5 h-4 w-4 text-white transition group-hover:text-bright"}
+                    className={"mr-1.5 h-4 w-4 text-white transition group-hover:text-text-bright"}
                   />
                   {isLoading ? "Sending…" : "Send a magic link"}
                 </Button>
@@ -194,7 +194,7 @@ export default function LoginMagicLinkPage() {
                 to="/login"
                 variant={"tertiary/small"}
                 LeadingIcon={"arrow-left"}
-                leadingIconClassName="text-dimmed group-hover:text-bright transition"
+                leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
                 data-action="all login options"
               >
                 All login options

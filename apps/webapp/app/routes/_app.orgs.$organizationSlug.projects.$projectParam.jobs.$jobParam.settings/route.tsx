@@ -1,7 +1,6 @@
-import { JobEnvironment, JobStatusTable } from "~/components/JobsStatusTable";
+import { JobStatusTable } from "~/components/JobsStatusTable";
 import { HowToDisableAJob } from "~/components/helpContent/HelpContentText";
 import { DeleteJobDialogContent } from "~/components/jobs/DeleteJobModalContent";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button } from "~/components/primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
@@ -11,12 +10,7 @@ import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
-import { projectJobsPath, projectPath } from "~/utils/pathBuilder";
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Settings" />,
-};
+import { projectJobsPath } from "~/utils/pathBuilder";
 
 export default function Page() {
   const job = useJob();
@@ -44,7 +38,7 @@ export default function Page() {
                 <DialogTrigger asChild>
                   <Button
                     variant="danger/small"
-                    leadingIconClassName="text-bright"
+                    leadingIconClassName="text-text-bright"
                     LeadingIcon="trash-can"
                   >
                     I want to delete this Job

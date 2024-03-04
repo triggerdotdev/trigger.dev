@@ -41,7 +41,7 @@ function taskStatusClassNameColor(status: TaskStatus): string {
     case "COMPLETED":
       return "text-green-500";
     case "PENDING":
-      return "text-slate-500";
+      return "text-charcoal-500";
     case "RUNNING":
       return "text-blue-500";
     case "WAITING":
@@ -49,6 +49,6 @@ function taskStatusClassNameColor(status: TaskStatus): string {
     case "ERRORED":
       return "text-rose-500";
     case "CANCELED":
-      return "text-slate-500";
+      return "text-charcoal-500";
   }
 }

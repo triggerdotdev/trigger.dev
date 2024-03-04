@@ -14,7 +14,7 @@ export function ProductHuntBanner() {
       <LinkButton
         to="https://www.producthunt.com/posts/trigger-dev"
         target="_blank"
-        className="!text-white underline underline-offset-2 transition hover:decoration-slate-100 hover:decoration-2"
+        className="!text-white underline underline-offset-2 transition hover:decoration-charcoal-100 hover:decoration-2"
         variant="tertiary/small"
       >
         Vote for us today only!

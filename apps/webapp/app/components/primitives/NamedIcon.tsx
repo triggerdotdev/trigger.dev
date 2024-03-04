@@ -74,7 +74,7 @@ import { Spinner } from "./Spinner";
 import tablerSpritePath from "./tabler-sprite.svg";
 
 const icons = {
-  account: (className: string) => <UserCircleIcon className={cn("text-slate-400", className)} />,
+  account: (className: string) => <UserCircleIcon className={cn("text-charcoal-400", className)} />,
   active: (className: string) => <CheckCircleIcon className={cn("text-green-500", className)} />,
   "arrow-right": (className: string) => <ArrowRightIcon className={cn("text-white", className)} />,
   "arrow-left": (className: string) => <ArrowLeftIcon className={cn("text-white", className)} />,
@@ -82,32 +82,34 @@ const icons = {
   beaker: (className: string) => <BeakerIcon className={cn("text-purple-500", className)} />,
   bell: (className: string) => <BellAlertIcon className={cn("text-amber-500", className)} />,
   billing: (className: string) => <CreditCardIcon className={cn("text-teal-500", className)} />,
-  browser: (className: string) => <WindowIcon className={cn("text-dimmed", className)} />,
+  browser: (className: string) => <WindowIcon className={cn("text-text-dimmed", className)} />,
   calendar: (className: string) => (
     <CalendarDaysIcon className={cn("text-purple-500", className)} />
   ),
-  check: (className: string) => <CheckIcon className={cn("text-dimmed", className)} />,
+  check: (className: string) => <CheckIcon className={cn("text-text-dimmed", className)} />,
   "chevron-down": (className: string) => (
-    <ChevronDownIcon className={cn("text-dimmed", className)} />
+    <ChevronDownIcon className={cn("text-text-dimmed", className)} />
   ),
-  "chevron-up": (className: string) => <ChevronUpIcon className={cn("text-dimmed", className)} />,
+  "chevron-up": (className: string) => (
+    <ChevronUpIcon className={cn("text-text-dimmed", className)} />
+  ),
   "chevron-left": (className: string) => (
-    <ChevronLeftIcon className={cn("text-dimmed", className)} />
+    <ChevronLeftIcon className={cn("text-text-dimmed", className)} />
   ),
   "chevron-right": (className: string) => (
-    <ChevronRightIcon className={cn("text-dimmed", className)} />
+    <ChevronRightIcon className={cn("text-text-dimmed", className)} />
   ),
   countdown: (className: string) => <HourglassIcon className={cn("text-amber-400", className)} />,
   clock: (className: string) => <ClockIcon className={cn("text-cyan-500", className)} />,
-  close: (className: string) => <XMarkIcon className={cn("text-dimmed", className)} />,
+  close: (className: string) => <XMarkIcon className={cn("text-text-dimmed", className)} />,
   "connection-alert": (className: string) => (
     <BellAlertIcon className={cn("text-amber-500", className)} />
   ),
-  docs: (className: string) => <BookOpenIcon className={cn("text-slate-400", className)} />,
+  docs: (className: string) => <BookOpenIcon className={cn("text-charcoal-400", className)} />,
   dynamic: (className: string) => <DynamicTriggerIcon className={cn("text-cyan-500", className)} />,
   error: (className: string) => <ErrorIcon className={cn("text-rose-500", className)} />,
   "external-link": (className: string) => (
-    <ArrowTopRightOnSquareIcon className={cn("text-dimmed", className)} />
+    <ArrowTopRightOnSquareIcon className={cn("text-text-dimmed", className)} />
   ),
   flag: (className: string) => <FlagIcon className={cn("text-sky-500", className)} />,
   folder: (className: string) => <FolderIcon className={cn("text-indigo-600", className)} />,
@@ -119,7 +121,7 @@ const icons = {
     <HandRaisedIcon className={cn("text-amber-400", className)} />
   ),
   heart: (className: string) => <HeartIcon className={cn("text-rose-500", className)} />,
-  house: (className: string) => <HomeIcon className={cn("text-dimmed", className)} />,
+  house: (className: string) => <HomeIcon className={cn("text-text-dimmed", className)} />,
   id: (className: string) => <FingerPrintIcon className={cn("text-rose-200", className)} />,
   inactive: (className: string) => <XCircleIcon className={cn("text-rose-500", className)} />,
   info: (className: string) => <InformationCircleIcon className={cn("text-blue-500", className)} />,
@@ -135,11 +137,11 @@ const icons = {
   key: (className: string) => <KeyIcon className={cn("text-amber-400", className)} />,
   lightbulb: (className: string) => <LightBulbIcon className={cn("text-amber-400", className)} />,
   "clipboard-checked": (className: string) => (
-    <ClipboardDocumentCheckIcon className={cn("text-dimmed", className)} />
+    <ClipboardDocumentCheckIcon className={cn("text-text-dimmed", className)} />
   ),
-  list: (className: string) => <ListBulletIcon className={cn("text-slate-400", className)} />,
+  list: (className: string) => <ListBulletIcon className={cn("text-charcoal-400", className)} />,
   log: (className: string) => (
-    <ChatBubbleLeftEllipsisIcon className={cn("text-slate-400", className)} />
+    <ChatBubbleLeftEllipsisIcon className={cn("text-charcoal-400", className)} />
   ),
   "logo-icon": (className: string) => <LogoIcon className={cn(className)} />,
   organization: (className: string) => (
@@ -149,16 +151,20 @@ const icons = {
   "plus-small": (className: string) => (
     <PlusSmallIcon className={cn("text-green-600", className)} />
   ),
-  property: (className: string) => <Cog8ToothIcon className={cn("text-slate-600", className)} />,
+  property: (className: string) => <Cog8ToothIcon className={cn("text-charcoal-600", className)} />,
   pulse: (className: string) => <ActivityIcon className={cn("text-green-600", className)} />,
   "qr-code": (className: string) => <QrCodeIcon className={cn("text-amber-400", className)} />,
-  refresh: (className: string) => <ArrowPathIcon className={cn("text-bright", className)} />,
+  refresh: (className: string) => <ArrowPathIcon className={cn("text-text-bright", className)} />,
   sapling: (className: string) => <SaplingIcon className={cn("text-green-500", className)} />,
-  search: (className: string) => <MagnifyingGlassIcon className={cn("text-dimmed", className)} />,
-  settings: (className: string) => <Cog8ToothIcon className={cn("text-slate-600", className)} />,
+  search: (className: string) => (
+    <MagnifyingGlassIcon className={cn("text-text-dimmed", className)} />
+  ),
+  settings: (className: string) => <Cog8ToothIcon className={cn("text-charcoal-600", className)} />,
   spinner: (className: string) => <Spinner className={className} color="blue" />,
   "spinner-white": (className: string) => <Spinner className={className} color="white" />,
-  squares: (className: string) => <Square2StackIcon className={cn("text-dimmed", className)} />,
+  squares: (className: string) => (
+    <Square2StackIcon className={cn("text-text-dimmed", className)} />
+  ),
   star: (className: string) => <StarIcon className={cn("text-yellow-500", className)} />,
   stop: (className: string) => <StopIcon className={cn("text-rose-500", className)} />,
   team: (className: string) => <UserGroupIcon className={cn("text-blue-500", className)} />,
@@ -258,7 +264,7 @@ export function NamedIconInBox({
   return (
     <div
       className={cn(
-        "grid place-content-center rounded-sm border border-slate-750 bg-slate-850",
+        "grid place-content-center rounded-sm border border-charcoal-750 bg-charcoal-850",
         className
       )}
     >

@@ -1,33 +1,46 @@
-import { Link } from "@remix-run/react";
-import { Header1 } from "./Headers";
-import { BreadcrumbIcon } from "./BreadcrumbIcon";
-import { ChevronLeftIcon } from "@heroicons/react/24/solid";
-import { Paragraph } from "./Paragraph";
-import { cn } from "~/utils/cn";
-import { NamedIcon } from "./NamedIcon";
-import { Tabs, TabsProps } from "./Tabs";
-import { Icon, RenderIcon } from "./Icon";
-import { Button, LinkButton } from "./Buttons";
 import { ArrowUpRightIcon } from "@heroicons/react/20/solid";
+import { ChevronLeftIcon } from "@heroicons/react/24/solid";
+import { Link, useNavigation } from "@remix-run/react";
+import { useOptionalOrganization } from "~/hooks/useOrganizations";
+import { cn } from "~/utils/cn";
+import { plansPath } from "~/utils/pathBuilder";
+import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
+import { BreadcrumbIcon } from "./BreadcrumbIcon";
+import { LinkButton } from "./Buttons";
+import { Header2, Header3 } from "./Headers";
+import { NamedIcon } from "./NamedIcon";
+import { Paragraph } from "./Paragraph";
+import { Tabs, TabsProps } from "./Tabs";
+import { LoadingBarDivider } from "./LoadingBarDivider";
 
 type WithChildren = {
   children: React.ReactNode;
 };
 
-export function PageHeader({ children, hideBorder }: WithChildren & { hideBorder?: boolean }) {
+export function NavBar({ children }: WithChildren) {
+  const organization = useOptionalOrganization();
+  const showUpgradePrompt = useShowUpgradePrompt(organization);
+  const navigation = useNavigation();
+  const isLoading = navigation.state === "loading" || navigation.state === "submitting";
+
   return (
-    <div className={cn("mx-4 pt-4", hideBorder ? "" : "border-b border-ui-border pb-4")}>
-      {children}
+    <div>
+      <div className="grid h-10 w-full grid-rows-[auto_1px] bg-background-bright">
+        <div className="flex w-full items-center justify-between pl-3 pr-1">{children}</div>
+        <LoadingBarDivider isLoading={isLoading} />
+      </div>
+      {showUpgradePrompt.shouldShow && organization && (
+        <UpgradePrompt
+          runsEnabled={showUpgradePrompt.runsEnabled}
+          runCountCap={showUpgradePrompt.runCountCap}
+          planPath={plansPath(organization)}
+        />
+      )}
     </div>
   );
 }
 
-export function PageTitleRow({ children }: WithChildren) {
-  return <div className="flex items-center justify-between">{children}</div>;
-}
-
 type PageTitleProps = {
-  icon?: RenderIcon;
   title: string;
   backButton?: {
     to: string;
@@ -35,45 +48,31 @@ type PageTitleProps = {
   };
 };
 
-export function PageTitle({ icon, title, backButton }: PageTitleProps) {
+export function PageTitle({ title, backButton }: PageTitleProps) {
   return (
     <div className="flex items-center gap-2">
       {backButton && (
         <div className="group flex items-center gap-2">
           <Link
             to={backButton.to}
-            className="flex items-center gap-1 text-slate-400 transition group-hover:text-white"
+            className="text-xs text-text-dimmed transition group-hover:text-text-bright"
           >
-            <ChevronLeftIcon className="h-6" />
-            <Header1 textColor="dimmed" className="transition group-hover:text-white">
-              {backButton.text}
-            </Header1>
+            {backButton.text}
           </Link>
-          <BreadcrumbIcon className="h-6" />
+          <BreadcrumbIcon className="h-5" />
         </div>
       )}
-      <Header1 className="flex items-center gap-1">
-        {icon && <Icon icon={icon} className="h-5 w-5" />}
-        {title}
-      </Header1>
+      <Header2 className="flex items-center gap-1">{title}</Header2>
     </div>
   );
 }
 
-export function PageButtons({ children }: WithChildren) {
+export function PageAccessories({ children }: WithChildren) {
   return <div className="flex items-center gap-3">{children}</div>;
 }
 
-export function PageDescription({ children }: WithChildren) {
-  return (
-    <Paragraph variant="small" className="mb-0 mt-2">
-      {children}
-    </Paragraph>
-  );
-}
-
 export function PageInfoRow({ children }: WithChildren) {
-  return <div className="mt-2 flex w-full items-center gap-2">{children}</div>;
+  return <div className="flex w-full items-center gap-2">{children}</div>;
 }
 
 export function PageInfoGroup({
@@ -139,7 +138,7 @@ function PageInfoPropertyContent({
 
 export function PageTabs(props: TabsProps) {
   return (
-    <div className="mt-4">
+    <div className="mb-2 mt-2">
       <Tabs {...props} />
     </div>
   );

@@ -90,7 +90,7 @@ export function DateField({
 
   return (
     <div className={`flex flex-col items-start ${className || ""}`}>
-      <span {...labelProps} className="mb-1 ml-0.5 text-xs text-slate-300">
+      <span {...labelProps} className="mb-1 ml-0.5 text-xs text-charcoal-300">
         {label}
       </span>
       <div className="flex flex-row items-center gap-1">
@@ -98,7 +98,7 @@ export function DateField({
           {...fieldProps}
           ref={ref}
           className={cn(
-            "flex rounded-sm border border-slate-800 bg-midnight-900 p-0.5 px-1.5 transition-colors focus-within:border-slate-500 hover:border-slate-700 focus-within:hover:border-slate-500",
+            "flex rounded-sm border border-charcoal-800 bg-charcoal-750 p-0.5 px-1.5 transition-colors focus-within:border-charcoal-500 hover:border-charcoal-700 focus-within:hover:border-charcoal-500",
             fieldClassName
           )}
         >
@@ -118,7 +118,7 @@ export function DateField({
         </div>
         {showNowButton && (
           <Button
-            variant="secondary/small"
+            variant="tertiary/small"
             onClick={() => {
               const now = new Date();
               setValue(utcDateToCalendarDate(new Date()));
@@ -130,7 +130,7 @@ export function DateField({
         )}
         {showClearButton && (
           <Button
-            variant="secondary/small"
+            variant="tertiary/small"
             LeadingIcon={"close"}
             onClick={() => {
               setValue(undefined);
@@ -187,13 +187,13 @@ function DateSegment({ segment, state }: DateSegmentProps) {
         minWidth: minWidthForSegment(segment),
       }}
       className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums outline-none focus:bg-indigo-500 focus:text-white ${
-        !segment.isEditable ? "text-slate-500" : "text-bright"
+        !segment.isEditable ? "text-charcoal-500" : "text-text-bright"
       }`}
     >
       {/* Always reserve space for the placeholder, to prevent layout shift when editing. */}
       <span
         aria-hidden="true"
-        className="block text-center italic text-slate-500 group-focus:text-white"
+        className="block text-center italic text-charcoal-500 group-focus:text-white"
         style={{
           visibility: segment.isPlaceholder ? undefined : "hidden",
           height: segment.isPlaceholder ? "" : 0,
@@ -232,10 +232,10 @@ function DateSegmentGuide({ segment }: { segment: DateSegment }) {
         minWidth: minWidthForSegment(segment),
       }}
       className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums outline-none ${
-        !segment.isEditable ? "text-slate-500" : "text-bright"
+        !segment.isEditable ? "text-charcoal-500" : "text-text-bright"
       }`}
     >
-      <span className="block text-center italic text-slate-500">
+      <span className="block text-center italic text-charcoal-500">
         {segment.type !== "literal" ? segment.placeholder : segment.text}
       </span>
     </div>

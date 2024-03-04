@@ -1,5 +1,15 @@
 import { VirtualItem, Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
-import { Fragment, RefObject, useCallback, useEffect, useReducer, useRef, useState } from "react";
+import {
+  Fragment,
+  MutableRefObject,
+  RefObject,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { UnmountClosed } from "react-collapse";
 import { cn } from "~/utils/cn";
 import { Changes, NodeState, NodesState, reducer } from "./reducer";
@@ -14,7 +24,6 @@ import {
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
   parentClassName?: string;
-
   renderNode: (params: {
     node: FlatTreeItem<TData>;
     state: NodeState;
@@ -25,7 +34,9 @@ export type TreeViewProps<TData> = {
   nodes: UseTreeStateOutput["nodes"];
   autoFocus?: boolean;
   virtualizer: Virtualizer<HTMLElement, Element>;
-  parentRef: RefObject<any>;
+  parentRef: MutableRefObject<HTMLElement | null>;
+  scrollRef?: MutableRefObject<HTMLElement | null>;
+  onScroll?: (scrollTop: number) => void;
 } & Pick<UseTreeStateOutput, "getTreeProps" | "getNodeProps">;
 
 export function TreeView<TData>({
@@ -38,20 +49,43 @@ export function TreeView<TData>({
   parentClassName,
   virtualizer,
   parentRef,
+  scrollRef,
+  onScroll,
 }: TreeViewProps<TData>) {
   useEffect(() => {
     if (autoFocus) {
       parentRef.current?.focus();
     }
-  }, [autoFocus, parentRef]);
+  }, [autoFocus, parentRef.current]);
 
   const virtualItems = virtualizer.getVirtualItems();
 
+  const scrollCallback = useCallback(
+    (event: Event) => {
+      if (!onScroll) return;
+      const target = event.target as HTMLElement;
+      onScroll?.(target.scrollTop);
+    },
+    [onScroll]
+  );
+
+  useEffect(() => {
+    //subscribe to parentRef scroll event
+    if (!scrollRef?.current || onScroll === undefined) return;
+    scrollRef.current.addEventListener("scroll", scrollCallback);
+    return () => scrollRef.current?.removeEventListener("scroll", scrollCallback);
+  }, [scrollRef?.current]);
+
   return (
     <div
-      ref={parentRef}
+      ref={(element) => {
+        parentRef.current = element;
+        if (scrollRef) {
+          scrollRef.current = element;
+        }
+      }}
       className={cn(
-        "w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700 focus-within:outline-none",
+        "w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 focus-within:outline-none",
         parentClassName
       )}
       {...getTreeProps()}
@@ -75,7 +109,10 @@ export function TreeView<TData>({
           }}
         >
           {virtualItems.map((virtualItem) => {
-            const node = tree.find((node) => node.id === virtualItem.key)!;
+            const node = tree.find((node) => node.id === virtualItem.key);
+            if (!node) return null;
+            const state = nodes[node.id];
+            if (!state) return null;
             return (
               <div
                 key={node.id}
@@ -84,10 +121,10 @@ export function TreeView<TData>({
                 className="overflow-clip [&_.ReactCollapse--collapse]:transition-all"
                 {...getNodeProps(node.id)}
               >
-                <UnmountClosed key={node.id} isOpened={nodes[node.id].visible}>
+                <UnmountClosed key={node.id} isOpened={state.visible}>
                   {renderNode({
                     node,
-                    state: nodes[node.id],
+                    state,
                     index: virtualItem.index,
                     virtualizer: virtualizer,
                     virtualItem,
@@ -155,6 +192,7 @@ export function useTree<TData>({
   estimatedRowHeight,
   filter,
 }: TreeStateHookProps<TData>): UseTreeStateOutput {
+  const previousNodeCount = useRef(tree.length);
   const previousSelectedId = useRef<string | undefined>(selectedId);
 
   const [state, dispatch] = useReducer(
@@ -175,6 +213,13 @@ export function useTree<TData>({
       onCollapsedIdsChanged?.(state.changes.collapsedIds);
     }
   }, [state.changes.collapsedIds]);
+
+  useEffect(() => {
+    if (tree.length !== previousNodeCount.current) {
+      previousNodeCount.current = tree.length;
+      dispatch({ type: "UPDATE_TREE", payload: { tree } });
+    }
+  }, [previousNodeCount.current, tree.length]);
 
   const virtualizer = useVirtualizer({
     count: tree.length,
@@ -365,6 +410,7 @@ export function useTree<TData>({
   const getNodeProps = useCallback(
     (id: string) => {
       const node = state.nodes[id];
+      if (!node) return {};
       const treeItemIndex = tree.findIndex((node) => node.id === id);
       const treeItem = tree[treeItemIndex];
       return {

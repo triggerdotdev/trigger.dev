@@ -1,36 +1,35 @@
 import {
   ChevronDownIcon,
   ChevronRightIcon,
-  ExclamationCircleIcon,
+  MagnifyingGlassMinusIcon,
+  MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
-import { Link, Outlet, useNavigate } from "@remix-run/react";
+import { Link, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
-import { useRef, useState } from "react";
+import { formatDurationMilliseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
+import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
+import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody } from "~/components/layout/AppLayout";
+import { Badge } from "~/components/primitives/Badge";
 import { Input } from "~/components/primitives/Input";
-import {
-  PageButtons,
-  PageHeader,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import { Spinner } from "~/components/primitives/Spinner";
+import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
+import * as Timeline from "~/components/primitives/Timeline";
 import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
-import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
-import { SpanTitle } from "~/components/runs/v3/SpanTitle";
+import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
 import { useDebounce } from "~/hooks/useDebounce";
+import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
@@ -39,14 +38,20 @@ import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3RunParamsSchema, v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
+import {
+  v3RunParamsSchema,
+  v3RunPath,
+  v3RunSpanPath,
+  v3RunStreamingPath,
+  v3RunsPath,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, runParam } = v3RunParamsSchema.parse(params);
 
   const presenter = new RunPresenter();
-  const { run, events, parentRunFriendlyId } = await presenter.call({
+  const { run, events, parentRunFriendlyId, duration } = await presenter.call({
     userId,
     organizationSlug,
     projectSlug: projectParam,
@@ -61,6 +66,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     events,
     parentRunFriendlyId,
     resizeSettings,
+    duration,
   });
 };
 
@@ -71,7 +77,8 @@ function getSpanId(path: string): string | undefined {
 }
 
 export default function Page() {
-  const { run, events, parentRunFriendlyId, resizeSettings } = useTypedLoaderData<typeof loader>();
+  const { run, events, parentRunFriendlyId, resizeSettings, duration } =
+    useTypedLoaderData<typeof loader>();
   const navigate = useNavigate();
   const organization = useOrganization();
   const pathName = usePathName();
@@ -86,18 +93,33 @@ export default function Page() {
 
   const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
 
+  const revalidator = useRevalidator();
+  const streamedEvents = useEventSource(v3RunStreamingPath(organization, project, run), {
+    event: "message",
+  });
+  useEffect(() => {
+    if (streamedEvents !== null) {
+      revalidator.revalidate();
+    }
+    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
+  }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <>
-      <PageHeader hideBorder>
-        <PageTitleRow>
-          <PageTitle title={`Run #${run.number}`} />
-          <PageButtons>
-            <EnvironmentLabel environment={run.environment} userName={usernameForEnv} />
-          </PageButtons>
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle
+          backButton={{
+            to: v3RunsPath(organization, project),
+            text: "Runs",
+          }}
+          title={`Run #${run.number}`}
+        />
+        <PageAccessories>
+          <EnvironmentLabel size="large" environment={run.environment} userName={usernameForEnv} />
+        </PageAccessories>
+      </NavBar>
       <PageBody scrollable={false}>
-        <div className={cn("grid h-full max-h-full grid-cols-1")}>
+        <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
           {selectedSpanId === undefined ? (
             <TasksTreeView
               selectedId={selectedSpanId}
@@ -113,6 +135,7 @@ export default function Page() {
 
                 changeToSpan(selectedSpan);
               }}
+              totalDuration={duration}
             />
           ) : (
             <ResizablePanelGroup
@@ -138,6 +161,7 @@ export default function Page() {
 
                     changeToSpan(selectedSpan);
                   }}
+                  totalDuration={duration}
                 />
               </ResizablePanel>
               <ResizableHandle withHandle />
@@ -152,20 +176,28 @@ export default function Page() {
   );
 }
 
+const tickCount = 5;
+
 function TasksTreeView({
   events,
   selectedId,
   parentRunFriendlyId,
   onSelectedIdChanged,
+  totalDuration,
 }: {
   events: RunEvent[];
   selectedId?: string;
   parentRunFriendlyId?: string;
   onSelectedIdChanged: (selectedId: string | undefined) => void;
+  totalDuration: number;
 }) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
+  const [showDurations, setShowDurations] = useState(false);
+  const [scale, setScale] = useState(0.25);
   const parentRef = useRef<HTMLDivElement>(null);
+  const treeScrollRef = useRef<HTMLDivElement>(null);
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
 
   const {
     nodes,
@@ -196,8 +228,8 @@ function TasksTreeView({
   });
 
   return (
-    <div className="h-full overflow-y-clip px-3">
-      <div className="flex h-8 items-center justify-between gap-2 border-b border-slate-850">
+    <div className="grid h-full grid-rows-[2.5rem_1fr] overflow-hidden">
+      <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Input
           placeholder="Search log"
           variant="tertiary"
@@ -206,95 +238,268 @@ function TasksTreeView({
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
         />
-        <Switch
-          variant="small"
-          label="Errors only"
-          checked={errorsOnly}
-          onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
-        />
+        <div className="flex items-center gap-2">
+          <Switch
+            variant="small"
+            label="Errors only"
+            checked={errorsOnly}
+            onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
+          />
+          <Switch
+            variant="small"
+            label="Show durations"
+            checked={showDurations}
+            onCheckedChange={(e) => setShowDurations(e.valueOf())}
+          />
+          <Slider
+            variant={"tertiary"}
+            className="w-20"
+            LeadingIcon={MagnifyingGlassMinusIcon}
+            TrailingIcon={MagnifyingGlassPlusIcon}
+            value={[scale]}
+            onValueChange={(value) => setScale(value[0])}
+            min={0}
+            max={1}
+            step={0.05}
+          />
+        </div>
       </div>
-      {parentRunFriendlyId && <ShowParentLink runFriendlyId={parentRunFriendlyId} />}
-      <TreeView
-        parentRef={parentRef}
-        virtualizer={virtualizer}
-        autoFocus
-        tree={events}
-        nodes={nodes}
-        getNodeProps={getNodeProps}
-        getTreeProps={getTreeProps}
-        parentClassName="h-full mt-2"
-        renderNode={({ node, state, index, virtualizer, virtualItem }) => (
-          <div
-            className={cn(
-              "flex h-8 cursor-pointer items-center rounded-sm border border-transparent",
-              node.data.isError ? "bg-rose-500/10 hover:bg-rose-500/20" : "hover:bg-slate-900",
-              state.selected && (node.data.isError ? "border-rose-500" : "border-indigo-500")
-            )}
-            onClick={() => {
-              toggleNodeSelection(node.id);
-            }}
-          >
-            <div className="flex h-8 items-center">
-              {Array.from({ length: node.level }).map((_, index) => (
-                <TaskLine key={index} isError={node.data.isError} isSelected={state.selected} />
-              ))}
-              <div
-                className={cn(
-                  "flex h-8 w-4 items-center",
-                  node.hasChildren &&
-                    (node.data.isError ? "hover:bg-rose-500/30" : "hover:bg-slate-800")
-                )}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleExpandNode(node.id);
-                  selectNode(node.id);
-                  scrollToNode(node.id);
-                }}
-                onKeyDown={(e) => {
-                  console.log(e.key);
-                }}
-              >
-                {node.hasChildren ? (
-                  state.expanded ? (
-                    <ChevronDownIcon className="h-4 w-4 text-slate-400" />
-                  ) : (
-                    <ChevronRightIcon className="h-4 w-4 text-slate-400" />
-                  )
-                ) : (
-                  <div className="h-8 w-4" />
-                )}
-              </div>
+      <ResizablePanelGroup
+        direction="horizontal"
+        onLayout={(layout) => {
+          if (layout.length !== 2) return;
+          setResizableRunSettings(document, layout);
+        }}
+      >
+        {/* Tree list */}
+        <ResizablePanel order={1} minSize={20} defaultSize={50} className="pl-3">
+          <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
+            <div>
+              {parentRunFriendlyId && <ShowParentLink runFriendlyId={parentRunFriendlyId} />}
             </div>
-
-            <div className="flex w-full items-center justify-between gap-2 px-1">
-              <div className="flex items-center gap-2 overflow-x-hidden">
-                <RunIcon name={node.data.style?.icon} className="min-w-4 min-h-4 h-4 w-4" />
-                <NodeText node={node} />
-              </div>
-              <div className="flex items-center gap-2">
-                {node.data.isError ? (
-                  <div className="flex items-center gap-1">
-                    <Paragraph variant="extra-small" className="text-rose-500">
-                      Error
-                    </Paragraph>
-                    <ExclamationCircleIcon className="h-3 w-3 text-rose-500" />
+            <TreeView
+              parentRef={parentRef}
+              scrollRef={treeScrollRef}
+              virtualizer={virtualizer}
+              autoFocus
+              tree={events}
+              nodes={nodes}
+              getNodeProps={getNodeProps}
+              getTreeProps={getTreeProps}
+              parentClassName="pt-2"
+              renderNode={({ node, state }) => (
+                <div
+                  className={cn(
+                    "flex h-8 cursor-pointer items-center rounded-l-sm pr-3",
+                    state.selected
+                      ? "bg-grid-dimmed hover:bg-grid-bright"
+                      : "bg-transparent hover:bg-grid-dimmed"
+                  )}
+                  onClick={() => {
+                    toggleNodeSelection(node.id);
+                  }}
+                >
+                  <div className="flex h-8 items-center">
+                    {Array.from({ length: node.level }).map((_, index) => (
+                      <TaskLine
+                        key={index}
+                        isError={node.data.isError}
+                        isSelected={state.selected}
+                      />
+                    ))}
+                    <div
+                      className={cn(
+                        "flex h-8 w-4 items-center",
+                        node.hasChildren &&
+                          (node.data.isError ? "hover:bg-rose-500/30" : "hover:bg-charcoal-800")
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpandNode(node.id);
+                        selectNode(node.id);
+                        scrollToNode(node.id);
+                      }}
+                    >
+                      {node.hasChildren ? (
+                        state.expanded ? (
+                          <ChevronDownIcon className="h-4 w-4 text-charcoal-400" />
+                        ) : (
+                          <ChevronRightIcon className="h-4 w-4 text-charcoal-400" />
+                        )
+                      ) : (
+                        <div className="h-8 w-4" />
+                      )}
+                    </div>
                   </div>
-                ) : null}
-                {node.data.isPartial ? (
-                  <LiveDuration startTime={node.data.startTime} />
-                ) : node.data.duration > 0 ? (
-                  <Duration duration={node.data.duration} />
-                ) : null}
-                {node.data.isCancelled ? (
-                  <Paragraph variant="extra-small" className="text-amber-500">
-                    Cancelled
-                  </Paragraph>
-                ) : null}
-              </div>
-            </div>
+
+                  <div className="flex w-full items-center justify-between gap-2 px-1">
+                    <div className="flex items-center gap-2 overflow-x-hidden">
+                      <RunIcon name={node.data.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
+                      <NodeText node={node} />
+                      {node.data.isRoot && <Badge variant="outline-rounded">Root</Badge>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {node.data.isCancelled ? (
+                        <Paragraph variant="extra-small" className="text-amber-500">
+                          Cancelled
+                        </Paragraph>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              )}
+              onScroll={(scrollTop) => {
+                //sync the scroll to the tree
+                if (
+                  timelineScrollRef.current &&
+                  timelineScrollRef.current.scrollTop !== scrollTop
+                ) {
+                  timelineScrollRef.current.scrollTop = scrollTop;
+                }
+              }}
+            />
           </div>
-        )}
-      />
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        {/* Timeline */}
+        <ResizablePanel order={2} minSize={20} defaultSize={50}>
+          <div className="h-full overflow-x-auto overflow-y-hidden pr-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <Timeline.Root
+              durationMs={nanosecondsToMilliseconds(totalDuration)}
+              scale={scale}
+              className="h-full pt-2"
+              minWidth={300}
+              maxWidth={2000}
+            >
+              {/* Follows the cursor */}
+              <Timeline.FollowCursor>
+                {(ms) => (
+                  <div className="relative z-50 flex h-full flex-col">
+                    <div className="relative flex h-8 items-end">
+                      <div className="absolute left-1/2 w-fit -translate-x-1/2 rounded-sm border border-charcoal-600 bg-charcoal-750 px-1 py-0.5 text-xxs tabular-nums text-text-bright">
+                        {formatDurationMilliseconds(ms, {
+                          style: "short",
+                          maxDecimalPoints: ms < 1000 ? 0 : 1,
+                        })}
+                      </div>
+                    </div>
+                    <div className="w-px grow border-r border-charcoal-600" />
+                  </div>
+                )}
+              </Timeline.FollowCursor>
+
+              <Timeline.Row className="grid h-full grid-rows-[2rem_1fr]">
+                {/* The duration labels */}
+                <Timeline.Row>
+                  <Timeline.Row className="h-5">
+                    <Timeline.EquallyDistribute count={tickCount}>
+                      {(ms: number, index: number) => (
+                        <Timeline.Point
+                          ms={ms}
+                          className={"relative bottom-0 text-xxs text-text-dimmed"}
+                        >
+                          {(ms) => (
+                            <div
+                              className={cn(
+                                "whitespace-nowrap",
+                                index === 0
+                                  ? "ml-0.5"
+                                  : index === tickCount - 1
+                                  ? "-translate-x-full"
+                                  : "-translate-x-1/2"
+                              )}
+                            >
+                              {formatDurationMilliseconds(ms, {
+                                style: "short",
+                                maxDecimalPoints: ms < 1000 ? 0 : 1,
+                              })}
+                            </div>
+                          )}
+                        </Timeline.Point>
+                      )}
+                    </Timeline.EquallyDistribute>
+                  </Timeline.Row>
+                  <Timeline.Row className="h-3">
+                    <Timeline.EquallyDistribute count={tickCount}>
+                      {(ms: number, index: number) => {
+                        if (index === 0) return null;
+                        return (
+                          <Timeline.Point
+                            ms={ms}
+                            className={"h-full border-r border-grid-dimmed"}
+                          />
+                        );
+                      }}
+                    </Timeline.EquallyDistribute>
+                  </Timeline.Row>
+                </Timeline.Row>
+                {/* Main timeline body */}
+                <Timeline.Row className="overflow-hidden">
+                  {/* The vertical tick lines */}
+                  <Timeline.EquallyDistribute count={tickCount}>
+                    {(ms: number, index: number) => {
+                      if (index === 0) return null;
+                      return (
+                        <Timeline.Point ms={ms} className={"h-full border-r border-grid-dimmed"} />
+                      );
+                    }}
+                  </Timeline.EquallyDistribute>
+                  <TreeView
+                    parentRef={parentRef}
+                    scrollRef={timelineScrollRef}
+                    virtualizer={virtualizer}
+                    tree={events}
+                    nodes={nodes}
+                    getNodeProps={getNodeProps}
+                    getTreeProps={getTreeProps}
+                    parentClassName="h-full scrollbar-hide"
+                    renderNode={({ node, state, index, virtualizer, virtualItem }) => {
+                      return (
+                        <Timeline.Row
+                          key={index}
+                          className={cn(
+                            "group flex h-8 items-center",
+                            state.selected
+                              ? "bg-grid-dimmed hover:bg-grid-bright"
+                              : "bg-transparent hover:bg-grid-dimmed"
+                          )}
+                          // onMouseOver={() => console.log(`hover ${index}`)}
+                          onClick={(e) => {
+                            toggleNodeSelection(node.id);
+                          }}
+                        >
+                          {node.data.level === "TRACE" ? (
+                            <SpanWithDuration
+                              showDuration={state.selected ? true : showDurations}
+                              startMs={nanosecondsToMilliseconds(node.data.offset)}
+                              durationMs={nanosecondsToMilliseconds(node.data.duration)}
+                              node={node}
+                            />
+                          ) : (
+                            <Timeline.Point
+                              ms={nanosecondsToMilliseconds(node.data.offset)}
+                              className={cn(
+                                "-ml-1.5 h-3 w-3 rounded-full border-2 border-background-bright",
+                                eventBackgroundClassName(node.data)
+                              )}
+                            />
+                          )}
+                        </Timeline.Row>
+                      );
+                    }}
+                    onScroll={(scrollTop) => {
+                      //sync the scroll to the tree
+                      if (treeScrollRef.current && treeScrollRef.current.scrollTop !== scrollTop) {
+                        treeScrollRef.current.scrollTop = scrollTop;
+                      }
+                    }}
+                  />
+                </Timeline.Row>
+              </Timeline.Row>
+            </Timeline.Root>
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 }
@@ -310,24 +515,9 @@ function NodeText({ node }: { node: RunEvent }) {
 
 function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {
   return (
-    <div className={cn("h-8 w-2 border-r", isError ? "border-rose-500/10" : "border-slate-800")} />
-  );
-}
-
-function Duration({ duration }: { duration: number }) {
-  return (
-    <Paragraph variant="extra-small" className="whitespace-nowrap">
-      {formatDurationNanoseconds(duration, { style: "short" })}
-    </Paragraph>
-  );
-}
-
-function LiveDuration({ startTime }: { startTime: Date }) {
-  return (
-    <div className="flex items-center gap-1">
-      <LiveTimer startTime={startTime} />
-      <Spinner color="blue" className="h-4 w-4" />
-    </div>
+    <div
+      className={cn("h-8 w-2 border-r", isError ? "border-rose-500/10" : "border-charcoal-800")}
+    />
   );
 }
 
@@ -348,11 +538,51 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
       {mouseOver ? (
         <ShowParentIconSelected className="h-4 w-4 text-indigo-500" />
       ) : (
-        <ShowParentIcon className="h-4 w-4 text-slate-650" />
+        <ShowParentIcon className="text-charcoal-650 h-4 w-4" />
       )}
-      <Paragraph variant="small" className={cn(mouseOver ? "text-indigo-500" : "text-slate-500")}>
+      <Paragraph
+        variant="small"
+        className={cn(mouseOver ? "text-indigo-500" : "text-charcoal-500")}
+      >
         Show parent items
       </Paragraph>
     </Link>
+  );
+}
+
+function SpanWithDuration({
+  showDuration,
+  node,
+  ...props
+}: Timeline.SpanProps & { node: RunEvent; showDuration: boolean }) {
+  return (
+    <Timeline.Span {...props}>
+      <div
+        className={cn(
+          "relative flex h-4 w-full min-w-px items-center rounded-sm",
+          eventBackgroundClassName(node.data)
+        )}
+      >
+        {node.data.isPartial && (
+          <div
+            className="absolute left-0 top-0 h-full w-full animate-tile-scroll rounded-sm opacity-50"
+            style={{ backgroundImage: `url(${tileBgPath})`, backgroundSize: "8px 8px" }}
+          />
+        )}
+        <div
+          className={cn(
+            "sticky left-0 z-10 transition group-hover:opacity-100",
+            !showDuration && "opacity-0"
+          )}
+        >
+          <div className="rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom">
+            {formatDurationMilliseconds(props.durationMs, {
+              style: "short",
+              maxDecimalPoints: props.durationMs < 1000 ? 0 : 1,
+            })}
+          </div>
+        </div>
+      </div>
+    </Timeline.Span>
   );
 }

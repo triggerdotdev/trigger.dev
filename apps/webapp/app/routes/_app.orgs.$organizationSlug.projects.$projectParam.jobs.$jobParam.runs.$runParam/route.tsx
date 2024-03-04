@@ -1,26 +1,21 @@
 import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Fragment, useEffect } from "react";
+import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEventSource } from "~/hooks/useEventSource";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { RunOverview } from "~/components/run/RunOverview";
-import { jobMatchId, useJob } from "~/hooks/useJob";
+import { useEventSource } from "~/hooks/useEventSource";
+import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
 import { RunPresenter } from "~/presenters/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
 import {
   RunParamsSchema,
   jobPath,
   jobRunsParentPath,
   runPath,
   runStreamingPath,
-  trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -42,21 +37,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({
     run,
   });
-};
-
-export const handle: Handle = {
-  breadcrumb: (match, matches) => {
-    const jobMatch = matches.find((m) => m.id === jobMatchId);
-    const runData = useTypedMatchData<typeof loader>(match);
-
-    return (
-      <Fragment>
-        {runData && runData.run && (
-          <BreadcrumbLink to={match.pathname} title={`Run #${runData.run.number}`} />
-        )}
-      </Fragment>
-    );
-  },
 };
 
 export default function Page() {

@@ -7,6 +7,7 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -177,18 +178,23 @@ export default function Page() {
                         name={`values[${index}].environmentId`}
                         value={environment.id}
                       />
-                      <label className="flex items-center justify-end" htmlFor={`values[${index}].value`}>
+                      <label
+                        className="flex items-center justify-end"
+                        htmlFor={`values[${index}].value`}
+                      >
                         <EnvironmentLabel environment={environment} className="h-5 px-2" />
                       </label>
-                      <Input
-                        name={`values[${index}].value`}
-                        placeholder="Not set"
-                      />
+                      <Input name={`values[${index}].value`} placeholder="Not set" />
                     </Fragment>
                   );
                 })}
               </div>
             </InputGroup>
+
+            <Callout variant="info">
+              Dev environment variables specified here will be overriden by ones in your .env file
+              when running locally.
+            </Callout>
 
             <FormError id={key.errorId}>{key.error}</FormError>
             <FormError>{form.error}</FormError>
@@ -217,7 +223,7 @@ export default function Page() {
               cancelButton={
                 <LinkButton
                   to={v3EnvironmentVariablesPath(organization, project)}
-                  variant="secondary/small"
+                  variant="tertiary/small"
                 >
                   Cancel
                 </LinkButton>

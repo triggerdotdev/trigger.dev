@@ -4,10 +4,9 @@ import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useFetcher } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
@@ -21,20 +20,13 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import {
-  PageButtons,
-  PageDescription,
-  PageHeader,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
   TableBlankRow,
   TableBody,
   TableCell,
-  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -48,7 +40,6 @@ import {
   revokePersonalAccessToken,
 } from "~/services/personalAccessToken.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
 import { personalAccessTokensPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -128,34 +119,25 @@ export const action: ActionFunction = async ({ request }) => {
   }
 };
 
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    return <BreadcrumbLink to={match.pathname} title={"Personal Access Tokens"} />;
-  },
-};
-
 export default function Page() {
   const { personalAccessTokens } = useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Personal Access Tokens" />
-          <PageButtons>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="primary/small">Create new token</Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>Create a Personal Access Token</DialogHeader>
-                <CreatePersonalAccessToken />
-              </DialogContent>
-            </Dialog>
-          </PageButtons>
-        </PageTitleRow>
-        <PageDescription>Personal Access Tokens can be used with our CLI and API.</PageDescription>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Personal Access Tokens" />
+        <PageAccessories>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="primary/small">Create new token</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>Create a Personal Access Token</DialogHeader>
+              <CreatePersonalAccessToken />
+            </DialogContent>
+          </Dialog>
+        </PageAccessories>
+      </NavBar>
 
       <PageBody>
         <div className="flex flex-col gap-3">

@@ -167,7 +167,7 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
             </SelectItem>
             {allTaskRunStatuses.map((status) => (
               <SelectItem key={status} value={status}>
-                <TaskRunStatus status={status} />
+                <TaskRunStatus status={status} className="text-xs" />
               </SelectItem>
             ))}
           </SelectContent>
@@ -198,7 +198,7 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
 
       <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} />
 
-      <Button variant="tertiary/small" onClick={() => clearFilters()} LeadingIcon={"close"}>
+      <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={"close"}>
         Clear
       </Button>
     </div>

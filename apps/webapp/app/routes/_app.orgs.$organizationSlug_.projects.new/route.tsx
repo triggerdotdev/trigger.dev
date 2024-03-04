@@ -21,8 +21,6 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel,
-  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "~/components/primitives/Select";
@@ -164,13 +162,13 @@ export default function NewOrganizationPage() {
             )}
             <FormButtons
               confirmButton={
-                <Button type="submit" variant={"primary/small"} TrailingIcon="arrow-right">
+                <Button type="submit" variant={"primary/small"}>
                   Create
                 </Button>
               }
               cancelButton={
                 organization.projectsCount > 0 ? (
-                  <LinkButton to={organizationPath(organization)} variant={"secondary/small"}>
+                  <LinkButton to={organizationPath(organization)} variant={"tertiary/small"}>
                     Cancel
                   </LinkButton>
                 ) : undefined

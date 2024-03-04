@@ -5,9 +5,9 @@ import { useOperatingSystem } from "./OperatingSystemProvider";
 
 const variants = {
   small:
-    "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60 transition uppercase",
+    "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase",
   medium:
-    "text-[0.75rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60 transition uppercase",
+    "text-[0.75rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase",
 };
 
 export type ShortcutKeyVariant = keyof typeof variants;

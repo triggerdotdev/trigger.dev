@@ -32,7 +32,7 @@ export async function loader({ request, params }: DataFunctionArgs) {
 const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
   if (active && payload) {
     return (
-      <div className="flex gap-1 rounded border border-border bg-background px-3 py-2 text-xs text-bright">
+      <div className="flex gap-1 rounded border border-grid-bright bg-background-dimmed px-3 py-2 text-xs text-text-bright">
         <p>{label}:</p>
         <p>{payload[0].value}</p>
       </div>
@@ -52,7 +52,7 @@ export default function Page() {
     : false;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 px-4">
       <Suspense
         fallback={
           <>
@@ -78,7 +78,7 @@ export default function Page() {
               <>
                 <div>
                   <Header2 spacing>Concurrent runs</Header2>
-                  <div className="flex w-full flex-col gap-5 rounded border border-border p-6">
+                  <div className="flex w-full flex-col gap-5 rounded border border-grid-bright p-6">
                     {hitConcurrencyLimit && (
                       <Callout
                         variant={"pricing"}
@@ -107,7 +107,7 @@ export default function Page() {
 
                 <div className="@container">
                   <Header2 spacing>Runs</Header2>
-                  <div className="flex flex-col gap-5 rounded border border-border p-6">
+                  <div className="flex flex-col gap-5 rounded border border-grid-bright p-6">
                     {hitsRunLimit && (
                       <Callout
                         variant={"error"}
@@ -142,13 +142,13 @@ export default function Page() {
                             <div className="flex w-full items-center gap-6">
                               <div className="flex flex-col gap-2">
                                 <Header3 className="">Month-to-date</Header3>
-                                <p className="text-3xl font-medium text-bright">
+                                <p className="text-3xl font-medium text-text-bright">
                                   {formatCurrency(data.runCostEstimation, false)}
                                 </p>
                               </div>
-                              <ArrowRightIcon className="h-6 w-6 text-dimmed/50" />
-                              <div className="flex flex-col gap-2 text-dimmed">
-                                <Header3 className="text-dimmed">Projected</Header3>
+                              <ArrowRightIcon className="h-6 w-6 text-text-dimmed/50" />
+                              <div className="flex flex-col gap-2 text-text-dimmed">
+                                <Header3 className="text-text-dimmed">Projected</Header3>
                                 <p className="text-3xl font-medium">
                                   {formatCurrency(data.projectedRunCostEstimation, false)}
                                 </p>
@@ -230,7 +230,7 @@ function LoadingElement({ title }: { title: string }) {
   return (
     <div>
       <Header2 spacing>{title}</Header2>
-      <div className="flex h-96 w-full items-center justify-center gap-5 rounded border border-border p-6">
+      <div className="flex h-96 w-full items-center justify-center gap-5 rounded border border-grid-bright p-6">
         <Spinner />
       </div>
     </div>

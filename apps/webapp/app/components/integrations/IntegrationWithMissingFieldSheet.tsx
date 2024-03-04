@@ -37,7 +37,7 @@ export function IntegrationWithMissingFieldSheet({
           </div>
           <LinkButton
             to={docsIntegrationPath(integration.identifier)}
-            variant="secondary/small"
+            variant="tertiary/small"
             LeadingIcon="docs"
             target="_blank"
           >

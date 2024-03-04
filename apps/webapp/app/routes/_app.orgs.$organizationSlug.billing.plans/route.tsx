@@ -1,22 +1,15 @@
-import { useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
-import { useActionData } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { SetPlanBodySchema } from "@trigger.dev/billing";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PricingCalculator } from "~/components/billing/PricingCalculator";
-import { PricingTiers, TierEnterprise, TierFree, TierPro } from "~/components/billing/PricingTiers";
+import { PricingTiers } from "~/components/billing/PricingTiers";
 import { RunsVolumeDiscountTable } from "~/components/billing/RunsVolumeDiscountTable";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { featuresForRequest } from "~/features.server";
-import { useFeatures } from "~/hooks/useFeatures";
 import { OrgBillingPlanPresenter } from "~/presenters/OrgBillingPlanPresenter";
-import { Handle } from "~/utils/handle";
+import { formatNumberCompact } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, organizationBillingPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { formatNumberCompact } from "~/utils/numberFormatter";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
@@ -39,10 +32,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   });
 }
 
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Plans" />,
-};
-
 export default function Page() {
   const { plans, maxConcurrency, organizationSlug } = useTypedLoaderData<typeof loader>();
   const currentPlan = useCurrentPlan();
@@ -57,7 +46,7 @@ export default function Page() {
     : false;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 px-4">
       {hitConcurrencyLimit && (
         <Callout variant={"pricing"}>
           Some of your runs are being queued because your run concurrency is limited to{" "}
@@ -74,9 +63,9 @@ export default function Page() {
       <PricingTiers organizationSlug={organizationSlug} plans={plans} />
       <div>
         <Header2 spacing>Estimate your usage</Header2>
-        <div className="flex h-full w-full rounded-md border border-border p-6">
+        <div className="flex h-full w-full rounded-md border border-grid-bright p-6">
           <PricingCalculator plans={plans} />
-          <div className="mx-6 min-h-full w-px bg-border" />
+          <div className="mx-6 min-h-full w-px bg-grid-bright" />
           <RunsVolumeDiscountTable brackets={plans.paid.runs?.pricing?.brackets ?? []} />
         </div>
       </div>

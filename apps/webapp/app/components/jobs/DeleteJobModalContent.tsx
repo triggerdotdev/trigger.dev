@@ -74,7 +74,7 @@ export function DeleteJobDialogContent({
       <Header2
         className={cn(
           canDelete ? "border-rose-500 bg-rose-500/10" : "border-amber-500 bg-amber-500/10",
-          "rounded border px-3.5 py-2 text-center text-bright"
+          "rounded border px-3.5 py-2 text-center text-text-bright"
         )}
       >
         {canDelete
@@ -84,8 +84,9 @@ export function DeleteJobDialogContent({
       <Paragraph variant="small" className="px-6 text-center">
         {canDelete ? (
           <>
-            This will permanently delete the Job <span className="strong text-bright">{title}</span>
-            . This includes the deletion of all Run history. This cannot be undone.
+            This will permanently delete the Job{" "}
+            <span className="strong text-text-bright">{title}</span>. This includes the deletion of
+            all Run history. This cannot be undone.
           </>
         ) : (
           <>
@@ -111,7 +112,7 @@ export function DeleteJobDialogContent({
               <>
                 <NamedIcon
                   name="trash-can"
-                  className="mr-1.5 h-4 w-4 text-bright transition group-hover:text-bright"
+                  className="mr-1.5 h-4 w-4 text-text-bright transition group-hover:text-text-bright"
                 />
                 Delete this Job
               </>
@@ -123,7 +124,7 @@ export function DeleteJobDialogContent({
           <>
             <NamedIcon
               name="trash-can"
-              className="mr-1.5 h-4 w-4 text-bright transition group-hover:text-bright"
+              className="mr-1.5 h-4 w-4 text-text-bright transition group-hover:text-text-bright"
             />
             Delete this Job
           </>

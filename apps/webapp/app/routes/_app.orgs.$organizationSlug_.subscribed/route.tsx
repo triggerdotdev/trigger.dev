@@ -71,7 +71,7 @@ export default function Subscribed() {
 
       <RunsVolumeDiscountTable
         hideHeader
-        className="mb-4 border-b border-border pb-2 pl-4"
+        className="mb-4 border-b border-grid-bright pb-2 pl-4"
         brackets={plans?.paid.runs?.pricing?.brackets ?? []}
       />
       <FormButtons
@@ -87,7 +87,7 @@ export default function Subscribed() {
 
 function PlanItem({ item, value }: { item: string; value: string }) {
   return (
-    <li className="flex items-center justify-between border-b border-border py-2">
+    <li className="flex items-center justify-between border-b border-grid-bright py-2">
       <Paragraph>{item}</Paragraph>
       <Paragraph variant="base/bright" className="font-medium">
         {value}

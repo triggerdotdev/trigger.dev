@@ -3,7 +3,10 @@ import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 import { cn } from "~/utils/cn";
 import { render } from "react-dom";
 
-export type RenderIcon = IconNamesOrString | FunctionComponent<{className?: string}> | React.ReactNode;
+export type RenderIcon =
+  | IconNamesOrString
+  | FunctionComponent<{ className?: string }>
+  | React.ReactNode;
 
 type IconProps = {
   icon?: RenderIcon;
@@ -17,7 +20,7 @@ export function Icon(props: IconProps) {
   if (typeof props.icon === "string") {
     return <NamedIcon name={props.icon} className={props.className ?? ""} fallback={<></>} />;
   }
-  
+
   if (typeof props.icon === "function") {
     const Icon = props.icon;
     return <Icon className={props.className} />;
@@ -26,9 +29,16 @@ export function Icon(props: IconProps) {
   if (React.isValidElement(props.icon)) {
     return <>{props.icon}</>;
   }
-  
-  if (props.icon && typeof props.icon === 'object' && ('type' in props.icon || '$$typeof' in props.icon)) {
-    return createElement<FunctionComponent<any>>(props.icon as any, { className: props.className } as any);
+
+  if (
+    props.icon &&
+    typeof props.icon === "object" &&
+    ("type" in props.icon || "$$typeof" in props.icon)
+  ) {
+    return createElement<FunctionComponent<any>>(
+      props.icon as any,
+      { className: props.className } as any
+    );
   }
 
   console.error("Invalid icon", props);
@@ -39,7 +49,7 @@ export function IconInBox({ boxClassName, ...props }: IconProps & { boxClassName
   return (
     <div
       className={cn(
-        "grid h-9 w-9 place-content-center rounded-sm border border-slate-750 bg-slate-850",
+        "grid h-9 w-9 place-content-center rounded-sm border border-charcoal-750 bg-charcoal-850",
         boxClassName
       )}
     >

@@ -10,9 +10,15 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 import { ExtendedTaskAttemptStatus } from "./RunFilters";
 
-export function TaskRunStatus({ status }: { status: ExtendedTaskAttemptStatus | null }) {
+export function TaskRunStatus({
+  status,
+  className,
+}: {
+  status: ExtendedTaskAttemptStatus | null;
+  className?: string;
+}) {
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className={cn("flex items-center gap-1", className)}>
       <TaskRunStatusIcon status={status} className="h-4 w-4" />
       <TaskRunStatusLabel status={status} />
     </span>
@@ -59,14 +65,14 @@ export function TaskRunStatusIcon({
 
 export function runStatusClassNameColor(status: ExtendedTaskAttemptStatus | null): string {
   if (status === null) {
-    return "text-slate-500";
+    return "text-charcoal-500";
   }
 
   switch (status) {
     case "ENQUEUED":
-      return "text-slate-500";
+      return "text-charcoal-500";
     case "PENDING":
-      return "text-slate-500";
+      return "text-charcoal-500";
     case "EXECUTING":
       return "text-blue-500";
     case "PAUSED":
@@ -74,7 +80,7 @@ export function runStatusClassNameColor(status: ExtendedTaskAttemptStatus | null
     case "FAILED":
       return "text-rose-500";
     case "CANCELED":
-      return "text-slate-500";
+      return "text-charcoal-500";
     case "COMPLETED":
       return "text-green-500";
     default: {
