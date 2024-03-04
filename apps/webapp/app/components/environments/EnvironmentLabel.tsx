@@ -3,8 +3,8 @@ import { cn } from "~/utils/cn";
 
 type Environment = Pick<RuntimeEnvironment, "type">;
 const variants = {
-  small: "h-4 text-xxs",
-  large: "h-6 text-xs",
+  small: "h-4 text-xxs px-[0.1875rem] rounded-[2px]",
+  large: "h-6 text-xs px-1.5 rounded",
 };
 
 export function EnvironmentLabel({
@@ -21,7 +21,7 @@ export function EnvironmentLabel({
   return (
     <span
       className={cn(
-        "text-midnight-900 inline-flex h-4 items-center justify-center whitespace-nowrap rounded-[2px] border px-1 font-medium uppercase tracking-wider",
+        "text-midnight-900 inline-flex items-center justify-center whitespace-nowrap border font-medium uppercase tracking-wider",
         environmentBorderClassName(environment),
         environmentTextClassName(environment),
         variants[size],
