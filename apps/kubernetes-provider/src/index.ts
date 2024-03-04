@@ -1,23 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { createServer } from "node:http";
 import k8s, { BatchV1Api, CoreV1Api, V1Job, V1Pod } from "@kubernetes/client-node";
-import { io, Socket } from "socket.io-client";
-import {
-  Machine,
-  ProviderClientToServerEvents,
-  ProviderServerToClientEvents,
-} from "@trigger.dev/core/v3";
-import { HttpReply, SimpleLogger, getTextBody } from "@trigger.dev/core-apps";
+import { Machine } from "@trigger.dev/core/v3";
+import { ProviderShell, SimpleLogger, TaskOperations } from "@trigger.dev/core-apps";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 
-const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8000);
 const NODE_NAME = process.env.NODE_NAME || "some-node";
-const POD_NAME = process.env.POD_NAME || "k8s-provider";
-
-const PLATFORM_HOST = process.env.PLATFORM_HOST || "127.0.0.1";
-const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 5080;
-const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "provider-secret";
 
 const REGISTRY_FQDN = process.env.REGISTRY_FQDN || "localhost:5000";
 const REPO_NAME = process.env.REPO_NAME || "test";
@@ -29,14 +17,6 @@ type Namespace = {
     name: string;
   };
 };
-
-interface TaskOperations {
-  create: (...args: any[]) => Promise<any>;
-  restore: (...args: any[]) => Promise<any>;
-  delete: (...args: any[]) => Promise<any>;
-  get: (...args: any[]) => Promise<any>;
-  index: (...args: any[]) => Promise<any>;
-}
 
 class KubernetesTaskOperations implements TaskOperations {
   #namespace: Namespace;
@@ -376,185 +356,7 @@ class KubernetesTaskOperations implements TaskOperations {
   }
 }
 
-interface Provider {
-  tasks: TaskOperations;
-}
-
-type KubernetesProviderOptions = {
-  tasks: KubernetesTaskOperations;
-  host?: string;
-  port: number;
-};
-
-class KubernetesProvider implements Provider {
-  tasks: KubernetesTaskOperations;
-
-  #httpServer: ReturnType<typeof createServer>;
-  #platformSocket: Socket<ProviderServerToClientEvents, ProviderClientToServerEvents>;
-
-  constructor(private options: KubernetesProviderOptions) {
-    this.tasks = options.tasks;
-    this.#httpServer = this.#createHttpServer();
-    this.#platformSocket = this.#createPlatformSocket();
-  }
-
-  #createPlatformSocket() {
-    const socket: Socket<ProviderServerToClientEvents, ProviderClientToServerEvents> = io(
-      `ws://${PLATFORM_HOST}:${PLATFORM_WS_PORT}/provider`,
-      {
-        transports: ["websocket"],
-        auth: {
-          token: PLATFORM_SECRET,
-        },
-        extraHeaders: {
-          "x-trigger-provider-type": "kubernetes",
-        },
-      }
-    );
-
-    const logger = new SimpleLogger(`[platform][${socket.id ?? "NO_ID"}]`);
-
-    socket.on("connect_error", (err) => {
-      logger.error(`connect_error: ${err.message}`);
-    });
-
-    socket.on("connect", () => {
-      logger.log("connect");
-    });
-
-    socket.on("disconnect", () => {
-      logger.log("disconnect");
-    });
-
-    socket.on("GET", async (message) => {
-      logger.log("[GET]", message);
-      this.tasks.get({ runId: message.name });
-    });
-
-    socket.on("DELETE", async (message, callback) => {
-      logger.log("[DELETE]", message);
-
-      callback({
-        message: "delete request received",
-      });
-
-      this.tasks.delete({ runId: message.name });
-    });
-
-    socket.on("INDEX", async (message) => {
-      logger.log("[INDEX]", message);
-
-      await this.tasks.index({
-        contentHash: message.contentHash,
-        imageTag: message.imageTag,
-      });
-    });
-
-    socket.on("INVOKE", async (message) => {
-      logger.log("[INVOKE]", message);
-
-      await this.tasks.create({
-        runId: message.name,
-        image: message.name,
-        machine: message.machine,
-      });
-    });
-
-    socket.on("RESTORE", async (message) => {
-      logger.log("[RESTORE]", message);
-
-      // await this.tasks.restore({});
-    });
-
-    socket.on("HEALTH", async (message) => {
-      logger.log("[HEALTH]", message);
-    });
-
-    return socket;
-  }
-
-  #createHttpServer() {
-    const httpServer = createServer(async (req, res) => {
-      logger.log(`[${req.method}]`, req.url);
-
-      const reply = new HttpReply(res);
-
-      switch (req.url) {
-        case "/health": {
-          return reply.text("ok");
-        }
-        case "/whoami": {
-          return reply.text(`${POD_NAME}`);
-        }
-        case "/close": {
-          this.#platformSocket.close();
-          return reply.text("platform socket closed");
-        }
-        case "/delete": {
-          const body = await getTextBody(req);
-
-          await this.tasks.delete({ runId: body });
-
-          return reply.text(`sent delete request: ${body}`);
-        }
-        case "/invoke": {
-          const body = await getTextBody(req);
-
-          await this.tasks.create({
-            runId: body,
-            image: body,
-            machine: {
-              cpu: "1",
-              memory: "100Mi",
-            },
-          });
-
-          return reply.text(`sent restore request: ${body}`);
-        }
-        case "/restore": {
-          const body = await getTextBody(req);
-
-          const items = body.split("&");
-          const image = items[0];
-          const baseImageTag = items[1] ?? image;
-
-          await this.tasks.restore({
-            runId: image,
-            name: `${image}-restore`,
-            image,
-            checkpointId: baseImageTag,
-            machine: {
-              cpu: "1",
-              memory: "100Mi",
-            },
-          });
-
-          return reply.text(`sent restore request: ${body}`);
-        }
-        default: {
-          return reply.empty(404);
-        }
-      }
-    });
-
-    httpServer.on("clientError", (err, socket) => {
-      socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
-    });
-
-    httpServer.on("listening", () => {
-      logger.log("server listening on port", this.options.port);
-    });
-
-    return httpServer;
-  }
-
-  listen() {
-    this.#httpServer.listen(this.options.port, this.options.host ?? "0.0.0.0");
-  }
-}
-
-const provider = new KubernetesProvider({
-  port: HTTP_SERVER_PORT,
+const provider = new ProviderShell({
   tasks: new KubernetesTaskOperations(),
 });
 
