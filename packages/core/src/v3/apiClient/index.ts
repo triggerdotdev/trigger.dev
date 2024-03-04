@@ -78,7 +78,7 @@ export class ApiClientManager {
 
   get accessToken(): string | undefined {
     const store = this.#getStore();
-    return store?.accessToken ?? getEnvVar("TRIGGER_API_KEY");
+    return store?.accessToken ?? getEnvVar("TRIGGER_SECRET_KEY");
   }
 
   get client(): ApiClient | undefined {

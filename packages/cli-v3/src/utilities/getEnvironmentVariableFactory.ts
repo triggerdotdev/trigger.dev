@@ -1,6 +1,6 @@
 import { logger } from "./logger.js";
 
-type VariableNames = "TRIGGER_API_URL" | "TRIGGER_API_KEY" | "TRIGGER_LOG_LEVEL";
+type VariableNames = "TRIGGER_API_URL" | "TRIGGER_SECRET_KEY" | "TRIGGER_LOG_LEVEL";
 
 type DeprecatedNames = "";
 

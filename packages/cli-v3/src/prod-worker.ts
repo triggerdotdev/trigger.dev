@@ -19,7 +19,7 @@ const logger = new SimpleLogger(`[${MACHINE_NAME}][${SHORT_HASH}]`);
 
 class ProdWorker {
   private apiUrl = process.env.TRIGGER_API_URL!;
-  private apiKey = process.env.TRIGGER_API_KEY!;
+  private apiKey = process.env.TRIGGER_SECRET_KEY!;
   private contentHash = process.env.TRIGGER_CONTENT_HASH!;
   private projectDir = process.env.TRIGGER_PROJECT_DIR!;
   private projectRef = process.env.TRIGGER_PROJECT_REF!;
@@ -45,7 +45,7 @@ class ProdWorker {
       projectDir: this.projectDir,
       env: {
         TRIGGER_API_URL: this.apiUrl,
-        TRIGGER_API_KEY: this.apiKey,
+        TRIGGER_SECRET_KEY: this.apiKey,
       },
       contentHash: this.contentHash,
     });

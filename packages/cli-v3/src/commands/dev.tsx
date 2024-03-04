@@ -408,7 +408,7 @@ function useDev({
                   dependencies,
                   env: {
                     TRIGGER_API_URL: apiUrl,
-                    TRIGGER_API_KEY: apiKey,
+                    TRIGGER_SECRET_KEY: apiKey,
                     ...(environmentVariablesResponse.success
                       ? environmentVariablesResponse.data.variables
                       : {}),
