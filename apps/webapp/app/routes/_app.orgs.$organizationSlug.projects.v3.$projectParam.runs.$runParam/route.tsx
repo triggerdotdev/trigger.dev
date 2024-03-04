@@ -119,7 +119,7 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className={cn("grid h-full max-h-full grid-cols-1")}>
+        <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
           {selectedSpanId === undefined ? (
             <TasksTreeView
               selectedId={selectedSpanId}
@@ -226,7 +226,7 @@ function TasksTreeView({
   });
 
   return (
-    <div className="grid h-full grid-rows-[2.5rem_1fr] overflow-y-clip">
+    <div className="grid h-full grid-rows-[2.5rem_1fr] overflow-hidden">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Input
           placeholder="Search log"
@@ -263,7 +263,6 @@ function TasksTreeView({
         </div>
       </div>
       <ResizablePanelGroup
-        className="overflow-y-auto"
         direction="horizontal"
         onLayout={(layout) => {
           if (layout.length !== 2) return;
@@ -272,81 +271,87 @@ function TasksTreeView({
       >
         {/* Tree list */}
         <ResizablePanel order={1} minSize={20} defaultSize={50} className="pl-3">
-          <div className="h-8">
-            {parentRunFriendlyId && <ShowParentLink runFriendlyId={parentRunFriendlyId} />}
-          </div>
-          <TreeView
-            parentRef={parentRef}
-            virtualizer={virtualizer}
-            autoFocus
-            tree={events}
-            nodes={nodes}
-            getNodeProps={getNodeProps}
-            getTreeProps={getTreeProps}
-            parentClassName="h-full pt-2"
-            renderNode={({ node, state, index, virtualizer, virtualItem }) => (
-              <div
-                className={cn(
-                  "flex h-8 cursor-pointer items-center rounded-l-sm pr-3",
-                  state.selected
-                    ? "bg-grid-dimmed hover:bg-grid-bright"
-                    : "bg-transparent hover:bg-grid-dimmed"
-                )}
-                onClick={() => {
-                  toggleNodeSelection(node.id);
-                }}
-              >
-                <div className="flex h-8 items-center">
-                  {Array.from({ length: node.level }).map((_, index) => (
-                    <TaskLine key={index} isError={node.data.isError} isSelected={state.selected} />
-                  ))}
-                  <div
-                    className={cn(
-                      "flex h-8 w-4 items-center",
-                      node.hasChildren &&
-                        (node.data.isError ? "hover:bg-rose-500/30" : "hover:bg-charcoal-800")
-                    )}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleExpandNode(node.id);
-                      selectNode(node.id);
-                      scrollToNode(node.id);
-                    }}
-                  >
-                    {node.hasChildren ? (
-                      state.expanded ? (
-                        <ChevronDownIcon className="h-4 w-4 text-charcoal-400" />
+          <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
+            <div>
+              {parentRunFriendlyId && <ShowParentLink runFriendlyId={parentRunFriendlyId} />}
+            </div>
+            <TreeView
+              parentRef={parentRef}
+              virtualizer={virtualizer}
+              autoFocus
+              tree={events}
+              nodes={nodes}
+              getNodeProps={getNodeProps}
+              getTreeProps={getTreeProps}
+              parentClassName="pt-2"
+              renderNode={({ node, state }) => (
+                <div
+                  className={cn(
+                    "flex h-8 cursor-pointer items-center rounded-l-sm pr-3",
+                    state.selected
+                      ? "bg-grid-dimmed hover:bg-grid-bright"
+                      : "bg-transparent hover:bg-grid-dimmed"
+                  )}
+                  onClick={() => {
+                    toggleNodeSelection(node.id);
+                  }}
+                >
+                  <div className="flex h-8 items-center">
+                    {Array.from({ length: node.level }).map((_, index) => (
+                      <TaskLine
+                        key={index}
+                        isError={node.data.isError}
+                        isSelected={state.selected}
+                      />
+                    ))}
+                    <div
+                      className={cn(
+                        "flex h-8 w-4 items-center",
+                        node.hasChildren &&
+                          (node.data.isError ? "hover:bg-rose-500/30" : "hover:bg-charcoal-800")
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpandNode(node.id);
+                        selectNode(node.id);
+                        scrollToNode(node.id);
+                      }}
+                    >
+                      {node.hasChildren ? (
+                        state.expanded ? (
+                          <ChevronDownIcon className="h-4 w-4 text-charcoal-400" />
+                        ) : (
+                          <ChevronRightIcon className="h-4 w-4 text-charcoal-400" />
+                        )
                       ) : (
-                        <ChevronRightIcon className="h-4 w-4 text-charcoal-400" />
-                      )
-                    ) : (
-                      <div className="h-8 w-4" />
-                    )}
+                        <div className="h-8 w-4" />
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex w-full items-center justify-between gap-2 px-1">
-                  <div className="flex items-center gap-2 overflow-x-hidden">
-                    <RunIcon name={node.data.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
-                    <NodeText node={node} />
-                    {node.data.isRoot && <Badge variant="outline-rounded">Root</Badge>}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {node.data.isCancelled ? (
-                      <Paragraph variant="extra-small" className="text-amber-500">
-                        Cancelled
-                      </Paragraph>
-                    ) : null}
+                  <div className="flex w-full items-center justify-between gap-2 px-1">
+                    <div className="flex items-center gap-2 overflow-x-hidden">
+                      <RunIcon name={node.data.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
+                      <NodeText node={node} />
+                      {node.data.isRoot && <Badge variant="outline-rounded">Root</Badge>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {node.data.isCancelled ? (
+                        <Paragraph variant="extra-small" className="text-amber-500">
+                          Cancelled
+                        </Paragraph>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          />
+              )}
+            />
+          </div>
         </ResizablePanel>
         <ResizableHandle withHandle />
         {/* Timeline */}
-        <ResizablePanel order={2} minSize={20} defaultSize={50} className="h-full">
-          <div className="h-full overflow-x-auto pr-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <ResizablePanel order={2} minSize={20} defaultSize={50}>
+          <div className="h-full overflow-x-auto overflow-y-hidden pr-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <Timeline.Root
               durationMs={nanosecondsToMilliseconds(totalDuration)}
               scale={scale}
@@ -417,7 +422,7 @@ function TasksTreeView({
                   </Timeline.Row>
                 </Timeline.Row>
                 {/* Main timeline body */}
-                <Timeline.Row>
+                <Timeline.Row className="overflow-hidden">
                   {/* The vertical tick lines */}
                   <Timeline.EquallyDistribute count={tickCount}>
                     {(ms: number, index: number) => {
@@ -435,7 +440,7 @@ function TasksTreeView({
                     nodes={nodes}
                     getNodeProps={getNodeProps}
                     getTreeProps={getTreeProps}
-                    // parentClassName="h-full"
+                    parentClassName="h-full"
                     renderNode={({ node, state, index, virtualizer, virtualItem }) => {
                       return (
                         <Timeline.Row
