@@ -1,14 +1,12 @@
 import { createServer } from "node:http";
 import { $ } from "execa";
-import { io, Socket } from "socket.io-client";
 import {
+  ClientToSharedQueueMessages,
   clientWebsocketMessages,
   Machine,
-  MessageCatalogToSocketIoEvents,
   PlatformToProviderMessages,
   ProviderToPlatformMessages,
-  serverWebsocketMessages,
-  ZodMessageHandler,
+  SharedQueueToClientMessages,
   ZodMessageSender,
   ZodSocketConnection,
 } from "@trigger.dev/core/v3";
@@ -121,28 +119,31 @@ class DockerProvider implements Provider {
   }
 
   #createSharedQueueSocket() {
-    const socket: Socket<
-      MessageCatalogToSocketIoEvents<typeof serverWebsocketMessages>,
-      MessageCatalogToSocketIoEvents<typeof clientWebsocketMessages>
-    > = io(`ws://${PLATFORM_HOST}:${PLATFORM_WS_PORT}/shared-queue`, {
-      transports: ["websocket"],
-      auth: {
-        token: PLATFORM_SECRET,
+    const sharedQueueConnection = new ZodSocketConnection({
+      namespace: "shared-queue",
+      host: PLATFORM_HOST,
+      port: Number(PLATFORM_WS_PORT),
+      clientMessages: ClientToSharedQueueMessages,
+      serverMessages: SharedQueueToClientMessages,
+      authToken: PLATFORM_SECRET,
+      handlers: {
+        SERVER_READY: async (message) => {
+          // TODO: create new schema without worker requirement
+          await sender.send("READY_FOR_TASKS", {
+            backgroundWorkerId: "placeholder",
+          });
+        },
+        BACKGROUND_WORKER_MESSAGE: async (message) => {
+          if (message.data.type === "SCHEDULE_ATTEMPT") {
+            this.tasks.create({
+              envId: message.data.envId,
+              attemptId: message.data.id,
+              image: message.data.image,
+              machine: {},
+            });
+          }
+        },
       },
-    });
-
-    const logger = new SimpleLogger(`[shared-queue][${socket.id ?? "NO_ID"}]`);
-
-    socket.on("connect_error", (err) => {
-      logger.error(`connect_error: ${err.message}`);
-    });
-
-    socket.on("connect", () => {
-      logger.log("connect");
-    });
-
-    socket.on("disconnect", () => {
-      logger.log("disconnect");
     });
 
     const sender = new ZodMessageSender({
@@ -151,7 +152,7 @@ class DockerProvider implements Provider {
         return new Promise((resolve, reject) => {
           try {
             const { type, ...payload } = message;
-            socket.emit(type, payload as any);
+            sharedQueueConnection.socket.emit(type, payload as any);
             resolve();
           } catch (err) {
             reject(err);
@@ -160,34 +161,7 @@ class DockerProvider implements Provider {
       },
     });
 
-    const handler = new ZodMessageHandler({
-      schema: serverWebsocketMessages,
-      messages: {
-        SERVER_READY: async (payload) => {
-          logger.log("received SERVER_READY", payload);
-
-          // TODO: create new schema without worker requirement
-          await sender.send("READY_FOR_TASKS", {
-            backgroundWorkerId: "placeholder",
-          });
-        },
-        BACKGROUND_WORKER_MESSAGE: async (payload) => {
-          logger.log("received BACKGROUND_WORKER_MESSAGE", payload);
-
-          if (payload.data.type === "SCHEDULE_ATTEMPT") {
-            this.tasks.create({
-              envId: payload.data.envId,
-              attemptId: payload.data.id,
-              image: payload.data.image,
-              machine: {},
-            });
-          }
-        },
-      },
-    });
-    handler.registerHandlers(socket, logger.log.bind(logger));
-
-    return socket;
+    return sharedQueueConnection;
   }
 
   #createPlatformSocket() {
