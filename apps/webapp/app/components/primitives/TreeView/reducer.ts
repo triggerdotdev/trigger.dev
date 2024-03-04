@@ -1,6 +1,8 @@
 import { FlatTree } from "./TreeView";
 import {
   applyVisibility,
+  collapsedIdsFromState,
+  concreteStateFromInput,
   firstVisibleNode,
   generateChanges,
   lastVisibleNode,
@@ -342,6 +344,17 @@ export function reducer(state: TreeState, action: Action): TreeState {
       }
 
       return state;
+    }
+    case "UPDATE_TREE": {
+      //update the tree but try and keep the selected and expanded states
+      const selectedId = selectedIdFromState(state.nodes);
+      const collapsedIds = collapsedIdsFromState(state.nodes);
+      const newState = concreteStateFromInput({
+        tree: action.payload.tree,
+        selectedId,
+        collapsedIds,
+      });
+      return newState;
     }
   }
 

@@ -158,6 +158,7 @@ export function useTree<TData>({
   estimatedRowHeight,
   filter,
 }: TreeStateHookProps<TData>): UseTreeStateOutput {
+  const previousNodeCount = useRef(tree.length);
   const previousSelectedId = useRef<string | undefined>(selectedId);
 
   const [state, dispatch] = useReducer(
@@ -178,6 +179,14 @@ export function useTree<TData>({
       onCollapsedIdsChanged?.(state.changes.collapsedIds);
     }
   }, [state.changes.collapsedIds]);
+
+  useEffect(() => {
+    if (tree.length !== previousNodeCount.current) {
+      console.log("tree changed");
+      previousNodeCount.current = tree.length;
+      dispatch({ type: "UPDATE_TREE", payload: { tree } });
+    }
+  }, [previousNodeCount.current, tree.length]);
 
   const virtualizer = useVirtualizer({
     count: tree.length,
