@@ -177,6 +177,7 @@ export default function Page() {
 }
 
 const tickCount = 5;
+const minimumDurationMs = 5;
 
 function TasksTreeView({
   events,
@@ -348,7 +349,7 @@ function TasksTreeView({
         <ResizablePanel order={2} minSize={20} defaultSize={50} className="h-full">
           <div className="h-full overflow-x-auto pr-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <Timeline.Root
-              durationMs={nanosecondsToMilliseconds(totalDuration)}
+              durationMs={Math.max(nanosecondsToMilliseconds(totalDuration), minimumDurationMs)}
               scale={scale}
               className="h-full pt-2"
               minWidth={300}
