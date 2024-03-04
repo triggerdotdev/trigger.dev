@@ -83,7 +83,12 @@ export class RunPresenter {
         })
       : [];
 
-    //total duration should be a minimum of 5ms
+    //if any elements are partial we want the total duration to represent all of the time until now
+    totalDuration = events.some((e) => e.data.isPartial)
+      ? millisecondsToNanoseconds(Date.now() - treeRootStartTimeMs)
+      : totalDuration;
+
+    //total duration should be a minimum of 1ms
     totalDuration = Math.max(totalDuration, millisecondsToNanoseconds(1));
 
     //we need to adjust any partial nodes so they run the full duration
