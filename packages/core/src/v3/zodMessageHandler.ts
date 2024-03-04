@@ -1,7 +1,11 @@
 import { z } from "zod";
 
+export type ZodMessageValueSchema<TDiscriminatedUnion extends z.ZodDiscriminatedUnion<any, any>> =
+  | z.ZodFirstPartySchemaTypes
+  | TDiscriminatedUnion;
+
 export interface ZodMessageCatalogSchema {
-  [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+  [key: string]: ZodMessageValueSchema<any>;
 }
 
 export type ZodMessageHandlers<TCatalogSchema extends ZodMessageCatalogSchema> = Partial<{
@@ -31,7 +35,7 @@ const messageSchema = z.object({
   payload: z.unknown(),
 });
 
-interface EventEmitterLike {
+export interface EventEmitterLike {
   on(eventName: string | symbol, listener: (...args: any[]) => void): this;
 }
 

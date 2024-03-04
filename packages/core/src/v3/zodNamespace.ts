@@ -11,7 +11,7 @@ interface ExtendedError extends Error {
   data?: any;
 }
 
-export type ZodSocket<
+export type ZodNamespaceSocket<
   TClientMessages extends ZodMessageCatalogSchema,
   TServerMessages extends ZodMessageCatalogSchema,
 > = Socket<
@@ -30,27 +30,27 @@ interface ZodNamespaceOptions<
   messageHandler?: ZodMessageHandlerOptions<TClientMessages>["messages"];
   authToken?: string;
   preAuth?: (
-    socket: ZodSocket<TClientMessages, TServerMessages>,
+    socket: ZodNamespaceSocket<TClientMessages, TServerMessages>,
     next: (err?: ExtendedError) => void
   ) => void;
   postAuth?: (
-    socket: ZodSocket<TClientMessages, TServerMessages>,
+    socket: ZodNamespaceSocket<TClientMessages, TServerMessages>,
     next: (err?: ExtendedError) => void
   ) => void;
   onConnection?: (
-    socket: ZodSocket<TClientMessages, TServerMessages>,
+    socket: ZodNamespaceSocket<TClientMessages, TServerMessages>,
     handler: ZodMessageHandler<TClientMessages>,
     sender: ZodMessageSender<TServerMessages>,
     logger: (...args: any[]) => void
   ) => Promise<void>;
   onDisconnect?: (
-    socket: ZodSocket<TClientMessages, TServerMessages>,
+    socket: ZodNamespaceSocket<TClientMessages, TServerMessages>,
     reason: DisconnectReason,
     description: any,
     logger: (...args: any[]) => void
   ) => Promise<void>;
   onError?: (
-    socket: ZodSocket<TClientMessages, TServerMessages>,
+    socket: ZodNamespaceSocket<TClientMessages, TServerMessages>,
     err: Error,
     logger: (...args: any[]) => void
   ) => Promise<void>;
