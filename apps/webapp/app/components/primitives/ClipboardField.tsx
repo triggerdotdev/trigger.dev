@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Button } from "./Buttons";
 import { IconNames, NamedIcon } from "./NamedIcon";
+import { ClipboardCheckIcon, ClipboardCopyIcon, ClipboardIcon } from "lucide-react";
 
 const variants = {
   "primary/small": {
@@ -17,7 +18,7 @@ const variants = {
   },
   "secondary/small": {
     container:
-      "flex items-center text-text-dimmed font-mono rounded border bg-transparent text-xs transition hover:bg-charcoal-800 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "flex items-center text-text-dimmed font-mono rounded border-transparent bg-transparent text-xs transition hover:bg-charcoal-800 hover:border-charcoal-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
       "bg-charcoal-750 border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "tertiary/small" as const,
@@ -27,12 +28,12 @@ const variants = {
   },
   "tertiary/small": {
     container:
-      "group flex items-center text-text-dimmed font-mono rounded bg-transparent text-xs transition hover:border-charcoal-700 hover:bg-tertiary focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "group flex items-center text-text-dimmed font-mono rounded bg-transparent border border-transparent text-xs transition duration-150 hover:border-charcoal-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "minimal/small" as const,
     button:
-      "rounded-l-none border-l border-transparent group-hover:border-charcoal-700 min-w-[3.1rem]",
+      "rounded-l-none border-l border-transparent transition group-hover:border-charcoal-700 min-w-[3.1rem]",
     iconSize: "h-3 w-3",
     iconPadding: "pl-1",
   },
@@ -74,6 +75,7 @@ type ClipboardFieldProps = {
   variant: keyof typeof variants;
   className?: string;
   icon?: IconNames | React.ReactNode;
+  iconButton?: boolean;
   fullWidth?: boolean;
 };
 
@@ -83,6 +85,7 @@ export function ClipboardField({
   variant,
   className,
   icon,
+  iconButton = false,
   fullWidth = true,
 }: ClipboardFieldProps) {
   const [isSecure, setIsSecure] = useState(secure !== undefined && secure);
@@ -139,9 +142,37 @@ export function ClipboardField({
           }
         }}
       />
-      <Button variant={buttonVariant} onClick={copy} className={cn("shrink-0 grow-0", button)}>
-        {copied ? <CheckIcon className="h-4 w-4 text-green-500" /> : "Copy"}
-      </Button>
+      {iconButton ? (
+        <Button
+          variant={buttonVariant}
+          onClick={copy}
+          className={cn("!min-w-[0px] max-w-fit shrink grow-0 px-1.5", button)}
+        >
+          {copied ? (
+            <ClipboardCheckIcon
+              className={cn(
+                "h-4 w-4",
+                buttonVariant === "primary/small" || buttonVariant === "primary/medium"
+                  ? "text-background-dimmed"
+                  : "text-green-500"
+              )}
+            />
+          ) : (
+            <ClipboardIcon
+              className={cn(
+                "h-4 w-4",
+                buttonVariant === "primary/small" || buttonVariant === "primary/medium"
+                  ? "text-background-dimmed"
+                  : "text-text-dimmed"
+              )}
+            />
+          )}
+        </Button>
+      ) : (
+        <Button variant={buttonVariant} onClick={copy} className={cn("shrink-0 grow-0", button)}>
+          {copied ? <CheckIcon className="h-4 w-4 text-green-500" /> : "Copy"}
+        </Button>
+      )}
     </span>
   );
 }

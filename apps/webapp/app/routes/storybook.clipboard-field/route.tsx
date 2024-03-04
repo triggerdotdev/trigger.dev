@@ -6,18 +6,28 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 export default function Story() {
   return (
     <div className="flex gap-8">
-      <div className="flex flex-col items-start gap-y-[2.58rem] whitespace-nowrap p-8">
-        <Header2>Clipboards</Header2>
-        <Paragraph variant="small">primary/small</Paragraph>
-        <Paragraph variant="small">secondary/small</Paragraph>
-        <Paragraph variant="small">tertiary/small</Paragraph>
-        <Paragraph variant="small">tertiary/small + LeadingIcon</Paragraph>
-        <Paragraph variant="small">tertiary/small + LeadingIcon</Paragraph>
-        <Paragraph variant="small">primary/medium</Paragraph>
-        <Paragraph variant="small">secondary/medium</Paragraph>
-        <Paragraph variant="small">tertiary/medium</Paragraph>
-        <Paragraph variant="small">tertiary/medium + LeadingIcon</Paragraph>
-        <Paragraph variant="small">tertiary/medium + LeadingIcon</Paragraph>
+      <div className="flex flex-col items-start whitespace-nowrap p-8">
+        <Header2 className="mb-[2.2rem]">Clipboards</Header2>
+        <div className="mb-10 space-y-[2.33rem]">
+          <Paragraph variant="small">primary/small</Paragraph>
+          <Paragraph variant="small">secondary/small</Paragraph>
+          <Paragraph variant="small">tertiary/small</Paragraph>
+          <Paragraph variant="small">tertiary/small + LeadingIcon</Paragraph>
+          <Paragraph variant="small">tertiary/small + LeadingIcon</Paragraph>
+          <Paragraph variant="small">primary/small + iconButton</Paragraph>
+          <Paragraph variant="small">secondary/small + iconButton</Paragraph>
+          <Paragraph variant="small">tertiary/small + iconButton</Paragraph>
+        </div>
+        <div className="space-y-[2.9rem]">
+          <Paragraph variant="small">primary/medium</Paragraph>
+          <Paragraph variant="small">secondary/medium</Paragraph>
+          <Paragraph variant="small">tertiary/medium</Paragraph>
+          <Paragraph variant="small">tertiary/medium + LeadingIcon</Paragraph>
+          <Paragraph variant="small">tertiary/medium + LeadingIcon</Paragraph>
+          <Paragraph variant="small">primary/medium + iconButton</Paragraph>
+          <Paragraph variant="small">secondary/medium + iconButton</Paragraph>
+          <Paragraph variant="small">tertiary/medium + iconButton</Paragraph>
+        </div>
       </div>
       <div className="flex flex-col items-start gap-y-8 p-8">
         <Header2>Default</Header2>
@@ -30,6 +40,9 @@ export default function Story() {
           icon={<EnvironmentLabel environment={{ type: "PRODUCTION" }} />}
         />
         <ClipboardField value="with leadingIcon" variant="tertiary/small" icon="search" />
+        <ClipboardField value="with iconButton" variant="primary/small" iconButton />
+        <ClipboardField value="with iconButton" variant="secondary/small" iconButton />
+        <ClipboardField value="with iconButton" variant="tertiary/small" iconButton />
         <ClipboardField value="copy paste me" variant="primary/medium" />
         <ClipboardField value="copy paste me" variant="secondary/medium" />
         <ClipboardField value="copy paste me" variant="tertiary/medium" />
@@ -39,6 +52,9 @@ export default function Story() {
           icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
         />
         <ClipboardField value="with leadingIcon" variant="tertiary/medium" icon="search" />
+        <ClipboardField value="with iconButton" variant="primary/medium" iconButton />
+        <ClipboardField value="with iconButton" variant="secondary/medium" iconButton />
+        <ClipboardField value="with iconButton" variant="tertiary/medium" iconButton />
       </div>
       <div className="flex flex-col items-start gap-y-8 p-8">
         <Header2>Secure value</Header2>
