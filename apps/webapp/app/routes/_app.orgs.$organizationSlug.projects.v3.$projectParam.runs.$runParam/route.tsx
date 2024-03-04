@@ -227,10 +227,6 @@ function TasksTreeView({
     },
   });
 
-  useEffect(() => {
-    console.log(virtualizer.scrollOffset);
-  }, [virtualizer.scrollOffset]);
-
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr] overflow-hidden">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
@@ -352,7 +348,15 @@ function TasksTreeView({
                   </div>
                 </div>
               )}
-              onScroll={(e) => console.log(e)}
+              onScroll={(scrollTop) => {
+                //sync the scroll to the tree
+                if (
+                  timelineScrollRef.current &&
+                  timelineScrollRef.current.scrollTop !== scrollTop
+                ) {
+                  timelineScrollRef.current.scrollTop = scrollTop;
+                }
+              }}
             />
           </div>
         </ResizablePanel>
@@ -448,7 +452,7 @@ function TasksTreeView({
                     nodes={nodes}
                     getNodeProps={getNodeProps}
                     getTreeProps={getTreeProps}
-                    parentClassName="h-full"
+                    parentClassName="h-full scrollbar-hide"
                     renderNode={({ node, state, index, virtualizer, virtualItem }) => {
                       return (
                         <Timeline.Row
@@ -483,7 +487,12 @@ function TasksTreeView({
                         </Timeline.Row>
                       );
                     }}
-                    onScroll={(e) => console.log(e)}
+                    onScroll={(scrollTop) => {
+                      //sync the scroll to the tree
+                      if (treeScrollRef.current && treeScrollRef.current.scrollTop !== scrollTop) {
+                        treeScrollRef.current.scrollTop = scrollTop;
+                      }
+                    }}
                   />
                 </Timeline.Row>
               </Timeline.Row>

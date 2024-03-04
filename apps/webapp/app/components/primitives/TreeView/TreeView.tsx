@@ -216,7 +216,6 @@ export function useTree<TData>({
 
   useEffect(() => {
     if (tree.length !== previousNodeCount.current) {
-      console.log("tree changed");
       previousNodeCount.current = tree.length;
       dispatch({ type: "UPDATE_TREE", payload: { tree } });
     }
