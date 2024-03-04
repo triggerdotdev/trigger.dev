@@ -1,0 +1,18 @@
+FROM node:18-alpine@sha256:ca9f6cb0466f9638e59e0c249d335a07c867cd50c429b5c7830dda1bed584649 AS base
+
+RUN apk add --no-cache dumb-init
+
+FROM base
+
+ENV TRIGGER_CONTENT_HASH=__CONTENT_HASH__
+ENV TRIGGER_PROJECT_DIR=__PROJECT_DIR__
+ENV TRIGGER_PROJECT_REF=__PROJECT_REF__
+ENV TRIGGER_CLI_PACKAGE_VERSION=__CLI_PACKAGE_VERSION__
+
+WORKDIR /app
+
+COPY --chown=node:node . .
+
+USER node
+
+CMD [ "dumb-init", "node", "index.mjs" ]

@@ -39,7 +39,7 @@
     "@types/gradient-string": "^1.1.2",
     "@types/inquirer": "^9.0.3",
     "@types/mock-fs": "^4.13.1",
-    "@types/node": "16",
+    "@types/node": "^18",
     "@types/node-fetch": "^2.6.2",
     "@types/ws": "^8.5.3",
     "rimraf": "^3.0.2",

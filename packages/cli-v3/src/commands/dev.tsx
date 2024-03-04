@@ -1,5 +1,6 @@
 import {
   CreateBackgroundWorkerRequestBody,
+  ResolvedConfig,
   TaskResource,
   ZodMessageHandler,
   ZodMessageSender,
@@ -10,48 +11,28 @@ import chalk from "chalk";
 import { watch } from "chokidar";
 import { Command } from "commander";
 import { BuildContext, context } from "esbuild";
-import { findUp } from "find-up";
 import { resolve as importResolve } from "import-meta-resolve";
 import { Box, Text, render, useApp, useInput } from "ink";
 import { createHash } from "node:crypto";
 import fs, { readFileSync } from "node:fs";
 import { ClientRequestArgs } from "node:http";
-import { basename, dirname, join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { basename, dirname, join } from "node:path";
 import pThrottle from "p-throttle";
 import { WebSocket } from "partysocket";
 import React, { Suspense, useEffect } from "react";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
-import { ApiClient } from "../apiClient.js";
-import { CLOUD_API_URL } from "../consts.js";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "../dev/backgroundWorker.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
-import { RequireKeys } from "../utilities/requiredKeys.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { CommonCommandOptions } from "../cli/common.js";
+import { getConfigPath, readConfig } from "../utilities/configFiles";
+import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
+import { CliApiClient } from "../apiClient";
 
-const CONFIG_FILES = ["trigger.config.js", "trigger.config.mjs"];
-
-const ConfigSchema = z.object({
-  project: z.string(),
-  triggerDirectories: z.string().array().optional(),
-  triggerUrl: z.string().optional(),
-  projectDir: z.string().optional(),
-});
-
-type Config = z.infer<typeof ConfigSchema>;
-type ResolvedConfig = RequireKeys<Config, "triggerDirectories" | "triggerUrl" | "projectDir">;
-type TaskFile = {
-  triggerDir: string;
-  filePath: string;
-  importPath: string;
-  importName: string;
-};
-
-let apiClient: ApiClient | undefined;
+let apiClient: CliApiClient | undefined;
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugger: z.boolean().default(false),
@@ -92,7 +73,11 @@ export async function devCommand(dir: string, anyOptions: unknown) {
   const authorization = await isLoggedIn();
 
   if (!authorization.ok) {
-    logger.error("You must login first. Use `trigger.dev login` to login.");
+    if (authorization.error === "fetch failed") {
+      logger.error("Fetch failed. Platform down?");
+    } else {
+      logger.error("You must login first. Use `trigger.dev login` to login.");
+    }
     process.exitCode = 1;
     return;
   }
@@ -143,7 +128,7 @@ async function startDev(
       const accessToken = authorization.accessToken;
       const apiUrl = authorization.apiUrl;
 
-      apiClient = new ApiClient(apiUrl, accessToken);
+      apiClient = new CliApiClient(apiUrl, accessToken);
 
       const devEnv = await apiClient.getProjectDevEnv({ projectRef: config.project });
 
@@ -151,7 +136,7 @@ async function startDev(
         throw new Error(devEnv.error);
       }
 
-      const environmentClient = new ApiClient(apiUrl, devEnv.data.apiKey);
+      const environmentClient = new CliApiClient(apiUrl, devEnv.data.apiKey);
 
       return (
         <DevUI
@@ -188,7 +173,7 @@ type DevProps = {
   config: ResolvedConfig;
   apiUrl: string;
   apiKey: string;
-  environmentClient: ApiClient;
+  environmentClient: CliApiClient;
   projectName: string;
   debuggerOn: boolean;
   debugOtel: boolean;
@@ -622,120 +607,4 @@ function WebsocketFactory(apiKey: string) {
       super(address, { ...(options ?? {}), headers: { Authorization: `Bearer ${apiKey}` } });
     }
   };
-}
-
-function createTaskFileImports(taskFiles: TaskFile[]) {
-  return taskFiles
-    .map(
-      (taskFile) =>
-        `import * as ${taskFile.importName} from "./${taskFile.importPath}"; TaskFileImports["${
-          taskFile.importName
-        }"] = ${taskFile.importName}; TaskFiles["${taskFile.importName}"] = ${JSON.stringify(
-          taskFile
-        )};`
-    )
-    .join("\n");
-}
-
-// Find all the top-level .js or .ts files in the trigger directories
-async function gatherTaskFiles(config: ResolvedConfig): Promise<Array<TaskFile>> {
-  const taskFiles: Array<TaskFile> = [];
-
-  for (const triggerDir of config.triggerDirectories) {
-    const files = await fs.promises.readdir(triggerDir, { withFileTypes: true });
-    for (const file of files) {
-      if (!file.isFile()) continue;
-      if (!file.name.endsWith(".js") && !file.name.endsWith(".ts")) continue;
-
-      const fullPath = join(triggerDir, file.name);
-
-      const filePath = relative(config.projectDir, fullPath);
-      const importPath = filePath.replace(/\.(js|ts)$/, "");
-      const importName = importPath.replace(/\//g, "_");
-
-      taskFiles.push({ triggerDir, importPath, importName, filePath });
-    }
-  }
-
-  return taskFiles;
-}
-
-async function getConfigPath(dir: string): Promise<string> {
-  const path = await findUp(CONFIG_FILES, { cwd: dir });
-
-  if (!path) {
-    throw new Error("No config file found.");
-  }
-
-  return path;
-}
-
-async function readConfig(path: string): Promise<ResolvedConfig> {
-  try {
-    // import the config file
-    const userConfigModule = await import(`${pathToFileURL(path).href}?_ts=${Date.now()}`);
-    const rawConfig = await normalizeConfig(userConfigModule ? userConfigModule.default : {});
-    const config = ConfigSchema.parse(rawConfig);
-
-    return resolveConfig(path, config);
-  } catch (error) {
-    console.error(`Failed to load config file at ${path}`);
-    throw error;
-  }
-}
-
-async function resolveConfig(path: string, config: Config): Promise<ResolvedConfig> {
-  if (!config.triggerDirectories) {
-    config.triggerDirectories = await findTriggerDirectories(path);
-  }
-
-  config.triggerDirectories = resolveTriggerDirectories(config.triggerDirectories);
-
-  if (!config.triggerUrl) {
-    config.triggerUrl = CLOUD_API_URL;
-  }
-
-  if (!config.projectDir) {
-    config.projectDir = dirname(path);
-  }
-
-  return config as ResolvedConfig;
-}
-
-async function normalizeConfig(config: any): Promise<any> {
-  if (typeof config === "function") {
-    config = config();
-  }
-
-  return await config;
-}
-
-function resolveTriggerDirectories(dirs: string[]): string[] {
-  return dirs.map((dir) => resolve(dir));
-}
-
-const IGNORED_DIRS = ["node_modules", ".git", "dist", "build"];
-
-async function findTriggerDirectories(filePath: string): Promise<string[]> {
-  const dirPath = dirname(filePath);
-  return getTriggerDirectories(dirPath);
-}
-
-async function getTriggerDirectories(dirPath: string): Promise<string[]> {
-  const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-  const triggerDirectories: string[] = [];
-
-  for (const entry of entries) {
-    if (!entry.isDirectory() || IGNORED_DIRS.includes(entry.name)) continue;
-
-    const fullPath = join(dirPath, entry.name);
-
-    if (entry.name === "trigger") {
-      triggerDirectories.push(fullPath);
-    }
-
-    triggerDirectories.push(...(await getTriggerDirectories(fullPath)));
-  }
-
-  return triggerDirectories;
 }

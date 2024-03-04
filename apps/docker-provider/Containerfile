@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:labs
+
+FROM node:18-slim AS base
+
+RUN apt-get update \
+  && apt-get install -y dumb-init
+
+FROM base
+
+WORKDIR /app
+
+COPY --chown=node dist/index.cjs /app/
+
+EXPOSE 8000
+
+ENTRYPOINT [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "/app/index.cjs" ]

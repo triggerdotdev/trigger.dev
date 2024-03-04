@@ -72,6 +72,10 @@ const EnvironmentSchema = z.object({
   V3_ENABLED: z.string().default("false"),
   OTLP_EXPORTER_TRACES_URL: z.string().optional(),
   LOG_TELEMETRY: z.string().default("true"),
+  IMAGE_REGISTRY: z.string().default("docker.io"),
+  IMAGE_REPO: z.string().default("task"),
+  PROVIDER_SECRET: z.string().default("provider-secret"),
+  COORDINATOR_SECRET: z.string().default("coordinator-secret"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

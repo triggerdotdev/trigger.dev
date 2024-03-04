@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BackgroundWorkerMetadata } from "./resources";
+import { BackgroundWorkerMetadata, ImageDetailsMetadata } from "./resources";
 import { QueueOptions } from "./messages";
 
 export const WhoAmIResponseSchema = z.object({
@@ -88,3 +88,16 @@ export const GetEnvironmentVariablesResponseBody = z.object({
 export type GetEnvironmentVariablesResponseBody = z.infer<
   typeof GetEnvironmentVariablesResponseBody
 >;
+
+export const CreateImageDetailsRequestBody = z.object({
+  metadata: ImageDetailsMetadata,
+});
+
+export type CreateImageDetailsRequestBody = z.infer<typeof CreateImageDetailsRequestBody>;
+
+export const CreateImageDetailsResponse = z.object({
+  id: z.string(),
+  contentHash: z.string(),
+});
+
+export type CreateImageDetailsResponse = z.infer<typeof CreateImageDetailsResponse>;

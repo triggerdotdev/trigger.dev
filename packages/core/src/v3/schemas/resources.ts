@@ -19,3 +19,10 @@ export const BackgroundWorkerMetadata = z.object({
 });
 
 export type BackgroundWorkerMetadata = z.infer<typeof BackgroundWorkerMetadata>;
+
+export const ImageDetailsMetadata = z.object({
+  contentHash: z.string(),
+  imageTag: z.string(),
+});
+
+export type ImageDetailsMetadata = z.infer<typeof ImageDetailsMetadata>;

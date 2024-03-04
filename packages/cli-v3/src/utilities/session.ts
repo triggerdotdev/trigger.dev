@@ -1,4 +1,4 @@
-import { ApiClient } from "../apiClient.js";
+import { CliApiClient } from "../apiClient.js";
 import { readAuthConfigFile } from "./configFiles.js";
 
 export async function isLoggedIn() {
@@ -8,7 +8,7 @@ export async function isLoggedIn() {
     return { ok: false as const, error: "You must login first" };
   }
 
-  const apiClient = new ApiClient(config.apiUrl, config.accessToken);
+  const apiClient = new CliApiClient(config.apiUrl, config.accessToken);
   const userData = await apiClient.whoAmI();
 
   if (!userData.success) {

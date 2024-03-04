@@ -1,17 +1,25 @@
+# OTLP Importer
+
 ## Getting started
 
 Install dependencies:
 
-```sh
+```sh Mac
 brew install protobuf
 ```
 
-# Submodules
+```sh Linux
+apt install -y protobuf-compiler
+```
+
+Alternatively, follow the [manual install instructions](https://github.com/protocolbuffers/protobuf?tab=readme-ov-file#protobuf-compiler-installation) for the protobuf compiler.
+
+## Submodules
 
 **Submodule is always pointing to certain revision number. So updating the submodule repo will not have impact on your code.
 Knowing this if you want to change the submodule to point to a different version (when for example proto has changed) here is how to do it:**
 
-## Updating submodule to point to certain revision number
+### Updating submodule to point to certain revision number
 
 1. Make sure you are in the same folder as this instruction
 

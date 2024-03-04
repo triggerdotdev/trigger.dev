@@ -25,7 +25,9 @@
     "jsx": "react",
     "paths": {
       "@trigger.dev/core/v3": ["../core/src/v3"],
-      "@trigger.dev/core/v3/*": ["../core/src/v3/*"]
+      "@trigger.dev/core/v3/*": ["../core/src/v3/*"],
+      "@trigger.dev/core-apps": ["../core-apps/src"],
+      "@trigger.dev/core-apps/*": ["../core-apps/src/*"]
     }
   },
   "exclude": ["node_modules"]

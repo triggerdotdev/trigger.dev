@@ -29,6 +29,7 @@ import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralE
 import { ResumeRunService } from "./runs/resumeRun.server";
 import { executionRateLimiter } from "./runExecutionRateLimiter.server";
 import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.server";
+import { IndexTasksService } from "~/v3/services/indexTasks.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -100,6 +101,10 @@ const workerCatalog = {
     id: z.string(),
   }),
   resumeRun: z.object({
+    id: z.string(),
+  }),
+  // v3 tasks
+  indexTasks: z.object({
     id: z.string(),
   }),
 };
@@ -424,6 +429,16 @@ function getWorkerQueue() {
         maxAttempts: 10,
         handler: async (payload, job) => {
           const service = new ResumeRunService();
+
+          return await service.call(payload.id);
+        },
+      },
+      // v3 tasks
+      indexTasks: {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new IndexTasksService();
 
           return await service.call(payload.id);
         },
