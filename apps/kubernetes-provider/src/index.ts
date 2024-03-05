@@ -133,8 +133,11 @@ class KubernetesTaskOperations implements TaskOperations {
     await this.#createPod(
       {
         metadata: {
-          name: `${opts.attemptId}-${randomUUID().slice(0, 5)}`,
+          name: `task-run-${opts.attemptId}-${randomUUID().slice(0, 5)}`,
           namespace: this.#namespace.metadata.name,
+          labels: {
+            app: "task-run",
+          },
         },
         spec: {
           restartPolicy: "Never",
