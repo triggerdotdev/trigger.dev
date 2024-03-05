@@ -1,7 +1,8 @@
-import { JobRun, TaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { eventStream } from "remix-utils/sse/server";
 import { PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { sse } from "~/utils/sse.server";
+import { eventRepository } from "~/v3/eventRepository.server";
 
 type RunWithAttempts = {
   updatedAt: Date;
@@ -10,6 +11,8 @@ type RunWithAttempts = {
     updatedAt: Date;
   }[];
 };
+
+const pingInterval = 1000;
 
 export class RunStreamPresenter {
   #prismaClient: PrismaClient;
@@ -25,94 +28,89 @@ export class RunStreamPresenter {
     request: Request;
     runFriendlyId: TaskRun["friendlyId"];
   }) {
-    const run = await this.#runForUpdates(runFriendlyId);
+    const run = await this.#prismaClient.taskRun.findUnique({
+      where: {
+        friendlyId: runFriendlyId,
+      },
+      select: {
+        traceId: true,
+      },
+    });
 
     if (!run) {
       return new Response("Not found", { status: 404 });
     }
 
-    let lastUpdatedAt = this.#getLatestUpdatedAt(run);
-
     logger.info("RunStreamPresenter.call", {
       runFriendlyId,
-      lastUpdatedAt,
+      traceId: run.traceId,
     });
 
-    return sse({
-      request,
-      run: async (send, stop) => {
-        const result = await this.#runForUpdates(runFriendlyId);
-        if (!result) {
-          return stop();
+    let pinger: NodeJS.Timer | undefined = undefined;
+
+    const { unsubscribe, eventEmitter } = await eventRepository.subscribeToTrace(run.traceId);
+
+    return eventStream(request.signal, (send, close) => {
+      const safeSend = (args: { event?: string; data: string }) => {
+        try {
+          send(args);
+        } catch (error) {
+          if (error instanceof Error) {
+            if (error.name !== "TypeError") {
+              logger.debug("Error sending SSE, aborting", {
+                error: {
+                  name: error.name,
+                  message: error.message,
+                  stack: error.stack,
+                },
+                args,
+              });
+            }
+          } else {
+            logger.debug("Unknown error sending SSE, aborting", {
+              error,
+              args,
+            });
+          }
+
+          close();
+        }
+      };
+
+      eventEmitter.addListener("message", (event) => {
+        safeSend({ data: event });
+      });
+
+      pinger = setInterval(() => {
+        if (request.signal.aborted) {
+          return close();
         }
 
-        if (this.#isRunCompleted(result)) {
-          logger.info("RunStreamPresenter.call completed", {
-            runFriendlyId,
-            lastUpdatedAt,
-            completed: true,
-          });
-          send({ data: new Date().toISOString() });
-          return stop();
-        }
+        safeSend({ event: "ping", data: new Date().toISOString() });
+      }, pingInterval);
 
-        const newUpdatedAt = this.#getLatestUpdatedAt(result);
-        if (lastUpdatedAt !== newUpdatedAt) {
-          logger.info("RunStreamPresenter.call updated", {
-            runFriendlyId,
-            lastUpdatedAt,
-            newUpdatedAt,
-          });
-          send({ data: result.updatedAt.toISOString() });
-        }
-
-        logger.info("RunStreamPresenter.call waiting", {
+      return function clear() {
+        logger.info("RunStreamPresenter.abort", {
           runFriendlyId,
-          lastUpdatedAt,
-          newUpdatedAt,
+          traceId: run.traceId,
         });
 
-        lastUpdatedAt = newUpdatedAt;
-      },
+        clearInterval(pinger);
+
+        eventEmitter.removeAllListeners();
+
+        unsubscribe().catch((error) => {
+          logger.error("RunStreamPresenter.abort.unsubscribe", {
+            runFriendlyId,
+            traceId: run.traceId,
+            error: {
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+            },
+          });
+        });
+      };
     });
-  }
-
-  #runForUpdates(friendlyId: string) {
-    return this.#prismaClient.taskRun.findUnique({
-      where: {
-        friendlyId,
-      },
-      select: {
-        updatedAt: true,
-        attempts: {
-          select: {
-            status: true,
-            updatedAt: true,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 1,
-        },
-      },
-    });
-  }
-
-  #getLatestUpdatedAt(run: RunWithAttempts) {
-    const lastAttempt = run.attempts[0];
-    if (lastAttempt) {
-      return lastAttempt.updatedAt.getTime();
-    }
-
-    return run.updatedAt.getTime();
-  }
-
-  #isRunCompleted(run: RunWithAttempts) {
-    return run.attempts.some(
-      (attempt) =>
-        attempt.status === "FAILED" ||
-        attempt.status === "CANCELED" ||
-        attempt.status === "COMPLETED"
-    );
   }
 }
