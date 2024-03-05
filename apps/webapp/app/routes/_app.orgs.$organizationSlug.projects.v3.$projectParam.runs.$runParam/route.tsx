@@ -3,6 +3,7 @@ import {
   ChevronRightIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
+  NoSymbolIcon,
 } from "@heroicons/react/20/solid";
 import { Link, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -29,6 +30,7 @@ import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
 import { LiveCountUp, LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
+import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
 import { useDebounce } from "~/hooks/useDebounce";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -302,7 +304,7 @@ function TasksTreeView({
               renderNode={({ node, state }) => (
                 <div
                   className={cn(
-                    "flex h-8 cursor-pointer items-center rounded-l-sm pr-3",
+                    "flex h-8 cursor-pointer items-center rounded-l-sm pr-2",
                     state.selected
                       ? "bg-grid-dimmed hover:bg-grid-bright"
                       : "bg-transparent hover:bg-grid-dimmed"
@@ -344,18 +346,14 @@ function TasksTreeView({
                     </div>
                   </div>
 
-                  <div className="flex w-full items-center justify-between gap-2 px-1">
+                  <div className="flex w-full items-center justify-between gap-2 pl-1">
                     <div className="flex items-center gap-2 overflow-x-hidden">
                       <RunIcon name={node.data.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
                       <NodeText node={node} />
                       {node.data.isRoot && <Badge variant="outline-rounded">Root</Badge>}
                     </div>
-                    <div className="flex items-center gap-2">
-                      {node.data.isCancelled ? (
-                        <Paragraph variant="extra-small" className="text-amber-500">
-                          Cancelled
-                        </Paragraph>
-                      ) : null}
+                    <div className="flex items-center gap-1">
+                      <NodeStatusIcon node={node} />
                     </div>
                   </div>
                 </div>
@@ -523,6 +521,31 @@ function NodeText({ node }: { node: RunEvent }) {
       <SpanTitle {...node.data} size="small" />
     </Paragraph>
   );
+}
+function NodeStatusIcon({ node }: { node: RunEvent }) {
+  if (node.data.level !== "TRACE") return null;
+  if (node.data.style.variant !== "primary") return null;
+
+  if (node.data.isCancelled) {
+    return (
+      <>
+        <Paragraph variant="extra-small" className={runStatusClassNameColor("CANCELED")}>
+          Canceled
+        </Paragraph>
+        <TaskRunStatusIcon status="CANCELED" className={cn("size-4")} />
+      </>
+    );
+  }
+
+  if (node.data.isError) {
+    return <TaskRunStatusIcon status="FAILED" className={cn("size-4")} />;
+  }
+
+  if (node.data.isPartial) {
+    return <TaskRunStatusIcon status={"EXECUTING"} className={cn("size-4")} />;
+  }
+
+  return <TaskRunStatusIcon status="COMPLETED" className={cn("size-4")} />;
 }
 
 function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {
