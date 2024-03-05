@@ -1,9 +1,13 @@
 import { DisconnectReason, Namespace, Server, Socket } from "socket.io";
+import { ZodMessageSender } from "./zodMessageHandler";
 import {
-  MessageCatalogToSocketIoEvents,
-  ZodMessageSender,
-} from "./zodMessageHandler";
-import { ZodSocketMessageCatalogSchema, ZodSocketMessageHandler, ZodSocketMessageHandlers } from "./zodSocket";
+  ZodMessageCatalogToSocketIoEvents,
+  ZodSocketMessageCatalogSchema,
+  ZodSocketMessageHandler,
+  ZodSocketMessageHandlers,
+} from "./zodSocket";
+import { DefaultEventsMap, EventsMap } from "socket.io/dist/typed-events";
+import { z } from "zod";
 
 interface ExtendedError extends Error {
   data?: any;
@@ -12,43 +16,52 @@ interface ExtendedError extends Error {
 export type ZodNamespaceSocket<
   TClientMessages extends ZodSocketMessageCatalogSchema,
   TServerMessages extends ZodSocketMessageCatalogSchema,
+  TServerSideEvents extends EventsMap = DefaultEventsMap,
+  TSocketData extends z.ZodObject<any, any, any> = any,
 > = Socket<
-  MessageCatalogToSocketIoEvents<TClientMessages>,
-  MessageCatalogToSocketIoEvents<TServerMessages>
+  ZodMessageCatalogToSocketIoEvents<TClientMessages>,
+  ZodMessageCatalogToSocketIoEvents<TServerMessages>,
+  TServerSideEvents,
+  z.infer<TSocketData>
 >;
 
 interface ZodNamespaceOptions<
   TClientMessages extends ZodSocketMessageCatalogSchema,
   TServerMessages extends ZodSocketMessageCatalogSchema,
+  TServerSideEvents extends EventsMap = DefaultEventsMap,
+  TSocketData extends z.ZodObject<any, any, any> = any,
 > {
   io: Server;
   name: string;
   clientMessages: TClientMessages;
   serverMessages: TServerMessages;
+  socketData?: TSocketData;
   handlers?: ZodSocketMessageHandlers<TClientMessages>;
   authToken?: string;
   preAuth?: (
-    socket: ZodNamespaceSocket<TClientMessages, TServerMessages>,
-    next: (err?: ExtendedError) => void
-  ) => void;
+    socket: ZodNamespaceSocket<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>,
+    next: (err?: ExtendedError) => void,
+    logger: (...args: any[]) => void
+  ) => Promise<void>;
   postAuth?: (
-    socket: ZodNamespaceSocket<TClientMessages, TServerMessages>,
-    next: (err?: ExtendedError) => void
-  ) => void;
+    socket: ZodNamespaceSocket<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>,
+    next: (err?: ExtendedError) => void,
+    logger: (...args: any[]) => void
+  ) => Promise<void>;
   onConnection?: (
-    socket: ZodNamespaceSocket<TClientMessages, TServerMessages>,
+    socket: ZodNamespaceSocket<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>,
     handler: ZodSocketMessageHandler<TClientMessages>,
     sender: ZodMessageSender<TServerMessages>,
     logger: (...args: any[]) => void
   ) => Promise<void>;
   onDisconnect?: (
-    socket: ZodNamespaceSocket<TClientMessages, TServerMessages>,
+    socket: ZodNamespaceSocket<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>,
     reason: DisconnectReason,
     description: any,
     logger: (...args: any[]) => void
   ) => Promise<void>;
   onError?: (
-    socket: ZodNamespaceSocket<TClientMessages, TServerMessages>,
+    socket: ZodNamespaceSocket<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>,
     err: Error,
     logger: (...args: any[]) => void
   ) => Promise<void>;
@@ -57,17 +70,23 @@ interface ZodNamespaceOptions<
 export class ZodNamespace<
   TClientMessages extends ZodSocketMessageCatalogSchema,
   TServerMessages extends ZodSocketMessageCatalogSchema,
+  TSocketData extends z.ZodObject<any, any, any> = any,
+  TServerSideEvents extends EventsMap = DefaultEventsMap,
 > {
   #handler: ZodSocketMessageHandler<TClientMessages>;
   sender: ZodMessageSender<TServerMessages>;
 
   io: Server;
   namespace: Namespace<
-    MessageCatalogToSocketIoEvents<TClientMessages>,
-    MessageCatalogToSocketIoEvents<TServerMessages>
+    ZodMessageCatalogToSocketIoEvents<TClientMessages>,
+    ZodMessageCatalogToSocketIoEvents<TServerMessages>,
+    TServerSideEvents,
+    z.infer<TSocketData>
   >;
 
-  constructor(opts: ZodNamespaceOptions<TClientMessages, TServerMessages>) {
+  constructor(
+    opts: ZodNamespaceOptions<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>
+  ) {
     this.#handler = new ZodSocketMessageHandler({
       schema: opts.clientMessages,
       handlers: opts.handlers,
@@ -93,7 +112,13 @@ export class ZodNamespace<
     });
 
     if (opts.preAuth) {
-      this.namespace.use(opts.preAuth);
+      this.namespace.use(async (socket, next) => {
+        const logger = createLogger(`[${opts.name}][${socket.id}][preAuth]`);
+
+        if (typeof opts.preAuth === "function") {
+          await opts.preAuth(socket, next, logger);
+        }
+      });
     }
 
     if (opts.authToken) {
@@ -119,7 +144,13 @@ export class ZodNamespace<
     }
 
     if (opts.postAuth) {
-      this.namespace.use(opts.postAuth);
+      this.namespace.use(async (socket, next) => {
+        const logger = createLogger(`[${opts.name}][${socket.id}][postAuth]`);
+
+        if (typeof opts.postAuth === "function") {
+          await opts.postAuth(socket, next, logger);
+        }
+      });
     }
 
     this.namespace.on("connection", async (socket) => {
@@ -148,6 +179,10 @@ export class ZodNamespace<
         await opts.onConnection(socket, this.#handler, this.sender, logger);
       }
     });
+  }
+
+  fetchSockets() {
+    return this.namespace.fetchSockets();
   }
 }
 

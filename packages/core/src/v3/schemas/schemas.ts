@@ -215,3 +215,103 @@ export const SharedQueueToClientMessages = {
     }),
   },
 };
+
+export const ProdWorkerToCoordinatorMessages = {
+  LOG: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      text: z.string(),
+    }),
+    callback: z.void(),
+  },
+  INDEX_TASKS: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      tasks: TaskResource.array(),
+      packageVersion: z.string(),
+    }),
+    callback: z.discriminatedUnion("success", [
+      z.object({
+        success: z.literal(false),
+      }),
+      z.object({
+        success: z.literal(true),
+      }),
+    ]),
+  },
+  READY_FOR_EXECUTION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      attemptId: z.string(),
+    }),
+  },
+  TASK_HEARTBEAT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      attemptFriendlyId: z.string(),
+    }),
+  },
+  WAIT_FOR_BATCH: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      id: z.string(),
+      runs: z.string().array(),
+    }),
+  },
+  WAIT_FOR_DURATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      ms: z.number(),
+    }),
+    callback: z.discriminatedUnion("success", [
+      z.object({
+        success: z.literal(false),
+      }),
+      z.object({
+        success: z.literal(true),
+      }),
+    ]),
+  },
+  WAIT_FOR_TASK: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      id: z.string(),
+    }),
+  },
+};
+
+export const CoordinatorToProdWorkerMessages = {
+  RESUME: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      attemptId: z.string(),
+      image: z.string(),
+      completions: TaskRunExecutionResult.array(),
+      executions: TaskRunExecution.array(),
+    }),
+  },
+  EXECUTE_TASK_RUN: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      executionPayload: ProdTaskRunExecutionPayload,
+    }),
+    callback: z.discriminatedUnion("success", [
+      z.object({
+        success: z.literal(false),
+      }),
+      z.object({
+        success: z.literal(true),
+        completion: TaskRunExecutionResult,
+      }),
+    ]),
+  },
+};
+
+export const ProdWorkerSocketData = z.object({
+  cliPackageVersion: z.string(),
+  contentHash: z.string(),
+  projectRef: z.string(),
+  envId: z.string(),
+  attemptId: z.string(),
+  podName: z.string(),
+});

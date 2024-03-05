@@ -106,6 +106,7 @@ export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> 
 
         let ack;
 
+        // FIXME: this only works if the message doesn't have genuine payload prop
         if ("payload" in message) {
           ack = await this.handleMessage({ type: eventName, ...message });
         } else {

@@ -1,10 +1,6 @@
 import { io, Socket } from "socket.io-client";
 import { z } from "zod";
-import {
-  EventEmitterLike,
-  MessageCatalogToSocketIoEvents,
-  ZodMessageValueSchema,
-} from "./zodMessageHandler";
+import { EventEmitterLike, ZodMessageValueSchema } from "./zodMessageHandler";
 
 export interface ZodSocketMessageCatalogSchema {
   [key: string]:
@@ -17,10 +13,24 @@ export interface ZodSocketMessageCatalogSchema {
       };
 }
 
+export type ZodMessageCatalogToSocketIoEvents<TCatalog extends ZodSocketMessageCatalogSchema> = {
+  [K in keyof TCatalog]: SocketMessageHasCallback<TCatalog, K> extends true
+    ? (
+        message: z.infer<GetSocketMessageSchema<TCatalog, K>>,
+        callback: (ack: z.infer<GetSocketCallbackSchema<TCatalog, K>>) => void
+      ) => void
+    : (message: z.infer<GetSocketMessageSchema<TCatalog, K>>) => void;
+};
+
 type GetSocketMessageSchema<
   TRPCCatalog extends ZodSocketMessageCatalogSchema,
   TMessageType extends keyof TRPCCatalog,
 > = TRPCCatalog[TMessageType]["message"];
+
+export type InferSocketMessageSchema<
+  TRPCCatalog extends ZodSocketMessageCatalogSchema,
+  TMessageType extends keyof TRPCCatalog,
+> = z.infer<GetSocketMessageSchema<TRPCCatalog, TMessageType>>;
 
 type GetSocketCallbackSchema<
   TRPCCatalog extends ZodSocketMessageCatalogSchema,
@@ -28,6 +38,11 @@ type GetSocketCallbackSchema<
 > = TRPCCatalog[TMessageType] extends { callback: any }
   ? TRPCCatalog[TMessageType]["callback"]
   : never;
+
+export type InferSocketCallbackSchema<
+  TRPCCatalog extends ZodSocketMessageCatalogSchema,
+  TMessageType extends keyof TRPCCatalog,
+> = z.infer<GetSocketCallbackSchema<TRPCCatalog, TMessageType>>;
 
 type SocketMessageHasCallback<
   TRPCCatalog extends ZodSocketMessageCatalogSchema,
@@ -130,12 +145,13 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
       return;
     }
 
-    for (const eventName of Object.keys(this.#schema)) {
+    for (const eventName of Object.keys(this.#handlers)) {
       emitter.on(eventName, async (message: any, callback?: any): Promise<void> => {
         log(`handling ${eventName}`, message);
 
         let ack;
 
+        // FIXME: this only works if the message doesn't have genuine payload prop
         if ("payload" in message) {
           ack = await this.handleMessage({ type: eventName, ...message });
         } else {
@@ -227,8 +243,8 @@ export type ZodSocket<
   TListenEvents extends ZodSocketMessageCatalogSchema,
   TEmitEvents extends ZodSocketMessageCatalogSchema,
 > = Socket<
-  MessageCatalogToSocketIoEvents<TListenEvents>,
-  MessageCatalogToSocketIoEvents<TEmitEvents>
+  ZodMessageCatalogToSocketIoEvents<TListenEvents>,
+  ZodMessageCatalogToSocketIoEvents<TEmitEvents>
 >;
 
 interface ZodSocketConnectionOptions<
@@ -323,6 +339,10 @@ export class ZodSocketConnection<
 
   close() {
     this.socket.close();
+  }
+
+  connect() {
+    this.socket.connect();
   }
 
   get send() {
