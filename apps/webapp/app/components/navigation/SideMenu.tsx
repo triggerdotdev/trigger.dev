@@ -497,7 +497,7 @@ function V3ProjectSideMenu({
 }) {
   return (
     <>
-      <SideMenuHeader title={"Project"} />
+      <SideMenuHeader title={"Project (v3)"} />
       <SideMenuItem
         name="Tasks"
         icon="job"
