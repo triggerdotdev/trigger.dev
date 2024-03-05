@@ -39,10 +39,10 @@ FROM base AS runner
 RUN corepack enable
 ENV NODE_ENV production
 
-COPY --from=builder --chown=node:node /app/apps/kubernetes-provider/dist/index.cjs ./index.cjs
+COPY --from=builder --chown=node:node /app/apps/kubernetes-provider/dist/index.mjs ./index.mjs
 
 EXPOSE 8000
 
 USER node
 
-CMD [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "./index.cjs" ]
+CMD [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "./index.mjs" ]
