@@ -8,32 +8,6 @@ import {
 
 export type VersionedMessage<TMessage> = { version: "v1" } & TMessage;
 
-// provider <--> platform
-export interface ProviderClientToServerEvents {
-  LOG: (message: VersionedMessage<{ data: string }>) => void;
-}
-
-export interface ProviderServerToClientEvents {
-  HEALTH: (message: VersionedMessage<{}>, callback: (ack: { status: "ok" }) => void) => void;
-  INDEX: (
-    message: VersionedMessage<{ imageTag: string; contentHash: string; envId: string }>
-  ) => void;
-  RESTORE: (
-    message: VersionedMessage<{
-      id: string;
-      attemptId: string;
-      type: "DOCKER" | "KUBERNETES";
-      location: string;
-      reason?: string;
-    }>
-  ) => void;
-  DELETE: (
-    message: VersionedMessage<{ name: string }>,
-    callback: (ack: { message: string }) => void
-  ) => void;
-  GET: (message: VersionedMessage<{ name: string }>) => void;
-}
-
 // coordinator <--> prod worker
 export interface ProdWorkerToCoordinatorEvents {
   LOG: (message: VersionedMessage<{ text: string }>, callback: () => {}) => void;
