@@ -142,7 +142,7 @@ class ProdWorker {
         } else {
           socket.emit("READY_FOR_EXECUTION", {
             version: "v1",
-            attemptId: process.env.TRIGGER_ATTEMPT_ID!,
+            attemptId: this.attemptId,
           });
         }
       },

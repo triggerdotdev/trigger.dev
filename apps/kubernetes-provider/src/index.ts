@@ -168,6 +168,10 @@ class KubernetesTaskOperations implements TaskOperations {
                   value: opts.envId,
                 },
                 {
+                  name: "TRIGGER_ATTEMPT_ID",
+                  value: opts.attemptId,
+                },
+                {
                   name: "POD_NAME",
                   valueFrom: {
                     fieldRef: {
