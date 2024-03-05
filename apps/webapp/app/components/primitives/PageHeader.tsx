@@ -1,5 +1,4 @@
 import { ArrowUpRightIcon } from "@heroicons/react/20/solid";
-import { ChevronLeftIcon } from "@heroicons/react/24/solid";
 import { Link, useNavigation } from "@remix-run/react";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
@@ -7,11 +6,11 @@ import { plansPath } from "~/utils/pathBuilder";
 import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { LinkButton } from "./Buttons";
-import { Header2, Header3 } from "./Headers";
+import { Header2 } from "./Headers";
+import { LoadingBarDivider } from "./LoadingBarDivider";
 import { NamedIcon } from "./NamedIcon";
 import { Paragraph } from "./Paragraph";
 import { Tabs, TabsProps } from "./Tabs";
-import { LoadingBarDivider } from "./LoadingBarDivider";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -52,10 +51,10 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
   return (
     <div className="flex items-center gap-2">
       {backButton && (
-        <div className="group flex items-center gap-2">
+        <div className="group -ml-1.5 flex items-center gap-0">
           <Link
             to={backButton.to}
-            className="text-xs text-text-dimmed transition group-hover:text-text-bright"
+            className="rounded px-1.5 py-1 text-xs text-text-dimmed transition group-hover:bg-charcoal-700 group-hover:text-text-bright"
           >
             {backButton.text}
           </Link>
