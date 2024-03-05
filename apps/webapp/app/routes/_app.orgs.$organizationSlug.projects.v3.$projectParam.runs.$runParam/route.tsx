@@ -56,7 +56,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, runParam } = v3RunParamsSchema.parse(params);
 
   const presenter = new RunPresenter();
-  const { run, events, parentRunFriendlyId, duration, rootSpanCompleted } = await presenter.call({
+  const { run, events, parentRunFriendlyId, duration, rootSpanStatus } = await presenter.call({
     userId,
     organizationSlug,
     projectSlug: projectParam,
@@ -72,7 +72,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     parentRunFriendlyId,
     resizeSettings,
     duration,
-    rootSpanCompleted,
+    rootSpanStatus,
   });
 };
 
@@ -83,7 +83,7 @@ function getSpanId(path: string): string | undefined {
 }
 
 export default function Page() {
-  const { run, events, parentRunFriendlyId, resizeSettings, duration, rootSpanCompleted } =
+  const { run, events, parentRunFriendlyId, resizeSettings, duration, rootSpanStatus } =
     useTypedLoaderData<typeof loader>();
   const navigate = useNavigate();
   const organization = useOrganization();
@@ -142,7 +142,7 @@ export default function Page() {
                 changeToSpan(selectedSpan);
               }}
               totalDuration={duration}
-              rootSpanCompleted={rootSpanCompleted}
+              rootSpanStatus={rootSpanStatus}
             />
           ) : (
             <ResizablePanelGroup
@@ -169,7 +169,7 @@ export default function Page() {
                     changeToSpan(selectedSpan);
                   }}
                   totalDuration={duration}
-                  rootSpanCompleted={rootSpanCompleted}
+                  rootSpanStatus={rootSpanStatus}
                 />
               </ResizablePanel>
               <ResizableHandle withHandle />
@@ -192,14 +192,14 @@ function TasksTreeView({
   parentRunFriendlyId,
   onSelectedIdChanged,
   totalDuration,
-  rootSpanCompleted,
+  rootSpanStatus,
 }: {
   events: RunEvent[];
   selectedId?: string;
   parentRunFriendlyId?: string;
   onSelectedIdChanged: (selectedId: string | undefined) => void;
   totalDuration: number;
-  rootSpanCompleted: boolean;
+  rootSpanStatus: "executing" | "completed" | "failed";
 }) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -251,7 +251,7 @@ function TasksTreeView({
           onChange={(e) => setFilterText(e.target.value)}
         />
         <div className="flex items-center gap-2">
-          <LiveReloadingStatus rootSpanCompleted={rootSpanCompleted} />
+          <LiveReloadingStatus rootSpanCompleted={rootSpanStatus !== "executing"} />
           <Switch
             variant="small"
             label="Errors only"
@@ -424,10 +424,13 @@ function TasksTreeView({
                         );
                       }}
                     </Timeline.EquallyDistribute>
-                    {rootSpanCompleted && (
+                    {rootSpanStatus !== "executing" && (
                       <Timeline.Point
                         ms={nanosecondsToMilliseconds(totalDuration)}
-                        className={"relative bottom-[2px] text-xxs text-success"}
+                        className={cn(
+                          "relative bottom-[2px] text-xxs",
+                          rootSpanStatus === "completed" ? "text-success" : "text-error"
+                        )}
                       >
                         {(ms) => (
                           <div className={cn("-translate-x-1/2 whitespace-nowrap")}>
@@ -454,7 +457,10 @@ function TasksTreeView({
                     </Timeline.EquallyDistribute>
                     <Timeline.Point
                       ms={nanosecondsToMilliseconds(totalDuration)}
-                      className={"h-full border-r border-success/30"}
+                      className={cn(
+                        "h-full border-r",
+                        rootSpanStatus === "completed" ? "border-success/30" : "border-error/30"
+                      )}
                     />
                   </Timeline.Row>
                 </Timeline.Row>
@@ -470,10 +476,13 @@ function TasksTreeView({
                     }}
                   </Timeline.EquallyDistribute>
                   {/* The completed line  */}
-                  {rootSpanCompleted && (
+                  {rootSpanStatus !== "executing" && (
                     <Timeline.Point
                       ms={nanosecondsToMilliseconds(totalDuration)}
-                      className={"h-full border-r border-success/30"}
+                      className={cn(
+                        "h-full border-r",
+                        rootSpanStatus === "completed" ? "border-success/30" : "border-error/30"
+                      )}
                     />
                   )}
                   <TreeView
