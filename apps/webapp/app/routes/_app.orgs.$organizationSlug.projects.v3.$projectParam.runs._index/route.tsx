@@ -61,29 +61,32 @@ export default function Page() {
         <PageTitle title="Runs" />
       </NavBar>
       <PageBody>
-        <div className={cn("grid h-fit grid-cols-1 gap-4")}>
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-x-2">
-              <RunsFilters
-                possibleEnvironments={project.environments}
-                possibleTasks={list.possibleTasks}
-              />
-              <div className="flex items-center justify-end gap-x-2">
-                <ListPagination list={list} />
-              </div>
-            </div>
-
-            <TaskRunsTable
-              total={list.runs.length}
-              hasFilters={false}
-              runs={list.runs}
-              isLoading={isLoading}
-              currentUser={user}
-            />
-            <ListPagination list={list} className="mt-2 justify-end" />
-          </div>
+        {list.runs.length === 0 && !list.hasFilters ? (
           <RunTaskInstructions />
-        </div>
+        ) : (
+          <div className={cn("grid h-fit grid-cols-1 gap-4")}>
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-x-2">
+                <RunsFilters
+                  possibleEnvironments={project.environments}
+                  possibleTasks={list.possibleTasks}
+                />
+                <div className="flex items-center justify-end gap-x-2">
+                  <ListPagination list={list} />
+                </div>
+              </div>
+
+              <TaskRunsTable
+                total={list.runs.length}
+                hasFilters={list.hasFilters}
+                runs={list.runs}
+                isLoading={isLoading}
+                currentUser={user}
+              />
+              <ListPagination list={list} className="mt-2 justify-end" />
+            </div>
+          </div>
+        )}
       </PageBody>
     </>
   );
