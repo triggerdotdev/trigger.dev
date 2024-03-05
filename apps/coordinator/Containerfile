@@ -54,10 +54,10 @@ RUN corepack enable
 ENV NODE_ENV production
 
 COPY --from=cri-tools --chown=node:node /cri-tools/crictl /usr/local/bin
-COPY --from=builder --chown=node:node /app/apps/coordinator/dist/index.cjs ./index.cjs
+COPY --from=builder --chown=node:node /app/apps/coordinator/dist/index.mjs ./index.mjs
 
 EXPOSE 8000
 
 USER node
 
-CMD [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "./index.cjs" ]
+CMD [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "./index.mjs" ]
