@@ -4,6 +4,7 @@ import Highlight, { defaultProps } from "prism-react-renderer";
 import { forwardRef, useCallback, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { Paragraph } from "../primitives/Paragraph";
 
 //This is a fork of https://github.com/mantinedev/mantine/blob/master/src/mantine-prism/src/Prism/Prism.tsx
 //it didn't support highlighting lines by dimming the rest of the code, or animations on the highlighting
@@ -38,6 +39,12 @@ type CodeBlockProps = {
 
   /** filename */
   fileName?: string;
+
+  /** Whether to show the title row */
+  showTitleRow?: boolean;
+
+  /** title text for the Title row */
+  rowTitle?: string;
 };
 
 const dimAmount = 0.5;
@@ -46,7 +53,7 @@ const extraLinesWhenClipping = 0.35;
 const defaultTheme: PrismTheme = {
   plain: {
     color: "#9CDCFE",
-    backgroundColor: "#1A1B1F",
+    backgroundColor: "rgba(0, 0, 0, 0)",
   },
   styles: [
     {
@@ -159,7 +166,9 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       theme = defaultTheme,
       maxLines,
       showChrome = false,
+      showTitleRow = false,
       fileName,
+      rowTitle = "Title",
       ...props
     }: CodeBlockProps,
     ref
@@ -196,7 +205,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
 
     return (
       <div
-        className={cn("relative overflow-hidden rounded-md border border-charcoal-800", className)}
+        className={cn("relative overflow-hidden rounded-md border border-grid-bright", className)}
         style={{
           backgroundColor: theme.plain.backgroundColor,
         }}
@@ -205,6 +214,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
         translate="no"
       >
         {showChrome && <Chrome title={fileName} />}
+        {showTitleRow && <TitleRow title={rowTitle} />}
         {showCopyButton && (
           <TooltipProvider>
             <Tooltip open={copied || mouseOver}>
@@ -354,16 +364,19 @@ function Chrome({ title }: { title?: string }) {
         <div className="h-3 w-3 rounded-full bg-charcoal-700" />
       </div>
       <div className="flex items-center justify-center">
-        <div
-          className={cn(
-            "rounded-sm px-3 py-0.5 text-xs text-charcoal-500",
-            title && "bg-background-dimmed"
-          )}
-        >
-          {title}
-        </div>
+        <div className={cn("rounded-sm px-3 py-0.5 text-xs text-charcoal-500")}>{title}</div>
       </div>
       <div></div>
+    </div>
+  );
+}
+
+function TitleRow({ title }: { title: string }) {
+  return (
+    <div className="flex items-center justify-between px-4">
+      <Paragraph variant="base/bright" className="w-full border-b border-grid-dimmed py-2.5">
+        {title}
+      </Paragraph>
     </div>
   );
 }
