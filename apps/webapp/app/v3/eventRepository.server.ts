@@ -603,7 +603,6 @@ export class EventRepository {
 
     // Return a function that can be used to unsubscribe.
     const unsubscribe = async () => {
-      logger.debug(`subscribeToTrace unsubscribe ${channel}`);
       await redis.punsubscribe(channel);
     };
 

@@ -109,6 +109,7 @@ export class RunPresenter {
           userName: getUsername(run.runtimeEnvironment.orgMember?.user),
         },
       },
+      rootSpanCompleted: events.at(0) ? !events.at(0)!.data.isPartial : false,
       events: events,
       parentRunFriendlyId:
         tree?.id === traceSummary.rootSpan.id ? undefined : traceSummary.rootSpan.runId,

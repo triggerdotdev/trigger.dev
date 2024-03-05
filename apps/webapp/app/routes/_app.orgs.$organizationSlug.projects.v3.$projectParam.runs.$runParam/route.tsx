@@ -26,6 +26,7 @@ import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
 import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
+import { LiveCountUp, LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
 import { useDebounce } from "~/hooks/useDebounce";
@@ -51,7 +52,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, runParam } = v3RunParamsSchema.parse(params);
 
   const presenter = new RunPresenter();
-  const { run, events, parentRunFriendlyId, duration } = await presenter.call({
+  const { run, events, parentRunFriendlyId, duration, rootSpanCompleted } = await presenter.call({
     userId,
     organizationSlug,
     projectSlug: projectParam,
@@ -67,6 +68,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     parentRunFriendlyId,
     resizeSettings,
     duration,
+    rootSpanCompleted,
   });
 };
 
@@ -77,7 +79,7 @@ function getSpanId(path: string): string | undefined {
 }
 
 export default function Page() {
-  const { run, events, parentRunFriendlyId, resizeSettings, duration } =
+  const { run, events, parentRunFriendlyId, resizeSettings, duration, rootSpanCompleted } =
     useTypedLoaderData<typeof loader>();
   const navigate = useNavigate();
   const organization = useOrganization();
@@ -136,6 +138,7 @@ export default function Page() {
                 changeToSpan(selectedSpan);
               }}
               totalDuration={duration}
+              rootSpanCompleted={rootSpanCompleted}
             />
           ) : (
             <ResizablePanelGroup
@@ -162,6 +165,7 @@ export default function Page() {
                     changeToSpan(selectedSpan);
                   }}
                   totalDuration={duration}
+                  rootSpanCompleted={rootSpanCompleted}
                 />
               </ResizablePanel>
               <ResizableHandle withHandle />
@@ -184,12 +188,14 @@ function TasksTreeView({
   parentRunFriendlyId,
   onSelectedIdChanged,
   totalDuration,
+  rootSpanCompleted,
 }: {
   events: RunEvent[];
   selectedId?: string;
   parentRunFriendlyId?: string;
   onSelectedIdChanged: (selectedId: string | undefined) => void;
   totalDuration: number;
+  rootSpanCompleted: boolean;
 }) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -239,6 +245,7 @@ function TasksTreeView({
           onChange={(e) => setFilterText(e.target.value)}
         />
         <div className="flex items-center gap-2">
+          <LiveReloadingStatus rootSpanCompleted={rootSpanCompleted} />
           <Switch
             variant="small"
             label="Errors only"
@@ -274,8 +281,14 @@ function TasksTreeView({
         {/* Tree list */}
         <ResizablePanel order={1} minSize={20} defaultSize={50} className="pl-3">
           <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
-            <div>
-              {parentRunFriendlyId && <ShowParentLink runFriendlyId={parentRunFriendlyId} />}
+            <div className="flex items-center">
+              {parentRunFriendlyId ? (
+                <ShowParentLink runFriendlyId={parentRunFriendlyId} />
+              ) : (
+                <Paragraph variant="small" className="text-charcoal-500">
+                  This is the root task
+                </Paragraph>
+              )}
             </div>
             <TreeView
               parentRef={parentRef}
@@ -286,7 +299,6 @@ function TasksTreeView({
               nodes={nodes}
               getNodeProps={getNodeProps}
               getTreeProps={getTreeProps}
-              parentClassName="pt-2"
               renderNode={({ node, state }) => (
                 <div
                   className={cn(
@@ -367,7 +379,7 @@ function TasksTreeView({
             <Timeline.Root
               durationMs={nanosecondsToMilliseconds(totalDuration)}
               scale={scale}
-              className="h-full pt-2"
+              className="h-full"
               minWidth={300}
               maxWidth={2000}
             >
@@ -479,7 +491,7 @@ function TasksTreeView({
                             <Timeline.Point
                               ms={nanosecondsToMilliseconds(node.data.offset)}
                               className={cn(
-                                "-ml-1.5 h-3 w-3 rounded-full border-2 border-background-bright",
+                                "h-3 w-3 rounded-full border-2 border-background-bright",
                                 eventBackgroundClassName(node.data)
                               )}
                             />
@@ -547,6 +559,30 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
         Show parent items
       </Paragraph>
     </Link>
+  );
+}
+
+function LiveReloadingStatus({ rootSpanCompleted }: { rootSpanCompleted: boolean }) {
+  if (rootSpanCompleted) return null;
+
+  return (
+    <div className="flex items-center gap-1">
+      <PulsingDot />
+      <Paragraph variant="extra-small" className="whitespace-nowrap text-blue-500">
+        Live reloading
+      </Paragraph>
+    </div>
+  );
+}
+
+function PulsingDot() {
+  return (
+    <span className="relative flex h-2 w-2">
+      <span
+        className={`absolute h-full w-full animate-ping rounded-full border border-blue-500 opacity-100 duration-1000`}
+      />
+      <span className={`h-2 w-2 rounded-full bg-blue-500`} />
+    </span>
   );
 }
 
