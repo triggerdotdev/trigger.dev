@@ -172,6 +172,10 @@ class KubernetesTaskOperations implements TaskOperations {
                   value: opts.attemptId,
                 },
                 {
+                  name: "OTEL_EXPORTER_OTLP_ENDPOINT",
+                  value: OTEL_EXPORTER_OTLP_ENDPOINT,
+                },
+                {
                   name: "POD_NAME",
                   valueFrom: {
                     fieldRef: {
