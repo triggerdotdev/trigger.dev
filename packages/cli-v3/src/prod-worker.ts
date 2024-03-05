@@ -49,6 +49,8 @@ class ProdWorker {
       env: {
         TRIGGER_API_URL: this.apiUrl,
         TRIGGER_SECRET_KEY: this.apiKey,
+        OTEL_EXPORTER_OTLP_ENDPOINT:
+          process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
       },
       contentHash: this.contentHash,
     });
