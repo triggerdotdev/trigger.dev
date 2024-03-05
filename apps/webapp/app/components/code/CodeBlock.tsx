@@ -40,9 +40,6 @@ type CodeBlockProps = {
   /** filename */
   fileName?: string;
 
-  /** Whether to show the title row */
-  showTitleRow?: boolean;
-
   /** title text for the Title row */
   rowTitle?: string;
 };
@@ -166,9 +163,8 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       theme = defaultTheme,
       maxLines,
       showChrome = false,
-      showTitleRow = false,
       fileName,
-      rowTitle = "Title",
+      rowTitle,
       ...props
     }: CodeBlockProps,
     ref
@@ -214,7 +210,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
         translate="no"
       >
         {showChrome && <Chrome title={fileName} />}
-        {showTitleRow && <TitleRow title={rowTitle} />}
+        {rowTitle && <TitleRow title={rowTitle} />}
         {showCopyButton && (
           <TooltipProvider>
             <Tooltip open={copied || mouseOver}>
