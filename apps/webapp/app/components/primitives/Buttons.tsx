@@ -14,7 +14,7 @@ const sizes = {
     shortcut: "-ml-0.5 -mr-1.5 justify-self-center",
   },
   medium: {
-    button: "h-8 px-2.5 text-sm",
+    button: "h-8 px-3 text-sm",
     icon: "h-4 -mx-1",
     iconSpacing: "gap-x-2.5",
     shortcutVariant: "medium" as const,
