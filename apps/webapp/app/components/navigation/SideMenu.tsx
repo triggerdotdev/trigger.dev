@@ -67,6 +67,7 @@ import {
 import { StepNumber } from "../primitives/StepNumber";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
+import { Badge } from "../primitives/Badge";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -247,13 +248,24 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             data-action="join our discord"
             target="_blank"
           />
-          <SideMenuItem
-            name="Documentation"
-            icon="docs"
-            to="https://trigger.dev/docs"
-            data-action="documentation"
-            target="_blank"
-          />
+          {project.version === "V2" ? (
+            <SideMenuItem
+              name="Documentation"
+              icon="docs"
+              to="https://trigger.dev/docs"
+              data-action="documentation"
+              target="_blank"
+            />
+          ) : (
+            <SideMenuItem
+              name="Documentation (v3)"
+              icon="docs"
+              to="https://trigger.dev/docs"
+              data-action="documentation"
+              target="_blank"
+            />
+          )}
+
           <SideMenuItem
             name="Changelog"
             icon="star"
@@ -330,7 +342,11 @@ function ProjectSelector({
                       title={
                         <div className="flex w-full items-center justify-between text-text-bright">
                           <span className="grow truncate text-left">{p.name}</span>
-                          <MenuCount count={p.jobCount} />
+                          {p.version === "V2" ? (
+                            <MenuCount count={p.jobCount} />
+                          ) : (
+                            <Badge variant="v3">v3</Badge>
+                          )}
                         </div>
                       }
                       isSelected={isSelected}
