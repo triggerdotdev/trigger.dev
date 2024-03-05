@@ -20,9 +20,18 @@ type FreePlanUsageBarProps = {
 
 export default function Story({ organization = mockOrganization }: FreePlanUsageBarProps) {
   return (
-    <div className="flex h-screen flex-col items-center justify-center p-12">
+    <div className="flex h-screen flex-col items-center justify-center gap-4 p-12">
+      <div className="w-fit">
+        <FreePlanUsage to={organizationBillingPath(organization)} percentage={0.1} />
+      </div>
+      <div className="w-fit">
+        <FreePlanUsage to={organizationBillingPath(organization)} percentage={0.5} />
+      </div>
       <div className="w-fit">
         <FreePlanUsage to={organizationBillingPath(organization)} percentage={0.75} />
+      </div>
+      <div className="w-fit">
+        <FreePlanUsage to={organizationBillingPath(organization)} percentage={1} />
       </div>
     </div>
   );
