@@ -1,4 +1,4 @@
-import { millisecondsToNanoseconds } from "@trigger.dev/core/v3/utils/durations";
+import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
@@ -98,6 +98,15 @@ export class RunPresenter {
       }
     }
 
+    let rootSpanStatus: "executing" | "completed" | "failed" = "executing";
+    if (events[0]) {
+      if (events[0].data.isError) {
+        rootSpanStatus = "failed";
+      } else if (!events[0].data.isPartial) {
+        rootSpanStatus = "completed";
+      }
+    }
+
     return {
       run: {
         number: run.number,
@@ -109,6 +118,7 @@ export class RunPresenter {
           userName: getUsername(run.runtimeEnvironment.orgMember?.user),
         },
       },
+      rootSpanStatus,
       events: events,
       parentRunFriendlyId:
         tree?.id === traceSummary.rootSpan.id ? undefined : traceSummary.rootSpan.runId,

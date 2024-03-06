@@ -31,13 +31,13 @@ test("Verify jobs from the test nextjs project", async ({ page }) => {
   await page.locator("a").filter({ hasText: "Test Project" }).click();
 
   await page.getByRole("link", { name: "Environments & API Keys" }).click();
-  await expect(page.locator("h1").filter({ hasText: "Environments & API Keys" })).toBeVisible();
+  await expect(page.locator("h2").filter({ hasText: "Environments & API Keys" })).toBeVisible();
   await expect(
     page.locator("h3").filter({ hasText: "nextjs-test" })
     // Set the timeout high to allow the cli to register jobs
   ).toBeVisible({ timeout: 15000 });
 
   await page.getByRole("link", { name: "Jobs" }).click();
-  await expect(page.locator("h1").filter({ hasText: /^Jobs$/ })).toBeVisible();
+  await expect(page.locator("h2").filter({ hasText: /^Jobs$/ })).toBeVisible();
   await expect(page.getByRole("link", { name: /Test Job One/ })).toBeVisible();
 });

@@ -16,6 +16,7 @@ export {
   formatDurationNanoseconds,
   formatDurationInDays,
   nanosecondsToMilliseconds,
+  millisecondsToNanoseconds,
 } from "./utils/durations";
 export { getEnvVar } from "./utils/getEnv";
 

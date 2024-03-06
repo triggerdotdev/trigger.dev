@@ -74,15 +74,15 @@ export function runStatusClassNameColor(status: ExtendedTaskAttemptStatus | null
     case "PENDING":
       return "text-charcoal-500";
     case "EXECUTING":
-      return "text-blue-500";
+      return "text-pending";
     case "PAUSED":
       return "text-amber-300";
     case "FAILED":
-      return "text-rose-500";
+      return "text-error";
     case "CANCELED":
       return "text-charcoal-500";
     case "COMPLETED":
-      return "text-green-500";
+      return "text-success";
     default: {
       const _exhaustiveCheck: never = status;
       throw new Error(`Non-exhaustive match for value: ${status}`);

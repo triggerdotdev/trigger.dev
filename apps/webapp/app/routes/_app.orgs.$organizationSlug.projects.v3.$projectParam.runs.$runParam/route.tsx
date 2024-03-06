@@ -3,6 +3,7 @@ import {
   ChevronRightIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
+  NoSymbolIcon,
 } from "@heroicons/react/20/solid";
 import { Link, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -26,10 +27,13 @@ import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
 import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
+import { LiveCountUp, LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
+import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
 import { useDebounce } from "~/hooks/useDebounce";
 import { useEventSource } from "~/hooks/useEventSource";
+import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
@@ -38,6 +42,7 @@ import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
+import { lerp } from "~/utils/lerp";
 import {
   v3RunParamsSchema,
   v3RunPath,
@@ -51,7 +56,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, runParam } = v3RunParamsSchema.parse(params);
 
   const presenter = new RunPresenter();
-  const { run, events, parentRunFriendlyId, duration } = await presenter.call({
+  const { run, events, parentRunFriendlyId, duration, rootSpanStatus } = await presenter.call({
     userId,
     organizationSlug,
     projectSlug: projectParam,
@@ -67,6 +72,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     parentRunFriendlyId,
     resizeSettings,
     duration,
+    rootSpanStatus,
   });
 };
 
@@ -77,7 +83,7 @@ function getSpanId(path: string): string | undefined {
 }
 
 export default function Page() {
-  const { run, events, parentRunFriendlyId, resizeSettings, duration } =
+  const { run, events, parentRunFriendlyId, resizeSettings, duration, rootSpanStatus } =
     useTypedLoaderData<typeof loader>();
   const navigate = useNavigate();
   const organization = useOrganization();
@@ -136,6 +142,7 @@ export default function Page() {
                 changeToSpan(selectedSpan);
               }}
               totalDuration={duration}
+              rootSpanStatus={rootSpanStatus}
             />
           ) : (
             <ResizablePanelGroup
@@ -162,6 +169,7 @@ export default function Page() {
                     changeToSpan(selectedSpan);
                   }}
                   totalDuration={duration}
+                  rootSpanStatus={rootSpanStatus}
                 />
               </ResizablePanel>
               <ResizableHandle withHandle />
@@ -184,20 +192,24 @@ function TasksTreeView({
   parentRunFriendlyId,
   onSelectedIdChanged,
   totalDuration,
+  rootSpanStatus,
 }: {
   events: RunEvent[];
   selectedId?: string;
   parentRunFriendlyId?: string;
   onSelectedIdChanged: (selectedId: string | undefined) => void;
   totalDuration: number;
+  rootSpanStatus: "executing" | "completed" | "failed";
 }) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
   const [showDurations, setShowDurations] = useState(false);
-  const [scale, setScale] = useState(0.25);
+  const [scale, setScale] = useState(0);
   const parentRef = useRef<HTMLDivElement>(null);
   const treeScrollRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const timelineContainerRef = useRef<HTMLDivElement>(null);
+  const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
 
   const {
     nodes,
@@ -239,6 +251,7 @@ function TasksTreeView({
           onChange={(e) => setFilterText(e.target.value)}
         />
         <div className="flex items-center gap-2">
+          <LiveReloadingStatus rootSpanCompleted={rootSpanStatus !== "executing"} />
           <Switch
             variant="small"
             label="Errors only"
@@ -274,8 +287,14 @@ function TasksTreeView({
         {/* Tree list */}
         <ResizablePanel order={1} minSize={20} defaultSize={50} className="pl-3">
           <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
-            <div>
-              {parentRunFriendlyId && <ShowParentLink runFriendlyId={parentRunFriendlyId} />}
+            <div className="flex items-center">
+              {parentRunFriendlyId ? (
+                <ShowParentLink runFriendlyId={parentRunFriendlyId} />
+              ) : (
+                <Paragraph variant="small" className="text-charcoal-500">
+                  This is the root task
+                </Paragraph>
+              )}
             </div>
             <TreeView
               parentRef={parentRef}
@@ -286,11 +305,10 @@ function TasksTreeView({
               nodes={nodes}
               getNodeProps={getNodeProps}
               getTreeProps={getTreeProps}
-              parentClassName="pt-2"
               renderNode={({ node, state }) => (
                 <div
                   className={cn(
-                    "flex h-8 cursor-pointer items-center rounded-l-sm pr-3",
+                    "flex h-8 cursor-pointer items-center rounded-l-sm pr-2",
                     state.selected
                       ? "bg-grid-dimmed hover:bg-grid-bright"
                       : "bg-transparent hover:bg-grid-dimmed"
@@ -332,18 +350,14 @@ function TasksTreeView({
                     </div>
                   </div>
 
-                  <div className="flex w-full items-center justify-between gap-2 px-1">
+                  <div className="flex w-full items-center justify-between gap-2 pl-1">
                     <div className="flex items-center gap-2 overflow-x-hidden">
                       <RunIcon name={node.data.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
                       <NodeText node={node} />
                       {node.data.isRoot && <Badge variant="outline-rounded">Root</Badge>}
                     </div>
-                    <div className="flex items-center gap-2">
-                      {node.data.isCancelled ? (
-                        <Paragraph variant="extra-small" className="text-amber-500">
-                          Cancelled
-                        </Paragraph>
-                      ) : null}
+                    <div className="flex items-center gap-1">
+                      <NodeStatusIcon node={node} />
                     </div>
                   </div>
                 </div>
@@ -363,66 +377,76 @@ function TasksTreeView({
         <ResizableHandle withHandle />
         {/* Timeline */}
         <ResizablePanel order={2} minSize={20} defaultSize={50}>
-          <div className="h-full overflow-x-auto overflow-y-hidden pr-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div
+            className="h-full overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+            ref={timelineContainerRef}
+          >
             <Timeline.Root
-              durationMs={nanosecondsToMilliseconds(totalDuration)}
+              durationMs={nanosecondsToMilliseconds(totalDuration * 1.05)}
               scale={scale}
-              className="h-full pt-2"
-              minWidth={300}
+              className="h-full overflow-hidden"
+              minWidth={initialTimelineDimensions?.width ?? 300}
               maxWidth={2000}
             >
               {/* Follows the cursor */}
-              <Timeline.FollowCursor>
-                {(ms) => (
-                  <div className="relative z-50 flex h-full flex-col">
-                    <div className="relative flex h-8 items-end">
-                      <div className="absolute left-1/2 w-fit -translate-x-1/2 rounded-sm border border-charcoal-600 bg-charcoal-750 px-1 py-0.5 text-xxs tabular-nums text-text-bright">
-                        {formatDurationMilliseconds(ms, {
-                          style: "short",
-                          maxDecimalPoints: ms < 1000 ? 0 : 1,
-                        })}
-                      </div>
-                    </div>
-                    <div className="w-px grow border-r border-charcoal-600" />
-                  </div>
-                )}
-              </Timeline.FollowCursor>
+              <CurrentTimeIndicator totalDuration={totalDuration} />
 
               <Timeline.Row className="grid h-full grid-rows-[2rem_1fr]">
                 {/* The duration labels */}
                 <Timeline.Row>
-                  <Timeline.Row className="h-5">
-                    <Timeline.EquallyDistribute count={tickCount}>
-                      {(ms: number, index: number) => (
-                        <Timeline.Point
-                          ms={ms}
-                          className={"relative bottom-0 text-xxs text-text-dimmed"}
-                        >
-                          {(ms) => (
-                            <div
-                              className={cn(
-                                "whitespace-nowrap",
-                                index === 0
-                                  ? "ml-0.5"
-                                  : index === tickCount - 1
-                                  ? "-translate-x-full"
-                                  : "-translate-x-1/2"
-                              )}
-                            >
-                              {formatDurationMilliseconds(ms, {
-                                style: "short",
-                                maxDecimalPoints: ms < 1000 ? 0 : 1,
-                              })}
-                            </div>
-                          )}
-                        </Timeline.Point>
-                      )}
-                    </Timeline.EquallyDistribute>
-                  </Timeline.Row>
-                  <Timeline.Row className="h-3">
+                  <Timeline.Row className="h-6">
                     <Timeline.EquallyDistribute count={tickCount}>
                       {(ms: number, index: number) => {
-                        if (index === 0) return null;
+                        if (index === tickCount - 1) return null;
+                        return (
+                          <Timeline.Point
+                            ms={ms}
+                            className={"relative bottom-[2px] text-xxs text-text-dimmed"}
+                          >
+                            {(ms) => (
+                              <div
+                                className={cn(
+                                  "whitespace-nowrap",
+                                  index === 0
+                                    ? "ml-1"
+                                    : index === tickCount - 1
+                                    ? "-ml-1 -translate-x-full"
+                                    : "-translate-x-1/2"
+                                )}
+                              >
+                                {formatDurationMilliseconds(ms, {
+                                  style: "short",
+                                  maxDecimalPoints: ms < 1000 ? 0 : 1,
+                                })}
+                              </div>
+                            )}
+                          </Timeline.Point>
+                        );
+                      }}
+                    </Timeline.EquallyDistribute>
+                    {rootSpanStatus !== "executing" && (
+                      <Timeline.Point
+                        ms={nanosecondsToMilliseconds(totalDuration)}
+                        className={cn(
+                          "relative bottom-[2px] text-xxs",
+                          rootSpanStatus === "completed" ? "text-success" : "text-error"
+                        )}
+                      >
+                        {(ms) => (
+                          <div className={cn("-translate-x-1/2 whitespace-nowrap")}>
+                            {formatDurationMilliseconds(ms, {
+                              style: "short",
+                              maxDecimalPoints: ms < 1000 ? 0 : 1,
+                            })}
+                          </div>
+                        )}
+                      </Timeline.Point>
+                    )}
+                  </Timeline.Row>
+                  <Timeline.Row className="h-2">
+                    <Timeline.EquallyDistribute count={tickCount}>
+                      {(ms: number, index: number) => {
+                        if (index === 0 || index === tickCount - 1) return null;
                         return (
                           <Timeline.Point
                             ms={ms}
@@ -431,6 +455,13 @@ function TasksTreeView({
                         );
                       }}
                     </Timeline.EquallyDistribute>
+                    <Timeline.Point
+                      ms={nanosecondsToMilliseconds(totalDuration)}
+                      className={cn(
+                        "h-full border-r",
+                        rootSpanStatus === "completed" ? "border-success/30" : "border-error/30"
+                      )}
+                    />
                   </Timeline.Row>
                 </Timeline.Row>
                 {/* Main timeline body */}
@@ -444,6 +475,16 @@ function TasksTreeView({
                       );
                     }}
                   </Timeline.EquallyDistribute>
+                  {/* The completed line  */}
+                  {rootSpanStatus !== "executing" && (
+                    <Timeline.Point
+                      ms={nanosecondsToMilliseconds(totalDuration)}
+                      className={cn(
+                        "h-full border-r",
+                        rootSpanStatus === "completed" ? "border-success/30" : "border-error/30"
+                      )}
+                    />
+                  )}
                   <TreeView
                     parentRef={parentRef}
                     scrollRef={timelineScrollRef}
@@ -479,7 +520,7 @@ function TasksTreeView({
                             <Timeline.Point
                               ms={nanosecondsToMilliseconds(node.data.offset)}
                               className={cn(
-                                "-ml-1.5 h-3 w-3 rounded-full border-2 border-background-bright",
+                                "-ml-1 h-3 w-3 rounded-full border-2 border-background-bright",
                                 eventBackgroundClassName(node.data)
                               )}
                             />
@@ -511,6 +552,31 @@ function NodeText({ node }: { node: RunEvent }) {
       <SpanTitle {...node.data} size="small" />
     </Paragraph>
   );
+}
+function NodeStatusIcon({ node }: { node: RunEvent }) {
+  if (node.data.level !== "TRACE") return null;
+  if (node.data.style.variant !== "primary") return null;
+
+  if (node.data.isCancelled) {
+    return (
+      <>
+        <Paragraph variant="extra-small" className={runStatusClassNameColor("CANCELED")}>
+          Canceled
+        </Paragraph>
+        <TaskRunStatusIcon status="CANCELED" className={cn("size-4")} />
+      </>
+    );
+  }
+
+  if (node.data.isError) {
+    return <TaskRunStatusIcon status="FAILED" className={cn("size-4")} />;
+  }
+
+  if (node.data.isPartial) {
+    return <TaskRunStatusIcon status={"EXECUTING"} className={cn("size-4")} />;
+  }
+
+  return <TaskRunStatusIcon status="COMPLETED" className={cn("size-4")} />;
 }
 
 function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {
@@ -550,6 +616,30 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
   );
 }
 
+function LiveReloadingStatus({ rootSpanCompleted }: { rootSpanCompleted: boolean }) {
+  if (rootSpanCompleted) return null;
+
+  return (
+    <div className="flex items-center gap-1">
+      <PulsingDot />
+      <Paragraph variant="extra-small" className="whitespace-nowrap text-blue-500">
+        Live reloading
+      </Paragraph>
+    </div>
+  );
+}
+
+function PulsingDot() {
+  return (
+    <span className="relative flex h-2 w-2">
+      <span
+        className={`absolute h-full w-full animate-ping rounded-full border border-blue-500 opacity-100 duration-1000`}
+      />
+      <span className={`h-2 w-2 rounded-full bg-blue-500`} />
+    </span>
+  );
+}
+
 function SpanWithDuration({
   showDuration,
   node,
@@ -559,7 +649,7 @@ function SpanWithDuration({
     <Timeline.Span {...props}>
       <div
         className={cn(
-          "relative flex h-4 w-full min-w-px items-center rounded-sm",
+          "relative flex h-4 w-full min-w-[2px] items-center rounded-sm",
           eventBackgroundClassName(node.data)
         )}
       >
@@ -584,5 +674,43 @@ function SpanWithDuration({
         </div>
       </div>
     </Timeline.Span>
+  );
+}
+
+const edgeBoundary = 0.05;
+
+function CurrentTimeIndicator({ totalDuration }: { totalDuration: number }) {
+  return (
+    <Timeline.FollowCursor>
+      {(ms) => {
+        const ratio = ms / nanosecondsToMilliseconds(totalDuration);
+        let offset = 0.5;
+        if (ratio < edgeBoundary) {
+          offset = lerp(0, 0.5, ratio / edgeBoundary);
+        } else if (ratio > 1 - edgeBoundary) {
+          offset = lerp(0.5, 1, (ratio - (1 - edgeBoundary)) / edgeBoundary);
+        }
+
+        return (
+          <div className="relative z-50 flex h-full flex-col">
+            <div className="relative flex h-6 items-end">
+              <div
+                className="absolute w-fit whitespace-nowrap rounded-sm border border-charcoal-600 bg-charcoal-750 px-1 py-0.5 text-xxs tabular-nums text-text-bright"
+                style={{
+                  left: `${offset * 100}%`,
+                  transform: `translateX(-${offset * 100}%)`,
+                }}
+              >
+                {formatDurationMilliseconds(ms, {
+                  style: "short",
+                  maxDecimalPoints: ms < 1000 ? 0 : 1,
+                })}
+              </div>
+            </div>
+            <div className="w-px grow border-r border-charcoal-600" />
+          </div>
+        );
+      }}
+    </Timeline.FollowCursor>
   );
 }
