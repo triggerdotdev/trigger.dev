@@ -518,7 +518,7 @@ function V3ProjectSideMenu({
       <SideMenuItem
         name="Tasks"
         icon={TaskIcon}
-        iconColor="text-indigo-500"
+        iconColor="text-blue-500"
         count={project.jobCount}
         to={v3ProjectPath(organization, project)}
         data-action="tasks"
