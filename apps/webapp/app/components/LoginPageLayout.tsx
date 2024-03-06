@@ -74,7 +74,7 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
           </Paragraph>
         </div>
       </div>
-      <div className="hidden grid-rows-[1fr_auto] pb-7 md:grid">
+      <div className="hidden grid-rows-[1fr_auto] pb-6 md:grid">
         <div className="flex h-full flex-col items-center justify-center px-16">
           <Header3 className="relative text-center text-2xl font-normal leading-8 text-text-dimmed transition before:relative before:right-1 before:top-0 before:text-6xl before:text-charcoal-750 before:content-['❝'] lg-height:text-xl md-height:text-lg">
             {randomQuote?.quote}
