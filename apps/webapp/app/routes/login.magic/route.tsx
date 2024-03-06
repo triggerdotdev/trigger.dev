@@ -1,14 +1,8 @@
 import { InboxArrowDownIcon } from "@heroicons/react/24/solid";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
-import { getMatchesData, metaV1 } from "@remix-run/v1-meta";
-import {
-  TypedMetaFunction,
-  UseDataFunctionReturn,
-  typedjson,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -21,17 +15,19 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
-import type { LoaderType as RootLoader } from "~/root";
 import { authenticator } from "~/services/auth.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
-import { appEnvTitleTag } from "~/utils";
 
-export const meta: TypedMetaFunction<typeof loader> = (args) => {
-  const matchesData = getMatchesData(args) as { root: UseDataFunctionReturn<RootLoader> };
+export const meta: MetaFunction = ({ matches }) => {
+  const parentMeta = matches
+    .flatMap((match) => match.meta ?? [])
+    .filter((meta) => {
+      if ("title" in meta) return false;
+      if ("name" in meta && meta.name === "viewport") return false;
+      return true;
+    });
 
-  return metaV1(args, {
-    title: `Login to Trigger.dev${appEnvTitleTag(matchesData.root.appEnv)}`,
-  });
+  return [...parentMeta, { title: `Login to Trigger.dev` }];
 };
 
 export async function loader({ request }: LoaderFunctionArgs) {
