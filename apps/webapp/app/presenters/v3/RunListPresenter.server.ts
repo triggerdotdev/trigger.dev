@@ -50,6 +50,12 @@ export class RunListPresenter {
     const hasStatusFilters =
       filterByEnqueuedStatus || (statuses !== undefined && statuses.length > 0);
 
+    const hasFilters =
+      tasks !== undefined ||
+      versions !== undefined ||
+      hasStatusFilters ||
+      environments !== undefined;
+
     // Find the project scoped to the organization
     const project = await this.#prismaClient.project.findFirstOrThrow({
       select: {
@@ -226,11 +232,12 @@ export class RunListPresenter {
           },
         };
       }),
-      possibleTasks: possibleTasks.map((task) => task.slug),
       pagination: {
         next,
         previous,
       },
+      possibleTasks: possibleTasks.map((task) => task.slug),
+      hasFilters,
     };
   }
 }

@@ -42,6 +42,7 @@ import {
   v3ApiKeysPath,
   v3EnvironmentVariablesPath,
   v3ProjectPath,
+  v3ProjectSettingsPath,
   v3RunsPath,
   v3TestPath,
 } from "~/utils/pathBuilder";
@@ -67,6 +68,8 @@ import {
 import { StepNumber } from "../primitives/StepNumber";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
+import { Badge } from "../primitives/Badge";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -247,13 +250,24 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             data-action="join our discord"
             target="_blank"
           />
-          <SideMenuItem
-            name="Documentation"
-            icon="docs"
-            to="https://trigger.dev/docs"
-            data-action="documentation"
-            target="_blank"
-          />
+          {project.version === "V2" ? (
+            <SideMenuItem
+              name="Documentation"
+              icon="docs"
+              to="https://trigger.dev/docs"
+              data-action="documentation"
+              target="_blank"
+            />
+          ) : (
+            <SideMenuItem
+              name="Documentation (v3)"
+              icon="docs"
+              to="https://trigger.dev/docs"
+              data-action="documentation"
+              target="_blank"
+            />
+          )}
+
           <SideMenuItem
             name="Changelog"
             icon="star"
@@ -330,7 +344,11 @@ function ProjectSelector({
                       title={
                         <div className="flex w-full items-center justify-between text-text-bright">
                           <span className="grow truncate text-left">{p.name}</span>
-                          <MenuCount count={p.jobCount} />
+                          {p.version === "V2" ? (
+                            <MenuCount count={p.jobCount} />
+                          ) : (
+                            <Badge variant="v3">v3</Badge>
+                          )}
                         </div>
                       }
                       isSelected={isSelected}
@@ -497,11 +515,11 @@ function V3ProjectSideMenu({
 }) {
   return (
     <>
-      <SideMenuHeader title={"Project"} />
+      <SideMenuHeader title={"Project (v3)"} />
       <SideMenuItem
         name="Tasks"
-        icon="job"
-        iconColor="text-indigo-500"
+        icon={TaskIcon}
+        iconColor="text-blue-500"
         count={project.jobCount}
         to={v3ProjectPath(organization, project)}
         data-action="tasks"
@@ -533,14 +551,13 @@ function V3ProjectSideMenu({
         to={v3EnvironmentVariablesPath(organization, project)}
         data-action="environment variables"
       />
-      {/* 
       <SideMenuItem
         name="Project settings"
         icon="settings"
         iconColor="text-teal-500"
-        to={projectSettingsPath(organization, project)}
+        to={v3ProjectSettingsPath(organization, project)}
         data-action="project-settings"
-      /> */}
+      />
     </>
   );
 }

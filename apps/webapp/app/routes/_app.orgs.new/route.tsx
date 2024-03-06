@@ -78,7 +78,7 @@ export const action: ActionFunction = async ({ request }) => {
       "Set-Cookie": await commitCurrentProjectSession(session),
     };
 
-    if (isManagedCloud) {
+    if (isManagedCloud && submission.value.projectVersion === "v2") {
       return redirect(selectPlanPath(organization), {
         headers,
       });
