@@ -42,6 +42,7 @@ import {
   v3ApiKeysPath,
   v3EnvironmentVariablesPath,
   v3ProjectPath,
+  v3ProjectSettingsPath,
   v3RunsPath,
   v3TestPath,
 } from "~/utils/pathBuilder";
@@ -550,14 +551,13 @@ function V3ProjectSideMenu({
         to={v3EnvironmentVariablesPath(organization, project)}
         data-action="environment variables"
       />
-      {/* 
       <SideMenuItem
         name="Project settings"
         icon="settings"
         iconColor="text-teal-500"
-        to={projectSettingsPath(organization, project)}
+        to={v3ProjectSettingsPath(organization, project)}
         data-action="project-settings"
-      /> */}
+      />
     </>
   );
 }

@@ -350,6 +350,10 @@ export function v3RunStreamingPath(
   return `${v3RunPath(organization, project, run)}/stream`;
 }
 
+export function v3ProjectSettingsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/settings`;
+}
+
 // Integration
 export function integrationClientPath(organization: OrgForPath, client: IntegrationForPath) {
   return `${organizationIntegrationsPath(organization)}/${clientParam(client)}`;
