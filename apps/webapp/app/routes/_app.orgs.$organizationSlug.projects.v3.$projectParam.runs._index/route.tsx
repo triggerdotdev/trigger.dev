@@ -5,7 +5,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
-import { Header1 } from "~/components/primitives/Headers";
+import { Header1, Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
@@ -17,8 +17,10 @@ import { useUser } from "~/hooks/useUser";
 import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3TestPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, v3ProjectPath, v3TestPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -61,6 +63,7 @@ export default function Page() {
         <PageTitle title="Runs" />
       </NavBar>
       <PageBody>
+        <CreateFirstTaskInstructions />
         {list.runs.length === 0 && !list.hasFilters ? (
           <RunTaskInstructions />
         ) : (
@@ -92,16 +95,39 @@ export default function Page() {
   );
 }
 
+function CreateFirstTaskInstructions() {
+  const organization = useOrganization();
+  const project = useProject();
+  return (
+    <MainCenteredContainer className="max-w-prose">
+      <BlankstateInstructions title="Create your first task">
+        <Paragraph spacing>
+          You need to create a task before it can be run. Follow the instructions on the Task page
+          to create your run first then return here to run your task.
+        </Paragraph>
+        <LinkButton
+          to={v3ProjectPath(organization, project)}
+          variant="primary/medium"
+          LeadingIcon={TaskIcon}
+          className="inline-flex"
+        >
+          Create your first task
+        </LinkButton>
+      </BlankstateInstructions>
+    </MainCenteredContainer>
+  );
+}
+
 function RunTaskInstructions() {
   const organization = useOrganization();
   const project = useProject();
   return (
     <MainCenteredContainer className="max-w-prose">
-      <Header1 className="mb-4 border-b py-4">How to run a task</Header1>
+      <Header1 className="mb-4 border-b py-4">How to run your tasks</Header1>
       <StepNumber stepNumber="A" title="Trigger a test run" />
       <StepContentContainer>
         <Paragraph spacing>
-          You can perform a Run with any payload you want, or use one of our examples, on the test
+          You can perform a Run with any payload you want, or use one of our examples on the test
           page.
         </Paragraph>
         <LinkButton
@@ -122,10 +148,10 @@ function RunTaskInstructions() {
       <StepNumber stepNumber="B" title="Trigger your task for real" />
       <StepContentContainer>
         <Paragraph spacing>
-          Performing a real run depends on the type of Trigger you Task is using.
+          Performing a real run depends on the type of Trigger your Task is using.
         </Paragraph>
         <LinkButton
-          to={v3TestPath(organization, project)}
+          to="https://trigger.dev/docs"
           variant="primary/medium"
           LeadingIcon={BookOpenIcon}
           className="inline-flex"
