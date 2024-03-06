@@ -1,7 +1,6 @@
-import React, { FunctionComponent, ReactElement, createElement } from "react";
-import { IconNamesOrString, NamedIcon } from "./NamedIcon";
+import React, { FunctionComponent, createElement } from "react";
 import { cn } from "~/utils/cn";
-import { render } from "react-dom";
+import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 
 export type RenderIcon =
   | IconNamesOrString
