@@ -9,7 +9,9 @@
       "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
       "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
       "@trigger.dev/core": ["../../packages/core/src/index"],
-      "@trigger.dev/core/*": ["../../packages/core/src/*"]
+      "@trigger.dev/core/*": ["../../packages/core/src/*"],
+      "@trigger.dev/core-apps": ["../../packages/core-apps/src/index"],
+      "@trigger.dev/core-apps/*": ["../../packages/core-apps/src/*"]
     }
   }
 }

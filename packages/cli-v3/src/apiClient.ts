@@ -9,6 +9,7 @@ import {
   CreateImageDetailsResponse,
   GetProjectDevResponse,
   GetEnvironmentVariablesResponseBody,
+  InitializeDeploymentResponseBody,
 } from "@trigger.dev/core/v3";
 
 export class CliApiClient {
@@ -132,6 +133,20 @@ export class CliApiClient {
         },
       }
     );
+  }
+
+  async initializeDeployment() {
+    if (!this.accessToken) {
+      throw new Error("initializeDeployment: No access token");
+    }
+
+    return zodfetch(InitializeDeploymentResponseBody, `${this.apiURL}/api/v1/deployments`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
   }
 }
 

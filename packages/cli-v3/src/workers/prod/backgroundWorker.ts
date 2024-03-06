@@ -1,11 +1,10 @@
 import {
   BackgroundWorkerProperties,
-  BackgroundWorkerServerMessages,
   CreateBackgroundWorkerResponse,
+  ProdTaskRunExecutionPayload,
   SemanticInternalAttributes,
   TaskMetadataWithFilePath,
   TaskRunBuiltInError,
-  TaskRunError,
   TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionPayload,
@@ -16,174 +15,9 @@ import {
   correctErrorStackTrace,
   workerToChildMessages,
 } from "@trigger.dev/core/v3";
-import chalk from "chalk";
-import dotenv from "dotenv";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { dirname, resolve } from "node:path";
-import terminalLink from "terminal-link";
-import { safeDeleteFileSync } from "../utilities/fileSystem.js";
-import { installPackages } from "../utilities/installPackages.js";
-import { logger } from "../utilities/logger.js";
-
-export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
-export class BackgroundWorkerCoordinator {
-  public onTaskCompleted: Evt<{
-    backgroundWorkerId: string;
-    completion: TaskRunExecutionResult;
-    worker: BackgroundWorker;
-    execution: TaskRunExecution;
-  }> = new Evt();
-  public onWorkerRegistered: Evt<{
-    worker: BackgroundWorker;
-    id: string;
-    record: CreateBackgroundWorkerResponse;
-  }> = new Evt();
-  public onWorkerTaskHeartbeat: Evt<{
-    id: string;
-    backgroundWorkerId: string;
-    worker: BackgroundWorker;
-  }> = new Evt();
-  public onWorkerDeprecated: Evt<{ worker: BackgroundWorker; id: string }> = new Evt();
-  private _backgroundWorkers: Map<string, BackgroundWorker> = new Map();
-  private _records: Map<string, CreateBackgroundWorkerResponse> = new Map();
-  private _deprecatedWorkers: Set<string> = new Set();
-
-  constructor(private baseURL: string) {
-    this.onTaskCompleted.attach(async ({ completion, execution }) => {
-      if (!completion.ok && typeof completion.retry !== "undefined") {
-        return;
-      }
-
-      await this.#notifyWorkersOfTaskCompletion(completion, execution);
-    });
-  }
-
-  async #notifyWorkersOfTaskCompletion(
-    completion: TaskRunExecutionResult,
-    execution: TaskRunExecution
-  ) {
-    for (const worker of this._backgroundWorkers.values()) {
-      await worker.taskRunCompletedNotification(completion, execution);
-    }
-  }
-
-  get currentWorkers() {
-    return Array.from(this._backgroundWorkers.entries()).map(([id, worker]) => ({
-      id,
-      worker,
-      record: this._records.get(id)!,
-      isDeprecated: this._deprecatedWorkers.has(id),
-    }));
-  }
-
-  async registerWorker(record: CreateBackgroundWorkerResponse, worker: BackgroundWorker) {
-    for (const [workerId, existingWorker] of this._backgroundWorkers.entries()) {
-      if (workerId === record.id) {
-        continue;
-      }
-
-      this._deprecatedWorkers.add(workerId);
-      this.onWorkerDeprecated.post({ worker: existingWorker, id: workerId });
-    }
-
-    this._backgroundWorkers.set(record.id, worker);
-    this._records.set(record.id, record);
-    this.onWorkerRegistered.post({ worker, id: record.id, record });
-
-    worker.onTaskHeartbeat.attach((id) => {
-      this.onWorkerTaskHeartbeat.post({ id, backgroundWorkerId: record.id, worker });
-    });
-  }
-
-  close() {
-    for (const worker of this._backgroundWorkers.values()) {
-      worker.close();
-    }
-
-    this._backgroundWorkers.clear();
-    this._records.clear();
-  }
-
-  async handleMessage(id: string, message: BackgroundWorkerServerMessages) {
-    switch (message.type) {
-      case "EXECUTE_RUNS": {
-        await Promise.all(message.payloads.map((payload) => this.#executeTaskRun(id, payload)));
-      }
-    }
-  }
-
-  async #executeTaskRun(id: string, payload: TaskRunExecutionPayload) {
-    const worker = this._backgroundWorkers.get(id);
-
-    if (!worker) {
-      logger.error(`Could not find worker ${id}`);
-      return;
-    }
-
-    const record = this._records.get(id);
-
-    if (!record) {
-      logger.error(`Could not find worker record ${id}`);
-      return;
-    }
-
-    const { execution } = payload;
-
-    const logsUrl = `${this.baseURL}/runs/${execution.run.id}`;
-
-    const link = chalk.bgBlueBright(terminalLink("view logs", logsUrl));
-    let timestampPrefix = chalk.gray(new Date().toISOString());
-    const workerPrefix = chalk.green(`[worker:${record.version}]`);
-    const taskPrefix = chalk.yellow(`[task:${execution.task.id}]`);
-    const runId = chalk.blue(execution.run.id);
-    const attempt = chalk.blue(`.${execution.attempt.number}`);
-
-    logger.log(`${timestampPrefix} ${workerPrefix}${taskPrefix} ${runId}${attempt} ${link}`);
-
-    const now = performance.now();
-
-    const completion = await worker.executeTaskRun(payload);
-
-    const elapsed = performance.now() - now;
-
-    const resultText = !completion.ok
-      ? completion.error.type === "INTERNAL_ERROR" &&
-        completion.error.code === TaskRunErrorCodes.TASK_EXECUTION_ABORTED
-        ? chalk.yellow("cancelled")
-        : chalk.red("error")
-      : chalk.green("success");
-
-    const errorText = !completion.ok ? this.#formatErrorLog(completion.error) : "";
-
-    const elapsedText = chalk.dim(`(${elapsed.toFixed(2)}ms)`);
-
-    timestampPrefix = chalk.gray(new Date().toISOString());
-
-    logger.log(
-      `${timestampPrefix} ${workerPrefix}${taskPrefix} ${runId}${attempt} ${resultText} ${elapsedText} ${link}${errorText}`
-    );
-
-    this.onTaskCompleted.post({ completion, execution, worker, backgroundWorkerId: id });
-  }
-
-  #formatErrorLog(error: TaskRunError) {
-    switch (error.type) {
-      case "INTERNAL_ERROR": {
-        return "";
-      }
-      case "STRING_ERROR": {
-        return `\n\n${error.raw}\n`;
-      }
-      case "CUSTOM_ERROR": {
-        return `\n\n${error.raw}\n`;
-      }
-      case "BUILT_IN_ERROR": {
-        return `\n\n${error.stackTrace}\n`;
-      }
-    }
-  }
-}
+import { safeDeleteFileSync } from "../../utilities/fileSystem";
 
 class UnexpectedExitError extends Error {
   constructor(public code: number) {
@@ -201,24 +35,28 @@ class CleanupProcessError extends Error {
   }
 }
 
-export type BackgroundWorkerParams = {
+type BackgroundWorkerParams = {
   env: Record<string, string>;
-  dependencies?: Record<string, string>;
   projectDir: string;
-  debuggerOn: boolean;
+  contentHash: string;
   debugOtel?: boolean;
 };
-export class BackgroundWorker {
+
+export class ProdBackgroundWorker {
   private _initialized: boolean = false;
   private _handler = new ZodMessageHandler({
     schema: childToWorkerMessages,
   });
 
   public onTaskHeartbeat: Evt<string> = new Evt();
+
+  public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
+  public onWaitForDuration: Evt<{ version?: "v1"; ms: number }> = new Evt();
+  public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
+
   private _onClose: Evt<void> = new Evt();
 
   public tasks: Array<TaskMetadataWithFilePath> = [];
-  public metadata: BackgroundWorkerProperties | undefined;
 
   _taskRunProcesses: Map<string, TaskRunProcess> = new Map();
 
@@ -255,18 +93,12 @@ export class BackgroundWorker {
       throw new Error("Worker already initialized");
     }
 
-    // Install the dependencies in dirname(this.path) using npm and child_process
-    if (this.params.dependencies) {
-      await installPackages(this.params.dependencies, { cwd: dirname(this.path) });
-    }
-
     let resolved = false;
 
     this.tasks = await new Promise<Array<TaskMetadataWithFilePath>>((resolve, reject) => {
       const child = fork(this.path, {
         stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
         env: {
-          ...this.#readEnvVars(),
           ...this.params.env,
         },
       });
@@ -280,7 +112,7 @@ export class BackgroundWorker {
         resolved = true;
         child.kill();
         reject(new Error("Worker timed out"));
-      }, 1000);
+      }, 10_000);
 
       child.on("message", async (msg: any) => {
         const message = this._handler.parseMessage(msg);
@@ -294,11 +126,11 @@ export class BackgroundWorker {
       });
 
       child.stdout?.on("data", (data) => {
-        logger.log(data.toString());
+        console.log(data.toString());
       });
 
       child.stderr?.on("data", (data) => {
-        logger.error(data.toString());
+        console.error(data.toString());
       });
 
       child.on("exit", (code) => {
@@ -313,6 +145,14 @@ export class BackgroundWorker {
     this._initialized = true;
   }
 
+  getMetadata(workerId: string, version: string): CreateBackgroundWorkerResponse {
+    return {
+      contentHash: this.params.contentHash,
+      id: workerId,
+      version: version,
+    };
+  }
+
   // We need to notify all the task run processes that a task run has completed,
   // in case they are waiting for it through triggerAndWait
   async taskRunCompletedNotification(
@@ -324,20 +164,20 @@ export class BackgroundWorker {
     }
   }
 
-  async #initializeTaskRunProcess(payload: TaskRunExecutionPayload): Promise<TaskRunProcess> {
-    if (!this.metadata) {
-      throw new Error("Worker not registered");
-    }
+  async #initializeTaskRunProcess(payload: ProdTaskRunExecutionPayload): Promise<TaskRunProcess> {
+    const metadata = this.getMetadata(
+      payload.execution.worker.id,
+      payload.execution.worker.version
+    );
 
     if (!this._taskRunProcesses.has(payload.execution.run.id)) {
       const taskRunProcess = new TaskRunProcess(
         this.path,
         {
-          ...this.#readEnvVars(),
           ...this.params.env,
           ...(payload.environment ?? {}),
         },
-        this.metadata,
+        metadata,
         this.params
       );
 
@@ -349,6 +189,18 @@ export class BackgroundWorker {
         this.onTaskHeartbeat.post(id);
       });
 
+      taskRunProcess.onWaitForBatch.attach((message) => {
+        this.onWaitForBatch.post(message);
+      });
+
+      taskRunProcess.onWaitForDuration.attach((message) => {
+        this.onWaitForDuration.post(message);
+      });
+
+      taskRunProcess.onWaitForTask.attach((message) => {
+        this.onWaitForTask.post(message);
+      });
+
       await taskRunProcess.initialize();
 
       this._taskRunProcesses.set(payload.execution.run.id, taskRunProcess);
@@ -358,9 +210,10 @@ export class BackgroundWorker {
   }
 
   // We need to fork the process before we can execute any tasks
-  async executeTaskRun(payload: TaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
+  async executeTaskRun(payload: ProdTaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
     try {
       const taskRunProcess = await this.#initializeTaskRunProcess(payload);
+
       const result = await taskRunProcess.executeTaskRun(payload);
 
       // Kill the worker if the task was successful or if it's not going to be retried);
@@ -419,17 +272,6 @@ export class BackgroundWorker {
     }
   }
 
-  #readEnvVars() {
-    const result = {};
-
-    dotenv.config({
-      processEnv: result,
-      path: [".env", ".env.local", ".env.development.local"].map((p) => resolve(process.cwd(), p)),
-    });
-
-    return result;
-  }
-
   async #correctError(
     error: TaskRunBuiltInError,
     execution: TaskRunExecution
@@ -454,8 +296,13 @@ class TaskRunProcess {
   private _attemptStatuses: Map<string, "PENDING" | "REJECTED" | "RESOLVED"> = new Map();
   private _currentExecution: TaskRunExecution | undefined;
   private _isBeingKilled: boolean = false;
+
   public onTaskHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<number> = new Evt();
+
+  public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
+  public onWaitForDuration: Evt<{ version?: "v1"; ms: number }> = new Evt();
+  public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
 
   constructor(
     private path: string,
@@ -476,7 +323,6 @@ class TaskRunProcess {
   async initialize() {
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
-      cwd: dirname(this.path),
       env: {
         ...this.env,
         OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
@@ -484,9 +330,6 @@ class TaskRunProcess {
         }),
         ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
       },
-      execArgv: this.worker.debuggerOn
-        ? ["--inspect-brk", "--trace-uncaught"]
-        : ["--trace-uncaught"],
     });
 
     this._child.on("message", this.#handleMessage.bind(this));
@@ -590,6 +433,21 @@ class TaskRunProcess {
       case "TASKS_READY": {
         break;
       }
+      case "WAIT_FOR_BATCH": {
+        this.onWaitForBatch.post(message.payload);
+
+        break;
+      }
+      case "WAIT_FOR_DURATION": {
+        this.onWaitForDuration.post(message.payload);
+
+        break;
+      }
+      case "WAIT_FOR_TASK": {
+        this.onWaitForTask.post(message.payload);
+
+        break;
+      }
     }
   }
 
@@ -623,7 +481,7 @@ class TaskRunProcess {
       return;
     }
 
-    logger.log(
+    console.log(
       `[${this.metadata.version}][${this._currentExecution.run.id}.${
         this._currentExecution.attempt.number
       }] ${data.toString()}`
@@ -636,12 +494,12 @@ class TaskRunProcess {
     }
 
     if (!this._currentExecution) {
-      logger.error(`[${this.metadata.version}] ${data.toString()}`);
+      console.error(`[${this.metadata.version}] ${data.toString()}`);
 
       return;
     }
 
-    logger.error(
+    console.error(
       `[${this.metadata.version}][${this._currentExecution.run.id}.${
         this._currentExecution.attempt.number
       }] ${data.toString()}`

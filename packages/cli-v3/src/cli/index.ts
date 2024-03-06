@@ -9,6 +9,7 @@ import { COMMAND_NAME } from "../consts.js";
 import { getVersion } from "../utilities/getVersion.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import { configureBuildCommand } from "../commands/build.js";
+import { configureDeployCommand } from "../commands/deploy.js";
 
 export const program = new Command();
 
@@ -56,9 +57,9 @@ program
     }
   });
 
-
 configureBuildCommand(program);
 configureDevCommand(program);
+configureDeployCommand(program);
 
 program
   .command("update")

@@ -12,6 +12,7 @@ export type WhoAmIResponse = z.infer<typeof WhoAmIResponseSchema>;
 export const GetProjectDevResponse = z.object({
   apiKey: z.string(),
   name: z.string(),
+  apiUrl: z.string(),
 });
 
 export type GetProjectDevResponse = z.infer<typeof GetProjectDevResponse>;
@@ -101,3 +102,20 @@ export const CreateImageDetailsResponse = z.object({
 });
 
 export type CreateImageDetailsResponse = z.infer<typeof CreateImageDetailsResponse>;
+
+export const ExternalBuildData = z.object({
+  buildId: z.string(),
+  buildToken: z.string(),
+  projectId: z.string(),
+});
+
+export type ExternalBuildData = z.infer<typeof ExternalBuildData>;
+
+export const InitializeDeploymentResponseBody = z.object({
+  id: z.string(),
+  shortCode: z.string(),
+  version: z.string(),
+  externalBuildData: ExternalBuildData.optional(),
+});
+
+export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;

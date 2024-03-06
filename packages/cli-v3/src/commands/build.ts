@@ -142,7 +142,7 @@ async function runBuild(
     logger.log(chalk.green(`Typecheck succeeded.\n`));
   }
 
-  logger.log(chalk.dim("⎔ Bundling tasks..."));
+  logger.log(chalk.dim("⎔ Building tasks..."));
 
   const result = await build({
     stdin: {
@@ -150,7 +150,7 @@ async function runBuild(
       resolveDir: process.cwd(),
       sourcefile: "__entryPoint.ts",
     },
-    bundle: true,
+    bundle: false,
     metafile: true,
     write: false,
     minify: false,
@@ -160,9 +160,6 @@ async function runBuild(
     format: "esm",
     target: ["node18", "es2020"],
     outdir: "out",
-    banner: {
-      js: "import { createRequire } from 'module';const require = createRequire(import.meta.url);",
-    },
   });
 
   if (result.errors.length > 0) {

@@ -38,6 +38,14 @@
       "sourceMaps": true
     },
     {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug V3 Deploy CLI",
+      "command": "pnpm exec trigger.dev deploy",
+      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "sourceMaps": true
+    },
+    {
       "type": "node",
       "request": "attach",
       "name": "Attach to Trigger.dev CLI (v3)",

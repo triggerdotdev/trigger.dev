@@ -3,6 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { GetProjectDevResponse } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 
@@ -56,6 +57,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const result: GetProjectDevResponse = {
     apiKey: prodEnvironment.apiKey,
     name: project.name,
+    apiUrl: env.APP_ORIGIN,
   };
 
   return json(result);
