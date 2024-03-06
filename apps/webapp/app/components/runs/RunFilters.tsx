@@ -4,6 +4,7 @@ import {
   ExclamationTriangleIcon,
   NoSymbolIcon,
   PauseCircleIcon,
+  TrashIcon,
   XCircleIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
@@ -86,14 +87,14 @@ export function RunsFilters() {
   }, []);
 
   return (
-    <div className="flex flex-row justify-between gap-x-2">
+    <div className="flex flex-row justify-between">
       <SelectGroup>
         <Select
           name="environment"
           value={environment ?? "ALL"}
           onValueChange={handleEnvironmentChange}
         >
-          <SelectTrigger size="secondary/small" width="full">
+          <SelectTrigger size="minimal" width="full">
             <SelectValue placeholder={"Select environment"} className="ml-2 p-0" />
           </SelectTrigger>
           <SelectContent>
@@ -116,7 +117,7 @@ export function RunsFilters() {
 
       <SelectGroup>
         <Select name="status" value={status ?? "ALL"} onValueChange={handleStatusChange}>
-          <SelectTrigger size="secondary/small" width="full">
+          <SelectTrigger size="minimal" width="full">
             <SelectValue placeholder="Select status" className="ml-2 p-0" />
           </SelectTrigger>
           <SelectContent>
@@ -141,9 +142,7 @@ export function RunsFilters() {
 
       <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} />
 
-      <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={"close"}>
-        Clear
-      </Button>
+      <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={TrashIcon} />
     </div>
   );
 }
