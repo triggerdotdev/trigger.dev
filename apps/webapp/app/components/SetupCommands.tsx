@@ -128,3 +128,80 @@ export function TriggerDevStep({ extra }: { extra?: string }) {
     </>
   );
 }
+
+// Trigger.dev version 3 setup commands
+
+export function InitCommandV3() {
+  return (
+    <ClientTabs defaultValue="npm">
+      <ClientTabsList>
+        <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+        <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+        <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+      </ClientTabsList>
+      <ClientTabsContent value={"npm"}>
+        <ClipboardField
+          variant="primary/medium"
+          iconButton
+          className="mb-4"
+          secure={`npx trigger.dev@latest init`}
+          value={`npx trigger.dev@latest init`}
+        />
+      </ClientTabsContent>
+      <ClientTabsContent value={"pnpm"}>
+        <ClipboardField
+          variant="primary/medium"
+          iconButton
+          className="mb-4"
+          secure={`pnpm dlx trigger.dev@latest init`}
+          value={`pnpm dlx trigger.dev@latest init`}
+        />
+      </ClientTabsContent>
+      <ClientTabsContent value={"yarn"}>
+        <ClipboardField
+          variant="primary/medium"
+          iconButton
+          className="mb-4"
+          secure={`yarn dlx trigger.dev@latest init`}
+          value={`yarn dlx trigger.dev@latest init`}
+        />
+      </ClientTabsContent>
+    </ClientTabs>
+  );
+}
+
+export function TriggerDevStepV3() {
+  return (
+    <ClientTabs defaultValue="npm">
+      <ClientTabsList>
+        <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
+        <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
+        <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
+      </ClientTabsList>
+      <ClientTabsContent value={"npm"}>
+        <ClipboardField
+          variant="primary/medium"
+          iconButton
+          className="mb-4"
+          value={`npx trigger.dev@latest init`}
+        />
+      </ClientTabsContent>
+      <ClientTabsContent value={"pnpm"}>
+        <ClipboardField
+          variant="primary/medium"
+          iconButton
+          className="mb-4"
+          value={`pnpm dlx trigger.dev@latest init`}
+        />
+      </ClientTabsContent>
+      <ClientTabsContent value={"yarn"}>
+        <ClipboardField
+          variant="primary/medium"
+          iconButton
+          className="mb-4"
+          value={`yarn dlx trigger.dev@latest init`}
+        />
+      </ClientTabsContent>
+    </ClientTabs>
+  );
+}

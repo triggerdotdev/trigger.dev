@@ -123,7 +123,7 @@ function RunTaskInstructions() {
   const project = useProject();
   return (
     <MainCenteredContainer className="max-w-prose">
-      <Header1 className="mb-4 border-b py-4">How to run your tasks</Header1>
+      <Header1 className="mb-6 border-b py-2">How to run your tasks</Header1>
       <StepNumber stepNumber="A" title="Trigger a test run" />
       <StepContentContainer>
         <Paragraph spacing>
@@ -138,7 +138,7 @@ function RunTaskInstructions() {
         >
           Test
         </LinkButton>
-        <div className="mt-5 flex items-center gap-2">
+        <div className="mt-6 flex items-center gap-2">
           <hr className="w-full" />
           <Paragraph variant="extra-extra-small/dimmed/caps">OR</Paragraph>
           <hr className="w-full" />
