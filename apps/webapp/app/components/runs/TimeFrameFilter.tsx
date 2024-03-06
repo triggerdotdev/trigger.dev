@@ -1,21 +1,12 @@
 import { ChevronDownIcon } from "lucide-react";
 import { useCallback, useState } from "react";
-import {
-  Calendar,
-  CalendarDateTime,
-  DateValue,
-  getLocalTimeZone,
-  today,
-} from "@internationalized/date";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { ClientTabs, ClientTabsContent, ClientTabsWithUnderline } from "../primitives/ClientTabs";
+import { DateField } from "../primitives/DateField";
 import { formatDateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
-import { DateField } from "../primitives/DateField";
-import { useLocales } from "../primitives/LocaleProvider";
-import { createCalendar } from "@internationalized/date";
 
 type RunTimeFrameFilterProps = {
   from?: number;
@@ -50,7 +41,7 @@ export function TimeFrameFilter({ from, to, onRangeChanged }: RunTimeFrameFilter
   return (
     <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen} modal>
       <PopoverTrigger asChild>
-        <Button variant="minimal/small" className="">
+        <Button variant="minimal/small">
           <Paragraph variant="extra-small" className="transition group-hover:text-text-bright">
             {title(from, to, relativeTimeSeconds)}
           </Paragraph>
