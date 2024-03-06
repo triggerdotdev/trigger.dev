@@ -87,7 +87,7 @@ export default function LoginPage() {
                   fullWidth
                   data-action="continue with github"
                 >
-                  <GitHubDarkIcon className={"mr-2 size-6"} />
+                  <GitHubDarkIcon className={"mr-2 size-5"} />
                   <span className="text-charcoal-900">Continue with GitHub</span>
                 </Button>
               )}
@@ -96,13 +96,9 @@ export default function LoginPage() {
                 variant="tertiary/extra-large"
                 fullWidth
                 data-action="continue with email"
+                className="text-text-bright"
               >
-                <NamedIcon
-                  name={"envelope"}
-                  className={
-                    "mr-1.5 h-4 w-4 text-text-dimmed transition group-hover:text-text-bright"
-                  }
-                />
+                <NamedIcon name={"envelope"} className={"mr-2 size-5 text-text-bright"} />
                 Continue with Email
               </LinkButton>
             </div>

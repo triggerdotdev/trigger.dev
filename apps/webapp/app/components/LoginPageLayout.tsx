@@ -15,6 +15,12 @@ import { Icon } from "./primitives/Icon";
 import { Paragraph } from "./primitives/Paragraph";
 import { TextLink } from "./primitives/TextLink";
 import { LoginTooltip } from "./primitives/Tooltip";
+import { VerizonLogo } from "~/assets/logos/VerizonLogo";
+import { ShopifyLogo } from "~/assets/logos/ShopifyLogo";
+import { OktaLogo } from "~/assets/logos/OktaLogo";
+import { CalComLogo } from "~/assets/logos/CalComLogo";
+import { AppsmithLogo } from "~/assets/logos/AppsmithLogo";
+import { ATAndTLogo } from "~/assets/logos/ATAndTLogo";
 
 interface QuoteType {
   quote: string;
@@ -51,7 +57,7 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <main className="grid h-full grid-cols-2">
-      <div className="border-midnight-750 border-r bg-background-bright">
+      <div className="border-r border-grid-bright bg-background-bright">
         <div className="flex h-full flex-col items-center justify-between p-6">
           <div className="flex w-full items-center justify-between">
             <a href="https://trigger.dev">
@@ -62,24 +68,28 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
             </LinkButton>
           </div>
           <div className="flex h-full max-w-sm items-center justify-center">{children}</div>
-          <Paragraph variant="extra-small" className="text-center">
+          <Paragraph variant="small" className="text-center">
             Having login issues? <TextLink href="https://@trigger.dev/contact">Email us</TextLink>{" "}
             or <TextLink href="https://trigger.dev/discord">ask us in Discord</TextLink>
           </Paragraph>
         </div>
       </div>
-      <div className="">
-        <div className="">
-          <div className="px-4">
-            <Header3 className="relative text-2xl font-normal leading-8 text-gray-600 transition before:relative before:right-1 before:top-0 before:text-4xl before:text-charcoal-600 before:opacity-20 before:content-['❝'] group-hover:text-charcoal-500 group-hover:before:opacity-30 lg-height:text-xl md-height:text-lg">
-              {randomQuote?.quote}
-            </Header3>
-            <Paragraph
-              variant="small"
-              className="mt-4 text-gray-700 transition group-hover:text-charcoal-600"
-            >
-              {randomQuote?.person}
-            </Paragraph>
+      <div className="grid grid-rows-[1fr_5.8rem]">
+        <div className="flex h-full flex-col items-center justify-center px-16">
+          <Header3 className="relative text-center text-2xl font-normal leading-8 text-text-dimmed transition before:relative before:right-1 before:top-0 before:text-6xl before:text-charcoal-750 before:content-['❝'] lg-height:text-xl md-height:text-lg">
+            {randomQuote?.quote}
+          </Header3>
+          <Paragraph className="mt-4 text-text-dimmed/60">{randomQuote?.person}</Paragraph>
+        </div>
+        <div className="flex flex-col items-center gap-4 px-8">
+          <Paragraph>Trusted by developers at</Paragraph>
+          <div className="flex w-full flex-wrap items-center justify-between gap-4">
+            <VerizonLogo />
+            <ShopifyLogo />
+            <OktaLogo />
+            <ATAndTLogo />
+            <AppsmithLogo />
+            <CalComLogo />
           </div>
         </div>
       </div>

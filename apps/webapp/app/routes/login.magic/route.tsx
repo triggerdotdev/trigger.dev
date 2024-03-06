@@ -120,7 +120,7 @@ export default function LoginMagicLinkPage() {
                       type="submit"
                       name="action"
                       value="reset"
-                      variant="tertiary/small"
+                      variant="minimal/small"
                       LeadingIcon="arrow-left"
                       leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
                       data-action="re-enter email"
@@ -131,7 +131,7 @@ export default function LoginMagicLinkPage() {
                   confirmButton={
                     <LinkButton
                       to="/login"
-                      variant="tertiary/small"
+                      variant="minimal/small"
                       data-action="log in using another option"
                     >
                       Log in using another option
@@ -142,7 +142,7 @@ export default function LoginMagicLinkPage() {
             </>
           ) : (
             <>
-              <Header1 className="pb-4 font-normal sm:text-2xl md:text-3xl lg:text-4xl">
+              <Header1 className="pb-4 font-semibold sm:text-2xl md:text-3xl lg:text-4xl">
                 Welcome
               </Header1>
               <Paragraph variant="base" className="mb-6 text-center">
@@ -171,10 +171,14 @@ export default function LoginMagicLinkPage() {
                   data-action="send a magic link"
                 >
                   <NamedIcon
-                    name={isLoading ? "spinner-white" : "envelope"}
-                    className={"mr-1.5 h-4 w-4 text-white transition group-hover:text-text-bright"}
+                    name={isLoading ? "spinner-dark" : "envelope"}
+                    className={"mr-2 size-5 text-background-dimmed"}
                   />
-                  {isLoading ? "Sending…" : "Send a magic link"}
+                  {isLoading ? (
+                    <span className="text-background-dimmed">Sending…</span>
+                  ) : (
+                    <span className="text-background-dimmed">Send a magic link</span>
+                  )}
                 </Button>
                 {magicLinkError && <FormError>{magicLinkError}</FormError>}
               </Fieldset>
@@ -192,7 +196,7 @@ export default function LoginMagicLinkPage() {
 
               <LinkButton
                 to="/login"
-                variant={"tertiary/small"}
+                variant={"minimal/small"}
                 LeadingIcon={"arrow-left"}
                 leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
                 data-action="all login options"
