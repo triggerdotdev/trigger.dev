@@ -9,8 +9,8 @@ FROM base
 
 WORKDIR /app
 
-COPY --chown=node dist/index.cjs /app/
+COPY --chown=node dist/index.mjs /app/
 
 EXPOSE 8000
 
-ENTRYPOINT [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "/app/index.cjs" ]
+ENTRYPOINT [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "/app/index.mjs" ]

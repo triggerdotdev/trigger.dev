@@ -112,7 +112,7 @@ export class ProdBackgroundWorker {
         resolved = true;
         child.kill();
         reject(new Error("Worker timed out"));
-      }, 1000);
+      }, 10_000);
 
       child.on("message", async (msg: any) => {
         const message = this._handler.parseMessage(msg);

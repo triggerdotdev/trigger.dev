@@ -1,11 +1,11 @@
 import {
-  CoordinatorToProdWorkerEvents,
-  ProdWorkerToCoordinatorEvents,
+  CoordinatorToProdWorkerMessages,
+  ProdWorkerToCoordinatorMessages,
   TaskResource,
+  ZodSocketConnection,
 } from "@trigger.dev/core/v3";
 import { HttpReply, getTextBody, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
 import { createServer } from "node:http";
-import { io, Socket } from "socket.io-client";
 import { ProdBackgroundWorker } from "./prod/backgroundWorker";
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
@@ -33,7 +33,10 @@ class ProdWorker {
   #httpPort: number;
   #backgroundWorker: ProdBackgroundWorker;
   #httpServer: ReturnType<typeof createServer>;
-  #coordinatorSocket: Socket<CoordinatorToProdWorkerEvents, ProdWorkerToCoordinatorEvents>;
+  #coordinatorSocket: ZodSocketConnection<
+    typeof ProdWorkerToCoordinatorMessages,
+    typeof CoordinatorToProdWorkerMessages
+  >;
 
   constructor(
     port: number,
@@ -46,26 +49,23 @@ class ProdWorker {
       env: {
         TRIGGER_API_URL: this.apiUrl,
         TRIGGER_SECRET_KEY: this.apiKey,
+        OTEL_EXPORTER_OTLP_ENDPOINT:
+          process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
       },
       contentHash: this.contentHash,
     });
     this.#backgroundWorker.onTaskHeartbeat.attach((attemptFriendlyId) => {
-      this.#coordinatorSocket.emit("TASK_HEARTBEAT", { version: "v1", attemptFriendlyId });
+      this.#coordinatorSocket.send("TASK_HEARTBEAT", { attemptFriendlyId });
     });
     this.#backgroundWorker.onWaitForBatch.attach((message) => {
-      this.#coordinatorSocket.emit("WAIT_FOR_BATCH", { version: "v1", ...message });
+      this.#coordinatorSocket.send("WAIT_FOR_BATCH", message);
     });
-    this.#backgroundWorker.onWaitForDuration.attach((message) => {
-      this.#coordinatorSocket.emit(
-        "WAIT_FOR_DURATION",
-        { version: "v1", ...message },
-        ({ success }) => {
-          logger.log("WAIT_FOR_DURATION", { success });
-        }
-      );
+    this.#backgroundWorker.onWaitForDuration.attach(async (message) => {
+      const { success } = await this.#coordinatorSocket.sendWithAck("WAIT_FOR_DURATION", message);
+      logger.log("WAIT_FOR_DURATION", { success });
     });
     this.#backgroundWorker.onWaitForTask.attach((message) => {
-      this.#coordinatorSocket.emit("WAIT_FOR_TASK", { version: "v1", ...message });
+      this.#coordinatorSocket.send("WAIT_FOR_TASK", message);
     });
 
     this.#httpPort = port;
@@ -73,93 +73,84 @@ class ProdWorker {
   }
 
   #createCoordinatorSocket() {
-    const socket: Socket<CoordinatorToProdWorkerEvents, ProdWorkerToCoordinatorEvents> = io(
-      `ws://${COORDINATOR_HOST}:${COORDINATOR_PORT}/prod-worker`,
-      {
-        transports: ["websocket"],
-        extraHeaders: {
-          "x-machine-name": MACHINE_NAME,
-          "x-pod-name": POD_NAME,
-          "x-trigger-content-hash": this.contentHash,
-          "x-trigger-cli-package-version": this.cliPackageVersion,
-          "x-trigger-project-ref": this.projectRef,
-          "x-trigger-attempt-id": this.attemptId,
-          "x-trigger-env-id": this.envId,
+    const coordinatorConnection = new ZodSocketConnection({
+      namespace: "prod-worker",
+      host: COORDINATOR_HOST,
+      port: COORDINATOR_PORT,
+      clientMessages: ProdWorkerToCoordinatorMessages,
+      serverMessages: CoordinatorToProdWorkerMessages,
+      extraHeaders: {
+        "x-machine-name": MACHINE_NAME,
+        "x-pod-name": POD_NAME,
+        "x-trigger-content-hash": this.contentHash,
+        "x-trigger-cli-package-version": this.cliPackageVersion,
+        "x-trigger-project-ref": this.projectRef,
+        "x-trigger-attempt-id": this.attemptId,
+        "x-trigger-env-id": this.envId,
+      },
+      handlers: {
+        RESUME: async (message) => {
+          for (let i = 0; i < message.completions.length; i++) {
+            const completion = message.completions[i];
+            const execution = message.executions[i];
+
+            if (!completion || !execution) continue;
+
+            this.#backgroundWorker.taskRunCompletedNotification(completion, execution);
+          }
         },
-      }
-    );
+        EXECUTE_TASK_RUN: async (message) => {
+          if (this.executing || this.completed) {
+            return {
+              success: false,
+            };
+          }
 
-    const logger = new SimpleLogger(`[coordinator][${socket.id ?? "NO_ID"}]`);
+          this.executing = true;
+          const completion = await this.#backgroundWorker.executeTaskRun(message.executionPayload);
 
-    socket.on("connect_error", (err) => {
-      logger.error(`connect_error: ${err.message}`);
-    });
+          logger.log("completed", completion);
 
-    socket.on("connect", async () => {
-      logger.log("connect");
+          this.completed = true;
+          this.executing = false;
 
-      if (process.env.INDEX_TASKS === "true") {
-        const taskResources = await this.#initializeWorker();
-        const { success } = await socket.emitWithAck("INDEX_TASKS", {
-          version: "v1",
-          ...taskResources,
-        });
-        if (success) {
-          logger.log("indexing done, shutting down..");
-          process.exit(0);
+          setTimeout(() => {
+            process.exit(0);
+          }, 2000);
+
+          // TODO: replace ack with emit
+          return {
+            success: true,
+            completion,
+          };
+        },
+      },
+      onConnection: async (socket, handler, sender, logger) => {
+        if (process.env.INDEX_TASKS === "true") {
+          const taskResources = await this.#initializeWorker();
+
+          const { success } = await socket.emitWithAck("INDEX_TASKS", {
+            version: "v1",
+            ...taskResources,
+          });
+
+          if (success) {
+            logger("indexing done, shutting down..");
+            process.exit(0);
+          } else {
+            logger("indexing failure, shutting down..");
+            process.exit(1);
+          }
         } else {
-          logger.log("indexing failure, shutting down..");
-          process.exit(1);
+          socket.emit("READY_FOR_EXECUTION", {
+            version: "v1",
+            attemptId: this.attemptId,
+          });
         }
-      } else {
-        socket.emit("READY_FOR_EXECUTION", {
-          version: "v1",
-          attemptId: process.env.TRIGGER_ATTEMPT_ID!,
-        });
-      }
+      },
     });
 
-    socket.on("disconnect", () => {
-      logger.log("disconnect");
-    });
-
-    socket.on("RESUME", async (message) => {
-      logger.log("[RESUME]", message);
-
-      for (let i = 0; i < message.completions.length; i++) {
-        const completion = message.completions[i];
-        const execution = message.executions[i];
-
-        if (!completion || !execution) continue;
-
-        this.#backgroundWorker.taskRunCompletedNotification(completion, execution);
-      }
-    });
-
-    socket.on("EXECUTE_TASK_RUN", async (message, callback) => {
-      logger.log("[EXECUTE_TASK_RUN]", { attempt: message.payload.execution.attempt });
-
-      if (this.executing || this.completed) {
-        return;
-      }
-
-      this.executing = true;
-      const completion = await this.#backgroundWorker.executeTaskRun(message.payload);
-
-      logger.log("completed", completion);
-
-      // TODO: replace ack with emit
-      callback({ completion });
-
-      this.completed = true;
-      this.executing = false;
-
-      setTimeout(() => {
-        process.exit(0);
-      }, 1000);
-    });
-
-    return socket;
+    return coordinatorConnection;
   }
 
   #createHttpServer() {
@@ -188,16 +179,11 @@ class ProdWorker {
           return reply.text(this.contentHash);
 
         case "/wait":
-          this.#coordinatorSocket.emit(
-            "WAIT_FOR_DURATION",
-            {
-              version: "v1",
-              ms: 60_000,
-            },
-            ({ success }) => {
-              logger.log("WAIT_FOR_DURATION", { success });
-            }
-          );
+          const { success } = await this.#coordinatorSocket.sendWithAck("WAIT_FOR_DURATION", {
+            version: "v1",
+            ms: 60_000,
+          });
+          logger.log("WAIT_FOR_DURATION", { success });
           // this is required when C/Ring established connections
           this.#coordinatorSocket.close();
           return reply.text("sent WAIT");
@@ -207,7 +193,7 @@ class ProdWorker {
           return reply.empty();
 
         case "/close":
-          this.#coordinatorSocket.emitWithAck("LOG", {
+          this.#coordinatorSocket.sendWithAck("LOG", {
             version: "v1",
             text: "close without delay",
           });
@@ -215,7 +201,7 @@ class ProdWorker {
           return reply.empty();
 
         case "/close-delay":
-          this.#coordinatorSocket.emitWithAck("LOG", {
+          this.#coordinatorSocket.sendWithAck("LOG", {
             version: "v1",
             text: "close with delay",
           });
@@ -225,7 +211,7 @@ class ProdWorker {
           return reply.empty();
 
         case "/log":
-          this.#coordinatorSocket.emitWithAck("LOG", {
+          this.#coordinatorSocket.sendWithAck("LOG", {
             version: "v1",
             text: await getTextBody(req),
           });
@@ -236,7 +222,7 @@ class ProdWorker {
           return reply.text("got preStop request");
 
         case "/ready":
-          this.#coordinatorSocket.emit("READY_FOR_EXECUTION", {
+          this.#coordinatorSocket.send("READY_FOR_EXECUTION", {
             version: "v1",
             attemptId: this.attemptId,
           });
