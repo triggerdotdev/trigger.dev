@@ -1,6 +1,11 @@
+import { TrashIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
+import { RuntimeEnvironment, TaskRunAttemptStatus } from "@trigger.dev/database";
+import { useCallback } from "react";
+import { z } from "zod";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
+import { Button } from "../../primitives/Buttons";
 import { Paragraph } from "../../primitives/Paragraph";
 import {
   Select,
@@ -10,13 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../primitives/Select";
-import { RuntimeEnvironment, TaskRunAttemptStatus } from "@trigger.dev/database";
-import { useCallback } from "react";
-import { z } from "zod";
-import { Button } from "../../primitives/Buttons";
 import { TimeFrameFilter } from "../TimeFrameFilter";
 import { TaskRunStatus } from "./TaskRunStatus";
-import { TrashIcon } from "@heroicons/react/20/solid";
 
 export const allTaskRunStatuses = [
   "ENQUEUED",
@@ -127,7 +127,7 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
   }, []);
 
   return (
-    <div className="flex flex-row justify-between gap-x-2">
+    <div className="flex flex-row justify-between">
       <SelectGroup>
         <Select
           name="environment"
