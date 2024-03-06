@@ -1,32 +1,26 @@
-import { intro, log, spinner } from "@clack/prompts";
+import { intro, spinner } from "@clack/prompts";
+import { depot } from "@depot/cli";
+import { ResolvedConfig } from "@trigger.dev/core/v3";
 import { Command } from "commander";
+import { Metafile, build } from "esbuild";
+import { execa } from "execa";
+import { resolve as importResolve } from "import-meta-resolve";
+import { readFileSync } from "node:fs";
+import { copyFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { exit } from "node:process";
+import invariant from "tiny-invariant";
 import { z } from "zod";
+import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions } from "../cli/common.js";
 import { getConfigPath, readConfig } from "../utilities/configFiles.js";
+import { createTempDir, readJSONFile, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
-import { ResolvedConfig } from "@trigger.dev/core/v3";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
-import { read, readFileSync, write } from "node:fs";
-import { resolve as importResolve } from "import-meta-resolve";
-import { Metafile, build } from "esbuild";
-import { exit } from "node:process";
-import {
-  createTempDir,
-  readJSONFile,
-  safeFeadJSONFile,
-  writeJSONFile,
-} from "../utilities/fileSystem";
-import { join } from "node:path";
-import invariant from "tiny-invariant";
-import { copyFile, writeFile } from "node:fs/promises";
-import { detectPackageNameFromImportPath } from "../utilities/installPackages";
-import * as packageJson from "../../package.json";
-import { execa } from "execa";
-import { depot } from "@depot/cli";
-import { homedir } from "node:os";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().optional(),
@@ -118,40 +112,91 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
   // TODO: handle this and allow the user to the build and push the image themselves
   if (!deploymentResponse.data.externalBuildData) {
     deploymentSpinner.stop(
-      `Failed to initialize deployment. The deployment does not have any external build data`
+      `Failed to initialize deployment. The deployment does not have any external build data. Support for local building coming soon.`
     );
     exit(1);
   }
 
   const registryHost = new URL(prodEnv.data.apiUrl).host;
 
-  // Step 3: Ensure we are "logged in" to our registry by writing to $HOME/.docker/config.json
-  // TODO: make sure this works on windows
-  const dockerConfigDir = await ensureLoggedIntoDockerRegistry(registryHost, {
-    username: "trigger",
-    password: authorization.config.accessToken,
+  const image = await buildAndPushImage({
+    registryHost,
+    auth: authorization.config.accessToken,
+    imageTag: deploymentResponse.data.imageTag,
+    buildId: deploymentResponse.data.externalBuildData.buildId,
+    buildToken: deploymentResponse.data.externalBuildData.buildToken,
+    buildProjectId: deploymentResponse.data.externalBuildData.projectId,
+    cwd: compiledPath,
+    projectId: config.project,
+    deploymentId: deploymentResponse.data.id,
+    deploymentVersion: deploymentResponse.data.version,
   });
 
-  // TODO: make this work with staging as well
-  const repo = `trigger/${config.project}-prod`;
-  const tag = deploymentResponse.data.version;
+  if (!image.ok) {
+    deploymentSpinner.stop(`Failed to build and push image: ${image.error}`);
+    exit(1);
+  }
 
-  const imageTag = `${registryHost}/${repo}:${tag}`;
+  deploymentSpinner.stop(
+    `Deployment complete. Image: ${image.image}${image.digest ? `@${image.digest}` : ""}`
+  );
 
-  logger.debug(`Building and pushing image to ${imageTag}`, { compiledPath });
+  // Need to update the deployment with the image and start the deployment (indexing)
+
+  // Step 5: Update the deployment with the image and start the deployment (indexing)
+  // Step 6: Wait for the deployment to finish and print the result
+}
+
+type BuildAndPushImageOptions = {
+  registryHost: string;
+  auth: string;
+  imageTag: string;
+  buildId: string;
+  buildToken: string;
+  buildProjectId: string;
+  cwd: string;
+  projectId: string;
+  deploymentId: string;
+  deploymentVersion: string;
+};
+
+type BuildAndPushImageResults =
+  | {
+      ok: true;
+      image: string;
+      digest?: string;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+async function buildAndPushImage(
+  options: BuildAndPushImageOptions
+): Promise<BuildAndPushImageResults> {
+  // Step 3: Ensure we are "logged in" to our registry by writing to $HOME/.docker/config.json
+  // TODO: make sure this works on windows
+  const dockerConfigDir = await ensureLoggedIntoDockerRegistry(options.registryHost, {
+    username: "trigger",
+    password: options.auth,
+  });
 
   const args = [
     "build",
     "-f",
     "Containerfile",
+    "--platform",
+    "linux/amd64",
+    "--provenance",
+    "false",
     "--build-arg",
-    `TRIGGER_PROJECT_ID=${config.project}`,
+    `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
-    `TRIGGER_DEPLOYMENT_ID=${deploymentResponse.data.id}`,
+    `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
     "--build-arg",
-    `TRIGGER_DEPLOYMENT_VERSION=${deploymentResponse.data.version}`,
+    `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
     "-t",
-    imageTag,
+    `${options.registryHost}/${options.imageTag}`,
     "--push",
     ".",
   ];
@@ -160,29 +205,57 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   // Step 4: Build and push the image
   const childProcess = depot(args, {
-    stdio: "inherit",
-    cwd: compiledPath,
+    cwd: options.cwd,
     env: {
-      DEPOT_BUILD_ID: deploymentResponse.data.externalBuildData.buildId,
-      DEPOT_TOKEN: deploymentResponse.data.externalBuildData.buildToken,
-      DEPOT_PROJECT_ID: deploymentResponse.data.externalBuildData.projectId,
+      DEPOT_BUILD_ID: options.buildId,
+      DEPOT_TOKEN: options.buildToken,
+      DEPOT_PROJECT_ID: options.buildProjectId,
       DEPOT_NO_SUMMARY_LINK: "1",
       DOCKER_CONFIG: dockerConfigDir,
     },
   });
 
+  const errors: string[] = [];
+
   try {
-    await new Promise((resolve, reject) => {
-      childProcess.addListener("exit", (code) => (code === 0 ? resolve(code) : reject(code)));
+    await new Promise<void>((res, rej) => {
+      // For some reason everything is output on stderr, not stdout
+      childProcess.stderr?.on("data", (data: Buffer) => {
+        const text = data.toString();
+
+        errors.push(text);
+      });
+
+      childProcess.on("error", (e) => rej(e));
+      childProcess.on("close", () => res());
     });
 
-    deploymentSpinner.stop(`Deployment finilized, waiting for indexing`);
-  } catch {
-    deploymentSpinner.stop(`Failed to build and push the image`);
-  }
+    const digest = extractImageDigest(errors);
 
-  // Step 5: Update the deployment with the image and start the deployment (indexing)
-  // Step 6: Wait for the deployment to finish and print the result
+    return {
+      ok: true,
+      image: options.imageTag,
+      digest,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : JSON.stringify(e),
+    };
+  }
+}
+
+function extractImageDigest(outputs: string[]) {
+  const imageDigestRegex = /sha256:[a-f0-9]{64}/;
+
+  for (const line of outputs) {
+    if (line.includes("pushing manifest")) {
+      const imageDigestMatch = line.match(imageDigestRegex);
+      if (imageDigestMatch) {
+        return imageDigestMatch[0];
+      }
+    }
+  }
 }
 
 async function compileProject(config: ResolvedConfig, options: DeployCommandOptions) {

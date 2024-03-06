@@ -27,6 +27,8 @@ app.use(express.static("public", { maxAge: "1h" }));
 
 app.use(morgan("tiny"));
 
+process.title = "node webapp-server";
+
 const MODE = process.env.NODE_ENV;
 const BUILD_DIR = path.join(process.cwd(), "build");
 const build = require(BUILD_DIR);
@@ -38,7 +40,7 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
   const wss: WebSocketServer | undefined = build.entry.module.wss;
   const registryProxy: RegistryProxy | undefined = build.entry.module.registryProxy;
 
-  if (registryProxy) {
+  if (registryProxy && process.env.ENABLE_REGISTRY_PROXY === "true") {
     console.log(`🐳 Enabling container registry proxy to ${registryProxy.origin}`);
 
     // Adjusted to match /v2 and any subpath under /v2

@@ -8,6 +8,11 @@ import { authenticatePersonalAccessToken } from "~/services/personalAccessToken.
 import { singleton } from "~/utils/singleton";
 import { jwtDecode } from "jwt-decode";
 import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
+import { mkdtemp } from "fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
+import { unlinkSync } from "fs";
 
 const TokenResponseBody = z.object({
   token: z.string(),
@@ -19,7 +24,6 @@ type RegistryProxyOptions = {
   origin: string;
   auth: { username: string; password: string };
   redis?: RedisOptions;
-  imagePrefix?: string;
 };
 
 export class RegistryProxy {
@@ -33,6 +37,10 @@ export class RegistryProxy {
 
   get origin() {
     return this.options.origin;
+  }
+
+  get host() {
+    return new URL(this.options.origin).host;
   }
 
   public async call(request: IncomingMessage, response: ServerResponse) {
@@ -95,6 +103,25 @@ export class RegistryProxy {
       `${this.options.auth.username}:${this.options.auth.password}`
     ).toString("base64")}`;
 
+    let tempFilePath: string | undefined;
+    let cleanupTempFile: () => void = () => {};
+
+    if (
+      options.method === "POST" ||
+      (options.method === "PUT" && request.headers["content-length"])
+    ) {
+      tempFilePath = await streamRequestBodyToTempFile(request);
+
+      cleanupTempFile = () => {
+        if (tempFilePath) {
+          logger.debug("Cleaning up temp file", { tempFilePath });
+          unlinkSync(tempFilePath);
+        }
+      };
+
+      logger.debug("Streamed request body to temp file", { tempFilePath });
+    }
+
     const makeProxiedRequest = (tokenOptions: RequestOptions, attempts: number = 1) => {
       logger.debug("Proxying request", {
         request: tokenOptions,
@@ -110,7 +137,7 @@ export class RegistryProxy {
         response.writeHead(500, { "Content-Type": "text/plain" });
         response.end("Internal Server Error: Too many attempts to proxy request");
 
-        return;
+        return cleanupTempFile();
       }
 
       const proxyReq = httpRequest(tokenOptions, async (proxyRes) => {
@@ -130,7 +157,7 @@ export class RegistryProxy {
             // Handle failed token fetch or lack of WWW-Authenticate handling
             response.writeHead(401, { "Content-Type": "text/plain" });
             response.end("Failed to authenticate with the registry using bearer token");
-            return;
+            return cleanupTempFile();
           }
         }
 
@@ -141,7 +168,7 @@ export class RegistryProxy {
 
           response.writeHead(401, { "Content-Type": "text/plain" });
           response.end("Unauthorized");
-          return;
+          return cleanupTempFile();
         }
 
         if (proxyRes.statusCode === 301) {
@@ -167,7 +194,7 @@ export class RegistryProxy {
           response.writeHead(500, { "Content-Type": "text/plain" });
           response.end("Internal Server Error: No status code in the response");
 
-          return;
+          return cleanupTempFile();
         }
 
         const headers = { ...proxyRes.headers };
@@ -176,26 +203,29 @@ export class RegistryProxy {
         if (headers["location"]) {
           const proxiedLocation = new URL(headers.location);
 
-          if (!request.headers.host) {
-            // Return a 500 if the host header is missing
-            logger.error("Host header is missing in the request", {
-              headers: request.headers,
+          // Only rewrite the location header if the host is the same as the registry
+          if (proxiedLocation.host === this.host) {
+            if (!request.headers.host) {
+              // Return a 500 if the host header is missing
+              logger.error("Host header is missing in the request", {
+                headers: request.headers,
+              });
+
+              response.writeHead(500, { "Content-Type": "text/plain" });
+              response.end("Internal Server Error: Host header is missing in the request");
+              return cleanupTempFile();
+            }
+
+            proxiedLocation.host = request.headers.host;
+
+            headers["location"] = proxiedLocation.href;
+
+            logger.debug("Rewriting location response header", {
+              originalLocation: proxyRes.headers["location"],
+              proxiedLocation: headers["location"],
+              proxiedLocationUrl: proxiedLocation.href,
             });
-
-            response.writeHead(500, { "Content-Type": "text/plain" });
-            response.end("Internal Server Error: Host header is missing in the request");
-            return;
           }
-
-          proxiedLocation.host = request.headers.host;
-
-          headers["location"] = proxiedLocation.href;
-
-          logger.debug("Rewriting location response header", {
-            originalLocation: proxyRes.headers["location"],
-            proxiedLocation: headers["location"],
-            proxiedLocationUrl: proxiedLocation.href,
-          });
         }
 
         logger.debug("Proxying successful response", {
@@ -210,7 +240,13 @@ export class RegistryProxy {
         proxyRes.pipe(response, { end: true });
       });
 
-      request.pipe(proxyReq, { end: true });
+      if (tempFilePath) {
+        const readStream = createReadStream(tempFilePath);
+
+        readStream.pipe(proxyReq, { end: true });
+      } else {
+        proxyReq.end();
+      }
 
       proxyReq.on("error", (error) => {
         logger.error("Error proxying request", { error: error.message });
@@ -370,4 +406,14 @@ function initializeProxy() {
       password: env.CONTAINER_REGISTRY_PASSWORD,
     },
   });
+}
+
+async function streamRequestBodyToTempFile(request: IncomingMessage): Promise<string> {
+  const tempDir = await mkdtemp(`${tmpdir()}/`);
+  const tempFilePath = `${tempDir}/requestBody.tmp`;
+  const writeStream = createWriteStream(tempFilePath);
+
+  await pipeline(request, writeStream);
+
+  return tempFilePath;
 }

@@ -115,6 +115,7 @@ export const InitializeDeploymentResponseBody = z.object({
   id: z.string(),
   shortCode: z.string(),
   version: z.string(),
+  imageTag: z.string(),
   externalBuildData: ExternalBuildData.optional(),
 });
 

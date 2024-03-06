@@ -37,7 +37,9 @@ export class InitializeDeploymentService extends BaseService {
         },
       });
 
-      return deployment;
+      const imageTag = `trigger/${environment.project.externalRef}:${deployment.version}.${environment.slug}`;
+
+      return { deployment, imageTag };
     });
   }
 }

@@ -1,6 +1,5 @@
 import { depot } from "@depot/sdk-node";
 import { env } from "~/env.server";
-import { logger } from "~/services/logger.server";
 
 export async function createRemoteImageBuild() {
   if (!env.DEPOT_TOKEN || !env.DEPOT_PROJECT_ID) {

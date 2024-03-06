@@ -21,7 +21,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const service = new InitializeDeploymentService();
 
-  const deployment = await service.call(authenticatedEnv);
+  const { deployment, imageTag } = await service.call(authenticatedEnv);
 
   return json(
     {
@@ -29,6 +29,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       shortCode: deployment.shortCode,
       version: deployment.version,
       externalBuildData: deployment.externalBuildData,
+      imageTag,
     },
     { status: 200 }
   );
