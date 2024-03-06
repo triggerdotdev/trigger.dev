@@ -16,6 +16,7 @@ import { z } from "zod";
 import { Button } from "../../primitives/Buttons";
 import { TimeFrameFilter } from "../TimeFrameFilter";
 import { TaskRunStatus } from "./TaskRunStatus";
+import { TrashIcon } from "@heroicons/react/20/solid";
 
 export const allTaskRunStatuses = [
   "ENQUEUED",
@@ -133,12 +134,15 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
           value={environments?.at(0) ?? "ALL"}
           onValueChange={handleEnvironmentChange}
         >
-          <SelectTrigger size="secondary/small" width="full">
+          <SelectTrigger size="minimal" width="full">
             <SelectValue placeholder={"Select environment"} className="ml-2 p-0" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={"ALL"}>
-              <Paragraph variant="extra-small" className="pl-0.5">
+              <Paragraph
+                variant="extra-small"
+                className="pl-0.5 transition group-hover:text-text-bright"
+              >
                 All environments
               </Paragraph>
             </SelectItem>
@@ -156,12 +160,15 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
 
       <SelectGroup>
         <Select name="status" value={statuses?.at(0) ?? "ALL"} onValueChange={handleStatusChange}>
-          <SelectTrigger size="secondary/small" width="full">
+          <SelectTrigger size="minimal" width="full">
             <SelectValue placeholder="Select status" className="ml-2 p-0" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={"ALL"}>
-              <Paragraph variant="extra-small" className="pl-0.5">
+              <Paragraph
+                variant="extra-small"
+                className="pl-0.5 transition group-hover:text-text-bright"
+              >
                 All statuses
               </Paragraph>
             </SelectItem>
@@ -176,18 +183,24 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
 
       <SelectGroup>
         <Select name="tasks" value={tasks?.at(0) ?? "ALL"} onValueChange={handleTaskChange}>
-          <SelectTrigger size="secondary/small" width="full">
+          <SelectTrigger size="minimal" width="full">
             <SelectValue placeholder="Select task" className="ml-2 p-0" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={"ALL"}>
-              <Paragraph variant="extra-small" className="pl-0.5">
+              <Paragraph
+                variant="extra-small"
+                className="pl-0.5 transition group-hover:text-text-bright"
+              >
                 All tasks
               </Paragraph>
             </SelectItem>
             {possibleTasks.map((task) => (
               <SelectItem key={task} value={task}>
-                <Paragraph variant="extra-small" className="pl-0.5">
+                <Paragraph
+                  variant="extra-small"
+                  className="pl-0.5 transition group-hover:text-text-bright"
+                >
                   {task}
                 </Paragraph>
               </SelectItem>
@@ -198,9 +211,7 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
 
       <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} />
 
-      <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={"close"}>
-        Clear
-      </Button>
+      <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={TrashIcon} />
     </div>
   );
 }
