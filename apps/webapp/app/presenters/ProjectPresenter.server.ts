@@ -25,6 +25,7 @@ export class ProjectPresenter {
         updatedAt: true,
         deletedAt: true,
         version: true,
+        externalRef: true,
         _count: {
           select: {
             sources: {
@@ -65,6 +66,7 @@ export class ProjectPresenter {
     return {
       id: project.id,
       slug: project.slug,
+      ref: project.externalRef,
       name: project.name,
       organizationId: project.organizationId,
       createdAt: project.createdAt,

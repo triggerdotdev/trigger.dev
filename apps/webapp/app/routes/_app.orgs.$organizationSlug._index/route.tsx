@@ -24,7 +24,7 @@ export default function Page() {
       <NavBar>
         <PageTitle title={`${organization.title} projects`} />
         <PageAccessories>
-          <Paragraph variant="extra-small" className="text-charcoal-600">
+          <Paragraph variant="extra-small" className="text-charcoal-500">
             Org UID: {organization.id}
           </Paragraph>
           <LinkButton
