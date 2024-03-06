@@ -139,11 +139,11 @@ export default function NewOrganizationPage() {
           </InputGroup>
           {v3Enabled ? (
             <InputGroup>
-              <Label htmlFor={projectVersion.id}>Project type</Label>
+              <Label htmlFor={projectVersion.id}>Project version</Label>
               <SelectGroup>
                 <Select {...conform.input(projectVersion, { type: "select" })} defaultValue={"v2"}>
                   <SelectTrigger width="full" size="medium">
-                    <SelectValue placeholder="Project type" />
+                    <SelectValue placeholder="Project version" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="v2">Version 2</SelectItem>
