@@ -1,16 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { $ } from "execa";
-import { Namespace } from "socket.io";
 import { Server } from "socket.io";
-import { Socket, io } from "socket.io-client";
-import { DefaultEventsMap } from "socket.io/dist/typed-events";
 import {
-  CoordinatorToPlatformEvents,
-  CoordinatorToProdWorkerEvents,
-  PlatformToCoordinatorEvents,
+  CoordinatorToPlatformMessages,
+  CoordinatorToProdWorkerMessages,
+  PlatformToCoordinatorMessages,
   ProdWorkerSocketData,
-  ProdWorkerToCoordinatorEvents,
+  ProdWorkerToCoordinatorMessages,
+  ZodNamespace,
+  ZodSocketConnection,
 } from "@trigger.dev/core/v3";
 import { HttpReply, getTextBody, SimpleLogger } from "@trigger.dev/core-apps";
 
@@ -194,13 +193,15 @@ class TaskCoordinator {
   #httpServer: ReturnType<typeof createServer>;
   #checkpointer = new Checkpointer();
 
-  #prodWorkerNamespace: Namespace<
-    ProdWorkerToCoordinatorEvents,
-    CoordinatorToProdWorkerEvents,
-    DefaultEventsMap,
-    ProdWorkerSocketData
+  #prodWorkerNamespace: ZodNamespace<
+    typeof ProdWorkerToCoordinatorMessages,
+    typeof CoordinatorToProdWorkerMessages,
+    typeof ProdWorkerSocketData
   >;
-  #platformSocket?: Socket<PlatformToCoordinatorEvents, CoordinatorToPlatformEvents>;
+  #platformSocket?: ZodSocketConnection<
+    typeof CoordinatorToPlatformMessages,
+    typeof PlatformToCoordinatorMessages
+  >;
 
   constructor(
     private port: number,
@@ -218,7 +219,7 @@ class TaskCoordinator {
       name: "daemon_connected_tasks_total", // don't change this without updating dashboard config
       help: "The number of tasks currently connected.",
       collect: () => {
-        connectedTasksTotal.set(this.#prodWorkerNamespace.sockets.size);
+        connectedTasksTotal.set(this.#prodWorkerNamespace.namespace.sockets.size);
       },
     });
     register.registerMetric(connectedTasksTotal);
@@ -230,44 +231,28 @@ class TaskCoordinator {
       return;
     }
 
-    const socket: Socket<PlatformToCoordinatorEvents, CoordinatorToPlatformEvents> = io(
-      `ws://${PLATFORM_HOST}:${PLATFORM_WS_PORT}/coordinator`,
-      {
-        transports: ["websocket"],
-        auth: {
-          token: PLATFORM_SECRET,
+    const platformConnection = new ZodSocketConnection({
+      namespace: "coordinator",
+      host: PLATFORM_HOST,
+      port: Number(PLATFORM_WS_PORT),
+      clientMessages: CoordinatorToPlatformMessages,
+      serverMessages: PlatformToCoordinatorMessages,
+      authToken: PLATFORM_SECRET,
+      handlers: {
+        RESUME: async (message) => {
+          const taskSocket = await this.#getAttemptSocket(message.attemptId);
+
+          if (!taskSocket) {
+            logger.log("Socket for attempt not found", { attemptId: message.attemptId });
+            return;
+          }
+
+          taskSocket.emit("RESUME", message);
         },
-      }
-    );
-
-    const logger = new SimpleLogger(`[platform][${socket.id ?? "NO_ID"}]`);
-
-    socket.on("connect", () => {
-      logger.log("connect");
+      },
     });
 
-    socket.on("connect_error", (err) => {
-      logger.error(`connect_error: ${err.message}`);
-    });
-
-    socket.on("disconnect", () => {
-      logger.log("disconnect");
-    });
-
-    socket.on("RESUME", async (message) => {
-      logger.log("[RESUME]", message);
-
-      const taskSocket = await this.#getAttemptSocket(message.attemptId);
-
-      if (!taskSocket) {
-        logger.log("Socket for attempt not found", { attemptId: message.attemptId });
-        return;
-      }
-
-      taskSocket.emit("RESUME", message);
-    });
-
-    return socket;
+    return platformConnection;
   }
 
   async #getAttemptSocket(attemptId: string) {
@@ -281,182 +266,168 @@ class TaskCoordinator {
   }
 
   #createProdWorkerNamespace(io: Server) {
-    const namespace: Namespace<
-      ProdWorkerToCoordinatorEvents,
-      CoordinatorToProdWorkerEvents,
-      DefaultEventsMap,
-      ProdWorkerSocketData
-    > = io.of("/prod-worker");
+    const provider = new ZodNamespace({
+      io,
+      name: "prod-worker",
+      clientMessages: ProdWorkerToCoordinatorMessages,
+      serverMessages: CoordinatorToProdWorkerMessages,
+      socketData: ProdWorkerSocketData,
+      postAuth: async (socket, next, logger) => {
+        function setSocketDataFromHeader(dataKey: keyof typeof socket.data, headerName: string) {
+          const value = socket.handshake.headers[headerName];
+          if (!value) {
+            logger(`missing required header: ${headerName}`);
+            throw new Error("missing header");
+          }
+          0;
+          socket.data[dataKey] = Array.isArray(value) ? value[0] : value;
+        }
 
-    namespace.on("connection", async (socket) => {
-      const logger = new SimpleLogger(`[task][${socket.id}]`);
+        try {
+          setSocketDataFromHeader("podName", "x-pod-name");
+          setSocketDataFromHeader("contentHash", "x-trigger-content-hash");
+          setSocketDataFromHeader("cliPackageVersion", "x-trigger-cli-package-version");
+          setSocketDataFromHeader("projectRef", "x-trigger-project-ref");
+          setSocketDataFromHeader("attemptId", "x-trigger-attempt-id");
+          setSocketDataFromHeader("envId", "x-trigger-env-id");
+        } catch (error) {
+          logger(error);
+          socket.disconnect(true);
+          return;
+        }
 
-      this.#platformSocket?.emit("LOG", {
-        version: "v1",
-        metadata: {
-          projectRef: socket.data.projectRef,
-          attemptId: socket.data.attemptId,
-        },
-        text: "connected",
-      });
+        logger("success", socket.data);
 
-      logger.log("connected");
+        next();
+      },
+      onConnection: async (socket, handler, sender) => {
+        const logger = new SimpleLogger(`[task][${socket.id}]`);
 
-      socket.on("disconnect", (reason, description) => {
-        logger.log("disconnect", { reason, description });
+        this.#platformSocket?.send("LOG", {
+          metadata: {
+            projectRef: socket.data.projectRef,
+            attemptId: socket.data.attemptId,
+          },
+          text: "connected",
+        });
 
-        this.#platformSocket?.emit("LOG", {
-          version: "v1",
+        socket.on("LOG", (message, callback) => {
+          logger.log("[LOG]", message.text);
+
+          callback();
+
+          this.#platformSocket?.send("LOG", {
+            version: "v1",
+            metadata: { attemptId: socket.data.attemptId },
+            text: message.text,
+          });
+        });
+
+        socket.on("READY_FOR_EXECUTION", async (message) => {
+          logger.log("[READY_FOR_EXECUTION]", message);
+
+          const executionAck = await this.#platformSocket?.sendWithAck("READY_FOR_EXECUTION", {
+            version: "v1",
+            attemptId: message.attemptId,
+          });
+
+          if (!executionAck) {
+            logger.error("no execution ack", { attemptId: socket.data.attemptId });
+            return;
+          }
+
+          if (!executionAck.success) {
+            logger.error("execution unsuccessful", { attemptId: socket.data.attemptId });
+            return;
+          }
+
+          // FIXME: shouldn't wait for completion here
+          const completionAck = await socket.emitWithAck("EXECUTE_TASK_RUN", {
+            version: "v1",
+            executionPayload: executionAck.payload,
+          });
+
+          if (!completionAck.success) {
+            logger.error("completion unsuccessful", { attemptId: socket.data.attemptId });
+            return;
+          }
+
+          logger.log("completed task", { completionId: completionAck.completion.id });
+
+          this.#platformSocket?.send("TASK_RUN_COMPLETED", {
+            version: "v1",
+            execution: executionAck.payload.execution,
+            completion: completionAck.completion,
+          });
+        });
+
+        socket.on("WAIT_FOR_DURATION", async (message, callback) => {
+          logger.log("[WAIT_FOR_DURATION]", message);
+
+          const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
+
+          if (!checkpoint) {
+            logger.error("Failed to checkpoint", { podName: socket.data.podName });
+            callback({ success: false });
+            return;
+          }
+
+          this.#platformSocket?.send("CHECKPOINT_CREATED", {
+            version: "v1",
+            attemptId: socket.data.attemptId,
+            docker: checkpoint.docker,
+            location: checkpoint.destination,
+            reason: "WAIT_FOR_DURATION",
+          });
+
+          callback({ success: true });
+        });
+
+        socket.on("INDEX_TASKS", async (message, callback) => {
+          logger.log("[INDEX_TASKS]", message);
+
+          const workerAck = await this.#platformSocket?.sendWithAck("CREATE_WORKER", {
+            version: "v1",
+            projectRef: socket.data.projectRef,
+            envId: socket.data.envId,
+            metadata: {
+              cliPackageVersion: socket.data.cliPackageVersion,
+              contentHash: socket.data.contentHash,
+              packageVersion: message.packageVersion,
+              tasks: message.tasks,
+            },
+          });
+
+          if (!workerAck) {
+            logger.debug("no worker ack while indexing", message);
+          }
+
+          callback({ success: !!workerAck?.success });
+        });
+      },
+      onDisconnect: async (socket, handler, sender, logger) => {
+        this.#platformSocket?.send("LOG", {
           metadata: {
             projectRef: socket.data.projectRef,
             attemptId: socket.data.attemptId,
           },
           text: "disconnect",
         });
-      });
-
-      socket.on("error", (error) => {
-        logger.error({ error });
-      });
-
-      socket.on("LOG", (message, callback) => {
-        logger.log("[LOG]", message.text);
-
-        callback();
-
-        this.#platformSocket?.emit("LOG", {
-          version: "v1",
-          metadata: { attemptId: socket.data.attemptId },
-          text: message.text,
-        });
-      });
-
-      socket.on("READY_FOR_EXECUTION", async (message) => {
-        logger.log("[READY_FOR_EXECUTION]", message);
-
-        const executionAck = await this.#platformSocket?.emitWithAck("READY_FOR_EXECUTION", {
-          version: "v1",
-          attemptId: message.attemptId,
-        });
-
-        if (!executionAck) {
-          logger.error("no execution ack", { attemptId: socket.data.attemptId });
-          return;
-        }
-
-        if (!executionAck.success) {
-          logger.error("execution unsuccessful", { attemptId: socket.data.attemptId });
-          return;
-        }
-
-        // FIXME: shouldn't wait for completion here
-        const completionAck = await socket.emitWithAck("EXECUTE_TASK_RUN", {
-          version: "v1",
-          payload: executionAck.payload,
-        });
-
-        logger.log("completed task", { completionId: completionAck.completion.id });
-
-        this.#platformSocket?.emit("TASK_RUN_COMPLETED", {
-          version: "v1",
-          execution: executionAck.payload.execution,
-          completion: completionAck.completion,
-        });
-      });
-
-      socket.on("TASK_HEARTBEAT", (message) => {
-        logger.log("[TASK_HEARTBEAT]", message);
-
-        this.#platformSocket?.emit("TASK_HEARTBEAT", message);
-      });
-
-      socket.on("WAIT_FOR_BATCH", (message) => {
-        logger.log("[WAIT_FOR_BATCH]", message);
-
-        // this.#checkpointer.checkpointAndPush(socket.data.podName);
-      });
-
-      socket.on("WAIT_FOR_DURATION", async (message, callback) => {
-        logger.log("[WAIT_FOR_DURATION]", message);
-
-        const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
-
-        if (!checkpoint) {
-          logger.error("Failed to checkpoint", { podName: socket.data.podName });
-          callback({ success: false });
-          return;
-        }
-
-        this.#platformSocket?.emit("CHECKPOINT_CREATED", {
-          version: "v1",
-          attemptId: socket.data.attemptId,
-          docker: checkpoint.docker,
-          location: checkpoint.destination,
-          reason: "WAIT_FOR_DURATION",
-        });
-
-        callback({ success: true });
-      });
-
-      socket.on("WAIT_FOR_TASK", (message) => {
-        logger.log("[WAIT_FOR_TASK]", message);
-
-        // this.#checkpointer.checkpointAndPush(socket.data.podName);
-      });
-
-      socket.on("INDEX_TASKS", async (message, callback) => {
-        logger.log("[INDEX_TASKS]", message);
-
-        const workerAck = await this.#platformSocket?.emitWithAck("CREATE_WORKER", {
-          version: "v1",
-          projectRef: socket.data.projectRef,
-          envId: socket.data.envId,
-          metadata: {
-            cliPackageVersion: socket.data.cliPackageVersion,
-            contentHash: socket.data.contentHash,
-            packageVersion: message.packageVersion,
-            tasks: message.tasks,
-          },
-        });
-
-        if (!workerAck) {
-          logger.debug("no worker ack while indexing", message);
-        }
-
-        callback({ success: !!workerAck?.success });
-      });
+      },
+      handlers: {
+        TASK_HEARTBEAT: async (message) => {
+          this.#platformSocket?.send("TASK_HEARTBEAT", message);
+        },
+        WAIT_FOR_BATCH: async (message) => {
+          // this.#checkpointer.checkpointAndPush(socket.data.podName);
+        },
+        WAIT_FOR_TASK: async (message) => {
+          // this.#checkpointer.checkpointAndPush(socket.data.podName);
+        },
+      },
     });
 
-    // auth middleware
-    namespace.use(async (socket, next) => {
-      const logger = new SimpleLogger(`[task][${socket.id}][auth]`);
-
-      function setSocketDataFromHeader(dataKey: keyof typeof socket.data, headerName: string) {
-        const value = socket.handshake.headers[headerName];
-        if (!value) {
-          logger.error(`missing required header: ${headerName}`);
-          throw new Error("missing header");
-        }
-        socket.data[dataKey] = Array.isArray(value) ? value[0] : value;
-      }
-
-      try {
-        setSocketDataFromHeader("podName", "x-pod-name");
-        setSocketDataFromHeader("contentHash", "x-trigger-content-hash");
-        setSocketDataFromHeader("cliPackageVersion", "x-trigger-cli-package-version");
-        setSocketDataFromHeader("projectRef", "x-trigger-project-ref");
-        setSocketDataFromHeader("attemptId", "x-trigger-attempt-id");
-        setSocketDataFromHeader("envId", "x-trigger-env-id");
-      } catch (error) {
-        return socket.disconnect(true);
-      }
-
-      logger.log("success", socket.data);
-
-      next();
-    });
-
-    return namespace;
+    return provider;
   }
 
   #createHttpServer() {

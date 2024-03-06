@@ -1,4 +1,4 @@
-import { CoordinatorToPlatformEvents } from "@trigger.dev/core/v3";
+import { CoordinatorToPlatformMessages, InferSocketMessageSchema } from "@trigger.dev/core/v3";
 import type { Checkpoint } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -13,7 +13,7 @@ export class CreateCheckpointService {
   }
 
   public async call(
-    params: Parameters<CoordinatorToPlatformEvents["CHECKPOINT_CREATED"]>[0]
+    params: InferSocketMessageSchema<typeof CoordinatorToPlatformMessages, "CHECKPOINT_CREATED">
   ): Promise<Checkpoint> {
     const attempt = await this.#prismaClient.taskRunAttempt.findUniqueOrThrow({
       where: {

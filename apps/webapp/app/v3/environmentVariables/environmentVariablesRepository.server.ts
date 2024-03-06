@@ -420,7 +420,7 @@ export class EnvironmentVariablesRepository implements Repository {
 
     return [
       {
-        key: "TRIGGER_API_KEY",
+        key: "TRIGGER_SECRET_KEY",
         value: environment.apiKey,
       },
       {

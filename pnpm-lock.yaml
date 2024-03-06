@@ -1208,6 +1208,7 @@ importers:
       jest: ^29.6.2
       rimraf: ^3.0.2
       socket.io: ^4.7.4
+      socket.io-client: ^4.7.4
       ts-jest: ^29.1.1
       tsup: ^8.0.1
       typescript: ^5.3.0
@@ -1232,6 +1233,7 @@ importers:
       '@opentelemetry/semantic-conventions': 1.21.0
       humanize-duration: 3.27.3
       socket.io: 4.7.4
+      socket.io-client: 4.7.4
       ulidx: 2.2.1
       zod: 3.22.3
       zod-error: 1.5.0
@@ -1318,7 +1320,7 @@ importers:
       '@types/react': 18.2.17
       react: ^18.2.0
       react-email: ^1.6.1
-      resend: ^0.9.1
+      resend: ^3.2.0
       tiny-invariant: ^1.2.0
       typescript: ^4.9.4
       zod: 3.22.3
@@ -1337,7 +1339,7 @@ importers:
       '@react-email/text': 0.0.2
       react: 18.2.0
       react-email: 1.6.1_react@18.2.0
-      resend: 0.9.1
+      resend: 3.2.0
       tiny-invariant: 1.3.1
       zod: 3.22.3
     devDependencies:
@@ -9098,6 +9100,10 @@ packages:
       aggregate-error: 3.1.0
     dev: false
 
+  /@one-ini/wasm/0.1.1:
+    resolution: {integrity: sha512-XuySG1E38YScSJoMlqovLru4KTUNSjgVTIjyh7qMX6aNN5HY5Ct5LhRJdxO79JtTzKfzV/bnWpz+zquYrISsvw==}
+    dev: false
+
   /@open-draft/deferred-promise/2.2.0:
     resolution: {integrity: sha512-CecwLWx3rhxVQF6V4bAgPS5t+So2sTbPgAzafKkVizyi7tlwpcFpdFqq+wqF2OwNBmqFuu6tOyouTuxgpMfzmA==}
 
@@ -13926,9 +13932,12 @@ packages:
       react: 18.2.0
     dev: false
 
-  /@react-email/render/0.0.1:
-    resolution: {integrity: sha512-zog/2O0IWZDl10YfmLkgARzHgkX27ZwJhFaSib3hgxYwAdgWrCnfd3uT9ZuZqk9BXz1pk9jv9cl+UYS0nbCFdw==}
+  /@react-email/render/0.0.12:
+    resolution: {integrity: sha512-S8WRv/PqECEi6x0QJBj0asnAb5GFtJaHlnByxLETLkgJjc76cxMYDH4r9wdbuJ4sjkcbpwP3LPnVzwS+aIjT7g==}
+    engines: {node: '>=18.0.0'}
     dependencies:
+      html-to-text: 9.0.5
+      js-beautify: 1.15.1
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
     dev: false
@@ -19550,6 +19559,11 @@ packages:
   /abbrev/1.1.1:
     resolution: {integrity: sha512-nne9/IiQ/hzIhY6pdDnbBtz7DjPTKrY00P/zvPSm5pOFkl6xuGrGnXn/VtTNNfNtAfZ9/1RtehkszU9qcTii0Q==}
 
+  /abbrev/2.0.0:
+    resolution: {integrity: sha512-6/mh1E2u2YgEsCHdY0Yx5oW+61gZU+1vXaoiHHrpKeuRNNgFvS+/jrwHiQhB5apAf5oB7UB7E19ol2R2LKH8hQ==}
+    engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
+    dev: false
+
   /abort-controller/3.0.0:
     resolution: {integrity: sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==}
     engines: {node: '>=6.5'}
@@ -22937,6 +22951,17 @@ packages:
       lru-cache: 4.1.5
       semver: 5.7.1
       sigmund: 1.0.1
+    dev: false
+
+  /editorconfig/1.0.4:
+    resolution: {integrity: sha512-L9Qe08KWTlqYMVvMcTIvMAdl1cDUubzRNYL+WfA4bLDMHe4nemKkpmYzkznE1FwLKu0EEmy6obgQKzMJrg4x9Q==}
+    engines: {node: '>=14'}
+    hasBin: true
+    dependencies:
+      '@one-ini/wasm': 0.1.1
+      commander: 10.0.1
+      minimatch: 9.0.1
+      semver: 7.5.4
     dev: false
 
   /ee-first/1.1.1:
@@ -28490,8 +28515,25 @@ packages:
       nopt: 6.0.0
     dev: false
 
+  /js-beautify/1.15.1:
+    resolution: {integrity: sha512-ESjNzSlt/sWE8sciZH8kBF8BPlwXPwhR6pWKAw8bw4Bwj+iZcnKW6ONWUutJ7eObuBZQpiIb8S7OYspWrKt7rA==}
+    engines: {node: '>=14'}
+    hasBin: true
+    dependencies:
+      config-chain: 1.1.13
+      editorconfig: 1.0.4
+      glob: 10.3.3
+      js-cookie: 3.0.5
+      nopt: 7.2.0
+    dev: false
+
   /js-cookie/2.2.1:
     resolution: {integrity: sha512-HvdH2LzI/EAZcUwA8+0nKNtWHqS+ZmijLA30RwZA0bo7ToCckjK5MkGhjED9KoRcXO6BaGI3I9UIzSA1FKFPOQ==}
+    dev: false
+
+  /js-cookie/3.0.5:
+    resolution: {integrity: sha512-cEiJEAEoIbWfCZYKWhVwFuvPX1gETRYPw6LlaTKoxD3s2AkXzkCjnp6h0V77ozyqj0jakteJ4YqDJT830+lVGw==}
+    engines: {node: '>=14'}
     dev: false
 
   /js-levenshtein/1.1.6:
@@ -30139,6 +30181,13 @@ packages:
       brace-expansion: 2.0.1
     dev: true
 
+  /minimatch/9.0.1:
+    resolution: {integrity: sha512-0jWhJpD/MdhPXwPuiRkCbfYfSKp2qnn2eOc279qI7f+osl/l+prKSrvhg157zSYvx/1nmgn2NqdT6k2Z7zSH9w==}
+    engines: {node: '>=16 || 14 >=14.17'}
+    dependencies:
+      brace-expansion: 2.0.1
+    dev: false
+
   /minimatch/9.0.3:
     resolution: {integrity: sha512-RHiac9mvaRw0x3AYRgDC1CxAP7HTcNrrECeA8YYJeWnpo+2Q5CegtZjaotWTWxDG3UeGA1coE05iH1mPjT/2mg==}
     engines: {node: '>=16 || 14 >=14.17'}
@@ -30926,6 +30975,14 @@ packages:
     hasBin: true
     dependencies:
       abbrev: 1.1.1
+    dev: false
+
+  /nopt/7.2.0:
+    resolution: {integrity: sha512-CVDtwCdhYIvnAzFoJ6NJ6dX3oga9/HyciQDnG1vQDjSLMeKLJ4A93ZqYKDrgYSr1FBY5/hMYC+2VCi24pgpkGA==}
+    engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
+    hasBin: true
+    dependencies:
+      abbrev: 2.0.0
     dev: false
 
   /normalize-package-data/2.5.0:
@@ -34390,20 +34447,18 @@ packages:
     resolution: {integrity: sha512-L9jEkOi3ASd9PYit2cwRfyppc9NoABujTP8/5gFcbERmo5jUoAKovIC3fsF17pkTnGsrByysqX+Kxd2OTNI1ww==}
     engines: {node: '>=0.10.5'}
 
-  /resend/0.9.1:
-    resolution: {integrity: sha512-kgQIlw7eOXsiro3B4Wq7JXIMAZEB/vNYF6wfZhGd25e/dMhPX9WQuFTppZTH8muhka8o621pmH35KGMQR6H/6g==}
-    dependencies:
-      '@react-email/render': 0.0.1
-      axios: 0.27.2
-    transitivePeerDependencies:
-      - debug
-    dev: false
-
   /resend/2.1.0:
     resolution: {integrity: sha512-s6LlaEReTUvlbo6w3Eg1M1TMuwK9OKJ1GVgyptIV8smLPHhFZVqnwBTFPZHID9rcsih72t3iuyrtkQ3IIGwnow==}
     engines: {node: '>=18'}
     dependencies:
       '@react-email/render': 0.0.9
+    dev: false
+
+  /resend/3.2.0:
+    resolution: {integrity: sha512-lDHhexiFYPoLXy7zRlJ8D5eKxoXy6Tr9/elN3+Vv7PkUoYuSSD1fpiIfa/JYXEWyiyN2UczkCTLpkT8dDPJ4Pg==}
+    engines: {node: '>=18'}
+    dependencies:
+      '@react-email/render': 0.0.12
     dev: false
 
   /resize-observer-polyfill/1.5.1:
@@ -36799,7 +36854,7 @@ packages:
     dependencies:
       bs-logger: 0.2.6
       fast-json-stable-stringify: 2.1.0
-      jest: 29.6.2_@types+node@18.15.13
+      jest: 29.6.2_@types+node@18.17.1
       jest-util: 29.6.2
       json5: 2.2.3
       lodash.memoize: 4.1.2

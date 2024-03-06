@@ -1,11 +1,11 @@
 import {
+  ClientToSharedQueueMessages,
   CoordinatorToPlatformMessages,
   PlatformToCoordinatorMessages,
   PlatformToProviderMessages,
   ProviderToPlatformMessages,
+  SharedQueueToClientMessages,
   ZodNamespace,
-  clientWebsocketMessages,
-  serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
 import { Server } from "socket.io";
 import { env } from "~/env.server";
@@ -46,7 +46,7 @@ function createCoordinatorNamespace(io: Server) {
     authToken: env.COORDINATOR_SECRET,
     clientMessages: CoordinatorToPlatformMessages,
     serverMessages: PlatformToCoordinatorMessages,
-    messageHandler: {
+    handlers: {
       READY_FOR_EXECUTION: async (message) => {
         const payload = await sharedQueueTasks.getExecutionPayloadFromAttempt(message.attemptId);
 
@@ -111,8 +111,8 @@ function createSharedQueueConsumerNamespace(io: Server) {
     io,
     name: "shared-queue",
     authToken: env.PROVIDER_SECRET,
-    clientMessages: clientWebsocketMessages,
-    serverMessages: serverWebsocketMessages,
+    clientMessages: ClientToSharedQueueMessages,
+    serverMessages: SharedQueueToClientMessages,
     onConnection: async (socket, handler, sender, logger) => {
       const sharedSocketConnection = new SharedSocketConnection(
         sharedQueue.namespace,
