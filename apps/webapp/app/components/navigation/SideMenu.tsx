@@ -68,6 +68,7 @@ import { StepNumber } from "../primitives/StepNumber";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
 import { Badge } from "../primitives/Badge";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -516,7 +517,7 @@ function V3ProjectSideMenu({
       <SideMenuHeader title={"Project (v3)"} />
       <SideMenuItem
         name="Tasks"
-        icon="job"
+        icon={TaskIcon}
         iconColor="text-indigo-500"
         count={project.jobCount}
         to={v3ProjectPath(organization, project)}
