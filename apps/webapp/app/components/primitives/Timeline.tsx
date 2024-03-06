@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { inverseLerp, lerp } from "~/utils/lerp";
 
 interface MousePosition {
   x: number;
@@ -224,20 +225,4 @@ export function FollowCursor({ children }: FollowCursorProps) {
 /** Gives the total width of the root */
 function calculatePixelWidth(minWidth: number, maxWidth: number, scale: number) {
   return lerp(minWidth, maxWidth, scale);
-}
-
-/** Linearly interpolates between the min/max values, using t.
- * It can't go outside the range   */
-function lerp(min: number, max: number, t: number) {
-  return min + (max - min) * clamp(t, 0, 1);
-}
-
-/** Inverse lerp */
-function inverseLerp(min: number, max: number, value: number) {
-  return (value - min) / (max - min);
-}
-
-/** Clamps a value between a min and max */
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
 }

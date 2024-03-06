@@ -12,7 +12,6 @@ import {
   flattenAndNormalizeAttributes,
   flattenAttributes,
   isExceptionSpanEvent,
-  logger,
   omit,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
@@ -21,6 +20,10 @@ import { createHash } from "node:crypto";
 import { PrismaClient, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
+import Redis, { RedisOptions } from "ioredis";
+import { env } from "~/env.server";
+import { EventEmitter } from "node:stream";
+import { logger } from "~/services/logger.server";
 
 export type CreatableEvent = Omit<
   Prisma.TaskEventCreateInput,
@@ -77,6 +80,7 @@ export type EventBuilder = {
 export type EventRepoConfig = {
   batchSize: number;
   batchInterval: number;
+  redis: RedisOptions;
 };
 
 export type QueryOptions = Prisma.TaskEventWhereInput;
@@ -119,8 +123,8 @@ export type UpdateEventOptions = {
 
 export class EventRepository {
   private readonly _flushScheduler: DynamicFlushScheduler<CreatableEvent>;
-
   private _randomIdGenerator = new RandomIdGenerator();
+  private _redisPublishClient: Redis;
 
   constructor(private db: PrismaClient = prisma, private readonly _config: EventRepoConfig) {
     this._flushScheduler = new DynamicFlushScheduler({
@@ -128,6 +132,8 @@ export class EventRepository {
       flushInterval: _config.batchInterval,
       callback: this.#flushBatch.bind(this),
     });
+
+    this._redisPublishClient = new Redis(this._config.redis);
   }
 
   async insert(event: CreatableEvent) {
@@ -138,6 +144,8 @@ export class EventRepository {
     await this.db.taskEvent.create({
       data: event as Prisma.TaskEventCreateInput,
     });
+
+    this.#publishToRedis([event]);
   }
 
   async insertMany(events: CreatableEvent[]) {
@@ -576,12 +584,50 @@ export class EventRepository {
     return result;
   }
 
+  async subscribeToTrace(traceId: string) {
+    const redis = new Redis(this._config.redis);
+
+    const channel = `events:${traceId}:*`;
+
+    // Subscribe to the channel.
+    await redis.psubscribe(channel);
+
+    const eventEmitter = new EventEmitter();
+
+    // Define the message handler.
+    redis.on("pmessage", (pattern, channelReceived, message) => {
+      if (channelReceived.startsWith(`events:${traceId}:`)) {
+        eventEmitter.emit("message", message);
+      }
+    });
+
+    // Return a function that can be used to unsubscribe.
+    const unsubscribe = async () => {
+      await redis.punsubscribe(channel);
+    };
+
+    return {
+      unsubscribe,
+      eventEmitter,
+    };
+  }
+
   async #flushBatch(batch: CreatableEvent[]) {
     const events = excludePartialEventsWithCorrespondingFullEvent(batch);
 
     await this.db.taskEvent.createMany({
       data: events as Prisma.TaskEventCreateManyInput[],
     });
+
+    this.#publishToRedis(events);
+  }
+
+  async #publishToRedis(events: CreatableEvent[]) {
+    if (events.length === 0) return;
+    const uniqueTraceSpans = new Set(events.map((e) => `events:${e.traceId}:${e.spanId}`));
+    for (const id of uniqueTraceSpans) {
+      await this._redisPublishClient.publish(id, new Date().toISOString());
+    }
   }
 
   public generateTraceId() {
@@ -614,6 +660,14 @@ export class EventRepository {
 export const eventRepository = new EventRepository(prisma, {
   batchSize: 100,
   batchInterval: 5000,
+  redis: {
+    port: env.REDIS_PORT,
+    host: env.REDIS_HOST,
+    username: env.REDIS_USERNAME,
+    password: env.REDIS_PASSWORD,
+    enableAutoPipelining: true,
+    ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+  },
 });
 
 export function stripAttributePrefix(attributes: Attributes, prefix: string) {
