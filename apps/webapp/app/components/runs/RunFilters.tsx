@@ -99,7 +99,10 @@ export function RunsFilters() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={"ALL"}>
-              <Paragraph variant="extra-small" className="pl-0.5">
+              <Paragraph
+                variant="extra-small"
+                className="pl-0.5 transition group-hover:text-text-bright"
+              >
                 All environments
               </Paragraph>
             </SelectItem>
@@ -122,7 +125,10 @@ export function RunsFilters() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={"ALL"}>
-              <Paragraph variant="extra-small" className="pl-0.5">
+              <Paragraph
+                variant="extra-small"
+                className="pl-0.5 transition group-hover:text-text-bright"
+              >
                 All statuses
               </Paragraph>
             </SelectItem>
