@@ -21,6 +21,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3ProjectPath, v3TestPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
+import { TextLink } from "~/components/primitives/TextLink";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -63,8 +64,9 @@ export default function Page() {
         <PageTitle title="Runs" />
       </NavBar>
       <PageBody>
-        <CreateFirstTaskInstructions />
-        {list.runs.length === 0 && !list.hasFilters ? (
+        {list.possibleTasks.length === 0 ? (
+          <CreateFirstTaskInstructions />
+        ) : list.runs.length === 0 && !list.hasFilters ? (
           <RunTaskInstructions />
         ) : (
           <div className={cn("grid h-fit grid-cols-1 gap-4")}>
@@ -102,8 +104,9 @@ function CreateFirstTaskInstructions() {
     <MainCenteredContainer className="max-w-prose">
       <BlankstateInstructions title="Create your first task">
         <Paragraph spacing>
-          Before running a task, you must first create one. Follow the instructions on the ‘Tasks’
-          page to create a task, then return here to run it.
+          Before running a task, you must first create one. Follow the instructions on the{" "}
+          <TextLink to={v3ProjectPath(organization, project)}>Tasks</TextLink> page to create a
+          task, then return here to run it.
         </Paragraph>
         <LinkButton
           to={v3ProjectPath(organization, project)}

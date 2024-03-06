@@ -15,6 +15,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
+import { TextLink } from "~/components/primitives/TextLink";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -113,8 +114,9 @@ function NoTaskInstructions() {
   return (
     <BlankstateInstructions title="Create your first task">
       <Paragraph spacing variant="small">
-        Before testing, you must first create a task. Follow the instructions on the ‘Tasks’ page to
-        create a task then return here to run a test.
+        Before testing, you must first create a task. Follow the instructions on the{" "}
+        <TextLink to={v3ProjectPath(organization, project)}>Tasks</TextLink> page to create a task
+        then return here to run a test.
       </Paragraph>
       <LinkButton
         to={v3ProjectPath(organization, project)}

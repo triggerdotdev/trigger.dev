@@ -172,7 +172,7 @@ function CreateTaskInstructions() {
   return (
     <MainCenteredContainer className="max-w-prose">
       <div className="mb-6 flex items-center justify-between border-b">
-        <Header1 spacing>Get setup in 5 minutes</Header1>
+        <Header1 spacing>Get setup in 3 minutes</Header1>
         <div className="flex items-center gap-2">
           <Feedback
             button={
