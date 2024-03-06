@@ -121,7 +121,7 @@ function DiscordBanner() {
           <br />
           Discord community
         </Header1>
-        <Paragraph variant="small/bright">
+        <Paragraph variant="small">
           Get help or answer questions from the Trigger.dev community.
         </Paragraph>
       </div>
