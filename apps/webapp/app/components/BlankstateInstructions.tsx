@@ -1,6 +1,5 @@
 import { cn } from "~/utils/cn";
 import { Header2 } from "./primitives/Headers";
-import { InformationCircleIcon } from "@heroicons/react/20/solid";
 
 export function BlankstateInstructions({
   children,
@@ -12,10 +11,9 @@ export function BlankstateInstructions({
   title?: string;
 }) {
   return (
-    <div className={cn("flex flex-col gap-2 rounded-md border p-4", className)}>
+    <div className={cn("flex flex-col gap-2", className)}>
       {title && (
-        <div className="flex items-center gap-2">
-          <InformationCircleIcon className="size-6 text-text-dimmed" />
+        <div className="flex h-10 items-center border-b border-grid-bright">
           <Header2>{title}</Header2>
         </div>
       )}

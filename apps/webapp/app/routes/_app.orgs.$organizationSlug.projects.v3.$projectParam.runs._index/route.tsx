@@ -2,10 +2,12 @@ import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
-import { Header1, Header2 } from "~/components/primitives/Headers";
+import { Header1 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
@@ -19,8 +21,6 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3ProjectPath, v3TestPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
-import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -102,8 +102,8 @@ function CreateFirstTaskInstructions() {
     <MainCenteredContainer className="max-w-prose">
       <BlankstateInstructions title="Create your first task">
         <Paragraph spacing>
-          You need to create a task before it can be run. Follow the instructions on the Task page
-          to create your run first then return here to run your task.
+          Before running a task, you must first create one. Follow the instructions on the ‘Tasks’
+          page to create a task, then return here to run it.
         </Paragraph>
         <LinkButton
           to={v3ProjectPath(organization, project)}
