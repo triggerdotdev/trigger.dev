@@ -9,6 +9,7 @@ type SpanTitleProps = {
   isError: boolean;
   style: TaskEventStyle;
   level: TaskEventLevel;
+  isPartial: boolean;
   size: "small" | "large";
 };
 
@@ -90,10 +91,6 @@ export function SpanCodePathAccessory({
 }
 
 function eventTextClassName(event: Pick<SpanTitleProps, "isError" | "style" | "level">) {
-  if (event.isError) {
-    return "text-rose-500";
-  }
-
   switch (event.level) {
     case "TRACE": {
       return textClassNameForVariant(event.style.variant);
@@ -107,7 +104,7 @@ function eventTextClassName(event: Pick<SpanTitleProps, "isError" | "style" | "l
       return "text-amber-400";
     }
     case "ERROR": {
-      return "text-rose-500";
+      return "text-error";
     }
     default: {
       return textClassNameForVariant(event.style.variant);
@@ -116,29 +113,29 @@ function eventTextClassName(event: Pick<SpanTitleProps, "isError" | "style" | "l
 }
 
 export function eventBackgroundClassName(
-  event: Pick<SpanTitleProps, "isError" | "style" | "level">
+  event: Pick<SpanTitleProps, "isError" | "style" | "level" | "isPartial">
 ) {
   if (event.isError) {
-    return "bg-rose-500";
+    return "bg-error";
   }
 
   switch (event.level) {
     case "TRACE": {
-      return backgroundClassNameForVariant(event.style.variant);
+      return backgroundClassNameForVariant(event.style.variant, event.isPartial);
     }
     case "LOG":
     case "INFO":
     case "DEBUG": {
-      return backgroundClassNameForVariant(event.style.variant);
+      return backgroundClassNameForVariant(event.style.variant, event.isPartial);
     }
     case "WARN": {
       return "bg-amber-400";
     }
     case "ERROR": {
-      return "bg-rose-500";
+      return "bg-error";
     }
     default: {
-      return backgroundClassNameForVariant(event.style.variant);
+      return backgroundClassNameForVariant(event.style.variant, event.isPartial);
     }
   }
 }
@@ -154,10 +151,13 @@ function textClassNameForVariant(variant: TaskEventStyle["variant"]) {
   }
 }
 
-function backgroundClassNameForVariant(variant: TaskEventStyle["variant"]) {
+function backgroundClassNameForVariant(variant: TaskEventStyle["variant"], isPartial: boolean) {
   switch (variant) {
     case "primary": {
-      return "bg-blue-500";
+      if (isPartial) {
+        return "bg-blue-500";
+      }
+      return "bg-success";
     }
     default: {
       return "bg-charcoal-500";
