@@ -1,26 +1,15 @@
-import {
-  BoltIcon,
-  CloudIcon,
-  CodeBracketIcon,
-  CodeBracketSquareIcon,
-  HeartIcon,
-  ServerStackIcon,
-} from "@heroicons/react/24/solid";
 import { useEffect, useState } from "react";
-import { cn } from "~/utils/cn";
+import { ATAndTLogo } from "~/assets/logos/ATAndTLogo";
+import { AppsmithLogo } from "~/assets/logos/AppsmithLogo";
+import { CalComLogo } from "~/assets/logos/CalComLogo";
+import { OktaLogo } from "~/assets/logos/OktaLogo";
+import { ShopifyLogo } from "~/assets/logos/ShopifyLogo";
+import { VerizonLogo } from "~/assets/logos/VerizonLogo";
 import { LogoType } from "./LogoType";
 import { LinkButton } from "./primitives/Buttons";
 import { Header3 } from "./primitives/Headers";
-import { Icon } from "./primitives/Icon";
 import { Paragraph } from "./primitives/Paragraph";
 import { TextLink } from "./primitives/TextLink";
-import { LoginTooltip } from "./primitives/Tooltip";
-import { VerizonLogo } from "~/assets/logos/VerizonLogo";
-import { ShopifyLogo } from "~/assets/logos/ShopifyLogo";
-import { OktaLogo } from "~/assets/logos/OktaLogo";
-import { CalComLogo } from "~/assets/logos/CalComLogo";
-import { AppsmithLogo } from "~/assets/logos/AppsmithLogo";
-import { ATAndTLogo } from "~/assets/logos/ATAndTLogo";
 
 interface QuoteType {
   quote: string;
