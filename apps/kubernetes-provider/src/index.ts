@@ -45,6 +45,7 @@ class KubernetesTaskOperations implements TaskOperations {
         },
         spec: {
           completions: 1,
+          ttlSecondsAfterFinished: 300,
           template: {
             metadata: {
               labels: {
