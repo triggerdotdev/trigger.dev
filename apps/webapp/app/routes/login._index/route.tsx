@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { Form } from "@remix-run/react";
 import { getMatchesData, metaV1 } from "@remix-run/v1-meta";
+import { GitHubDarkIcon } from "@trigger.dev/companyicons";
 import {
   TypedMetaFunction,
   UseDataFunctionReturn,
@@ -71,7 +72,7 @@ export default function LoginPage() {
         className="w-full"
       >
         <div className="flex flex-col items-center">
-          <Header1 className="pb-4 font-normal sm:text-2xl md:text-3xl lg:text-4xl">
+          <Header1 className="pb-4 font-semibold sm:text-2xl md:text-3xl lg:text-4xl">
             Welcome
           </Header1>
           <Paragraph variant="base" className="mb-6">
@@ -86,13 +87,13 @@ export default function LoginPage() {
                   fullWidth
                   data-action="continue with github"
                 >
-                  <NamedIcon name={"github"} className={"mr-2 h-6 w-6"} />
-                  Continue with GitHub
+                  <GitHubDarkIcon className={"mr-2 size-6"} />
+                  <span className="text-charcoal-900">Continue with GitHub</span>
                 </Button>
               )}
               <LinkButton
                 to="/login/magic"
-                variant="secondary/extra-large"
+                variant="tertiary/extra-large"
                 fullWidth
                 data-action="continue with email"
               >
