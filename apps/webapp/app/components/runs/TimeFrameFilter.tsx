@@ -135,13 +135,14 @@ function RelativeTimeFrame({
           variant={value === timeframe.value ? "primary/small" : "tertiary/small"}
           className={cn(
             "w-full",
-            value !== timeframe.value && "border border-charcoal-700 group-hover:bg-charcoal-700"
+            value !== timeframe.value &&
+              "border border-charcoal-700 text-xs group-hover:bg-charcoal-700"
           )}
           onClick={() => {
             onValueChange(timeframe.value);
           }}
         >
-          <Paragraph variant="extra-small">{timeframe.label}</Paragraph>
+          {timeframe.label}
         </Button>
       ))}
     </div>
