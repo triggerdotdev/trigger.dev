@@ -50,14 +50,11 @@ export function TimeFrameFilter({ from, to, onRangeChanged }: RunTimeFrameFilter
   return (
     <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen} modal>
       <PopoverTrigger asChild>
-        <Button
-          variant="tertiary/small"
-          className="group-hover:bg-tertiary-foreground bg-charcoal-800"
-        >
-          <Paragraph variant="extra-small" className="mr-2">
+        <Button variant="minimal/small" className="">
+          <Paragraph variant="extra-small" className="transition group-hover:text-text-bright">
             {title(from, to, relativeTimeSeconds)}
           </Paragraph>
-          <ChevronDownIcon className="h-4 w-4 text-text-bright" />
+          <ChevronDownIcon className="-ml-1.5 size-4 transition group-hover:text-text-bright" />
         </Button>
       </PopoverTrigger>
 
