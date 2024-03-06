@@ -27,7 +27,14 @@ export const meta: MetaFunction = ({ matches }) => {
       return true;
     });
 
-  return [...parentMeta, { title: `Login to Trigger.dev` }];
+  return [
+    ...parentMeta,
+    { title: `Login to Trigger.dev` },
+    {
+      name: "viewport",
+      content: "width=device-width,initial-scale=1",
+    },
+  ];
 };
 
 export async function loader({ request }: LoaderFunctionArgs) {
