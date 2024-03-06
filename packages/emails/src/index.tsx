@@ -70,10 +70,10 @@ export class EmailClient {
 
   async sendPlainText(options: SendPlainTextOptions) {
     if (this.#client) {
-      await this.#client.sendEmail({
+      await this.#client.emails.send({
         from: this.#from,
         to: options.to,
-        replyTo: this.#replyTo,
+        reply_to: this.#replyTo,
         subject: options.subject,
         text: options.text,
       });
@@ -126,10 +126,10 @@ export class EmailClient {
 
   async #sendEmail({ to, subject, react }: { to: string; subject: string; react: ReactElement }) {
     if (this.#client) {
-      await this.#client.sendEmail({
+      await this.#client.emails.send({
         from: this.#from,
         to,
-        replyTo: this.#replyTo,
+        reply_to: this.#replyTo,
         subject,
         react,
       });
