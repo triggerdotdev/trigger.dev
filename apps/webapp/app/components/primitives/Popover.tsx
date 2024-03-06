@@ -1,11 +1,11 @@
 "use client";
 
-import * as React from "react";
-import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { cn } from "~/utils/cn";
-import { Paragraph, ParagraphVariant } from "./Paragraph";
 import { ChevronDownIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
+import * as React from "react";
+import { cn } from "~/utils/cn";
 import { ButtonContentPropsType, LinkButton } from "./Buttons";
+import { Paragraph, ParagraphVariant } from "./Paragraph";
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
@@ -157,11 +157,11 @@ function PopoverVerticalEllipseTrigger({
 
 export {
   Popover,
-  PopoverTrigger,
-  PopoverContent,
-  PopoverSectionHeader,
-  PopoverCustomTrigger,
   PopoverArrowTrigger,
-  PopoverVerticalEllipseTrigger,
+  PopoverContent,
+  PopoverCustomTrigger,
   PopoverMenuItem,
+  PopoverSectionHeader,
+  PopoverTrigger,
+  PopoverVerticalEllipseTrigger,
 };
