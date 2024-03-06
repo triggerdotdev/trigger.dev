@@ -1,24 +1,28 @@
-import { NavLink, Outlet, useNavigation, useParams } from "@remix-run/react";
+import { NavLink, Outlet, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
+import { TextLink } from "~/components/primitives/TextLink";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
 import { TaskListItem, TestPresenter } from "~/presenters/v3/TestPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3TestTaskPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, v3ProjectPath, v3TestTaskPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -49,10 +53,16 @@ export default function Page() {
           <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
             <ResizablePanel order={1} minSize={20} defaultSize={30}>
               <div className="flex flex-col px-3">
-                <div className="flex h-10 items-center border-b border-grid-dimmed">
-                  <Header2>Select a task</Header2>
-                </div>
-                <TaskSelector tasks={tasks} />
+                {tasks.length === 0 ? (
+                  <NoTaskInstructions />
+                ) : (
+                  <>
+                    <div className="flex h-10 items-center border-b border-grid-dimmed">
+                      <Header2>Select a task</Header2>
+                    </div>
+                    <TaskSelector tasks={tasks} />
+                  </>
+                )}
               </div>
             </ResizablePanel>
             <ResizableHandle withHandle />
@@ -95,5 +105,27 @@ function TaskSelector({ tasks }: { tasks: TaskListItem[] }) {
         </NavLink>
       ))}
     </div>
+  );
+}
+
+function NoTaskInstructions() {
+  const organization = useOrganization();
+  const project = useProject();
+  return (
+    <BlankstateInstructions title="Create your first task">
+      <Paragraph spacing variant="small">
+        Before testing, you must first create a task. Follow the instructions on the{" "}
+        <TextLink to={v3ProjectPath(organization, project)}>Tasks</TextLink> page to create a task
+        then return here to run a test.
+      </Paragraph>
+      <LinkButton
+        to={v3ProjectPath(organization, project)}
+        variant="primary/small"
+        LeadingIcon={TaskIcon}
+        className="inline-flex"
+      >
+        Create your first task
+      </LinkButton>
+    </BlankstateInstructions>
   );
 }

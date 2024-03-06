@@ -1,6 +1,7 @@
 import { Link } from "@remix-run/react";
 import simplur from "simplur";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
@@ -23,6 +24,9 @@ export default function Page() {
       <NavBar>
         <PageTitle title={`${organization.title} projects`} />
         <PageAccessories>
+          <Paragraph variant="extra-small" className="text-charcoal-500">
+            Org UID: {organization.id}
+          </Paragraph>
           <LinkButton
             to={newProjectPath(organization)}
             variant="primary/small"
@@ -33,13 +37,6 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody>
-        <PageInfoRow>
-          <PageInfoGroup alignment="right">
-            <Paragraph variant="extra-small" className="text-charcoal-600">
-              UID: {organization.id}
-            </Paragraph>
-          </PageInfoGroup>
-        </PageInfoRow>
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {organization.projects.length > 0 ? (
             organization.projects.map((project) => {
@@ -52,7 +49,13 @@ export default function Page() {
                     <NamedIcon name="folder" className="h-10 w-10 flex-none" />
                     <div className="flex flex-col">
                       <Header3>{project.name}</Header3>
-                      <Paragraph variant="small">{simplur`${project.jobCount} Job[|s]`}</Paragraph>
+                      {project.version === "V2" ? (
+                        <Paragraph variant="small">{simplur`${project.jobCount} Job[|s]`}</Paragraph>
+                      ) : (
+                        <Badge className="max-w-max" variant="v3">
+                          v3
+                        </Badge>
+                      )}
                     </div>
                   </Link>
                 </li>

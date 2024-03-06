@@ -123,25 +123,14 @@ export default function Page() {
           </PropertyTable>
 
           {event.events !== undefined && <SpanEvents spanEvents={event.events} />}
-
-          {event.payload && (
-            <div>
-              <Header2 spacing>Payload</Header2>
-              <CodeBlock code={event.payload} maxLines={20} />
-            </div>
+          {event.payload !== undefined && (
+            <CodeBlock rowTitle="Payload" code={event.payload} maxLines={20} />
           )}
-
-          {event.output && (
-            <div>
-              <Header2 spacing>Output</Header2>
-              <CodeBlock code={event.output} maxLines={20} />
-            </div>
+          {event.output !== undefined && (
+            <CodeBlock rowTitle="Output" code={event.output} maxLines={20} />
           )}
           {event.properties !== undefined && (
-            <div>
-              <Header2 spacing>Properties</Header2>
-              <CodeBlock code={event.properties} maxLines={20} />
-            </div>
+            <CodeBlock rowTitle="Properties" code={event.properties} maxLines={20} />
           )}
         </div>
       </div>

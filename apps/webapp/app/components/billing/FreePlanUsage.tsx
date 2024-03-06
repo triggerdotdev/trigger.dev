@@ -19,7 +19,7 @@ export function FreePlanUsage({ to, percentage }: { to: string; percentage: numb
     <div
       className={cn(
         "rounded border border-charcoal-700 bg-charcoal-750 p-2.5",
-        hasHitLimit && "border-rose-800/60"
+        hasHitLimit && "border-error/40"
       )}
     >
       <div className="flex items-center justify-between gap-2">
@@ -27,11 +27,11 @@ export function FreePlanUsage({ to, percentage }: { to: string; percentage: numb
           <ArrowUpCircleIcon className="h-5 w-5 text-text-dimmed" />
           <Paragraph className="text-2sm text-text-bright">Free Plan</Paragraph>
         </div>
-        <Link to={to} className="text-2sm text-indigo-500">
+        <Link to={to} className="text-2sm text-text-link">
           Learn more
         </Link>
       </div>
-      <div className="relative mt-3 h-1 rounded-full bg-[#0B1018]">
+      <div className="relative mt-3 h-1 rounded-full bg-background-dimmed">
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: cappedPercentage * 100 + "%" }}

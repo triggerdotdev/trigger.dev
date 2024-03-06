@@ -1,11 +1,20 @@
+import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { TaskRunAttemptStatus } from "@trigger.dev/database";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import invariant from "tiny-invariant";
+import { Feedback } from "~/components/Feedback";
+import { InitCommandV3, TriggerDevStepV3 } from "~/components/SetupCommands";
+import { StepContentContainer } from "~/components/StepContentContainer";
+import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
+import { Header1 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { StepNumber } from "~/components/primitives/StepNumber";
 import {
   Table,
   TableBlankRow,
@@ -18,6 +27,8 @@ import {
 } from "~/components/primitives/Table";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
+import { useAppOrigin } from "~/hooks/useAppOrigin";
+import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
@@ -137,7 +148,7 @@ export default function Page() {
                 </Table>
               </div>
             ) : (
-              <Paragraph>You have no background workers… yet</Paragraph>
+              <CreateTaskInstructions />
             )}
           </div>
         </div>
@@ -149,8 +160,47 @@ export default function Page() {
 function classForTaskAttemptStatus(status: TaskRunAttemptStatus) {
   switch (status) {
     case "FAILED":
-      return "text-red-500";
+      return "text-error";
     default:
       return "";
   }
+}
+
+function CreateTaskInstructions() {
+  const devEnvironment = useDevEnvironment();
+  invariant(devEnvironment, "Dev environment must be defined");
+  return (
+    <MainCenteredContainer className="max-w-prose">
+      <div className="mb-6 flex items-center justify-between border-b">
+        <Header1 spacing>Get setup in 3 minutes</Header1>
+        <div className="flex items-center gap-2">
+          <Feedback
+            button={
+              <Button variant="minimal/small" LeadingIcon={ChatBubbleLeftRightIcon}>
+                I'm stuck!
+              </Button>
+            }
+            defaultValue="help"
+          />
+        </div>
+      </div>
+      <StepNumber stepNumber="1" title="Run the CLI 'init' command in your project" />
+      <StepContentContainer>
+        <InitCommandV3 />
+        <Paragraph spacing>
+          You’ll notice a new folder in your project called{" "}
+          <InlineCode variant="small">trigger</InlineCode>. We’ve added a very simple example task
+          in here to help you get started.
+        </Paragraph>
+      </StepContentContainer>
+      <StepNumber stepNumber="2" title="Run the CLI 'dev' command" />
+      <StepContentContainer>
+        <TriggerDevStepV3 />
+      </StepContentContainer>
+      <StepNumber stepNumber="3" title="Waiting for tasks" displaySpinner />
+      <StepContentContainer>
+        <Paragraph>This page will automatically refresh.</Paragraph>
+      </StepContentContainer>
+    </MainCenteredContainer>
+  );
 }
