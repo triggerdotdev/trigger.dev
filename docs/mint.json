@@ -49,6 +49,10 @@
     {
       "name": "Examples",
       "url": "https://trigger.dev/apis"
+    },
+    {
+      "name": "v3 Developer Preview",
+      "url": "v3"
     }
   ],
   "redirects": [
@@ -427,6 +431,41 @@
     {
       "group": "Overview",
       "pages": ["examples/introduction"]
+    },
+    {
+      "group": "",
+      "pages": ["v3/introduction"]
+    },
+    {
+      "group": "Getting Started",
+      "pages": [
+        "v3/installation",
+        "v3/quick-start",
+        "v3/upgrading-from-v2",
+        "v3/community",
+        "v3/changelog"
+      ]
+    },
+    {
+      "group": "Fundamentals",
+      "pages": [
+        "v3/trigger-folder",
+        {
+          "group": "Tasks",
+          "pages": ["v3/tasks-regular", "v3/tasks-scheduled", "v3/tasks-zod", "v3/tasks-webhooks"]
+        },
+        "v3/triggering"
+      ]
+    },
+    {
+      "group": "Getting Started",
+      "pages": [
+        "v3/installation",
+        "v3/quick-start",
+        "v3/upgrading-from-v2",
+        "v3/community",
+        "v3/changelog"
+      ]
     }
   ],
   "footerSocials": {
