@@ -137,11 +137,16 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
     exit(1);
   }
 
-  deploymentSpinner.stop(
-    `Deployment complete. Image: ${image.image}${image.digest ? `@${image.digest}` : ""}`
+  const fullImage = `${registryHost}/${image.image}${image.digest ? `@${image.digest}` : ""}`;
+
+  deploymentSpinner.message(
+    `${deploymentResponse.data.version} image uploaded, starting indexing process`
   );
 
+  logger.debug(`Image built and pushed: ${fullImage}`);
+
   // Need to update the deployment with the image and start the deployment (indexing)
+  // registry.digitalocean.com/trigger/yubjwjsfkxnylobaqvqz:20240306.41.prod@sha256:8b48dd2866bc8878644d2880bbe35a27e66cf6ff78aa1e489d7fdde5e228faf1
 
   // Step 5: Update the deployment with the image and start the deployment (indexing)
   // Step 6: Wait for the deployment to finish and print the result
