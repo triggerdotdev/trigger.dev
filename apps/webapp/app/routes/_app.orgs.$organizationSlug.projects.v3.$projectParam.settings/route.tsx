@@ -128,7 +128,8 @@ export default function Page() {
                 <Label>Project ref</Label>
                 <ClipboardField value={`proj_${project.ref}`} variant={"secondary/small"} />
                 <Hint>
-                  This goes in your <InlineCode>trigger.config</InlineCode> file.
+                  This goes in your{" "}
+                  <InlineCode variant="extra-extra-small">trigger.config</InlineCode> file.
                 </Hint>
               </InputGroup>
             </Fieldset>

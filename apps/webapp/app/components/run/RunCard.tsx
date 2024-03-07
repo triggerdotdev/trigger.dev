@@ -29,7 +29,7 @@ export function RunPanel({
     <div
       className={cn(
         "overflow-hidden rounded-md border transition duration-150",
-        styleName === "normal" && "bg-charcoal-900",
+        styleName === "normal" && "bg-background-bright",
         selected
           ? "border-green-500"
           : styleName === "normal"
@@ -64,7 +64,7 @@ export function RunPanelHeader({
       className={cn(
         "flex items-center justify-between px-2",
         styleName === "normal"
-          ? "h-10 border-b border-charcoal-850 bg-background-bright py-2"
+          ? "h-10 border-b border-charcoal-700 bg-background-bright py-2"
           : "pt-2"
       )}
     >
