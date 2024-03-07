@@ -562,18 +562,13 @@
     },
     {
       "group": "Open source",
-      "pages": [
-        "v3/github-repo",
-        "v3/open-source-license",
-        "v3/open-source-self-hosting",
-        "v3/open-source-contributing"
-      ]
+      "pages": ["v3/github-repo", "v3/open-source-self-hosting", "v3/open-source-contributing"]
     },
     {
       "group": "Help",
       "pages": [
         "v3/help-faqs",
-        "v3/help-community",
+        "v3/community",
         "v3/help-email",
         "v3/help-slack",
         "v3/help-uptime-status"
