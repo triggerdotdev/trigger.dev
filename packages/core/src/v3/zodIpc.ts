@@ -1,15 +1,114 @@
-import { ChildProcess } from "child_process";
 import { randomUUID } from "crypto";
 import {
   GetSocketCallbackSchema,
   GetSocketMessageSchema,
   GetSocketMessagesWithCallback,
   GetSocketMessagesWithoutCallback,
+  MessagesFromSocketCatalog,
+  SocketMessageHasCallback,
   ZodSocketMessageCatalogSchema,
-  ZodSocketMessageHandler,
-  ZodSocketMessageHandlers,
 } from "./zodSocket";
 import { z } from "zod";
+
+interface ZodIpcMessageSender<TEmitCatalog extends ZodSocketMessageCatalogSchema> {
+  send<K extends GetSocketMessagesWithoutCallback<TEmitCatalog>>(
+    type: K,
+    payload: z.input<GetSocketMessageSchema<TEmitCatalog, K>>
+  ): void;
+
+  sendWithAck<K extends GetSocketMessagesWithCallback<TEmitCatalog>>(
+    type: K,
+    payload: z.input<GetSocketMessageSchema<TEmitCatalog, K>>
+  ): Promise<z.infer<GetSocketCallbackSchema<TEmitCatalog, K>>>;
+}
+
+type ZodIpcMessageHandlers<
+  TListenCatalog extends ZodSocketMessageCatalogSchema,
+  TEmitCatalog extends ZodSocketMessageCatalogSchema,
+> = Partial<{
+  [K in keyof TListenCatalog]: (
+    payload: z.infer<GetSocketMessageSchema<TListenCatalog, K>>,
+    sender: ZodIpcMessageSender<TEmitCatalog>
+  ) => Promise<
+    SocketMessageHasCallback<TListenCatalog, K> extends true
+      ? z.input<GetSocketCallbackSchema<TListenCatalog, K>>
+      : void
+  >;
+}>;
+
+const messageSchema = z.object({
+  version: z.literal("v1").default("v1"),
+  type: z.string(),
+  payload: z.unknown(),
+});
+
+type ZodIpcMessageHandlerOptions<
+  TListenCatalog extends ZodSocketMessageCatalogSchema,
+  TEmitCatalog extends ZodSocketMessageCatalogSchema,
+> = {
+  schema: TListenCatalog;
+  handlers?: ZodIpcMessageHandlers<TListenCatalog, TEmitCatalog>;
+  sender: ZodIpcMessageSender<TEmitCatalog>;
+};
+
+class ZodIpcMessageHandler<
+  TListenCatalog extends ZodSocketMessageCatalogSchema,
+  TEmitCatalog extends ZodSocketMessageCatalogSchema,
+> {
+  #schema: TListenCatalog;
+  #handlers: ZodIpcMessageHandlers<TListenCatalog, TEmitCatalog> | undefined;
+  #sender: ZodIpcMessageSender<TEmitCatalog>;
+
+  constructor(options: ZodIpcMessageHandlerOptions<TListenCatalog, TEmitCatalog>) {
+    this.#schema = options.schema;
+    this.#handlers = options.handlers;
+    this.#sender = options.sender;
+  }
+
+  public async handleMessage(message: unknown) {
+    const parsedMessage = this.parseMessage(message);
+
+    if (!this.#handlers) {
+      throw new Error("No handlers provided");
+    }
+
+    const handler = this.#handlers[parsedMessage.type];
+
+    if (!handler) {
+      console.error(`No handler for message type: ${String(parsedMessage.type)}`);
+      return;
+    }
+
+    const ack = await handler(parsedMessage.payload, this.#sender);
+
+    return ack;
+  }
+
+  public parseMessage(message: unknown): MessagesFromSocketCatalog<TListenCatalog> {
+    const parsedMessage = messageSchema.safeParse(message);
+
+    if (!parsedMessage.success) {
+      throw new Error(`Failed to parse message: ${JSON.stringify(parsedMessage.error)}`);
+    }
+
+    const schema = this.#schema[parsedMessage.data.type]["message"];
+
+    if (!schema) {
+      throw new Error(`Unknown message type: ${parsedMessage.data.type}`);
+    }
+
+    const parsedPayload = schema.safeParse(parsedMessage.data.payload);
+
+    if (!parsedPayload.success) {
+      throw new Error(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
+    }
+
+    return {
+      type: parsedMessage.data.type,
+      payload: parsedPayload.data,
+    };
+  }
+}
 
 const Packet = z.discriminatedUnion("type", [
   z.object({
@@ -36,14 +135,11 @@ interface ZodIpcConnectionOptions<
 > {
   listenSchema: TListenCatalog;
   emitSchema: TEmitCatalog;
-  process:
-    | ChildProcess
-    | NodeJS.Process
-    | {
-        send?: (message: any) => any;
-        on?: (event: "message", listener: (message: any) => void) => void;
-      };
-  handlers?: ZodSocketMessageHandlers<TListenCatalog>;
+  process: {
+    send?: (message: any) => any;
+    on?: (event: "message", listener: (message: any) => void) => void;
+  };
+  handlers?: ZodIpcMessageHandlers<TListenCatalog, TEmitCatalog>;
 }
 
 export class ZodIpcConnection<
@@ -53,7 +149,7 @@ export class ZodIpcConnection<
   #sessionId?: string;
   #messageCounter: number = 0;
 
-  #handler: ZodSocketMessageHandler<TListenCatalog>;
+  #handler: ZodIpcMessageHandler<TListenCatalog, TEmitCatalog>;
 
   #acks: Map<
     number,
@@ -64,20 +160,14 @@ export class ZodIpcConnection<
     }
   > = new Map();
 
-  #process:
-    | ChildProcess
-    | NodeJS.Process
-    | {
-        send?: (message: any) => any;
-        on?: (event: "message", listener: (message: any) => void) => void;
-      };
-
   constructor(private opts: ZodIpcConnectionOptions<TListenCatalog, TEmitCatalog>) {
-    this.#process = opts.process;
-
-    this.#handler = new ZodSocketMessageHandler({
+    this.#handler = new ZodIpcMessageHandler({
       schema: opts.listenSchema,
       handlers: opts.handlers,
+      sender: {
+        send: this.send.bind(this),
+        sendWithAck: this.sendWithAck.bind(this),
+      },
     });
 
     this.#registerHandlers();
@@ -85,11 +175,11 @@ export class ZodIpcConnection<
   }
 
   async #registerHandlers() {
-    if (!this.#process.on) {
+    if (!this.opts.process.on) {
       return;
     }
 
-    this.#process.on("message", async (message) => {
+    this.opts.process.on("message", async (message) => {
       this.#handlePacket(message);
     });
   }
@@ -168,7 +258,7 @@ export class ZodIpcConnection<
 
   async #sendPacket(packet: Packet) {
     console.log("->", packet);
-    await this.#process.send?.(packet);
+    await this.opts.process.send?.(packet);
   }
 
   async send<K extends GetSocketMessagesWithoutCallback<TEmitCatalog>>(
