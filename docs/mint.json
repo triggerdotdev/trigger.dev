@@ -442,8 +442,8 @@
         "v3/installation",
         "v3/quick-start",
         "v3/upgrading-from-v2",
-        "v3/community",
-        "v3/changelog"
+        "v3/changelog",
+        "v3/feature-matrix"
       ]
     },
     {
@@ -496,6 +496,87 @@
         "v3/trigger-filters",
         "v3/notifications",
         "v3/rollbacks"
+      ]
+    },
+    {
+      "group": "Dashboard",
+      "pages": [
+        "v3/dashboard-overview",
+        "v3/dashboard-runs",
+        "v3/dashboard-tests",
+        "v3/dashboard-environment-variables"
+      ]
+    },
+    {
+      "group": "API reference",
+      "pages": [
+        {
+          "group": "Functions",
+          "pages": [
+            "v3/reference-task",
+            "v3/reference-cron-task",
+            "v3/reference-cron-dynamic",
+            "v3/reference-interval-task",
+            "v3/reference-interval-dynamic",
+            "v3/reference-zod-task",
+            "v3/reference-zod-catalog",
+            "v3/reference-task-trigger",
+            "v3/reference-task-trigger-and-wait",
+            "v3/reference-task-batch-trigger",
+            "v3/reference-task-batch-trigger-and-wait",
+            "v3/reference-wait-for",
+            "v3/reference-wait-until",
+            "v3/reference-wait-for-event",
+            "v3/reference-wait-for-request",
+            "v3/reference-retry-on-throw",
+            "v3/reference-retry-fetch",
+            "v3/reference-retry-intercept-fetch",
+            "v3/reference-notification-catalog",
+            "v3/reference-notify",
+            "v3/reference-queue"
+          ]
+        },
+        {
+          "group": "CLI",
+          "pages": [
+            "v3/reference-cli-init",
+            "v3/reference-cli-dev",
+            "v3/reference-cli-deploy",
+            "v3/reference-cli-login",
+            "v3/reference-cli-logout",
+            "v3/reference-cli-update",
+            "v3/reference-cli-build",
+            "v3/reference-cli-who-am-i"
+          ]
+        },
+        "v3/reference-trigger-config"
+      ]
+    },
+    {
+      "group": "Architecture",
+      "pages": [
+        "v3/architecture-how-it-works",
+        "v3/architecture-multi-tenant-queue",
+        "v3/architecture-reliability"
+      ]
+    },
+    {
+      "group": "Open source",
+      "pages": [
+        "v3/github-repo",
+        "v3/open-source-license",
+        "v3/open-source-self-hosting",
+        "v3/open-source-contributing"
+      ]
+    },
+    {
+      "group": "Help",
+      "pages": [
+        "v3/help-faqs",
+        "v3/help-community",
+        "v3/help-email",
+        "v3/help-slack",
+        "v3/help-uptime-status"
       ]
     }
   ],
