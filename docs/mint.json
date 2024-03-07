@@ -458,13 +458,44 @@
       ]
     },
     {
-      "group": "Getting Started",
+      "group": "Development",
+      "pages": ["v3/cli-dev", "v3/develop-run-tests", "v3/local-debugger"]
+    },
+    {
+      "group": "Deployment",
       "pages": [
-        "v3/installation",
-        "v3/quick-start",
-        "v3/upgrading-from-v2",
-        "v3/community",
-        "v3/changelog"
+        "v3/deploy-environment-variables",
+        "v3/cli-deploy",
+        "v3/github-actions",
+        {
+          "group": "Integrations",
+          "pages": ["v3/vercel-integration"]
+        }
+      ]
+    },
+    {
+      "group": "Building your tasks",
+      "pages": [
+        "v3/logging",
+        "v3/errors",
+        "v3/retrying",
+        {
+          "group": "Wait",
+          "pages": ["v3/wait-for", "v3/wait-until", "v3/wait-for-event", "v3/wait-for-request"]
+        },
+        "v3/environment-variables",
+        {
+          "group": "Queues",
+          "pages": ["v3/concurrency", "v3/one-at-a-time", "v3/parallelism", "v3/per-tenant"]
+        },
+        {
+          "group": "Testing",
+          "pages": ["v3/run-tests", "v3/automated-tests"]
+        },
+        "v3/idempotency",
+        "v3/trigger-filters",
+        "v3/notifications",
+        "v3/rollbacks"
       ]
     }
   ],
