@@ -383,6 +383,11 @@ class TaskCoordinator {
           });
         });
 
+        socket.on("READY_FOR_RESUME", async (message) => {
+          logger.log("[READY_FOR_RESUME]", message);
+          this.#platformSocket?.send("READY_FOR_RESUME", message);
+        });
+
         socket.on("TASK_RUN_COMPLETED", async (message, callback) => {
           logger.log("completed task", { completionId: message.completion.id });
 
@@ -430,8 +435,12 @@ class TaskCoordinator {
           });
         });
 
-        socket.on("WAIT_FOR_TASK", async (message) => {
+        socket.on("WAIT_FOR_TASK", async (message, callback) => {
           logger.log("[WAIT_FOR_TASK]", message);
+
+          const { canCheckpoint } = await this.#checkpointer.initialize();
+
+          callback({ willCheckpointAndRestore: canCheckpoint });
 
           const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
 
@@ -452,8 +461,12 @@ class TaskCoordinator {
           });
         });
 
-        socket.on("WAIT_FOR_BATCH", async (message) => {
+        socket.on("WAIT_FOR_BATCH", async (message, callback) => {
           logger.log("[WAIT_FOR_BATCH]", message);
+
+          const { canCheckpoint } = await this.#checkpointer.initialize();
+
+          callback({ willCheckpointAndRestore: canCheckpoint });
 
           const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
 
@@ -508,9 +521,6 @@ class TaskCoordinator {
       handlers: {
         TASK_HEARTBEAT: async (message) => {
           this.#platformSocket?.send("TASK_HEARTBEAT", message);
-        },
-        WAIT_FOR_BATCH: async (message) => {
-          // this.#checkpointer.checkpointAndPush(socket.data.podName);
         },
       },
     });

@@ -31,6 +31,8 @@ class ProdWorker {
   private completed = false;
   private paused = false;
 
+  private nextResumeAfter: "WAIT_FOR_DURATION" | "WAIT_FOR_TASK" | "WAIT_FOR_BATCH" | undefined;
+
   #httpPort: number;
   #backgroundWorker: ProdBackgroundWorker;
   #httpServer: ReturnType<typeof createServer>;
@@ -61,11 +63,6 @@ class ProdWorker {
       this.#coordinatorSocket.socket.emit("TASK_HEARTBEAT", { version: "v1", attemptFriendlyId });
     });
 
-    this.#backgroundWorker.onWaitForBatch.attach((message) => {
-      // TODO: Switch to .send() once coordinator uses zod handler for all messages
-      this.#coordinatorSocket.socket.emit("WAIT_FOR_BATCH", { version: "v1", ...message });
-    });
-
     this.#backgroundWorker.onWaitForDuration.attach(async (message) => {
       // TODO: Switch to .send() once coordinator uses zod handler for all messages
       const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
@@ -80,6 +77,7 @@ class ProdWorker {
       setTimeout(() => {
         if (willCheckpointAndRestore) {
           this.paused = true;
+          this.nextResumeAfter = "WAIT_FOR_DURATION";
         }
         // Forcing a reconnect will ensure the connection handler runs to trigger automatic resume
         this.#coordinatorSocket.close();
@@ -87,9 +85,48 @@ class ProdWorker {
       }, 3_000);
     });
 
-    this.#backgroundWorker.onWaitForTask.attach((message) => {
+    this.#backgroundWorker.onWaitForTask.attach(async (message) => {
       // TODO: Switch to .send() once coordinator uses zod handler for all messages
-      this.#coordinatorSocket.socket.emit("WAIT_FOR_TASK", { version: "v1", ...message });
+      const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
+        "WAIT_FOR_TASK",
+        { version: "v1", ...message }
+      );
+
+      logger.log("WAIT_FOR_TASK", { willCheckpointAndRestore });
+
+      this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
+
+      setTimeout(() => {
+        if (willCheckpointAndRestore) {
+          this.paused = true;
+          this.nextResumeAfter = "WAIT_FOR_TASK";
+        }
+        // Forcing a reconnect will ensure the connection handler runs to trigger automatic resume
+        this.#coordinatorSocket.close();
+        this.#coordinatorSocket.connect();
+      }, 3_000);
+    });
+
+    this.#backgroundWorker.onWaitForBatch.attach(async (message) => {
+      // TODO: Switch to .send() once coordinator uses zod handler for all messages
+      const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
+        "WAIT_FOR_BATCH",
+        { version: "v1", ...message }
+      );
+
+      logger.log("WAIT_FOR_BATCH", { willCheckpointAndRestore });
+
+      this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
+
+      setTimeout(() => {
+        if (willCheckpointAndRestore) {
+          this.paused = true;
+          this.nextResumeAfter = "WAIT_FOR_BATCH";
+        }
+        // Forcing a reconnect will ensure the connection handler runs to trigger automatic resume
+        this.#coordinatorSocket.close();
+        this.#coordinatorSocket.connect();
+      }, 3_000);
     });
 
     this.#httpPort = port;
@@ -181,8 +218,19 @@ class ProdWorker {
         }
 
         if (this.paused) {
+          if (!this.nextResumeAfter) {
+            return;
+          }
+
+          socket.emit("READY_FOR_RESUME", {
+            version: "v1",
+            attemptId: this.attemptId,
+            type: this.nextResumeAfter,
+          });
+
           this.#backgroundWorker.waitCompletedNotification();
           this.paused = false;
+
           return;
         }
 

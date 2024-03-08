@@ -12,8 +12,6 @@ import {
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
   ZodIpcConnection,
-  ZodMessageHandler,
-  childToWorkerMessages,
   correctErrorStackTrace,
 } from "@trigger.dev/core/v3";
 import { Evt } from "evt";
@@ -45,15 +43,12 @@ type BackgroundWorkerParams = {
 
 export class ProdBackgroundWorker {
   private _initialized: boolean = false;
-  private _handler = new ZodMessageHandler({
-    schema: childToWorkerMessages,
-  });
 
   public onTaskHeartbeat: Evt<string> = new Evt();
 
-  public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
   public onWaitForDuration: Evt<{ version?: "v1"; ms: number }> = new Evt();
   public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
+  public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
 
   public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
 
@@ -215,9 +210,9 @@ export class ProdBackgroundWorker {
         this.onWaitForTask.post(message);
       });
 
-      this.preCheckpointNotification.attach(message => {
-        taskRunProcess.preCheckpointNotification.post(message)
-      })
+      this.preCheckpointNotification.attach((message) => {
+        taskRunProcess.preCheckpointNotification.post(message);
+      });
 
       await taskRunProcess.initialize();
 
@@ -302,10 +297,6 @@ export class ProdBackgroundWorker {
 }
 
 class TaskRunProcess {
-  private _handler = new ZodMessageHandler({
-    schema: childToWorkerMessages,
-  });
-
   private _ipc?: ZodIpcConnection<
     typeof ProdChildToWorkerMessages,
     typeof ProdWorkerToChildMessages

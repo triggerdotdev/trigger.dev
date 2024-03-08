@@ -556,7 +556,6 @@ export class SharedQueueConsumer {
             },
           });
 
-          // TODO: Send RESUME once the restored attempt has checked in
           socketIo.providerNamespace.emit("RESTORE", {
             version: "v1",
             id: latestCheckpoint.id,
@@ -566,8 +565,8 @@ export class SharedQueueConsumer {
             reason: latestCheckpoint.reason ?? undefined,
           });
 
-          // TODO: Uncomment once the post-restore check-in mechanism works
-          // return;
+          setTimeout(() => this.#doWork(), 100);
+          return;
         }
 
         const completions: TaskRunExecutionResult[] = [];

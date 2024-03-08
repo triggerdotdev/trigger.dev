@@ -145,6 +145,13 @@ export const CoordinatorToPlatformMessages = {
       }),
     ]),
   },
+  READY_FOR_RESUME: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      attemptId: z.string(),
+      type: z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]),
+    }),
+  },
   TASK_RUN_COMPLETED: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -267,6 +274,13 @@ export const ProdWorkerToCoordinatorMessages = {
       attemptId: z.string(),
     }),
   },
+  READY_FOR_RESUME: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      attemptId: z.string(),
+      type: z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]),
+    }),
+  },
   TASK_HEARTBEAT: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -281,31 +295,32 @@ export const ProdWorkerToCoordinatorMessages = {
     }),
     callback: z.void(),
   },
+  WAIT_FOR_DURATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      ms: z.number(),
+    }),
+    callback: z.object({
+      willCheckpointAndRestore: z.boolean(),
+    }),
+  },
+  WAIT_FOR_TASK: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      id: z.string(),
+    }),
+    callback: z.object({
+      willCheckpointAndRestore: z.boolean(),
+    }),
+  },
   WAIT_FOR_BATCH: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       id: z.string(),
       runs: z.string().array(),
     }),
-  },
-  WAIT_FOR_DURATION: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      ms: z.number(),
-    }),
-    callback: z.discriminatedUnion("willCheckpointAndRestore", [
-      z.object({
-        willCheckpointAndRestore: z.literal(false),
-      }),
-      z.object({
-        willCheckpointAndRestore: z.literal(true),
-      }),
-    ]),
-  },
-  WAIT_FOR_TASK: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      id: z.string(),
+    callback: z.object({
+      willCheckpointAndRestore: z.boolean(),
     }),
   },
 };

@@ -182,7 +182,11 @@ export class CompleteAttemptService extends BaseService {
             },
           },
           include: {
-            dependentTaskAttempt: true,
+            dependentTaskAttempt: {
+              include: {
+                taskRun: true,
+              },
+            },
             items: {
               include: {
                 taskRun: {
@@ -220,12 +224,27 @@ export class CompleteAttemptService extends BaseService {
             return "ACKNOWLEDGED";
           }
 
-          await marqs?.replaceMessage(finalizedBatchRun.dependentTaskAttempt.taskRunId, {
-            type: "RESUME",
-            completedAttemptIds: finalizedBatchRun.items.map(
-              (item) => item.taskRun.attempts[0]?.id
-            ),
-          });
+          const dependentRun = finalizedBatchRun.dependentTaskAttempt.taskRun;
+
+          if (finalizedBatchRun.dependentTaskAttempt.status === "PAUSED") {
+            await marqs?.enqueueMessage(
+              environment,
+              dependentRun.queue,
+              dependentRun.id,
+              {
+                type: "RESUME",
+                completedAttemptIds: [taskRunAttempt.id],
+              },
+              dependentRun.concurrencyKey ?? undefined
+            );
+          } else {
+            await marqs?.replaceMessage(dependentRun.id, {
+              type: "RESUME",
+              completedAttemptIds: finalizedBatchRun.items.map(
+                (item) => item.taskRun.attempts[0]?.id
+              ),
+            });
+          }
         }
       }
 
