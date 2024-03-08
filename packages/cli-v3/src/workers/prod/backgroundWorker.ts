@@ -88,7 +88,7 @@ export class ProdBackgroundWorker {
     safeDeleteFileSync(`${this.path}.map`);
   }
 
-  async initialize() {
+  async initialize(options?: { env?: Record<string, string> }) {
     if (this._initialized) {
       throw new Error("Worker already initialized");
     }
@@ -100,6 +100,7 @@ export class ProdBackgroundWorker {
         stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
         env: {
           ...this.params.env,
+          ...options?.env,
         },
       });
 

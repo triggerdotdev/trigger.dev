@@ -43,6 +43,23 @@ export class RegistryProxy {
     return new URL(this.options.origin).host;
   }
 
+  // If the imageReference includes a hostname, rewrite it to point to the proxy
+  // e.g. eric-webapp.trigger.dev/trigger/yubjwjsfkxnylobaqvqz:20240306.41.prod@sha256:8b48dd2866bc8878644d2880bbe35a27e66cf6ff78aa1e489d7fdde5e228faf1
+  // should be rewritten to ${this.host}/trigger/yubjwjsfkxnylobaqvqz:20240306.41.prod@sha256:8b48dd2866bc8878644d2880bbe35a27e66cf6ff78aa1e489d7fdde5e228faf1
+  // This will work with image references that don't include the @sha256:... part
+  public rewriteImageReference(imageReference: string) {
+    const parts = parseDockerImageReference(imageReference);
+
+    if (parts.registry) {
+      return rebuildDockerImageReference({
+        ...parts,
+        registry: this.host,
+      });
+    }
+
+    return imageReference;
+  }
+
   public async call(request: IncomingMessage, response: ServerResponse) {
     await this.#proxyRequest(request, response);
   }
@@ -416,4 +433,64 @@ async function streamRequestBodyToTempFile(request: IncomingMessage): Promise<st
   await pipeline(request, writeStream);
 
   return tempFilePath;
+}
+
+type DockerImageParts = {
+  registry?: string;
+  repo: string;
+  tag?: string;
+  digest?: string;
+};
+
+function parseDockerImageReference(imageReference: string): DockerImageParts {
+  const parts: DockerImageParts = { repo: "" }; // Initialize with an empty repo which we'll fill later
+
+  // Splitting by '@' to separate the digest (if exists)
+  const atSplit = imageReference.split("@");
+  if (atSplit.length > 1) {
+    parts.digest = atSplit[1];
+    imageReference = atSplit[0];
+  }
+
+  // Splitting by ':' to separate the tag (if exists)
+  const colonSplit = imageReference.split(":");
+  if (colonSplit.length > 1 && !colonSplit[1].includes("/")) {
+    // Ensuring we don't split a registry port
+    parts.tag = colonSplit.pop(); // The last part is the tag, remove it from the array
+    imageReference = colonSplit.join(":"); // Join back in case there was more than one colon
+  }
+
+  // Now, the remaining part is "registry/repo" or just "repo"
+  const slashIndex = imageReference.indexOf("/");
+  if (
+    slashIndex !== -1 &&
+    (imageReference.startsWith("localhost") || slashIndex > imageReference.indexOf("."))
+  ) {
+    parts.registry = imageReference.substring(0, slashIndex);
+    parts.repo = imageReference.substring(slashIndex + 1);
+  } else {
+    parts.repo = imageReference; // If there's no registry, the whole thing is the repo
+  }
+
+  return parts;
+}
+
+function rebuildDockerImageReference(parts: DockerImageParts): string {
+  let imageReference = "";
+
+  if (parts.registry) {
+    imageReference += `${parts.registry}/`;
+  }
+
+  imageReference += parts.repo; // Repo is now guaranteed to be defined
+
+  if (parts.tag) {
+    imageReference += `:${parts.tag}`;
+  }
+
+  if (parts.digest) {
+    imageReference += `@${parts.digest}`;
+  }
+
+  return imageReference;
 }

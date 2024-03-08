@@ -1,12 +1,12 @@
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { CreateImageDetailsRequestBody } from "@trigger.dev/core/v3";
+import { StartDeploymentIndexingRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { CreateImageDetailsService } from "~/v3/services/createImageDetails.server";
+import { StartDeploymentIndexing } from "~/v3/services/startDeploymentIndexing.server";
 
 const ParamsSchema = z.object({
-  projectRef: z.string(),
+  deploymentId: z.string(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -31,23 +31,23 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const authenticatedEnv = authenticationResult.environment;
 
-  const { projectRef } = parsedParams.data;
+  const { deploymentId } = parsedParams.data;
 
   const rawBody = await request.json();
-  const body = CreateImageDetailsRequestBody.safeParse(rawBody);
+  const body = StartDeploymentIndexingRequestBody.safeParse(rawBody);
 
   if (!body.success) {
     return json({ error: "Invalid body", issues: body.error.issues }, { status: 400 });
   }
 
-  const service = new CreateImageDetailsService();
+  const service = new StartDeploymentIndexing();
 
-  const imageDetails = await service.call(projectRef, authenticatedEnv, body.data);
+  const deployment = await service.call(authenticatedEnv, deploymentId, body.data);
 
   return json(
     {
-      id: imageDetails.friendlyId,
-      contentHash: imageDetails.contentHash,
+      id: deployment.friendlyId,
+      contentHash: deployment.contentHash,
     },
     { status: 200 }
   );

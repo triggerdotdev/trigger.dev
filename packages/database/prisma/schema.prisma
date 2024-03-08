@@ -389,7 +389,6 @@ model RuntimeEnvironment {
   taskQueues                 TaskQueue[]
   batchTaskRuns              BatchTaskRun[]
   environmentVariableValues  EnvironmentVariableValue[]
-  imageDetails               ImageDetails[]
   checkpoints                Checkpoint[]
   workerDeployments          WorkerDeployment[]
   workerDeploymentPromotions WorkerDeploymentPromotion[]
@@ -436,7 +435,6 @@ model Project {
   taskTags              TaskTag[]
   taskQueues            TaskQueue[]
   environmentVariables  EnvironmentVariable[]
-  imageDetails          ImageDetails[]
   checkpoints           Checkpoint[]
   WorkerDeployment      WorkerDeployment[]
 }
@@ -1524,8 +1522,7 @@ model BackgroundWorker {
   attempts   TaskRunAttempt[]
   lockedRuns TaskRun[]
 
-  imageDetails ImageDetails?
-  deployment   WorkerDeployment?
+  deployment WorkerDeployment?
 
   @@unique([projectId, runtimeEnvironmentId, version])
 }
@@ -1897,31 +1894,6 @@ model EnvironmentVariableValue {
   @@unique([variableId, environmentId])
 }
 
-model ImageDetails {
-  id String @id @default(cuid())
-
-  friendlyId String @unique
-
-  contentHash String
-  tag         String
-
-  backgroundWorker   BackgroundWorker? @relation(fields: [backgroundWorkerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  backgroundWorkerId String?           @unique
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runtimeEnvironmentId String
-
-  metadata Json
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([projectId, runtimeEnvironmentId, contentHash])
-}
-
 model Checkpoint {
   id String @id @default(cuid())
 
@@ -1952,9 +1924,12 @@ enum CheckpointType {
 model WorkerDeployment {
   id String @id @default(cuid())
 
-  friendlyId String @unique
-  shortCode  String
-  version    String
+  contentHash String
+  friendlyId  String @unique
+  shortCode   String
+  version     String
+
+  imageReference String?
 
   externalBuildData Json?
 

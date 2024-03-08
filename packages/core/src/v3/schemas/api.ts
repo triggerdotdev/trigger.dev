@@ -90,18 +90,20 @@ export type GetEnvironmentVariablesResponseBody = z.infer<
   typeof GetEnvironmentVariablesResponseBody
 >;
 
-export const CreateImageDetailsRequestBody = z.object({
-  metadata: ImageDetailsMetadata,
+export const StartDeploymentIndexingRequestBody = z.object({
+  imageReference: z.string(),
 });
 
-export type CreateImageDetailsRequestBody = z.infer<typeof CreateImageDetailsRequestBody>;
+export type StartDeploymentIndexingRequestBody = z.infer<typeof StartDeploymentIndexingRequestBody>;
 
-export const CreateImageDetailsResponse = z.object({
+export const StartDeploymentIndexingResponseBody = z.object({
   id: z.string(),
   contentHash: z.string(),
 });
 
-export type CreateImageDetailsResponse = z.infer<typeof CreateImageDetailsResponse>;
+export type StartDeploymentIndexingResponseBody = z.infer<
+  typeof StartDeploymentIndexingResponseBody
+>;
 
 export const ExternalBuildData = z.object({
   buildId: z.string(),
@@ -113,6 +115,7 @@ export type ExternalBuildData = z.infer<typeof ExternalBuildData>;
 
 export const InitializeDeploymentResponseBody = z.object({
   id: z.string(),
+  contentHash: z.string(),
   shortCode: z.string(),
   version: z.string(),
   imageTag: z.string(),
@@ -120,3 +123,34 @@ export const InitializeDeploymentResponseBody = z.object({
 });
 
 export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;
+
+export const InitializeDeploymentRequestBody = z.object({
+  contentHash: z.string(),
+});
+
+export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
+
+export const GetDeploymentResponseBody = z.object({
+  id: z.string(),
+  status: z.enum(["PENDING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED"]),
+  contentHash: z.string(),
+  shortCode: z.string(),
+  version: z.string(),
+  imageReference: z.string().optional(),
+  worker: z
+    .object({
+      id: z.string(),
+      version: z.string(),
+      tasks: z.array(
+        z.object({
+          id: z.string(),
+          slug: z.string(),
+          filePath: z.string(),
+          exportName: z.string(),
+        })
+      ),
+    })
+    .optional(),
+});
+
+export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody>;

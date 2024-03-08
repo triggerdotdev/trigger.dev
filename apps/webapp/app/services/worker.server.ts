@@ -4,32 +4,32 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
+import { IndexDeploymentService } from "~/v3/services/indexDeployment.server";
+import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
+import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
 import { sendEmail } from "./email.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
 import { PerformEndpointIndexService } from "./endpoints/performEndpointIndexService";
+import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
 import { RecurringEndpointIndexService } from "./endpoints/recurringEndpointIndex.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
+import { executionRateLimiter } from "./runExecutionRateLimiter.server";
+import { DeliverRunSubscriptionService } from "./runs/deliverRunSubscription.server";
+import { DeliverRunSubscriptionsService } from "./runs/deliverRunSubscriptions.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
 import { PerformRunExecutionV3Service } from "./runs/performRunExecutionV3.server";
+import { ResumeRunService } from "./runs/resumeRun.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
 import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
+import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout.server";
-import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
-import { DeliverRunSubscriptionService } from "./runs/deliverRunSubscription.server";
-import { DeliverRunSubscriptionsService } from "./runs/deliverRunSubscriptions.server";
 import { ResumeTaskService } from "./tasks/resumeTask.server";
-import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
-import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
-import { ResumeRunService } from "./runs/resumeRun.server";
-import { executionRateLimiter } from "./runExecutionRateLimiter.server";
-import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.server";
-import { IndexTasksService } from "~/v3/services/indexTasks.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -104,7 +104,7 @@ const workerCatalog = {
     id: z.string(),
   }),
   // v3 tasks
-  indexTasks: z.object({
+  "v3.indexDeployment": z.object({
     id: z.string(),
   }),
 };
@@ -434,11 +434,11 @@ function getWorkerQueue() {
         },
       },
       // v3 tasks
-      indexTasks: {
+      "v3.indexDeployment": {
         priority: 0,
         maxAttempts: 5,
         handler: async (payload, job) => {
-          const service = new IndexTasksService();
+          const service = new IndexDeploymentService();
 
           return await service.call(payload.id);
         },
@@ -538,4 +538,4 @@ function getTaskOperationWorkerQueue() {
   });
 }
 
-export { executionWorker, workerQueue, taskOperationWorker };
+export { executionWorker, taskOperationWorker, workerQueue };

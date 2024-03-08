@@ -5,11 +5,13 @@ import {
   WhoAmIResponseSchema,
   CreateBackgroundWorkerRequestBody,
   CreateBackgroundWorkerResponse,
-  CreateImageDetailsRequestBody,
-  CreateImageDetailsResponse,
+  StartDeploymentIndexingResponseBody,
   GetProjectDevResponse,
   GetEnvironmentVariablesResponseBody,
   InitializeDeploymentResponseBody,
+  InitializeDeploymentRequestBody,
+  StartDeploymentIndexingRequestBody,
+  GetDeploymentResponseBody,
 } from "@trigger.dev/core/v3";
 
 export class CliApiClient {
@@ -73,25 +75,6 @@ export class CliApiClient {
     );
   }
 
-  async createImageDetails(projectRef: string, body: CreateImageDetailsRequestBody) {
-    if (!this.accessToken) {
-      throw new Error("createImageDetails: No access token");
-    }
-
-    return zodfetch(
-      CreateImageDetailsResponse,
-      `${this.apiURL}/api/v1/projects/${projectRef}/image-details`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      }
-    );
-  }
-
   async getProjectDevEnv({ projectRef }: { projectRef: string }) {
     if (!this.accessToken) {
       throw new Error("getProjectDevEnv: No access token");
@@ -135,7 +118,7 @@ export class CliApiClient {
     );
   }
 
-  async initializeDeployment() {
+  async initializeDeployment(body: InitializeDeploymentRequestBody) {
     if (!this.accessToken) {
       throw new Error("initializeDeployment: No access token");
     }
@@ -146,7 +129,44 @@ export class CliApiClient {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
       },
+      body: JSON.stringify(body),
     });
+  }
+
+  async startDeploymentIndexing(deploymentId: string, body: StartDeploymentIndexingRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("startDeploymentIndexing: No access token");
+    }
+
+    return zodfetch(
+      StartDeploymentIndexingResponseBody,
+      `${this.apiURL}/api/v1/deployments/${deploymentId}/start-indexing`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async getDeployment(deploymentId: string) {
+    if (!this.accessToken) {
+      throw new Error("getDeployment: No access token");
+    }
+
+    return zodfetch(
+      GetDeploymentResponseBody,
+      `${this.apiURL}/api/v1/deployments/${deploymentId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          Accept: "application/json",
+        },
+      }
+    );
   }
 }
 

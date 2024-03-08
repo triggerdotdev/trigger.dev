@@ -4,11 +4,15 @@ import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { customAlphabet } from "nanoid";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
+import { InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
 export class InitializeDeploymentService extends BaseService {
-  public async call(environment: AuthenticatedEnvironment) {
+  public async call(
+    environment: AuthenticatedEnvironment,
+    payload: InitializeDeploymentRequestBody
+  ) {
     return this.traceWithEnv("call", environment, async (span) => {
       const latestDeployment = await this._prisma.workerDeployment.findFirst({
         where: {
@@ -28,9 +32,10 @@ export class InitializeDeploymentService extends BaseService {
       const deployment = await this._prisma.workerDeployment.create({
         data: {
           friendlyId: generateFriendlyId("deployment"),
+          contentHash: payload.contentHash,
           shortCode: nanoid(8),
           version: nextVersion,
-          status: "PENDING",
+          status: "BUILDING",
           environmentId: environment.id,
           projectId: environment.projectId,
           externalBuildData,

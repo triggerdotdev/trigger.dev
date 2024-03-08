@@ -286,10 +286,10 @@ class TaskCoordinator {
         try {
           setSocketDataFromHeader("podName", "x-pod-name");
           setSocketDataFromHeader("contentHash", "x-trigger-content-hash");
-          setSocketDataFromHeader("cliPackageVersion", "x-trigger-cli-package-version");
           setSocketDataFromHeader("projectRef", "x-trigger-project-ref");
           setSocketDataFromHeader("attemptId", "x-trigger-attempt-id");
           setSocketDataFromHeader("envId", "x-trigger-env-id");
+          setSocketDataFromHeader("deploymentId", "x-trigger-deployment-id");
         } catch (error) {
           logger(error);
           socket.disconnect(true);
@@ -390,8 +390,8 @@ class TaskCoordinator {
             version: "v1",
             projectRef: socket.data.projectRef,
             envId: socket.data.envId,
+            deploymentId: message.deploymentId,
             metadata: {
-              cliPackageVersion: socket.data.cliPackageVersion,
               contentHash: socket.data.contentHash,
               packageVersion: message.packageVersion,
               tasks: message.tasks,

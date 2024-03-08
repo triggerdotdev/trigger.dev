@@ -5,10 +5,12 @@ import { Command } from "commander";
 import { Metafile, build } from "esbuild";
 import { execa } from "execa";
 import { resolve as importResolve } from "import-meta-resolve";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { exit } from "node:process";
+import { setTimeout } from "node:timers/promises";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
@@ -92,14 +94,16 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
   intro(`Preparing to deploy "${prodEnv.data.name}" (${config.project})`);
 
   // Step 1: Build the project into a temporary directory
-  const compiledPath = await compileProject(config, options.data);
+  const compilation = await compileProject(config, options.data);
 
   const deploymentSpinner = spinner();
 
   deploymentSpinner.start("Initializing deployment");
 
   // Step 2: Initialize a deployment on the server (response will have everything we need to build an image)
-  const deploymentResponse = await environmentClient.initializeDeployment();
+  const deploymentResponse = await environmentClient.initializeDeployment({
+    contentHash: compilation.contentHash,
+  });
 
   if (!deploymentResponse.success) {
     deploymentSpinner.stop(`Failed to initialize deployment: ${deploymentResponse.error}`);
@@ -126,10 +130,12 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
     buildId: deploymentResponse.data.externalBuildData.buildId,
     buildToken: deploymentResponse.data.externalBuildData.buildToken,
     buildProjectId: deploymentResponse.data.externalBuildData.projectId,
-    cwd: compiledPath,
+    cwd: compilation.path,
     projectId: config.project,
     deploymentId: deploymentResponse.data.id,
     deploymentVersion: deploymentResponse.data.version,
+    contentHash: deploymentResponse.data.contentHash,
+    projectRef: config.project,
   });
 
   if (!image.ok) {
@@ -137,19 +143,70 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
     exit(1);
   }
 
-  const fullImage = `${registryHost}/${image.image}${image.digest ? `@${image.digest}` : ""}`;
+  const imageReference = `${registryHost}/${image.image}${image.digest ? `@${image.digest}` : ""}`;
 
   deploymentSpinner.message(
     `${deploymentResponse.data.version} image uploaded, starting indexing process`
   );
 
-  logger.debug(`Image built and pushed: ${fullImage}`);
+  logger.debug(`Image built and pushed: ${imageReference}`);
 
   // Need to update the deployment with the image and start the deployment (indexing)
   // registry.digitalocean.com/trigger/yubjwjsfkxnylobaqvqz:20240306.41.prod@sha256:8b48dd2866bc8878644d2880bbe35a27e66cf6ff78aa1e489d7fdde5e228faf1
-
   // Step 5: Update the deployment with the image and start the deployment (indexing)
+  const startIndexingResponse = await environmentClient.startDeploymentIndexing(
+    deploymentResponse.data.id,
+    {
+      imageReference,
+    }
+  );
+
+  if (!startIndexingResponse.success) {
+    deploymentSpinner.stop(`Failed to start indexing: ${startIndexingResponse.error}`);
+    exit(1);
+  }
+
   // Step 6: Wait for the deployment to finish and print the result
+  const completedDeployment = await waitForDeploymentToComplete(
+    deploymentResponse.data.id,
+    environmentClient
+  );
+
+  if (!completedDeployment) {
+    deploymentSpinner.stop(`Deployment failed to complete`);
+    exit(1);
+  }
+
+  deploymentSpinner.stop(`Deployment completed successfully, you can now use this version`);
+}
+
+// Poll every 1 second for the deployment to complete
+async function waitForDeploymentToComplete(
+  deploymentId: string,
+  client: CliApiClient,
+  timeoutInSeconds: number = 60
+) {
+  const start = Date.now();
+
+  while (true) {
+    if (Date.now() - start > timeoutInSeconds * 1000) {
+      return;
+    }
+
+    const deployment = await client.getDeployment(deploymentId);
+
+    if (!deployment.success) {
+      throw new Error(deployment.error);
+    }
+
+    logger.debug(`Deployment status: ${deployment.data.status}`);
+
+    if (deployment.data.status === "DEPLOYED") {
+      return deployment.data;
+    }
+
+    await setTimeout(1000);
+  }
 }
 
 type BuildAndPushImageOptions = {
@@ -163,6 +220,8 @@ type BuildAndPushImageOptions = {
   projectId: string;
   deploymentId: string;
   deploymentVersion: string;
+  contentHash: string;
+  projectRef: string;
 };
 
 type BuildAndPushImageResults =
@@ -200,6 +259,10 @@ async function buildAndPushImage(
     `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
     "--build-arg",
     `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
+    "--build-arg",
+    `TRIGGER_CONTENT_HASH=${options.contentHash}`,
+    "--build-arg",
+    `TRIGGER_PROJECT_REF=${options.projectRef}`,
     "-t",
     `${options.registryHost}/${options.imageTag}`,
     "--push",
@@ -333,7 +396,7 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
     metafile: true,
     write: false,
     minify: false,
-    sourcemap: "external", // does not set the //# sourceMappingURL= comment in the file, we handle it ourselves
+    sourcemap: false,
     packages: "external", // https://esbuild.github.io/api/#packages
     logLevel: "error",
     platform: "node",
@@ -424,14 +487,26 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
   // Copy the Containerfile to /tmp/dir/Containerfile
   await copyFile(containerFilePath, join(tempDir, "Containerfile"));
 
-  return tempDir;
+  const contentHasher = createHash("sha256");
+  contentHasher.update(Buffer.from(entryPointOutputFile.text));
+  contentHasher.update(Buffer.from(workerOutputFile.text));
+  // Sort the dependencies by key to ensure consistent hashing
+  const sortedDependencies = Object.fromEntries(
+    Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b))
+  );
+
+  contentHasher.update(Buffer.from(JSON.stringify(sortedDependencies)));
+
+  const contentHash = contentHasher.digest("hex");
+
+  return { path: tempDir, contentHash };
 }
 
 async function typecheckProject(config: ResolvedConfig, options: DeployCommandOptions) {
   const createAuthCodeSpinner = spinner();
   createAuthCodeSpinner.start("Typechecking project");
 
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+  await setTimeout(2000);
 
   createAuthCodeSpinner.stop(`Project typechecked with 0 errors`);
 }
