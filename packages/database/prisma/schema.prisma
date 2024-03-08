@@ -367,30 +367,31 @@ model RuntimeEnvironment {
 
   tunnelId String?
 
-  endpoints                 Endpoint[]
-  jobVersions               JobVersion[]
-  events                    EventRecord[]
-  jobRuns                   JobRun[]
-  requestDeliveries         HttpSourceRequestDelivery[]
-  jobAliases                JobAlias[]
-  JobQueue                  JobQueue[]
-  sources                   TriggerSource[]
-  eventDispatchers          EventDispatcher[]
-  scheduleSources           ScheduleSource[]
-  ExternalAccount           ExternalAccount[]
-  httpEndpointEnvironments  TriggerHttpEndpointEnvironment[]
-  concurrencyLimitGroups    ConcurrencyLimitGroup[]
-  keyValueItems             KeyValueItem[]
-  webhookEnvironments       WebhookEnvironment[]
-  webhookRequestDeliveries  WebhookRequestDelivery[]
-  backgroundWorkers         BackgroundWorker[]
-  backgroundWorkerTasks     BackgroundWorkerTask[]
-  taskRuns                  TaskRun[]
-  taskQueues                TaskQueue[]
-  batchTaskRuns             BatchTaskRun[]
-  environmentVariableValues EnvironmentVariableValue[]
-  imageDetails              ImageDetails[]
-  checkpoints               Checkpoint[]
+  endpoints                  Endpoint[]
+  jobVersions                JobVersion[]
+  events                     EventRecord[]
+  jobRuns                    JobRun[]
+  requestDeliveries          HttpSourceRequestDelivery[]
+  jobAliases                 JobAlias[]
+  JobQueue                   JobQueue[]
+  sources                    TriggerSource[]
+  eventDispatchers           EventDispatcher[]
+  scheduleSources            ScheduleSource[]
+  ExternalAccount            ExternalAccount[]
+  httpEndpointEnvironments   TriggerHttpEndpointEnvironment[]
+  concurrencyLimitGroups     ConcurrencyLimitGroup[]
+  keyValueItems              KeyValueItem[]
+  webhookEnvironments        WebhookEnvironment[]
+  webhookRequestDeliveries   WebhookRequestDelivery[]
+  backgroundWorkers          BackgroundWorker[]
+  backgroundWorkerTasks      BackgroundWorkerTask[]
+  taskRuns                   TaskRun[]
+  taskQueues                 TaskQueue[]
+  batchTaskRuns              BatchTaskRun[]
+  environmentVariableValues  EnvironmentVariableValue[]
+  checkpoints                Checkpoint[]
+  workerDeployments          WorkerDeployment[]
+  workerDeploymentPromotions WorkerDeploymentPromotion[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -434,8 +435,8 @@ model Project {
   taskTags              TaskTag[]
   taskQueues            TaskQueue[]
   environmentVariables  EnvironmentVariable[]
-  imageDetails          ImageDetails[]
   checkpoints           Checkpoint[]
+  WorkerDeployment      WorkerDeployment[]
 }
 
 enum ProjectVersion {
@@ -1517,10 +1518,11 @@ model BackgroundWorker {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tasks        BackgroundWorkerTask[]
-  attempts     TaskRunAttempt[]
-  lockedRuns   TaskRun[]
-  imageDetails ImageDetails[]
+  tasks      BackgroundWorkerTask[]
+  attempts   TaskRunAttempt[]
+  lockedRuns TaskRun[]
+
+  deployment WorkerDeployment?
 
   @@unique([projectId, runtimeEnvironmentId, version])
 }
@@ -1892,31 +1894,6 @@ model EnvironmentVariableValue {
   @@unique([variableId, environmentId])
 }
 
-model ImageDetails {
-  id String @id @default(cuid())
-
-  friendlyId String @unique
-
-  contentHash String
-  tag         String
-
-  backgroundWorker   BackgroundWorker? @relation(fields: [backgroundWorkerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  backgroundWorkerId String?
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runtimeEnvironmentId String
-
-  metadata Json
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([projectId, runtimeEnvironmentId, contentHash])
-}
-
 model Checkpoint {
   id String @id @default(cuid())
 
@@ -1942,4 +1919,66 @@ model Checkpoint {
 enum CheckpointType {
   DOCKER
   KUBERNETES
+}
+
+model WorkerDeployment {
+  id String @id @default(cuid())
+
+  contentHash String
+  friendlyId  String @unique
+  shortCode   String
+  version     String
+
+  imageReference String?
+
+  externalBuildData Json?
+
+  status WorkerDeploymentStatus @default(PENDING)
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  worker   BackgroundWorker? @relation(fields: [workerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workerId String?           @unique
+
+  deployedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  promotions WorkerDeploymentPromotion[]
+
+  @@unique([projectId, shortCode])
+  @@unique([environmentId, version])
+}
+
+enum WorkerDeploymentStatus {
+  PENDING
+  /// This is the status when the image is being built
+  BUILDING
+  /// This is the status when the image is built and we are waiting for the indexing to finish
+  DEPLOYING
+  /// This is the status when the image is built and indexed, meaning we have everything we need to deploy
+  DEPLOYED
+  FAILED
+  CANCELED
+}
+
+model WorkerDeploymentPromotion {
+  id String @id @default(cuid())
+
+  /// This is the promotion label, e.g. "current"
+  label String
+
+  deployment   WorkerDeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  deploymentId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  // Only one promotion per environment can be active at a time
+  @@unique([environmentId, label])
 }

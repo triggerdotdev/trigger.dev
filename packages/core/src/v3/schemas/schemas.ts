@@ -62,6 +62,8 @@ export const PlatformToProviderMessages = {
       imageTag: z.string(),
       contentHash: z.string(),
       envId: z.string(),
+      apiKey: z.string(),
+      apiUrl: z.string(),
     }),
   },
   INVOKE: {
@@ -111,8 +113,9 @@ export const CoordinatorToPlatformMessages = {
       version: z.literal("v1").default("v1"),
       projectRef: z.string(),
       envId: z.string(),
+      deploymentId: z.string(),
       metadata: z.object({
-        cliPackageVersion: z.string(),
+        cliPackageVersion: z.string().optional(),
         contentHash: z.string(),
         packageVersion: z.string(),
         tasks: TaskResource.array(),
@@ -227,6 +230,7 @@ export const ProdWorkerToCoordinatorMessages = {
   INDEX_TASKS: {
     message: z.object({
       version: z.literal("v1").default("v1"),
+      deploymentId: z.string(),
       tasks: TaskResource.array(),
       packageVersion: z.string(),
     }),
@@ -308,10 +312,10 @@ export const CoordinatorToProdWorkerMessages = {
 };
 
 export const ProdWorkerSocketData = z.object({
-  cliPackageVersion: z.string(),
   contentHash: z.string(),
   projectRef: z.string(),
   envId: z.string(),
   attemptId: z.string(),
   podName: z.string(),
+  deploymentId: z.string(),
 });

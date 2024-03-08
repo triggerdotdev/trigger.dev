@@ -291,25 +291,29 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const backgroundWorker = await prisma.backgroundWorker.findFirst({
+        const deployment = await prisma.workerDeployment.findFirst({
           where: {
-            runtimeEnvironmentId: existingTaskRun.runtimeEnvironmentId,
+            environmentId: existingTaskRun.runtimeEnvironmentId,
             projectId: existingTaskRun.projectId,
-            imageDetails: {
-              some: {},
+            status: "DEPLOYED",
+            imageReference: {
+              not: null,
             },
           },
           orderBy: {
             updatedAt: "desc",
           },
           include: {
-            tasks: true,
-            imageDetails: true,
+            worker: {
+              include: {
+                tasks: true,
+              },
+            },
           },
         });
 
-        if (!backgroundWorker) {
-          logger.error("No matching background worker found for task run", {
+        if (!deployment || !deployment.worker) {
+          logger.error("No matching deployment found for task run", {
             queueMessage: message.data,
             messageId: message.messageId,
           });
@@ -318,7 +322,18 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const backgroundTask = backgroundWorker.tasks.find(
+        if (!deployment.imageReference) {
+          logger.error("Deployment is missing an image reference", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+            deployment: deployment.id,
+          });
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        const backgroundTask = deployment.worker.tasks.find(
           (task) => task.slug === existingTaskRun.taskIdentifier
         );
 
@@ -326,8 +341,9 @@ export class SharedQueueConsumer {
           logger.warn("No matching background task found for task run", {
             taskRun: existingTaskRun.id,
             taskIdentifier: existingTaskRun.taskIdentifier,
-            backgroundWorker: backgroundWorker.id,
-            taskSlugs: backgroundWorker.tasks.map((task) => task.slug),
+            deployment: deployment.id,
+            backgroundWorker: deployment.worker.id,
+            taskSlugs: deployment.worker.tasks.map((task) => task.slug),
           });
 
           await marqs?.acknowledgeMessage(message.messageId);
@@ -357,7 +373,8 @@ export class SharedQueueConsumer {
           logger.warn("Failed to lock task run", {
             taskRun: existingTaskRun.id,
             taskIdentifier: existingTaskRun.taskIdentifier,
-            backgroundWorker: backgroundWorker.id,
+            deployment: deployment.id,
+            backgroundWorker: deployment.worker.id,
             messageId: message.messageId,
           });
 
@@ -402,11 +419,11 @@ export class SharedQueueConsumer {
 
         try {
           await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
-            backgroundWorkerId: backgroundWorker.friendlyId,
+            backgroundWorkerId: deployment.worker.friendlyId,
             data: {
               type: "SCHEDULE_ATTEMPT",
               id: taskRunAttempt.id,
-              image: backgroundWorker.imageDetails[0].tag,
+              image: deployment.imageReference,
               envId: environment.id,
             },
           });
@@ -492,30 +509,29 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const backgroundWorker = await prisma.backgroundWorker.findFirst({
+        const deployment = await prisma.workerDeployment.findFirst({
           where: {
-            runtimeEnvironmentId: resumableRun.runtimeEnvironmentId,
+            environmentId: resumableRun.runtimeEnvironmentId,
             projectId: resumableRun.projectId,
-            imageDetails: {
-              some: {},
+            status: "DEPLOYED",
+            imageReference: {
+              not: null,
             },
           },
           orderBy: {
             createdAt: "desc",
           },
           include: {
-            tasks: true,
-            imageDetails: {
-              take: 1,
-              orderBy: {
-                updatedAt: "desc",
+            worker: {
+              include: {
+                tasks: true,
               },
             },
           },
         });
 
-        if (!backgroundWorker) {
-          logger.error("No matching background worker found for task run", {
+        if (!deployment || !deployment.worker) {
+          logger.error("No matching deployment found for task run", {
             queueMessage: message.data,
             messageId: message.messageId,
           });
@@ -524,7 +540,18 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const backgroundTask = backgroundWorker.tasks.find(
+        if (!deployment.imageReference) {
+          logger.error("Deployment is missing an image reference", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+            deployment: deployment.id,
+          });
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        const backgroundTask = deployment.worker.tasks.find(
           (task) => task.slug === resumableRun.taskIdentifier
         );
 
@@ -532,8 +559,9 @@ export class SharedQueueConsumer {
           logger.warn("No matching background task found for task run", {
             taskRun: resumableRun.id,
             taskIdentifier: resumableRun.taskIdentifier,
-            backgroundWorker: backgroundWorker.id,
-            taskSlugs: backgroundWorker.tasks.map((task) => task.slug),
+            deployment: deployment.id,
+            backgroundWorker: deployment.worker.id,
+            taskSlugs: deployment.worker.tasks.map((task) => task.slug),
           });
 
           await marqs?.acknowledgeMessage(message.messageId);
@@ -623,7 +651,7 @@ export class SharedQueueConsumer {
             socketIo.coordinatorNamespace.emit("RESUME", {
               version: "v1",
               attemptId: resumableAttempt.id,
-              image: backgroundWorker.imageDetails[0].tag,
+              image: deployment.imageReference,
               completions,
               executions,
             });

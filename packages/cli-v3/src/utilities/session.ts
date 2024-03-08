@@ -15,6 +15,10 @@ export async function isLoggedIn() {
     return {
       ok: false as const,
       error: userData.error,
+      config: {
+        apiUrl: config.apiUrl,
+        accessToken: config.accessToken,
+      },
     };
   }
 

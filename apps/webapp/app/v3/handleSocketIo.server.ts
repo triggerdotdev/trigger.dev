@@ -17,6 +17,7 @@ import { CompleteAttemptService } from "./services/completeAttempt.server";
 import { CreateBackgroundWorkerService } from "./services/createBackgroundWorker.server";
 import { logger } from "~/services/logger.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { CreateDeployedBackgroundWorkerService } from "./services/createDeployedBackgroundWorker.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -76,13 +77,13 @@ function createCoordinatorNamespace(io: Server) {
             return { success: false };
           }
 
-          const createCheckpoint = new CreateBackgroundWorkerService();
-          await createCheckpoint.call(message.projectRef, environment, {
-            localOnly: true,
+          const service = new CreateDeployedBackgroundWorkerService();
+          const worker = await service.call(message.projectRef, environment, message.deploymentId, {
+            localOnly: false,
             metadata: message.metadata,
           });
 
-          return { success: true };
+          return { success: !!worker };
         } catch (error) {
           logger.error("Error while creating worker", { error });
           return { success: false };

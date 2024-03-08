@@ -6,7 +6,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { HttpReply, getTextBody, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
 import { createServer } from "node:http";
-import { ProdBackgroundWorker } from "./prod/backgroundWorker";
+import { ProdBackgroundWorker } from "./backgroundWorker";
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
 const COORDINATOR_HOST = process.env.COORDINATOR_HOST || "127.0.0.1";
@@ -24,8 +24,8 @@ class ProdWorker {
   private projectDir = process.env.TRIGGER_PROJECT_DIR!;
   private projectRef = process.env.TRIGGER_PROJECT_REF!;
   private envId = process.env.TRIGGER_ENV_ID!;
-  private cliPackageVersion = process.env.TRIGGER_CLI_PACKAGE_VERSION!;
   private attemptId = process.env.TRIGGER_ATTEMPT_ID || "index-only";
+  private deploymentId = process.env.TRIGGER_DEPLOYMENT_ID!;
 
   private executing = false;
   private completed = false;
@@ -44,7 +44,7 @@ class ProdWorker {
   ) {
     this.#coordinatorSocket = this.#createCoordinatorSocket();
 
-    this.#backgroundWorker = new ProdBackgroundWorker(this.#getWorkerEntryPath(this.contentHash), {
+    this.#backgroundWorker = new ProdBackgroundWorker("worker.js", {
       projectDir: this.projectDir,
       env: {
         TRIGGER_API_URL: this.apiUrl,
@@ -73,6 +73,18 @@ class ProdWorker {
   }
 
   #createCoordinatorSocket() {
+    logger.log("connecting to coordinator", {
+      host: COORDINATOR_HOST,
+      port: COORDINATOR_PORT,
+      deploymentId: this.deploymentId,
+      podName: POD_NAME,
+      machineName: MACHINE_NAME,
+      contentHash: this.contentHash,
+      projectRef: this.projectRef,
+      attemptId: this.attemptId,
+      envId: this.envId,
+    });
+
     const coordinatorConnection = new ZodSocketConnection({
       namespace: "prod-worker",
       host: COORDINATOR_HOST,
@@ -83,10 +95,10 @@ class ProdWorker {
         "x-machine-name": MACHINE_NAME,
         "x-pod-name": POD_NAME,
         "x-trigger-content-hash": this.contentHash,
-        "x-trigger-cli-package-version": this.cliPackageVersion,
         "x-trigger-project-ref": this.projectRef,
         "x-trigger-attempt-id": this.attemptId,
         "x-trigger-env-id": this.envId,
+        "x-trigger-deployment-id": this.deploymentId,
       },
       handlers: {
         RESUME: async (message) => {
@@ -131,6 +143,7 @@ class ProdWorker {
 
           const { success } = await socket.emitWithAck("INDEX_TASKS", {
             version: "v1",
+            deploymentId: this.deploymentId,
             ...taskResources,
           });
 
@@ -259,12 +272,13 @@ class ProdWorker {
     return httpServer;
   }
 
-  #getWorkerEntryPath(contentHash: string) {
-    return `${contentHash}.mjs`;
-  }
-
   async #initializeWorker() {
-    await this.#backgroundWorker.initialize();
+    // Make an API call for the env vars
+    // Don't use ApiClient again
+    // Pass those into this.#backgroundWorker.initialize()
+    const envVars = await this.#fetchEnvironmentVariables();
+
+    await this.#backgroundWorker.initialize({ env: envVars });
 
     let packageVersion: string | undefined;
 
@@ -292,6 +306,23 @@ class ProdWorker {
       packageVersion,
       tasks: taskResources,
     };
+  }
+
+  async #fetchEnvironmentVariables(): Promise<Record<string, string>> {
+    const response = await fetch(`${this.apiUrl}/api/v1/projects/${this.projectRef}/envvars`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+    });
+
+    if (!response.ok) {
+      return {};
+    }
+
+    const data = await response.json();
+
+    return data?.variables ?? {};
   }
 
   start() {
