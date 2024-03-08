@@ -161,7 +161,20 @@ export const CoordinatorToPlatformMessages = {
       attemptId: z.string(),
       docker: z.boolean(),
       location: z.string(),
-      reason: z.string().optional(),
+      reason: z.discriminatedUnion("type", [
+        z.object({
+          type: z.literal("WAIT_FOR_DURATION"),
+          ms: z.number(),
+        }),
+        z.object({
+          type: z.literal("WAIT_FOR_BATCH"),
+          id: z.string(),
+        }),
+        z.object({
+          type: z.literal("WAIT_FOR_TASK"),
+          id: z.string(),
+        }),
+      ]),
     }),
   },
 };
@@ -171,9 +184,14 @@ export const PlatformToCoordinatorMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),
-      image: z.string(),
       completions: TaskRunExecutionResult.array(),
       executions: TaskRunExecution.array(),
+    }),
+  },
+  RESUME_AFTER_DURATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      attemptId: z.string(),
     }),
   },
 };
@@ -251,6 +269,14 @@ export const ProdWorkerToCoordinatorMessages = {
       attemptFriendlyId: z.string(),
     }),
   },
+  TASK_RUN_COMPLETED: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      execution: ProdTaskRunExecution,
+      completion: TaskRunExecutionResult,
+    }),
+    callback: z.void(),
+  },
   WAIT_FOR_BATCH: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -263,12 +289,12 @@ export const ProdWorkerToCoordinatorMessages = {
       version: z.literal("v1").default("v1"),
       ms: z.number(),
     }),
-    callback: z.discriminatedUnion("success", [
+    callback: z.discriminatedUnion("willCheckpointAndRestore", [
       z.object({
-        success: z.literal(false),
+        willCheckpointAndRestore: z.literal(false),
       }),
       z.object({
-        success: z.literal(true),
+        willCheckpointAndRestore: z.literal(true),
       }),
     ]),
   },
@@ -285,9 +311,14 @@ export const CoordinatorToProdWorkerMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),
-      image: z.string(),
       completions: TaskRunExecutionResult.array(),
       executions: TaskRunExecution.array(),
+    }),
+  },
+  RESUME_AFTER_DURATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      attemptId: z.string(),
     }),
   },
   EXECUTE_TASK_RUN: {
@@ -295,15 +326,6 @@ export const CoordinatorToProdWorkerMessages = {
       version: z.literal("v1").default("v1"),
       executionPayload: ProdTaskRunExecutionPayload,
     }),
-    callback: z.discriminatedUnion("success", [
-      z.object({
-        success: z.literal(false),
-      }),
-      z.object({
-        success: z.literal(true),
-        completion: TaskRunExecutionResult,
-      }),
-    ]),
   },
 };
 

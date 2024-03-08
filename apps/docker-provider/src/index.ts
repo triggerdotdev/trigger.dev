@@ -8,6 +8,8 @@ const COORDINATOR_PORT = process.env.COORDINATOR_PORT || 8020;
 const logger = new SimpleLogger(`[${MACHINE_NAME}]`);
 
 class DockerTaskOperations implements TaskOperations {
+  constructor(private opts = { forceSimulate: false }) {}
+
   async index(opts: { contentHash: string; imageTag: string; envId: string }) {
     const containerName = this.#getIndexContainerName(opts.contentHash);
 
@@ -32,18 +34,23 @@ class DockerTaskOperations implements TaskOperations {
     }
   }
 
-  async restore(opts: {
-    attemptId: string;
-    runId: string;
-    image: string;
-    name: string;
-    checkpointId: string;
-    machine: Machine;
-  }) {
+  async restore(opts: { attemptId: string; checkpointRef: string; machine: Machine }) {
     const containerName = this.#getRunContainerName(opts.attemptId);
 
+    if (this.opts.forceSimulate) {
+      logger.log("Simulating restore");
+
+      const { exitCode } = logger.debug(await $`docker unpause ${containerName}`);
+
+      if (exitCode !== 0) {
+        throw new Error("docker unpause command failed");
+      }
+
+      return;
+    }
+
     const { exitCode } = logger.debug(
-      await $`docker start --checkpoint=${opts.checkpointId} ${containerName}`
+      await $`docker start --checkpoint=${opts.checkpointRef} ${containerName}`
     );
 
     if (exitCode !== 0) {
@@ -69,7 +76,8 @@ class DockerTaskOperations implements TaskOperations {
 }
 
 const provider = new ProviderShell({
-  tasks: new DockerTaskOperations(),
+  tasks: new DockerTaskOperations({ forceSimulate: true }),
+  type: "docker",
 });
 
 provider.listen();

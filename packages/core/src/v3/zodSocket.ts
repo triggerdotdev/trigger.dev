@@ -44,7 +44,7 @@ export type InferSocketCallbackSchema<
   TMessageType extends keyof TRPCCatalog,
 > = z.infer<GetSocketCallbackSchema<TRPCCatalog, TMessageType>>;
 
-type SocketMessageHasCallback<
+export type SocketMessageHasCallback<
   TRPCCatalog extends ZodSocketMessageCatalogSchema,
   TMessageType extends keyof TRPCCatalog,
 > = GetSocketCallbackSchema<TRPCCatalog, TMessageType> extends never ? false : true;
@@ -74,7 +74,7 @@ type MessageFromSocketSchema<
   payload: z.input<GetSocketMessageSchema<TMessageCatalog, K>>;
 };
 
-type MessagesFromSocketCatalog<TMessageCatalog extends ZodSocketMessageCatalogSchema> = {
+export type MessagesFromSocketCatalog<TMessageCatalog extends ZodSocketMessageCatalogSchema> = {
   [K in keyof TMessageCatalog]: MessageFromSocketSchema<K, TMessageCatalog>;
 }[keyof TMessageCatalog];
 
@@ -179,7 +179,9 @@ export type GetSocketMessagesWithCallback<TMessageCatalog extends ZodSocketMessa
     : never;
 }[keyof TMessageCatalog];
 
-export type GetSocketMessagesWithoutCallback<TMessageCatalog extends ZodSocketMessageCatalogSchema> = {
+export type GetSocketMessagesWithoutCallback<
+  TMessageCatalog extends ZodSocketMessageCatalogSchema,
+> = {
   [K in keyof TMessageCatalog]: SocketMessageHasCallback<TMessageCatalog, K> extends true
     ? never
     : K;

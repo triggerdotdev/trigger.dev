@@ -14,7 +14,7 @@ interface ZodIpcMessageSender<TEmitCatalog extends ZodSocketMessageCatalogSchema
   send<K extends GetSocketMessagesWithoutCallback<TEmitCatalog>>(
     type: K,
     payload: z.input<GetSocketMessageSchema<TEmitCatalog, K>>
-  ): void;
+  ): Promise<void>;
 
   sendWithAck<K extends GetSocketMessagesWithCallback<TEmitCatalog>>(
     type: K,
@@ -171,7 +171,7 @@ export class ZodIpcConnection<
     });
 
     this.#registerHandlers();
-    this.connect();
+    // this.connect();
   }
 
   async #registerHandlers() {
@@ -218,7 +218,6 @@ export class ZodIpcConnection<
           const id = randomUUID();
 
           await this.#sendPacket({ type: "CONNECT", sessionId: id });
-          console.log("client connected:", id);
 
           return;
         }
@@ -230,7 +229,6 @@ export class ZodIpcConnection<
         }
 
         this.#sessionId = parsedPacket.data.sessionId;
-        console.log("connected to server:", this.#sessionId);
 
         break;
       }

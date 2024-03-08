@@ -96,6 +96,7 @@ export class ZodNamespace<
 
     this.namespace = this.io.of(opts.name);
 
+    // FIXME: There's a bug here, this sender should not accept Socket schemas with callbacks
     this.sender = new ZodMessageSender({
       schema: opts.serverMessages,
       sender: async (message) => {

@@ -1,5 +1,10 @@
 // import "source-map-support/register";
-import { TracingSDK } from "@trigger.dev/core/v3";
+import {
+  ProdChildToWorkerMessages,
+  ProdWorkerToChildMessages,
+  TracingSDK,
+  ZodIpcConnection,
+} from "@trigger.dev/core/v3";
 // import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
 // IMPORTANT: this needs to be the first import to work properly
@@ -31,16 +36,12 @@ import {
   TaskRunExecution,
   TaskRunExecutionRetry,
   TriggerTracer,
-  ZodMessageHandler,
-  ZodMessageSender,
   accessoryAttributes,
   calculateNextRetryDelay,
-  childToWorkerMessages,
   logger,
   parseError,
   runtime,
   taskContextManager,
-  workerToChildMessages,
   type BackgroundWorkerProperties,
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../package.json";
@@ -52,17 +53,6 @@ import { TracingDiagnosticLogLevel } from "@trigger.dev/core/v3";
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);
-
-const sender = new ZodMessageSender({
-  schema: childToWorkerMessages,
-  sender: async (message) => {
-    process.send?.(message);
-  },
-});
-
-const prodRuntimeManager = new ProdRuntimeManager(sender);
-
-runtime.setGlobalRuntimeManager(prodRuntimeManager);
 
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
@@ -251,10 +241,12 @@ for (const task of tasks) {
 let _execution: TaskRunExecution | undefined;
 let _isRunning = false;
 
-const handler = new ZodMessageHandler({
-  schema: workerToChildMessages,
-  messages: {
-    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }) => {
+const zodIpc = new ZodIpcConnection({
+  listenSchema: ProdWorkerToChildMessages,
+  emitSchema: ProdChildToWorkerMessages,
+  process,
+  handlers: {
+    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }, sender) => {
       if (_isRunning) {
         console.error("Worker is already running a task");
 
@@ -326,7 +318,10 @@ const handler = new ZodMessageHandler({
     TASK_RUN_COMPLETED_NOTIFICATION: async ({ completion, execution }) => {
       prodRuntimeManager.resumeTask(completion, execution);
     },
-    CLEANUP: async ({ flush, kill }) => {
+    WAIT_COMPLETED_NOTIFICATION: async () => {
+      prodRuntimeManager.resumeAfterRestore();
+    },
+    CLEANUP: async ({ flush, kill }, sender) => {
       if (kill) {
         await tracingSDK.flush();
         // Now we need to exit the process
@@ -340,11 +335,11 @@ const handler = new ZodMessageHandler({
   },
 });
 
-process.on("message", async (msg: any) => {
-  await handler.handleMessage(msg);
-});
+const prodRuntimeManager = new ProdRuntimeManager(zodIpc);
 
-sender.send("TASKS_READY", { tasks: getTaskMetadata() }).catch((err) => {
+runtime.setGlobalRuntimeManager(prodRuntimeManager);
+
+zodIpc.send("TASKS_READY", { tasks: getTaskMetadata() }).catch((err) => {
   console.error("Failed to send TASKS_READY message", err);
 });
 
@@ -355,7 +350,7 @@ async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeco
     while (true) {
       if (_isRunning && _execution) {
         try {
-          await sender.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
+          await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
         } catch (err) {
           console.error("Failed to send HEARTBEAT message", err);
         }

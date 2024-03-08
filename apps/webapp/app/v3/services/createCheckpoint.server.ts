@@ -34,12 +34,26 @@ export class CreateCheckpointService {
         attemptId: attempt.id,
         location: params.location,
         type: params.docker ? "DOCKER" : "KUBERNETES",
-        reason: params.reason,
+        reason: params.reason.type,
       },
     });
 
-    // TODO: Can't heartbeat when checkpointed, so we ACK to prevent automatic requeue
-    // await marqs?.acknowledgeMessage(attempt.taskRunId);
+    await this.#prismaClient.taskRunAttempt.update({
+      where: {
+        id: params.attemptId,
+      },
+      data: {
+        status: "PAUSED",
+      },
+    });
+
+    if (params.reason.type === "WAIT_FOR_DURATION") {
+      await marqs?.replaceMessage(
+        attempt.taskRunId,
+        { type: "RESUME_AFTER_DURATION" },
+        Date.now() + params.reason.ms
+      );
+    }
 
     return checkpoint;
   }

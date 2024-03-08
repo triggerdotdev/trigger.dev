@@ -29,6 +29,7 @@ class ProdWorker {
 
   private executing = false;
   private completed = false;
+  private paused = false;
 
   #httpPort: number;
   #backgroundWorker: ProdBackgroundWorker;
@@ -54,18 +55,41 @@ class ProdWorker {
       },
       contentHash: this.contentHash,
     });
+
     this.#backgroundWorker.onTaskHeartbeat.attach((attemptFriendlyId) => {
-      this.#coordinatorSocket.send("TASK_HEARTBEAT", { attemptFriendlyId });
+      // TODO: Switch to .send() once coordinator uses zod handler for all messages
+      this.#coordinatorSocket.socket.emit("TASK_HEARTBEAT", { version: "v1", attemptFriendlyId });
     });
+
     this.#backgroundWorker.onWaitForBatch.attach((message) => {
-      this.#coordinatorSocket.send("WAIT_FOR_BATCH", message);
+      // TODO: Switch to .send() once coordinator uses zod handler for all messages
+      this.#coordinatorSocket.socket.emit("WAIT_FOR_BATCH", { version: "v1", ...message });
     });
+
     this.#backgroundWorker.onWaitForDuration.attach(async (message) => {
-      const { success } = await this.#coordinatorSocket.sendWithAck("WAIT_FOR_DURATION", message);
-      logger.log("WAIT_FOR_DURATION", { success });
+      // TODO: Switch to .send() once coordinator uses zod handler for all messages
+      const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
+        "WAIT_FOR_DURATION",
+        { version: "v1", ...message }
+      );
+
+      logger.log("WAIT_FOR_DURATION", { willCheckpointAndRestore });
+
+      this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
+
+      setTimeout(() => {
+        if (willCheckpointAndRestore) {
+          this.paused = true;
+        }
+        // Forcing a reconnect will ensure the connection handler runs to trigger automatic resume
+        this.#coordinatorSocket.close();
+        this.#coordinatorSocket.connect();
+      }, 3_000);
     });
+
     this.#backgroundWorker.onWaitForTask.attach((message) => {
-      this.#coordinatorSocket.send("WAIT_FOR_TASK", message);
+      // TODO: Switch to .send() once coordinator uses zod handler for all messages
+      this.#coordinatorSocket.socket.emit("WAIT_FOR_TASK", { version: "v1", ...message });
     });
 
     this.#httpPort = port;
@@ -99,11 +123,13 @@ class ProdWorker {
             this.#backgroundWorker.taskRunCompletedNotification(completion, execution);
           }
         },
+        RESUME_AFTER_DURATION: async (message) => {
+          this.#backgroundWorker.waitCompletedNotification();
+        },
         EXECUTE_TASK_RUN: async (message) => {
           if (this.executing || this.completed) {
-            return {
-              success: false,
-            };
+            logger.error("dropping execute request, already executing or completed");
+            return;
           }
 
           this.executing = true;
@@ -114,15 +140,13 @@ class ProdWorker {
           this.completed = true;
           this.executing = false;
 
-          setTimeout(() => {
-            process.exit(0);
-          }, 2000);
-
-          // TODO: replace ack with emit
-          return {
-            success: true,
+          await this.#coordinatorSocket.socket.emitWithAck("TASK_RUN_COMPLETED", {
+            version: "v1",
+            execution: message.executionPayload.execution,
             completion,
-          };
+          });
+
+          process.exit(0);
         },
       },
       onConnection: async (socket, handler, sender, logger) => {
@@ -141,12 +165,22 @@ class ProdWorker {
             logger("indexing failure, shutting down..");
             process.exit(1);
           }
-        } else {
-          socket.emit("READY_FOR_EXECUTION", {
-            version: "v1",
-            attemptId: this.attemptId,
-          });
         }
+
+        if (this.paused) {
+          this.#backgroundWorker.waitCompletedNotification();
+          this.paused = false;
+          return;
+        }
+
+        if (this.executing) {
+          return;
+        }
+
+        socket.emit("READY_FOR_EXECUTION", {
+          version: "v1",
+          attemptId: this.attemptId,
+        });
       },
     });
 
@@ -179,11 +213,14 @@ class ProdWorker {
           return reply.text(this.contentHash);
 
         case "/wait":
-          const { success } = await this.#coordinatorSocket.sendWithAck("WAIT_FOR_DURATION", {
-            version: "v1",
-            ms: 60_000,
-          });
-          logger.log("WAIT_FOR_DURATION", { success });
+          const { willCheckpointAndRestore } = await this.#coordinatorSocket.sendWithAck(
+            "WAIT_FOR_DURATION",
+            {
+              version: "v1",
+              ms: 60_000,
+            }
+          );
+          logger.log("WAIT_FOR_DURATION", { willCheckpointAndRestore });
           // this is required when C/Ring established connections
           this.#coordinatorSocket.close();
           return reply.text("sent WAIT");

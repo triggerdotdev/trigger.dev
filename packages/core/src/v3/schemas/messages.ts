@@ -246,7 +246,7 @@ export const ProdChildToWorkerMessages = {
       ms: z.number(),
     }),
     callback: z.object({
-      checkpointed: z.boolean(),
+      willCheckpointAndRestore: z.boolean(),
     }),
   },
   WAIT_FOR_TASK: {
@@ -285,6 +285,11 @@ export const ProdWorkerToChildMessages = {
       version: z.literal("v1").default("v1"),
       flush: z.boolean().default(false),
       kill: z.boolean().default(true),
+    }),
+  },
+  WAIT_COMPLETED_NOTIFICATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
     }),
   },
 };
