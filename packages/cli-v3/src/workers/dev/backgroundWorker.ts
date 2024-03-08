@@ -25,6 +25,7 @@ import terminalLink from "terminal-link";
 import { safeDeleteFileSync } from "../../utilities/fileSystem.js";
 import { installPackages } from "../../utilities/installPackages.js";
 import { logger } from "../../utilities/logger.js";
+import { UncaughtExceptionError } from "../common/errors.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -290,15 +291,12 @@ export class BackgroundWorker {
           resolved = true;
           resolve(message.payload.tasks);
           child.kill();
+        } else if (message.type === "UNCAUGHT_EXCEPTION") {
+          clearTimeout(timeout);
+          resolved = true;
+          reject(new UncaughtExceptionError(message.payload.error, message.payload.origin));
+          child.kill();
         }
-      });
-
-      child.stdout?.on("data", (data) => {
-        logger.log(data.toString());
-      });
-
-      child.stderr?.on("data", (data) => {
-        logger.error(data.toString());
       });
 
       child.on("exit", (code) => {

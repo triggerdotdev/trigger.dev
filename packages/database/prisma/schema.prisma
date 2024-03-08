@@ -1946,6 +1946,9 @@ model WorkerDeployment {
 
   deployedAt DateTime?
 
+  failedAt  DateTime?
+  errorData Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

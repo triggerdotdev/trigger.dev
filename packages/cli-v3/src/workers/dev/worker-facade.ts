@@ -1,8 +1,8 @@
-import "source-map-support/register.js";
 import { type TracingSDK } from "@trigger.dev/core/v3";
+import "source-map-support/register.js";
 
-__REGISTER_TRACING__;
-declare const __REGISTER_TRACING__: unknown;
+__WORKER_SETUP__;
+declare const __WORKER_SETUP__: unknown;
 declare const tracingSDK: TracingSDK;
 
 const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
@@ -34,9 +34,10 @@ import {
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../../../package.json";
 
-import { Resource } from "@opentelemetry/resources";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import { TaskMetadataWithFunctions } from "../../types.js";
+
+declare const sender: ZodMessageSender<typeof childToWorkerMessages>;
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);
@@ -218,13 +219,6 @@ function getTaskMetadata(): Array<TaskMetadataWithFilePath> {
     return metadata;
   });
 }
-
-const sender = new ZodMessageSender({
-  schema: childToWorkerMessages,
-  sender: async (message) => {
-    process.send?.(message);
-  },
-});
 
 const tasks = getTasks();
 

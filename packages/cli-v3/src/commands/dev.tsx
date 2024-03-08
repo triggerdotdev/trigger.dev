@@ -32,6 +32,7 @@ import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { detectPackageNameFromImportPath } from "../utilities/installPackages";
+import { UncaughtExceptionError } from "../workers/common/errors";
 
 let apiClient: CliApiClient | undefined;
 
@@ -303,13 +304,13 @@ function useDev({
         "utf-8"
       );
 
-      const registerTracingPath = new URL(
-        importResolve("./workers/common/register-tracing.js", import.meta.url)
+      const workerSetupPath = new URL(
+        importResolve("./workers/common/worker-setup.js", import.meta.url)
       ).href.replace("file://", "");
 
       const entryPointContents = workerFacade
         .replace("__TASKS__", createTaskFileImports(taskFiles))
-        .replace("__REGISTER_TRACING__", `import { tracingSDK } from "${registerTracingPath}";`);
+        .replace("__WORKER_SETUP__", `import { tracingSDK, sender } from "${workerSetupPath}";`);
 
       let firstBuild = true;
 
@@ -485,7 +486,23 @@ function useDev({
                     backgroundWorkerRecord.data,
                     backgroundWorker
                   );
-                } catch (e) {}
+                } catch (e) {
+                  if (e instanceof UncaughtExceptionError) {
+                    if (e.originalError.stack) {
+                      logger.error("Background worker failed to start", e.originalError.stack);
+                    }
+
+                    return;
+                  }
+
+                  if (e instanceof Error) {
+                    logger.error(`Background worker failed to start`, e.stack);
+
+                    return;
+                  }
+
+                  logger.error(`Background worker failed to start: ${e}`);
+                }
               });
             },
           },

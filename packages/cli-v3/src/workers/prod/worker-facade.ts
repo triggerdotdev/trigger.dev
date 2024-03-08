@@ -1,8 +1,8 @@
 import { type TracingSDK } from "@trigger.dev/core/v3";
 import "source-map-support/register.js";
 
-__REGISTER_TRACING__;
-declare const __REGISTER_TRACING__: unknown;
+__WORKER_SETUP__;
+declare const __WORKER_SETUP__: unknown;
 declare const tracingSDK: TracingSDK;
 
 const otelTracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.version);
@@ -40,12 +40,7 @@ import { TaskMetadataWithFunctions } from "../../types";
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);
 
-const sender = new ZodMessageSender({
-  schema: childToWorkerMessages,
-  sender: async (message) => {
-    process.send?.(message);
-  },
-});
+declare const sender: ZodMessageSender<typeof childToWorkerMessages>;
 
 const prodRuntimeManager = new ProdRuntimeManager(sender);
 

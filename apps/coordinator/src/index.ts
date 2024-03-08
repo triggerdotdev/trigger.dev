@@ -404,6 +404,16 @@ class TaskCoordinator {
 
           callback({ success: !!workerAck?.success });
         });
+
+        socket.on("INDEXING_FAILED", async (message) => {
+          logger.log("[INDEXING_FAILED]", message);
+
+          this.#platformSocket?.send("INDEXING_FAILED", {
+            version: "v1",
+            deploymentId: message.deploymentId,
+            error: message.error,
+          });
+        });
       },
       onDisconnect: async (socket, handler, sender, logger) => {
         this.#platformSocket?.send("LOG", {

@@ -167,6 +167,17 @@ export const CoordinatorToPlatformMessages = {
       reason: z.string().optional(),
     }),
   },
+  INDEXING_FAILED: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      deploymentId: z.string(),
+      error: z.object({
+        name: z.string(),
+        message: z.string(),
+        stack: z.string().optional(),
+      }),
+    }),
+  },
 };
 
 export const PlatformToCoordinatorMessages = {
@@ -280,6 +291,17 @@ export const ProdWorkerToCoordinatorMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       id: z.string(),
+    }),
+  },
+  INDEXING_FAILED: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      deploymentId: z.string(),
+      error: z.object({
+        name: z.string(),
+        message: z.string(),
+        stack: z.string().optional(),
+      }),
     }),
   },
 };
