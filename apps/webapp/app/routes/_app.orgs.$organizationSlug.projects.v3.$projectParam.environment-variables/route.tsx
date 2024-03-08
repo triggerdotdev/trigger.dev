@@ -345,7 +345,7 @@ function EditEnvironmentVariablePanel({
             <FormButtons
               confirmButton={
                 <Button type="submit" variant="primary/small" disabled={isLoading}>
-                  {isLoading ? "Saving…" : "Edit"}
+                  {isLoading ? "Saving…" : "Save"}
                 </Button>
               }
               cancelButton={
