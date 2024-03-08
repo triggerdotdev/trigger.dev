@@ -7,7 +7,7 @@ import { execa } from "execa";
 import { resolve as importResolve } from "import-meta-resolve";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { copyFile, writeFile } from "node:fs/promises";
+import { copyFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { exit } from "node:process";
 import { setTimeout } from "node:timers/promises";
@@ -23,6 +23,8 @@ import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
+import chalk from "chalk";
+import terminalLink from "terminal-link";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   noTypecheck: z.boolean().optional(),
@@ -109,6 +111,39 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   // Step 1: Build the project into a temporary directory
   const compilation = await compileProject(config, options.data);
+
+  logger.debug("Compilation result", { compilation });
+
+  const environmentVariablesSpinner = spinner();
+
+  environmentVariablesSpinner.start("Checking environment variables");
+
+  const environmentVariables = await environmentClient.getEnvironmentVariables(config.project);
+
+  if (!environmentVariables.success) {
+    environmentVariablesSpinner.stop(`Failed to fetch environment variables, skipping check`);
+  } else {
+    // Check to see if all the environment variables in the compilation exist
+    const missingEnvironmentVariables = compilation.envVars.filter(
+      (envVar) => environmentVariables.data.variables[envVar] === undefined
+    );
+
+    if (missingEnvironmentVariables.length > 0) {
+      environmentVariablesSpinner.stop(
+        `Project missing env vars: ${arrayToSentence(
+          missingEnvironmentVariables
+        )}. Aborting deployment. ${chalk.bgBlueBright(
+          terminalLink(
+            "Manage env vars",
+            `${authorization.config.apiUrl}/projects/v3/${config.project}/environment-variables`
+          )
+        )}`
+      );
+      exit(1);
+    }
+
+    environmentVariablesSpinner.stop(`All required environment variables are present`);
+  }
 
   const deploymentSpinner = spinner();
 
@@ -513,7 +548,20 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
 
   const contentHash = contentHasher.digest("hex");
 
-  return { path: tempDir, contentHash };
+  const registerTracingEnvVars = await findAllEnvironmentVariableReferencesInFile(
+    registerTracingPath
+  );
+
+  const workerFacadeEnvVars = findAllEnvironmentVariableReferences(workerContents);
+
+  const envVars = findAllEnvironmentVariableReferences(workerOutputFile.text);
+
+  // Remove workerFacadeEnvVars and registerTracingEnvVars from envVars
+  const finalEnvVars = envVars.filter(
+    (envVar) => !workerFacadeEnvVars.includes(envVar) && !registerTracingEnvVars.includes(envVar)
+  );
+
+  return { path: tempDir, contentHash, envVars: finalEnvVars };
 }
 
 async function typecheckProject(config: ResolvedConfig, options: DeployCommandOptions) {
@@ -582,4 +630,33 @@ async function ensureLoggedIntoDockerRegistry(
   logger.debug(`Writing docker config to ${dockerConfigPath}`);
 
   return tmpDir;
+}
+
+async function findAllEnvironmentVariableReferencesInFile(filePath: string) {
+  const fileContents = await readFile(filePath, "utf-8");
+
+  return findAllEnvironmentVariableReferences(fileContents);
+}
+
+function findAllEnvironmentVariableReferences(code: string): string[] {
+  const regex = /\bprocess\.env\.([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
+
+  const matches = code.matchAll(regex);
+
+  const matchesArray = Array.from(matches, (match) => match[1]).filter(Boolean) as string[];
+
+  // Make sure and remove duplicates
+  return Array.from(new Set(matchesArray));
+}
+
+function arrayToSentence(items: string[]): string {
+  if (items.length === 1 && typeof items[0] === "string") {
+    return items[0];
+  }
+
+  if (items.length === 2) {
+    return `${items[0]} and ${items[1]}`;
+  }
+
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
