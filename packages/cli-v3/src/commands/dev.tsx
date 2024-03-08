@@ -296,12 +296,15 @@ function useDev({
       const taskFiles = await gatherTaskFiles(config);
 
       const workerFacade = readFileSync(
-        new URL(importResolve("./worker-facade.js", import.meta.url)).href.replace("file://", ""),
+        new URL(importResolve("./workers/dev/worker-facade.js", import.meta.url)).href.replace(
+          "file://",
+          ""
+        ),
         "utf-8"
       );
 
       const registerTracingPath = new URL(
-        importResolve("./register-tracing.js", import.meta.url)
+        importResolve("./workers/common/register-tracing.js", import.meta.url)
       ).href.replace("file://", "");
 
       const entryPointContents = workerFacade
