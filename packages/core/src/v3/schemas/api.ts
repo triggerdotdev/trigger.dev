@@ -9,13 +9,13 @@ export const WhoAmIResponseSchema = z.object({
 
 export type WhoAmIResponse = z.infer<typeof WhoAmIResponseSchema>;
 
-export const GetProjectDevResponse = z.object({
+export const GetProjectEnvResponse = z.object({
   apiKey: z.string(),
   name: z.string(),
   apiUrl: z.string(),
 });
 
-export type GetProjectDevResponse = z.infer<typeof GetProjectDevResponse>;
+export type GetProjectEnvResponse = z.infer<typeof GetProjectEnvResponse>;
 
 export const CreateBackgroundWorkerRequestBody = z.object({
   localOnly: z.boolean(),

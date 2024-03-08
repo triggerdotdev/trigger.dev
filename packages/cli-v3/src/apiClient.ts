@@ -6,7 +6,7 @@ import {
   CreateBackgroundWorkerRequestBody,
   CreateBackgroundWorkerResponse,
   StartDeploymentIndexingResponseBody,
-  GetProjectDevResponse,
+  GetProjectEnvResponse,
   GetEnvironmentVariablesResponseBody,
   InitializeDeploymentResponseBody,
   InitializeDeploymentRequestBody,
@@ -75,25 +75,18 @@ export class CliApiClient {
     );
   }
 
-  async getProjectDevEnv({ projectRef }: { projectRef: string }) {
+  async getProjectEnv({
+    projectRef,
+    env,
+  }: {
+    projectRef: string;
+    env: "dev" | "prod" | "staging";
+  }) {
     if (!this.accessToken) {
       throw new Error("getProjectDevEnv: No access token");
     }
 
-    return zodfetch(GetProjectDevResponse, `${this.apiURL}/api/v1/projects/${projectRef}/dev`, {
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
-  }
-
-  async getProjectProdEnv({ projectRef }: { projectRef: string }) {
-    if (!this.accessToken) {
-      throw new Error("getProjectDevEnv: No access token");
-    }
-
-    return zodfetch(GetProjectDevResponse, `${this.apiURL}/api/v1/projects/${projectRef}/prod`, {
+    return zodfetch(GetProjectEnvResponse, `${this.apiURL}/api/v1/projects/${projectRef}/${env}`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",

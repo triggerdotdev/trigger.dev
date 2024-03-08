@@ -131,7 +131,7 @@ async function startDev(
 
       apiClient = new CliApiClient(apiUrl, accessToken);
 
-      const devEnv = await apiClient.getProjectDevEnv({ projectRef: config.project });
+      const devEnv = await apiClient.getProjectEnv({ projectRef: config.project, env: "dev" });
 
       if (!devEnv.success) {
         throw new Error(devEnv.error);

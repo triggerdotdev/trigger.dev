@@ -25,7 +25,8 @@ import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
-  skipTypecheck: z.boolean().optional(),
+  noTypecheck: z.boolean().optional(),
+  env: z.enum(["prod", "staging"]),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -35,7 +36,12 @@ export function configureDeployCommand(program: Command) {
     .command("deploy")
     .description("Deploy your Trigger.dev v3 project to the cloud.")
     .argument("[path]", "The path to the project", ".")
-    .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
+    .option(
+      "-e, --env <env>",
+      "Deploy to a specific environment (currently only prod and staging are supported)",
+      "prod"
+    )
+    .option("-T, --no-typecheck", "Whether to skip the pre-build typecheck")
     .option(
       "-l, --log-level <level>",
       "The log level to use (debug, info, log, warn, error, none)",
@@ -83,15 +89,23 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   const apiClient = new CliApiClient(authorization.config.apiUrl, authorization.config.accessToken);
 
-  const prodEnv = await apiClient.getProjectProdEnv({ projectRef: config.project });
+  const deploymentEnv = await apiClient.getProjectEnv({
+    projectRef: config.project,
+    env: options.data.env,
+  });
 
-  if (!prodEnv.success) {
-    throw new Error(prodEnv.error);
+  if (!deploymentEnv.success) {
+    throw new Error(deploymentEnv.error);
   }
 
-  const environmentClient = new CliApiClient(authorization.config.apiUrl, prodEnv.data.apiKey);
+  const environmentClient = new CliApiClient(
+    authorization.config.apiUrl,
+    deploymentEnv.data.apiKey
+  );
 
-  intro(`Preparing to deploy "${prodEnv.data.name}" (${config.project})`);
+  intro(
+    `Preparing to deploy "${deploymentEnv.data.name}" (${config.project}) to ${options.data.env}`
+  );
 
   // Step 1: Build the project into a temporary directory
   const compilation = await compileProject(config, options.data);
@@ -121,7 +135,7 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
     exit(1);
   }
 
-  const registryHost = new URL(prodEnv.data.apiUrl).host;
+  const registryHost = new URL(deploymentEnv.data.apiUrl).host;
 
   const image = await buildAndPushImage({
     registryHost,
@@ -327,7 +341,7 @@ function extractImageDigest(outputs: string[]) {
 }
 
 async function compileProject(config: ResolvedConfig, options: DeployCommandOptions) {
-  if (!options.skipTypecheck) {
+  if (!options.noTypecheck) {
     await typecheckProject(config, options);
   }
 
