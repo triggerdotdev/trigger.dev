@@ -47,12 +47,23 @@ export class CreateCheckpointService {
       },
     });
 
-    if (params.reason.type === "WAIT_FOR_DURATION") {
-      await marqs?.replaceMessage(
-        attempt.taskRunId,
-        { type: "RESUME_AFTER_DURATION" },
-        Date.now() + params.reason.ms
-      );
+    switch (params.reason.type) {
+      case "WAIT_FOR_DURATION": {
+        await marqs?.replaceMessage(
+          attempt.taskRunId,
+          { type: "RESUME_AFTER_DURATION" },
+          Date.now() + params.reason.ms
+        );
+        break;
+      }
+      case "WAIT_FOR_TASK":
+      case "WAIT_FOR_BATCH": {
+        await marqs?.acknowledgeMessage(attempt.taskRunId);
+        break;
+      }
+      default: {
+        break;
+      }
     }
 
     return checkpoint;

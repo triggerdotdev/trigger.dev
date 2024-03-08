@@ -263,10 +263,23 @@ export class CompleteAttemptService extends BaseService {
             return "FAILED";
           }
 
-          await marqs?.replaceMessage(dependentRun.id, {
-            type: "RESUME",
-            completedAttemptIds: [taskRunAttempt.id],
-          });
+          if (dependency.dependentAttempt.status === "PAUSED") {
+            await marqs?.enqueueMessage(
+              environment,
+              dependentRun.queue,
+              dependentRun.id,
+              {
+                type: "RESUME",
+                completedAttemptIds: [taskRunAttempt.id],
+              },
+              dependentRun.concurrencyKey ?? undefined
+            );
+          } else {
+            await marqs?.replaceMessage(dependentRun.id, {
+              type: "RESUME",
+              completedAttemptIds: [taskRunAttempt.id],
+            });
+          }
         }
       }
 

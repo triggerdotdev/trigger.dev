@@ -532,6 +532,44 @@ export class SharedQueueConsumer {
           return;
         }
 
+        if (resumableAttempt.status === "PAUSED") {
+          // We need to restore the attempt from the latest checkpoint before we can resume
+          const latestCheckpoint = resumableAttempt.checkpoints[0];
+
+          if (!latestCheckpoint) {
+            logger.error("No checkpoint found", {
+              queueMessage: message.data,
+              messageId: message.messageId,
+              resumableAttemptId: resumableAttempt.id,
+            });
+            await marqs?.acknowledgeMessage(message.messageId);
+            setTimeout(() => this.#doWork(), 100);
+            return;
+          }
+
+          await prisma.taskRunAttempt.update({
+            where: {
+              id: resumableAttempt.id,
+            },
+            data: {
+              status: "EXECUTING",
+            },
+          });
+
+          // TODO: Send RESUME once the restored attempt has checked in
+          socketIo.providerNamespace.emit("RESTORE", {
+            version: "v1",
+            id: latestCheckpoint.id,
+            attemptId: latestCheckpoint.attemptId,
+            type: latestCheckpoint.type,
+            location: latestCheckpoint.location,
+            reason: latestCheckpoint.reason ?? undefined,
+          });
+
+          // TODO: Uncomment once the post-restore check-in mechanism works
+          // return;
+        }
+
         const completions: TaskRunExecutionResult[] = [];
         const executions: TaskRunExecution[] = [];
 
@@ -585,41 +623,13 @@ export class SharedQueueConsumer {
         }
 
         try {
-          if (resumableAttempt.status === "PAUSED") {
-            // We need to restore the attempt from the latest checkpoint before we can resume
-            const latestCheckpoint = resumableAttempt.checkpoints[0];
-
-            if (!latestCheckpoint) {
-              logger.error("No checkpoint found", {
-                queueMessage: message.data,
-                messageId: message.messageId,
-                resumableAttemptId: resumableAttempt.id,
-              });
-              await marqs?.acknowledgeMessage(message.messageId);
-              setTimeout(() => this.#doWork(), 100);
-              return;
-            }
-
-            // TODO: Once the restored attempt has checked in:
-            //  - Set EXECUTING status
-            //  - Send RESUME message
-            socketIo.providerNamespace.emit("RESTORE", {
-              version: "v1",
-              id: latestCheckpoint.id,
-              attemptId: latestCheckpoint.attemptId,
-              type: latestCheckpoint.type,
-              location: latestCheckpoint.location,
-              reason: latestCheckpoint.reason ?? undefined,
-            });
-          } else {
-            // The attempt should still be running so we can broadcast to all coordinators to resume immediately
-            socketIo.coordinatorNamespace.emit("RESUME", {
-              version: "v1",
-              attemptId: resumableAttempt.id,
-              completions,
-              executions,
-            });
-          }
+          // The attempt should still be running so we can broadcast to all coordinators to resume immediately
+          socketIo.coordinatorNamespace.emit("RESUME", {
+            version: "v1",
+            attemptId: resumableAttempt.id,
+            completions,
+            executions,
+          });
         } catch (e) {
           if (e instanceof Error) {
             this._currentSpan?.recordException(e);

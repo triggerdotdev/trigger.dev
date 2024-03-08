@@ -90,7 +90,8 @@ class Checkpointer {
     await this.initialize();
 
     if (!this.#dockerMode && !this.#canCheckpoint) {
-      throw new Error("No checkpoint support");
+      this.#logger.error("No checkpoint support");
+      return;
     }
 
     try {
@@ -429,6 +430,50 @@ class TaskCoordinator {
           });
         });
 
+        socket.on("WAIT_FOR_TASK", async (message) => {
+          logger.log("[WAIT_FOR_TASK]", message);
+
+          const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
+
+          if (!checkpoint) {
+            logger.error("Failed to checkpoint", { podName: socket.data.podName });
+            return;
+          }
+
+          this.#platformSocket?.send("CHECKPOINT_CREATED", {
+            version: "v1",
+            attemptId: socket.data.attemptId,
+            docker: checkpoint.docker,
+            location: checkpoint.destination,
+            reason: {
+              type: "WAIT_FOR_TASK",
+              id: message.id,
+            },
+          });
+        });
+
+        socket.on("WAIT_FOR_BATCH", async (message) => {
+          logger.log("[WAIT_FOR_BATCH]", message);
+
+          const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
+
+          if (!checkpoint) {
+            logger.error("Failed to checkpoint", { podName: socket.data.podName });
+            return;
+          }
+
+          this.#platformSocket?.send("CHECKPOINT_CREATED", {
+            version: "v1",
+            attemptId: socket.data.attemptId,
+            docker: checkpoint.docker,
+            location: checkpoint.destination,
+            reason: {
+              type: "WAIT_FOR_BATCH",
+              id: message.id,
+            },
+          });
+        });
+
         socket.on("INDEX_TASKS", async (message, callback) => {
           logger.log("[INDEX_TASKS]", message);
 
@@ -465,9 +510,6 @@ class TaskCoordinator {
           this.#platformSocket?.send("TASK_HEARTBEAT", message);
         },
         WAIT_FOR_BATCH: async (message) => {
-          // this.#checkpointer.checkpointAndPush(socket.data.podName);
-        },
-        WAIT_FOR_TASK: async (message) => {
           // this.#checkpointer.checkpointAndPush(socket.data.podName);
         },
       },
