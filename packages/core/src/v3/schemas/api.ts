@@ -119,7 +119,7 @@ export const InitializeDeploymentResponseBody = z.object({
   shortCode: z.string(),
   version: z.string(),
   imageTag: z.string(),
-  externalBuildData: ExternalBuildData.optional(),
+  externalBuildData: ExternalBuildData.optional().nullable(),
 });
 
 export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;

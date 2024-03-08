@@ -1,7 +1,7 @@
 import { intro, spinner } from "@clack/prompts";
 import { depot } from "@depot/cli";
 import { ResolvedConfig } from "@trigger.dev/core/v3";
-import { Command } from "commander";
+import { Command, Option as CommandOption } from "commander";
 import { Metafile, build } from "esbuild";
 import { execa } from "execa";
 import { resolve as importResolve } from "import-meta-resolve";
@@ -27,8 +27,14 @@ import chalk from "chalk";
 import terminalLink from "terminal-link";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
-  noTypecheck: z.boolean().optional(),
+  skipTypecheck: z.boolean().default(false),
+  skipDeploy: z.boolean().default(false),
   env: z.enum(["prod", "staging"]),
+  loadImage: z.boolean().default(false),
+  buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
+  selfHosted: z.boolean().default(false),
+  registry: z.string().optional(),
+  pushImage: z.boolean().default(false),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -43,7 +49,43 @@ export function configureDeployCommand(program: Command) {
       "Deploy to a specific environment (currently only prod and staging are supported)",
       "prod"
     )
-    .option("-T, --no-typecheck", "Whether to skip the pre-build typecheck")
+    .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
+    .addOption(
+      new CommandOption(
+        "--self-hosted",
+        "Build and load the image using your local Docker. Use the --registry option to specify the registry to push the image to when using --self-hosted, or just use --push-image to push to the default registry."
+      ).hideHelp()
+    )
+    .addOption(
+      new CommandOption(
+        "--push-image",
+        "(Coming soon) When using the --self-hosted flag, push the image to the default registry. (defaults to false when not using --registry)"
+      ).hideHelp()
+    )
+    .addOption(
+      new CommandOption(
+        "--registry <registry>",
+        "(Coming soon) The registry to push the image to when using --self-hosted"
+      ).hideHelp()
+    )
+    .addOption(
+      new CommandOption(
+        "--tag <tag>",
+        "(Coming soon) Specify the tag to use when pushing the image to the registry"
+      ).hideHelp()
+    )
+    .addOption(new CommandOption("-D, --skip-deploy", "Skip deploying the image").hideHelp())
+    .addOption(
+      new CommandOption("--load-image", "Load the built image into your local docker").hideHelp()
+    )
+    .addOption(
+      new CommandOption(
+        "--build-platform <platform>",
+        "The platform to build the deployment image for"
+      )
+        .default("linux/amd64")
+        .hideHelp()
+    )
     .option(
       "-l, --log-level <level>",
       "The log level to use (debug, info, log, warn, error, none)",
@@ -66,6 +108,15 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
     throw new Error(`Invalid options: ${options.error}`);
   }
 
+  if (options.data.logLevel) {
+    logger.loggerLevel = options.data.logLevel;
+  }
+
+  logger.debug("Running the deploy command with the following options", {
+    options: options.data,
+    dir,
+  });
+
   const authorization = await isLoggedIn();
 
   if (!authorization.ok) {
@@ -78,10 +129,6 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
     }
     process.exitCode = 1;
     return;
-  }
-
-  if (options.data.logLevel) {
-    logger.loggerLevel = options.data.logLevel;
   }
 
   await printStandloneInitialBanner(true);
@@ -155,7 +202,7 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
   });
 
   if (!deploymentResponse.success) {
-    deploymentSpinner.stop(`Failed to initialize deployment: ${deploymentResponse.error}`);
+    deploymentSpinner.stop(`Failed to start deployment: ${deploymentResponse.error}`);
     exit(1);
   }
 
@@ -163,42 +210,77 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   // If the deployment doesn't have any externalBuildData, then we can't use the remote image builder
   // TODO: handle this and allow the user to the build and push the image themselves
-  if (!deploymentResponse.data.externalBuildData) {
+  if (!deploymentResponse.data.externalBuildData && !options.data.selfHosted) {
     deploymentSpinner.stop(
-      `Failed to initialize deployment. The deployment does not have any external build data. Support for local building coming soon.`
+      `Failed to start deployment, as your instance of trigger.dev does not support hosting. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.`
     );
     exit(1);
   }
 
   const registryHost = new URL(deploymentEnv.data.apiUrl).host;
 
-  const image = await buildAndPushImage({
-    registryHost,
-    auth: authorization.config.accessToken,
-    imageTag: deploymentResponse.data.imageTag,
-    buildId: deploymentResponse.data.externalBuildData.buildId,
-    buildToken: deploymentResponse.data.externalBuildData.buildToken,
-    buildProjectId: deploymentResponse.data.externalBuildData.projectId,
-    cwd: compilation.path,
-    projectId: config.project,
-    deploymentId: deploymentResponse.data.id,
-    deploymentVersion: deploymentResponse.data.version,
-    contentHash: deploymentResponse.data.contentHash,
-    projectRef: config.project,
-  });
+  const buildImage = async () => {
+    if (options.data.selfHosted) {
+      return buildAndPushSelfHostedImage({
+        imageTag: deploymentResponse.data.imageTag,
+        cwd: compilation.path,
+        projectId: config.project,
+        deploymentId: deploymentResponse.data.id,
+        deploymentVersion: deploymentResponse.data.version,
+        contentHash: deploymentResponse.data.contentHash,
+        projectRef: config.project,
+        buildPlatform: options.data.buildPlatform,
+      });
+    }
+
+    if (!deploymentResponse.data.externalBuildData) {
+      deploymentSpinner.stop(
+        `Failed to initialize deployment. The deployment does not have any external build data. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.`
+      );
+      exit(1);
+    }
+
+    return buildAndPushImage({
+      registryHost,
+      auth: authorization.config.accessToken,
+      imageTag: deploymentResponse.data.imageTag,
+      buildId: deploymentResponse.data.externalBuildData.buildId,
+      buildToken: deploymentResponse.data.externalBuildData.buildToken,
+      buildProjectId: deploymentResponse.data.externalBuildData.projectId,
+      cwd: compilation.path,
+      projectId: config.project,
+      deploymentId: deploymentResponse.data.id,
+      deploymentVersion: deploymentResponse.data.version,
+      contentHash: deploymentResponse.data.contentHash,
+      projectRef: config.project,
+      loadImage: options.data.loadImage,
+      buildPlatform: options.data.buildPlatform,
+    });
+  };
+
+  const image = await buildImage();
 
   if (!image.ok) {
     deploymentSpinner.stop(`Failed to build and push image: ${image.error}`);
     exit(1);
   }
 
-  const imageReference = `${registryHost}/${image.image}${image.digest ? `@${image.digest}` : ""}`;
+  const imageReference = options.data.selfHosted
+    ? `${image.image}${image.digest ? `@${image.digest}` : ""}`
+    : `${registryHost}/${image.image}${image.digest ? `@${image.digest}` : ""}`;
+
+  if (options.data.skipDeploy) {
+    deploymentSpinner.stop(
+      `Image built and pushed: ${imageReference}. Skipping deployment as requested`
+    );
+    exit(0);
+  }
 
   deploymentSpinner.message(
-    `${deploymentResponse.data.version} image uploaded, starting indexing process`
+    `${deploymentResponse.data.version} image built, starting indexing process`
   );
 
-  logger.debug(`Image built and pushed: ${imageReference}`);
+  logger.debug(`Start indexing image ${imageReference}`);
 
   // Need to update the deployment with the image and start the deployment (indexing)
   // registry.digitalocean.com/trigger/yubjwjsfkxnylobaqvqz:20240306.41.prod@sha256:8b48dd2866bc8878644d2880bbe35a27e66cf6ff78aa1e489d7fdde5e228faf1
@@ -271,6 +353,8 @@ type BuildAndPushImageOptions = {
   deploymentVersion: string;
   contentHash: string;
   projectRef: string;
+  loadImage: boolean;
+  buildPlatform: string;
 };
 
 type BuildAndPushImageResults =
@@ -299,7 +383,7 @@ async function buildAndPushImage(
     "-f",
     "Containerfile",
     "--platform",
-    "linux/amd64",
+    options.buildPlatform,
     "--provenance",
     "false",
     "--build-arg",
@@ -314,9 +398,10 @@ async function buildAndPushImage(
     `TRIGGER_PROJECT_REF=${options.projectRef}`,
     "-t",
     `${options.registryHost}/${options.imageTag}`,
-    "--push",
     ".",
-  ];
+    "--push",
+    options.loadImage ? "--load" : undefined,
+  ].filter(Boolean) as string[];
 
   logger.debug(`depot ${args.join(" ")}`);
 
@@ -341,6 +426,74 @@ async function buildAndPushImage(
         const text = data.toString();
 
         errors.push(text);
+        logger.debug(text);
+      });
+
+      childProcess.on("error", (e) => rej(e));
+      childProcess.on("close", () => res());
+    });
+
+    const digest = extractImageDigest(errors);
+
+    return {
+      ok: true,
+      image: options.imageTag,
+      digest,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : JSON.stringify(e),
+    };
+  }
+}
+
+type BuildAndPushSelfHostedImageOptions = Omit<
+  BuildAndPushImageOptions,
+  "registryHost" | "buildId" | "buildToken" | "buildProjectId" | "auth" | "loadImage"
+>;
+
+async function buildAndPushSelfHostedImage(
+  options: BuildAndPushSelfHostedImageOptions
+): Promise<BuildAndPushImageResults> {
+  const args = [
+    "build",
+    "-f",
+    "Containerfile",
+    "--platform",
+    options.buildPlatform,
+    "--build-arg",
+    `TRIGGER_PROJECT_ID=${options.projectId}`,
+    "--build-arg",
+    `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
+    "--build-arg",
+    `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
+    "--build-arg",
+    `TRIGGER_CONTENT_HASH=${options.contentHash}`,
+    "--build-arg",
+    `TRIGGER_PROJECT_REF=${options.projectRef}`,
+    "-t",
+    `${options.imageTag}`,
+    ".", // The build context
+  ].filter(Boolean) as string[];
+
+  logger.debug(`docker ${args.join(" ")}`);
+
+  // Step 4: Build and push the image
+  const childProcess = execa("docker", args, {
+    cwd: options.cwd,
+  });
+
+  const errors: string[] = [];
+
+  try {
+    await new Promise<void>((res, rej) => {
+      // For some reason everything is output on stderr, not stdout
+      childProcess.stderr?.on("data", (data: Buffer) => {
+        const text = data.toString();
+
+        errors.push(text);
+        logger.debug(text);
       });
 
       childProcess.on("error", (e) => rej(e));
@@ -376,7 +529,7 @@ function extractImageDigest(outputs: string[]) {
 }
 
 async function compileProject(config: ResolvedConfig, options: DeployCommandOptions) {
-  if (!options.noTypecheck) {
+  if (!options.skipTypecheck) {
     await typecheckProject(config, options);
   }
 
