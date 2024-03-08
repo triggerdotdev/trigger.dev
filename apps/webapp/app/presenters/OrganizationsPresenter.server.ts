@@ -192,14 +192,9 @@ export class OrganizationsPresenter {
                     deletedAt: null,
                   },
                 },
-                sources: {
-                  where: {
-                    active: false,
-                  },
-                },
-                httpEndpoints: true,
               },
             },
+            version: true,
           },
           orderBy: { name: "asc" },
         },
@@ -225,6 +220,7 @@ export class OrganizationsPresenter {
           slug: project.slug,
           name: project.name,
           jobCount: project._count.jobs,
+          version: project.version,
         })),
         hasUnconfiguredIntegrations: org._count.integrations > 0,
         runsEnabled: org.runsEnabled,

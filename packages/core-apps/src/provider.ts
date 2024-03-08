@@ -136,6 +136,8 @@ export class ProviderShell implements Provider {
               contentHash: message.contentHash,
               imageTag: message.imageTag,
               envId: message.envId,
+              apiKey: message.apiKey,
+              apiUrl: message.apiUrl,
             });
           } catch (error) {
             logger.error("index failed", error);

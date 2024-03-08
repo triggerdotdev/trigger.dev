@@ -160,7 +160,7 @@ export function Callout({
             {children}
           </Paragraph>
         ) : (
-          children
+          <span>{children}</span>
         )}
       </div>
       {cta && cta}

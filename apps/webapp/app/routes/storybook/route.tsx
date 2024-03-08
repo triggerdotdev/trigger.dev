@@ -114,10 +114,6 @@ const stories: Story[] = [
     slug: "simple-form",
   },
   {
-    name: "Login form",
-    slug: "login-form",
-  },
-  {
     name: "Search fields",
     slug: "search-fields",
   },

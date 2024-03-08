@@ -1,33 +1,17 @@
-// import "source-map-support/register";
-import {
-  ProdChildToWorkerMessages,
-  ProdWorkerToChildMessages,
-  TracingSDK,
-  ZodIpcConnection,
-} from "@trigger.dev/core/v3";
-// import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
+import "source-map-support/register.js";
+import { type TracingSDK } from "@trigger.dev/core/v3";
 
-// IMPORTANT: this needs to be the first import to work properly
-// WARNING: [WARNING] Constructing "ImportInTheMiddle" will crash at run-time because it's an import namespace object, not a constructor [call-import-namespace]
-// TODO: https://github.com/open-telemetry/opentelemetry-js/issues/3954
-const tracingSDK = new TracingSDK({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
-  resource: new Resource({
-    [SemanticInternalAttributes.CLI_VERSION]: packageJson.version,
-  }),
-  instrumentations: [
-    // new OpenAIInstrumentation(),
-  ],
-  diagLogLevel: (process.env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
-});
+__REGISTER_TRACING__;
+declare const __REGISTER_TRACING__: unknown;
+declare const tracingSDK: TracingSDK;
 
-const otelTracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.version);
-const otelLogger = tracingSDK.getLogger("trigger-prod-worker", packageJson.version);
+const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
+const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.version);
 
 import { SpanKind } from "@opentelemetry/api";
 import {
   ConsoleInterceptor,
-  ProdRuntimeManager,
+  DevRuntimeManager,
   OtelTaskLogger,
   SemanticInternalAttributes,
   TaskMetadataWithFilePath,
@@ -36,23 +20,30 @@ import {
   TaskRunExecution,
   TaskRunExecutionRetry,
   TriggerTracer,
+  ZodMessageHandler,
+  ZodMessageSender,
   accessoryAttributes,
   calculateNextRetryDelay,
+  childToWorkerMessages,
   logger,
   parseError,
   runtime,
   taskContextManager,
+  workerToChildMessages,
   type BackgroundWorkerProperties,
 } from "@trigger.dev/core/v3";
-import * as packageJson from "../package.json";
+import * as packageJson from "../../../package.json";
 
 import { Resource } from "@opentelemetry/resources";
 import { flattenAttributes } from "@trigger.dev/core/v3";
-import { TaskMetadataWithFunctions } from "./types";
-import { TracingDiagnosticLogLevel } from "@trigger.dev/core/v3";
+import { TaskMetadataWithFunctions } from "../../types.js";
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);
+
+const devRuntimeManager = new DevRuntimeManager();
+
+runtime.setGlobalRuntimeManager(devRuntimeManager);
 
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
@@ -228,6 +219,13 @@ function getTaskMetadata(): Array<TaskMetadataWithFilePath> {
   });
 }
 
+const sender = new ZodMessageSender({
+  schema: childToWorkerMessages,
+  sender: async (message) => {
+    process.send?.(message);
+  },
+});
+
 const tasks = getTasks();
 
 runtime.registerTasks(tasks);
@@ -241,12 +239,10 @@ for (const task of tasks) {
 let _execution: TaskRunExecution | undefined;
 let _isRunning = false;
 
-const zodIpc = new ZodIpcConnection({
-  listenSchema: ProdWorkerToChildMessages,
-  emitSchema: ProdChildToWorkerMessages,
-  process,
-  handlers: {
-    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }, sender) => {
+const handler = new ZodMessageHandler({
+  schema: workerToChildMessages,
+  messages: {
+    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }) => {
       if (_isRunning) {
         console.error("Worker is already running a task");
 
@@ -264,7 +260,8 @@ const zodIpc = new ZodIpcConnection({
 
         return;
       }
-      process.title = `trigger-prod-worker: ${execution.task.id} ${execution.run.id}`;
+
+      process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
 
       const executor = taskExecutors.get(execution.task.id);
 
@@ -316,12 +313,9 @@ const zodIpc = new ZodIpcConnection({
       }
     },
     TASK_RUN_COMPLETED_NOTIFICATION: async ({ completion, execution }) => {
-      prodRuntimeManager.resumeTask(completion, execution);
+      devRuntimeManager.resumeTask(completion, execution);
     },
-    WAIT_COMPLETED_NOTIFICATION: async () => {
-      prodRuntimeManager.resumeAfterRestore();
-    },
-    CLEANUP: async ({ flush, kill }, sender) => {
+    CLEANUP: async ({ flush, kill }) => {
       if (kill) {
         await tracingSDK.flush();
         // Now we need to exit the process
@@ -335,22 +329,22 @@ const zodIpc = new ZodIpcConnection({
   },
 });
 
-const prodRuntimeManager = new ProdRuntimeManager(zodIpc);
+process.on("message", async (msg: any) => {
+  await handler.handleMessage(msg);
+});
 
-runtime.setGlobalRuntimeManager(prodRuntimeManager);
-
-zodIpc.send("TASKS_READY", { tasks: getTaskMetadata() }).catch((err) => {
+sender.send("TASKS_READY", { tasks: getTaskMetadata() }).catch((err) => {
   console.error("Failed to send TASKS_READY message", err);
 });
 
-process.title = "trigger-prod-worker";
+process.title = "trigger-dev-worker";
 
 async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 5) {
   async function _doHeartbeat() {
     while (true) {
       if (_isRunning && _execution) {
         try {
-          await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
+          await sender.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
         } catch (err) {
           console.error("Failed to send HEARTBEAT message", err);
         }
@@ -367,7 +361,7 @@ async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeco
   return _doHeartbeat();
 }
 
-// Start the async interval after initial delay
-asyncHeartbeat(5).catch((err) => {
+// Start the async interval after 30 seconds
+asyncHeartbeat().catch((err) => {
   console.error("Failed to start asyncHeartbeat", err);
 });

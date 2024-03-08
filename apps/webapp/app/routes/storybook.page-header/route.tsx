@@ -4,7 +4,7 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 export default function Story() {
   return (
     <div className="flex flex-col gap-4 bg-charcoal-800 p-4">
-      <div className="bg-[#0B1018]">
+      <div className="bg-background-bright">
         <NavBar>
           <PageTitle title="Organizations" />
           <PageAccessories>
@@ -14,7 +14,7 @@ export default function Story() {
           </PageAccessories>
         </NavBar>
       </div>
-      <div className="bg-[#0B1018]">
+      <div className="bg-background-bright">
         <NavBar>
           <PageTitle title="Your Organizations" backButton={{ to: "#", text: "Orgs" }} />
           <PageAccessories>

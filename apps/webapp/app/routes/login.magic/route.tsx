@@ -1,14 +1,8 @@
 import { InboxArrowDownIcon } from "@heroicons/react/24/solid";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
-import { getMatchesData, metaV1 } from "@remix-run/v1-meta";
-import {
-  TypedMetaFunction,
-  UseDataFunctionReturn,
-  typedjson,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -21,17 +15,26 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
-import type { LoaderType as RootLoader } from "~/root";
 import { authenticator } from "~/services/auth.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
-import { appEnvTitleTag } from "~/utils";
 
-export const meta: TypedMetaFunction<typeof loader> = (args) => {
-  const matchesData = getMatchesData(args) as { root: UseDataFunctionReturn<RootLoader> };
+export const meta: MetaFunction = ({ matches }) => {
+  const parentMeta = matches
+    .flatMap((match) => match.meta ?? [])
+    .filter((meta) => {
+      if ("title" in meta) return false;
+      if ("name" in meta && meta.name === "viewport") return false;
+      return true;
+    });
 
-  return metaV1(args, {
-    title: `Login to Trigger.dev${appEnvTitleTag(matchesData.root.appEnv)}`,
-  });
+  return [
+    ...parentMeta,
+    { title: `Login to Trigger.dev` },
+    {
+      name: "viewport",
+      content: "width=device-width,initial-scale=1",
+    },
+  ];
 };
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -120,7 +123,7 @@ export default function LoginMagicLinkPage() {
                       type="submit"
                       name="action"
                       value="reset"
-                      variant="tertiary/small"
+                      variant="minimal/small"
                       LeadingIcon="arrow-left"
                       leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
                       data-action="re-enter email"
@@ -131,7 +134,7 @@ export default function LoginMagicLinkPage() {
                   confirmButton={
                     <LinkButton
                       to="/login"
-                      variant="tertiary/small"
+                      variant="minimal/small"
                       data-action="log in using another option"
                     >
                       Log in using another option
@@ -142,7 +145,7 @@ export default function LoginMagicLinkPage() {
             </>
           ) : (
             <>
-              <Header1 className="pb-4 font-normal sm:text-2xl md:text-3xl lg:text-4xl">
+              <Header1 className="pb-4 font-semibold sm:text-2xl md:text-3xl lg:text-4xl">
                 Welcome
               </Header1>
               <Paragraph variant="base" className="mb-6 text-center">
@@ -171,10 +174,14 @@ export default function LoginMagicLinkPage() {
                   data-action="send a magic link"
                 >
                   <NamedIcon
-                    name={isLoading ? "spinner-white" : "envelope"}
-                    className={"mr-1.5 h-4 w-4 text-white transition group-hover:text-text-bright"}
+                    name={isLoading ? "spinner-dark" : "envelope"}
+                    className={"mr-2 size-5 text-background-dimmed"}
                   />
-                  {isLoading ? "Sending…" : "Send a magic link"}
+                  {isLoading ? (
+                    <span className="text-background-dimmed">Sending…</span>
+                  ) : (
+                    <span className="text-background-dimmed">Send a magic link</span>
+                  )}
                 </Button>
                 {magicLinkError && <FormError>{magicLinkError}</FormError>}
               </Fieldset>
@@ -192,7 +199,7 @@ export default function LoginMagicLinkPage() {
 
               <LinkButton
                 to="/login"
-                variant={"tertiary/small"}
+                variant={"minimal/small"}
                 LeadingIcon={"arrow-left"}
                 leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
                 data-action="all login options"

@@ -1,24 +1,189 @@
 import {
   BackgroundWorkerProperties,
+  BackgroundWorkerServerMessages,
   CreateBackgroundWorkerResponse,
-  ProdChildToWorkerMessages,
-  ProdTaskRunExecutionPayload,
-  ProdWorkerToChildMessages,
   SemanticInternalAttributes,
   TaskMetadataWithFilePath,
   TaskRunBuiltInError,
+  TaskRunError,
   TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
-  ZodIpcConnection,
   ZodMessageHandler,
+  ZodMessageSender,
   childToWorkerMessages,
   correctErrorStackTrace,
+  workerToChildMessages,
 } from "@trigger.dev/core/v3";
+import chalk from "chalk";
+import dotenv from "dotenv";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { safeDeleteFileSync } from "../utilities/fileSystem";
+import { dirname, resolve } from "node:path";
+import terminalLink from "terminal-link";
+import { safeDeleteFileSync } from "../../utilities/fileSystem.js";
+import { installPackages } from "../../utilities/installPackages.js";
+import { logger } from "../../utilities/logger.js";
+
+export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
+export class BackgroundWorkerCoordinator {
+  public onTaskCompleted: Evt<{
+    backgroundWorkerId: string;
+    completion: TaskRunExecutionResult;
+    worker: BackgroundWorker;
+    execution: TaskRunExecution;
+  }> = new Evt();
+  public onWorkerRegistered: Evt<{
+    worker: BackgroundWorker;
+    id: string;
+    record: CreateBackgroundWorkerResponse;
+  }> = new Evt();
+  public onWorkerTaskHeartbeat: Evt<{
+    id: string;
+    backgroundWorkerId: string;
+    worker: BackgroundWorker;
+  }> = new Evt();
+  public onWorkerDeprecated: Evt<{ worker: BackgroundWorker; id: string }> = new Evt();
+  private _backgroundWorkers: Map<string, BackgroundWorker> = new Map();
+  private _records: Map<string, CreateBackgroundWorkerResponse> = new Map();
+  private _deprecatedWorkers: Set<string> = new Set();
+
+  constructor(private baseURL: string) {
+    this.onTaskCompleted.attach(async ({ completion, execution }) => {
+      if (!completion.ok && typeof completion.retry !== "undefined") {
+        return;
+      }
+
+      await this.#notifyWorkersOfTaskCompletion(completion, execution);
+    });
+  }
+
+  async #notifyWorkersOfTaskCompletion(
+    completion: TaskRunExecutionResult,
+    execution: TaskRunExecution
+  ) {
+    for (const worker of this._backgroundWorkers.values()) {
+      await worker.taskRunCompletedNotification(completion, execution);
+    }
+  }
+
+  get currentWorkers() {
+    return Array.from(this._backgroundWorkers.entries()).map(([id, worker]) => ({
+      id,
+      worker,
+      record: this._records.get(id)!,
+      isDeprecated: this._deprecatedWorkers.has(id),
+    }));
+  }
+
+  async registerWorker(record: CreateBackgroundWorkerResponse, worker: BackgroundWorker) {
+    for (const [workerId, existingWorker] of this._backgroundWorkers.entries()) {
+      if (workerId === record.id) {
+        continue;
+      }
+
+      this._deprecatedWorkers.add(workerId);
+      this.onWorkerDeprecated.post({ worker: existingWorker, id: workerId });
+    }
+
+    this._backgroundWorkers.set(record.id, worker);
+    this._records.set(record.id, record);
+    this.onWorkerRegistered.post({ worker, id: record.id, record });
+
+    worker.onTaskHeartbeat.attach((id) => {
+      this.onWorkerTaskHeartbeat.post({ id, backgroundWorkerId: record.id, worker });
+    });
+  }
+
+  close() {
+    for (const worker of this._backgroundWorkers.values()) {
+      worker.close();
+    }
+
+    this._backgroundWorkers.clear();
+    this._records.clear();
+  }
+
+  async handleMessage(id: string, message: BackgroundWorkerServerMessages) {
+    switch (message.type) {
+      case "EXECUTE_RUNS": {
+        await Promise.all(message.payloads.map((payload) => this.#executeTaskRun(id, payload)));
+      }
+    }
+  }
+
+  async #executeTaskRun(id: string, payload: TaskRunExecutionPayload) {
+    const worker = this._backgroundWorkers.get(id);
+
+    if (!worker) {
+      logger.error(`Could not find worker ${id}`);
+      return;
+    }
+
+    const record = this._records.get(id);
+
+    if (!record) {
+      logger.error(`Could not find worker record ${id}`);
+      return;
+    }
+
+    const { execution } = payload;
+
+    const logsUrl = `${this.baseURL}/runs/${execution.run.id}`;
+
+    const link = chalk.bgBlueBright(terminalLink("view logs", logsUrl));
+    let timestampPrefix = chalk.gray(new Date().toISOString());
+    const workerPrefix = chalk.green(`[worker:${record.version}]`);
+    const taskPrefix = chalk.yellow(`[task:${execution.task.id}]`);
+    const runId = chalk.blue(execution.run.id);
+    const attempt = chalk.blue(`.${execution.attempt.number}`);
+
+    logger.log(`${timestampPrefix} ${workerPrefix}${taskPrefix} ${runId}${attempt} ${link}`);
+
+    const now = performance.now();
+
+    const completion = await worker.executeTaskRun(payload);
+
+    const elapsed = performance.now() - now;
+
+    const resultText = !completion.ok
+      ? completion.error.type === "INTERNAL_ERROR" &&
+        completion.error.code === TaskRunErrorCodes.TASK_EXECUTION_ABORTED
+        ? chalk.yellow("cancelled")
+        : chalk.red("error")
+      : chalk.green("success");
+
+    const errorText = !completion.ok ? this.#formatErrorLog(completion.error) : "";
+
+    const elapsedText = chalk.dim(`(${elapsed.toFixed(2)}ms)`);
+
+    timestampPrefix = chalk.gray(new Date().toISOString());
+
+    logger.log(
+      `${timestampPrefix} ${workerPrefix}${taskPrefix} ${runId}${attempt} ${resultText} ${elapsedText} ${link}${errorText}`
+    );
+
+    this.onTaskCompleted.post({ completion, execution, worker, backgroundWorkerId: id });
+  }
+
+  #formatErrorLog(error: TaskRunError) {
+    switch (error.type) {
+      case "INTERNAL_ERROR": {
+        return "";
+      }
+      case "STRING_ERROR": {
+        return `\n\n${error.raw}\n`;
+      }
+      case "CUSTOM_ERROR": {
+        return `\n\n${error.raw}\n`;
+      }
+      case "BUILT_IN_ERROR": {
+        return `\n\n${error.stackTrace}\n`;
+      }
+    }
+  }
+}
 
 class UnexpectedExitError extends Error {
   constructor(public code: number) {
@@ -36,30 +201,24 @@ class CleanupProcessError extends Error {
   }
 }
 
-type BackgroundWorkerParams = {
+export type BackgroundWorkerParams = {
   env: Record<string, string>;
+  dependencies?: Record<string, string>;
   projectDir: string;
-  contentHash: string;
+  debuggerOn: boolean;
   debugOtel?: boolean;
 };
-
-export class ProdBackgroundWorker {
+export class BackgroundWorker {
   private _initialized: boolean = false;
   private _handler = new ZodMessageHandler({
     schema: childToWorkerMessages,
   });
 
   public onTaskHeartbeat: Evt<string> = new Evt();
-
-  public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
-  public onWaitForDuration: Evt<{ version?: "v1"; ms: number }> = new Evt();
-  public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
-
-  public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
-
   private _onClose: Evt<void> = new Evt();
 
   public tasks: Array<TaskMetadataWithFilePath> = [];
+  public metadata: BackgroundWorkerProperties | undefined;
 
   _taskRunProcesses: Map<string, TaskRunProcess> = new Map();
 
@@ -96,12 +255,18 @@ export class ProdBackgroundWorker {
       throw new Error("Worker already initialized");
     }
 
+    // Install the dependencies in dirname(this.path) using npm and child_process
+    if (this.params.dependencies) {
+      await installPackages(this.params.dependencies, { cwd: dirname(this.path) });
+    }
+
     let resolved = false;
 
     this.tasks = await new Promise<Array<TaskMetadataWithFilePath>>((resolve, reject) => {
       const child = fork(this.path, {
         stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
         env: {
+          ...this.#readEnvVars(),
           ...this.params.env,
         },
       });
@@ -115,30 +280,25 @@ export class ProdBackgroundWorker {
         resolved = true;
         child.kill();
         reject(new Error("Worker timed out"));
-      }, 10_000);
+      }, 1000);
 
-      new ZodIpcConnection({
-        listenSchema: ProdChildToWorkerMessages,
-        emitSchema: ProdWorkerToChildMessages,
-        process: child,
-        handlers: {
-          TASKS_READY: async (message) => {
-            if (!resolved) {
-              clearTimeout(timeout);
-              resolved = true;
-              resolve(message.tasks);
-              child.kill();
-            }
-          },
-        },
+      child.on("message", async (msg: any) => {
+        const message = this._handler.parseMessage(msg);
+
+        if (message.type === "TASKS_READY" && !resolved) {
+          clearTimeout(timeout);
+          resolved = true;
+          resolve(message.payload.tasks);
+          child.kill();
+        }
       });
 
       child.stdout?.on("data", (data) => {
-        console.log(data.toString());
+        logger.log(data.toString());
       });
 
       child.stderr?.on("data", (data) => {
-        console.error(data.toString());
+        logger.error(data.toString());
       });
 
       child.on("exit", (code) => {
@@ -153,14 +313,6 @@ export class ProdBackgroundWorker {
     this._initialized = true;
   }
 
-  getMetadata(workerId: string, version: string): CreateBackgroundWorkerResponse {
-    return {
-      contentHash: this.params.contentHash,
-      id: workerId,
-      version: version,
-    };
-  }
-
   // We need to notify all the task run processes that a task run has completed,
   // in case they are waiting for it through triggerAndWait
   async taskRunCompletedNotification(
@@ -171,26 +323,21 @@ export class ProdBackgroundWorker {
       taskRunProcess.taskRunCompletedNotification(completion, execution);
     }
   }
-  async waitCompletedNotification() {
-    for (const taskRunProcess of this._taskRunProcesses.values()) {
-      taskRunProcess.waitCompletedNotification();
-    }
-  }
 
-  async #initializeTaskRunProcess(payload: ProdTaskRunExecutionPayload): Promise<TaskRunProcess> {
-    const metadata = this.getMetadata(
-      payload.execution.worker.id,
-      payload.execution.worker.version
-    );
+  async #initializeTaskRunProcess(payload: TaskRunExecutionPayload): Promise<TaskRunProcess> {
+    if (!this.metadata) {
+      throw new Error("Worker not registered");
+    }
 
     if (!this._taskRunProcesses.has(payload.execution.run.id)) {
       const taskRunProcess = new TaskRunProcess(
         this.path,
         {
+          ...this.#readEnvVars(),
           ...this.params.env,
           ...(payload.environment ?? {}),
         },
-        metadata,
+        this.metadata,
         this.params
       );
 
@@ -202,22 +349,6 @@ export class ProdBackgroundWorker {
         this.onTaskHeartbeat.post(id);
       });
 
-      taskRunProcess.onWaitForBatch.attach((message) => {
-        this.onWaitForBatch.post(message);
-      });
-
-      taskRunProcess.onWaitForDuration.attach((message) => {
-        this.onWaitForDuration.post(message);
-      });
-
-      taskRunProcess.onWaitForTask.attach((message) => {
-        this.onWaitForTask.post(message);
-      });
-
-      this.preCheckpointNotification.attach(message => {
-        taskRunProcess.preCheckpointNotification.post(message)
-      })
-
       await taskRunProcess.initialize();
 
       this._taskRunProcesses.set(payload.execution.run.id, taskRunProcess);
@@ -227,10 +358,9 @@ export class ProdBackgroundWorker {
   }
 
   // We need to fork the process before we can execute any tasks
-  async executeTaskRun(payload: ProdTaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
+  async executeTaskRun(payload: TaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
     try {
       const taskRunProcess = await this.#initializeTaskRunProcess(payload);
-
       const result = await taskRunProcess.executeTaskRun(payload);
 
       // Kill the worker if the task was successful or if it's not going to be retried);
@@ -289,6 +419,17 @@ export class ProdBackgroundWorker {
     }
   }
 
+  #readEnvVars() {
+    const result = {};
+
+    dotenv.config({
+      processEnv: result,
+      path: [".env", ".env.local", ".env.development.local"].map((p) => resolve(process.cwd(), p)),
+    });
+
+    return result;
+  }
+
   async #correctError(
     error: TaskRunBuiltInError,
     execution: TaskRunExecution
@@ -304,13 +445,8 @@ class TaskRunProcess {
   private _handler = new ZodMessageHandler({
     schema: childToWorkerMessages,
   });
-
-  private _ipc?: ZodIpcConnection<
-    typeof ProdChildToWorkerMessages,
-    typeof ProdWorkerToChildMessages
-  >;
-  private _child?: ChildProcess;
-
+  private _sender: ZodMessageSender<typeof workerToChildMessages>;
+  private _child: ChildProcess | undefined;
   private _attemptPromises: Map<
     string,
     { resolver: (value: TaskRunExecutionResult) => void; rejecter: (err?: any) => void }
@@ -318,26 +454,29 @@ class TaskRunProcess {
   private _attemptStatuses: Map<string, "PENDING" | "REJECTED" | "RESOLVED"> = new Map();
   private _currentExecution: TaskRunExecution | undefined;
   private _isBeingKilled: boolean = false;
-
   public onTaskHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<number> = new Evt();
-
-  public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
-  public onWaitForDuration: Evt<{ version?: "v1"; ms: number }> = new Evt();
-  public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
-
-  public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
 
   constructor(
     private path: string,
     private env: NodeJS.ProcessEnv,
     private metadata: BackgroundWorkerProperties,
     private worker: BackgroundWorkerParams
-  ) {}
+  ) {
+    this._sender = new ZodMessageSender({
+      schema: workerToChildMessages,
+      sender: async (message) => {
+        if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
+          this._child?.send?.(message);
+        }
+      },
+    });
+  }
 
   async initialize() {
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
+      cwd: dirname(this.path),
       env: {
         ...this.env,
         OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
@@ -345,59 +484,12 @@ class TaskRunProcess {
         }),
         ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
       },
+      execArgv: this.worker.debuggerOn
+        ? ["--inspect-brk", "--trace-uncaught"]
+        : ["--trace-uncaught"],
     });
 
-    this._ipc = new ZodIpcConnection({
-      listenSchema: ProdChildToWorkerMessages,
-      emitSchema: ProdWorkerToChildMessages,
-      process: this._child,
-      handlers: {
-        TASK_RUN_COMPLETED: async (message) => {
-          const { result, execution } = message;
-
-          const promiseStatus = this._attemptStatuses.get(execution.attempt.id);
-
-          if (promiseStatus !== "PENDING") {
-            return;
-          }
-
-          this._attemptStatuses.set(execution.attempt.id, "RESOLVED");
-
-          const attemptPromise = this._attemptPromises.get(execution.attempt.id);
-
-          if (!attemptPromise) {
-            return;
-          }
-
-          const { resolver } = attemptPromise;
-
-          resolver(result);
-        },
-        READY_TO_DISPOSE: async (message) => {
-          this.#kill();
-        },
-        TASK_HEARTBEAT: async (message) => {
-          this.onTaskHeartbeat.post(message.id);
-        },
-        TASKS_READY: async (message) => {},
-        WAIT_FOR_BATCH: async (message) => {
-          this.onWaitForBatch.post(message);
-        },
-        WAIT_FOR_DURATION: async (message) => {
-          this.onWaitForDuration.post(message);
-
-          // The coordinator will let us know if a checkpoint is about to happen
-          // We then pass this back down to the runtime in the child process
-          const { willCheckpointAndRestore } = await this.preCheckpointNotification.waitFor();
-
-          return { willCheckpointAndRestore };
-        },
-        WAIT_FOR_TASK: async (message) => {
-          this.onWaitForTask.post(message);
-        },
-      },
-    });
-
+    this._child.on("message", this.#handleMessage.bind(this));
     this._child.on("exit", this.#handleExit.bind(this));
     this._child.stdout?.on("data", this.#handleLog.bind(this));
     this._child.stderr?.on("data", this.#handleStdErr.bind(this));
@@ -408,7 +500,7 @@ class TaskRunProcess {
       return;
     }
 
-    await this._ipc?.send("CLEANUP", {
+    await this._sender.send("CLEANUP", {
       flush: true,
       kill,
     });
@@ -434,13 +526,11 @@ class TaskRunProcess {
 
     this._currentExecution = execution;
 
-    if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
-      await this._ipc?.send("EXECUTE_TASK_RUN", {
-        execution,
-        traceContext,
-        metadata: this.metadata,
-      });
-    }
+    await this._sender.send("EXECUTE_TASK_RUN", {
+      execution,
+      traceContext,
+      metadata: this.metadata,
+    });
 
     const result = await promise;
 
@@ -454,17 +544,52 @@ class TaskRunProcess {
       return;
     }
 
-    if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
-      this._ipc?.send("TASK_RUN_COMPLETED_NOTIFICATION", {
-        completion,
-        execution,
-      });
-    }
+    this._sender.send("TASK_RUN_COMPLETED_NOTIFICATION", {
+      completion,
+      execution,
+    });
   }
 
-  waitCompletedNotification() {
-    if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
-      this._ipc?.send("WAIT_COMPLETED_NOTIFICATION", {});
+  async #handleMessage(msg: any) {
+    const message = this._handler.parseMessage(msg);
+
+    switch (message.type) {
+      case "TASK_RUN_COMPLETED": {
+        const { result, execution } = message.payload;
+
+        const promiseStatus = this._attemptStatuses.get(execution.attempt.id);
+
+        if (promiseStatus !== "PENDING") {
+          return;
+        }
+
+        this._attemptStatuses.set(execution.attempt.id, "RESOLVED");
+
+        const attemptPromise = this._attemptPromises.get(execution.attempt.id);
+
+        if (!attemptPromise) {
+          return;
+        }
+
+        const { resolver } = attemptPromise;
+
+        resolver(result);
+
+        break;
+      }
+      case "READY_TO_DISPOSE": {
+        this.#kill();
+
+        break;
+      }
+      case "TASK_HEARTBEAT": {
+        this.onTaskHeartbeat.post(message.payload.id);
+
+        break;
+      }
+      case "TASKS_READY": {
+        break;
+      }
     }
   }
 
@@ -498,7 +623,7 @@ class TaskRunProcess {
       return;
     }
 
-    console.log(
+    logger.log(
       `[${this.metadata.version}][${this._currentExecution.run.id}.${
         this._currentExecution.attempt.number
       }] ${data.toString()}`
@@ -511,12 +636,12 @@ class TaskRunProcess {
     }
 
     if (!this._currentExecution) {
-      console.error(`[${this.metadata.version}] ${data.toString()}`);
+      logger.error(`[${this.metadata.version}] ${data.toString()}`);
 
       return;
     }
 
-    console.error(
+    logger.error(
       `[${this.metadata.version}][${this._currentExecution.run.id}.${
         this._currentExecution.attempt.number
       }] ${data.toString()}`

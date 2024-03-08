@@ -38,7 +38,7 @@ export function MissingIntegrationBadge({
   badgeSize?: keyof typeof variant;
 }) {
   return (
-    <span className={cn(variant[badgeSize], "bg-rose-600 text-white", className)}>
+    <span className={cn(variant[badgeSize], "bg-error text-white", className)}>
       Missing Integration
     </span>
   );
@@ -52,6 +52,8 @@ export function NewBadge({
   badgeSize?: keyof typeof variant;
 }) {
   return (
-    <span className={cn(variant[badgeSize], "text-background bg-green-600", className)}>New!</span>
+    <span className={cn(variant[badgeSize], "bg-green-600 text-background-dimmed", className)}>
+      New!
+    </span>
   );
 }

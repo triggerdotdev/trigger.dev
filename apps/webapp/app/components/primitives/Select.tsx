@@ -1,15 +1,15 @@
 "use client";
 
-import * as React from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
+import * as React from "react";
 import { cn } from "~/utils/cn";
 
 const sizes = {
   "secondary/small":
-    "text-xs h-6 bg-tertiary hover:bg-tertiary-foreground pr-2 pl-1 bg-charcoal-800",
-  medium:
-    "text-sm h-8 bg-charcoal-850 border border-charcoal-800 hover:bg-charcoal-800 hover:border-charcoal-750 px-2.5",
+    "text-xs h-6 bg-tertiary border border-tertiary group-hover:text-text-bright hover:border-charcoal-600 pr-2 pl-1.5",
+  medium: "text-sm h-8 bg-tertiary border border-tertiary hover:border-charcoal-600 px-2.5",
+  minimal: "text-xs h-6 bg-transparent hover:bg-tertiary pl-1.5 pr-2",
 };
 
 export type SelectProps = {
@@ -29,7 +29,7 @@ const SelectTrigger = React.forwardRef<
     <SelectPrimitive.Trigger
       ref={ref}
       className={cn(
-        "ring-offset-background focus-visible:bg-tertiary-foreground focus-visible:ring-ring group flex items-center justify-between gap-x-2 rounded text-text-dimmed transition placeholder:text-text-dimmed hover:text-text-bright focus-visible:text-text-bright focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
+        "ring-offset-background focus-visible:ring-ring group flex items-center justify-between gap-x-1 rounded text-text-dimmed transition placeholder:text-text-dimmed hover:text-text-bright focus-visible:bg-tertiary focus-visible:text-text-bright focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
         width === "full" ? "w-full" : "w-min",
         sizeClassName,
         className
@@ -40,7 +40,7 @@ const SelectTrigger = React.forwardRef<
       <SelectPrimitive.Icon asChild>
         <ChevronDown
           className={cn(
-            "h-4 w-4 text-text-dimmed transition group-hover:text-text-bright group-focus:text-text-bright"
+            "size-4 text-text-dimmed transition group-hover:text-text-bright group-focus:text-text-bright"
           )}
         />
       </SelectPrimitive.Icon>
@@ -130,11 +130,11 @@ SelectSeparator.displayName = SelectPrimitive.Separator.displayName;
 
 export {
   Select,
-  SelectGroup,
-  SelectValue,
-  SelectTrigger,
   SelectContent,
-  SelectLabel,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectSeparator,
+  SelectTrigger,
+  SelectValue,
 };

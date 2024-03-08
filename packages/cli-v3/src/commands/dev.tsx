@@ -25,12 +25,13 @@ import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions } from "../cli/common.js";
-import { BackgroundWorker, BackgroundWorkerCoordinator } from "../dev/backgroundWorker.js";
+import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
 import { getConfigPath, readConfig } from "../utilities/configFiles";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
+import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 
 let apiClient: CliApiClient | undefined;
 
@@ -130,7 +131,7 @@ async function startDev(
 
       apiClient = new CliApiClient(apiUrl, accessToken);
 
-      const devEnv = await apiClient.getProjectDevEnv({ projectRef: config.project });
+      const devEnv = await apiClient.getProjectEnv({ projectRef: config.project, env: "dev" });
 
       if (!devEnv.success) {
         throw new Error(devEnv.error);
@@ -295,12 +296,15 @@ function useDev({
       const taskFiles = await gatherTaskFiles(config);
 
       const workerFacade = readFileSync(
-        new URL(importResolve("./worker-facade.js", import.meta.url)).href.replace("file://", ""),
+        new URL(importResolve("./workers/dev/worker-facade.js", import.meta.url)).href.replace(
+          "file://",
+          ""
+        ),
         "utf-8"
       );
 
       const registerTracingPath = new URL(
-        importResolve("./register-tracing.js", import.meta.url)
+        importResolve("./workers/common/register-tracing.js", import.meta.url)
       ).href.replace("file://", "");
 
       const entryPointContents = workerFacade
@@ -642,21 +646,4 @@ function gatherRequiredDependencies(outputMeta: Metafile["outputs"][string]) {
   }
 
   return dependencies;
-}
-
-// Expects path to be in the format:
-//  - source-map-support/register.js
-//  - @opentelemetry/api
-//  - zod
-//
-// With the result being:
-//  - source-map-support
-//  - @opentelemetry/api
-//  - zod
-function detectPackageNameFromImportPath(path: string): string {
-  if (path.startsWith("@")) {
-    return path.split("/").slice(0, 2).join("/");
-  } else {
-    return path.split("/")[0] as string;
-  }
 }
