@@ -87,7 +87,7 @@ async function startBuild(
 
     const apiClient = new CliApiClient(authorization.apiUrl, authorization.accessToken);
 
-    const prodEnv = await apiClient.getProjectProdEnv({ projectRef: config.project });
+    const prodEnv = await apiClient.getProjectEnv({ projectRef: config.project, env: "prod" });
 
     if (!prodEnv.success) {
       throw new Error(prodEnv.error);

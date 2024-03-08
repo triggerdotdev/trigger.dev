@@ -568,7 +568,31 @@ async function typecheckProject(config: ResolvedConfig, options: DeployCommandOp
   const createAuthCodeSpinner = spinner();
   createAuthCodeSpinner.start("Typechecking project");
 
-  await setTimeout(2000);
+  const tscTypecheck = execa("npm", ["exec", "tsc", "--", "--noEmit"], {
+    cwd: config.projectDir,
+  });
+
+  const stdouts: string[] = [];
+  const stderrs: string[] = [];
+
+  tscTypecheck.stdout?.on("data", (chunk) => stdouts.push(chunk.toString()));
+  tscTypecheck.stderr?.on("data", (chunk) => stderrs.push(chunk.toString()));
+
+  try {
+    await new Promise((resolve, reject) => {
+      tscTypecheck.addListener("exit", (code) => (code === 0 ? resolve(code) : reject(code)));
+    });
+  } catch (error) {
+    createAuthCodeSpinner.stop(`Typechecking failed, check the logs below:`);
+
+    logger.log("");
+
+    for (const stdout of stdouts) {
+      logger.log(stdout);
+    }
+
+    exit(1);
+  }
 
   createAuthCodeSpinner.stop(`Project typechecked with 0 errors`);
 }
