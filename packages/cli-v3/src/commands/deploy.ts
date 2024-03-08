@@ -1,13 +1,13 @@
 import { intro, spinner } from "@clack/prompts";
 import { depot } from "@depot/cli";
 import { ResolvedConfig } from "@trigger.dev/core/v3";
-import { Command } from "commander";
+import { Command, Option as CommandOption } from "commander";
 import { Metafile, build } from "esbuild";
 import { execa } from "execa";
 import { resolve as importResolve } from "import-meta-resolve";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { copyFile, writeFile } from "node:fs/promises";
+import { copyFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { exit } from "node:process";
 import { setTimeout } from "node:timers/promises";
@@ -23,9 +23,18 @@ import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
+import chalk from "chalk";
+import terminalLink from "terminal-link";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
-  skipTypecheck: z.boolean().optional(),
+  skipTypecheck: z.boolean().default(false),
+  skipDeploy: z.boolean().default(false),
+  env: z.enum(["prod", "staging"]),
+  loadImage: z.boolean().default(false),
+  buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
+  selfHosted: z.boolean().default(false),
+  registry: z.string().optional(),
+  pushImage: z.boolean().default(false),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -35,7 +44,48 @@ export function configureDeployCommand(program: Command) {
     .command("deploy")
     .description("Deploy your Trigger.dev v3 project to the cloud.")
     .argument("[path]", "The path to the project", ".")
+    .option(
+      "-e, --env <env>",
+      "Deploy to a specific environment (currently only prod and staging are supported)",
+      "prod"
+    )
     .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
+    .addOption(
+      new CommandOption(
+        "--self-hosted",
+        "Build and load the image using your local Docker. Use the --registry option to specify the registry to push the image to when using --self-hosted, or just use --push-image to push to the default registry."
+      ).hideHelp()
+    )
+    .addOption(
+      new CommandOption(
+        "--push-image",
+        "(Coming soon) When using the --self-hosted flag, push the image to the default registry. (defaults to false when not using --registry)"
+      ).hideHelp()
+    )
+    .addOption(
+      new CommandOption(
+        "--registry <registry>",
+        "(Coming soon) The registry to push the image to when using --self-hosted"
+      ).hideHelp()
+    )
+    .addOption(
+      new CommandOption(
+        "--tag <tag>",
+        "(Coming soon) Specify the tag to use when pushing the image to the registry"
+      ).hideHelp()
+    )
+    .addOption(new CommandOption("-D, --skip-deploy", "Skip deploying the image").hideHelp())
+    .addOption(
+      new CommandOption("--load-image", "Load the built image into your local docker").hideHelp()
+    )
+    .addOption(
+      new CommandOption(
+        "--build-platform <platform>",
+        "The platform to build the deployment image for"
+      )
+        .default("linux/amd64")
+        .hideHelp()
+    )
     .option(
       "-l, --log-level <level>",
       "The log level to use (debug, info, log, warn, error, none)",
@@ -58,6 +108,15 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
     throw new Error(`Invalid options: ${options.error}`);
   }
 
+  if (options.data.logLevel) {
+    logger.loggerLevel = options.data.logLevel;
+  }
+
+  logger.debug("Running the deploy command with the following options", {
+    options: options.data,
+    dir,
+  });
+
   const authorization = await isLoggedIn();
 
   if (!authorization.ok) {
@@ -72,10 +131,6 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
     return;
   }
 
-  if (options.data.logLevel) {
-    logger.loggerLevel = options.data.logLevel;
-  }
-
   await printStandloneInitialBanner(true);
 
   const configPath = await getConfigPath(dir);
@@ -83,18 +138,59 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   const apiClient = new CliApiClient(authorization.config.apiUrl, authorization.config.accessToken);
 
-  const prodEnv = await apiClient.getProjectProdEnv({ projectRef: config.project });
+  const deploymentEnv = await apiClient.getProjectEnv({
+    projectRef: config.project,
+    env: options.data.env,
+  });
 
-  if (!prodEnv.success) {
-    throw new Error(prodEnv.error);
+  if (!deploymentEnv.success) {
+    throw new Error(deploymentEnv.error);
   }
 
-  const environmentClient = new CliApiClient(authorization.config.apiUrl, prodEnv.data.apiKey);
+  const environmentClient = new CliApiClient(
+    authorization.config.apiUrl,
+    deploymentEnv.data.apiKey
+  );
 
-  intro(`Preparing to deploy "${prodEnv.data.name}" (${config.project})`);
+  intro(
+    `Preparing to deploy "${deploymentEnv.data.name}" (${config.project}) to ${options.data.env}`
+  );
 
   // Step 1: Build the project into a temporary directory
   const compilation = await compileProject(config, options.data);
+
+  logger.debug("Compilation result", { compilation });
+
+  const environmentVariablesSpinner = spinner();
+
+  environmentVariablesSpinner.start("Checking environment variables");
+
+  const environmentVariables = await environmentClient.getEnvironmentVariables(config.project);
+
+  if (!environmentVariables.success) {
+    environmentVariablesSpinner.stop(`Failed to fetch environment variables, skipping check`);
+  } else {
+    // Check to see if all the environment variables in the compilation exist
+    const missingEnvironmentVariables = compilation.envVars.filter(
+      (envVar) => environmentVariables.data.variables[envVar] === undefined
+    );
+
+    if (missingEnvironmentVariables.length > 0) {
+      environmentVariablesSpinner.stop(
+        `Project missing env vars: ${arrayToSentence(
+          missingEnvironmentVariables
+        )}. Aborting deployment. ${chalk.bgBlueBright(
+          terminalLink(
+            "Manage env vars",
+            `${authorization.config.apiUrl}/projects/v3/${config.project}/environment-variables`
+          )
+        )}`
+      );
+      exit(1);
+    }
+
+    environmentVariablesSpinner.stop(`All required environment variables are present`);
+  }
 
   const deploymentSpinner = spinner();
 
@@ -106,7 +202,7 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
   });
 
   if (!deploymentResponse.success) {
-    deploymentSpinner.stop(`Failed to initialize deployment: ${deploymentResponse.error}`);
+    deploymentSpinner.stop(`Failed to start deployment: ${deploymentResponse.error}`);
     exit(1);
   }
 
@@ -114,42 +210,77 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   // If the deployment doesn't have any externalBuildData, then we can't use the remote image builder
   // TODO: handle this and allow the user to the build and push the image themselves
-  if (!deploymentResponse.data.externalBuildData) {
+  if (!deploymentResponse.data.externalBuildData && !options.data.selfHosted) {
     deploymentSpinner.stop(
-      `Failed to initialize deployment. The deployment does not have any external build data. Support for local building coming soon.`
+      `Failed to start deployment, as your instance of trigger.dev does not support hosting. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.`
     );
     exit(1);
   }
 
-  const registryHost = new URL(prodEnv.data.apiUrl).host;
+  const registryHost = new URL(deploymentEnv.data.apiUrl).host;
 
-  const image = await buildAndPushImage({
-    registryHost,
-    auth: authorization.config.accessToken,
-    imageTag: deploymentResponse.data.imageTag,
-    buildId: deploymentResponse.data.externalBuildData.buildId,
-    buildToken: deploymentResponse.data.externalBuildData.buildToken,
-    buildProjectId: deploymentResponse.data.externalBuildData.projectId,
-    cwd: compilation.path,
-    projectId: config.project,
-    deploymentId: deploymentResponse.data.id,
-    deploymentVersion: deploymentResponse.data.version,
-    contentHash: deploymentResponse.data.contentHash,
-    projectRef: config.project,
-  });
+  const buildImage = async () => {
+    if (options.data.selfHosted) {
+      return buildAndPushSelfHostedImage({
+        imageTag: deploymentResponse.data.imageTag,
+        cwd: compilation.path,
+        projectId: config.project,
+        deploymentId: deploymentResponse.data.id,
+        deploymentVersion: deploymentResponse.data.version,
+        contentHash: deploymentResponse.data.contentHash,
+        projectRef: config.project,
+        buildPlatform: options.data.buildPlatform,
+      });
+    }
+
+    if (!deploymentResponse.data.externalBuildData) {
+      deploymentSpinner.stop(
+        `Failed to initialize deployment. The deployment does not have any external build data. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.`
+      );
+      exit(1);
+    }
+
+    return buildAndPushImage({
+      registryHost,
+      auth: authorization.config.accessToken,
+      imageTag: deploymentResponse.data.imageTag,
+      buildId: deploymentResponse.data.externalBuildData.buildId,
+      buildToken: deploymentResponse.data.externalBuildData.buildToken,
+      buildProjectId: deploymentResponse.data.externalBuildData.projectId,
+      cwd: compilation.path,
+      projectId: config.project,
+      deploymentId: deploymentResponse.data.id,
+      deploymentVersion: deploymentResponse.data.version,
+      contentHash: deploymentResponse.data.contentHash,
+      projectRef: config.project,
+      loadImage: options.data.loadImage,
+      buildPlatform: options.data.buildPlatform,
+    });
+  };
+
+  const image = await buildImage();
 
   if (!image.ok) {
     deploymentSpinner.stop(`Failed to build and push image: ${image.error}`);
     exit(1);
   }
 
-  const imageReference = `${registryHost}/${image.image}${image.digest ? `@${image.digest}` : ""}`;
+  const imageReference = options.data.selfHosted
+    ? `${image.image}${image.digest ? `@${image.digest}` : ""}`
+    : `${registryHost}/${image.image}${image.digest ? `@${image.digest}` : ""}`;
+
+  if (options.data.skipDeploy) {
+    deploymentSpinner.stop(
+      `Image built and pushed: ${imageReference}. Skipping deployment as requested`
+    );
+    exit(0);
+  }
 
   deploymentSpinner.message(
-    `${deploymentResponse.data.version} image uploaded, starting indexing process`
+    `${deploymentResponse.data.version} image built, starting indexing process`
   );
 
-  logger.debug(`Image built and pushed: ${imageReference}`);
+  logger.debug(`Start indexing image ${imageReference}`);
 
   // Need to update the deployment with the image and start the deployment (indexing)
   // registry.digitalocean.com/trigger/yubjwjsfkxnylobaqvqz:20240306.41.prod@sha256:8b48dd2866bc8878644d2880bbe35a27e66cf6ff78aa1e489d7fdde5e228faf1
@@ -222,6 +353,8 @@ type BuildAndPushImageOptions = {
   deploymentVersion: string;
   contentHash: string;
   projectRef: string;
+  loadImage: boolean;
+  buildPlatform: string;
 };
 
 type BuildAndPushImageResults =
@@ -250,7 +383,7 @@ async function buildAndPushImage(
     "-f",
     "Containerfile",
     "--platform",
-    "linux/amd64",
+    options.buildPlatform,
     "--provenance",
     "false",
     "--build-arg",
@@ -265,9 +398,10 @@ async function buildAndPushImage(
     `TRIGGER_PROJECT_REF=${options.projectRef}`,
     "-t",
     `${options.registryHost}/${options.imageTag}`,
-    "--push",
     ".",
-  ];
+    "--push",
+    options.loadImage ? "--load" : undefined,
+  ].filter(Boolean) as string[];
 
   logger.debug(`depot ${args.join(" ")}`);
 
@@ -292,6 +426,74 @@ async function buildAndPushImage(
         const text = data.toString();
 
         errors.push(text);
+        logger.debug(text);
+      });
+
+      childProcess.on("error", (e) => rej(e));
+      childProcess.on("close", () => res());
+    });
+
+    const digest = extractImageDigest(errors);
+
+    return {
+      ok: true,
+      image: options.imageTag,
+      digest,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : JSON.stringify(e),
+    };
+  }
+}
+
+type BuildAndPushSelfHostedImageOptions = Omit<
+  BuildAndPushImageOptions,
+  "registryHost" | "buildId" | "buildToken" | "buildProjectId" | "auth" | "loadImage"
+>;
+
+async function buildAndPushSelfHostedImage(
+  options: BuildAndPushSelfHostedImageOptions
+): Promise<BuildAndPushImageResults> {
+  const args = [
+    "build",
+    "-f",
+    "Containerfile",
+    "--platform",
+    options.buildPlatform,
+    "--build-arg",
+    `TRIGGER_PROJECT_ID=${options.projectId}`,
+    "--build-arg",
+    `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
+    "--build-arg",
+    `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
+    "--build-arg",
+    `TRIGGER_CONTENT_HASH=${options.contentHash}`,
+    "--build-arg",
+    `TRIGGER_PROJECT_REF=${options.projectRef}`,
+    "-t",
+    `${options.imageTag}`,
+    ".", // The build context
+  ].filter(Boolean) as string[];
+
+  logger.debug(`docker ${args.join(" ")}`);
+
+  // Step 4: Build and push the image
+  const childProcess = execa("docker", args, {
+    cwd: options.cwd,
+  });
+
+  const errors: string[] = [];
+
+  try {
+    await new Promise<void>((res, rej) => {
+      // For some reason everything is output on stderr, not stdout
+      childProcess.stderr?.on("data", (data: Buffer) => {
+        const text = data.toString();
+
+        errors.push(text);
+        logger.debug(text);
       });
 
       childProcess.on("error", (e) => rej(e));
@@ -499,14 +701,51 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
 
   const contentHash = contentHasher.digest("hex");
 
-  return { path: tempDir, contentHash };
+  const registerTracingEnvVars = await findAllEnvironmentVariableReferencesInFile(
+    registerTracingPath
+  );
+
+  const workerFacadeEnvVars = findAllEnvironmentVariableReferences(workerContents);
+
+  const envVars = findAllEnvironmentVariableReferences(workerOutputFile.text);
+
+  // Remove workerFacadeEnvVars and registerTracingEnvVars from envVars
+  const finalEnvVars = envVars.filter(
+    (envVar) => !workerFacadeEnvVars.includes(envVar) && !registerTracingEnvVars.includes(envVar)
+  );
+
+  return { path: tempDir, contentHash, envVars: finalEnvVars };
 }
 
 async function typecheckProject(config: ResolvedConfig, options: DeployCommandOptions) {
   const createAuthCodeSpinner = spinner();
   createAuthCodeSpinner.start("Typechecking project");
 
-  await setTimeout(2000);
+  const tscTypecheck = execa("npm", ["exec", "tsc", "--", "--noEmit"], {
+    cwd: config.projectDir,
+  });
+
+  const stdouts: string[] = [];
+  const stderrs: string[] = [];
+
+  tscTypecheck.stdout?.on("data", (chunk) => stdouts.push(chunk.toString()));
+  tscTypecheck.stderr?.on("data", (chunk) => stderrs.push(chunk.toString()));
+
+  try {
+    await new Promise((resolve, reject) => {
+      tscTypecheck.addListener("exit", (code) => (code === 0 ? resolve(code) : reject(code)));
+    });
+  } catch (error) {
+    createAuthCodeSpinner.stop(`Typechecking failed, check the logs below:`);
+
+    logger.log("");
+
+    for (const stdout of stdouts) {
+      logger.log(stdout);
+    }
+
+    exit(1);
+  }
 
   createAuthCodeSpinner.stop(`Project typechecked with 0 errors`);
 }
@@ -568,4 +807,33 @@ async function ensureLoggedIntoDockerRegistry(
   logger.debug(`Writing docker config to ${dockerConfigPath}`);
 
   return tmpDir;
+}
+
+async function findAllEnvironmentVariableReferencesInFile(filePath: string) {
+  const fileContents = await readFile(filePath, "utf-8");
+
+  return findAllEnvironmentVariableReferences(fileContents);
+}
+
+function findAllEnvironmentVariableReferences(code: string): string[] {
+  const regex = /\bprocess\.env\.([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
+
+  const matches = code.matchAll(regex);
+
+  const matchesArray = Array.from(matches, (match) => match[1]).filter(Boolean) as string[];
+
+  // Make sure and remove duplicates
+  return Array.from(new Set(matchesArray));
+}
+
+function arrayToSentence(items: string[]): string {
+  if (items.length === 1 && typeof items[0] === "string") {
+    return items[0];
+  }
+
+  if (items.length === 2) {
+    return `${items[0]} and ${items[1]}`;
+  }
+
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }

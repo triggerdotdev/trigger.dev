@@ -9,13 +9,13 @@ export const WhoAmIResponseSchema = z.object({
 
 export type WhoAmIResponse = z.infer<typeof WhoAmIResponseSchema>;
 
-export const GetProjectDevResponse = z.object({
+export const GetProjectEnvResponse = z.object({
   apiKey: z.string(),
   name: z.string(),
   apiUrl: z.string(),
 });
 
-export type GetProjectDevResponse = z.infer<typeof GetProjectDevResponse>;
+export type GetProjectEnvResponse = z.infer<typeof GetProjectEnvResponse>;
 
 export const CreateBackgroundWorkerRequestBody = z.object({
   localOnly: z.boolean(),
@@ -119,7 +119,7 @@ export const InitializeDeploymentResponseBody = z.object({
   shortCode: z.string(),
   version: z.string(),
   imageTag: z.string(),
-  externalBuildData: ExternalBuildData.optional(),
+  externalBuildData: ExternalBuildData.optional().nullable(),
 });
 
 export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;
