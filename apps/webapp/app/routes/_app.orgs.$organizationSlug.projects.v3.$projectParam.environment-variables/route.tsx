@@ -217,7 +217,7 @@ export default function Page() {
                       return (
                         <TableCell key={environment.id}>
                           <ClipboardField
-                            className="w-full max-w-none"
+                            className="-ml-2"
                             secure={!revealAll}
                             value={value}
                             variant={"tertiary/small"}
@@ -345,7 +345,7 @@ function EditEnvironmentVariablePanel({
             <FormButtons
               confirmButton={
                 <Button type="submit" variant="primary/small" disabled={isLoading}>
-                  {isLoading ? "Saving" : "Edit"}
+                  {isLoading ? "Saving…" : "Edit"}
                 </Button>
               }
               cancelButton={
