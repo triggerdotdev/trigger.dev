@@ -28,7 +28,7 @@ class DockerTaskOperations implements TaskOperations {
     });
 
     const { exitCode } = logger.debug(
-      await $`docker run --rm -e TRIGGER_SECRET_KEY=${opts.apiKey} -e TRIGGER_API_URL=${opts.apiUrl} -e COORDINATOR_HOST=${COORDINATOR_HOST} -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ENV_ID=${opts.envId} -e INDEX_TASKS=true --name=${containerName} ${opts.imageTag}`
+      await $`docker run --network=host --rm -e TRIGGER_SECRET_KEY=${opts.apiKey} -e TRIGGER_API_URL=${opts.apiUrl} -e COORDINATOR_HOST=${COORDINATOR_HOST} -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ENV_ID=${opts.envId} -e INDEX_TASKS=true --name=${containerName} ${opts.imageTag}`
     );
 
     if (exitCode !== 0) {
@@ -40,7 +40,7 @@ class DockerTaskOperations implements TaskOperations {
     const containerName = this.#getRunContainerName(opts.attemptId);
 
     const { exitCode } = logger.debug(
-      await $`docker run -d -e OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} -e COORDINATOR_HOST=${COORDINATOR_HOST} -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ENV_ID=${opts.envId} -e TRIGGER_ATTEMPT_ID=${opts.attemptId} --name=${containerName} ${opts.image}`
+      await $`docker run --network=host -d -e OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} -e COORDINATOR_HOST=${COORDINATOR_HOST} -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ENV_ID=${opts.envId} -e TRIGGER_ATTEMPT_ID=${opts.attemptId} --name=${containerName} ${opts.image}`
     );
 
     if (exitCode !== 0) {
