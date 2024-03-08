@@ -75,7 +75,7 @@ class ZodIpcMessageHandler<
     const handler = this.#handlers[parsedMessage.type];
 
     if (!handler) {
-      console.error(`No handler for message type: ${String(parsedMessage.type)}`);
+      // console.error(`No handler for message type: ${String(parsedMessage.type)}`);
       return;
     }
 
@@ -192,11 +192,11 @@ export class ZodIpcConnection<
     const parsedPacket = Packet.safeParse(packet);
 
     if (!parsedPacket.success) {
-      console.error("dropping invalid packet", packet);
+      // console.error("dropping invalid packet", packet);
       return;
     }
 
-    console.log("<-", packet);
+    // console.log("<-", packet);
 
     switch (parsedPacket.data.type) {
       case "ACK": {
@@ -255,7 +255,7 @@ export class ZodIpcConnection<
   }
 
   async #sendPacket(packet: Packet) {
-    console.log("->", packet);
+    // console.log("->", packet);
     await this.opts.process.send?.(packet);
   }
 
