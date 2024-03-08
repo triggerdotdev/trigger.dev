@@ -70,7 +70,6 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
 
   app.all(
     "*",
-    // @ts-expect-error
     createRequestHandler({
       build,
       mode: MODE,
