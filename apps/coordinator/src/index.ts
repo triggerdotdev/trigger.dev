@@ -30,32 +30,44 @@ const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 
+type CheckpointerInitializeReturn = {
+  canCheckpoint: boolean;
+  willSimulate: boolean;
+};
+
 class Checkpointer {
   #initialized = false;
   #canCheckpoint = false;
-  #dockerMode = true;
+  #dockerMode = !process.env.KUBERNETES_PORT;
 
   #logger = new SimpleLogger("[checkptr]");
 
   constructor(private opts = { forceSimulate: false }) {}
 
-  async initialize(): Promise<{ canCheckpoint: boolean }> {
+  async initialize(): Promise<CheckpointerInitializeReturn> {
     if (this.#initialized) {
-      return {
-        canCheckpoint: this.#canCheckpoint,
-      };
+      return this.#getInitializeReturn();
+    }
+
+    this.#logger.log(`${this.#dockerMode ? "Docker" : "Kubernetes"} mode`);
+
+    if (this.opts.forceSimulate) {
+      this.#logger.log(
+        "Forced simulation enabled. Will simulate regardless of checkpoint support."
+      );
     }
 
     try {
       await $`criu --version`;
     } catch (error) {
       this.#logger.error("No checkpoint support: Missing CRIU binary");
+      if (this.#dockerMode) {
+        this.#logger.error("Will simulate instead");
+      }
       this.#canCheckpoint = false;
       this.#initialized = true;
 
-      return {
-        canCheckpoint: this.#canCheckpoint,
-      };
+      return this.#getInitializeReturn();
     }
 
     if (this.#dockerMode) {
@@ -65,24 +77,28 @@ class Checkpointer {
         this.#logger.error(
           "No checkpoint support: Docker needs to have experimental features enabled"
         );
+        this.#logger.error("Will simulate instead");
         this.#canCheckpoint = false;
         this.#initialized = true;
 
-        return {
-          canCheckpoint: this.#canCheckpoint,
-        };
+        return this.#getInitializeReturn();
       }
     }
 
     this.#logger.log(
-      `Full checkpoint support with docker ${this.#dockerMode ? "enabled" : "disabled"}`
+      `Full checkpoint support in ${this.#dockerMode ? "docker" : "kubernetes"} mode`
     );
 
     this.#initialized = true;
     this.#canCheckpoint = true;
 
+    return this.#getInitializeReturn();
+  }
+
+  #getInitializeReturn(): CheckpointerInitializeReturn {
     return {
       canCheckpoint: this.#canCheckpoint,
+      willSimulate: this.#dockerMode && (!this.#canCheckpoint || this.opts.forceSimulate),
     };
   }
 
@@ -90,7 +106,7 @@ class Checkpointer {
     await this.initialize();
 
     if (!this.#dockerMode && !this.#canCheckpoint) {
-      this.#logger.error("No checkpoint support");
+      this.#logger.error("No checkpoint support. Simulation requires docker.");
       return;
     }
 
@@ -146,7 +162,7 @@ class Checkpointer {
     }
 
     if (!this.#canCheckpoint) {
-      throw new Error("No checkpoint support");
+      throw new Error("No checkpoint support. Simulation requires docker.");
     }
 
     const containerId = this.#logger.debug(
@@ -178,7 +194,7 @@ class Checkpointer {
     }
 
     if (!this.#canCheckpoint) {
-      throw new Error("No checkpoint support");
+      throw new Error("No checkpoint support. Simulation requires docker.");
     }
 
     const container = this.#logger.debug(await $`buildah from scratch`);
@@ -203,7 +219,7 @@ class Checkpointer {
     }
 
     if (!this.#canCheckpoint) {
-      throw new Error("No checkpoint support");
+      throw new Error("No checkpoint support. Simulation requires docker.");
     }
 
     const destination = `${REGISTRY_FQDN}/${REPO_NAME}:${tag}`;
@@ -403,9 +419,9 @@ class TaskCoordinator {
         socket.on("WAIT_FOR_DURATION", async (message, callback) => {
           logger.log("[WAIT_FOR_DURATION]", message);
 
-          const { canCheckpoint } = await this.#checkpointer.initialize();
+          const { canCheckpoint, willSimulate } = await this.#checkpointer.initialize();
 
-          callback({ willCheckpointAndRestore: canCheckpoint });
+          callback({ willCheckpointAndRestore: canCheckpoint || willSimulate });
 
           if (!canCheckpoint) {
             return;
@@ -438,9 +454,9 @@ class TaskCoordinator {
         socket.on("WAIT_FOR_TASK", async (message, callback) => {
           logger.log("[WAIT_FOR_TASK]", message);
 
-          const { canCheckpoint } = await this.#checkpointer.initialize();
+          const { canCheckpoint, willSimulate } = await this.#checkpointer.initialize();
 
-          callback({ willCheckpointAndRestore: canCheckpoint });
+          callback({ willCheckpointAndRestore: canCheckpoint || willSimulate });
 
           const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
 
@@ -464,9 +480,9 @@ class TaskCoordinator {
         socket.on("WAIT_FOR_BATCH", async (message, callback) => {
           logger.log("[WAIT_FOR_BATCH]", message);
 
-          const { canCheckpoint } = await this.#checkpointer.initialize();
+          const { canCheckpoint, willSimulate } = await this.#checkpointer.initialize();
 
-          callback({ willCheckpointAndRestore: canCheckpoint });
+          callback({ willCheckpointAndRestore: canCheckpoint || willSimulate });
 
           const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
 
