@@ -137,6 +137,14 @@ export const GetDeploymentResponseBody = z.object({
   shortCode: z.string(),
   version: z.string(),
   imageReference: z.string().optional(),
+  errorData: z
+    .object({
+      name: z.string(),
+      message: z.string(),
+      stack: z.string(),
+    })
+    .optional()
+    .nullable(),
   worker: z
     .object({
       id: z.string(),

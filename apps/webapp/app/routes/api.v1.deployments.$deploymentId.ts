@@ -52,6 +52,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     shortCode: deployment.shortCode,
     version: deployment.version,
     imageReference: deployment.imageReference,
+    errorData: deployment.errorData,
     worker: deployment.worker
       ? {
           id: deployment.worker.friendlyId,

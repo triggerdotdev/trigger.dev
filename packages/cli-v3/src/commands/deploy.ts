@@ -298,21 +298,44 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
   }
 
   // Step 6: Wait for the deployment to finish and print the result
-  const completedDeployment = await waitForDeploymentToComplete(
+  const finishedDeployment = await waitForDeploymentToFinish(
     deploymentResponse.data.id,
     environmentClient
   );
 
-  if (!completedDeployment) {
+  if (!finishedDeployment) {
     deploymentSpinner.stop(`Deployment failed to complete`);
     exit(1);
   }
 
-  deploymentSpinner.stop(`Deployment completed successfully, you can now use this version`);
+  switch (finishedDeployment.status) {
+    case "DEPLOYED": {
+      deploymentSpinner.stop(`Deployment completed successfully, you can now use this version`);
+      break;
+    }
+    case "FAILED": {
+      if (finishedDeployment.errorData) {
+        deploymentSpinner.stop(
+          `Deployment encountered an error: ${finishedDeployment.errorData.name}`
+        );
+        logger.error(finishedDeployment.errorData.stack);
+      } else {
+        deploymentSpinner.stop(
+          `Deployment failed with an unknown error. Please contact eric@trigger.dev for help.`
+        );
+      }
+
+      exit(1);
+    }
+    case "CANCELED": {
+      deploymentSpinner.stop(`Deployment was canceled`);
+      break;
+    }
+  }
 }
 
-// Poll every 1 second for the deployment to complete
-async function waitForDeploymentToComplete(
+// Poll every 1 second for the deployment to finish
+async function waitForDeploymentToFinish(
   deploymentId: string,
   client: CliApiClient,
   timeoutInSeconds: number = 60
@@ -332,7 +355,11 @@ async function waitForDeploymentToComplete(
 
     logger.debug(`Deployment status: ${deployment.data.status}`);
 
-    if (deployment.data.status === "DEPLOYED") {
+    if (
+      deployment.data.status === "DEPLOYED" ||
+      deployment.data.status === "FAILED" ||
+      deployment.data.status === "CANCELED"
+    ) {
       return deployment.data;
     }
 
@@ -545,13 +572,13 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
     "utf-8"
   );
 
-  const registerTracingPath = new URL(
-    importResolve("./workers/common/register-tracing.js", import.meta.url)
+  const workerSetupPath = new URL(
+    importResolve("./workers/common/worker-setup.js", import.meta.url)
   ).href.replace("file://", "");
 
   const workerContents = workerFacade
     .replace("__TASKS__", createTaskFileImports(taskFiles))
-    .replace("__REGISTER_TRACING__", `import { tracingSDK } from "${registerTracingPath}";`);
+    .replace("__WORKER_SETUP__", `import { tracingSDK, sender } from "${workerSetupPath}";`);
 
   const result = await build({
     stdin: {
@@ -701,17 +728,15 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
 
   const contentHash = contentHasher.digest("hex");
 
-  const registerTracingEnvVars = await findAllEnvironmentVariableReferencesInFile(
-    registerTracingPath
-  );
+  const workerSetupEnvVars = await findAllEnvironmentVariableReferencesInFile(workerSetupPath);
 
   const workerFacadeEnvVars = findAllEnvironmentVariableReferences(workerContents);
 
   const envVars = findAllEnvironmentVariableReferences(workerOutputFile.text);
 
-  // Remove workerFacadeEnvVars and registerTracingEnvVars from envVars
+  // Remove workerFacadeEnvVars and workerSetupEnvVars from envVars
   const finalEnvVars = envVars.filter(
-    (envVar) => !workerFacadeEnvVars.includes(envVar) && !registerTracingEnvVars.includes(envVar)
+    (envVar) => !workerFacadeEnvVars.includes(envVar) && !workerSetupEnvVars.includes(envVar)
   );
 
   return { path: tempDir, contentHash, envVars: finalEnvVars };

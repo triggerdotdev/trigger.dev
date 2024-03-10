@@ -18,6 +18,7 @@ import {
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
 import { safeDeleteFileSync } from "../../utilities/fileSystem";
+import { UncaughtExceptionError } from "../common/errors";
 
 class UnexpectedExitError extends Error {
   constructor(public code: number) {
@@ -122,6 +123,11 @@ export class ProdBackgroundWorker {
           clearTimeout(timeout);
           resolved = true;
           resolve(message.payload.tasks);
+          child.kill();
+        } else if (message.type === "UNCAUGHT_EXCEPTION") {
+          clearTimeout(timeout);
+          resolved = true;
+          reject(new UncaughtExceptionError(message.payload.error, message.payload.origin));
           child.kill();
         }
       });
