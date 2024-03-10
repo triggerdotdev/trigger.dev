@@ -1,16 +1,18 @@
 import { intro, spinner } from "@clack/prompts";
 import { depot } from "@depot/cli";
 import { ResolvedConfig } from "@trigger.dev/core/v3";
+import chalk from "chalk";
 import { Command, Option as CommandOption } from "commander";
 import { Metafile, build } from "esbuild";
 import { execa } from "execa";
 import { resolve as importResolve } from "import-meta-resolve";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { copyFile, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { exit } from "node:process";
 import { setTimeout } from "node:timers/promises";
+import terminalLink from "terminal-link";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
@@ -23,8 +25,6 @@ import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
-import chalk from "chalk";
-import terminalLink from "terminal-link";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -690,12 +690,14 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
   const projectPackageJson = await readJSONFile(join(config.projectDir, "package.json"));
   const dependencies = gatherRequiredDependencies(allImports, projectPackageJson);
 
-  await writeJSONFile(join(tempDir, "package.json"), {
+  const packageJsonContents = {
     name: "trigger-worker",
     version: "0.0.0",
     description: "",
     dependencies,
-  });
+  };
+
+  await writeJSONFile(join(tempDir, "package.json"), packageJsonContents);
 
   createAuthCodeSpinner.stop(`Project "${config.project}" compiled successfully`);
 
@@ -704,9 +706,7 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
 
   resolvingDepsSpinner.start("Resolving dependencies");
 
-  await execa("npm", ["install", "--package-lock-only"], {
-    cwd: tempDir,
-  });
+  await resolveDependencies(tempDir, packageJsonContents, config, options);
 
   resolvingDepsSpinner.stop("Dependencies resolved");
   // Write the Containerfile to /tmp/dir/Containerfile
@@ -719,12 +719,7 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
   const contentHasher = createHash("sha256");
   contentHasher.update(Buffer.from(entryPointOutputFile.text));
   contentHasher.update(Buffer.from(workerOutputFile.text));
-  // Sort the dependencies by key to ensure consistent hashing
-  const sortedDependencies = Object.fromEntries(
-    Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b))
-  );
-
-  contentHasher.update(Buffer.from(JSON.stringify(sortedDependencies)));
+  contentHasher.update(Buffer.from(JSON.stringify(dependencies)));
 
   const contentHash = contentHasher.digest("hex");
 
@@ -740,6 +735,58 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
   );
 
   return { path: tempDir, contentHash, envVars: finalEnvVars };
+}
+
+// Let's first create a digest from the package.json, and then use that digest to lookup a cached package-lock.json
+// in the `.trigger/cache` directory. If the package-lock.json is found, we'll write it to the project directory
+// If the package-lock.json is not found, we will run `npm install --package-lock-only` and then write the package-lock.json
+// to the project directory, and finally we'll write the digest to the `.trigger/cache` directory with the contents of the package-lock.json
+async function resolveDependencies(
+  projectDir: string,
+  packageJsonContents: any,
+  config: ResolvedConfig,
+  options: DeployCommandOptions
+) {
+  const hasher = createHash("sha256");
+  hasher.update(JSON.stringify(packageJsonContents));
+  const digest = hasher.digest("hex").slice(0, 16);
+
+  const cacheDir = join(config.projectDir, ".trigger", "cache");
+  const cachePath = join(cacheDir, `${digest}.json`);
+
+  try {
+    const cachedPackageLock = await readFile(cachePath, "utf-8");
+
+    logger.debug(`Using cached package-lock.json for ${digest}`);
+
+    await writeJSONFile(join(projectDir, "package-lock.json"), cachedPackageLock);
+
+    return;
+  } catch (e) {
+    // If the file doesn't exist, we'll continue to the next step
+    if (e instanceof Error && "code" in e && e.code !== "ENOENT") {
+      throw e;
+    }
+
+    logger.debug(`No cached package-lock.json found for ${digest}`);
+
+    await execa("npm", ["install", "--package-lock-only"], {
+      cwd: projectDir,
+    });
+
+    const packageLockContents = await readFile(join(projectDir, "package-lock.json"), "utf-8");
+
+    logger.debug(`Writing package-lock.json to cache for ${digest}`);
+
+    // Make sure the cache directory exists
+    await mkdir(cacheDir, { recursive: true });
+
+    // Save the package-lock.json to the cache
+    await writeFile(cachePath, packageLockContents);
+
+    // Write the package-lock.json to the project directory
+    await writeFile(join(projectDir, "package-lock.json"), packageLockContents);
+  }
 }
 
 async function typecheckProject(config: ResolvedConfig, options: DeployCommandOptions) {
@@ -810,7 +857,8 @@ function gatherRequiredDependencies(
     }
   }
 
-  return dependencies;
+  // Make sure we sort the dependencies by key to ensure consistent hashing
+  return Object.fromEntries(Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b)));
 }
 
 async function ensureLoggedIntoDockerRegistry(
