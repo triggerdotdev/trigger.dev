@@ -126,6 +126,7 @@ export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeployme
 
 export const InitializeDeploymentRequestBody = z.object({
   contentHash: z.string(),
+  userId: z.string().optional(),
 });
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;

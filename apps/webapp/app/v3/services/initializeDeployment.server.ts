@@ -29,6 +29,19 @@ export class InitializeDeploymentService extends BaseService {
       // Try and create a depot build and get back the external build data
       const externalBuildData = await createRemoteImageBuild();
 
+      const triggeredBy = payload.userId
+        ? await this._prisma.user.findUnique({
+            where: {
+              id: payload.userId,
+              orgMemberships: {
+                some: {
+                  organizationId: environment.project.organizationId,
+                },
+              },
+            },
+          })
+        : undefined;
+
       const deployment = await this._prisma.workerDeployment.create({
         data: {
           friendlyId: generateFriendlyId("deployment"),
@@ -39,6 +52,7 @@ export class InitializeDeploymentService extends BaseService {
           environmentId: environment.id,
           projectId: environment.projectId,
           externalBuildData,
+          triggeredById: triggeredBy?.id,
         },
       });
 
