@@ -786,7 +786,7 @@ class SharedQueueTasks {
       const success: TaskRunSuccessfulExecutionResult = {
         ok,
         id: attempt.friendlyId,
-        output: attempt.output ?? "",
+        output: attempt.output ?? undefined,
         outputType: attempt.outputType,
       };
       return success;
