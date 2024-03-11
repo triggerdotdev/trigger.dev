@@ -199,12 +199,18 @@ function createControllerByPath(customProvider: InjectionToken, path: string) {
        */
       if (isExpressResponse(res)) {
         res.status(response.status);
-        // Merges the headers, so no need to iterate over them
-        res.set(response.headers);
+
+        if (response.headers) {
+          // Merges the headers, so no need to iterate over them
+          res.set(response.headers);
+        }
       } else if (isFastifyReply(res)) {
         res.code(response.status);
-        // Same merge behaviour as Express
-        res.headers(response.headers);
+
+        if (response.headers) {
+          // Same merge behaviour as Express
+          res.headers(response.headers);
+        }
       } else {
         throw new InternalServerErrorException(
           "Unable to indetify the framework to set the status code, are you using Express or Fastify?"
