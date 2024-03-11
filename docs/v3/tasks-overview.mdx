@@ -55,17 +55,17 @@ Your custom code inside `run()` will be executed when your task is triggered. It
 
 Anything you return from the `run` function will be the result of the task. Data you return must be JSON serializable: strings, numbers, booleans, arrays, objects, and null.
 
-## Reliability and durability
+## Logging
+
+You can use `console.log()`, `console.error()` etc inside your code and it will be shown in your run log. You also get built-in tracing and thrown error logging. More information in [our logging guide](/v3/logging).
+
+## Errors and retrying
 
 There are multiple layers of reliability and durability built into tasks:
 
 1. [Tasks retry](/v3/retrying) with multiple attempts if they fail. You can configure this.
 2. You can easily [add retrying to blocks of code](/v3/retrying) inside your tasks.
 3. The inputs and outputs of each task are serialized and stored so they can be [replayed](/v3/replaying) if needed.
-
-## Logging
-
-You can use `console.log()`, `console.error()` etc inside your code and it will be shown in your run log. You also get built-in tracing and thrown error logging. More information in [our logging guide](/v3/logging).
 
 ## Waiting
 
