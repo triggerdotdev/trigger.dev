@@ -3,11 +3,13 @@ import {
   ProdWorkerToChildMessages,
   ZodIpcConnection,
   type TracingSDK,
+  Config,
 } from "@trigger.dev/core/v3";
 import "source-map-support/register.js";
 
 __WORKER_SETUP__;
 declare const __WORKER_SETUP__: unknown;
+declare const __PROJECT_CONFIG__: Config;
 declare const tracingSDK: TracingSDK;
 
 const otelTracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.version);
@@ -64,11 +66,11 @@ class TaskExecutor {
     execution: TaskRunExecution,
     error: unknown
   ): Promise<TaskRunExecutionRetry | undefined> {
-    if (!this.task.retry) {
+    const retry = this.task.retry ?? __PROJECT_CONFIG__.retries?.default;
+
+    if (!retry) {
       return;
     }
-
-    const retry = this.task.retry;
 
     const delay = calculateNextRetryDelay(retry, execution.attempt.number);
 

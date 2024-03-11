@@ -335,6 +335,7 @@ function useDev({
         outdir: "out",
         define: {
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
+          __PROJECT_CONFIG__: JSON.stringify(config),
         },
         plugins: [
           {
@@ -409,7 +410,7 @@ function useDev({
                   await environmentClient.getEnvironmentVariables(config.project);
 
                 const backgroundWorker = new BackgroundWorker(fullPath, {
-                  projectDir: config.projectDir,
+                  projectConfig: config,
                   dependencies,
                   env: {
                     TRIGGER_API_URL: apiUrl,

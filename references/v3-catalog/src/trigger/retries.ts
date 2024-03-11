@@ -4,13 +4,6 @@ import { interceptor } from "./utils/interceptor";
 
 export const taskWithRetries = task({
   id: "task-with-retries",
-  retry: {
-    maxAttempts: 10,
-    factor: 1.8,
-    minTimeoutInMs: 500,
-    maxTimeoutInMs: 30_000,
-    randomize: false,
-  },
   run: async (payload: any, { ctx }) => {
     const result = await retry.onThrow(
       async ({ attempt }) => {

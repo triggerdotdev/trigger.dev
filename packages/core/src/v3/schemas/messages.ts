@@ -176,7 +176,7 @@ export const TaskMetadata = z.object({
   exportName: z.string(),
   packageVersion: z.string(),
   queue: QueueOptions.optional(),
-  retry: RetryOptions.required().optional(),
+  retry: RetryOptions.optional(),
 });
 
 export type TaskMetadata = z.infer<typeof TaskMetadata>;

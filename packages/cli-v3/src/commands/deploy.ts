@@ -613,6 +613,7 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
     outdir: "out",
     define: {
       TRIGGER_API_URL: `"${config.triggerUrl}"`,
+      __PROJECT_CONFIG__: JSON.stringify(config),
     },
   });
 
@@ -646,6 +647,9 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
     format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
     target: ["node18", "es2020"],
     outdir: "out",
+    define: {
+      __PROJECT_CONFIG__: JSON.stringify(config),
+    },
   });
 
   if (entryPointResult.errors.length > 0) {
