@@ -154,10 +154,10 @@ class TaskExecutor {
     }
 
     if (!middlewareFn) {
-      return runFn({ payload, ctx });
+      return runFn(payload, { ctx });
     }
 
-    return middlewareFn({ payload, ctx, next: async () => runFn({ payload, ctx, init }) });
+    return middlewareFn(payload, { ctx, next: async () => runFn(payload, { ctx, init }) });
   }
 
   async #callTaskInit(payload: unknown, ctx: TaskRunContext) {
@@ -168,7 +168,7 @@ class TaskExecutor {
     }
 
     return tracer.startActiveSpan("init", async (span) => {
-      return await initFn({ payload, ctx });
+      return await initFn(payload, { ctx });
     });
   }
 
@@ -180,7 +180,7 @@ class TaskExecutor {
     }
 
     return tracer.startActiveSpan("cleanup", async (span) => {
-      return await cleanupFn({ payload, ctx, init });
+      return await cleanupFn(payload, { ctx, init });
     });
   }
 }
