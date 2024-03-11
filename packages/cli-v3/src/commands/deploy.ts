@@ -177,7 +177,7 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
     if (missingEnvironmentVariables.length > 0) {
       environmentVariablesSpinner.stop(
-        `Project missing env vars: ${arrayToSentence(
+        `Found missing env vars in ${options.data.env}: ${arrayToSentence(
           missingEnvironmentVariables
         )}. Aborting deployment. ${chalk.bgBlueBright(
           terminalLink(
@@ -189,34 +189,34 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
       exit(1);
     }
 
-    environmentVariablesSpinner.stop(`All required environment variables are present`);
+    environmentVariablesSpinner.stop(`Environment variable check passed`);
   }
-
-  const deploymentSpinner = spinner();
-
-  deploymentSpinner.start("Initializing deployment");
 
   // Step 2: Initialize a deployment on the server (response will have everything we need to build an image)
   const deploymentResponse = await environmentClient.initializeDeployment({
     contentHash: compilation.contentHash,
+    userId: authorization.userId,
   });
 
   if (!deploymentResponse.success) {
-    deploymentSpinner.stop(`Failed to start deployment: ${deploymentResponse.error}`);
+    logger.error(`Failed to start deployment: ${deploymentResponse.error}`);
     exit(1);
   }
-
-  deploymentSpinner.message(`Deploying version ${deploymentResponse.data.version}`);
 
   // If the deployment doesn't have any externalBuildData, then we can't use the remote image builder
   // TODO: handle this and allow the user to the build and push the image themselves
   if (!deploymentResponse.data.externalBuildData && !options.data.selfHosted) {
-    deploymentSpinner.stop(
+    logger.error(
       `Failed to start deployment, as your instance of trigger.dev does not support hosting. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.`
     );
     exit(1);
   }
 
+  const version = deploymentResponse.data.version;
+
+  const deploymentSpinner = spinner();
+
+  deploymentSpinner.start(`Deploying version ${version}`);
   const registryHost = new URL(deploymentEnv.data.apiUrl).host;
 
   const buildImage = async () => {
@@ -226,7 +226,7 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
         cwd: compilation.path,
         projectId: config.project,
         deploymentId: deploymentResponse.data.id,
-        deploymentVersion: deploymentResponse.data.version,
+        deploymentVersion: version,
         contentHash: deploymentResponse.data.contentHash,
         projectRef: config.project,
         buildPlatform: options.data.buildPlatform,
@@ -261,7 +261,7 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
   const image = await buildImage();
 
   if (!image.ok) {
-    deploymentSpinner.stop(`Failed to build and push image: ${image.error}`);
+    deploymentSpinner.stop(`Failed to build project image: ${image.error}`);
     exit(1);
   }
 
@@ -271,20 +271,17 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   if (options.data.skipDeploy) {
     deploymentSpinner.stop(
-      `Image built and pushed: ${imageReference}. Skipping deployment as requested`
+      `Project image built: ${imageReference}. Skipping deployment as requested`
     );
     exit(0);
   }
 
   deploymentSpinner.message(
-    `${deploymentResponse.data.version} image built, starting indexing process`
+    `${deploymentResponse.data.version} image built, detecting deployed tasks`
   );
 
   logger.debug(`Start indexing image ${imageReference}`);
 
-  // Need to update the deployment with the image and start the deployment (indexing)
-  // registry.digitalocean.com/trigger/yubjwjsfkxnylobaqvqz:20240306.41.prod@sha256:8b48dd2866bc8878644d2880bbe35a27e66cf6ff78aa1e489d7fdde5e228faf1
-  // Step 5: Update the deployment with the image and start the deployment (indexing)
   const startIndexingResponse = await environmentClient.startDeploymentIndexing(
     deploymentResponse.data.id,
     {
@@ -297,7 +294,6 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
     exit(1);
   }
 
-  // Step 6: Wait for the deployment to finish and print the result
   const finishedDeployment = await waitForDeploymentToFinish(
     deploymentResponse.data.id,
     environmentClient
@@ -308,27 +304,45 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
     exit(1);
   }
 
+  const deploymentLink = terminalLink(
+    "View deployment",
+    `${authorization.config.apiUrl}/projects/v3/${config.project}/deployments/${finishedDeployment.id}`
+  );
+
   switch (finishedDeployment.status) {
     case "DEPLOYED": {
-      deploymentSpinner.stop(`Deployment completed successfully, you can now use this version`);
+      const taskCount = finishedDeployment.worker?.tasks.length ?? 0;
+
+      if (taskCount === 0) {
+        deploymentSpinner.stop(
+          `Deployment of ${version} completed with no detected tasks. Please make sure you are exporting tasks in your project. ${deploymentLink}`
+        );
+      } else {
+        deploymentSpinner.stop(
+          `Deployment of ${version} completed with ${taskCount} detected task${
+            taskCount === 1 ? "" : "s"
+          } ${deploymentLink}`
+        );
+      }
+
       break;
     }
     case "FAILED": {
       if (finishedDeployment.errorData) {
         deploymentSpinner.stop(
-          `Deployment encountered an error: ${finishedDeployment.errorData.name}`
+          `Deployment encountered an error: ${finishedDeployment.errorData.name}. ${deploymentLink}`
         );
         logger.error(finishedDeployment.errorData.stack);
       } else {
         deploymentSpinner.stop(
-          `Deployment failed with an unknown error. Please contact eric@trigger.dev for help.`
+          `Deployment failed with an unknown error. Please contact eric@trigger.dev for help. ${deploymentLink}`
         );
       }
 
       exit(1);
     }
     case "CANCELED": {
-      deploymentSpinner.stop(`Deployment was canceled`);
+      deploymentSpinner.stop(`Deployment was canceled. ${deploymentLink}`);
       break;
     }
   }
@@ -560,8 +574,8 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
     await typecheckProject(config, options);
   }
 
-  const createAuthCodeSpinner = spinner();
-  createAuthCodeSpinner.start(`Compiling project "${config.project}" in "${config.projectDir}"`);
+  const compileSpinner = spinner();
+  compileSpinner.start(`Building project in ${config.projectDir}`);
 
   const taskFiles = await gatherTaskFiles(config);
   const workerFacade = readFileSync(
@@ -603,7 +617,7 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
   });
 
   if (result.errors.length > 0) {
-    createAuthCodeSpinner.stop("Build failed");
+    compileSpinner.stop("Build failed, aborting deployment");
     exit(1);
   }
 
@@ -635,7 +649,7 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
   });
 
   if (entryPointResult.errors.length > 0) {
-    createAuthCodeSpinner.stop("Build failed");
+    compileSpinner.stop("Build failed, aborting deployment");
     exit(1);
   }
 
@@ -699,7 +713,7 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
 
   await writeJSONFile(join(tempDir, "package.json"), packageJsonContents);
 
-  createAuthCodeSpinner.stop(`Project "${config.project}" compiled successfully`);
+  compileSpinner.stop("Project built successfully");
 
   // Run npm install --package-lock-only in /tmp/dir to produce a package-lock.json
   const resolvingDepsSpinner = spinner();
@@ -759,7 +773,7 @@ async function resolveDependencies(
 
     logger.debug(`Using cached package-lock.json for ${digest}`);
 
-    await writeJSONFile(join(projectDir, "package-lock.json"), cachedPackageLock);
+    await writeFile(join(projectDir, "package-lock.json"), cachedPackageLock);
 
     return;
   } catch (e) {
@@ -790,8 +804,8 @@ async function resolveDependencies(
 }
 
 async function typecheckProject(config: ResolvedConfig, options: DeployCommandOptions) {
-  const createAuthCodeSpinner = spinner();
-  createAuthCodeSpinner.start("Typechecking project");
+  const typecheckSpinner = spinner();
+  typecheckSpinner.start("Typechecking project");
 
   const tscTypecheck = execa("npm", ["exec", "tsc", "--", "--noEmit"], {
     cwd: config.projectDir,
@@ -808,7 +822,9 @@ async function typecheckProject(config: ResolvedConfig, options: DeployCommandOp
       tscTypecheck.addListener("exit", (code) => (code === 0 ? resolve(code) : reject(code)));
     });
   } catch (error) {
-    createAuthCodeSpinner.stop(`Typechecking failed, check the logs below:`);
+    typecheckSpinner.stop(
+      `Typechecking failed, check the logs below to view the issues. To skip typechecking, pass the --skip-typecheck flag`
+    );
 
     logger.log("");
 
@@ -819,7 +835,7 @@ async function typecheckProject(config: ResolvedConfig, options: DeployCommandOp
     exit(1);
   }
 
-  createAuthCodeSpinner.stop(`Project typechecked with 0 errors`);
+  typecheckSpinner.stop(`Typechecking passed with 0 errors`);
 }
 
 // Returns the dependencies that are required by the output that are found in output and the CLI package dependencies

@@ -24,6 +24,8 @@ export async function isLoggedIn() {
 
   return {
     ok: true as const,
+    userId: userData.data.userId,
+    email: userData.data.email,
     config: {
       apiUrl: config.apiUrl,
       accessToken: config.accessToken,
