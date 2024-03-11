@@ -1,28 +1,17 @@
-// import "source-map-support/register";
-import { TracingSDK } from "@trigger.dev/core/v3";
-// import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
+import { type TracingSDK } from "@trigger.dev/core/v3";
+import "source-map-support/register.js";
 
-// IMPORTANT: this needs to be the first import to work properly
-// WARNING: [WARNING] Constructing "ImportInTheMiddle" will crash at run-time because it's an import namespace object, not a constructor [call-import-namespace]
-// TODO: https://github.com/open-telemetry/opentelemetry-js/issues/3954
-const tracingSDK = new TracingSDK({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
-  resource: new Resource({
-    [SemanticInternalAttributes.CLI_VERSION]: packageJson.version,
-  }),
-  instrumentations: [
-    // new OpenAIInstrumentation(),
-  ],
-  diagLogLevel: (process.env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
-});
+__WORKER_SETUP__;
+declare const __WORKER_SETUP__: unknown;
+declare const tracingSDK: TracingSDK;
 
-const otelTracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.version);
-const otelLogger = tracingSDK.getLogger("trigger-prod-worker", packageJson.version);
+const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
+const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.version);
 
 import { SpanKind } from "@opentelemetry/api";
 import {
   ConsoleInterceptor,
-  ProdRuntimeManager,
+  DevRuntimeManager,
   OtelTaskLogger,
   SemanticInternalAttributes,
   TaskMetadataWithFilePath,
@@ -43,26 +32,19 @@ import {
   workerToChildMessages,
   type BackgroundWorkerProperties,
 } from "@trigger.dev/core/v3";
-import * as packageJson from "../package.json";
+import * as packageJson from "../../../package.json";
 
-import { Resource } from "@opentelemetry/resources";
 import { flattenAttributes } from "@trigger.dev/core/v3";
-import { TaskMetadataWithFunctions } from "./types";
-import { TracingDiagnosticLogLevel } from "@trigger.dev/core/v3";
+import { TaskMetadataWithFunctions } from "../../types.js";
+
+declare const sender: ZodMessageSender<typeof childToWorkerMessages>;
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(otelLogger);
 
-const sender = new ZodMessageSender({
-  schema: childToWorkerMessages,
-  sender: async (message) => {
-    process.send?.(message);
-  },
-});
+const devRuntimeManager = new DevRuntimeManager();
 
-const prodRuntimeManager = new ProdRuntimeManager(sender);
-
-runtime.setGlobalRuntimeManager(prodRuntimeManager);
+runtime.setGlobalRuntimeManager(devRuntimeManager);
 
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
@@ -272,7 +254,8 @@ const handler = new ZodMessageHandler({
 
         return;
       }
-      process.title = `trigger-prod-worker: ${execution.task.id} ${execution.run.id}`;
+
+      process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
 
       const executor = taskExecutors.get(execution.task.id);
 
@@ -324,7 +307,7 @@ const handler = new ZodMessageHandler({
       }
     },
     TASK_RUN_COMPLETED_NOTIFICATION: async ({ completion, execution }) => {
-      prodRuntimeManager.resumeTask(completion, execution);
+      devRuntimeManager.resumeTask(completion, execution);
     },
     CLEANUP: async ({ flush, kill }) => {
       if (kill) {
@@ -348,7 +331,7 @@ sender.send("TASKS_READY", { tasks: getTaskMetadata() }).catch((err) => {
   console.error("Failed to send TASKS_READY message", err);
 });
 
-process.title = "trigger-prod-worker";
+process.title = "trigger-dev-worker";
 
 async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 5) {
   async function _doHeartbeat() {
@@ -372,7 +355,7 @@ async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeco
   return _doHeartbeat();
 }
 
-// Start the async interval after initial delay
-asyncHeartbeat(5).catch((err) => {
+// Start the async interval after 30 seconds
+asyncHeartbeat().catch((err) => {
   console.error("Failed to start asyncHeartbeat", err);
 });

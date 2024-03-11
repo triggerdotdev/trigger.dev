@@ -76,6 +76,11 @@ const EnvironmentSchema = z.object({
   IMAGE_REPO: z.string().default("task"),
   PROVIDER_SECRET: z.string().default("provider-secret"),
   COORDINATOR_SECRET: z.string().default("coordinator-secret"),
+  DEPOT_TOKEN: z.string().optional(),
+  DEPOT_PROJECT_ID: z.string().optional(),
+  CONTAINER_REGISTRY_ORIGIN: z.string().optional(),
+  CONTAINER_REGISTRY_USERNAME: z.string().optional(),
+  CONTAINER_REGISTRY_PASSWORD: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

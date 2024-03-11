@@ -153,6 +153,7 @@ importers:
       '@codemirror/view': ^6.5.0
       '@conform-to/react': ^0.6.1
       '@conform-to/zod': ^0.6.1
+      '@depot/sdk-node': ^0.5.0
       '@headlessui/react': ^1.7.8
       '@heroicons/react': ^2.0.12
       '@highlight-run/node': ^3.1.0
@@ -275,6 +276,7 @@ importers:
       ioredis: ^5.3.2
       isbot: ^3.6.5
       jsonpointer: ^5.0.1
+      jwt-decode: ^4.0.0
       lodash.omit: ^4.5.0
       lucide-react: ^0.229.0
       marked: ^4.0.18
@@ -348,6 +350,7 @@ importers:
       '@codemirror/view': 6.7.2
       '@conform-to/react': 0.6.1_react@18.2.0
       '@conform-to/zod': 0.6.1_zod@3.22.3
+      '@depot/sdk-node': 0.5.0
       '@headlessui/react': 1.7.8_biqbaboplfbrettd7655fr4n2y
       '@heroicons/react': 2.0.13_react@18.2.0
       '@highlight-run/node': 3.1.0
@@ -419,6 +422,7 @@ importers:
       ioredis: 5.3.2
       isbot: 3.6.5
       jsonpointer: 5.0.1
+      jwt-decode: 4.0.0
       lodash.omit: 4.5.0
       lucide-react: 0.229.0_react@18.2.0
       marked: 4.2.5
@@ -553,7 +557,7 @@ importers:
     devDependencies:
       eslint: 8.31.0
       eslint-config-prettier: 8.6.0_eslint@8.31.0
-      eslint-config-turbo: 1.12.4_eslint@8.31.0
+      eslint-config-turbo: 1.12.5_eslint@8.31.0
       eslint-plugin-react: 7.31.8_eslint@8.31.0
       typescript: 4.9.4
 
@@ -1028,6 +1032,7 @@ importers:
   packages/cli-v3:
     specifiers:
       '@clack/prompts': ^0.7.0
+      '@depot/cli': 0.0.1-cli.2.55.0
       '@opentelemetry/api': ^1.7.0
       '@opentelemetry/api-logs': ^0.48.0
       '@opentelemetry/auto-instrumentations-node': ^0.40.3
@@ -1094,6 +1099,7 @@ importers:
       source-map-support: ^0.5.21
       supports-color: ^9.4.0
       terminal-link: ^3.0.0
+      tiny-invariant: ^1.2.0
       tsup: ^8.0.1
       type-fest: ^3.6.0
       typescript: ^5.3.3
@@ -1105,6 +1111,7 @@ importers:
       zod: 3.22.3
     dependencies:
       '@clack/prompts': 0.7.0
+      '@depot/cli': 0.0.1-cli.2.55.0
       '@opentelemetry/api': 1.7.0
       '@opentelemetry/api-logs': 0.48.0
       '@opentelemetry/auto-instrumentations-node': 0.40.3_rr4fxqkzz7nhz3auplkqn4p6em
@@ -1156,6 +1163,7 @@ importers:
       source-map-support: 0.5.21
       supports-color: 9.4.0
       terminal-link: 3.0.0
+      tiny-invariant: 1.3.1
       update-check: 1.5.4
       url: 0.11.1
       ws: 8.12.0
@@ -5582,6 +5590,10 @@ packages:
     resolution: {integrity: sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==}
     dev: true
 
+  /@bufbuild/protobuf/1.7.2:
+    resolution: {integrity: sha512-i5GE2Dk5ekdlK1TR7SugY4LWRrKSfb5T1Qn4unpIMbfxoeGKERKQ59HG3iYewacGD10SR7UzevfPnh6my4tNmQ==}
+    dev: false
+
   /@bundled-es-modules/cookie/2.0.0:
     resolution: {integrity: sha512-Or6YHg/kamKHpxULAdSqhGqnWFneIXu1NKvvfBBzKGwpVsYuFIQ5aBPHDnnoR3ghW1nvSkALd+EF9iMtY7Vjxw==}
     dependencies:
@@ -6003,11 +6015,136 @@ packages:
       zod: 3.22.3
     dev: false
 
+  /@connectrpc/connect-node/0.13.2_@bufbuild+protobuf@1.7.2:
+    resolution: {integrity: sha512-dAoBuQ+fYFw22KYgZXPw1t19i6TRwNmk6c6XsOYLhBl1Y5vzXoMfMX2jm7lmkmLQFIcM9Xc2EYoUKtjNXH5bjw==}
+    engines: {node: '>=16.0.0'}
+    peerDependencies:
+      '@bufbuild/protobuf': ^1.2.1
+    dependencies:
+      '@bufbuild/protobuf': 1.7.2
+      '@connectrpc/connect': 0.13.2_@bufbuild+protobuf@1.7.2
+      undici: 5.25.4
+    dev: false
+
+  /@connectrpc/connect/0.13.2_@bufbuild+protobuf@1.7.2:
+    resolution: {integrity: sha512-KZg6EH8gYnQZm/d2IXXMVB2mom/A1dCD8+7JScm2tKN9OQyQSeCJOLqtv/M4M5XVS0Y9JM2/VCbiUwfhl9Rqmg==}
+    peerDependencies:
+      '@bufbuild/protobuf': ^1.2.1
+    dependencies:
+      '@bufbuild/protobuf': 1.7.2
+    dev: false
+
   /@cspotcode/source-map-support/0.8.1:
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
+
+  /@depot/cli-darwin-arm64/0.0.1-cli.2.55.0:
+    resolution: {integrity: sha512-1uRGmCqd+kuHK2fub0oVt+SctP3mwNX15y17oMilIOpvvJtwMvjwBI73qt2aN0jbx0e3xrDiv5GD4GMzsqNGEw==}
+    engines: {node: '>=14'}
+    cpu: [arm64]
+    os: [darwin]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@depot/cli-darwin-x64/0.0.1-cli.2.55.0:
+    resolution: {integrity: sha512-3Z3fczSJ1WsxhgS0Ui//9CIk6yJS2+JKlwmZ44EbQIPQ4ZyR+ZZDoJa8pmZdLDehRxVLjeXkUdsRPD2K6yrCqA==}
+    engines: {node: '>=14'}
+    cpu: [x64]
+    os: [darwin]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@depot/cli-linux-arm/0.0.1-cli.2.55.0:
+    resolution: {integrity: sha512-T89KJJjk9By50L6pCrDDAmJFgM3V8DzppMmM7cA1g3biLTjeJZLYgwTrBXu3CfpWMqqLWWOvZ/je8myx7PwBOA==}
+    engines: {node: '>=14'}
+    cpu: [arm]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@depot/cli-linux-arm64/0.0.1-cli.2.55.0:
+    resolution: {integrity: sha512-GsnItZk9jawX4f6xNI7d0FveSLNIWNVo7udzmtYmPkGo0hsiNfOxzQixR8cusJKnTOo9wYiHx4pfYNB3Hjs7Ng==}
+    engines: {node: '>=14'}
+    cpu: [arm64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@depot/cli-linux-ia32/0.0.1-cli.2.55.0:
+    resolution: {integrity: sha512-Eunct4bkpN1TVhMt8xu9XtURzipz9yEfXidQoX/vijMLZemsvwcMVnuCmUkfyq/m5DJ1ZN8APHvj+9NMrERfaQ==}
+    engines: {node: '>=14'}
+    cpu: [ia32]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@depot/cli-linux-x64/0.0.1-cli.2.55.0:
+    resolution: {integrity: sha512-G93+XCpzGHYfH5LeT+3A0J3SF7GGQGnjMVoH8w7m5b6GtTu7SFGfat3a2/M07SOtGXa5tz3O56wrgR1jDPc1Fg==}
+    engines: {node: '>=14'}
+    cpu: [x64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@depot/cli-win32-arm64/0.0.1-cli.2.55.0:
+    resolution: {integrity: sha512-y7K48ngTqvSCyHItxW0kapVfYyqtWNYZVeEJ344tSuvq6H3bt8mLWfjH+WF9fT14OAmR1jOt0+ykpta45ehKrA==}
+    engines: {node: '>=14'}
+    cpu: [arm64]
+    os: [win32]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@depot/cli-win32-ia32/0.0.1-cli.2.55.0:
+    resolution: {integrity: sha512-hsO3NKWZMeiFgtFAkEsj1vrHG49N0fLjkhEEJ7DrUV0OBMUifkScE66E+9+pWJoxWq3B3Bmc/9OPc0XVMfYekQ==}
+    engines: {node: '>=14'}
+    cpu: [ia32]
+    os: [win32]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@depot/cli-win32-x64/0.0.1-cli.2.55.0:
+    resolution: {integrity: sha512-QKhpSpa1QwWTf79iMNxUR17EFbe7hT/Bs9mhTcR6NiyOB0GeWBpX3ejULpQcfHpVjBBHIXTW/TJ/Unx4N80cIA==}
+    engines: {node: '>=14'}
+    cpu: [x64]
+    os: [win32]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@depot/cli/0.0.1-cli.2.55.0:
+    resolution: {integrity: sha512-Y5hlyMxJ8wKeXQKQaYOMCVVzLO42qFHaybcgmCjiZC4CSXkX0+nOL8daoH3Sy0M4U0RcbUijNMJ51oGFq2As9g==}
+    engines: {node: '>=14'}
+    hasBin: true
+    requiresBuild: true
+    optionalDependencies:
+      '@depot/cli-darwin-arm64': 0.0.1-cli.2.55.0
+      '@depot/cli-darwin-x64': 0.0.1-cli.2.55.0
+      '@depot/cli-linux-arm': 0.0.1-cli.2.55.0
+      '@depot/cli-linux-arm64': 0.0.1-cli.2.55.0
+      '@depot/cli-linux-ia32': 0.0.1-cli.2.55.0
+      '@depot/cli-linux-x64': 0.0.1-cli.2.55.0
+      '@depot/cli-win32-arm64': 0.0.1-cli.2.55.0
+      '@depot/cli-win32-ia32': 0.0.1-cli.2.55.0
+      '@depot/cli-win32-x64': 0.0.1-cli.2.55.0
+    dev: false
+
+  /@depot/sdk-node/0.5.0:
+    resolution: {integrity: sha512-Pl9Yji00B6uQpMm5xZU4/eZbzaBo72N6c534ZqLI6nbOEIPH0VX27TVF9lFF3Fl3GHFZ+6X9laJtDn2DrLS2DQ==}
+    dependencies:
+      '@bufbuild/protobuf': 1.7.2
+      '@connectrpc/connect': 0.13.2_@bufbuild+protobuf@1.7.2
+      '@connectrpc/connect-node': 0.13.2_@bufbuild+protobuf@1.7.2
+    dev: false
 
   /@discoveryjs/json-ext/0.5.7:
     resolution: {integrity: sha512-dBVuXR082gk3jsFp7Rd/JI4kytwGHecnCoTtXFb7DB6CNHp4rg5k1bhg0nWdLGLnOV71lmDzGQaLMy8iPLY0pw==}
@@ -23839,13 +23976,13 @@ packages:
       eslint: 8.45.0
     dev: true
 
-  /eslint-config-turbo/1.12.4_eslint@8.31.0:
-    resolution: {integrity: sha512-5hqEaV6PNmAYLL4RTmq74OcCt8pgzOLnfDVPG/7PUXpQ0Mpz0gr926oCSFukywKKXjdum3VHD84S7Z9A/DqTAw==}
+  /eslint-config-turbo/1.12.5_eslint@8.31.0:
+    resolution: {integrity: sha512-wXytbX+vTzQ6rwgM6sIr447tjYJBlRj5V/eBFNGNXw5Xs1R715ppPYhbmxaFbkrWNQSGJsWRrYGAlyq0sT/OsQ==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
       eslint: 8.31.0
-      eslint-plugin-turbo: 1.12.4_eslint@8.31.0
+      eslint-plugin-turbo: 1.12.5_eslint@8.31.0
     dev: true
 
   /eslint-doc-generator/1.4.3_eslint@8.45.0:
@@ -24548,8 +24685,8 @@ packages:
       - typescript
     dev: true
 
-  /eslint-plugin-turbo/1.12.4_eslint@8.31.0:
-    resolution: {integrity: sha512-3AGmXvH7E4i/XTWqBrcgu+G7YKZJV/8FrEn79kTd50ilNsv+U3nS2IlcCrQB6Xm2m9avGD9cadLzKDR1/UF2+g==}
+  /eslint-plugin-turbo/1.12.5_eslint@8.31.0:
+    resolution: {integrity: sha512-cXy7mCzAdngBTJIWH4DASXHy0vQpujWDBqRTu0YYqCN/QEGsi3HWM+STZEbPYELdjtm5EsN2HshOSSqWnjdRHg==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
@@ -28758,6 +28895,11 @@ packages:
     dependencies:
       jwa: 1.4.1
       safe-buffer: 5.2.1
+    dev: false
+
+  /jwt-decode/4.0.0:
+    resolution: {integrity: sha512-+KJGIyHgkGuIq3IEBNftfhW/LfWhXUIY6OmyVWjliu5KH1y0fw7VQ8YndE2O4qZdMSd9SqbnC8GOcZEy0Om7sA==}
+    engines: {node: '>=18'}
     dev: false
 
   /keyv/3.1.0:
@@ -36854,7 +36996,7 @@ packages:
     dependencies:
       bs-logger: 0.2.6
       fast-json-stable-stringify: 2.1.0
-      jest: 29.6.2_@types+node@18.17.1
+      jest: 29.6.2_@types+node@18.15.13
       jest-util: 29.6.2
       json5: 2.2.3
       lodash.memoize: 4.1.2

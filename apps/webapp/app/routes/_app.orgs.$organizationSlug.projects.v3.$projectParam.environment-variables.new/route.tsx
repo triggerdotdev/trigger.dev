@@ -5,6 +5,7 @@ import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-
 import { Fragment, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -191,9 +192,9 @@ export default function Page() {
               </div>
             </InputGroup>
 
-            <Callout variant="info">
-              Dev environment variables specified here will be overriden by ones in your .env file
-              when running locally.
+            <Callout variant="info" className="inline-flex">
+              Dev environment variables specified here will be overriden by ones in your{" "}
+              <InlineCode variant="extra-small">.env</InlineCode> file when running locally.
             </Callout>
 
             <FormError id={key.errorId}>{key.error}</FormError>

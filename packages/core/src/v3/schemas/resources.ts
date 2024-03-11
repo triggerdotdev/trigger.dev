@@ -14,7 +14,7 @@ export type TaskResource = z.infer<typeof TaskResource>;
 export const BackgroundWorkerMetadata = z.object({
   packageVersion: z.string(),
   contentHash: z.string(),
-  cliPackageVersion: z.string(),
+  cliPackageVersion: z.string().optional(),
   tasks: z.array(TaskResource),
 });
 

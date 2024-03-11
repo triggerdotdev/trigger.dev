@@ -71,7 +71,7 @@ type TableRowProps = {
 export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
   ({ className, disabled, children }, ref) => {
     return (
-      <tr ref={ref} className={cn(disabled && "opacity-50", "group w-full", className)}>
+      <tr ref={ref} className={cn(disabled && "opacity-50", "group/table-row w-full", className)}>
         {children}
       </tr>
     );
@@ -126,7 +126,7 @@ type TableCellProps = TableCellBasicProps & {
 };
 
 const stickyStyles =
-  "sticky right-0 z-10 w-[2.8rem] min-w-[2.8rem] bg-background-dimmed before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover:before:to-charcoal-900";
+  "sticky right-0 z-10 w-[2.8rem] min-w-[2.8rem] bg-background-dimmed before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover/table-row:before:to-charcoal-900";
 
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
   (
@@ -167,7 +167,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         className={cn(
           "text-xs text-charcoal-400",
           to || onClick || hasAction
-            ? "cursor-pointer group-hover:bg-charcoal-900"
+            ? "cursor-pointer group-hover/table-row:bg-charcoal-900"
             : "px-4 py-3 align-middle",
           !to && !onClick && alignmentClassName,
           isSticky && stickyStyles,

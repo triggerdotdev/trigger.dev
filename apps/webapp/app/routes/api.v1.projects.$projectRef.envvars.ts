@@ -1,11 +1,8 @@
-import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
+import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { logger } from "~/services/logger.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
-import { CreateBackgroundWorkerService } from "~/v3/services/createBackgroundWorker.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),

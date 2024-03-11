@@ -28,11 +28,12 @@ const variants = {
   },
   "tertiary/small": {
     container:
-      "group flex items-center text-text-dimmed font-mono rounded bg-transparent border border-transparent text-xs transition duration-150 hover:border-charcoal-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
+      "group/clipboard flex items-center text-text-dimmed font-mono rounded bg-transparent border border-transparent text-xs transition duration-150 hover:border-charcoal-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "minimal/small" as const,
-    button: "rounded-l-none border-l border-transparent transition group-hover:border-charcoal-700",
+    button:
+      "rounded-l-none border-l border-transparent transition group-hover/clipboard:border-charcoal-700",
     iconSize: "h-3 w-3",
     iconPadding: "pl-1",
   },
@@ -113,7 +114,7 @@ export function ClipboardField({
   const inputIcon = useRef<HTMLInputElement>(null);
 
   return (
-    <span className={cn(container, fullWidth ? "w-full" : "max-w-max", className)}>
+    <span className={cn(container, fullWidth ? "w-full" : "max-w-fit", className)}>
       {icon && (
         <span
           onClick={() => inputIcon.current && inputIcon.current.focus()}
@@ -125,10 +126,15 @@ export function ClipboardField({
       <input
         type="text"
         ref={inputIcon}
-        value={isSecure ? (typeof secure === "string" ? secure : "•".repeat(value.length)) : value}
+        value={isSecure ? (typeof secure === "string" ? secure : "••••••••••••••••") : value}
         readOnly={true}
-        className={cn("shrink grow select-all overflow-x-auto", input)}
-        size={value.length}
+        className={cn(
+          "shrink grow select-all overflow-x-auto",
+          fullWidth ? "w-full" : "max-w-fit",
+          input
+        )}
+        // size={value.length}
+        // maxLength={3}
         onFocus={(e) => {
           if (secure) {
             setIsSecure((i) => false);

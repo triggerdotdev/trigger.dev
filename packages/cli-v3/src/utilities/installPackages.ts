@@ -90,3 +90,20 @@ async function getPackageVersion(path: string) {
     return undefined;
   }
 }
+
+// Expects path to be in the format:
+//  - source-map-support/register.js
+//  - @opentelemetry/api
+//  - zod
+//
+// With the result being:
+//  - source-map-support
+//  - @opentelemetry/api
+//  - zod
+export function detectPackageNameFromImportPath(path: string): string {
+  if (path.startsWith("@")) {
+    return path.split("/").slice(0, 2).join("/");
+  } else {
+    return path.split("/")[0] as string;
+  }
+}

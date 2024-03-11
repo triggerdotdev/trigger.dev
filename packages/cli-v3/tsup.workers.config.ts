@@ -5,11 +5,16 @@ export default defineConfig({
   dts: false,
   tsconfig: "tsconfig.json",
   splitting: false,
-  entry: ["src/dev/worker-facade.ts", "src/dev/register-tracing.ts"],
+  entry: [
+    "src/workers/dev/worker-facade.ts",
+    "src/workers/common/worker-setup.ts",
+    "src/workers/prod/worker-facade.ts",
+    "src/workers/prod/entry-point.ts",
+  ],
   format: ["esm"],
   minify: false,
   metafile: false,
   sourcemap: false,
   target: "esnext",
-  outDir: "dist",
+  outDir: "dist/workers",
 });

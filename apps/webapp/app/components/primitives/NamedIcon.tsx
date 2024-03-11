@@ -162,6 +162,7 @@ const icons = {
   settings: (className: string) => <Cog8ToothIcon className={cn("text-charcoal-600", className)} />,
   spinner: (className: string) => <Spinner className={className} color="blue" />,
   "spinner-white": (className: string) => <Spinner className={className} color="white" />,
+  "spinner-dark": (className: string) => <Spinner className={className} color="dark" />,
   squares: (className: string) => (
     <Square2StackIcon className={cn("text-text-dimmed", className)} />
   ),

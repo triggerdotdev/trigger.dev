@@ -25,12 +25,14 @@ import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions } from "../cli/common.js";
-import { BackgroundWorker, BackgroundWorkerCoordinator } from "../dev/backgroundWorker.js";
+import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
 import { getConfigPath, readConfig } from "../utilities/configFiles";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
+import { detectPackageNameFromImportPath } from "../utilities/installPackages";
+import { UncaughtExceptionError } from "../workers/common/errors";
 
 let apiClient: CliApiClient | undefined;
 
@@ -130,7 +132,7 @@ async function startDev(
 
       apiClient = new CliApiClient(apiUrl, accessToken);
 
-      const devEnv = await apiClient.getProjectDevEnv({ projectRef: config.project });
+      const devEnv = await apiClient.getProjectEnv({ projectRef: config.project, env: "dev" });
 
       if (!devEnv.success) {
         throw new Error(devEnv.error);
@@ -295,17 +297,20 @@ function useDev({
       const taskFiles = await gatherTaskFiles(config);
 
       const workerFacade = readFileSync(
-        new URL(importResolve("./worker-facade.js", import.meta.url)).href.replace("file://", ""),
+        new URL(importResolve("./workers/dev/worker-facade.js", import.meta.url)).href.replace(
+          "file://",
+          ""
+        ),
         "utf-8"
       );
 
-      const registerTracingPath = new URL(
-        importResolve("./register-tracing.js", import.meta.url)
+      const workerSetupPath = new URL(
+        importResolve("./workers/common/worker-setup.js", import.meta.url)
       ).href.replace("file://", "");
 
       const entryPointContents = workerFacade
         .replace("__TASKS__", createTaskFileImports(taskFiles))
-        .replace("__REGISTER_TRACING__", `import { tracingSDK } from "${registerTracingPath}";`);
+        .replace("__WORKER_SETUP__", `import { tracingSDK, sender } from "${workerSetupPath}";`);
 
       let firstBuild = true;
 
@@ -481,7 +486,23 @@ function useDev({
                     backgroundWorkerRecord.data,
                     backgroundWorker
                   );
-                } catch (e) {}
+                } catch (e) {
+                  if (e instanceof UncaughtExceptionError) {
+                    if (e.originalError.stack) {
+                      logger.error("Background worker failed to start", e.originalError.stack);
+                    }
+
+                    return;
+                  }
+
+                  if (e instanceof Error) {
+                    logger.error(`Background worker failed to start`, e.stack);
+
+                    return;
+                  }
+
+                  logger.error(`Background worker failed to start: ${e}`);
+                }
               });
             },
           },
@@ -642,21 +663,4 @@ function gatherRequiredDependencies(outputMeta: Metafile["outputs"][string]) {
   }
 
   return dependencies;
-}
-
-// Expects path to be in the format:
-//  - source-map-support/register.js
-//  - @opentelemetry/api
-//  - zod
-//
-// With the result being:
-//  - source-map-support
-//  - @opentelemetry/api
-//  - zod
-function detectPackageNameFromImportPath(path: string): string {
-  if (path.startsWith("@")) {
-    return path.split("/").slice(0, 2).join("/");
-  } else {
-    return path.split("/")[0] as string;
-  }
 }

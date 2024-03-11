@@ -17,7 +17,8 @@ import {
 } from "@trigger.dev/core/v3";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { safeDeleteFileSync } from "../utilities/fileSystem";
+import { safeDeleteFileSync } from "../../utilities/fileSystem";
+import { UncaughtExceptionError } from "../common/errors";
 
 class UnexpectedExitError extends Error {
   constructor(public code: number) {
@@ -88,7 +89,7 @@ export class ProdBackgroundWorker {
     safeDeleteFileSync(`${this.path}.map`);
   }
 
-  async initialize() {
+  async initialize(options?: { env?: Record<string, string> }) {
     if (this._initialized) {
       throw new Error("Worker already initialized");
     }
@@ -100,6 +101,7 @@ export class ProdBackgroundWorker {
         stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
         env: {
           ...this.params.env,
+          ...options?.env,
         },
       });
 
@@ -121,6 +123,11 @@ export class ProdBackgroundWorker {
           clearTimeout(timeout);
           resolved = true;
           resolve(message.payload.tasks);
+          child.kill();
+        } else if (message.type === "UNCAUGHT_EXCEPTION") {
+          clearTimeout(timeout);
+          resolved = true;
+          reject(new UncaughtExceptionError(message.payload.error, message.payload.origin));
           child.kill();
         }
       });
