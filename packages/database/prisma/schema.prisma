@@ -44,6 +44,7 @@ model User {
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
   personalAccessTokens PersonalAccessToken[]
+  deployments          WorkerDeployment[]
 }
 
 // @deprecated This model is no longer used as the Cloud is out of private beta
@@ -1944,7 +1945,13 @@ model WorkerDeployment {
   worker   BackgroundWorker? @relation(fields: [workerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   workerId String?           @unique
 
+  triggeredBy   User?   @relation(fields: [triggeredById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  triggeredById String?
+
   deployedAt DateTime?
+
+  failedAt  DateTime?
+  errorData Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

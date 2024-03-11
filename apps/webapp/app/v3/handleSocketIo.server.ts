@@ -18,6 +18,7 @@ import { logger } from "~/services/logger.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { CreateDeployedBackgroundWorkerService } from "./services/createDeployedBackgroundWorker.server";
 import { ResumeAttemptService } from "./services/resumeAttempt.server";
+import { DeploymentIndexFailed } from "./services/deploymentIndexFailed.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -91,6 +92,15 @@ function createCoordinatorNamespace(io: Server) {
         } catch (error) {
           logger.error("Error while creating worker", { error });
           return { success: false };
+        }
+      },
+      INDEXING_FAILED: async (message) => {
+        try {
+          const service = new DeploymentIndexFailed();
+
+          await service.call(message.deploymentId, message.error);
+        } catch (e) {
+          logger.error("Error while indexing failed", { error: e });
         }
       },
     },

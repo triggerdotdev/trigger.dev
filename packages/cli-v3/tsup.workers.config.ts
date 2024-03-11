@@ -7,7 +7,7 @@ export default defineConfig({
   splitting: false,
   entry: [
     "src/workers/dev/worker-facade.ts",
-    "src/workers/common/register-tracing.ts",
+    "src/workers/common/worker-setup.ts",
     "src/workers/prod/worker-facade.ts",
     "src/workers/prod/entry-point.ts",
   ],

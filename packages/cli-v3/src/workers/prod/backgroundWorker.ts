@@ -17,6 +17,7 @@ import {
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
 import { safeDeleteFileSync } from "../../utilities/fileSystem";
+import { UncaughtExceptionError } from "../common/errors";
 
 class UnexpectedExitError extends Error {
   constructor(public code: number) {

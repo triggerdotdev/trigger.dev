@@ -508,6 +508,11 @@ export class EnvironmentVariablesRepository implements Repository {
           select: {
             id: true,
             environmentId: true,
+            valueReference: {
+              select: {
+                key: true,
+              },
+            },
           },
         },
       },
@@ -535,6 +540,14 @@ export class EnvironmentVariablesRepository implements Repository {
         for (const value of environmentVariable.values) {
           const key = secretKey(projectId, value.environmentId, environmentVariable.key);
           await secretStore.deleteSecret(key);
+
+          if (value.valueReference) {
+            await tx.secretReference.delete({
+              where: {
+                key: value.valueReference.key,
+              },
+            });
+          }
         }
       });
 

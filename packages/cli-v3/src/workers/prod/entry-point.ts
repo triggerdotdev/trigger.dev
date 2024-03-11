@@ -7,6 +7,7 @@ import {
 import { HttpReply, getTextBody, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
 import { createServer } from "node:http";
 import { ProdBackgroundWorker } from "./backgroundWorker";
+import { UncaughtExceptionError } from "../common/errors";
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
 const COORDINATOR_HOST = process.env.COORDINATOR_HOST || "127.0.0.1";
@@ -200,20 +201,74 @@ class ProdWorker {
       },
       onConnection: async (socket, handler, sender, logger) => {
         if (process.env.INDEX_TASKS === "true") {
-          const taskResources = await this.#initializeWorker();
+          try {
+            const taskResources = await this.#initializeWorker();
 
-          const { success } = await socket.emitWithAck("INDEX_TASKS", {
-            version: "v1",
-            deploymentId: this.deploymentId,
-            ...taskResources,
-          });
+            const { success } = await socket.emitWithAck("INDEX_TASKS", {
+              version: "v1",
+              deploymentId: this.deploymentId,
+              ...taskResources,
+            });
 
-          if (success) {
-            logger("indexing done, shutting down..");
-            process.exit(0);
-          } else {
-            logger("indexing failure, shutting down..");
-            process.exit(1);
+            if (success) {
+              logger("indexing done, shutting down..");
+              process.exit(0);
+            } else {
+              logger("indexing failure, shutting down..");
+              process.exit(1);
+            }
+          } catch (e) {
+            if (e instanceof UncaughtExceptionError) {
+              logger("uncaught exception", e.originalError.message);
+
+              socket.emit("INDEXING_FAILED", {
+                version: "v1",
+                deploymentId: this.deploymentId,
+                error: {
+                  name: e.originalError.name,
+                  message: e.originalError.message,
+                  stack: e.originalError.stack,
+                },
+              });
+            } else if (e instanceof Error) {
+              logger("error", e.message);
+
+              socket.emit("INDEXING_FAILED", {
+                version: "v1",
+                deploymentId: this.deploymentId,
+                error: {
+                  name: e.name,
+                  message: e.message,
+                  stack: e.stack,
+                },
+              });
+            } else if (typeof e === "string") {
+              logger("string error", e);
+
+              socket.emit("INDEXING_FAILED", {
+                version: "v1",
+                deploymentId: this.deploymentId,
+                error: {
+                  name: "Error",
+                  message: e,
+                },
+              });
+            } else {
+              logger("unknown error", e);
+
+              socket.emit("INDEXING_FAILED", {
+                version: "v1",
+                deploymentId: this.deploymentId,
+                error: {
+                  name: "Error",
+                  message: "Unknown error",
+                },
+              });
+            }
+
+            setTimeout(() => {
+              process.exit(1);
+            }, 200);
           }
         }
 

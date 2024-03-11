@@ -126,6 +126,7 @@ export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeployme
 
 export const InitializeDeploymentRequestBody = z.object({
   contentHash: z.string(),
+  userId: z.string().optional(),
 });
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
@@ -137,6 +138,14 @@ export const GetDeploymentResponseBody = z.object({
   shortCode: z.string(),
   version: z.string(),
   imageReference: z.string().optional(),
+  errorData: z
+    .object({
+      name: z.string(),
+      message: z.string(),
+      stack: z.string(),
+    })
+    .optional()
+    .nullable(),
   worker: z
     .object({
       id: z.string(),

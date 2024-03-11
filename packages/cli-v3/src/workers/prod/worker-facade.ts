@@ -1,8 +1,13 @@
-import { ProdChildToWorkerMessages, ProdWorkerToChildMessages, ZodIpcConnection, type TracingSDK } from "@trigger.dev/core/v3";
+import {
+  ProdChildToWorkerMessages,
+  ProdWorkerToChildMessages,
+  ZodIpcConnection,
+  type TracingSDK,
+} from "@trigger.dev/core/v3";
 import "source-map-support/register.js";
 
-__REGISTER_TRACING__;
-declare const __REGISTER_TRACING__: unknown;
+__WORKER_SETUP__;
+declare const __WORKER_SETUP__: unknown;
 declare const tracingSDK: TracingSDK;
 
 const otelTracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.version);

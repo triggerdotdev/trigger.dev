@@ -215,6 +215,15 @@ export const childToWorkerMessages = {
     id: z.string(),
     runs: z.string().array(),
   }),
+  UNCAUGHT_EXCEPTION: z.object({
+    version: z.literal("v1").default("v1"),
+    error: z.object({
+      name: z.string(),
+      message: z.string(),
+      stack: z.string().optional(),
+    }),
+    origin: z.enum(["uncaughtException", "unhandledRejection"]),
+  }),
 };
 
 export const ProdChildToWorkerMessages = {
