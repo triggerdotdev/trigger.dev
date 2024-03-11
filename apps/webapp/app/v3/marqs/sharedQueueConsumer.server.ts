@@ -237,7 +237,7 @@ export class SharedQueueConsumer {
       return;
     }
 
-    console.log("dequeueMessageInSharedQueue()", message);
+    logger.log("dequeueMessageInSharedQueue()", { queueMessage: message });
 
     const envId = this.#envIdFromQueue(message.queue);
 

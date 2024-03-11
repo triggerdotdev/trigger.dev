@@ -26,7 +26,7 @@ function initalizeIoServer() {
   const io = new Server();
 
   io.on("connection", (socket) => {
-    console.log(`[socket.io][${socket.id}] connection at url: ${socket.request.url}`);
+    logger.log(`[socket.io][${socket.id}] connection at url: ${socket.request.url}`);
   });
 
   const coordinatorNamespace = createCoordinatorNamespace(io);
