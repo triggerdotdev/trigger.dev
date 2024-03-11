@@ -46,6 +46,10 @@ async function triggerHelloWorld() {
 
 You can also [trigger a task from another task](/v3/triggering), and wait for the result.
 
+## The `id` field
+
+This is used to identify your task so it can be triggered, managed, and you can view runs in the dashboard. This must be unique in your project – we recommend making it descriptive and unique.
+
 ## The `run` function
 
 Your custom code inside `run()` will be executed when your task is triggered. It’s an async function that has two arguments:
@@ -55,25 +59,73 @@ Your custom code inside `run()` will be executed when your task is triggered. It
 
 Anything you return from the `run` function will be the result of the task. Data you return must be JSON serializable: strings, numbers, booleans, arrays, objects, and null.
 
-## Logging
+## `retry` options
 
-You can use `console.log()`, `console.error()` etc inside your code and it will be shown in your run log. You also get built-in tracing and thrown error logging. More information in [our logging guide](/v3/logging).
+A task is retried if an error is thrown, by default we retry 3 times.
 
-## Errors and retrying
+You can set the number of retries and the delay between retries in the `retry` field:
 
-There are multiple layers of reliability and durability built into tasks:
+```ts
+export const taskWithRetries = task({
+  id: "task-with-retries",
+  retry: {
+    maxAttempts: 10,
+    factor: 1.8,
+    minTimeoutInMs: 500,
+    maxTimeoutInMs: 30_000,
+    randomize: false,
+  },
+  run: async ({ payload, ctx }) => {
+    //...
+  },
+});
+```
 
-1. [Tasks retry](/v3/retrying) with multiple attempts if they fail. You can configure this.
-2. You can easily [add retrying to blocks of code](/v3/retrying) inside your tasks.
-3. The inputs and outputs of each task are serialized and stored so they can be [replayed](/v3/replaying) if needed.
+For more information read [the retrying guide](/v3/retrying), or see the [SDK reference](/v3/reference-task).
 
-## Waiting
+It's also worth mentioning that you can [retry a block of code](/v3/retrying) inside your tasks as well.
 
-During your run you can wait for a period of time or for something to happen:
+## `queue` options
 
-| Function                                  | What it does                                                                              |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------- |
-| [wait.for()](/v3/wait-for)                | Waits for a specific period of time, e.g. 1 day.                                          |
-| [wait.until()](/v3/wait-until)            | Waits until the provided `Date`.                                                          |
-| [wait.forRequest()](/v3/wait-for-request) | Waits until a matching HTTP request is received, and gives you the data to continue with. |
-| [waitForEvent()](/v3/wait-for-event)      | Waits for a matching event, like in the example above.                                    |
+Queues allow you to control the concurrency of your tasks. The simplest use case is to how many runs panne at once.There are more advanced situations where you want to control the concurrency for different sets of your users. For more information read [the queues guide](/v3/queues).
+
+## `machine` options
+
+Some tasks require more vCPUs or GBs of RAM. You can specify these requirements in the `machine` field. For more information read [the machines guide](/v3/machines).
+
+```ts
+export const heavyTask = task({
+  id: "heavy-task",
+  machine: {
+    cpu: 2,
+    memory: 4,
+  },
+  run: async ({ payload, ctx }) => {
+    //...
+  },
+});
+```
+
+## `init` function
+
+This function is called before a run attempt.
+
+## `cleanup` function
+
+This function is called after a run attempt has succeeded or failed.
+
+## `middleware` function
+
+This function is called before the `run` function, it allows you to wrap the run function with custom code. For more information [read the guide](/v3/middleware).
+
+## `onSuccess` function
+
+When a task attempt succeeds, the `onSuccess` function is called. It's useful for sending notifications, logging, or other side effects.
+
+<Snippet file="coming-soon-slim.mdx" />
+
+## `onError` function
+
+When a task attempt fails, the `onError` function is called. It's useful for sending notifications, logging, or other side effects.
+
+<Snippet file="coming-soon-slim.mdx" />

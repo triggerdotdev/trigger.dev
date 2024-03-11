@@ -445,12 +445,11 @@
       "pages": [
         "v3/trigger-folder",
         "v3/tasks-overview",
+        "v3/triggering",
         {
           "group": "Task types",
           "pages": ["v3/tasks-regular", "v3/tasks-scheduled", "v3/tasks-zod", "v3/tasks-webhooks"]
-        },
-        "v3/tasks-settings",
-        "v3/triggering"
+        }
       ]
     },
     {
@@ -478,7 +477,13 @@
         "v3/retrying",
         {
           "group": "Wait",
-          "pages": ["v3/wait-for", "v3/wait-until", "v3/wait-for-event", "v3/wait-for-request"]
+          "pages": [
+            "v3/wait",
+            "v3/wait-for",
+            "v3/wait-until",
+            "v3/wait-for-event",
+            "v3/wait-for-request"
+          ]
         },
         "v3/environment-variables",
         {
@@ -495,7 +500,9 @@
         "v3/trigger-filters",
         "v3/notifications",
         "v3/rollbacks",
-        "v3/using-apis"
+        "v3/using-apis",
+        "v3/middleware",
+        "v3/machines"
       ]
     },
     {
