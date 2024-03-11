@@ -18,7 +18,7 @@ import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions } from "../cli/common.js";
-import { getConfigPath, readConfig } from "../utilities/configFiles.js";
+import { readConfig } from "../utilities/configFiles.js";
 import { createTempDir, readJSONFile, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { detectPackageNameFromImportPath } from "../utilities/installPackages";
@@ -35,6 +35,8 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   selfHosted: z.boolean().default(false),
   registry: z.string().optional(),
   pushImage: z.boolean().default(false),
+  config: z.string().optional(),
+  projectRef: z.string().optional(),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -50,6 +52,15 @@ export function configureDeployCommand(program: Command) {
       "prod"
     )
     .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
+    .option(
+      "-c, --config <config file>",
+      "The name of the config file, found at [path]",
+      "trigger.config.mjs"
+    )
+    .option(
+      "-p, --project-ref <project ref>",
+      "The project ref. Required if there is no config file."
+    )
     .addOption(
       new CommandOption(
         "--self-hosted",
@@ -133,8 +144,12 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   await printStandloneInitialBanner(true);
 
-  const configPath = await getConfigPath(dir);
-  const config = await readConfig(configPath);
+  const { config } = await readConfig(dir, {
+    configFile: options.data.config,
+    projectRef: options.data.projectRef,
+  });
+
+  logger.debug("Resolved config", { config });
 
   const apiClient = new CliApiClient(authorization.config.apiUrl, authorization.config.accessToken);
 

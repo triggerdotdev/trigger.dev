@@ -1,7 +1,7 @@
-import fs from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { TaskFile } from "../types";
 import { ResolvedConfig } from "@trigger.dev/core/v3";
+import fs from "node:fs";
+import { join, relative, resolve } from "node:path";
+import { TaskFile } from "../types";
 
 export function createTaskFileImports(taskFiles: TaskFile[]) {
   return taskFiles
@@ -45,8 +45,7 @@ export function resolveTriggerDirectories(dirs: string[]): string[] {
 
 const IGNORED_DIRS = ["node_modules", ".git", "dist", "build"];
 
-export async function findTriggerDirectories(filePath: string): Promise<string[]> {
-  const dirPath = dirname(filePath);
+export async function findTriggerDirectories(dirPath: string): Promise<string[]> {
   return getTriggerDirectories(dirPath);
 }
 
