@@ -1,0 +1,79 @@
+---
+title: "Tasks: Overview"
+sidebarTitle: "Tasks"
+description: "Tasks are functions that can run for a long time and provide strong resilience to failure."
+---
+
+There are different types of tasks including [regular tasks](/v3/tasks-regular), [scheduled tasks](/v3/tasks-scheduled), [zod tasks](/v3/tasks-zod) and [webhook tasks](/v3/tasks-webhooks).
+
+## Hello world task and how to trigger it
+
+Here's an incredibly simple task:
+
+```ts /trigger/hello-world.ts
+import { task } from "@trigger.dev/sdk/v3";
+
+//1. You need to export each task
+export const helloWorld = task({
+  //2. Use a unique id for each task
+  id: "hello-world",
+  //3. The run function is the main function of the task
+  run: async (payload: { message: string }) => {
+    //4. You can write code that runs for a long time here, there are no timeouts
+    console.log(payload.message);
+  },
+});
+```
+
+You can trigger this in two ways:
+
+1. From the dashboard [using the "Test" feature](/v3/develop-run-tests).
+2. Trigger it from your backend code. See the [full triggering guide here](/v3/triggering).
+
+Here's how to trigger a single run from elsewhere in your code:
+
+```ts Your backend code
+import { helloWorldTask } from "./trigger/hello-world";
+
+async function triggerHelloWorld() {
+  //This triggers the task and return a handle
+  const handle = await helloWorld.trigger({ payload: { message: "Hello world!" } });
+
+  //You can use the handle to check the status of the task, cancel and retry it.
+  console.log("Task is running with handle", handle.id);
+}
+```
+
+You can also [trigger a task from another task](/v3/triggering), and wait for the result.
+
+## The `run` function
+
+Your custom code inside `run()` will be executed when your task is triggered. It’s an async function that has two arguments:
+
+1. The run payload - the data that you pass to the task when you trigger it.
+2. An object with `ctx` about the run ([Context](/v3/reference-context)), and any output from the optional `init` function that runs before every run attempt.
+
+Anything you return from the `run` function will be the result of the task. Data you return must be JSON serializable: strings, numbers, booleans, arrays, objects, and null.
+
+## Reliability and durability
+
+There are multiple layers of reliability and durability built into tasks:
+
+1. [Tasks retry](/v3/retrying) with multiple attempts if they fail. You can configure this.
+2. You can easily [add retrying to blocks of code](/v3/retrying) inside your tasks.
+3. The inputs and outputs of each task are serialized and stored so they can be [replayed](/v3/replaying) if needed.
+
+## Logging
+
+You can use `console.log()`, `console.error()` etc inside your code and it will be shown in your run log. You also get built-in tracing and thrown error logging. More information in [our logging guide](/v3/logging).
+
+## Waiting
+
+During your run you can wait for a period of time or for something to happen:
+
+| Function                                  | What it does                                                                              |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------- |
+| [wait.for()](/v3/wait-for)                | Waits for a specific period of time, e.g. 1 day.                                          |
+| [wait.until()](/v3/wait-until)            | Waits until the provided `Date`.                                                          |
+| [wait.forRequest()](/v3/wait-for-request) | Waits until a matching HTTP request is received, and gives you the data to continue with. |
+| [waitForEvent()](/v3/wait-for-event)      | Waits for a matching event, like in the example above.                                    |

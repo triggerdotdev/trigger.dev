@@ -3,4 +3,38 @@ title: "Triggering"
 description: "Tasks can be triggered in a few different ways."
 ---
 
+| Function                     | What it does                                                                                                                       |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `task.triggerAndWait()`      | Triggers a task and then waits until it's complete. You get the result data to continue with.                                      |
+| `task.batchTriggerAndWait()` | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. |
+
+You can trigger tasks from other tasks, including being able to wait for the result of the triggered task. This is a powerful way to build complex workflows.
+
+```ts
+import { task } from "@trigger.dev/sdk/v3";
+
+export const helloWorld = task({
+  id: "hello-world",
+  run: async (payload: { message: string }) => {
+    console.log("Hello world task is running with payload", payload);
+
+    return { message: "bar" };
+  },
+});
+
+export const triggerHelloWorld = task({
+  id: "trigger-hello-world",
+  run: async (payload, { ctx }) => {
+    //Trigger the helloWorld task
+    const result = await helloWorld.triggerAndWait({ payload: { message: "foo" } });
+
+    //Will log out "Bar"
+    console.log(result.message);
+
+    //Return the result of the helloWorld task
+    return result;
+  },
+});
+```
+
 <Snippet file="incomplete-docs.mdx" />

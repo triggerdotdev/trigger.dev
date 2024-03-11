@@ -438,22 +438,18 @@
     },
     {
       "group": "Getting Started",
-      "pages": [
-        "v3/installation",
-        "v3/quick-start",
-        "v3/upgrading-from-v2",
-        "v3/changelog",
-        "v3/feature-matrix"
-      ]
+      "pages": ["v3/quick-start", "v3/upgrading-from-v2", "v3/changelog", "v3/feature-matrix"]
     },
     {
       "group": "Fundamentals",
       "pages": [
         "v3/trigger-folder",
+        "v3/tasks-overview",
         {
-          "group": "Tasks",
+          "group": "Task types",
           "pages": ["v3/tasks-regular", "v3/tasks-scheduled", "v3/tasks-zod", "v3/tasks-webhooks"]
         },
+        "v3/tasks-settings",
         "v3/triggering"
       ]
     },
@@ -474,8 +470,9 @@
       ]
     },
     {
-      "group": "Building your tasks",
+      "group": "Writing tasks",
       "pages": [
+        "v3/writing-tasks-overview",
         "v3/logging",
         "v3/errors",
         "v3/retrying",
@@ -493,9 +490,12 @@
           "pages": ["v3/run-tests", "v3/automated-tests"]
         },
         "v3/idempotency",
+        "v3/versioning",
+        "v3/replaying",
         "v3/trigger-filters",
         "v3/notifications",
-        "v3/rollbacks"
+        "v3/rollbacks",
+        "v3/using-apis"
       ]
     },
     {
@@ -535,6 +535,10 @@
             "v3/reference-notify",
             "v3/reference-queue"
           ]
+        },
+        {
+          "group": "Objects",
+          "pages": ["v3/reference-context"]
         },
         {
           "group": "CLI",
