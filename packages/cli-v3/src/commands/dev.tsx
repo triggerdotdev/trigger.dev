@@ -305,7 +305,7 @@ function useDev({
       );
 
       const workerSetupPath = new URL(
-        importResolve("./workers/common/worker-setup.js", import.meta.url)
+        importResolve("./workers/dev/worker-setup.js", import.meta.url)
       ).href.replace("file://", "");
 
       const entryPointContents = workerFacade

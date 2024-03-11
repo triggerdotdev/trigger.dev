@@ -127,6 +127,14 @@ export class ProdBackgroundWorker {
               child.kill();
             }
           },
+          UNCAUGHT_EXCEPTION: async (message) => {
+            if (!resolved) {
+              clearTimeout(timeout);
+              resolved = true;
+              reject(new UncaughtExceptionError(message.error, message.origin));
+              child.kill();
+            }
+          },
         },
       });
 

@@ -187,6 +187,16 @@ export const TaskMetadataWithFilePath = TaskMetadata.extend({
 
 export type TaskMetadataWithFilePath = z.infer<typeof TaskMetadataWithFilePath>;
 
+export const UncaughtExceptionMessage = z.object({
+  version: z.literal("v1").default("v1"),
+  error: z.object({
+    name: z.string(),
+    message: z.string(),
+    stack: z.string().optional(),
+  }),
+  origin: z.enum(["uncaughtException", "unhandledRejection"]),
+});
+
 export const childToWorkerMessages = {
   TASK_RUN_COMPLETED: z.object({
     version: z.literal("v1").default("v1"),
@@ -215,15 +225,7 @@ export const childToWorkerMessages = {
     id: z.string(),
     runs: z.string().array(),
   }),
-  UNCAUGHT_EXCEPTION: z.object({
-    version: z.literal("v1").default("v1"),
-    error: z.object({
-      name: z.string(),
-      message: z.string(),
-      stack: z.string().optional(),
-    }),
-    origin: z.enum(["uncaughtException", "unhandledRejection"]),
-  }),
+  UNCAUGHT_EXCEPTION: UncaughtExceptionMessage,
 };
 
 export const ProdChildToWorkerMessages = {
@@ -270,6 +272,9 @@ export const ProdChildToWorkerMessages = {
       id: z.string(),
       runs: z.string().array(),
     }),
+  },
+  UNCAUGHT_EXCEPTION: {
+    message: UncaughtExceptionMessage,
   },
 };
 
