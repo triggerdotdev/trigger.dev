@@ -14,10 +14,10 @@ import { SharedSocketConnection } from "./sharedSocketConnection";
 import { CreateCheckpointService } from "./services/createCheckpoint.server";
 import { sharedQueueTasks } from "./marqs/sharedQueueConsumer.server";
 import { CompleteAttemptService } from "./services/completeAttempt.server";
-import { CreateBackgroundWorkerService } from "./services/createBackgroundWorker.server";
 import { logger } from "~/services/logger.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { CreateDeployedBackgroundWorkerService } from "./services/createDeployedBackgroundWorker.server";
+import { ResumeAttemptService } from "./services/resumeAttempt.server";
 import { DeploymentIndexFailed } from "./services/deploymentIndexFailed.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
@@ -57,6 +57,10 @@ function createCoordinatorNamespace(io: Server) {
         } else {
           return { success: true, payload };
         }
+      },
+      READY_FOR_RESUME: async (message) => {
+        const resumeAttempt = new ResumeAttemptService();
+        await resumeAttempt.call(message);
       },
       TASK_RUN_COMPLETED: async (message) => {
         const completeAttempt = new CompleteAttemptService();

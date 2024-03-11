@@ -1,12 +1,13 @@
 import {
   BatchTaskRunExecutionResult,
+  ProdChildToWorkerMessages,
+  ProdWorkerToChildMessages,
   TaskMetadataWithFilePath,
   TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionResult,
-  childToWorkerMessages,
 } from "../schemas";
-import { ZodMessageSender } from "../zodMessageHandler";
+import { ZodIpcConnection } from "../zodIpc";
 import { RuntimeManager } from "./manager";
 
 export class ProdRuntimeManager implements RuntimeManager {
@@ -20,9 +21,16 @@ export class ProdRuntimeManager implements RuntimeManager {
     { resolve: (value: BatchTaskRunExecutionResult) => void; reject: (err?: any) => void }
   > = new Map();
 
+  _waitForRestore: { resolve: (value?: any) => void; reject: (err?: any) => void } | undefined;
+
   _tasks: Map<string, TaskMetadataWithFilePath> = new Map();
 
-  constructor(private sender: ZodMessageSender<typeof childToWorkerMessages>) {}
+  constructor(
+    private ipc: ZodIpcConnection<
+      typeof ProdWorkerToChildMessages,
+      typeof ProdChildToWorkerMessages
+    >
+  ) {}
 
   disable(): void {
     // do nothing
@@ -39,15 +47,42 @@ export class ProdRuntimeManager implements RuntimeManager {
   }
 
   async waitForDuration(ms: number): Promise<void> {
-    if (ms > 30_000) {
-      // TODO: sender with ack support
-      await this.sender.send("WAIT_FOR_DURATION", { ms });
-      // TODO: resolve after resume signal instead
+    let timeout: NodeJS.Timeout | undefined;
+
+    const resolveAfterDuration = new Promise((resolve) => {
+      timeout = setTimeout(resolve, ms);
+    });
+
+    if (ms < 10_000) {
+      await resolveAfterDuration;
+      return;
     }
 
-    return new Promise((resolve) => {
-      setTimeout(resolve, ms);
+    const waitForRestore = new Promise<TaskRunExecutionResult>((resolve, reject) => {
+      this._waitForRestore = { resolve, reject };
     });
+
+    // There is a slight delay before actually checkpointing, so this has a chance to return
+    const { willCheckpointAndRestore } = await this.ipc.sendWithAck("WAIT_FOR_DURATION", { ms });
+
+    if (!willCheckpointAndRestore) {
+      await resolveAfterDuration;
+      return;
+    }
+
+    // Checkpointing should happen after this line
+
+    await waitForRestore;
+    clearTimeout(timeout);
+  }
+
+  resumeAfterRestore(): void {
+    if (!this._waitForRestore) {
+      return;
+    }
+
+    this._waitForRestore.resolve();
+    this._waitForRestore = undefined;
   }
 
   async waitUntil(date: Date): Promise<void> {
@@ -59,7 +94,7 @@ export class ProdRuntimeManager implements RuntimeManager {
       this._taskWaits.set(params.id, { resolve, reject });
     });
 
-    await this.sender.send("WAIT_FOR_TASK", {
+    await this.ipc.send("WAIT_FOR_TASK", {
       id: params.id,
     });
 
@@ -83,7 +118,7 @@ export class ProdRuntimeManager implements RuntimeManager {
       })
     );
 
-    await this.sender.send("WAIT_FOR_BATCH", {
+    await this.ipc.send("WAIT_FOR_BATCH", {
       id: params.id,
       runs: params.runs,
     });

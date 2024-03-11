@@ -389,6 +389,7 @@ class KubernetesTaskOperations implements TaskOperations {
 
 const provider = new ProviderShell({
   tasks: new KubernetesTaskOperations(),
+  type: "kubernetes",
 });
 
 provider.listen();

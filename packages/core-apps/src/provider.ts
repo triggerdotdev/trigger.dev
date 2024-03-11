@@ -30,6 +30,7 @@ export interface TaskOperations {
 
 type ProviderShellOptions = {
   tasks: TaskOperations;
+  type: "docker" | "kubernetes";
   host?: string;
   port?: number;
 };
@@ -111,7 +112,7 @@ export class ProviderShell implements Provider {
       serverMessages: PlatformToProviderMessages,
       authToken: PLATFORM_SECRET,
       extraHeaders: {
-        "x-trigger-provider-type": "docker",
+        "x-trigger-provider-type": this.options.type,
       },
       handlers: {
         DELETE: async (message) => {
@@ -139,10 +140,28 @@ export class ProviderShell implements Provider {
               apiUrl: message.apiUrl,
             });
           } catch (error) {
-            logger.error("task index failed", error);
+            logger.error("index failed", error);
           }
         },
-        RESTORE: async (message) => {},
+        RESTORE: async (message) => {
+          if (message.type.toLowerCase() !== this.options.type.toLowerCase()) {
+            logger.error(
+              `restore failed: ${this.options.type} provider can't restore ${message.type} checkpoints`
+            );
+            return;
+          }
+
+          try {
+            await this.tasks.restore({
+              attemptId: message.attemptId,
+              checkpointRef: message.location,
+              // TODO
+              // machine: message.machine,
+            });
+          } catch (error) {
+            logger.error("restore failed", error);
+          }
+        },
       },
     });
 

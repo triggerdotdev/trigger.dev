@@ -187,6 +187,16 @@ export const TaskMetadataWithFilePath = TaskMetadata.extend({
 
 export type TaskMetadataWithFilePath = z.infer<typeof TaskMetadataWithFilePath>;
 
+export const UncaughtExceptionMessage = z.object({
+  version: z.literal("v1").default("v1"),
+  error: z.object({
+    name: z.string(),
+    message: z.string(),
+    stack: z.string().optional(),
+  }),
+  origin: z.enum(["uncaughtException", "unhandledRejection"]),
+});
+
 export const childToWorkerMessages = {
   TASK_RUN_COMPLETED: z.object({
     version: z.literal("v1").default("v1"),
@@ -215,13 +225,85 @@ export const childToWorkerMessages = {
     id: z.string(),
     runs: z.string().array(),
   }),
-  UNCAUGHT_EXCEPTION: z.object({
-    version: z.literal("v1").default("v1"),
-    error: z.object({
-      name: z.string(),
-      message: z.string(),
-      stack: z.string().optional(),
+  UNCAUGHT_EXCEPTION: UncaughtExceptionMessage,
+};
+
+export const ProdChildToWorkerMessages = {
+  TASK_RUN_COMPLETED: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      execution: TaskRunExecution,
+      result: TaskRunExecutionResult,
     }),
-    origin: z.enum(["uncaughtException", "unhandledRejection"]),
-  }),
+  },
+  TASKS_READY: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      tasks: TaskMetadataWithFilePath.array(),
+    }),
+  },
+  TASK_HEARTBEAT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      id: z.string(),
+    }),
+  },
+  READY_TO_DISPOSE: {
+    message: z.undefined(),
+  },
+  WAIT_FOR_DURATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      ms: z.number(),
+    }),
+    callback: z.object({
+      willCheckpointAndRestore: z.boolean(),
+    }),
+  },
+  WAIT_FOR_TASK: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      id: z.string(),
+    }),
+  },
+  WAIT_FOR_BATCH: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      id: z.string(),
+      runs: z.string().array(),
+    }),
+  },
+  UNCAUGHT_EXCEPTION: {
+    message: UncaughtExceptionMessage,
+  },
+};
+
+export const ProdWorkerToChildMessages = {
+  EXECUTE_TASK_RUN: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      execution: TaskRunExecution,
+      traceContext: z.record(z.unknown()),
+      metadata: BackgroundWorkerProperties,
+    }),
+  },
+  TASK_RUN_COMPLETED_NOTIFICATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      completion: TaskRunExecutionResult,
+      execution: TaskRunExecution,
+    }),
+  },
+  CLEANUP: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      flush: z.boolean().default(false),
+      kill: z.boolean().default(true),
+    }),
+  },
+  WAIT_COMPLETED_NOTIFICATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+    }),
+  },
 };

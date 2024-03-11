@@ -587,12 +587,12 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
   );
 
   const workerSetupPath = new URL(
-    importResolve("./workers/common/worker-setup.js", import.meta.url)
+    importResolve("./workers/prod/worker-setup.js", import.meta.url)
   ).href.replace("file://", "");
 
   const workerContents = workerFacade
     .replace("__TASKS__", createTaskFileImports(taskFiles))
-    .replace("__WORKER_SETUP__", `import { tracingSDK, sender } from "${workerSetupPath}";`);
+    .replace("__WORKER_SETUP__", `import { tracingSDK } from "${workerSetupPath}";`);
 
   const result = await build({
     stdin: {
