@@ -16,7 +16,7 @@ import {
 } from "@nestjs/common";
 import { Headers as StandardHeaders, Request as StandardRequest } from "@remix-run/web-fetch";
 import { TriggerClient, TriggerClientOptions } from "@trigger.dev/sdk";
-import type { Response } from "express";
+import type { Response as ExpressResponse } from "express";
 import type { FastifyReply } from "fastify";
 
 const { ConfigurableModuleClass, MODULE_OPTIONS_TOKEN, OPTIONS_TYPE, ASYNC_OPTIONS_TYPE } =
@@ -192,16 +192,19 @@ function createControllerByPath(customProvider: InjectionToken, path: string) {
         throw new NotFoundException({ error: "Not found" });
       }
 
-      if (typeof res.status === "function") {
-        // express
-        (res as Response).status(response.status);
-        (res as Response).set(response.headers);
-      } else if (typeof res.code === "function") {
-        // fastify
-        (res as FastifyReply).code(response.status);
-        if (response.headers) {
-          (res as FastifyReply).headers(response.headers);
-        }
+      /**
+       * NestJS users mostly use either Express or Fastify, but they have
+       * different response object APIs, so we need to figure out which one
+       * is being used and set the status code and headers accordingly.
+       */
+      if (isExpressResponse(res)) {
+        res.status(response.status);
+        // Merges the headers, so no need to iterate over them
+        res.set(response.headers);
+      } else if (isFastifyReply(res)) {
+        res.code(response.status);
+        // Same merge behaviour as Express
+        res.headers(response.headers);
       } else {
         throw new InternalServerErrorException(
           "Unable to indetify the framework to set the status code, are you using Express or Fastify?"
@@ -213,4 +216,24 @@ function createControllerByPath(customProvider: InjectionToken, path: string) {
   }
 
   return TriggerDevController;
+}
+
+/**
+ * Type guard for Express with unique checks
+ */
+function isExpressResponse(res: unknown): res is ExpressResponse {
+  return (
+    typeof (res as ExpressResponse)?.status === "function" &&
+    typeof (res as ExpressResponse)?.render === "function"
+  );
+}
+
+/**
+ * Type guard for Fastify with unique checks
+ */
+function isFastifyReply(res: unknown): res is FastifyReply {
+  return (
+    typeof (res as FastifyReply)?.code === "function" &&
+    typeof (res as FastifyReply)?.headers === "function"
+  );
 }
