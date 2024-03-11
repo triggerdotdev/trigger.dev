@@ -163,6 +163,7 @@ export const TaskRunFailedExecutionResult = z.object({
   id: z.string(),
   error: TaskRunError,
   retry: TaskRunExecutionRetry.optional(),
+  skippedRetrying: z.boolean().optional(),
 });
 
 export type TaskRunFailedExecutionResult = z.infer<typeof TaskRunFailedExecutionResult>;

@@ -3,11 +3,13 @@ import {
   ProdWorkerToChildMessages,
   ZodIpcConnection,
   type TracingSDK,
+  Config,
 } from "@trigger.dev/core/v3";
 import "source-map-support/register.js";
 
 __WORKER_SETUP__;
 declare const __WORKER_SETUP__: unknown;
+declare const __PROJECT_CONFIG__: Config;
 declare const tracingSDK: TracingSDK;
 
 const otelTracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.version);
@@ -64,11 +66,11 @@ class TaskExecutor {
     execution: TaskRunExecution,
     error: unknown
   ): Promise<TaskRunExecutionRetry | undefined> {
-    if (!this.task.retry) {
+    const retry = this.task.retry ?? __PROJECT_CONFIG__.retries?.default;
+
+    if (!retry) {
       return;
     }
-
-    const retry = this.task.retry;
 
     const delay = calculateNextRetryDelay(retry, execution.attempt.number);
 
@@ -149,10 +151,10 @@ class TaskExecutor {
     }
 
     if (!middlewareFn) {
-      return runFn({ payload, ctx });
+      return runFn(payload, { ctx });
     }
 
-    return middlewareFn({ payload, ctx, next: async () => runFn({ payload, ctx, init }) });
+    return middlewareFn(payload, { ctx, next: async () => runFn(payload, { ctx, init }) });
   }
 
   async #callTaskInit(payload: unknown, ctx: TaskRunContext) {
@@ -163,7 +165,7 @@ class TaskExecutor {
     }
 
     return tracer.startActiveSpan("init", async (span) => {
-      return await initFn({ payload, ctx });
+      return await initFn(payload, { ctx });
     });
   }
 
@@ -175,7 +177,7 @@ class TaskExecutor {
     }
 
     return tracer.startActiveSpan("cleanup", async (span) => {
-      return await cleanupFn({ payload, ctx, init });
+      return await cleanupFn(payload, { ctx, init });
     });
   }
 }

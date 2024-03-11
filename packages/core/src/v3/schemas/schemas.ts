@@ -6,6 +6,7 @@ import {
   BackgroundWorkerServerMessages,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
+  RetryOptions,
 } from "./messages";
 import { TaskResource } from "./resources";
 
@@ -14,6 +15,12 @@ export const Config = z.object({
   triggerDirectories: z.string().array().optional(),
   triggerUrl: z.string().optional(),
   projectDir: z.string().optional(),
+  retries: z
+    .object({
+      enabledInDev: z.boolean().default(true),
+      default: RetryOptions.optional(),
+    })
+    .optional(),
 });
 
 export type Config = z.infer<typeof Config>;

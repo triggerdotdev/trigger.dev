@@ -2,6 +2,7 @@ import {
   BackgroundWorkerProperties,
   BackgroundWorkerServerMessages,
   CreateBackgroundWorkerResponse,
+  ResolvedConfig,
   SemanticInternalAttributes,
   TaskMetadataWithFilePath,
   TaskRunBuiltInError,
@@ -148,14 +149,25 @@ export class BackgroundWorkerCoordinator {
 
     const elapsed = performance.now() - now;
 
+    const retryingText =
+      !completion.ok && completion.skippedRetrying
+        ? " (retrying skipped)"
+        : !completion.ok && completion.retry !== undefined
+        ? ` (retrying in ${completion.retry.delay}ms)`
+        : "";
+
     const resultText = !completion.ok
       ? completion.error.type === "INTERNAL_ERROR" &&
         completion.error.code === TaskRunErrorCodes.TASK_EXECUTION_ABORTED
         ? chalk.yellow("cancelled")
-        : chalk.red("error")
+        : chalk.red(`error${retryingText}`)
       : chalk.green("success");
 
-    const errorText = !completion.ok ? this.#formatErrorLog(completion.error) : "";
+    const errorText = !completion.ok
+      ? this.#formatErrorLog(completion.error)
+      : "retry" in completion
+      ? `retry in ${completion.retry}ms`
+      : "";
 
     const elapsedText = chalk.dim(`(${elapsed.toFixed(2)}ms)`);
 
@@ -205,7 +217,7 @@ class CleanupProcessError extends Error {
 export type BackgroundWorkerParams = {
   env: Record<string, string>;
   dependencies?: Record<string, string>;
-  projectDir: string;
+  projectConfig: ResolvedConfig;
   debuggerOn: boolean;
   debugOtel?: boolean;
 };
@@ -434,7 +446,7 @@ export class BackgroundWorker {
   ): Promise<TaskRunBuiltInError> {
     return {
       ...error,
-      stackTrace: correctErrorStackTrace(error.stackTrace, this.params.projectDir),
+      stackTrace: correctErrorStackTrace(error.stackTrace, this.params.projectConfig.projectDir),
     };
   }
 }
@@ -478,7 +490,7 @@ class TaskRunProcess {
       env: {
         ...this.env,
         OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
-          [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectDir,
+          [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectConfig.projectDir,
         }),
         ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
       },

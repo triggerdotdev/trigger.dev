@@ -1,5 +1,6 @@
 import {
   BackgroundWorkerProperties,
+  Config,
   CreateBackgroundWorkerResponse,
   ProdChildToWorkerMessages,
   ProdTaskRunExecutionPayload,
@@ -37,7 +38,7 @@ class CleanupProcessError extends Error {
 
 type BackgroundWorkerParams = {
   env: Record<string, string>;
-  projectDir: string;
+  projectConfig: Config;
   contentHash: string;
   debugOtel?: boolean;
 };
@@ -300,7 +301,7 @@ export class ProdBackgroundWorker {
   ): Promise<TaskRunBuiltInError> {
     return {
       ...error,
-      stackTrace: correctErrorStackTrace(error.stackTrace, this.params.projectDir),
+      stackTrace: correctErrorStackTrace(error.stackTrace, this.params.projectConfig.projectDir),
     };
   }
 }
@@ -342,7 +343,7 @@ class TaskRunProcess {
       env: {
         ...this.env,
         OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
-          [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectDir,
+          [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectConfig.projectDir,
         }),
         ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
       },
