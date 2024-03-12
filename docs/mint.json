@@ -463,7 +463,7 @@
         "v3/cli-deploy",
         "v3/github-actions",
         {
-          "group": "Integrations",
+          "group": "Deployment integrations",
           "pages": ["v3/vercel-integration"]
         }
       ]
