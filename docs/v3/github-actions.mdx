@@ -3,4 +3,39 @@ title: "GitHub Actions"
 description: "You can easily deploy your tasks with GitHub actions."
 ---
 
-<Snippet file="incomplete-docs.mdx" />
+This simple GitHub action file will deploy you Trigger.dev tasks when new code is pushed to the `main` branch and the `trigger` directory has changes in it.
+
+```yaml .github/workflows/release-trigger.yml
+name: Deploy to Trigger.dev
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "trigger/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Use Node.js 18.x
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18.x"
+
+      - name: 🚀 Deploy Trigger.dev
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+        run: |
+          npx trigger.dev@latest deploy
+```
+
+If you already have a GitHub action file, you can just add the final step "🚀 Deploy Trigger.dev" to your existing file.
+
+You need to add the `TRIGGER_ACCESS_TOKEN` secret to your repository. You can create a new access token by going to your profile page and then clicking on the "Personal Access Tokens" tab.
+
+To set it in GitHub go to your repository, click on "Settings", "Secrets and variables" and then "Actions". Add a new secret with the name `TRIGGER_ACCESS_TOKEN` and use the value of your access token.
