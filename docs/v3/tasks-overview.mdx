@@ -46,11 +46,15 @@ async function triggerHelloWorld() {
 
 You can also [trigger a task from another task](/v3/triggering), and wait for the result.
 
-## The `id` field
+## Defining a `task`
+
+The task function takes an object with the following fields.
+
+### The `id` field
 
 This is used to identify your task so it can be triggered, managed, and you can view runs in the dashboard. This must be unique in your project – we recommend making it descriptive and unique.
 
-## The `run` function
+### The `run` function
 
 Your custom code inside `run()` will be executed when your task is triggered. It’s an async function that has two arguments:
 
@@ -59,7 +63,7 @@ Your custom code inside `run()` will be executed when your task is triggered. It
 
 Anything you return from the `run` function will be the result of the task. Data you return must be JSON serializable: strings, numbers, booleans, arrays, objects, and null.
 
-## `retry` options
+### `retry` options
 
 A task is retried if an error is thrown, by default we retry 3 times.
 
@@ -85,11 +89,11 @@ For more information read [the retrying guide](/v3/retrying), or see the [SDK re
 
 It's also worth mentioning that you can [retry a block of code](/v3/retrying) inside your tasks as well.
 
-## `queue` options
+### `queue` options
 
 Queues allow you to control the concurrency of your tasks. The simplest use case is to how many runs panne at once.There are more advanced situations where you want to control the concurrency for different sets of your users. For more information read [the queues guide](/v3/queues).
 
-## `machine` options
+### `machine` options
 
 Some tasks require more vCPUs or GBs of RAM. You can specify these requirements in the `machine` field. For more information read [the machines guide](/v3/machines).
 
@@ -106,25 +110,25 @@ export const heavyTask = task({
 });
 ```
 
-## `init` function
+### `init` function
 
 This function is called before a run attempt.
 
-## `cleanup` function
+### `cleanup` function
 
 This function is called after a run attempt has succeeded or failed.
 
-## `middleware` function
+### `middleware` function
 
 This function is called before the `run` function, it allows you to wrap the run function with custom code. For more information [read the guide](/v3/middleware).
 
-## `onSuccess` function
+### `onSuccess` function
 
 When a task attempt succeeds, the `onSuccess` function is called. It's useful for sending notifications, logging, or other side effects.
 
 <Snippet file="coming-soon-slim.mdx" />
 
-## `onError` function
+### `onError` function
 
 When a task attempt fails, the `onError` function is called. It's useful for sending notifications, logging, or other side effects.
 
