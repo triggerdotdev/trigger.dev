@@ -31,9 +31,11 @@ const MessageBody = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("RESUME"),
     completedAttemptIds: z.string().array(),
+    resumableAttemptId: z.string(),
   }),
   z.object({
     type: z.literal("RESUME_AFTER_DURATION"),
+    resumableAttemptId: z.string(),
   }),
 ]);
 
@@ -478,29 +480,35 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const resumableRun = await prisma.taskRun.findFirst({
+        const resumableRun = await prisma.taskRun.findUnique({
           where: {
             id: message.messageId,
           },
+        });
+
+        if (!resumableRun) {
+          logger.error("Resumable run not found", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+          });
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        const resumableAttempt = await prisma.taskRunAttempt.findUnique({
+          where: {
+            id: messageBody.data.resumableAttemptId,
+          },
           include: {
-            attempts: {
+            checkpoints: {
+              take: 1,
               orderBy: {
                 createdAt: "desc",
-              },
-              take: 1,
-              include: {
-                checkpoints: {
-                  take: 1,
-                  orderBy: {
-                    createdAt: "desc",
-                  },
-                },
               },
             },
           },
         });
-
-        const resumableAttempt = resumableRun?.attempts[0];
 
         if (!resumableAttempt) {
           logger.error("Resumable attempt not found", {
@@ -553,6 +561,13 @@ export class SharedQueueConsumer {
             },
             data: {
               status: "EXECUTING",
+              taskRun: {
+                update: {
+                  data: {
+                    status: "EXECUTING",
+                  },
+                },
+              },
             },
           });
 
@@ -647,29 +662,20 @@ export class SharedQueueConsumer {
       }
       // Resume after duration-based wait
       case "RESUME_AFTER_DURATION": {
-        const resumableRun = await prisma.taskRun.findFirst({
+        const resumableAttempt = await prisma.taskRunAttempt.findUnique({
           where: {
-            id: message.messageId,
+            id: messageBody.data.resumableAttemptId,
           },
           include: {
-            attempts: {
+            checkpoints: {
+              take: 1,
               orderBy: {
                 createdAt: "desc",
               },
-              take: 1,
-              include: {
-                checkpoints: {
-                  take: 1,
-                  orderBy: {
-                    createdAt: "desc",
-                  },
-                },
-              },
             },
+            taskRun: true,
           },
         });
-
-        const resumableAttempt = resumableRun?.attempts[0];
 
         if (!resumableAttempt) {
           logger.error("Resumable attempt not found", {

@@ -1,72 +1,114 @@
+import { Attributes } from "@opentelemetry/api";
 import {
   RetryOptions,
   TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionResult,
+  TaskRunFailedExecutionResult,
+  TaskRunSuccessfulExecutionResult,
   defaultRetryOptions,
   flattenAttributes,
 } from "@trigger.dev/core/v3";
+import { PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
+import { safeJsonParse } from "~/utils/json";
 import { eventRepository } from "../eventRepository.server";
 import { marqs } from "../marqs.server";
 import { BaseService } from "./baseService.server";
-import { Attributes } from "@opentelemetry/api";
-import { logger } from "~/services/logger.server";
+import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
+
+type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
 export class CompleteAttemptService extends BaseService {
   public async call(
     completion: TaskRunExecutionResult,
     execution: TaskRunExecution,
     env?: AuthenticatedEnvironment
-  ): Promise<"ACKNOWLEDGED" | "RETRIED" | "FAILED"> {
-    const taskRunAttempt = completion.ok
-      ? await this._prisma.taskRunAttempt.update({
-          where: { friendlyId: completion.id },
-          data: {
-            status: "COMPLETED",
-            completedAt: new Date(),
-            output: completion.output,
-            outputType: completion.outputType,
-          },
-          include: {
-            taskRun: {
-              include: {
-                batchItem: true,
-                dependency: {
-                  include: {
-                    dependentAttempt: true,
-                    dependentBatchRun: true,
-                  },
-                },
-              },
-            },
-            backgroundWorkerTask: true,
-          },
-        })
-      : await this._prisma.taskRunAttempt.update({
-          where: { friendlyId: completion.id },
-          data: {
-            status: "FAILED",
-            completedAt: new Date(),
-            error: completion.error,
-          },
-          include: {
-            taskRun: {
-              include: {
-                batchItem: true,
-                dependency: {
-                  include: {
-                    dependentAttempt: true,
-                    dependentBatchRun: true,
-                  },
-                },
-              },
-            },
-            backgroundWorkerTask: true,
-          },
-        });
+  ) {
+    const taskRunAttempt = await findAttempt(this._prisma, completion.id);
 
-    if (!completion.ok && completion.retry !== undefined) {
+    if (!taskRunAttempt) {
+      logger.error("[CompleteAttemptService] Task run attempt not found", { id: completion.id });
+
+      // Update the task run to be failed
+      await this._prisma.taskRun.update({
+        where: {
+          friendlyId: execution.run.id,
+        },
+        data: {
+          status: "SYSTEM_FAILURE",
+        },
+      });
+
+      return "FAILED";
+    }
+
+    if (completion.ok) {
+      return await this.#completeAttemptSuccessfully(completion, taskRunAttempt, env);
+    } else {
+      return await this.#completeAttemptFailed(completion, execution, taskRunAttempt, env);
+    }
+  }
+
+  async #completeAttemptSuccessfully(
+    completion: TaskRunSuccessfulExecutionResult,
+    taskRunAttempt: NonNullable<FoundAttempt>,
+    env?: AuthenticatedEnvironment
+  ) {
+    await this._prisma.taskRunAttempt.update({
+      where: { friendlyId: completion.id },
+      data: {
+        status: "COMPLETED",
+        completedAt: new Date(),
+        output: completion.output,
+        outputType: completion.outputType,
+        taskRun: {
+          update: {
+            data: {
+              status: "COMPLETED_SUCCESSFULLY",
+            },
+          },
+        },
+      },
+    });
+
+    logger.debug("Completed attempt successfully, ACKing message", taskRunAttempt);
+
+    await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
+
+    // Now we need to "complete" the task run event/span
+    await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
+      endTime: new Date(),
+      attributes: {
+        isError: false,
+        output: completion.output ? (safeJsonParse(completion.output) as Attributes) : undefined,
+      },
+    });
+
+    if (!env || env.type !== "DEVELOPMENT") {
+      await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);
+    }
+
+    return "ACKNOWLEDGED";
+  }
+
+  async #completeAttemptFailed(
+    completion: TaskRunFailedExecutionResult,
+    execution: TaskRunExecution,
+    taskRunAttempt: NonNullable<FoundAttempt>,
+    env?: AuthenticatedEnvironment
+  ) {
+    await this._prisma.taskRunAttempt.update({
+      where: { friendlyId: completion.id },
+      data: {
+        status: "FAILED",
+        completedAt: new Date(),
+        error: completion.error,
+      },
+    });
+
+    if (completion.retry !== undefined) {
       const retryConfig = taskRunAttempt.backgroundWorkerTask.retryConfig
         ? {
             ...defaultRetryOptions,
@@ -111,6 +153,15 @@ export class CompleteAttemptService extends BaseService {
 
       logger.debug("Retrying", { taskRun: taskRunAttempt.taskRun.friendlyId });
 
+      await this._prisma.taskRun.update({
+        where: {
+          id: taskRunAttempt.taskRunId,
+        },
+        data: {
+          status: "RETRYING_AFTER_FAILURE",
+        },
+      });
+
       if (environment.type === "DEVELOPMENT") {
         // This is already an EXECUTE message so we can just NACK
         await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
@@ -127,179 +178,31 @@ export class CompleteAttemptService extends BaseService {
       }
 
       return "RETRIED";
-    }
-    // Attempt succeeded or this was the last retry
-    else {
+    } else {
+      // No more retries, we need to fail the task run
       logger.debug("Completed attempt, ACKing message", taskRunAttempt);
 
       await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
       // Now we need to "complete" the task run event/span
-      if (completion.ok) {
-        await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
-          endTime: new Date(),
-          attributes: {
-            isError: false,
-            output: completion.output ? (JSON.parse(completion.output) as Attributes) : undefined,
-          },
-        });
-      } else {
-        await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
-          endTime: new Date(),
-          attributes: {
-            isError: true,
-          },
-        });
-      }
+      await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
+        endTime: new Date(),
+        attributes: {
+          isError: true,
+        },
+      });
 
-      const { batchItem, dependency } = taskRunAttempt.taskRun;
+      await this._prisma.taskRun.update({
+        where: {
+          id: taskRunAttempt.taskRunId,
+        },
+        data: {
+          status: "COMPLETED_WITH_ERRORS",
+        },
+      });
 
-      // This run is part of a batch so we should update its status
-      if (batchItem) {
-        logger.debug("Completing attempt with batch item", { batchItem });
-
-        await this._prisma.batchTaskRunItem.update({
-          where: {
-            id: batchItem.id,
-          },
-          data: {
-            status: completion.ok ? "COMPLETED" : "FAILED",
-          },
-        });
-
-        const finalizedBatchRun = await this._prisma.batchTaskRun.findFirst({
-          where: {
-            id: batchItem.batchTaskRunId,
-            dependentTaskAttemptId: {
-              not: null,
-            },
-            items: {
-              every: {
-                status: {
-                  not: "PENDING",
-                },
-              },
-            },
-          },
-          include: {
-            dependentTaskAttempt: {
-              include: {
-                taskRun: true,
-              },
-            },
-            items: {
-              include: {
-                taskRun: {
-                  include: {
-                    attempts: {
-                      orderBy: {
-                        completedAt: "desc",
-                      },
-                      take: 1,
-                      select: {
-                        id: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        });
-
-        // This batch has a dependent attempt and just finalized, we should resume that attempt
-        if (finalizedBatchRun && finalizedBatchRun.dependentTaskAttempt) {
-          const environment =
-            env ?? (await this.#getEnvironment(taskRunAttempt.taskRun.runtimeEnvironmentId));
-
-          if (!environment) {
-            logger.error("Environment not found", {
-              attemptId: taskRunAttempt.id,
-              envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
-            });
-            return "FAILED";
-          }
-
-          if (environment.type === "DEVELOPMENT") {
-            return "ACKNOWLEDGED";
-          }
-
-          const dependentRun = finalizedBatchRun.dependentTaskAttempt.taskRun;
-
-          if (finalizedBatchRun.dependentTaskAttempt.status === "PAUSED") {
-            await marqs?.enqueueMessage(
-              environment,
-              dependentRun.queue,
-              dependentRun.id,
-              {
-                type: "RESUME",
-                completedAttemptIds: [taskRunAttempt.id],
-              },
-              dependentRun.concurrencyKey ?? undefined
-            );
-          } else {
-            await marqs?.replaceMessage(dependentRun.id, {
-              type: "RESUME",
-              completedAttemptIds: finalizedBatchRun.items.map(
-                (item) => item.taskRun.attempts[0]?.id
-              ),
-            });
-          }
-        }
-      }
-
-      if (dependency) {
-        logger.debug("Completing attempt with dependency", { dependency });
-
-        const environment =
-          env ?? (await this.#getEnvironment(taskRunAttempt.taskRun.runtimeEnvironmentId));
-
-        if (!environment) {
-          logger.error("Environment not found", {
-            attemptId: taskRunAttempt.id,
-            envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
-          });
-          return "FAILED";
-        }
-
-        if (environment.type === "DEVELOPMENT") {
-          return "ACKNOWLEDGED";
-        }
-
-        if (dependency.dependentAttempt) {
-          const dependentRun = await this._prisma.taskRun.findFirst({
-            where: {
-              id: dependency.dependentAttempt.taskRunId,
-            },
-          });
-
-          if (!dependentRun) {
-            logger.error("Dependent task run does not exist", {
-              attemptId: taskRunAttempt.id,
-              envId: taskRunAttempt.taskRun.runtimeEnvironmentId,
-              taskRunId: dependency.taskRunId,
-            });
-            return "FAILED";
-          }
-
-          if (dependency.dependentAttempt.status === "PAUSED") {
-            await marqs?.enqueueMessage(
-              environment,
-              dependentRun.queue,
-              dependentRun.id,
-              {
-                type: "RESUME",
-                completedAttemptIds: [taskRunAttempt.id],
-              },
-              dependentRun.concurrencyKey ?? undefined
-            );
-          } else {
-            await marqs?.replaceMessage(dependentRun.id, {
-              type: "RESUME",
-              completedAttemptIds: [taskRunAttempt.id],
-            });
-          }
-        }
+      if (!env || env.type !== "DEVELOPMENT") {
+        await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);
       }
 
       return "ACKNOWLEDGED";
@@ -328,4 +231,14 @@ export class CompleteAttemptService extends BaseService {
       },
     });
   }
+}
+
+async function findAttempt(prismaClient: PrismaClientOrTransaction, friendlyId: string) {
+  return prismaClient.taskRunAttempt.findUnique({
+    where: { friendlyId },
+    include: {
+      taskRun: true,
+      backgroundWorkerTask: true,
+    },
+  });
 }

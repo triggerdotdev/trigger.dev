@@ -309,6 +309,7 @@ export class DevQueueConsumer {
       data: {
         lockedAt: new Date(),
         lockedById: backgroundTask.id,
+        status: "EXECUTING",
       },
       include: {
         attempts: {

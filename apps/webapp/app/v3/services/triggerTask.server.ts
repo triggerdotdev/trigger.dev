@@ -100,6 +100,7 @@ export class TriggerTaskService extends BaseService {
 
             const taskRun = await tx.taskRun.create({
               data: {
+                status: "PENDING",
                 number: counter.lastNumber,
                 friendlyId: generateFriendlyId("run"),
                 runtimeEnvironmentId: environment.id,
