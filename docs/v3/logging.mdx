@@ -1,16 +1,75 @@
 ---
-title: "Logging"
-description: "How to use the built-in logging system."
+title: "Logging and tracing"
+description: "How to use the built-in logging and tracing system."
 ---
 
-## console.log
+![The run log
+  ](/images/v3/run-log.png)
 
-You can use `console.log()`, `console.error()` etc inside your code and it will be shown in your run log. You also get built-in tracing and thrown error logging.
+The [run log](/v3/dashboard-runs) shows you exactly what happened in every run of your tasks. It is comprised of logs, traces and spans.
 
-## Tracing
+## Logs
 
-<Snippet file="incomplete-docs.mdx" />
+You can use `console.log()`, `console.error()`, etc as normal and they will be shown in your run log.
+
+```ts /trigger/logging.ts
+import { task } from "@trigger.dev/sdk/v3";
+
+export const loggingExample = task({
+  id: "logging-example",
+  run: async (payload: { data: Record<string, string> }) => {
+    console.log("Log message", payload.data, [1, 2, 3]);
+    console.warn("You've been warned", payload.data);
+    console.error("Error message", payload.data);
+    console.info("Info message", payload.data);
+  },
+});
+```
+
+This is the standard function so you can use it as you would in any other JavaScript or TypeScript code. Logs from any functions/packages will also be shown.
+
+## Tracing and spans
+
+Tracing is a way to follow the flow of your code. It's very useful for debugging and understanding how your code is working, especially with long-running or complex tasks.
+
+Trigger.dev uses OpenTelemetry tracing under the hood. With automatic tracing for many things like task triggering, task attempts, HTTP requests, and more.
+
+### Automatic instrumentation
+
+| Name          | Description                      |
+| ------------- | -------------------------------- |
+| Task triggers | Task triggers.                   |
+| Task attempts | Task attempts.                   |
+| HTTP requests | HTTP requests made by your code. |
+| OpenAI        | OpenAI SDK calls.                |
+
+[Request an automatic instrumentation](https://github.com/triggerdotdev/trigger.dev/issues/new?template=instrumentation_request.yml).
 
 ## Add custom traces
 
-<Snippet file="incomplete-docs.mdx" />
+If you want to add custom traces to your code, you can use the `logger.trace` function. It will create a new OTEL trace and you can set attributes on it.
+
+```ts
+import { logger, task } from "@trigger.dev/sdk/v3";
+
+export const customTrace = task({
+  id: "custom-trace",
+  run: async (payload) => {
+    //you can wrap code in a trace, and set attributes
+    const user = await logger.trace("fetch-user", async (span) => {
+      span.setAttribute("user.id", "1");
+
+      //...do stuff
+
+      //you can return a value
+      return {
+        id: "1",
+        name: "John Doe",
+        fetchedAt: new Date(),
+      };
+    });
+
+    const usersName = user.name;
+  },
+});
+```

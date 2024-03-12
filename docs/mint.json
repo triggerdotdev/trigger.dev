@@ -471,7 +471,7 @@
     {
       "group": "Writing tasks",
       "pages": [
-        "v3/writing-tasks-overview",
+        "v3/writing-tasks-introduction",
         "v3/logging",
         "v3/errors",
         "v3/retrying",
