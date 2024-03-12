@@ -334,7 +334,6 @@ function TasksTreeView({
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleExpandNode(node.id);
-                        selectNode(node.id);
                         scrollToNode(node.id);
                       }}
                     >
