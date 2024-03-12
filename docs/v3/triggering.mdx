@@ -1,40 +1,186 @@
 ---
 title: "Triggering"
-description: "Tasks can be triggered in a few different ways."
+description: "Tasks need to be triggered to run."
 ---
 
-| Function                     | What it does                                                                                                                       |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `task.triggerAndWait()`      | Triggers a task and then waits until it's complete. You get the result data to continue with.                                      |
-| `task.batchTriggerAndWait()` | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. |
+There are currently four ways you can trigger any task from your own code:
 
-You can trigger tasks from other tasks, including being able to wait for the result of the triggered task. This is a powerful way to build complex workflows.
+| Function                         | Where does this work? | What it does                                                                                                                       |
+| -------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `yourTask.trigger()`             | Anywhere              | Triggers a task and gets a handle you can use to monitor and manage the run. It does not wait for the result.                      |
+| `yourTask.batchTriggerAndWait()` | Anywhere              | Triggers a task multiple times and gets a handle you can use to monitor and manage the runs. It does not wait for the results.     |
+| `yourTask.triggerAndWait()`      | Inside a task         | Triggers a task and then waits until it's complete. You get the result data to continue with.                                      |
+| `yourTask.batchTriggerAndWait()` | Inside a task         | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. |
 
-```ts
-import { task } from "@trigger.dev/sdk/v3";
+Additionally, [scheduled tasks](/v3/tasks-scheduled) get automatically triggered on their schedule and [webhooks](/v3/tasks-webhooks) when receiving a webhook.
 
-export const helloWorld = task({
-  id: "hello-world",
-  run: async (payload: { message: string }) => {
-    console.log("Hello world task is running with payload", payload);
+## From outside of a task
 
-    return { message: "bar" };
-  },
-});
+You can trigger any task from your backend code, using either `trigger()` or `batchTrigger()`.
 
-export const triggerHelloWorld = task({
-  id: "trigger-hello-world",
-  run: async (payload, { ctx }) => {
-    //Trigger the helloWorld task
-    const result = await helloWorld.triggerAndWait({ payload: { message: "foo" } });
+<Note>
+  Do not trigger tasks directly from your frontend. If you do, you will leak your private
+  Trigger.dev API key to the world.
+</Note>
 
-    //Will log out "Bar"
-    console.log(result.message);
+### trigger()
 
-    //Return the result of the helloWorld task
-    return result;
+Triggers a single run of a task with the payload you pass in, and any options you specify. It does NOT wait for the result, you cannot do that from outside a task.
+
+<CodeGroup>
+
+```ts Next.js API route
+import { emailSequence } from "~/trigger/emails";
+
+//app/email/route.ts
+export async function POST(request: Request) {
+  //get the JSON from the request
+  const data = await request.json();
+
+  //trigger your task
+  const handle = await emailSequence.trigger({ payload: { to: data.email, name: data.name } });
+
+  //return a success response with the handle
+  return Response.json(handle);
+}
+```
+
+```ts Remix
+import { emailSequence } from "~/trigger/emails";
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  if (request.method.toUpperCase() !== "POST") {
+    return json("Method Not Allowed", { status: 405 });
+  }
+
+  //get the JSON from the request
+  const data = await request.json();
+
+  //trigger your task
+  const handle = await emailSequence.trigger({ payload: { to: data.email, name: data.name } });
+
+  //return a success response with the handle
+  return json(handle);
+}
+```
+
+</CodeGroup>
+
+### batchTrigger()
+
+Triggers multiples runs of a task with the payloads you pass in, and any options you specify. It does NOT wait for the results, you cannot do that from outside a task.
+
+<CodeGroup>
+
+```ts Next.js API route
+import { emailSequence } from "~/trigger/emails";
+
+//app/email/route.ts
+export async function POST(request: Request) {
+  //get the JSON from the request
+  const data = await request.json();
+
+  //batch trigger your task
+  const batchHandle = await emailSequence.batchTrigger({
+    items: data.users.map((u) => ({ payload: { to: u.email, name: u.name } })),
+  });
+
+  //return a success response with the handle
+  return Response.json(batchHandle);
+}
+```
+
+```ts Remix
+import { emailSequence } from "~/trigger/emails";
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  if (request.method.toUpperCase() !== "POST") {
+    return json("Method Not Allowed", { status: 405 });
+  }
+
+  //get the JSON from the request
+  const data = await request.json();
+
+  //batch trigger your task
+  const batchHandle = await emailSequence.batchTrigger({
+    items: data.users.map((u) => ({ payload: { to: u.email, name: u.name } })),
+  });
+
+  //return a success response with the handle
+  return json(batchHandle);
+}
+```
+
+</CodeGroup>
+
+## From inside a task
+
+You can trigger tasks from other tasks using `trigger()` or `batchTrigger()`. You can also trigger and wait for the result of triggered tasks using `triggerAndWait()` and `batchTriggerAndWait()`. This is a powerful way to build complex tasks.
+
+### trigger()
+
+This works the same as from outside a task. You call it and you get a handle back, but it does not wait for the result.
+
+```ts /trigger/my-task.ts
+import { myOtherTask } from "~/trigger/my-other-task";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: string) => {
+    const handle = await myOtherTask.trigger({ payload: "some data" });
+
+    //...do other stuff
   },
 });
 ```
 
-<Snippet file="incomplete-docs.mdx" />
+### batchTrigger()
+
+This works the same as from outside a task. You call it and you get a handle back, but it does not wait for the results.
+
+```ts /trigger/my-task.ts
+import { myOtherTask } from "~/trigger/my-other-task";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: string) => {
+    const batchHandle = await myOtherTask.batchTrigger({ items: [{ payload: "some data" }] });
+
+    //...do other stuff
+  },
+});
+```
+
+### triggerAndWait()
+
+This is where it gets interesting. You can trigger a task and then wait for the result. This is useful when you need to call a different task and then use the result to continue with your task.
+
+```ts /trigger/parent.ts
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload: string) => {
+    const result = await batchChildTask.triggerAndWait({ payload: "some-data" });
+    console.log("Result", result);
+
+    //...do stuff with the result
+  },
+});
+```
+
+### batchTriggerAndWait()
+
+You can batch trigger a task and wait for all the results. This is useful for the fan-out pattern, where you need to call a task multiple times and then wait for all the results to continue with your task.
+
+```ts /trigger/nested.ts
+export const batchParentTask = task({
+  id: "parent-task",
+  run: async (payload: string) => {
+    const results = await childTask.batchTriggerAndWait({
+      items: [{ payload: "item4" }, { payload: "item5" }, { payload: "item6" }],
+    });
+    console.log("Results", results);
+
+    //...do stuff with the result
+  },
+});
+```
