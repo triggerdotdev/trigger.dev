@@ -1,6 +1,48 @@
 ---
 title: "CLI dev command"
-description: "The `trigger.dev dev` command is used locally."
+description: "The `trigger.dev dev` command is used to run your tasks locally."
 ---
 
-<Snippet file="incomplete-docs.mdx" />
+This runs a server on your machine that can execute Trigger.dev tasks:
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@latest dev
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@latest dev
+```
+
+```bash yarn
+yarn dlx trigger.dev@latest dev
+```
+
+</CodeGroup>
+
+You will see in the terminal that the server is running and listening for requests. When you run a task, you will see it in the terminal along with a link to view it in the dashboard.
+
+It is worth noting that each task runs in a separate Node process. This means that if you have a long-running task, it will not block other tasks from running.
+
+## Debugger
+
+You can use the `--debugger` flag to run the server in debug mode. This will allow you to attach a debugger to the server and debug your tasks.
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@latest dev --debugger
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@latest dev --debugger
+```
+
+```bash yarn
+yarn dlx trigger.dev@latest dev --debugger
+```
+
+</CodeGroup>
+
+For the full reference of the `dev` command, see the [CLI dev reference](/v3/reference-cli-dev).
