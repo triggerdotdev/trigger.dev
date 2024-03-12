@@ -3,4 +3,22 @@ title: "Local debugger"
 description: "You can attach a local debugger to your tasks, like with normal code."
 ---
 
-<Snippet file="incomplete-docs.mdx" />
+You can use the `--debugger` flag to run the server in debug mode. This will allow you to attach a debugger to the server and debug your tasks.
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@latest dev --debugger
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@latest dev --debugger
+```
+
+```bash yarn
+yarn dlx trigger.dev@latest dev --debugger
+```
+
+</CodeGroup>
+
+For the full reference of the `dev` command, see the [CLI dev reference](/v3/reference-cli-dev).
