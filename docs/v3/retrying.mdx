@@ -3,4 +3,33 @@ title: "Retrying"
 description: "You can configure entire tasks to retry and you can retry smaller parts of a task."
 ---
 
-<Snippet file="incomplete-docs.mdx" />
+## Task attempts and retrying
+
+When an uncaught error is thrown inside your task, that task attempt will fail.
+
+You can configure retrying in two ways:
+
+1. In your [trigger.config file](/v3/reference-trigger-config) you can set the default retrying behavior for all tasks.
+2. On each task you can set the retrying behavior.
+
+<Note>
+  By default when you create your project using the CLI init command we disabled retrying in the DEV
+  environment.
+</Note>
+
+```ts
+export const taskWithRetries = task({
+  id: "task-with-retries",
+  retry: {
+    maxAttempts: 10,
+    factor: 1.8,
+    minTimeoutInMs: 500,
+    maxTimeoutInMs: 30_000,
+    randomize: false,
+  },
+  run: async (payload, context) => {
+    // ...
+    throw new Error(`This task will retry`);
+  },
+});
+```
