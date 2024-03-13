@@ -25,4 +25,24 @@ You will see in the terminal that the server is running and listening for reques
 
 It is worth noting that each task runs in a separate Node process. This means that if you have a long-running task, it will not block other tasks from running.
 
-You can [attach a local debugger](/v3/local-debugger) using the dev command.
+## Options
+
+### Attaching a local debugger
+
+You can use the `--debugger` flag to run the server in debug mode. This will allow you to attach a debugger to the server and debug your tasks.
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@latest dev --debugger
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@latest dev --debugger
+```
+
+```bash yarn
+yarn dlx trigger.dev@latest dev --debugger
+```
+
+</CodeGroup>
