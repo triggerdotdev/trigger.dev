@@ -47,7 +47,10 @@ export class SharedSocketConnection {
       },
     });
 
-    this._sharedConsumer = new SharedQueueConsumer(this._sender);
+    this._sharedConsumer = new SharedQueueConsumer(this._sender, {
+      interval: 100,
+      nextTickInterval: 1000,
+    });
 
     socket.on("disconnect", this.#handleClose.bind(this));
     socket.on("error", this.#handleError.bind(this));

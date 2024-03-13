@@ -52,7 +52,7 @@ export default function Page() {
         <div className={cn("grid h-full max-h-full grid-cols-1")}>
           <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
             <ResizablePanel order={1} minSize={20} defaultSize={30}>
-              <div className="flex flex-col px-3">
+              <div className="flex h-full max-h-full flex-col overflow-hidden px-3">
                 {tasks.length === 0 ? (
                   <NoTaskInstructions />
                 ) : (
@@ -81,7 +81,7 @@ function TaskSelector({ tasks }: { tasks: TaskListItem[] }) {
   const project = useProject();
 
   return (
-    <div className="flex flex-col divide-y divide-charcoal-800">
+    <div className="flex flex-col divide-y divide-charcoal-800 overflow-y-auto">
       {tasks.map((t) => (
         <NavLink key={t.id} to={v3TestTaskPath(organization, project, t)}>
           {({ isActive, isPending }) => (

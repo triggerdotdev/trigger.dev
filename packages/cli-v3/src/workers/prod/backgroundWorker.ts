@@ -36,6 +36,14 @@ class CleanupProcessError extends Error {
   }
 }
 
+class CancelledProcessError extends Error {
+  constructor() {
+    super("Cancelled");
+
+    this.name = "CancelledProcessError";
+  }
+}
+
 type BackgroundWorkerParams = {
   env: Record<string, string>;
   projectConfig: Config;
@@ -58,7 +66,7 @@ export class ProdBackgroundWorker {
 
   public tasks: Array<TaskMetadataWithFilePath> = [];
 
-  _taskRunProcesses: Map<string, TaskRunProcess> = new Map();
+  _taskRunProcess: TaskRunProcess | undefined;
 
   private _closed: boolean = false;
 
@@ -77,9 +85,7 @@ export class ProdBackgroundWorker {
     this.onTaskHeartbeat.detach();
 
     // We need to close all the task run processes
-    for (const taskRunProcess of this._taskRunProcesses.values()) {
-      taskRunProcess.cleanup(true);
-    }
+    this._taskRunProcess?.cleanup(true);
 
     // Delete worker files
     this._onClose.post();
@@ -173,14 +179,11 @@ export class ProdBackgroundWorker {
     completion: TaskRunExecutionResult,
     execution: TaskRunExecution
   ) {
-    for (const taskRunProcess of this._taskRunProcesses.values()) {
-      taskRunProcess.taskRunCompletedNotification(completion, execution);
-    }
+    this._taskRunProcess?.taskRunCompletedNotification(completion, execution);
   }
+
   async waitCompletedNotification() {
-    for (const taskRunProcess of this._taskRunProcesses.values()) {
-      taskRunProcess.waitCompletedNotification();
-    }
+    this._taskRunProcess?.waitCompletedNotification();
   }
 
   async #initializeTaskRunProcess(payload: ProdTaskRunExecutionPayload): Promise<TaskRunProcess> {
@@ -189,47 +192,45 @@ export class ProdBackgroundWorker {
       payload.execution.worker.version
     );
 
-    if (!this._taskRunProcesses.has(payload.execution.run.id)) {
-      const taskRunProcess = new TaskRunProcess(
-        this.path,
-        {
-          ...this.params.env,
-          ...(payload.environment ?? {}),
-        },
-        metadata,
-        this.params
-      );
+    const taskRunProcess = new TaskRunProcess(
+      this.path,
+      {
+        ...this.params.env,
+        ...(payload.environment ?? {}),
+      },
+      metadata,
+      this.params
+    );
 
-      taskRunProcess.onExit.attach(() => {
-        this._taskRunProcesses.delete(payload.execution.run.id);
-      });
+    this._taskRunProcess = taskRunProcess;
 
-      taskRunProcess.onTaskHeartbeat.attach((id) => {
-        this.onTaskHeartbeat.post(id);
-      });
+    taskRunProcess.onExit.attach(() => {
+      this._taskRunProcess = undefined;
+    });
 
-      taskRunProcess.onWaitForBatch.attach((message) => {
-        this.onWaitForBatch.post(message);
-      });
+    taskRunProcess.onTaskHeartbeat.attach((id) => {
+      this.onTaskHeartbeat.post(id);
+    });
 
-      taskRunProcess.onWaitForDuration.attach((message) => {
-        this.onWaitForDuration.post(message);
-      });
+    taskRunProcess.onWaitForBatch.attach((message) => {
+      this.onWaitForBatch.post(message);
+    });
 
-      taskRunProcess.onWaitForTask.attach((message) => {
-        this.onWaitForTask.post(message);
-      });
+    taskRunProcess.onWaitForDuration.attach((message) => {
+      this.onWaitForDuration.post(message);
+    });
 
-      this.preCheckpointNotification.attach((message) => {
-        taskRunProcess.preCheckpointNotification.post(message);
-      });
+    taskRunProcess.onWaitForTask.attach((message) => {
+      this.onWaitForTask.post(message);
+    });
 
-      await taskRunProcess.initialize();
+    this.preCheckpointNotification.attach((message) => {
+      taskRunProcess.preCheckpointNotification.post(message);
+    });
 
-      this._taskRunProcesses.set(payload.execution.run.id, taskRunProcess);
-    }
+    await taskRunProcess.initialize();
 
-    return this._taskRunProcesses.get(payload.execution.run.id) as TaskRunProcess;
+    return taskRunProcess;
   }
 
   // We need to fork the process before we can execute any tasks
@@ -259,6 +260,18 @@ export class ProdBackgroundWorker {
 
       return result;
     } catch (e) {
+      if (e instanceof CancelledProcessError) {
+        return {
+          id: payload.execution.attempt.id,
+          ok: false,
+          retry: undefined,
+          error: {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.TASK_RUN_CANCELLED,
+          },
+        };
+      }
+
       if (e instanceof CleanupProcessError) {
         return {
           id: payload.execution.attempt.id,
@@ -295,6 +308,10 @@ export class ProdBackgroundWorker {
     }
   }
 
+  async cancelAttempt(attemptId: string) {
+    await this._taskRunProcess?.cancel();
+  }
+
   async #correctError(
     error: TaskRunBuiltInError,
     execution: TaskRunExecution
@@ -320,6 +337,7 @@ class TaskRunProcess {
   private _attemptStatuses: Map<string, "PENDING" | "REJECTED" | "RESOLVED"> = new Map();
   private _currentExecution: TaskRunExecution | undefined;
   private _isBeingKilled: boolean = false;
+  private _isBeingCancelled: boolean = false;
 
   public onTaskHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<number> = new Evt();
@@ -405,6 +423,12 @@ class TaskRunProcess {
     this._child.stderr?.on("data", this.#handleStdErr.bind(this));
   }
 
+  async cancel() {
+    this._isBeingCancelled = true;
+
+    await this.cleanup(true);
+  }
+
   async cleanup(kill: boolean = false) {
     if (kill && this._isBeingKilled) {
       return;
@@ -484,7 +508,9 @@ class TaskRunProcess {
 
         const { rejecter } = attemptPromise;
 
-        if (this._isBeingKilled) {
+        if (this._isBeingCancelled) {
+          rejecter(new CancelledProcessError());
+        } else if (this._isBeingKilled) {
           rejecter(new CleanupProcessError());
         } else {
           rejecter(new UnexpectedExitError(code));

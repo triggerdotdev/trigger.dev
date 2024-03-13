@@ -51,7 +51,7 @@ export class CreateCheckpointService {
       case "WAIT_FOR_DURATION": {
         await marqs?.replaceMessage(
           attempt.taskRunId,
-          { type: "RESUME_AFTER_DURATION" },
+          { type: "RESUME_AFTER_DURATION", resumableAttemptId: attempt.id },
           Date.now() + params.reason.ms
         );
         break;

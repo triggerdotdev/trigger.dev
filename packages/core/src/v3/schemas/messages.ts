@@ -33,6 +33,11 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     payloads: z.array(TaskRunExecutionPayload),
   }),
   z.object({
+    type: z.literal("CANCEL_ATTEMPT"),
+    taskAttemptId: z.string(),
+    taskRunId: z.string(),
+  }),
+  z.object({
     type: z.literal("SCHEDULE_ATTEMPT"),
     id: z.string(),
     image: z.string(),

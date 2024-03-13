@@ -17,6 +17,7 @@ import { marqs } from "../marqs.server";
 import { CancelAttemptService } from "../services/cancelAttempt.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
 import { attributesFromAuthenticatedEnv } from "../tracer.server";
+import { DevSubscriber, devPubSub } from "./devPubSub.server";
 
 const tracer = trace.getTracer("devQueueConsumer");
 
@@ -36,9 +37,11 @@ export type DevQueueConsumerOptions = {
 
 export class DevQueueConsumer {
   private _backgroundWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
+  private _backgroundWorkerSubscriber: Map<string, DevSubscriber> = new Map();
   private _deprecatedWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
   private _enabled = false;
-  private _options: Required<DevQueueConsumerOptions>;
+  private _maximumItemsPerTrace: number;
+  private _traceTimeoutSeconds: number;
   private _perTraceCountdown: number | undefined;
   private _lastNewTrace: Date | undefined;
   private _currentSpanContext: Context | undefined;
@@ -51,12 +54,10 @@ export class DevQueueConsumer {
   constructor(
     public env: AuthenticatedEnvironment,
     private _sender: ZodMessageSender<typeof serverWebsocketMessages>,
-    options: DevQueueConsumerOptions = {}
+    private _options: DevQueueConsumerOptions = {}
   ) {
-    this._options = {
-      maximumItemsPerTrace: options.maximumItemsPerTrace ?? 1_000, // 1k items per trace
-      traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
-    };
+    this._traceTimeoutSeconds = _options.traceTimeoutSeconds ?? 60;
+    this._maximumItemsPerTrace = _options.maximumItemsPerTrace ?? 1_000;
   }
 
   // This method is called when a background worker is deprecated and will no longer be used unless a run is locked to it
@@ -86,6 +87,21 @@ export class DevQueueConsumer {
     this._backgroundWorkers.set(backgroundWorker.id, backgroundWorker);
 
     logger.debug("Registered background worker", { backgroundWorker: backgroundWorker.id });
+
+    const subscriber = await devPubSub.subscribe(`backgroundWorker:${backgroundWorker.id}:*`);
+
+    subscriber.on("CANCEL_ATTEMPT", async (message) => {
+      await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
+        backgroundWorkerId: backgroundWorker.friendlyId,
+        data: {
+          type: "CANCEL_ATTEMPT",
+          taskAttemptId: message.attemptId,
+          taskRunId: message.taskRunId,
+        },
+      });
+    });
+
+    this._backgroundWorkerSubscriber.set(backgroundWorker.id, subscriber);
 
     // Start reading from the queue if we haven't already
     this.#enable();
@@ -133,6 +149,16 @@ export class DevQueueConsumer {
 
     // We need to cancel all the in progress task run attempts and ack the messages so they will stop processing
     await this.#cancelInProgressAttempts(reason);
+
+    // We need to unsubscribe from the background worker channels
+    for (const [id, subscriber] of this._backgroundWorkerSubscriber) {
+      logger.debug("Unsubscribing from background worker channel", { id });
+
+      await subscriber.stopListening();
+      this._backgroundWorkerSubscriber.delete(id);
+
+      logger.debug("Unsubscribed from background worker channel", { id });
+    }
   }
 
   async #cancelInProgressAttempts(reason: string) {
@@ -143,6 +169,10 @@ export class DevQueueConsumer {
     const inProgressAttempts = new Map(this._inProgressAttempts);
 
     this._inProgressAttempts.clear();
+
+    logger.debug("Cancelling in progress attempts", {
+      attempts: Array.from(inProgressAttempts.keys()),
+    });
 
     for (const [attemptId, messageId] of inProgressAttempts) {
       await this.#cancelInProgressAttempt(attemptId, messageId, service, cancelledAt, reason);
@@ -156,6 +186,8 @@ export class DevQueueConsumer {
     cancelledAt: Date,
     reason: string
   ) {
+    logger.debug("Cancelling in progress attempt", { attemptId, messageId });
+
     try {
       await cancelAttemptService.call(attemptId, messageId, cancelledAt, reason, this.env);
     } catch (e) {
@@ -189,7 +221,7 @@ export class DevQueueConsumer {
     // Check if the trace has expired
     if (
       this._perTraceCountdown === 0 ||
-      Date.now() - this._lastNewTrace!.getTime() > this._options.traceTimeoutSeconds * 1000 ||
+      Date.now() - this._lastNewTrace!.getTime() > this._traceTimeoutSeconds * 1000 ||
       this._currentSpanContext === undefined ||
       this._endSpanInNextIteration
     ) {
@@ -309,6 +341,7 @@ export class DevQueueConsumer {
       data: {
         lockedAt: new Date(),
         lockedById: backgroundTask.id,
+        status: "EXECUTING",
       },
       include: {
         attempts: {
@@ -365,6 +398,7 @@ export class DevQueueConsumer {
         backgroundWorkerTaskId: backgroundTask.id,
         status: "EXECUTING" as const,
         queueId: queue.id,
+        runtimeEnvironmentId: this.env.id,
       },
     });
 
@@ -439,6 +473,11 @@ export class DevQueueConsumer {
           type: "EXECUTE_RUNS",
           payloads: [payload],
         },
+      });
+
+      logger.debug("Saving the in progress attempt", {
+        taskRunAttempt: taskRunAttempt.id,
+        messageId: message.messageId,
       });
 
       this._inProgressAttempts.set(taskRunAttempt.friendlyId, message.messageId);
