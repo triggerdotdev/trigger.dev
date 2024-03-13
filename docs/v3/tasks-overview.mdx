@@ -91,7 +91,19 @@ It's also worth mentioning that you can [retry a block of code](/v3/retrying) in
 
 ### `queue` options
 
-Queues allow you to control the concurrency of your tasks. The simplest use case is to how many runs panne at once.There are more advanced situations where you want to control the concurrency for different sets of your users. For more information read [the queues guide](/v3/queues).
+Queues allow you to control the concurrency of your tasks. The simplest use cases are to have [one-at-a-time](/v3/one-at-a-time) execution or lots of [parallel](/v3/parallelism) executions. There are more advanced situations where you want to [control the concurrency for different sets of your users](/v3/per-tenant). For more information read [the queues guide](/v3/concurrency).
+
+```ts
+export const oneAtATime = task({
+  id: "one-at-a-time",
+  queue: {
+    concurrencyLimit: 1,
+  },
+  run: async ({ payload, ctx }) => {
+    //...
+  },
+});
+```
 
 ### `machine` options
 
