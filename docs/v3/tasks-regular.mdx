@@ -36,7 +36,7 @@ export const emailSequence = task({
     //send the first email immediately
     const firstEmailResult = await retry.onThrow(
       async ({ attempt }) => {
-        const { data, error } = resend.emails.send({
+        const { data, error } = await resend.emails.send({
           from: "hello@trigger.dev",
           to: payload.email,
           subject: "Welcome to Trigger.dev",
@@ -59,7 +59,7 @@ export const emailSequence = task({
     //send the second email
     const secondEmailResult = await retry.onThrow(
       async ({ attempt }) => {
-        const { data, error } = resend.emails.send({
+        const { data, error } = await resend.emails.send({
           from: "hello@trigger.dev",
           to: payload.email,
           subject: "Some tips for you",
