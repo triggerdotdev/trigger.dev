@@ -17,7 +17,7 @@ export type ZodMessageHandlerOptions<TMessageCatalog extends ZodMessageCatalogSc
   messages?: ZodMessageHandlers<TMessageCatalog>;
 };
 
-type MessageFromSchema<
+export type MessageFromSchema<
   K extends keyof TMessageCatalog,
   TMessageCatalog extends ZodMessageCatalogSchema,
 > = {
@@ -25,11 +25,11 @@ type MessageFromSchema<
   payload: z.input<TMessageCatalog[K]>;
 };
 
-type MessageFromCatalog<TMessageCatalog extends ZodMessageCatalogSchema> = {
+export type MessageFromCatalog<TMessageCatalog extends ZodMessageCatalogSchema> = {
   [K in keyof TMessageCatalog]: MessageFromSchema<K, TMessageCatalog>;
 }[keyof TMessageCatalog];
 
-const messageSchema = z.object({
+export const ZodMessageSchema = z.object({
   version: z.literal("v1").default("v1"),
   type: z.string(),
   payload: z.unknown(),
@@ -68,7 +68,7 @@ export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> 
   }
 
   public parseMessage(message: unknown): MessageFromCatalog<TMessageCatalog> {
-    const parsedMessage = messageSchema.safeParse(message);
+    const parsedMessage = ZodMessageSchema.safeParse(message);
 
     if (!parsedMessage.success) {
       throw new Error(`Failed to parse message: ${JSON.stringify(parsedMessage.error)}`);
@@ -160,6 +160,32 @@ export class ZodMessageSender<TMessageCatalog extends ZodMessageCatalogSchema> {
     }
 
     await this.#sender({ type, payload, version: "v1" });
+  }
+
+  public async forwardMessage(message: unknown) {
+    const parsedMessage = ZodMessageSchema.safeParse(message);
+
+    if (!parsedMessage.success) {
+      throw new Error(`Failed to parse message: ${JSON.stringify(parsedMessage.error)}`);
+    }
+
+    const schema = this.#schema[parsedMessage.data.type];
+
+    if (!schema) {
+      throw new Error(`Unknown message type: ${parsedMessage.data.type}`);
+    }
+
+    const parsedPayload = schema.safeParse(parsedMessage.data.payload);
+
+    if (!parsedPayload.success) {
+      throw new Error(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
+    }
+
+    await this.#sender({
+      type: parsedMessage.data.type,
+      payload: parsedPayload.data,
+      version: "v1",
+    });
   }
 }
 

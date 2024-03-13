@@ -10,6 +10,7 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { DevQueueConsumer } from "./marqs/devQueueConsumer.server";
 import type { WebSocket, MessageEvent, CloseEvent, ErrorEvent } from "ws";
+import { env } from "~/env.server";
 
 export class AuthenticatedSocketConnection {
   public id: string;
@@ -26,6 +27,10 @@ export class AuthenticatedSocketConnection {
       schema: serverWebsocketMessages,
       sender: async (message) => {
         return new Promise((resolve, reject) => {
+          if (!ws.OPEN) {
+            return reject(new Error("Websocket is not open"));
+          }
+
           ws.send(JSON.stringify(message), {}, (err) => {
             if (err) {
               reject(err);
@@ -84,6 +89,8 @@ export class AuthenticatedSocketConnection {
   }
 
   async #handleClose(ev: CloseEvent) {
+    logger.debug("[AuthenticatedSocketConnection] Websocket closed", { ev });
+
     await this._consumer.stop();
 
     this.onClose.post(ev);

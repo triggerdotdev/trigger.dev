@@ -23,16 +23,13 @@ export class ResumeBatchRunService extends BaseService {
       include: {
         dependentTaskAttempt: {
           include: {
-            taskRun: {
+            runtimeEnvironment: {
               include: {
-                runtimeEnvironment: {
-                  include: {
-                    project: true,
-                    organization: true,
-                  },
-                },
+                project: true,
+                organization: true,
               },
             },
+            taskRun: true,
           },
         },
         items: true,
@@ -55,7 +52,7 @@ export class ResumeBatchRunService extends BaseService {
     // We need to update the batchRun status so we don't resume it again
 
     // This batch has a dependent attempt and just finalized, we should resume that attempt
-    const environment = batchRun.dependentTaskAttempt.taskRun.runtimeEnvironment;
+    const environment = batchRun.dependentTaskAttempt.runtimeEnvironment;
 
     // If we are in development, we don't need to resume the dependent task (that will happen automatically)
     if (environment.type === "DEVELOPMENT") {

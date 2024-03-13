@@ -17,6 +17,7 @@ import { eventRepository } from "../eventRepository.server";
 import { marqs } from "../marqs.server";
 import { BaseService } from "./baseService.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
+import { CancelAttemptService } from "./cancelAttempt.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -99,6 +100,22 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt: NonNullable<FoundAttempt>,
     env?: AuthenticatedEnvironment
   ) {
+    if (
+      completion.error.type === "INTERNAL_ERROR" &&
+      completion.error.code === "TASK_RUN_CANCELLED"
+    ) {
+      // We need to cancel the task run instead of fail it
+      const cancelService = new CancelAttemptService();
+
+      return await cancelService.call(
+        taskRunAttempt.friendlyId,
+        taskRunAttempt.taskRunId,
+        new Date(),
+        "Cancelled by user",
+        env
+      );
+    }
+
     await this._prisma.taskRunAttempt.update({
       where: { friendlyId: completion.id },
       data: {

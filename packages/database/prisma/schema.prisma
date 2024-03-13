@@ -393,6 +393,7 @@ model RuntimeEnvironment {
   checkpoints                Checkpoint[]
   workerDeployments          WorkerDeployment[]
   workerDeploymentPromotions WorkerDeploymentPromotion[]
+  taskRunAttempts            TaskRunAttempt[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -1694,6 +1695,9 @@ model TaskRunAttempt {
   backgroundWorkerTask   BackgroundWorkerTask @relation(fields: [backgroundWorkerTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   backgroundWorkerTaskId String
 
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
   queue   TaskQueue @relation(fields: [queueId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   queueId String
 
@@ -1712,8 +1716,8 @@ model TaskRunAttempt {
   taskRunDependency      TaskRunDependency? @relation("dependentAttempt")
   batchTaskRunDependency BatchTaskRun?
 
-  checkpoints      Checkpoint[]
-  BatchTaskRunItem BatchTaskRunItem[]
+  checkpoints       Checkpoint[]
+  batchTaskRunItems BatchTaskRunItem[]
 
   @@unique([taskRunId, number])
 }

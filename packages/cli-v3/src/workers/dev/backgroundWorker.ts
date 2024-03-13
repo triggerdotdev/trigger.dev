@@ -108,9 +108,23 @@ export class BackgroundWorkerCoordinator {
   }
 
   async handleMessage(id: string, message: BackgroundWorkerServerMessages) {
+    logger.debug(`Received message from worker ${id}`, { workerMessage: message });
+
     switch (message.type) {
       case "EXECUTE_RUNS": {
         await Promise.all(message.payloads.map((payload) => this.#executeTaskRun(id, payload)));
+        break;
+      }
+      case "CANCEL_ATTEMPT": {
+        // Need to cancel the attempt somehow here
+        const worker = this._backgroundWorkers.get(id);
+
+        if (!worker) {
+          logger.error(`Could not find worker ${id}`);
+          return;
+        }
+
+        await worker.cancelRun(message.taskRunId);
       }
     }
   }
@@ -158,7 +172,8 @@ export class BackgroundWorkerCoordinator {
 
     const resultText = !completion.ok
       ? completion.error.type === "INTERNAL_ERROR" &&
-        completion.error.code === TaskRunErrorCodes.TASK_EXECUTION_ABORTED
+        (completion.error.code === TaskRunErrorCodes.TASK_EXECUTION_ABORTED ||
+          completion.error.code === TaskRunErrorCodes.TASK_RUN_CANCELLED)
         ? chalk.yellow("cancelled")
         : chalk.red(`error${retryingText}`)
       : chalk.green("success");
@@ -211,6 +226,14 @@ class CleanupProcessError extends Error {
     super("Cancelled");
 
     this.name = "CleanupProcessError";
+  }
+}
+
+class CancelledProcessError extends Error {
+  constructor() {
+    super("Cancelled");
+
+    this.name = "CancelledProcessError";
   }
 }
 
@@ -367,6 +390,16 @@ export class BackgroundWorker {
     return this._taskRunProcesses.get(payload.execution.run.id) as TaskRunProcess;
   }
 
+  async cancelRun(taskRunId: string) {
+    const taskRunProcess = this._taskRunProcesses.get(taskRunId);
+
+    if (!taskRunProcess) {
+      return;
+    }
+
+    await taskRunProcess.cancel();
+  }
+
   // We need to fork the process before we can execute any tasks
   async executeTaskRun(payload: TaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
     try {
@@ -393,6 +426,18 @@ export class BackgroundWorker {
 
       return result;
     } catch (e) {
+      if (e instanceof CancelledProcessError) {
+        return {
+          id: payload.execution.attempt.id,
+          ok: false,
+          retry: undefined,
+          error: {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.TASK_RUN_CANCELLED,
+          },
+        };
+      }
+
       if (e instanceof CleanupProcessError) {
         return {
           id: payload.execution.attempt.id,
@@ -464,6 +509,7 @@ class TaskRunProcess {
   private _attemptStatuses: Map<string, "PENDING" | "REJECTED" | "RESOLVED"> = new Map();
   private _currentExecution: TaskRunExecution | undefined;
   private _isBeingKilled: boolean = false;
+  private _isBeingCancelled: boolean = false;
   public onTaskHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<number> = new Evt();
 
@@ -481,6 +527,12 @@ class TaskRunProcess {
         }
       },
     });
+  }
+
+  async cancel() {
+    this._isBeingCancelled = true;
+
+    await this.cleanup(true);
   }
 
   async initialize() {
@@ -617,7 +669,9 @@ class TaskRunProcess {
 
         const { rejecter } = attemptPromise;
 
-        if (this._isBeingKilled) {
+        if (this._isBeingCancelled) {
+          rejecter(new CancelledProcessError());
+        } else if (this._isBeingKilled) {
           rejecter(new CleanupProcessError());
         } else {
           rejecter(new UnexpectedExitError(code));

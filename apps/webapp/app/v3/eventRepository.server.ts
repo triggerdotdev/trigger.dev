@@ -44,6 +44,7 @@ export type TraceAttributes = Partial<
     CreatableEvent,
     | "attemptId"
     | "isError"
+    | "isCancelled"
     | "runId"
     | "runIsTest"
     | "output"

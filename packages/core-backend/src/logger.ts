@@ -37,6 +37,16 @@ export class Logger {
     this.#additionalFields = additionalFields ?? (() => ({}));
   }
 
+  child(fields: Record<string, unknown>) {
+    return new Logger(
+      this.#name,
+      logLevels[this.#level],
+      this.#filteredKeys,
+      this.#jsonReplacer,
+      () => ({ ...this.#additionalFields(), ...fields })
+    );
+  }
+
   // Return a new Logger instance with the same name and a new log level
   // but filter out the keys from the log messages (at any level)
   filter(...keys: string[]) {
