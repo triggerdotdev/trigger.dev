@@ -78,4 +78,104 @@ export const task2 = task({
 });
 ```
 
-## Per-tenant queuing
+## Setting the concurrency when you trigger a run
+
+When you trigger a task you can override the concurrency limit. This is really useful if you sometimes have high priority runs.
+
+The task:
+
+```ts /trigger/override-concurrency.ts
+const generatePullRequest = task({
+  id: "generate-pull-request",
+  queue: {
+    //normally when triggering this task it will be limited to 1 run at a time
+    concurrencyLimit: 1,
+  },
+  run: async (payload) => {
+    //todo generate a PR using OpenAI
+  },
+});
+```
+
+Triggering from your backend and overriding the concurrency:
+
+```ts app/api/push/route.ts
+import { generatePullRequest } from "~/trigger/override-concurrency";
+
+export async function POST(request: Request) {
+  const data = await request.json();
+
+  if (data.branch === "main") {
+    //trigger the task, with a different queue
+    const handle = await generatePullRequest.trigger({
+      payload: data,
+      options: {
+        queue: {
+          //the "main-branch" queue will have a concurrency limit of 10
+          //this triggered run will use that queue
+          name: "main-branch",
+          concurrencyLimit: 10,
+        },
+      },
+    });
+
+    return Response.json(handle);
+  } else {
+    //triggered with the default (concurrency of 1)
+    const handle = await generatePullRequest.trigger({
+      payload: data,
+    });
+    return Response.json(handle);
+  }
+}
+```
+
+## Concurrency keys and per-tenant queuing
+
+If you're building an application where you want to run tasks for your users, you might want a separate queue for each of your users. (It doesn't have to be users, it can be any entity you want to separately limit the concurrency for.)
+
+You can do this by using `concurrencyKey`. It creates a separate queue for each value of the key.
+
+Your backend code:
+
+```ts app/api/pr/route.ts
+import { generatePullRequest } from "~/trigger/override-concurrency";
+
+export async function POST(request: Request) {
+  const data = await request.json();
+
+  if (data.isFreeUser) {
+    //free users can only have 1 PR generated at a time
+    const handle = await generatePullRequest.trigger({
+      payload: data,
+      options: {
+        queue: {
+          //every free user gets a queue with a concurrency limit of 1
+          name: "free-users",
+          concurrencyLimit: 1,
+          concurrencyKey: data.userId,
+        },
+      },
+    });
+
+    //return a success response with the handle
+    return Response.json(handle);
+  } else {
+    //trigger the task, with a different queue
+    const handle = await generatePullRequest.trigger({
+      payload: data,
+      options: {
+        queue: {
+          //every paid user gets a queue with a concurrency limit of 10
+          name: "paid-users",
+          concurrencyLimit: 10,
+          concurrencyKey: data.userId,
+        },
+      },
+    });
+
+    //return a success response with the handle
+    return Response.json(handle);
+  }
+}
+```
