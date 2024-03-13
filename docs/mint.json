@@ -485,11 +485,7 @@
             "v3/wait-for-request"
           ]
         },
-        "v3/environment-variables",
-        {
-          "group": "Queues",
-          "pages": ["v3/concurrency", "v3/one-at-a-time", "v3/parallelism", "v3/per-tenant"]
-        },
+        "v3/queue-concurrency",
         {
           "group": "Testing",
           "pages": ["v3/run-tests", "v3/automated-tests"]

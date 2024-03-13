@@ -69,7 +69,7 @@ A task is retried if an error is thrown, by default we retry 3 times.
 
 You can set the number of retries and the delay between retries in the `retry` field:
 
-```ts
+```ts /trigger/retry.ts
 export const taskWithRetries = task({
   id: "task-with-retries",
   retry: {
@@ -91,9 +91,9 @@ It's also worth mentioning that you can [retry a block of code](/v3/retrying) in
 
 ### `queue` options
 
-Queues allow you to control the concurrency of your tasks. The simplest use cases are to have [one-at-a-time](/v3/one-at-a-time) execution or lots of [parallel](/v3/parallelism) executions. There are more advanced situations where you want to [control the concurrency for different sets of your users](/v3/per-tenant). For more information read [the queues guide](/v3/concurrency).
+Queues allow you to control the concurrency of your tasks. This allows you to have one-at-a-time execution and parallel executions. There are also more advanced techniques like having different concurrencies for different sets of your users. For more information read [the concurrency & queues guide](/v3/queue-concurrency).
 
-```ts
+```ts /trigger/one-at-a-time.ts
 export const oneAtATime = task({
   id: "one-at-a-time",
   queue: {
@@ -109,7 +109,7 @@ export const oneAtATime = task({
 
 Some tasks require more vCPUs or GBs of RAM. You can specify these requirements in the `machine` field. For more information read [the machines guide](/v3/machines).
 
-```ts
+```ts /trigger/heavy-task.ts
 export const heavyTask = task({
   id: "heavy-task",
   machine: {

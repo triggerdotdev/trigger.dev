@@ -1,0 +1,81 @@
+---
+title: "Concurrency & Queues"
+description: "Configure what you want to happen when there is more than one run at a time."
+---
+
+Controlling concurrency is useful when you have a task that can't be run concurrently, or when you want to limit the number of runs to avoid overloading a resource.
+
+## One at a time
+
+This task will only ever have a single run executing at a time. All other runs will be queued until the current run is complete.
+
+```ts /trigger/one-at-a-time.ts
+export const oneAtATime = task({
+  id: "one-at-a-time",
+  queue: {
+    concurrencyLimit: 1,
+  },
+  run: async ({ payload, ctx }) => {
+    //...
+  },
+});
+```
+
+## Parallelism
+
+You can execute lots of tasks at once by combining high concurrency with [batch triggering](/v3/triggering) (or just triggering in a loop).
+
+```ts /trigger/parallelism.ts
+export const parallelism = task({
+  id: "parallelism",
+  queue: {
+    concurrencyLimit: 100,
+  },
+  run: async ({ payload, ctx }) => {
+    //...
+  },
+});
+```
+
+<Warning>
+  Be careful with high concurrency. If you're doing API requests you might hit rate limits. If
+  you're hitting your database you might overload it.
+</Warning>
+
+<Note>
+  Your organization has a maximum concurrency limit which depends on your plan. If you're a paying
+  customer you can request a higher limit by [contacting us](https://www.trigger.dev/contact).
+</Note>
+
+## Defining a queue
+
+As well as putting queue settings directly on a task, you can define a queue and reuse it across multiple tasks. This allows you to share the same concurrency limit:
+
+```ts /trigger/queue.ts
+const myQueue = queue({
+  name: "my-queue",
+  concurrencyLimit: 1,
+});
+
+export const task1 = task({
+  id: "task-1",
+  queue: {
+    name: "my-queue",
+  },
+  run: async (payload: { message: string }) => {
+    // ...
+  },
+});
+
+export const task2 = task({
+  id: "task-2",
+  queue: {
+    name: "my-queue",
+  },
+  run: async (payload: { message: string }) => {
+    // ...
+  },
+});
+```
+
+## Per-tenant queuing
