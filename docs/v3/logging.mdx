@@ -10,23 +10,27 @@ The [run log](/v3/dashboard-runs) shows you exactly what happened in every run o
 
 ## Logs
 
-You can use `console.log()`, `console.error()`, etc as normal and they will be shown in your run log.
+You can use `console.log()`, `console.error()`, etc as normal and they will be shown in your run log. This is the standard function so you can use it as you would in any other JavaScript or TypeScript code. Logs from any functions/packages will also be shown.
+
+### logger
+
+We recommend that you use our `logger` object which creates structured logs. Structured logs will make it easier for you to search the logs to quickly find runs.
 
 ```ts /trigger/logging.ts
-import { task } from "@trigger.dev/sdk/v3";
+import { task, logger } from "@trigger.dev/sdk/v3";
 
 export const loggingExample = task({
   id: "logging-example",
   run: async (payload: { data: Record<string, string> }) => {
-    console.log("Log message", payload.data, [1, 2, 3]);
-    console.warn("You've been warned", payload.data);
-    console.error("Error message", payload.data);
-    console.info("Info message", payload.data);
+    //the first parameter is the message, the second parameter must be a key-value object (Record<string, unknown>)
+    logger.debug("Debug message", payload.data);
+    logger.log("Log message", payload.data);
+    logger.info("Info message", payload.data);
+    logger.warn("You've been warned", payload.data);
+    logger.error("Error message", payload.data);
   },
 });
 ```
-
-This is the standard function so you can use it as you would in any other JavaScript or TypeScript code. Logs from any functions/packages will also be shown.
 
 ## Tracing and spans
 
@@ -43,7 +47,7 @@ Trigger.dev uses OpenTelemetry tracing under the hood. With automatic tracing fo
 | HTTP requests | HTTP requests made by your code. |
 | OpenAI        | OpenAI SDK calls.                |
 
-[Request an automatic instrumentation](https://github.com/triggerdotdev/trigger.dev/issues/new?template=instrumentation_request.yml).
+We want to provide automatic instrumentation for as many things as possible. Please do [request any automatic instrumentation](https://github.com/triggerdotdev/trigger.dev/issues/new?template=instrumentation_request.yml) you would like to see.
 
 ## Add custom traces
 
