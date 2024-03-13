@@ -10,14 +10,14 @@ const variants = {
   base: "text-base",
 };
 
+export type InlineCodeVariant = keyof typeof variants;
+
 type InlineCodeProps = {
   children: React.ReactNode;
+  variant?: InlineCodeVariant;
+  className?: string;
 };
 
-type VariantProps = InlineCodeProps & {
-  variant?: keyof typeof variants;
-};
-
-export function InlineCode({ variant = "small", children }: VariantProps) {
-  return <code className={cn(inlineCode, variants[variant])}>{children}</code>;
+export function InlineCode({ variant = "small", children, className }: InlineCodeProps) {
+  return <code className={cn(inlineCode, variants[variant], className)}>{children}</code>;
 }
