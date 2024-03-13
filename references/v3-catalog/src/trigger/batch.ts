@@ -1,8 +1,8 @@
-import { logger, task, type Context, wait } from "@trigger.dev/sdk/v3";
+import { logger, task, wait } from "@trigger.dev/sdk/v3";
 
 export const batchParentTask = task({
   id: "batch-parent-task",
-  run: async ({ payload, ctx }: { payload: string; ctx: Context }) => {
+  run: async () => {
     const response = await batchChildTask.batchTrigger({
       items: [{ payload: "item1" }, { payload: "item2" }, { payload: "item3" }],
     });
@@ -24,7 +24,7 @@ export const batchParentTask = task({
 
 export const batchChildTask = task({
   id: "batch-child-task",
-  run: async ({ payload, ctx }: { payload: string; ctx: Context }) => {
+  run: async (payload: string, { ctx }) => {
     logger.info("Processing child task", { payload });
 
     await wait.for({ seconds: 1 });

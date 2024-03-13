@@ -25,20 +25,22 @@ import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions } from "../cli/common.js";
-import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
-import { getConfigPath, readConfig } from "../utilities/configFiles";
+import { readConfig } from "../utilities/configFiles";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
-import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 import { UncaughtExceptionError } from "../workers/common/errors";
+import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
 
 let apiClient: CliApiClient | undefined;
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugger: z.boolean().default(false),
   debugOtel: z.boolean().default(false),
+  config: z.string().optional(),
+  projectRef: z.string().optional(),
 });
 
 type DevCommandOptions = z.infer<typeof DevCommandOptions>;
@@ -52,6 +54,15 @@ export function configureDevCommand(program: Command) {
       "-l, --log-level <level>",
       "The log level to use (debug, info, log, warn, error, none)",
       "log"
+    )
+    .option(
+      "-c, --config <config file>",
+      "The name of the config file, found at [path]",
+      "trigger.config.mjs"
+    )
+    .option(
+      "-p, --project-ref <project ref>",
+      "The project ref. Required if there is no config file."
     )
     .option("--debugger", "Enable the debugger")
     .option("--debug-otel", "Enable OpenTelemetry debugging")
@@ -111,17 +122,29 @@ async function startDev(
 
     await printStandloneInitialBanner(true);
 
-    const configPath = await getConfigPath(dir);
-    let config = await readConfig(configPath);
-
-    watcher = watch(configPath, {
-      persistent: true,
-    }).on("change", async (_event) => {
-      config = await readConfig(configPath);
-      logger.log(`${basename(configPath)} changed...`);
-      logger.debug("New config", { config });
-      rerender(await getDevReactElement(config, authorization));
+    let config = await readConfig(dir, {
+      projectRef: options.projectRef,
+      configFile: options.config,
     });
+
+    logger.debug("Initial config", { config });
+
+    if (config.status === "file") {
+      watcher = watch(config.path, {
+        persistent: true,
+      }).on("change", async (_event) => {
+        config = await readConfig(dir, { configFile: options.config });
+
+        if (config.status === "file") {
+          logger.log(`${basename(config.path)} changed...`);
+          logger.debug("New config", { config: config.config });
+          rerender(await getDevReactElement(config.config, authorization));
+        } else {
+          logger.debug("New config", { config: config.config });
+          rerender(await getDevReactElement(config.config, authorization));
+        }
+      });
+    }
 
     async function getDevReactElement(
       configParam: ResolvedConfig,
@@ -132,7 +155,10 @@ async function startDev(
 
       apiClient = new CliApiClient(apiUrl, accessToken);
 
-      const devEnv = await apiClient.getProjectEnv({ projectRef: config.project, env: "dev" });
+      const devEnv = await apiClient.getProjectEnv({
+        projectRef: config.config.project,
+        env: "dev",
+      });
 
       if (!devEnv.success) {
         throw new Error(devEnv.error);
@@ -153,7 +179,7 @@ async function startDev(
       );
     }
 
-    const devReactElement = render(await getDevReactElement(config, authorization));
+    const devReactElement = render(await getDevReactElement(config.config, authorization));
 
     rerender = devReactElement.rerender;
 
@@ -305,7 +331,7 @@ function useDev({
       );
 
       const workerSetupPath = new URL(
-        importResolve("./workers/common/worker-setup.js", import.meta.url)
+        importResolve("./workers/dev/worker-setup.js", import.meta.url)
       ).href.replace("file://", "");
 
       const entryPointContents = workerFacade
@@ -335,6 +361,7 @@ function useDev({
         outdir: "out",
         define: {
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
+          __PROJECT_CONFIG__: JSON.stringify(config),
         },
         plugins: [
           {
@@ -409,7 +436,7 @@ function useDev({
                   await environmentClient.getEnvironmentVariables(config.project);
 
                 const backgroundWorker = new BackgroundWorker(fullPath, {
-                  projectDir: config.projectDir,
+                  projectConfig: config,
                   dependencies,
                   env: {
                     TRIGGER_API_URL: apiUrl,

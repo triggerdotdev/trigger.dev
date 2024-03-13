@@ -1,8 +1,8 @@
-import { logger, task, type Context, wait } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk/v3";
 
 export const longRunning = task({
   id: "long-running",
-  run: async ({ payload, ctx }: { payload: { message: string }; ctx: Context }) => {
+  run: async (payload: { message: string }) => {
     logger.info("Long running payloadd", { payload });
 
     // Wait for 3 minutes

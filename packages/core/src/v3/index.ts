@@ -5,6 +5,7 @@ export * from "./apiClient";
 export * from "./zodMessageHandler";
 export * from "./zodNamespace";
 export * from "./zodSocket";
+export * from "./zodIpc";
 export * from "./errors";
 export * from "./runtime-api";
 export * from "./logger-api";

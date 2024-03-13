@@ -1,8 +1,10 @@
-import { type TracingSDK } from "@trigger.dev/core/v3";
+import { Config, type TracingSDK } from "@trigger.dev/core/v3";
 import "source-map-support/register.js";
 
 __WORKER_SETUP__;
 declare const __WORKER_SETUP__: unknown;
+
+declare const __PROJECT_CONFIG__: Config;
 declare const tracingSDK: TracingSDK;
 
 const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
@@ -68,14 +70,22 @@ class TaskExecutor {
   async determineRetrying(
     execution: TaskRunExecution,
     error: unknown
-  ): Promise<TaskRunExecutionRetry | undefined> {
-    if (!this.task.retry) {
+  ): Promise<TaskRunExecutionRetry | "skipped" | undefined> {
+    const retry = this.task.retry ?? __PROJECT_CONFIG__.retries?.default;
+
+    if (!retry) {
       return;
     }
 
-    const retry = this.task.retry;
-
     const delay = calculateNextRetryDelay(retry, execution.attempt.number);
+
+    if (
+      typeof __PROJECT_CONFIG__.retries?.enabledInDev === "boolean" &&
+      !__PROJECT_CONFIG__.retries.enabledInDev
+    ) {
+      // TODO: trigger a warning saying that retries are disabled in dev
+      return "skipped";
+    }
 
     return typeof delay === "undefined" ? undefined : { timestamp: Date.now() + delay, delay };
   }
@@ -154,10 +164,10 @@ class TaskExecutor {
     }
 
     if (!middlewareFn) {
-      return runFn({ payload, ctx });
+      return runFn(payload, { ctx });
     }
 
-    return middlewareFn({ payload, ctx, next: async () => runFn({ payload, ctx, init }) });
+    return middlewareFn(payload, { ctx, next: async () => runFn(payload, { ctx, init }) });
   }
 
   async #callTaskInit(payload: unknown, ctx: TaskRunContext) {
@@ -168,7 +178,7 @@ class TaskExecutor {
     }
 
     return tracer.startActiveSpan("init", async (span) => {
-      return await initFn({ payload, ctx });
+      return await initFn(payload, { ctx });
     });
   }
 
@@ -180,7 +190,7 @@ class TaskExecutor {
     }
 
     return tracer.startActiveSpan("cleanup", async (span) => {
-      return await cleanupFn({ payload, ctx, init });
+      return await cleanupFn(payload, { ctx, init });
     });
   }
 }
@@ -292,13 +302,16 @@ const handler = new ZodMessageHandler({
           },
         });
       } catch (e) {
+        const retryResult = await executor.determineRetrying(execution, e);
+
         return sender.send("TASK_RUN_COMPLETED", {
           execution,
           result: {
             id: execution.attempt.id,
             ok: false,
             error: parseError(e),
-            retry: await executor.determineRetrying(execution, e),
+            retry: typeof retryResult === "object" ? retryResult : undefined,
+            skippedRetrying: retryResult === "skipped",
           },
         });
       } finally {

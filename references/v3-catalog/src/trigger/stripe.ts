@@ -1,4 +1,4 @@
-import { task, type Context } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk/v3";
 
 import { Stripe } from "stripe";
 
@@ -8,7 +8,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 export const stripeTask = task({
   id: "stripe-task",
-  run: async ({ payload, ctx }: { payload: { prompt: string }; ctx: Context }) => {
+  run: async () => {
     // Do a simple stripe query call
     const response = await stripe.customers.list({
       limit: 3,

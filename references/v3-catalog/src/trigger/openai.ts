@@ -1,4 +1,4 @@
-import { logger, task, type Context, wait } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk/v3";
 
 import OpenAI from "openai";
 
@@ -8,7 +8,7 @@ const openai = new OpenAI({
 
 export const openaiTask = task({
   id: "openai-task",
-  run: async ({ payload, ctx }: { payload: { prompt: string }; ctx: Context }) => {
+  run: async (payload: { prompt: string }) => {
     const chatCompletion = await openai.chat.completions.create({
       messages: [{ role: "user", content: payload.prompt }],
       model: "gpt-3.5-turbo",

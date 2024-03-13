@@ -32,6 +32,9 @@ const MessageBody = z.discriminatedUnion("type", [
     type: z.literal("RESUME"),
     completedAttemptIds: z.string().array(),
   }),
+  z.object({
+    type: z.literal("RESUME_AFTER_DURATION"),
+  }),
 ]);
 
 type BackgroundWorkerWithTasks = BackgroundWorker & { tasks: BackgroundWorkerTask[] };
@@ -234,7 +237,7 @@ export class SharedQueueConsumer {
       return;
     }
 
-    console.log("dequeueMessageInSharedQueue()", message);
+    logger.log("dequeueMessageInSharedQueue()", { queueMessage: message });
 
     const envId = this.#envIdFromQueue(message.queue);
 
@@ -500,72 +503,11 @@ export class SharedQueueConsumer {
         const resumableAttempt = resumableRun?.attempts[0];
 
         if (!resumableAttempt) {
-          logger.error("Task run attempt to resume not found", {
+          logger.error("Resumable attempt not found", {
             queueMessage: message.data,
             messageId: message.messageId,
           });
           await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 100);
-          return;
-        }
-
-        const deployment = await prisma.workerDeployment.findFirst({
-          where: {
-            environmentId: resumableRun.runtimeEnvironmentId,
-            projectId: resumableRun.projectId,
-            status: "DEPLOYED",
-            imageReference: {
-              not: null,
-            },
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-          include: {
-            worker: {
-              include: {
-                tasks: true,
-              },
-            },
-          },
-        });
-
-        if (!deployment || !deployment.worker) {
-          logger.error("No matching deployment found for task run", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-          });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 100);
-          return;
-        }
-
-        if (!deployment.imageReference) {
-          logger.error("Deployment is missing an image reference", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-            deployment: deployment.id,
-          });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 100);
-          return;
-        }
-
-        const backgroundTask = deployment.worker.tasks.find(
-          (task) => task.slug === resumableRun.taskIdentifier
-        );
-
-        if (!backgroundTask) {
-          logger.warn("No matching background task found for task run", {
-            taskRun: resumableRun.id,
-            taskIdentifier: resumableRun.taskIdentifier,
-            deployment: deployment.id,
-            backgroundWorker: deployment.worker.id,
-            taskSlugs: deployment.worker.tasks.map((task) => task.slug),
-          });
-
-          await marqs?.acknowledgeMessage(message.messageId);
-
           setTimeout(() => this.#doWork(), 100);
           return;
         }
@@ -587,6 +529,43 @@ export class SharedQueueConsumer {
 
         if (!this._enabled) {
           await marqs?.nackMessage(message.messageId);
+          return;
+        }
+
+        if (resumableAttempt.status === "PAUSED") {
+          // We need to restore the attempt from the latest checkpoint before we can resume
+          const latestCheckpoint = resumableAttempt.checkpoints[0];
+
+          if (!latestCheckpoint) {
+            logger.error("No checkpoint found", {
+              queueMessage: message.data,
+              messageId: message.messageId,
+              resumableAttemptId: resumableAttempt.id,
+            });
+            await marqs?.acknowledgeMessage(message.messageId);
+            setTimeout(() => this.#doWork(), 100);
+            return;
+          }
+
+          await prisma.taskRunAttempt.update({
+            where: {
+              id: resumableAttempt.id,
+            },
+            data: {
+              status: "EXECUTING",
+            },
+          });
+
+          socketIo.providerNamespace.emit("RESTORE", {
+            version: "v1",
+            id: latestCheckpoint.id,
+            attemptId: latestCheckpoint.attemptId,
+            type: latestCheckpoint.type,
+            location: latestCheckpoint.location,
+            reason: latestCheckpoint.reason ?? undefined,
+          });
+
+          setTimeout(() => this.#doWork(), 100);
           return;
         }
 
@@ -643,30 +622,108 @@ export class SharedQueueConsumer {
         }
 
         try {
+          // The attempt should still be running so we can broadcast to all coordinators to resume immediately
+          socketIo.coordinatorNamespace.emit("RESUME", {
+            version: "v1",
+            attemptId: resumableAttempt.id,
+            completions,
+            executions,
+          });
+        } catch (e) {
+          if (e instanceof Error) {
+            this._currentSpan?.recordException(e);
+          } else {
+            this._currentSpan?.recordException(new Error(String(e)));
+          }
+
+          this._endSpanInNextIteration = true;
+
+          // Finally we need to nack the message so it can be retried
+          await marqs?.nackMessage(message.messageId);
+        } finally {
+          setTimeout(() => this.#doWork(), 100);
+        }
+        break;
+      }
+      // Resume after duration-based wait
+      case "RESUME_AFTER_DURATION": {
+        const resumableRun = await prisma.taskRun.findFirst({
+          where: {
+            id: message.messageId,
+          },
+          include: {
+            attempts: {
+              orderBy: {
+                createdAt: "desc",
+              },
+              take: 1,
+              include: {
+                checkpoints: {
+                  take: 1,
+                  orderBy: {
+                    createdAt: "desc",
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        const resumableAttempt = resumableRun?.attempts[0];
+
+        if (!resumableAttempt) {
+          logger.error("Resumable attempt not found", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+          });
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        if (resumableAttempt.status !== "PAUSED") {
+          logger.error("Attempt not paused", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+          });
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), 100);
+          return;
+        }
+
+        try {
+          // We need to restore the attempt from the latest checkpoint before we can resume
           const latestCheckpoint = resumableAttempt.checkpoints[0];
 
           if (!latestCheckpoint) {
-            // No checkpoint means the task should still be running
-            // We can broadcast to all coordinators to resume immediately
-            socketIo.coordinatorNamespace.emit("RESUME", {
-              version: "v1",
-              attemptId: resumableAttempt.id,
-              image: deployment.imageReference,
-              completions,
-              executions,
+            logger.error("No checkpoint found", {
+              queueMessage: message.data,
+              messageId: message.messageId,
+              resumableAttemptId: resumableAttempt.id,
             });
-          } else {
-            // There's a checkpoint we need to restore first
-            // TODO: Send RESUME message once the restored task has checked in
-            socketIo.providerNamespace.emit("RESTORE", {
-              version: "v1",
-              id: latestCheckpoint.id,
-              attemptId: latestCheckpoint.attemptId,
-              type: latestCheckpoint.type,
-              location: latestCheckpoint.location,
-              reason: latestCheckpoint.reason ?? undefined,
-            });
+            await marqs?.acknowledgeMessage(message.messageId);
+            setTimeout(() => this.#doWork(), 100);
+            return;
           }
+
+          await prisma.taskRunAttempt.update({
+            where: {
+              id: resumableAttempt.id,
+            },
+            data: {
+              status: "EXECUTING",
+            },
+          });
+
+          // The attempt will resume automatically after restore
+          socketIo.providerNamespace.emit("RESTORE", {
+            version: "v1",
+            id: latestCheckpoint.id,
+            attemptId: latestCheckpoint.attemptId,
+            type: latestCheckpoint.type,
+            location: latestCheckpoint.location,
+            reason: latestCheckpoint.reason ?? undefined,
+          });
         } catch (e) {
           if (e instanceof Error) {
             this._currentSpan?.recordException(e);
@@ -729,7 +786,7 @@ class SharedQueueTasks {
       const success: TaskRunSuccessfulExecutionResult = {
         ok,
         id: attempt.friendlyId,
-        output: attempt.output ?? "",
+        output: attempt.output ?? undefined,
         outputType: attempt.outputType,
       };
       return success;

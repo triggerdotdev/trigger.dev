@@ -18,7 +18,7 @@ import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions } from "../cli/common.js";
-import { getConfigPath, readConfig } from "../utilities/configFiles.js";
+import { readConfig } from "../utilities/configFiles.js";
 import { createTempDir, readJSONFile, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { detectPackageNameFromImportPath } from "../utilities/installPackages";
@@ -35,6 +35,8 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   selfHosted: z.boolean().default(false),
   registry: z.string().optional(),
   pushImage: z.boolean().default(false),
+  config: z.string().optional(),
+  projectRef: z.string().optional(),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -50,6 +52,15 @@ export function configureDeployCommand(program: Command) {
       "prod"
     )
     .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
+    .option(
+      "-c, --config <config file>",
+      "The name of the config file, found at [path]",
+      "trigger.config.mjs"
+    )
+    .option(
+      "-p, --project-ref <project ref>",
+      "The project ref. Required if there is no config file."
+    )
     .addOption(
       new CommandOption(
         "--self-hosted",
@@ -133,8 +144,12 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   await printStandloneInitialBanner(true);
 
-  const configPath = await getConfigPath(dir);
-  const config = await readConfig(configPath);
+  const { config } = await readConfig(dir, {
+    configFile: options.data.config,
+    projectRef: options.data.projectRef,
+  });
+
+  logger.debug("Resolved config", { config });
 
   const apiClient = new CliApiClient(authorization.config.apiUrl, authorization.config.accessToken);
 
@@ -587,12 +602,12 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
   );
 
   const workerSetupPath = new URL(
-    importResolve("./workers/common/worker-setup.js", import.meta.url)
+    importResolve("./workers/prod/worker-setup.js", import.meta.url)
   ).href.replace("file://", "");
 
   const workerContents = workerFacade
     .replace("__TASKS__", createTaskFileImports(taskFiles))
-    .replace("__WORKER_SETUP__", `import { tracingSDK, sender } from "${workerSetupPath}";`);
+    .replace("__WORKER_SETUP__", `import { tracingSDK } from "${workerSetupPath}";`);
 
   const result = await build({
     stdin: {
@@ -613,6 +628,7 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
     outdir: "out",
     define: {
       TRIGGER_API_URL: `"${config.triggerUrl}"`,
+      __PROJECT_CONFIG__: JSON.stringify(config),
     },
   });
 
@@ -646,6 +662,9 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
     format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
     target: ["node18", "es2020"],
     outdir: "out",
+    define: {
+      __PROJECT_CONFIG__: JSON.stringify(config),
+    },
   });
 
   if (entryPointResult.errors.length > 0) {
