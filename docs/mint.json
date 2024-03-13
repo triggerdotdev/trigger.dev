@@ -454,7 +454,7 @@
     },
     {
       "group": "Development",
-      "pages": ["v3/cli-dev", "v3/develop-run-tests", "v3/local-debugger"]
+      "pages": ["v3/cli-dev", "v3/develop-run-tests"]
     },
     {
       "group": "Deployment",
