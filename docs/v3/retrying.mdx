@@ -17,7 +17,9 @@ You can configure retrying in two ways:
   environment.
 </Note>
 
-```ts
+Here's a contrived example showing a task that will retry 10 times with exponential backoff:
+
+```ts /trigger/retrying.ts
 export const taskWithRetries = task({
   id: "task-with-retries",
   retry: {
@@ -27,9 +29,150 @@ export const taskWithRetries = task({
     maxTimeoutInMs: 30_000,
     randomize: false,
   },
-  run: async (payload, context) => {
-    // ...
-    throw new Error(`This task will retry`);
+  run: async (payload, { ctx }) => {
+    throw new Error(`This is attempt ${ctx.attempt.number}. It will fail :(`);
   },
 });
 ```
+
+## Combining tasks
+
+One way to gain reliability is to break your work into smaller tasks and [trigger](/v3/triggering) them from each other. Each task can have its own retrying behavior:
+
+```ts /trigger/multiple-tasks.ts
+export const myTask = task({
+  id: "my-task",
+  retry: {
+    maxAttempts: 10,
+  },
+  run: async (payload: string) => {
+    const result = await otherTask.triggerAndWait({ payload: "some data" });
+    //...do other stuff
+  },
+});
+
+export const otherTask = task({
+  id: "other-task",
+  retry: {
+    maxAttempts: 5,
+  },
+  run: async (payload: string) => {
+    return {
+      foo: "bar",
+    };
+  },
+});
+```
+
+Another benefit of this approach is that you can view the logs and retry each task independently from the dashboard.
+
+## Retrying smaller parts of a task
+
+Another complimentary strategy is to perform retrying inside of your task.
+
+We provide some useful functions that you can use to retry smaller parts of a task. Of course, you can also write your own logic or use other packages.
+
+### `retry.onThrow()`
+
+You can retry a block of code that can throw an error, with the same retry settings as a task.
+
+```ts /trigger/retry-on-throw.ts
+export const retryOnThrow = task({
+  id: "retry-on-throw",
+  run: async (payload: any) => {
+    //Will retry up to 3 times. If it fails 3 times it will throw.
+    const result = await retry.onThrow(
+      async ({ attempt }) => {
+        //throw on purpose the first 2 times, obviously this is a contrived example
+        if (attempt < 3) throw new Error("failed");
+        //...
+        return {
+          foo: "bar",
+        };
+      },
+      { maxAttempts: 3, randomize: false }
+    );
+
+    //this will log out after 3 attempts of retry.onThrow
+    logger.info("Result", { result });
+  },
+});
+```
+
+<Note>
+  If all of the attempts with `retry.onThrow` fail, an error will be thrown. You can catch this or
+  let it cause a retry of the entire task.
+</Note>
+
+### retry.fetch()
+
+You can use `fetch`, `axios`, or any other library in your code.
+
+But we do provide a convenient function to perform HTTP requests with conditional retrying based on the response:
+
+```ts /trigger/retry-fetch.ts
+export const taskWithFetchRetries = task({
+  id: "task-with-fetch-retries",
+  run: async ({ payload, ctx }) => {
+    //if the Response is a 429 (too many requests), it will retry using the data from the response. A lot of good APIs send these headers.
+    const headersResponse = await retry.fetch("http://my.host/test-headers", {
+      retry: {
+        "429": {
+          strategy: "headers",
+          limitHeader: "x-ratelimit-limit",
+          remainingHeader: "x-ratelimit-remaining",
+          resetHeader: "x-ratelimit-reset",
+          resetFormat: "unix_timestamp_in_ms",
+        },
+      },
+    });
+    const json = await headersResponse.json();
+    logger.info("Fetched headers response", { json });
+
+    //if the Response is a 500-599 (issue with the server you're calling), it will retry up to 10 times with exponential backoff
+    const backoffResponse = await retry.fetch("http://my.host/test-backoff", {
+      retry: {
+        "500-599": {
+          strategy: "backoff",
+          maxAttempts: 10,
+          factor: 2,
+          minTimeoutInMs: 1_000,
+          maxTimeoutInMs: 30_000,
+          randomize: false,
+        },
+      },
+    });
+    const json2 = await backoffResponse.json();
+    logger.info("Fetched backoff response", { json2 });
+
+    //You can additionally specify a timeout. In this case if the response takes longer than 1 second, it will retry up to 5 times with exponential backoff
+    const timeoutResponse = await retry.fetch("https://httpbin.org/delay/2", {
+      timeout: {
+        durationInMs: 1000,
+        retry: {
+          maxAttempts: 5,
+          factor: 1.8,
+          minTimeoutInMs: 500,
+          maxTimeoutInMs: 30_000,
+          randomize: false,
+        },
+      },
+    });
+    const json3 = await timeoutResponse.json();
+    logger.info("Fetched timeout response", { json3 });
+
+    return {
+      result: "success",
+      payload,
+      json,
+      json2,
+      json3,
+    };
+  },
+});
+```
+
+<Note>
+  If all of the attempts with `retry.fetch` fail, an error will be thrown. You can catch this or let
+  it cause a retry of the entire task.
+</Note>
