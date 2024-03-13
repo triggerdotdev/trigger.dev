@@ -3,4 +3,61 @@ title: "Errors"
 description: "How to deal with errors and write reliable tasks."
 ---
 
-<Snippet file="incomplete-docs.mdx" />
+There are different types of errors that you need to deal with to write reliable code.
+
+## Uncaught thrown errors
+
+If an error is thrown in your task and you don't catch it, that task attempt will fail and another will start (assuming you have retries enabled and you haven't reached the maximum number of retries).
+
+In this example:
+
+- `openai.chat.completions.create()` can throw an error
+- The result can be empty and we want to try again. So we manually throw an error.
+
+<Snippet file="v3/code/openai-retry.mdx" />
+
+## Using try/catch to prevent retries
+
+Sometimes you want to catch an error and don't want to retry the task. You can use try/catch as you normally would. In this example we fallback to using Replicate if OpenAI fails.
+
+```ts /trigger/
+import { task } from "@trigger.dev/sdk/v3";
+
+export const openaiTask = task({
+  id: "openai-task",
+  run: async (payload: { prompt: string }) => {
+    try {
+      //if this fails, it will throw an error and retry
+      const chatCompletion = await openai.chat.completions.create({
+        messages: [{ role: "user", content: payload.prompt }],
+        model: "gpt-3.5-turbo",
+      });
+
+      if (chatCompletion.choices[0]?.message.content === undefined) {
+        //sometimes OpenAI returns an empty response, let's retry by throwing an error
+        throw new Error("OpenAI call failed");
+      }
+
+      return chatCompletion.choices[0].message.content;
+    } catch (error) {
+      //use Replicate if OpenAI fails
+      const prediction = await replicate.run(
+        "meta/llama-2-70b-chat:02e509c789964a7ea8736978a43525956ef40397be9033abf9fd2badfe68c9e3",
+        {
+          input: {
+            prompt: payload.prompt,
+            max_new_tokens: 250,
+          },
+        }
+      );
+
+      if (prediction.output === undefined) {
+        //retry if Replicate fails
+        throw new Error("Replicate call failed");
+      }
+
+      return prediction.output;
+    }
+  },
+});
+```
