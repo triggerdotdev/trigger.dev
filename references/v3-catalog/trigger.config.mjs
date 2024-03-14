@@ -1,3 +1,4 @@
+// @ts-check
 /** @type {import('@trigger.dev/sdk/v3').Config} */
 
 export default {
@@ -11,5 +12,8 @@ export default {
       factor: 2,
       randomize: true,
     },
+  },
+  handleError: async (payload, error, { ctx, retryAt, retryDelayInMs, retry }) => {
+    return { skipRetrying: true };
   },
 };

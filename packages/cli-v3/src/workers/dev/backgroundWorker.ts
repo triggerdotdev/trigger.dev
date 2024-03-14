@@ -366,9 +366,9 @@ export class BackgroundWorker {
       const taskRunProcess = new TaskRunProcess(
         this.path,
         {
-          ...this.#readEnvVars(),
           ...this.params.env,
           ...(payload.environment ?? {}),
+          ...this.#readEnvVars(),
         },
         this.metadata,
         this.params

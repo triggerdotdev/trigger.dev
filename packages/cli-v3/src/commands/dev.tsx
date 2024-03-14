@@ -138,7 +138,7 @@ async function startDev(
         if (config.status === "file") {
           logger.log(`${basename(config.path)} changed...`);
           logger.debug("New config", { config: config.config });
-          rerender(await getDevReactElement(config.config, authorization));
+          rerender(await getDevReactElement(config.config, authorization, config.path));
         } else {
           logger.debug("New config", { config: config.config });
           rerender(await getDevReactElement(config.config, authorization));
@@ -148,7 +148,8 @@ async function startDev(
 
     async function getDevReactElement(
       configParam: ResolvedConfig,
-      authorization: { apiUrl: string; accessToken: string }
+      authorization: { apiUrl: string; accessToken: string },
+      configPath?: string
     ) {
       const accessToken = authorization.accessToken;
       const apiUrl = authorization.apiUrl;
@@ -175,11 +176,18 @@ async function startDev(
           projectName={devEnv.data.name}
           debuggerOn={options.debugger}
           debugOtel={options.debugOtel}
+          configPath={configPath}
         />
       );
     }
 
-    const devReactElement = render(await getDevReactElement(config.config, authorization));
+    const devReactElement = render(
+      await getDevReactElement(
+        config.config,
+        authorization,
+        config.status === "file" ? config.path : undefined
+      )
+    );
 
     rerender = devReactElement.rerender;
 
@@ -205,6 +213,7 @@ type DevProps = {
   projectName: string;
   debuggerOn: boolean;
   debugOtel: boolean;
+  configPath?: string;
 };
 
 function useDev({
@@ -215,6 +224,7 @@ function useDev({
   projectName,
   debuggerOn,
   debugOtel,
+  configPath,
 }: DevProps) {
   useEffect(() => {
     const websocketUrl = new URL(apiUrl);
@@ -334,9 +344,23 @@ function useDev({
         importResolve("./workers/dev/worker-setup.js", import.meta.url)
       ).href.replace("file://", "");
 
-      const entryPointContents = workerFacade
+      let entryPointContents = workerFacade
         .replace("__TASKS__", createTaskFileImports(taskFiles))
         .replace("__WORKER_SETUP__", `import { tracingSDK, sender } from "${workerSetupPath}";`);
+
+      if (configPath) {
+        logger.debug("Importing project config from", { configPath });
+
+        entryPointContents = entryPointContents.replace(
+          "__IMPORTED_PROJECT_CONFIG__",
+          `import importedConfig from "${configPath}";`
+        );
+      } else {
+        entryPointContents = entryPointContents.replace(
+          "__IMPORTED_PROJECT_CONFIG__",
+          `const importedConfig = undefined;`
+        );
+      }
 
       let firstBuild = true;
 

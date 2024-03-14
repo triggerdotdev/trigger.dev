@@ -1,12 +1,10 @@
 import { Attributes } from "@opentelemetry/api";
 import {
-  RetryOptions,
   TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
-  defaultRetryOptions,
   flattenAttributes,
 } from "@trigger.dev/core/v3";
 import { PrismaClientOrTransaction } from "~/db.server";
@@ -16,8 +14,9 @@ import { safeJsonParse } from "~/utils/json";
 import { eventRepository } from "../eventRepository.server";
 import { marqs } from "../marqs.server";
 import { BaseService } from "./baseService.server";
-import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
+import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
+import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -26,7 +25,7 @@ export class CompleteAttemptService extends BaseService {
     completion: TaskRunExecutionResult,
     execution: TaskRunExecution,
     env?: AuthenticatedEnvironment
-  ) {
+  ): Promise<"COMPLETED" | "RETRIED"> {
     const taskRunAttempt = await findAttempt(this._prisma, completion.id);
 
     if (!taskRunAttempt) {
@@ -42,7 +41,7 @@ export class CompleteAttemptService extends BaseService {
         },
       });
 
-      return "FAILED";
+      return "COMPLETED";
     }
 
     if (completion.ok) {
@@ -56,7 +55,7 @@ export class CompleteAttemptService extends BaseService {
     completion: TaskRunSuccessfulExecutionResult,
     taskRunAttempt: NonNullable<FoundAttempt>,
     env?: AuthenticatedEnvironment
-  ) {
+  ): Promise<"COMPLETED" | "RETRIED"> {
     await this._prisma.taskRunAttempt.update({
       where: { friendlyId: completion.id },
       data: {
@@ -91,7 +90,7 @@ export class CompleteAttemptService extends BaseService {
       await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);
     }
 
-    return "ACKNOWLEDGED";
+    return "COMPLETED";
   }
 
   async #completeAttemptFailed(
@@ -107,13 +106,15 @@ export class CompleteAttemptService extends BaseService {
       // We need to cancel the task run instead of fail it
       const cancelService = new CancelAttemptService();
 
-      return await cancelService.call(
+      await cancelService.call(
         taskRunAttempt.friendlyId,
         taskRunAttempt.taskRunId,
         new Date(),
         "Cancelled by user",
         env
       );
+
+      return "COMPLETED";
     }
 
     await this._prisma.taskRunAttempt.update({
@@ -125,48 +126,31 @@ export class CompleteAttemptService extends BaseService {
       },
     });
 
-    if (completion.retry !== undefined) {
-      const retryConfig = taskRunAttempt.backgroundWorkerTask.retryConfig
-        ? {
-            ...defaultRetryOptions,
-            ...RetryOptions.parse(taskRunAttempt.backgroundWorkerTask.retryConfig),
-          }
-        : undefined;
-
+    if (completion.retry !== undefined && taskRunAttempt.number < MAX_TASK_RUN_ATTEMPTS) {
       const environment = env ?? (await this.#getEnvironment(execution.environment.id));
 
       const retryAt = new Date(completion.retry.timestamp);
 
       // Retry the task run
-      await eventRepository.recordEvent(
-        retryConfig?.maxAttempts
-          ? `Retry ${execution.attempt.number}/${retryConfig?.maxAttempts - 1} delay`
-          : `Retry #${execution.attempt.number} delay`,
-        {
-          taskSlug: taskRunAttempt.taskRun.taskIdentifier,
-          environment,
-          attributes: {
-            metadata: this.#generateMetadataAttributesForNextAttempt(execution),
-            properties: {
-              retryAt: retryAt.toISOString(),
-              factor: retryConfig?.factor,
-              maxAttempts: retryConfig?.maxAttempts,
-              minTimeoutInMs: retryConfig?.minTimeoutInMs,
-              maxTimeoutInMs: retryConfig?.maxTimeoutInMs,
-              randomize: retryConfig?.randomize,
-            },
-            runId: taskRunAttempt.taskRunId,
-            style: {
-              icon: "schedule-attempt",
-            },
-            queueId: taskRunAttempt.queueId,
-            queueName: taskRunAttempt.taskRun.queue,
+      await eventRepository.recordEvent(`Retry #${execution.attempt.number} delay`, {
+        taskSlug: taskRunAttempt.taskRun.taskIdentifier,
+        environment,
+        attributes: {
+          metadata: this.#generateMetadataAttributesForNextAttempt(execution),
+          properties: {
+            retryAt: retryAt.toISOString(),
           },
-          context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
-          spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
-          endTime: retryAt,
-        }
-      );
+          runId: taskRunAttempt.taskRunId,
+          style: {
+            icon: "schedule-attempt",
+          },
+          queueId: taskRunAttempt.queueId,
+          queueName: taskRunAttempt.taskRun.queue,
+        },
+        context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
+        spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
+        endTime: retryAt,
+      });
 
       logger.debug("Retrying", { taskRun: taskRunAttempt.taskRun.friendlyId });
 
@@ -222,7 +206,7 @@ export class CompleteAttemptService extends BaseService {
         await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);
       }
 
-      return "ACKNOWLEDGED";
+      return "COMPLETED";
     }
   }
 

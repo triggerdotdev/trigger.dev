@@ -10,7 +10,7 @@ export class ConsoleInterceptor {
 
   // Intercept the console and send logs to the OpenTelemetry logger
   // during the execution of the callback
-  async intercept<T, R extends Promise<T>>(console: Console, callback: () => R): Promise<T> {
+  async intercept<T>(console: Console, callback: () => Promise<T>): Promise<T> {
     // Save the original console methods
     const originalConsole = {
       log: console.log,
