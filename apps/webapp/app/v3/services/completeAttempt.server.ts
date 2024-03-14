@@ -1,12 +1,10 @@
 import { Attributes } from "@opentelemetry/api";
 import {
-  RetryOptions,
   TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
-  defaultRetryOptions,
   flattenAttributes,
 } from "@trigger.dev/core/v3";
 import { PrismaClientOrTransaction } from "~/db.server";
@@ -16,8 +14,9 @@ import { safeJsonParse } from "~/utils/json";
 import { eventRepository } from "../eventRepository.server";
 import { marqs } from "../marqs.server";
 import { BaseService } from "./baseService.server";
-import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
+import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
+import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -125,48 +124,31 @@ export class CompleteAttemptService extends BaseService {
       },
     });
 
-    if (completion.retry !== undefined) {
-      const retryConfig = taskRunAttempt.backgroundWorkerTask.retryConfig
-        ? {
-            ...defaultRetryOptions,
-            ...RetryOptions.parse(taskRunAttempt.backgroundWorkerTask.retryConfig),
-          }
-        : undefined;
-
+    if (completion.retry !== undefined && taskRunAttempt.number < MAX_TASK_RUN_ATTEMPTS) {
       const environment = env ?? (await this.#getEnvironment(execution.environment.id));
 
       const retryAt = new Date(completion.retry.timestamp);
 
       // Retry the task run
-      await eventRepository.recordEvent(
-        retryConfig?.maxAttempts
-          ? `Retry ${execution.attempt.number}/${retryConfig?.maxAttempts - 1} delay`
-          : `Retry #${execution.attempt.number} delay`,
-        {
-          taskSlug: taskRunAttempt.taskRun.taskIdentifier,
-          environment,
-          attributes: {
-            metadata: this.#generateMetadataAttributesForNextAttempt(execution),
-            properties: {
-              retryAt: retryAt.toISOString(),
-              factor: retryConfig?.factor,
-              maxAttempts: retryConfig?.maxAttempts,
-              minTimeoutInMs: retryConfig?.minTimeoutInMs,
-              maxTimeoutInMs: retryConfig?.maxTimeoutInMs,
-              randomize: retryConfig?.randomize,
-            },
-            runId: taskRunAttempt.taskRunId,
-            style: {
-              icon: "schedule-attempt",
-            },
-            queueId: taskRunAttempt.queueId,
-            queueName: taskRunAttempt.taskRun.queue,
+      await eventRepository.recordEvent(`Retry #${execution.attempt.number} delay`, {
+        taskSlug: taskRunAttempt.taskRun.taskIdentifier,
+        environment,
+        attributes: {
+          metadata: this.#generateMetadataAttributesForNextAttempt(execution),
+          properties: {
+            retryAt: retryAt.toISOString(),
           },
-          context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
-          spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
-          endTime: retryAt,
-        }
-      );
+          runId: taskRunAttempt.taskRunId,
+          style: {
+            icon: "schedule-attempt",
+          },
+          queueId: taskRunAttempt.queueId,
+          queueName: taskRunAttempt.taskRun.queue,
+        },
+        context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
+        spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
+        endTime: retryAt,
+      });
 
       logger.debug("Retrying", { taskRun: taskRunAttempt.taskRun.friendlyId });
 

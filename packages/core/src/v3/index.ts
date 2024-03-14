@@ -48,4 +48,4 @@ export { defaultRetryOptions, calculateNextRetryDelay, calculateResetAt } from "
 export { accessoryAttributes } from "./utils/styleAttributes";
 export { eventFilterMatches } from "../eventFilterMatches";
 export { omit } from "./utils/omit";
-export { TracingSDK, type TracingDiagnosticLogLevel } from "./otel";
+export { TracingSDK, type TracingDiagnosticLogLevel, recordSpanException } from "./otel";
