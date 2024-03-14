@@ -1,9 +1,7 @@
 ---
-title: "Retrying"
-description: "You can configure entire tasks to retry and you can retry smaller parts of a task."
+title: "Errors & Retrying"
+description: "How to deal with errors and write reliable tasks."
 ---
-
-## Task attempts and retrying
 
 When an uncaught error is thrown inside your task, that task attempt will fail.
 
@@ -14,26 +12,17 @@ You can configure retrying in two ways:
 
 <Note>
   By default when you create your project using the CLI init command we disabled retrying in the DEV
-  environment.
+  environment. You can enable it in your [trigger.config file](/v3/reference-trigger-config).
 </Note>
 
-Here's a contrived example showing a task that will retry 10 times with exponential backoff:
+## A simple example with OpenAI
 
-```ts /trigger/retrying.ts
-export const taskWithRetries = task({
-  id: "task-with-retries",
-  retry: {
-    maxAttempts: 10,
-    factor: 1.8,
-    minTimeoutInMs: 500,
-    maxTimeoutInMs: 30_000,
-    randomize: false,
-  },
-  run: async (payload, { ctx }) => {
-    throw new Error(`This is attempt ${ctx.attempt.number}. It will fail :(`);
-  },
-});
-```
+This task will retry 10 times with exponential backoff.
+
+- `openai.chat.completions.create()` can throw an error.
+- The result can be empty and we want to try again. So we manually throw an error.
+
+<Snippet file="v3/code/openai-retry.mdx" />
 
 ## Combining tasks
 
@@ -72,7 +61,7 @@ Another complimentary strategy is to perform retrying inside of your task.
 
 We provide some useful functions that you can use to retry smaller parts of a task. Of course, you can also write your own logic or use other packages.
 
-### `retry.onThrow()`
+### retry.onThrow()
 
 You can retry a block of code that can throw an error, with the same retry settings as a task.
 
@@ -176,3 +165,51 @@ export const taskWithFetchRetries = task({
   If all of the attempts with `retry.fetch` fail, an error will be thrown. You can catch this or let
   it cause a retry of the entire task.
 </Note>
+
+## Handling errors and deciding the retry behavior
+
+## Using try/catch to prevent retries
+
+Sometimes you want to catch an error and don't want to retry the task. You can use try/catch as you normally would. In this example we fallback to using Replicate if OpenAI fails.
+
+```ts /trigger/
+import { task } from "@trigger.dev/sdk/v3";
+
+export const openaiTask = task({
+  id: "openai-task",
+  run: async (payload: { prompt: string }) => {
+    try {
+      //if this fails, it will throw an error and retry
+      const chatCompletion = await openai.chat.completions.create({
+        messages: [{ role: "user", content: payload.prompt }],
+        model: "gpt-3.5-turbo",
+      });
+
+      if (chatCompletion.choices[0]?.message.content === undefined) {
+        //sometimes OpenAI returns an empty response, let's retry by throwing an error
+        throw new Error("OpenAI call failed");
+      }
+
+      return chatCompletion.choices[0].message.content;
+    } catch (error) {
+      //use Replicate if OpenAI fails
+      const prediction = await replicate.run(
+        "meta/llama-2-70b-chat:02e509c789964a7ea8736978a43525956ef40397be9033abf9fd2badfe68c9e3",
+        {
+          input: {
+            prompt: payload.prompt,
+            max_new_tokens: 250,
+          },
+        }
+      );
+
+      if (prediction.output === undefined) {
+        //retry if Replicate fails
+        throw new Error("Replicate call failed");
+      }
+
+      return prediction.output;
+    }
+  },
+});
+```

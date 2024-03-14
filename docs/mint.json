@@ -473,8 +473,7 @@
       "pages": [
         "v3/writing-tasks-introduction",
         "v3/logging",
-        "v3/errors",
-        "v3/retrying",
+        "v3/errors-retrying",
         {
           "group": "Wait",
           "pages": [
@@ -492,7 +491,7 @@
         },
         "v3/idempotency",
         "v3/versioning",
-        "v3/replaying",
+        "v3/reattempting-replaying",
         "v3/trigger-filters",
         "v3/notifications",
         "v3/rollbacks",
