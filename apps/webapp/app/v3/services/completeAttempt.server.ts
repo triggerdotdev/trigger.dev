@@ -25,7 +25,7 @@ export class CompleteAttemptService extends BaseService {
     completion: TaskRunExecutionResult,
     execution: TaskRunExecution,
     env?: AuthenticatedEnvironment
-  ) {
+  ): Promise<"COMPLETED" | "RETRIED"> {
     const taskRunAttempt = await findAttempt(this._prisma, completion.id);
 
     if (!taskRunAttempt) {
@@ -41,7 +41,7 @@ export class CompleteAttemptService extends BaseService {
         },
       });
 
-      return "FAILED";
+      return "COMPLETED";
     }
 
     if (completion.ok) {
@@ -55,7 +55,7 @@ export class CompleteAttemptService extends BaseService {
     completion: TaskRunSuccessfulExecutionResult,
     taskRunAttempt: NonNullable<FoundAttempt>,
     env?: AuthenticatedEnvironment
-  ) {
+  ): Promise<"COMPLETED" | "RETRIED"> {
     await this._prisma.taskRunAttempt.update({
       where: { friendlyId: completion.id },
       data: {
@@ -90,7 +90,7 @@ export class CompleteAttemptService extends BaseService {
       await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);
     }
 
-    return "ACKNOWLEDGED";
+    return "COMPLETED";
   }
 
   async #completeAttemptFailed(
@@ -106,13 +106,15 @@ export class CompleteAttemptService extends BaseService {
       // We need to cancel the task run instead of fail it
       const cancelService = new CancelAttemptService();
 
-      return await cancelService.call(
+      await cancelService.call(
         taskRunAttempt.friendlyId,
         taskRunAttempt.taskRunId,
         new Date(),
         "Cancelled by user",
         env
       );
+
+      return "COMPLETED";
     }
 
     await this._prisma.taskRunAttempt.update({
@@ -204,7 +206,7 @@ export class CompleteAttemptService extends BaseService {
         await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);
       }
 
-      return "ACKNOWLEDGED";
+      return "COMPLETED";
     }
   }
 

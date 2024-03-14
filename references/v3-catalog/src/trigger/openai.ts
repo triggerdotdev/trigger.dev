@@ -25,7 +25,7 @@ export const openaiTask = task({
 
       return {
         error: new Error("Custom OpenAI API error"),
-        retryDelayInMs: 1000,
+        retryDelayInMs: 10000,
       };
     }
   },

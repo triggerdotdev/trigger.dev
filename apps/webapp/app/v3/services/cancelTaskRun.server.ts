@@ -23,8 +23,21 @@ const CANCELLABLE_ATTEMPT_STATUSES: Array<TaskRunAttemptStatus> = [
   "PENDING",
 ];
 
+export type CancelTaskRunServiceOptions = {
+  reason?: string;
+  cancelAttempts?: boolean;
+  cancelledAt?: Date;
+};
+
 export class CancelTaskRunService extends BaseService {
-  public async call(taskRun: TaskRun) {
+  public async call(taskRun: TaskRun, options?: CancelTaskRunServiceOptions) {
+    const opts = {
+      reason: "Task run was cancelled by user",
+      cancelAttempts: true,
+      cancelledAt: new Date(),
+      ...options,
+    };
+
     // Make sure the task run is in a cancellable state
     if (!CANCELLABLE_STATUSES.includes(taskRun.status)) {
       return;
@@ -68,59 +81,61 @@ export class CancelTaskRunService extends BaseService {
 
     await Promise.all(
       inProgressEvents.map((event) => {
-        return eventRepository.cancelEvent(event, new Date(), "Task run was cancelled by user");
+        return eventRepository.cancelEvent(event, opts.cancelledAt, opts.reason);
       })
     );
 
     // Cancel any in progress attempts
-    for (const attempt of cancelledTaskRun.attempts) {
-      if (attempt.runtimeEnvironment.type === "DEVELOPMENT") {
-        // Signal the task run attempt to stop
-        await devPubSub.publish(
-          `backgroundWorker:${attempt.backgroundWorkerId}:${attempt.id}`,
-          "CANCEL_ATTEMPT",
-          {
-            attemptId: attempt.friendlyId,
-            backgroundWorkerId: attempt.backgroundWorker.friendlyId,
-            taskRunId: cancelledTaskRun.friendlyId,
-          }
-        );
-      } else {
-        switch (attempt.status) {
-          case "EXECUTING": {
-            // We need to send a cancel message to the coordinator
-            socketIo.coordinatorNamespace.emit("REQUEST_ATTEMPT_CANCELLATION", {
-              version: "v1",
-              attemptId: attempt.id,
-            });
+    if (opts.cancelAttempts) {
+      for (const attempt of cancelledTaskRun.attempts) {
+        if (attempt.runtimeEnvironment.type === "DEVELOPMENT") {
+          // Signal the task run attempt to stop
+          await devPubSub.publish(
+            `backgroundWorker:${attempt.backgroundWorkerId}:${attempt.id}`,
+            "CANCEL_ATTEMPT",
+            {
+              attemptId: attempt.friendlyId,
+              backgroundWorkerId: attempt.backgroundWorker.friendlyId,
+              taskRunId: cancelledTaskRun.friendlyId,
+            }
+          );
+        } else {
+          switch (attempt.status) {
+            case "EXECUTING": {
+              // We need to send a cancel message to the coordinator
+              socketIo.coordinatorNamespace.emit("REQUEST_ATTEMPT_CANCELLATION", {
+                version: "v1",
+                attemptId: attempt.id,
+              });
 
-            break;
-          }
-          case "PENDING":
-          case "PAUSED": {
-            logger.debug("Cancelling pending or paused attempt", {
-              attempt,
-            });
+              break;
+            }
+            case "PENDING":
+            case "PAUSED": {
+              logger.debug("Cancelling pending or paused attempt", {
+                attempt,
+              });
 
-            const service = new CancelAttemptService();
+              const service = new CancelAttemptService();
 
-            await service.call(
-              attempt.friendlyId,
-              taskRun.id,
-              new Date(),
-              "Task run was cancelled by user"
-            );
+              await service.call(
+                attempt.friendlyId,
+                taskRun.id,
+                new Date(),
+                "Task run was cancelled by user"
+              );
 
-            break;
-          }
-          case "CANCELED":
-          case "COMPLETED":
-          case "FAILED": {
-            // Do nothing
-            break;
-          }
-          default: {
-            assertUnreachable(attempt.status);
+              break;
+            }
+            case "CANCELED":
+            case "COMPLETED":
+            case "FAILED": {
+              // Do nothing
+              break;
+            }
+            default: {
+              assertUnreachable(attempt.status);
+            }
           }
         }
       }
