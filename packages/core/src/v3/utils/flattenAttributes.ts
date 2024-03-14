@@ -7,7 +7,7 @@ export function flattenAttributes(
   const result: Attributes = {};
 
   // Check if obj is null or undefined
-  if (obj == null) {
+  if (!obj) {
     return result;
   }
 

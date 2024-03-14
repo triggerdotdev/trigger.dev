@@ -75,6 +75,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@baselime/node-opentelemetry": "^0.4.6",
     "@clack/prompts": "^0.7.0",
     "@depot/cli": "0.0.1-cli.2.55.0",
     "@opentelemetry/api": "^1.7.0",
@@ -118,7 +119,6 @@
     "object-hash": "^3.0.0",
     "p-throttle": "^6.1.0",
     "partysocket": "^0.0.17",
-    "posthog-node": "^3.1.1",
     "proxy-agent": "^6.3.0",
     "react": "^18.2.0",
     "react-error-boundary": "^4.0.12",

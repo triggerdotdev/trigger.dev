@@ -1,34 +1,57 @@
+import { recordSpanException } from "@trigger.dev/core/v3";
 import { CliApiClient } from "../apiClient.js";
+import { tracer } from "../telemetry/tracing.js";
 import { readAuthConfigFile } from "./configFiles.js";
 
 export async function isLoggedIn() {
-  const config = readAuthConfigFile();
+  return await tracer.startActiveSpan("isLoggedIn", async (span) => {
+    try {
+      const config = readAuthConfigFile();
 
-  if (!config?.accessToken || !config?.apiUrl) {
-    return { ok: false as const, error: "You must login first" };
-  }
+      if (!config?.accessToken || !config?.apiUrl) {
+        span.recordException(new Error("You must login first"));
+        span.end();
+        return { ok: false as const, error: "You must login first" };
+      }
 
-  const apiClient = new CliApiClient(config.apiUrl, config.accessToken);
-  const userData = await apiClient.whoAmI();
+      const apiClient = new CliApiClient(config.apiUrl, config.accessToken);
+      const userData = await apiClient.whoAmI();
 
-  if (!userData.success) {
-    return {
-      ok: false as const,
-      error: userData.error,
-      config: {
-        apiUrl: config.apiUrl,
-        accessToken: config.accessToken,
-      },
-    };
-  }
+      if (!userData.success) {
+        recordSpanException(span, userData.error);
+        span.end();
 
-  return {
-    ok: true as const,
-    userId: userData.data.userId,
-    email: userData.data.email,
-    config: {
-      apiUrl: config.apiUrl,
-      accessToken: config.accessToken,
-    },
-  };
+        return {
+          ok: false as const,
+          error: userData.error,
+          config: {
+            apiUrl: config.apiUrl,
+            accessToken: config.accessToken,
+          },
+        };
+      }
+
+      span.setAttributes({
+        userId: userData.data.userId,
+        email: userData.data.email,
+      });
+
+      span.end();
+
+      return {
+        ok: true as const,
+        userId: userData.data.userId,
+        email: userData.data.email,
+        config: {
+          apiUrl: config.apiUrl,
+          accessToken: config.accessToken,
+        },
+      };
+    } catch (e) {
+      recordSpanException(span, e);
+      span.end();
+
+      throw e;
+    }
+  });
 }
