@@ -61,7 +61,7 @@ export async function createProject(
           slug: organizationSlug,
         },
       },
-      externalRef: externalRefGenerator(),
+      externalRef: `proj_${externalRefGenerator()}`,
       version: version === "v3" ? "V3" : "V2",
     },
     include: {
@@ -75,7 +75,10 @@ export async function createProject(
 
   // Create the dev and prod environments
   await createEnvironment(organization, project, "PRODUCTION");
-  await createEnvironment(organization, project, "STAGING");
+
+  if (project.version === "V2") {
+    await createEnvironment(organization, project, "STAGING");
+  }
 
   for (const member of project.organization.members) {
     await createEnvironment(organization, project, "DEVELOPMENT", member);

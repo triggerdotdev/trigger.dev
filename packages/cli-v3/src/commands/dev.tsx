@@ -33,6 +33,7 @@ import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { UncaughtExceptionError } from "../workers/common/errors";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
+import { fromZodError } from "zod-validation-error";
 
 let apiClient: CliApiClient | undefined;
 
@@ -80,7 +81,9 @@ export async function devCommand(dir: string, anyOptions: unknown) {
   const options = DevCommandOptions.safeParse(anyOptions);
 
   if (!options.success) {
-    throw new Error(`Invalid options: ${options.error}`);
+    console.log(fromZodError(options.error).toString());
+
+    process.exit(1);
   }
 
   const authorization = await isLoggedIn();

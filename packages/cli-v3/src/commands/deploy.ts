@@ -25,6 +25,7 @@ import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
+import { fromZodError } from "zod-validation-error";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -116,7 +117,9 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
   const options = DeployCommandOptions.safeParse(anyOptions);
 
   if (!options.success) {
-    throw new Error(`Invalid options: ${options.error}`);
+    console.log(fromZodError(options.error).toString());
+
+    process.exit(1);
   }
 
   if (options.data.logLevel) {

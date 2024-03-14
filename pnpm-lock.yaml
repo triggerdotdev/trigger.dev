@@ -1111,6 +1111,7 @@ importers:
       ws: ^8.12.0
       xdg-app-paths: ^8.3.0
       zod: 3.22.3
+      zod-validation-error: ^1.5.0
     dependencies:
       '@clack/prompts': 0.7.0
       '@depot/cli': 0.0.1-cli.2.55.0
@@ -1170,6 +1171,7 @@ importers:
       url: 0.11.1
       ws: 8.12.0
       zod: 3.22.3
+      zod-validation-error: 1.5.0_zod@3.22.3
     devDependencies:
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/gradient-string': 1.1.2
