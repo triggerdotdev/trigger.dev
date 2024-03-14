@@ -19,7 +19,7 @@ import { fromZodError } from "zod-validation-error";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions } from "../cli/common.js";
-import { provider, tracer } from "../telemetry/tracing";
+import { initializeTracing, getTracer } from "../telemetry/tracing";
 import { readConfig } from "../utilities/configFiles.js";
 import { createTempDir, readJSONFile, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
@@ -27,6 +27,8 @@ import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
+
+const tracer = getTracer();
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -111,13 +113,18 @@ export function configureDeployCommand(program: Command) {
       "The log level to use (debug, info, log, warn, error, none)",
       "log"
     )
+    .option("--skip-telemetry", "Opt-out of sending telemetry")
     .action(async (path, options) => {
+      console.log("deploying", path, options);
+
+      const provider = options.skipTelemetry ? undefined : initializeTracing();
+
       await tracer.startActiveSpan("deployCommand", async (span) => {
         try {
           const exitCode = await deployCommand(path, options, span);
 
           span.end();
-          await provider.forceFlush();
+          await provider?.forceFlush();
 
           process.exitCode = exitCode;
         } catch (e) {

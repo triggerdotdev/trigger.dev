@@ -1,7 +1,9 @@
 import { recordSpanException } from "@trigger.dev/core/v3";
 import { CliApiClient } from "../apiClient.js";
-import { tracer } from "../telemetry/tracing.js";
 import { readAuthConfigFile } from "./configFiles.js";
+import { getTracer } from "../telemetry/tracing.js";
+
+const tracer = getTracer();
 
 export async function isLoggedIn() {
   return await tracer.startActiveSpan("isLoggedIn", async (span) => {
