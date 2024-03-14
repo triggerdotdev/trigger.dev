@@ -300,7 +300,10 @@ export class SharedQueueConsumer {
           return;
         }
 
-        if (existingTaskRun.status !== "PENDING") {
+        if (
+          existingTaskRun.status !== "PENDING" &&
+          existingTaskRun.status !== "RETRYING_AFTER_FAILURE"
+        ) {
           logger.debug("Task run is not pending, aborting", {
             queueMessage: message.data,
             messageId: message.messageId,

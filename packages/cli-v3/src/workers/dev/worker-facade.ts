@@ -1,10 +1,4 @@
-import {
-  Config,
-  ProjectConfig,
-  TaskRunExecutionResult,
-  recordSpanException,
-  type TracingSDK,
-} from "@trigger.dev/core/v3";
+import { Config, ProjectConfig, TaskExecutor, type TracingSDK } from "@trigger.dev/core/v3";
 import "source-map-support/register.js";
 
 __WORKER_SETUP__;
@@ -20,33 +14,23 @@ declare const tracingSDK: TracingSDK;
 const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
 const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.version);
 
-import { SpanKind } from "@opentelemetry/api";
 import {
   ConsoleInterceptor,
   DevRuntimeManager,
   OtelTaskLogger,
-  SemanticInternalAttributes,
   TaskMetadataWithFilePath,
-  TaskRunContext,
   TaskRunErrorCodes,
   TaskRunExecution,
-  TaskRunExecutionRetry,
   TriggerTracer,
   ZodMessageHandler,
   ZodMessageSender,
-  accessoryAttributes,
-  calculateNextRetryDelay,
   childToWorkerMessages,
   logger,
-  parseError,
   runtime,
-  taskContextManager,
   workerToChildMessages,
-  type BackgroundWorkerProperties,
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../../../package.json";
 
-import { flattenAttributes } from "@trigger.dev/core/v3";
 import { TaskMetadataWithFunctions } from "../../types.js";
 
 declare const sender: ZodMessageSender<typeof childToWorkerMessages>;
@@ -73,278 +57,6 @@ const TaskFiles: Record<string, string> = {};
 
 __TASKS__;
 declare const __TASKS__: Record<string, string>;
-
-class TaskExecutor {
-  constructor(public task: TaskMetadataWithFunctions) {}
-
-  async execute(
-    execution: TaskRunExecution,
-    worker: BackgroundWorkerProperties,
-    traceContext: Record<string, unknown>
-  ): Promise<TaskRunExecutionResult> {
-    const parsedPayload = JSON.parse(execution.run.payload);
-    const ctx = TaskRunContext.parse(execution);
-    const attemptMessage = `Attempt ${execution.attempt.number}`;
-
-    const result = await taskContextManager.runWith(
-      {
-        ctx,
-        payload: parsedPayload,
-        worker,
-      },
-      async () => {
-        tracingSDK.asyncResourceDetector.resolveWithAttributes({
-          ...taskContextManager.attributes,
-          [SemanticInternalAttributes.SDK_VERSION]: this.task.packageVersion,
-          [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
-        });
-
-        return await tracer.startActiveSpan(
-          attemptMessage,
-          async (span) => {
-            return await consoleInterceptor.intercept(console, async () => {
-              const init = await this.#callTaskInit(parsedPayload, ctx);
-
-              try {
-                const output = await this.#callRun(parsedPayload, ctx, init);
-
-                try {
-                  span.setAttributes(flattenAttributes(output, SemanticInternalAttributes.OUTPUT));
-
-                  const serializedOutput = JSON.stringify(output);
-
-                  return {
-                    ok: true,
-                    id: execution.attempt.id,
-                    output: serializedOutput,
-                    outputType: "application/json",
-                  } satisfies TaskRunExecutionResult;
-                } catch (stringifyError) {
-                  recordSpanException(span, stringifyError);
-
-                  return {
-                    ok: false,
-                    id: execution.attempt.id,
-                    error: {
-                      type: "INTERNAL_ERROR",
-                      code: TaskRunErrorCodes.TASK_OUTPUT_ERROR,
-                      message:
-                        stringifyError instanceof Error
-                          ? stringifyError.message
-                          : typeof stringifyError === "string"
-                          ? stringifyError
-                          : undefined,
-                    },
-                  } satisfies TaskRunExecutionResult;
-                }
-              } catch (runError) {
-                try {
-                  const handleErrorResult = await this.#handleError(
-                    execution,
-                    runError,
-                    parsedPayload,
-                    ctx
-                  );
-
-                  recordSpanException(span, handleErrorResult.error ?? runError);
-
-                  return {
-                    id: execution.attempt.id,
-                    ok: false,
-                    error: handleErrorResult.error
-                      ? parseError(handleErrorResult.error)
-                      : parseError(runError),
-                    retry:
-                      handleErrorResult.status === "retry" ? handleErrorResult.retry : undefined,
-                    skippedRetrying: handleErrorResult.status === "skipped",
-                  } satisfies TaskRunExecutionResult;
-                } catch (handleErrorError) {
-                  recordSpanException(span, handleErrorError);
-
-                  return {
-                    ok: false,
-                    id: execution.attempt.id,
-                    error: {
-                      type: "INTERNAL_ERROR",
-                      code: TaskRunErrorCodes.HANDLE_ERROR_ERROR,
-                      message:
-                        handleErrorError instanceof Error
-                          ? handleErrorError.message
-                          : typeof handleErrorError === "string"
-                          ? handleErrorError
-                          : undefined,
-                    },
-                  } satisfies TaskRunExecutionResult;
-                }
-              } finally {
-                await this.#callTaskCleanup(parsedPayload, ctx, init);
-              }
-            });
-          },
-          {
-            kind: SpanKind.CONSUMER,
-            attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "attempt",
-              ...flattenAttributes(parsedPayload, SemanticInternalAttributes.PAYLOAD),
-              ...accessoryAttributes({
-                items: [
-                  {
-                    text: ctx.task.filePath,
-                  },
-                  {
-                    text: `${ctx.task.exportName}.run()`,
-                  },
-                ],
-                style: "codepath",
-              }),
-            },
-          },
-          tracer.extractContext(traceContext)
-        );
-      }
-    );
-
-    return result;
-  }
-
-  async #callRun(payload: unknown, ctx: TaskRunContext, init: unknown) {
-    const runFn = this.task.fns.run;
-    const middlewareFn = this.task.fns.middleware;
-
-    if (!runFn) {
-      throw new Error("Task does not have a run function");
-    }
-
-    if (!middlewareFn) {
-      return runFn(payload, { ctx });
-    }
-
-    return middlewareFn(payload, { ctx, next: async () => runFn(payload, { ctx, init }) });
-  }
-
-  async #callTaskInit(payload: unknown, ctx: TaskRunContext) {
-    const initFn = this.task.fns.init;
-
-    if (!initFn) {
-      return {};
-    }
-
-    return tracer.startActiveSpan("init", async (span) => {
-      return await initFn(payload, { ctx });
-    });
-  }
-
-  async #callTaskCleanup(payload: unknown, ctx: TaskRunContext, init: unknown) {
-    const cleanupFn = this.task.fns.cleanup;
-
-    if (!cleanupFn) {
-      return;
-    }
-
-    return tracer.startActiveSpan("cleanup", async (span) => {
-      return await cleanupFn(payload, { ctx, init });
-    });
-  }
-
-  async #handleError(
-    execution: TaskRunExecution,
-    error: unknown,
-    payload: any,
-    ctx: TaskRunContext
-  ): Promise<
-    | { status: "retry"; retry: TaskRunExecutionRetry; error?: unknown }
-    | { status: "skipped"; error?: unknown } // skipped is different than noop, it means that the task was skipped from retrying, instead of just not retrying
-    | { status: "noop"; error?: unknown }
-  > {
-    const retry = this.task.retry ?? __PROJECT_CONFIG__.retries?.default;
-
-    if (!retry) {
-      return { status: "noop" };
-    }
-
-    const delay = calculateNextRetryDelay(retry, execution.attempt.number);
-
-    if (
-      typeof __PROJECT_CONFIG__.retries?.enabledInDev === "boolean" &&
-      !__PROJECT_CONFIG__.retries.enabledInDev
-    ) {
-      return { status: "skipped" };
-    }
-
-    return tracer.startActiveSpan(
-      "handleError()",
-      async (span) => {
-        const handleErrorResult = this.task.fns.handleError
-          ? await this.task.fns.handleError(payload, error, {
-              ctx,
-              retry,
-              retryDelayInMs: delay,
-              retryAt: delay ? new Date(Date.now() + delay) : undefined,
-            })
-          : importedConfig
-          ? await importedConfig.handleError?.(payload, error, {
-              ctx,
-              retry,
-              retryDelayInMs: delay,
-              retryAt: delay ? new Date(Date.now() + delay) : undefined,
-            })
-          : undefined;
-
-        // If handleErrorResult
-        if (!handleErrorResult) {
-          return typeof delay === "undefined"
-            ? { status: "noop" }
-            : { status: "retry", retry: { timestamp: Date.now() + delay, delay } };
-        }
-
-        if (handleErrorResult.skipRetrying) {
-          return { status: "skipped", error: handleErrorResult.error };
-        }
-
-        if (typeof handleErrorResult.retryAt !== "undefined") {
-          return {
-            status: "retry",
-            retry: {
-              timestamp: handleErrorResult.retryAt.getTime(),
-              delay: handleErrorResult.retryAt.getTime() - Date.now(),
-            },
-            error: handleErrorResult.error,
-          };
-        }
-
-        if (typeof handleErrorResult.retryDelayInMs === "number") {
-          return {
-            status: "retry",
-            retry: {
-              timestamp: Date.now() + handleErrorResult.retryDelayInMs,
-              delay: handleErrorResult.retryDelayInMs,
-            },
-            error: handleErrorResult.error,
-          };
-        }
-
-        if (handleErrorResult.retry && typeof handleErrorResult.retry === "object") {
-          const delay = calculateNextRetryDelay(handleErrorResult.retry, execution.attempt.number);
-
-          return typeof delay === "undefined"
-            ? { status: "noop", error: handleErrorResult.error }
-            : {
-                status: "retry",
-                retry: { timestamp: Date.now() + delay, delay },
-                error: handleErrorResult.error,
-              };
-        }
-
-        return { status: "noop", error: handleErrorResult.error };
-      },
-      {
-        attributes: {
-          [SemanticInternalAttributes.STYLE_ICON]: "exclamation-circle",
-        },
-      }
-    );
-  }
-}
 
 function getTasks(): Array<TaskMetadataWithFunctions> {
   const result: Array<TaskMetadataWithFunctions> = [];
@@ -388,7 +100,16 @@ runtime.registerTasks(tasks);
 const taskExecutors: Map<string, TaskExecutor> = new Map();
 
 for (const task of tasks) {
-  taskExecutors.set(task.id, new TaskExecutor(task));
+  taskExecutors.set(
+    task.id,
+    new TaskExecutor(task, {
+      tracer,
+      tracingSDK,
+      consoleInterceptor,
+      projectConfig: __PROJECT_CONFIG__,
+      importedConfig,
+    })
+  );
 }
 
 let _execution: TaskRunExecution | undefined;

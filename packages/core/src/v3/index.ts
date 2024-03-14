@@ -49,3 +49,4 @@ export { accessoryAttributes } from "./utils/styleAttributes";
 export { eventFilterMatches } from "../eventFilterMatches";
 export { omit } from "./utils/omit";
 export { TracingSDK, type TracingDiagnosticLogLevel, recordSpanException } from "./otel";
+export { TaskExecutor, type TaskExecutorOptions } from "./workers/taskExecutor";
