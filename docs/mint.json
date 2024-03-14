@@ -438,7 +438,13 @@
     },
     {
       "group": "Getting Started",
-      "pages": ["v3/quick-start", "v3/upgrading-from-v2", "v3/changelog", "v3/feature-matrix"]
+      "pages": [
+        "v3/quick-start",
+        "v3/upgrading-from-v2",
+        "v3/changelog",
+        "v3/feature-matrix",
+        "v3/limits"
+      ]
     },
     {
       "group": "Fundamentals",
