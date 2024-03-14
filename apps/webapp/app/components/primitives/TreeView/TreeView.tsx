@@ -1,25 +1,9 @@
 import { VirtualItem, Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
-import {
-  Fragment,
-  MutableRefObject,
-  RefObject,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useReducer,
-  useRef,
-  useState,
-} from "react";
+import { MutableRefObject, RefObject, useCallback, useEffect, useReducer, useRef } from "react";
 import { UnmountClosed } from "react-collapse";
 import { cn } from "~/utils/cn";
-import { Changes, NodeState, NodesState, reducer } from "./reducer";
-import {
-  applyFilterToState,
-  concreteStateFromInput,
-  firstVisibleNode,
-  lastVisibleNode,
-  selectedIdFromState,
-} from "./utils";
+import { NodeState, NodesState, reducer } from "./reducer";
+import { applyFilterToState, concreteStateFromInput, selectedIdFromState } from "./utils";
 
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
@@ -232,6 +216,7 @@ export function useTree<TData>({
         index,
       });
     },
+    overscan: 20,
   });
 
   const scrollToNodeFn = useCallback(

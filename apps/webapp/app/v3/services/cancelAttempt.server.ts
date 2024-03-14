@@ -5,6 +5,7 @@ import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 
 import { PrismaClientOrTransaction, prisma } from "~/db.server";
+import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 
 export class CancelAttemptService extends BaseService {
   public async call(
@@ -49,6 +50,14 @@ export class CancelAttemptService extends BaseService {
         },
         data: {
           status: "CANCELED",
+          completedAt: cancelledAt,
+          taskRun: {
+            update: {
+              data: {
+                status: "INTERRUPTED",
+              },
+            },
+          },
         },
       });
 
@@ -65,6 +74,10 @@ export class CancelAttemptService extends BaseService {
           return eventRepository.cancelEvent(event, cancelledAt, reason);
         })
       );
+
+      if (environment?.type !== "DEVELOPMENT") {
+        await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);
+      }
     });
   }
 }
@@ -78,14 +91,10 @@ async function getAuthenticatedEnvironmentFromAttempt(
       friendlyId,
     },
     include: {
-      taskRun: {
+      runtimeEnvironment: {
         include: {
-          runtimeEnvironment: {
-            include: {
-              organization: true,
-              project: true,
-            },
-          },
+          organization: true,
+          project: true,
         },
       },
     },
@@ -95,5 +104,5 @@ async function getAuthenticatedEnvironmentFromAttempt(
     return;
   }
 
-  return taskRunAttempt?.taskRun.runtimeEnvironment;
+  return taskRunAttempt?.runtimeEnvironment;
 }

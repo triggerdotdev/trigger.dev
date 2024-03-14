@@ -222,6 +222,12 @@ export const PlatformToCoordinatorMessages = {
       attemptId: z.string(),
     }),
   },
+  REQUEST_ATTEMPT_CANCELLATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      attemptId: z.string(),
+    }),
+  },
 };
 
 export const ClientToSharedQueueMessages = {
@@ -373,6 +379,17 @@ export const CoordinatorToProdWorkerMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       executionPayload: ProdTaskRunExecutionPayload,
+    }),
+  },
+  REQUEST_ATTEMPT_CANCELLATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      attemptId: z.string(),
+    }),
+  },
+  REQUEST_EXIT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
     }),
   },
 };

@@ -200,6 +200,16 @@ class ProdWorker {
 
           process.exit(0);
         },
+        REQUEST_ATTEMPT_CANCELLATION: async (message) => {
+          if (!this.executing) {
+            return;
+          }
+
+          await this.#backgroundWorker.cancelAttempt(message.attemptId);
+        },
+        REQUEST_EXIT: async () => {
+          process.exit(0);
+        },
       },
       onConnection: async (socket, handler, sender, logger) => {
         if (process.env.INDEX_TASKS === "true") {

@@ -13,3 +13,16 @@ export const longRunning = task({
     };
   },
 });
+
+export const longRunningParent = task({
+  id: "long-running-parent",
+  run: async (payload: { message: string }) => {
+    logger.info("Long running parent", { payload });
+
+    await longRunning.triggerAndWait({ payload: { message: "child" } });
+
+    return {
+      finished: new Date().toISOString(),
+    };
+  },
+});

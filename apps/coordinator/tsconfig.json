@@ -9,10 +9,10 @@
     "strict": true,
     "skipLibCheck": true,
     "paths": {
-      "@trigger.dev/core/v3": ["../core/src/v3"],
-      "@trigger.dev/core/v3/*": ["../core/src/v3/*"],
-      "@trigger.dev/core-apps": ["../core-apps/src"],
-      "@trigger.dev/core-apps/*": ["../core-apps/src/*"]
+      "@trigger.dev/core/v3": ["../../packages/core/src/v3"],
+      "@trigger.dev/core/v3/*": ["../../packages/core/src/v3/*"],
+      "@trigger.dev/core-apps": ["../../packages/core-apps/src"],
+      "@trigger.dev/core-apps/*": ["../../packages/core-apps/src/*"]
     }
   }
 }

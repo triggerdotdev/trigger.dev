@@ -301,6 +301,16 @@ class TaskCoordinator {
 
           taskSocket.emit("RESUME_AFTER_DURATION", message);
         },
+        REQUEST_ATTEMPT_CANCELLATION: async (message) => {
+          const taskSocket = await this.#getAttemptSocket(message.attemptId);
+
+          if (!taskSocket) {
+            logger.log("Socket for attempt not found", { attemptId: message.attemptId });
+            return;
+          }
+
+          taskSocket.emit("REQUEST_ATTEMPT_CANCELLATION", message);
+        },
       },
     });
 
@@ -385,11 +395,21 @@ class TaskCoordinator {
 
           if (!executionAck) {
             logger.error("no execution ack", { attemptId: socket.data.attemptId });
+
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+
             return;
           }
 
           if (!executionAck.success) {
             logger.error("execution unsuccessful", { attemptId: socket.data.attemptId });
+
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+
             return;
           }
 

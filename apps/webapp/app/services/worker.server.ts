@@ -30,6 +30,9 @@ import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.se
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout.server";
 import { ResumeTaskService } from "./tasks/resumeTask.server";
+import { ResumeTaskRunDependenciesService } from "~/v3/services/resumeTaskRunDependencies.server";
+import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
+import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -106,6 +109,17 @@ const workerCatalog = {
   // v3 tasks
   "v3.indexDeployment": z.object({
     id: z.string(),
+  }),
+  "v3.resumeTaskRunDependencies": z.object({
+    attemptId: z.string(),
+  }),
+  "v3.resumeBatchRun": z.object({
+    batchRunId: z.string(),
+    sourceTaskAttemptId: z.string(),
+  }),
+  "v3.resumeTaskDependency": z.object({
+    dependencyId: z.string(),
+    sourceTaskAttemptId: z.string(),
   }),
 };
 
@@ -441,6 +455,33 @@ function getWorkerQueue() {
           const service = new IndexDeploymentService();
 
           return await service.call(payload.id);
+        },
+      },
+      "v3.resumeTaskRunDependencies": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new ResumeTaskRunDependenciesService();
+
+          return await service.call(payload.attemptId);
+        },
+      },
+      "v3.resumeBatchRun": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new ResumeBatchRunService();
+
+          return await service.call(payload.batchRunId, payload.sourceTaskAttemptId);
+        },
+      },
+      "v3.resumeTaskDependency": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new ResumeTaskDependencyService();
+
+          return await service.call(payload.dependencyId, payload.sourceTaskAttemptId);
         },
       },
     },

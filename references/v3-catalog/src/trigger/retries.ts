@@ -4,6 +4,9 @@ import { interceptor } from "./utils/interceptor";
 
 export const taskWithRetries = task({
   id: "task-with-retries",
+  retry: {
+    maxAttempts: 4,
+  },
   run: async (payload: any, { ctx }) => {
     const result = await retry.onThrow(
       async ({ attempt }) => {
@@ -40,6 +43,13 @@ export const taskWithRetries = task({
       result: "success",
       payload,
     };
+  },
+});
+
+export const taskThatErrors = task({
+  id: "task-that-errors",
+  run: async (payload: any, { ctx }) => {
+    throw new Error("failed");
   },
 });
 

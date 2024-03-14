@@ -67,7 +67,7 @@ export class OtelTaskLogger implements TaskLogger {
     severityNumber: SeverityNumber,
     properties?: Record<string, unknown>
   ) {
-    let attributes: Attributes = { ...flattenAttributes(properties), "log.type": "logger" };
+    let attributes: Attributes = { ...flattenAttributes(properties) };
 
     const icon = iconStringForSeverity(severityNumber);
     if (icon !== undefined) {

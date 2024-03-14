@@ -78,6 +78,7 @@
     "@remix-run/express": "2.1.0",
     "@remix-run/node": "2.1.0",
     "@remix-run/react": "2.1.0",
+    "@remix-run/router": "^1.15.3",
     "@remix-run/serve": "2.1.0",
     "@remix-run/server-runtime": "2.1.0",
     "@remix-run/v1-meta": "^0.1.3",

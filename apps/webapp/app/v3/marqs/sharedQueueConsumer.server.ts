@@ -31,9 +31,11 @@ const MessageBody = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("RESUME"),
     completedAttemptIds: z.string().array(),
+    resumableAttemptId: z.string(),
   }),
   z.object({
     type: z.literal("RESUME_AFTER_DURATION"),
+    resumableAttemptId: z.string(),
   }),
 ]);
 
@@ -42,6 +44,8 @@ type BackgroundWorkerWithTasks = BackgroundWorker & { tasks: BackgroundWorkerTas
 export type SharedQueueConsumerOptions = {
   maximumItemsPerTrace?: number;
   traceTimeoutSeconds?: number;
+  nextTickInterval?: number;
+  interval?: number;
 };
 
 export class SharedQueueConsumer {
@@ -66,6 +70,8 @@ export class SharedQueueConsumer {
     this._options = {
       maximumItemsPerTrace: options.maximumItemsPerTrace ?? 1_000, // 1k items per trace
       traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
+      nextTickInterval: options.nextTickInterval ?? 1000, // 1 second
+      interval: options.interval ?? 100, // 100ms
     };
   }
 
@@ -233,7 +239,7 @@ export class SharedQueueConsumer {
     const message = await marqs?.dequeueMessageInSharedQueue();
 
     if (!message) {
-      setTimeout(() => this.#doWork(), 1000);
+      setTimeout(() => this.#doWork(), this._options.nextTickInterval);
       return;
     }
 
@@ -257,7 +263,7 @@ export class SharedQueueConsumer {
         envId,
       });
       await marqs?.acknowledgeMessage(message.messageId);
-      setTimeout(() => this.#doWork(), 100);
+      setTimeout(() => this.#doWork(), this._options.interval);
       return;
     }
 
@@ -272,7 +278,7 @@ export class SharedQueueConsumer {
 
       await marqs?.acknowledgeMessage(message.messageId);
 
-      setTimeout(() => this.#doWork(), 100);
+      setTimeout(() => this.#doWork(), this._options.interval);
       return;
     }
 
@@ -290,7 +296,22 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
           });
           await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 100);
+          setTimeout(() => this.#doWork(), this._options.interval);
+          return;
+        }
+
+        if (
+          existingTaskRun.status !== "PENDING" &&
+          existingTaskRun.status !== "RETRYING_AFTER_FAILURE"
+        ) {
+          logger.debug("Task run is not pending, aborting", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+            taskRun: existingTaskRun.id,
+            status: existingTaskRun.status,
+          });
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), this._options.interval);
           return;
         }
 
@@ -321,7 +342,7 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
           });
           await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 100);
+          setTimeout(() => this.#doWork(), this._options.interval);
           return;
         }
 
@@ -332,7 +353,7 @@ export class SharedQueueConsumer {
             deployment: deployment.id,
           });
           await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 100);
+          setTimeout(() => this.#doWork(), this._options.interval);
           return;
         }
 
@@ -351,7 +372,7 @@ export class SharedQueueConsumer {
 
           await marqs?.acknowledgeMessage(message.messageId);
 
-          setTimeout(() => this.#doWork(), 100);
+          setTimeout(() => this.#doWork(), this._options.interval);
           return;
         }
 
@@ -383,7 +404,7 @@ export class SharedQueueConsumer {
 
           await marqs?.acknowledgeMessage(message.messageId);
 
-          setTimeout(() => this.#doWork(), 100);
+          setTimeout(() => this.#doWork(), this._options.interval);
           return;
         }
 
@@ -398,7 +419,7 @@ export class SharedQueueConsumer {
 
         if (!queue) {
           await marqs?.nackMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 1000);
+          setTimeout(() => this.#doWork(), this._options.nextTickInterval);
           return;
         }
 
@@ -417,6 +438,7 @@ export class SharedQueueConsumer {
             backgroundWorkerTaskId: backgroundTask.id,
             status: "PENDING" as const,
             queueId: queue.id,
+            runtimeEnvironmentId: environment.id,
           },
         });
 
@@ -462,7 +484,7 @@ export class SharedQueueConsumer {
           // Finally we need to nack the message so it can be retried
           await marqs?.nackMessage(message.messageId);
         } finally {
-          setTimeout(() => this.#doWork(), 100);
+          setTimeout(() => this.#doWork(), this._options.interval);
         }
         break;
       }
@@ -474,33 +496,39 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
           });
           await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 100);
+          setTimeout(() => this.#doWork(), this._options.interval);
           return;
         }
 
-        const resumableRun = await prisma.taskRun.findFirst({
+        const resumableRun = await prisma.taskRun.findUnique({
           where: {
             id: message.messageId,
           },
+        });
+
+        if (!resumableRun) {
+          logger.error("Resumable run not found", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+          });
+          await marqs?.acknowledgeMessage(message.messageId);
+          setTimeout(() => this.#doWork(), this._options.interval);
+          return;
+        }
+
+        const resumableAttempt = await prisma.taskRunAttempt.findUnique({
+          where: {
+            id: messageBody.data.resumableAttemptId,
+          },
           include: {
-            attempts: {
+            checkpoints: {
+              take: 1,
               orderBy: {
                 createdAt: "desc",
-              },
-              take: 1,
-              include: {
-                checkpoints: {
-                  take: 1,
-                  orderBy: {
-                    createdAt: "desc",
-                  },
-                },
               },
             },
           },
         });
-
-        const resumableAttempt = resumableRun?.attempts[0];
 
         if (!resumableAttempt) {
           logger.error("Resumable attempt not found", {
@@ -508,7 +536,7 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
           });
           await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 100);
+          setTimeout(() => this.#doWork(), this._options.interval);
           return;
         }
 
@@ -523,7 +551,7 @@ export class SharedQueueConsumer {
 
         if (!queue) {
           await marqs?.nackMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 1000);
+          setTimeout(() => this.#doWork(), this._options.nextTickInterval);
           return;
         }
 
@@ -543,7 +571,7 @@ export class SharedQueueConsumer {
               resumableAttemptId: resumableAttempt.id,
             });
             await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), 100);
+            setTimeout(() => this.#doWork(), this._options.interval);
             return;
           }
 
@@ -553,6 +581,13 @@ export class SharedQueueConsumer {
             },
             data: {
               status: "EXECUTING",
+              taskRun: {
+                update: {
+                  data: {
+                    status: "EXECUTING",
+                  },
+                },
+              },
             },
           });
 
@@ -565,7 +600,7 @@ export class SharedQueueConsumer {
             reason: latestCheckpoint.reason ?? undefined,
           });
 
-          setTimeout(() => this.#doWork(), 100);
+          setTimeout(() => this.#doWork(), this._options.interval);
           return;
         }
 
@@ -593,7 +628,7 @@ export class SharedQueueConsumer {
               messageId: message.messageId,
             });
             await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), 100);
+            setTimeout(() => this.#doWork(), this._options.interval);
             return;
           }
 
@@ -601,7 +636,7 @@ export class SharedQueueConsumer {
 
           if (!completion) {
             await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), 100);
+            setTimeout(() => this.#doWork(), this._options.interval);
             return;
           }
 
@@ -614,7 +649,7 @@ export class SharedQueueConsumer {
 
           if (!executionPayload) {
             await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), 100);
+            setTimeout(() => this.#doWork(), this._options.interval);
             return;
           }
 
@@ -641,35 +676,26 @@ export class SharedQueueConsumer {
           // Finally we need to nack the message so it can be retried
           await marqs?.nackMessage(message.messageId);
         } finally {
-          setTimeout(() => this.#doWork(), 100);
+          setTimeout(() => this.#doWork(), this._options.interval);
         }
         break;
       }
       // Resume after duration-based wait
       case "RESUME_AFTER_DURATION": {
-        const resumableRun = await prisma.taskRun.findFirst({
+        const resumableAttempt = await prisma.taskRunAttempt.findUnique({
           where: {
-            id: message.messageId,
+            id: messageBody.data.resumableAttemptId,
           },
           include: {
-            attempts: {
+            checkpoints: {
+              take: 1,
               orderBy: {
                 createdAt: "desc",
               },
-              take: 1,
-              include: {
-                checkpoints: {
-                  take: 1,
-                  orderBy: {
-                    createdAt: "desc",
-                  },
-                },
-              },
             },
+            taskRun: true,
           },
         });
-
-        const resumableAttempt = resumableRun?.attempts[0];
 
         if (!resumableAttempt) {
           logger.error("Resumable attempt not found", {
@@ -677,7 +703,7 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
           });
           await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 100);
+          setTimeout(() => this.#doWork(), this._options.interval);
           return;
         }
 
@@ -687,7 +713,7 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
           });
           await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), 100);
+          setTimeout(() => this.#doWork(), this._options.interval);
           return;
         }
 
@@ -702,7 +728,7 @@ export class SharedQueueConsumer {
               resumableAttemptId: resumableAttempt.id,
             });
             await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), 100);
+            setTimeout(() => this.#doWork(), this._options.interval);
             return;
           }
 
@@ -736,7 +762,7 @@ export class SharedQueueConsumer {
           // Finally we need to nack the message so it can be retried
           await marqs?.nackMessage(message.messageId);
         } finally {
-          setTimeout(() => this.#doWork(), 100);
+          setTimeout(() => this.#doWork(), this._options.interval);
         }
         break;
       }
@@ -811,14 +837,14 @@ class SharedQueueTasks {
       include: {
         backgroundWorker: true,
         backgroundWorkerTask: true,
+        runtimeEnvironment: {
+          include: {
+            organization: true,
+            project: true,
+          },
+        },
         taskRun: {
           include: {
-            runtimeEnvironment: {
-              include: {
-                organization: true,
-                project: true,
-              },
-            },
             tags: true,
             batchItem: {
               include: {
@@ -836,6 +862,30 @@ class SharedQueueTasks {
       return;
     }
 
+    if (attempt.status === "CANCELED") {
+      return;
+    }
+
+    if (attempt.status === "FAILED") {
+      return;
+    }
+
+    if (attempt.status === "COMPLETED") {
+      return;
+    }
+
+    if (attempt.taskRun.status === "CANCELED") {
+      return;
+    }
+
+    if (attempt.taskRun.status === "COMPLETED_SUCCESSFULLY") {
+      return;
+    }
+
+    if (attempt.taskRun.status === "COMPLETED_WITH_ERRORS") {
+      return;
+    }
+
     if (setToExecuting) {
       await prisma.taskRunAttempt.update({
         where: {
@@ -843,6 +893,13 @@ class SharedQueueTasks {
         },
         data: {
           status: "EXECUTING",
+          taskRun: {
+            update: {
+              data: {
+                status: "EXECUTING",
+              },
+            },
+          },
         },
       });
     }
@@ -877,20 +934,20 @@ class SharedQueueTasks {
         name: queue.name,
       },
       environment: {
-        id: taskRun.runtimeEnvironment.id,
-        slug: taskRun.runtimeEnvironment.slug,
-        type: taskRun.runtimeEnvironment.type,
+        id: attempt.runtimeEnvironment.id,
+        slug: attempt.runtimeEnvironment.slug,
+        type: attempt.runtimeEnvironment.type,
       },
       organization: {
-        id: taskRun.runtimeEnvironment.organization.id,
-        slug: taskRun.runtimeEnvironment.organization.slug,
-        name: taskRun.runtimeEnvironment.organization.title,
+        id: attempt.runtimeEnvironment.organization.id,
+        slug: attempt.runtimeEnvironment.organization.slug,
+        name: attempt.runtimeEnvironment.organization.title,
       },
       project: {
-        id: taskRun.runtimeEnvironment.project.id,
-        ref: taskRun.runtimeEnvironment.project.externalRef,
-        slug: taskRun.runtimeEnvironment.project.slug,
-        name: taskRun.runtimeEnvironment.project.name,
+        id: attempt.runtimeEnvironment.project.id,
+        ref: attempt.runtimeEnvironment.project.externalRef,
+        slug: attempt.runtimeEnvironment.project.slug,
+        name: attempt.runtimeEnvironment.project.name,
       },
       batch: taskRun.batchItem?.batchTaskRun
         ? { id: taskRun.batchItem.batchTaskRun.friendlyId }
@@ -904,8 +961,8 @@ class SharedQueueTasks {
 
     const environmentRepository = new EnvironmentVariablesRepository();
     const variables = await environmentRepository.getEnvironmentVariables(
-      attempt.taskRun.runtimeEnvironment.projectId,
-      attempt.taskRun.runtimeEnvironmentId
+      attempt.runtimeEnvironment.projectId,
+      attempt.runtimeEnvironmentId
     );
 
     const payload: ProdTaskRunExecutionPayload = {

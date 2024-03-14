@@ -1,9 +1,16 @@
 import { SpanKind } from "@opentelemetry/api";
 import { SemanticAttributes } from "@opentelemetry/semantic-conventions";
 import {
+  HandleErrorFnParams,
+  HandleErrorResult,
+  InitFnParams,
+  InitOutput,
+  MiddlewareFnParams,
   QueueOptions,
   RetryOptions,
+  RunFnParams,
   SemanticInternalAttributes,
+  SuccessFnParams,
   TaskRunContext,
   accessoryAttributes,
   apiClientManager,
@@ -16,33 +23,7 @@ import {
 import * as packageJson from "../../package.json";
 import { tracer } from "./tracer";
 
-export type InitOutput = Record<string, any> | void | undefined;
-
-export type RunFnParams<TInitOutput extends InitOutput> = Prettify<{
-  ctx: Context;
-  init: TInitOutput;
-}>;
-
-export type MiddlewareFnParams = Prettify<{
-  ctx: Context;
-  next: () => Promise<void>;
-}>;
-
-export type InitFnParams = Prettify<{
-  ctx: Context;
-}>;
-
 export type Context = TaskRunContext;
-
-export type SuccessFnParams<TOutput, TInitOutput extends InitOutput> = RunFnParams<TInitOutput> &
-  Prettify<{
-    output: TOutput;
-  }>;
-
-export type ErrorFnParams<TInitOutput extends InitOutput> = RunFnParams<TInitOutput> &
-  Prettify<{
-    error: unknown;
-  }>;
 
 type RequireOne<T, K extends keyof T> = {
   [X in Exclude<keyof T, K>]?: T[X];
@@ -66,10 +47,14 @@ export type TaskOptions<TPayload, TOutput = any, TInitOutput extends InitOutput 
   };
   run: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<TOutput>;
   init?: (payload: TPayload, params: InitFnParams) => Promise<TInitOutput>;
+  handleError?: (
+    payload: TPayload,
+    error: unknown,
+    params: HandleErrorFnParams<TInitOutput>
+  ) => HandleErrorResult;
   cleanup?: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<void>;
   middleware?: (payload: TPayload, params: MiddlewareFnParams) => Promise<void>;
   onSuccess?: (payload: TPayload, params: SuccessFnParams<TOutput, TInitOutput>) => Promise<void>;
-  onError?: (payload: TPayload, params: ErrorFnParams<TInitOutput>) => Promise<void>;
 };
 
 type InvokeHandle = {
@@ -437,6 +422,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
         init: params.init,
         cleanup: params.cleanup,
         middleware: params.middleware,
+        handleError: params.handleError,
       },
     },
     enumerable: false,
