@@ -454,7 +454,7 @@
     },
     {
       "group": "Development",
-      "pages": ["v3/cli-dev", "v3/develop-run-tests"]
+      "pages": ["v3/cli-dev", "v3/run-tests"]
     },
     {
       "group": "Deployment",
@@ -485,19 +485,16 @@
           ]
         },
         "v3/queue-concurrency",
-        {
-          "group": "Testing",
-          "pages": ["v3/run-tests", "v3/automated-tests"]
-        },
-        "v3/idempotency",
         "v3/versioning",
+        "v3/machines",
+        "v3/idempotency",
         "v3/reattempting-replaying",
         "v3/trigger-filters",
         "v3/notifications",
         "v3/rollbacks",
         "v3/using-apis",
         "v3/middleware",
-        "v3/machines"
+        "v3/automated-tests"
       ]
     },
     {
