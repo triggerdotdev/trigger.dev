@@ -166,7 +166,82 @@ export const taskWithFetchRetries = task({
   it cause a retry of the entire task.
 </Note>
 
-## Handling errors and deciding the retry behavior
+## Advanced error handling and retrying
+
+We provide a `handleError` callback on the task and in your `trigger.config` file. This gets called when an uncaught error is thrown in your task.
+
+You can
+
+- Inspect the error, log it, and return a different error if you'd like.
+- Modify the retrying behavior based on the error, payload, context, etc.
+
+If you don't return anything from the function it will use the settings on the task (or inherited from the config). So you only need to use this to override things.
+
+### OpenAI error handling example
+
+OpenAI calls can fail for a lot of reasons and the ideal retry behavior is different for each.
+
+In this complicated example:
+
+- We skip retrying if there's no Response status.
+- We skip retrying if you've run out of credits.
+- If there are no Response headers we let the normal retrying logic handle it (return undefined).
+- If we've run out of requests or tokens we retry at the time specified in the headers.
+
+```ts
+export const openaiTask = task({
+  id: "openai-task",
+  retry: {
+    maxAttempts: 1,
+  },
+  run: async (payload: { prompt: string }) => {
+    const chatCompletion = await openai.chat.completions.create({
+      messages: [{ role: "user", content: payload.prompt }],
+      model: "gpt-3.5-turbo",
+    });
+
+    return chatCompletion.choices[0].message.content;
+  },
+  handleError: async (payload, error, { ctx, retryAt }) => {
+    if (error instanceof OpenAI.APIError) {
+      if (!error.status) {
+        return {
+          skipRetrying: true,
+        };
+      }
+
+      if (error.status === 429 && error.type === "insufficient_quota") {
+        return {
+          skipRetrying: true,
+        };
+      }
+
+      if (!error.headers) {
+        //returning undefined means the normal retrying logic will be used
+        return;
+      }
+
+      const remainingRequests = error.headers["x-ratelimit-remaining-requests"];
+      const requestResets = error.headers["x-ratelimit-reset-requests"];
+
+      if (typeof remainingRequests === "string" && Number(remainingRequests) === 0) {
+        return {
+          retryAt: calculateISO8601DurationOpenAIVariantResetAt(requestResets),
+        };
+      }
+
+      const remainingTokens = error.headers["x-ratelimit-remaining-tokens"];
+      const tokensResets = error.headers["x-ratelimit-reset-tokens"];
+
+      if (typeof remainingTokens === "string" && Number(remainingTokens) === 0) {
+        return {
+          retryAt: calculateISO8601DurationOpenAIVariantResetAt(tokensResets),
+        };
+      }
+    }
+  },
+});
+```
 
 ## Using try/catch to prevent retries
 
