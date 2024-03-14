@@ -1,4 +1,6 @@
+import { InlineCode, InlineCodeVariant } from "~/components/code/InlineCode";
 import { SpanCodePathAccessory } from "./SpanTitle";
+import { cn } from "~/utils/cn";
 
 type TaskPathProps = {
   filePath: string;
@@ -14,5 +16,19 @@ export function TaskPath({ filePath, functionName, className }: TaskPathProps) {
       }}
       className={className}
     />
+  );
+}
+
+type TaskFunctionNameProps = {
+  functionName: string;
+  variant?: InlineCodeVariant;
+  className?: string;
+};
+
+export function TaskFunctionName({ variant, functionName, className }: TaskFunctionNameProps) {
+  return (
+    <InlineCode variant={variant} className={cn("text-sun-100", className)}>
+      {functionName}()
+    </InlineCode>
   );
 }

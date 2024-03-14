@@ -307,16 +307,25 @@ export function v3NewEnvironmentVariablesPath(organization: OrgForPath, project:
   return `${v3EnvironmentVariablesPath(organization, project)}/new`;
 }
 
-export function v3TestPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${v3ProjectPath(organization, project)}/test`;
+export function v3TestPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environmentSlug?: string
+) {
+  return `${v3ProjectPath(organization, project)}/test${
+    environmentSlug ? `?environment=${environmentSlug}` : ""
+  }`;
 }
 
 export function v3TestTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  task: TaskForPath
+  task: TaskForPath,
+  environmentSlug: string
 ) {
-  return `${v3TestPath(organization, project)}/tasks/${task.friendlyId}`;
+  return `${v3TestPath(organization, project)}/tasks/${
+    task.friendlyId
+  }?environment=${environmentSlug}`;
 }
 
 export function v3RunsPath(

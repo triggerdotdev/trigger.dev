@@ -192,6 +192,7 @@ importers:
       '@remix-run/express': 2.1.0
       '@remix-run/node': 2.1.0
       '@remix-run/react': 2.1.0
+      '@remix-run/router': ^1.15.3
       '@remix-run/serve': 2.1.0
       '@remix-run/server-runtime': 2.1.0
       '@remix-run/testing': ^2.1.0
@@ -387,6 +388,7 @@ importers:
       '@remix-run/express': 2.1.0_fgkcria6ebvizt7e6qzdl6ei7a
       '@remix-run/node': 2.1.0_typescript@5.2.2
       '@remix-run/react': 2.1.0_vegmnuvoswdxuttpuhvewcem44
+      '@remix-run/router': 1.15.3
       '@remix-run/serve': 2.1.0_typescript@5.2.2
       '@remix-run/server-runtime': 2.1.0_typescript@5.2.2
       '@remix-run/v1-meta': 0.1.3_ybjp5xbtg4zthziheradfmei64
@@ -448,7 +450,7 @@ importers:
       remix-auth-email-link: 2.0.2_esw6v6dv7ru6ju3hn3i62b7n2m
       remix-auth-github: 1.6.0_esw6v6dv7ru6ju3hn3i62b7n2m
       remix-typedjson: 0.3.1_7t5z2pmrpxrx2dh2jpp55scw5q
-      remix-utils: 7.1.0_nb5lmxjinjv74o775xrkc35gga
+      remix-utils: 7.1.0_cjgnbzcazcnsfczvrl5mkowbs4
       semver: 7.5.0
       simple-oauth2: 5.0.0
       simplur: 3.0.1
@@ -15008,6 +15010,11 @@ packages:
   /@remix-run/router/1.10.0:
     resolution: {integrity: sha512-Lm+fYpMfZoEucJ7cMxgt4dYt8jLfbpwRCzAjm9UgSLOkmlqo9gupxt6YX3DY0Fk155NT9l17d/ydi+964uS9Lw==}
     engines: {node: '>=14.0.0'}
+
+  /@remix-run/router/1.15.3:
+    resolution: {integrity: sha512-Oy8rmScVrVxWZVOpEF57ovlnhpZ8CCPlnIIumVcV9nFdiSIrus99+Lw78ekXyGvVDlIsFJbSfmSovJUhCWYV3w==}
+    engines: {node: '>=14.0.0'}
+    dev: false
 
   /@remix-run/router/1.7.2:
     resolution: {integrity: sha512-7Lcn7IqGMV+vizMPoEl5F0XDshcdDYtMI6uJLQdQz5CfZAwy3vvGKYSUk789qndt5dEC4HfSjviSYlSoHGL2+A==}
@@ -34421,7 +34428,7 @@ packages:
       react: 18.2.0
     dev: false
 
-  /remix-utils/7.1.0_nb5lmxjinjv74o775xrkc35gga:
+  /remix-utils/7.1.0_cjgnbzcazcnsfczvrl5mkowbs4:
     resolution: {integrity: sha512-cceintceWvmNvgLLFeAUkWRcdWuOHGDLaWh0aeL0bLGWnMPBilIyT74Rira1az/ImS9owfh8tjLL4w/22AXJiA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
@@ -34459,6 +34466,7 @@ packages:
     dependencies:
       '@remix-run/node': 2.1.0_typescript@5.2.2
       '@remix-run/react': 2.1.0_vegmnuvoswdxuttpuhvewcem44
+      '@remix-run/router': 1.15.3
       intl-parse-accept-language: 1.0.0
       react: 18.2.0
       type-fest: 4.6.0
