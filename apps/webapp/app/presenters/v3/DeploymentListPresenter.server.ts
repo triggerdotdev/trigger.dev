@@ -112,7 +112,7 @@ INNER JOIN
 WHERE 
   wd."projectId" = ${project.id}
 ORDER BY 
-  wd."version" DESC 
+  string_to_array(wd."version", '.')::int[] DESC 
 LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
 
     return {
