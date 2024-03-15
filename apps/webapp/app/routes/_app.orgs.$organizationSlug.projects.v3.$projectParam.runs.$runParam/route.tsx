@@ -237,6 +237,9 @@ function TasksTreeView({
     },
   });
 
+  const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
+  const maxTimelineWidth = minTimelineWidth * 10;
+
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr] overflow-hidden">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
@@ -382,8 +385,8 @@ function TasksTreeView({
               durationMs={nanosecondsToMilliseconds(totalDuration * 1.05)}
               scale={scale}
               className="h-full overflow-hidden"
-              minWidth={initialTimelineDimensions?.width ?? 300}
-              maxWidth={2000}
+              minWidth={minTimelineWidth}
+              maxWidth={maxTimelineWidth}
             >
               {/* Follows the cursor */}
               <CurrentTimeIndicator totalDuration={totalDuration} />
