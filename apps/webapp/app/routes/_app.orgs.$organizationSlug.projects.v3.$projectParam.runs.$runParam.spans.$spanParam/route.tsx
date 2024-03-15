@@ -15,7 +15,7 @@ import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
-import { TaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
+import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
@@ -85,7 +85,7 @@ export default function Page() {
             )}
             {event.style.variant === "primary" && (
               <Property label="Status">
-                <TaskRunStatus
+                <TaskRunAttemptStatusCombo
                   status={
                     event.isCancelled
                       ? "CANCELED"

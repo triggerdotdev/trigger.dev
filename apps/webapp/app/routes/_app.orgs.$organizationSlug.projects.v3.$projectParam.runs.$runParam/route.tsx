@@ -3,7 +3,6 @@ import {
   ChevronRightIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
-  NoSymbolIcon,
 } from "@heroicons/react/20/solid";
 import { Link, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -27,7 +26,6 @@ import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
 import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
-import { LiveCountUp, LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
@@ -239,6 +237,9 @@ function TasksTreeView({
     },
   });
 
+  const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
+  const maxTimelineWidth = minTimelineWidth * 10;
+
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr] overflow-hidden">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
@@ -384,8 +385,8 @@ function TasksTreeView({
               durationMs={nanosecondsToMilliseconds(totalDuration * 1.05)}
               scale={scale}
               className="h-full overflow-hidden"
-              minWidth={initialTimelineDimensions?.width ?? 300}
-              maxWidth={2000}
+              minWidth={minTimelineWidth}
+              maxWidth={maxTimelineWidth}
             >
               {/* Follows the cursor */}
               <CurrentTimeIndicator totalDuration={totalDuration} />
@@ -568,14 +569,14 @@ function NodeStatusIcon({ node }: { node: RunEvent }) {
   }
 
   if (node.data.isError) {
-    return <TaskRunStatusIcon status="FAILED" className={cn("size-4")} />;
+    return <TaskRunStatusIcon status="COMPLETED_WITH_ERRORS" className={cn("size-4")} />;
   }
 
   if (node.data.isPartial) {
     return <TaskRunStatusIcon status={"EXECUTING"} className={cn("size-4")} />;
   }
 
-  return <TaskRunStatusIcon status="COMPLETED" className={cn("size-4")} />;
+  return <TaskRunStatusIcon status="COMPLETED_SUCCESSFULLY" className={cn("size-4")} />;
 }
 
 function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {
