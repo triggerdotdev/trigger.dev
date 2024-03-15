@@ -14,6 +14,7 @@ import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -594,7 +595,8 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
   const { spanParam } = useParams();
 
   return (
-    <Link
+    <LinkButton
+      variant="minimal/medium"
       to={
         spanParam
           ? v3RunSpanPath(
@@ -611,7 +613,9 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
       }
       onMouseEnter={() => setMouseOver(true)}
       onMouseLeave={() => setMouseOver(false)}
-      className="mt-1 flex h-8 items-center gap-2"
+      fullWidth
+      textAlignLeft
+      shortcut={{ key: "p" }}
     >
       {mouseOver ? (
         <ShowParentIconSelected className="h-4 w-4 text-indigo-500" />
@@ -624,7 +628,7 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
       >
         Show parent items
       </Paragraph>
-    </Link>
+    </LinkButton>
   );
 }
 
