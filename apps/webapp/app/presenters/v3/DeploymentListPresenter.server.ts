@@ -5,7 +5,7 @@ import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
 import { getUsername } from "~/utils/username";
 
-const pageSize = 2;
+const pageSize = 20;
 
 export class DeploymentListPresenter {
   #prismaClient: PrismaClient;

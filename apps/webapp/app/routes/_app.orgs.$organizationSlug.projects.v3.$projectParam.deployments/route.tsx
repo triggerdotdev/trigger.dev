@@ -1,4 +1,5 @@
 import { CommandLineIcon, ServerIcon } from "@heroicons/react/20/solid";
+import { Outlet, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { TerminalIcon, TerminalSquareIcon } from "lucide-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -13,7 +14,11 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { ResizablePanel, ResizablePanelGroup } from "~/components/primitives/Resizable";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
 import {
   Table,
   TableBlankRow,
@@ -72,16 +77,18 @@ export default function Page() {
   const { deployments, currentPage, totalPages } = useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
 
+  const { deploymentParam } = useParams();
+
   return (
     <PageContainer>
       <NavBar>
         <PageTitle title="Deployments" />
       </NavBar>
-      <PageBody>
+      <PageBody scrollable={false}>
         <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
           <ResizablePanel order={1} minSize={20} defaultSize={60}>
             {hasDeployments ? (
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4 p-3">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -174,6 +181,15 @@ export default function Page() {
               <CreateDeploymentInstructions />
             )}
           </ResizablePanel>
+
+          {deploymentParam && (
+            <>
+              <ResizableHandle />
+              <ResizablePanel order={2} minSize={20} defaultSize={40}>
+                <Outlet />
+              </ResizablePanel>
+            </>
+          )}
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>

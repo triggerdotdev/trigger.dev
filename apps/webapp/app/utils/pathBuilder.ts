@@ -87,7 +87,7 @@ export const v3SpanParamsSchema = ProjectParamSchema.extend({
 });
 
 export const v3DeploymentParams = ProjectParamSchema.extend({
-  shortCode: z.string(),
+  deploymentParam: z.string(),
 });
 
 export function trimTrailingSlash(path: string) {
