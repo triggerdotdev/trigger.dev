@@ -1,5 +1,5 @@
-import { QueueListIcon } from "@heroicons/react/20/solid";
-import { useParams } from "@remix-run/react";
+import { QueueListIcon, StopCircleIcon } from "@heroicons/react/20/solid";
+import { Form, useFetcher, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { ReactNode } from "react";
@@ -7,7 +7,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -47,6 +47,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const { runParam } = useParams();
+  const cancelFetcher = useFetcher();
 
   return (
     <div
@@ -157,6 +158,24 @@ export default function Page() {
             >
               Focus on span
             </LinkButton>
+          )}
+          {event.isPartial && runParam && (
+            <cancelFetcher.Form action={`/resources/taskruns/${event.runId}/cancel`} method="post">
+              <Button
+                type="submit"
+                name="redirectUrl"
+                value={v3RunSpanPath(
+                  organization,
+                  project,
+                  { friendlyId: runParam },
+                  { spanId: event.spanId }
+                )}
+                variant="danger/small"
+                LeadingIcon={StopCircleIcon}
+              >
+                Cancel
+              </Button>
+            </cancelFetcher.Form>
           )}
         </div>
       ) : null}
