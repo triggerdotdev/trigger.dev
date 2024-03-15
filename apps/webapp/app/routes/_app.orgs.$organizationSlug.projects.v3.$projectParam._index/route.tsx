@@ -1,6 +1,6 @@
 import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { TaskRunAttemptStatus } from "@trigger.dev/database";
+import { TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { Feedback } from "~/components/Feedback";
@@ -25,9 +25,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { TaskPath } from "~/components/runs/v3/TaskPath";
-import { TaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
-import { useAppOrigin } from "~/hooks/useAppOrigin";
+import { TaskFunctionName, TaskPath } from "~/components/runs/v3/TaskPath";
+import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -83,8 +82,12 @@ export default function Page() {
                     <TableRow>
                       <TableHeaderCell>Task ID</TableHeaderCell>
                       <TableHeaderCell>Task</TableHeaderCell>
+                      <TableHeaderCell>Path</TableHeaderCell>
                       <TableHeaderCell>Environment</TableHeaderCell>
                       <TableHeaderCell>Last run</TableHeaderCell>
+                      <TableHeaderCell>
+                        <div className="sr-only">Last run status</div>
+                      </TableHeaderCell>
                       <TableHeaderCell>Created at</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
@@ -104,30 +107,38 @@ export default function Page() {
                           <TableRow key={task.id} className="group">
                             <TableCell to={path}>{task.slug}</TableCell>
                             <TableCell to={path}>
-                              <TaskPath
-                                filePath={task.filePath}
-                                functionName={`${task.exportName}()`}
+                              <TaskFunctionName
+                                functionName={task.exportName}
+                                variant="extra-small"
                               />
                             </TableCell>
+                            <TableCell to={path}>{task.filePath}</TableCell>
                             <TableCell to={path}>
                               <EnvironmentLabel
                                 environment={task.environment}
                                 userName={usernameForEnv}
                               />
                             </TableCell>
+
                             <TableCell to={path}>
                               {task.latestRun ? (
                                 <div
                                   className={cn(
                                     "flex items-center gap-2",
-                                    classForTaskAttemptStatus(task.latestRun.status)
+                                    classForTaskRunStatus(task.latestRun.status)
                                   )}
                                 >
-                                  <DateTime date={task.latestRun.updatedAt} />
-                                  <TaskRunStatus status={task.latestRun.status} />
+                                  <DateTime date={task.latestRun.createdAt} />
                                 </div>
                               ) : (
                                 "Never run"
+                              )}
+                            </TableCell>
+                            <TableCell to={path}>
+                              {task.latestRun ? (
+                                <TaskRunStatusCombo status={task.latestRun.status} />
+                              ) : (
+                                "–"
                               )}
                             </TableCell>
                             <TableCell to={path}>
@@ -157,9 +168,10 @@ export default function Page() {
   );
 }
 
-function classForTaskAttemptStatus(status: TaskRunAttemptStatus) {
+function classForTaskRunStatus(status: TaskRunStatus) {
   switch (status) {
-    case "FAILED":
+    case "SYSTEM_FAILURE":
+    case "COMPLETED_WITH_ERRORS":
       return "text-error";
     default:
       return "";

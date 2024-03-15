@@ -19,8 +19,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from "../../primitives/Table";
-import { TaskRunStatus } from "./TaskRunStatus";
 import { formatDuration } from "@trigger.dev/core/v3";
+import { TaskRunStatusCombo } from "./TaskRunStatus";
 
 type RunsTableProps = {
   total: number;
@@ -82,7 +82,7 @@ export function TaskRunsTable({
                   <EnvironmentLabel environment={run.environment} userName={usernameForEnv} />
                 </TableCell>
                 <TableCell to={path}>
-                  <TaskRunStatus status={run.status} />
+                  <TaskRunStatusCombo status={run.status} />
                 </TableCell>
                 <TableCell to={path}>
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}

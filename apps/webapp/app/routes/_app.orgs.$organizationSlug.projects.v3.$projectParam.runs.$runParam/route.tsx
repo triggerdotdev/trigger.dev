@@ -30,6 +30,7 @@ import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
 import { LiveCountUp, LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
+import { TaskRunAttemptStatusIcon } from "~/components/runs/v3/TaskRunAttemptStatus";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
 import { useDebounce } from "~/hooks/useDebounce";
 import { useEventSource } from "~/hooks/useEventSource";
@@ -568,14 +569,14 @@ function NodeStatusIcon({ node }: { node: RunEvent }) {
   }
 
   if (node.data.isError) {
-    return <TaskRunStatusIcon status="FAILED" className={cn("size-4")} />;
+    return <TaskRunAttemptStatusIcon status="FAILED" className={cn("size-4")} />;
   }
 
   if (node.data.isPartial) {
     return <TaskRunStatusIcon status={"EXECUTING"} className={cn("size-4")} />;
   }
 
-  return <TaskRunStatusIcon status="COMPLETED" className={cn("size-4")} />;
+  return <TaskRunAttemptStatusIcon status="COMPLETED" className={cn("size-4")} />;
 }
 
 function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {

@@ -1,4 +1,4 @@
-import { Prisma, TaskRunAttemptStatus } from "@trigger.dev/database";
+import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
@@ -79,35 +79,37 @@ export class TaskListPresenter {
       bwt."createdAt" DESC;`;
 
     let latestRuns = [] as {
-      updatedAt: Date;
-      status: TaskRunAttemptStatus;
-      backgroundWorkerTaskId: string;
+      createdAt: Date;
+      status: TaskRunStatus;
+      lockedById: string;
     }[];
 
     if (tasks.length > 0) {
       latestRuns = await this.#prismaClient.$queryRaw<
         {
-          updatedAt: Date;
-          status: TaskRunAttemptStatus;
-          backgroundWorkerTaskId: string;
+          createdAt: Date;
+          status: TaskRunStatus;
+          lockedById: string;
         }[]
       >`
       SELECT * FROM (
         SELECT
-          "updatedAt",
+          "createdAt",
           "status",
-          "backgroundWorkerTaskId",
-          ROW_NUMBER() OVER (PARTITION BY "backgroundWorkerTaskId" ORDER BY "updatedAt" DESC) AS rn
+          "lockedById",
+          ROW_NUMBER() OVER (PARTITION BY "lockedById" ORDER BY "updatedAt" DESC) AS rn
         FROM
-          "TaskRunAttempt"
+          "TaskRun"
         WHERE
-          "backgroundWorkerTaskId" IN(${Prisma.join(tasks.map((t) => t.id))})
+          "lockedById" IN(${Prisma.join(tasks.map((t) => t.id))})
             ) t
             WHERE rn = 1;`;
+      console.log(tasks.map((t) => t.id));
+      console.log(latestRuns);
     }
 
     return tasks.map((task) => {
-      const latestRun = latestRuns.find((r) => r.backgroundWorkerTaskId === task.id);
+      const latestRun = latestRuns.find((r) => r.lockedById === task.id);
       const environment = project.environments.find((env) => env.id === task.runtimeEnvironmentId);
       if (!environment) {
         throw new Error(`Environment not found for TaskRun ${task.id}`);
@@ -122,7 +124,12 @@ export class TaskListPresenter {
           userId: environment.orgMember?.user.id,
           userName: getUsername(environment.orgMember?.user),
         },
-        latestRun,
+        latestRun: latestRun
+          ? {
+              createdAt: latestRun.createdAt,
+              status: latestRun.status,
+            }
+          : undefined,
       };
     });
   }
