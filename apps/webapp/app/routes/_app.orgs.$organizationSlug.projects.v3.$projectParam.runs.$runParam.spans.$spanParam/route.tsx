@@ -10,6 +10,7 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
@@ -135,33 +136,6 @@ export default function Page() {
         </div>
       </div>
     </div>
-  );
-}
-
-function PropertyTable({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className="grid grid-cols-[auto,1fr] items-baseline gap-x-4 gap-y-2">{children}</div>;
-}
-
-type PropertyProps = {
-  label: ReactNode;
-  labelClassName?: string;
-  children: ReactNode;
-};
-
-function Property({ label, labelClassName, children }: PropertyProps) {
-  return (
-    <>
-      <div className={labelClassName}>
-        {typeof label === "string" ? <Paragraph variant="small">{label}</Paragraph> : label}
-      </div>
-      <div>
-        {typeof children === "string" ? (
-          <Paragraph variant="small/bright">{children}</Paragraph>
-        ) : (
-          children
-        )}
-      </div>
-    </>
   );
 }
 
