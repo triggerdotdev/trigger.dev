@@ -84,7 +84,7 @@ export default function Page() {
     user.id !== deployment.environment.userId ? deployment.environment.userName : undefined;
 
   return (
-    <div className="grid grid-rows-[2.5rem_1fr] overflow-hidden">
+    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Header2 className={cn("whitespace-nowrap")}>Deploy: {deployment.shortCode}</Header2>
         <LinkButton

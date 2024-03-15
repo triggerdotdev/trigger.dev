@@ -184,7 +184,7 @@ export default function Page() {
 
           {deploymentParam && (
             <>
-              <ResizableHandle />
+              <ResizableHandle withHandle />
               <ResizablePanel order={2} minSize={20} defaultSize={40}>
                 <Outlet />
               </ResizablePanel>
