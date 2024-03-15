@@ -164,7 +164,9 @@ export default function Page() {
                     )}
                   </TableBody>
                 </Table>
-                <PaginationControls currentPage={currentPage} totalPages={totalPages} />
+                <div className="flex justify-end">
+                  <PaginationControls currentPage={currentPage} totalPages={totalPages} />
+                </div>
               </div>
             ) : (
               <CreateDeploymentInstructions />
