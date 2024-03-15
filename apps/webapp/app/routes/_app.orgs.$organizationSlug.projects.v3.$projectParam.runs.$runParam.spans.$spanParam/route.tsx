@@ -144,39 +144,47 @@ export default function Page() {
       </div>
       {event.showActionBar === true ? (
         <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
-          {event.runId !== runParam && (
-            <LinkButton
-              to={v3RunSpanPath(
-                organization,
-                project,
-                { friendlyId: event.runId },
-                { spanId: event.spanId }
-              )}
-              variant="minimal/small"
-              LeadingIcon={QueueListIcon}
-              shortcut={{ key: "f" }}
-            >
-              Focus on span
-            </LinkButton>
-          )}
-          {event.isPartial && runParam && (
-            <cancelFetcher.Form action={`/resources/taskruns/${event.runId}/cancel`} method="post">
-              <Button
-                type="submit"
-                name="redirectUrl"
-                value={v3RunSpanPath(
+          <div className="flex items-center gap-4">
+            {event.runId !== runParam && (
+              <LinkButton
+                to={v3RunSpanPath(
                   organization,
                   project,
-                  { friendlyId: runParam },
+                  { friendlyId: event.runId },
                   { spanId: event.spanId }
                 )}
-                variant="danger/small"
-                LeadingIcon={StopCircleIcon}
+                variant="minimal/small"
+                LeadingIcon={QueueListIcon}
+                shortcut={{ key: "f" }}
               >
-                Cancel
-              </Button>
-            </cancelFetcher.Form>
-          )}
+                Focus on span
+              </LinkButton>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            {event.isPartial && runParam && (
+              <cancelFetcher.Form
+                action={`/resources/taskruns/${event.runId}/cancel`}
+                method="post"
+              >
+                <Button
+                  type="submit"
+                  name="redirectUrl"
+                  value={v3RunSpanPath(
+                    organization,
+                    project,
+                    { friendlyId: runParam },
+                    { spanId: event.spanId }
+                  )}
+                  variant="danger/small"
+                  LeadingIcon={cancelFetcher.state === "idle" ? StopCircleIcon : "spinner-white"}
+                  disabled={cancelFetcher.state !== "idle"}
+                >
+                  {cancelFetcher.state === "idle" ? "Cancel" : "Cancelling..."}
+                </Button>
+              </cancelFetcher.Form>
+            )}
+          </div>
         </div>
       ) : null}
     </div>
