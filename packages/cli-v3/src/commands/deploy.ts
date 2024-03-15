@@ -115,8 +115,6 @@ export function configureDeployCommand(program: Command) {
     )
     .option("--skip-telemetry", "Opt-out of sending telemetry")
     .action(async (path, options) => {
-      console.log("deploying", path, options);
-
       const provider = options.skipTelemetry ? undefined : initializeTracing();
 
       await tracer.startActiveSpan("deployCommand", async (span) => {
