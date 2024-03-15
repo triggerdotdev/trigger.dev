@@ -1,3 +1,4 @@
+import { QueueListIcon } from "@heroicons/react/20/solid";
 import { useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
@@ -22,7 +23,7 @@ import { useProject } from "~/hooks/useProject";
 import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3RunPath, v3SpanParamsSchema } from "~/utils/pathBuilder";
+import { v3RunPath, v3RunSpanPath, v3SpanParamsSchema } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -48,7 +49,12 @@ export default function Page() {
   const { runParam } = useParams();
 
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
+    <div
+      className={cn(
+        "grid h-full max-h-full overflow-hidden bg-background-bright",
+        event.showActionBar ? "grid-rows-[2.5rem_1fr_2.5rem]" : "grid-rows-[2.5rem_1fr]"
+      )}
+    >
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon name={event.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
@@ -135,6 +141,25 @@ export default function Page() {
           )}
         </div>
       </div>
+      {event.showActionBar === true ? (
+        <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
+          {event.runId !== runParam && (
+            <LinkButton
+              to={v3RunSpanPath(
+                organization,
+                project,
+                { friendlyId: event.runId },
+                { spanId: event.spanId }
+              )}
+              variant="minimal/small"
+              LeadingIcon={QueueListIcon}
+              shortcut={{ key: "f" }}
+            >
+              Focus on span
+            </LinkButton>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
