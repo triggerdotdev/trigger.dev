@@ -283,9 +283,19 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
   }
 );
 
-type LinkPropsType = Pick<LinkProps, "to" | "target" | "onClick"> &
+type LinkPropsType = Pick<
+  LinkProps,
+  "to" | "target" | "onClick" | "onMouseDown" | "onMouseEnter" | "onMouseLeave"
+> &
   React.ComponentProps<typeof ButtonContent>;
-export const LinkButton = ({ to, onClick, ...props }: LinkPropsType) => {
+export const LinkButton = ({
+  to,
+  onClick,
+  onMouseDown,
+  onMouseEnter,
+  onMouseLeave,
+  ...props
+}: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
   if (props.shortcut) {
     useShortcutKeys({
@@ -305,6 +315,9 @@ export const LinkButton = ({ to, onClick, ...props }: LinkPropsType) => {
         ref={innerRef}
         className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
         onClick={onClick}
+        onMouseDown={onMouseDown}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
       >
         <ButtonContent {...props} />
       </ExtLink>
@@ -316,6 +329,9 @@ export const LinkButton = ({ to, onClick, ...props }: LinkPropsType) => {
         ref={innerRef}
         className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
         onClick={onClick}
+        onMouseDown={onMouseDown}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
       >
         <ButtonContent {...props} />
       </Link>
