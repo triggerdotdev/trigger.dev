@@ -3,7 +3,6 @@ import { parse } from "@conform-to/zod";
 import { BeakerIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigation, useSubmit } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { TaskRunAttemptStatus } from "@trigger.dev/database";
 import { useCallback, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -21,7 +20,6 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
-import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { TestTaskPresenter } from "~/presenters/v3/TestTaskPresenter.server";

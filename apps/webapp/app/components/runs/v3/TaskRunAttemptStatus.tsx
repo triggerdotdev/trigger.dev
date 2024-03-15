@@ -6,8 +6,8 @@ import {
   RectangleStackIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
-import { TaskRunAttemptStatus } from "@trigger.dev/database";
 import type { TaskRunAttemptStatus as TaskRunAttemptStatusType } from "@trigger.dev/database";
+import { TaskRunAttemptStatus } from "@trigger.dev/database";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
