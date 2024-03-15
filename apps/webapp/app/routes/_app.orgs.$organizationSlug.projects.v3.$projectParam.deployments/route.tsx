@@ -37,7 +37,13 @@ import { useUser } from "~/hooks/useUser";
 import { DeploymentListPresenter } from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, docsPath, v3DeploymentPath } from "~/utils/pathBuilder";
+import {
+  ProjectParamSchema,
+  docsPath,
+  v3DeploymentPath,
+  v3DeploymentsPath,
+  v3EnvironmentVariablesPath,
+} from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 
 const SearchParams = z.object({
@@ -197,6 +203,9 @@ export default function Page() {
 }
 
 function CreateDeploymentInstructions() {
+  const organization = useOrganization();
+  const project = useProject();
+
   return (
     <MainCenteredContainer className="max-w-prose">
       <BlankstateInstructions title="Deploy for the first time">
@@ -204,7 +213,7 @@ function CreateDeploymentInstructions() {
           There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
           (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
           you{" "}
-          <TextLink href={docsPath("v3/deploy-environment-variables")}>
+          <TextLink href={v3EnvironmentVariablesPath(organization, project)}>
             set your environment variables
           </TextLink>{" "}
           first.
