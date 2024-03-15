@@ -4,7 +4,7 @@ import {
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
-import { Link, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
+import { Link, Outlet, useNavigate, useParams, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { useEffect, useRef, useState } from "react";
@@ -591,12 +591,24 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
   const [mouseOver, setMouseOver] = useState(false);
   const organization = useOrganization();
   const project = useProject();
+  const { spanParam } = useParams();
 
   return (
     <Link
-      to={v3RunPath(organization, project, {
-        friendlyId: runFriendlyId,
-      })}
+      to={
+        spanParam
+          ? v3RunSpanPath(
+              organization,
+              project,
+              {
+                friendlyId: runFriendlyId,
+              },
+              { spanId: spanParam }
+            )
+          : v3RunPath(organization, project, {
+              friendlyId: runFriendlyId,
+            })
+      }
       onMouseEnter={() => setMouseOver(true)}
       onMouseLeave={() => setMouseOver(false)}
       className="mt-1 flex h-8 items-center gap-2"
