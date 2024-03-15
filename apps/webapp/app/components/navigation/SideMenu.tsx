@@ -7,6 +7,7 @@ import {
   CursorArrowRaysIcon,
   IdentificationIcon,
   KeyIcon,
+  ServerStackIcon,
   ShieldCheckIcon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
@@ -40,6 +41,7 @@ import {
   projectSetupPath,
   projectTriggersPath,
   v3ApiKeysPath,
+  v3DeploymentsPath,
   v3EnvironmentVariablesPath,
   v3ProjectPath,
   v3ProjectSettingsPath,
@@ -550,6 +552,13 @@ function V3ProjectSideMenu({
         iconColor="text-pink-500"
         to={v3EnvironmentVariablesPath(organization, project)}
         data-action="environment variables"
+      />
+      <SideMenuItem
+        name="Deployments"
+        icon={ServerStackIcon}
+        iconColor="text-blue-500"
+        to={v3DeploymentsPath(organization, project)}
+        data-action="deployments"
       />
       <SideMenuItem
         name="Project settings"

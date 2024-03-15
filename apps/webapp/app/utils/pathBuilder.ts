@@ -6,6 +6,7 @@ import type {
   TriggerHttpEndpoint,
   TriggerSource,
   Webhook,
+  WorkerDeployment,
 } from "@trigger.dev/database";
 import { z } from "zod";
 import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
@@ -26,6 +27,7 @@ export type HttpEndpointForPath = Pick<TriggerHttpEndpoint, "key">;
 export type TaskForPath = Pick<BackgroundWorkerTask, "friendlyId">;
 export type v3RunForPath = Pick<TaskRun, "friendlyId">;
 export type v3SpanForPath = Pick<TaskRun, "spanId">;
+export type DeploymentForPath = Pick<WorkerDeployment, "shortCode">;
 
 export const OrganizationParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -82,6 +84,10 @@ export const v3RunParamsSchema = ProjectParamSchema.extend({
 
 export const v3SpanParamsSchema = ProjectParamSchema.extend({
   spanParam: z.string(),
+});
+
+export const v3DeploymentParams = ProjectParamSchema.extend({
+  deploymentParam: z.string(),
 });
 
 export function trimTrailingSlash(path: string) {
@@ -361,6 +367,18 @@ export function v3RunStreamingPath(
 
 export function v3ProjectSettingsPath(organization: OrgForPath, project: ProjectForPath) {
   return `${v3ProjectPath(organization, project)}/settings`;
+}
+
+export function v3DeploymentsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/deployments`;
+}
+
+export function v3DeploymentPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  deployment: DeploymentForPath
+) {
+  return `${v3DeploymentsPath(organization, project)}/${deployment.shortCode}`;
 }
 
 // Integration
