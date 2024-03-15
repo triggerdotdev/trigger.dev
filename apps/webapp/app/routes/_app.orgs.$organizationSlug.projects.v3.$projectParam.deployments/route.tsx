@@ -1,5 +1,6 @@
+import { CommandLineIcon, ServerIcon } from "@heroicons/react/20/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { TerminalSquareIcon } from "lucide-react";
+import { TerminalIcon, TerminalSquareIcon } from "lucide-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
@@ -12,6 +13,7 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { ResizablePanel, ResizablePanelGroup } from "~/components/primitives/Resizable";
 import {
   Table,
   TableBlankRow,
@@ -76,8 +78,8 @@ export default function Page() {
         <PageTitle title="Deployments" />
       </NavBar>
       <PageBody>
-        <div className={cn("grid h-full grid-cols-1 gap-4")}>
-          <div className="h-full">
+        <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
+          <ResizablePanel order={1} minSize={20} defaultSize={60}>
             {hasDeployments ? (
               <div className="flex flex-col gap-4">
                 <Table>
@@ -171,8 +173,8 @@ export default function Page() {
             ) : (
               <CreateDeploymentInstructions />
             )}
-          </div>
-        </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
   );
@@ -185,7 +187,7 @@ function CreateDeploymentInstructions() {
         <Paragraph spacing>
           There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
           (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
-          you have{" "}
+          you{" "}
           <TextLink href={docsPath("v3/deploy-environment-variables")}>
             set your environment variables
           </TextLink>{" "}
@@ -194,16 +196,16 @@ function CreateDeploymentInstructions() {
         <div className="flex gap-3">
           <LinkButton
             to={docsPath("v3/cli-deploy")}
-            variant="primary/medium"
-            LeadingIcon={TerminalSquareIcon}
+            variant="tertiary/medium"
+            LeadingIcon={CommandLineIcon}
             className="inline-flex"
           >
             Deploy with the CLI
           </LinkButton>
           <LinkButton
             to={docsPath("v3/github-actions")}
-            variant="primary/medium"
-            LeadingIcon={TerminalSquareIcon}
+            variant="tertiary/medium"
+            LeadingIcon={ServerIcon}
             className="inline-flex"
           >
             Deploy with GitHub actions
