@@ -5,7 +5,26 @@ import { getTracer } from "../telemetry/tracing.js";
 
 const tracer = getTracer();
 
-export async function isLoggedIn() {
+export type LoginResult =
+  | {
+      ok: true;
+      userId: string;
+      email: string;
+      auth: {
+        apiUrl: string;
+        accessToken: string;
+      };
+    }
+  | {
+      ok: false;
+      error: string;
+      auth?: {
+        apiUrl: string;
+        accessToken: string;
+      };
+    };
+
+export async function isLoggedIn(): Promise<LoginResult> {
   return await tracer.startActiveSpan("isLoggedIn", async (span) => {
     try {
       const config = readAuthConfigFile();
@@ -26,7 +45,7 @@ export async function isLoggedIn() {
         return {
           ok: false as const,
           error: userData.error,
-          config: {
+          auth: {
             apiUrl: config.apiUrl,
             accessToken: config.accessToken,
           },
@@ -44,7 +63,7 @@ export async function isLoggedIn() {
         ok: true as const,
         userId: userData.data.userId,
         email: userData.data.email,
-        config: {
+        auth: {
           apiUrl: config.apiUrl,
           accessToken: config.accessToken,
         },
@@ -53,7 +72,10 @@ export async function isLoggedIn() {
       recordSpanException(span, e);
       span.end();
 
-      throw e;
+      return {
+        ok: false as const,
+        error: e instanceof Error ? e.message : "Unknown error",
+      };
     }
   });
 }

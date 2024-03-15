@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { z } from "zod";
 import { configureDevCommand } from "../commands/dev.js";
-import { loginCommand } from "../commands/login.js";
+import { configureLoginCommand, loginCommand } from "../commands/login.js";
 import { logoutCommand } from "../commands/logout.js";
 import { updateCommand } from "../commands/update.js";
 import { configureWhoamiCommand } from "../commands/whoami.js";
@@ -12,34 +12,12 @@ import { configureDeployCommand } from "../commands/deploy.js";
 
 export const program = new Command();
 
-export const ApiUrlOptionsSchema = z.object({
-  apiUrl: z.string(),
-});
-
 program
   .name(COMMAND_NAME)
   .description("Create, run locally and deploy Trigger.dev background tasks.")
   .version(getVersion(), "-v, --version", "Display the version number");
 
-program
-  .command("login")
-  .description("Login with Trigger.dev so you can perform authenticated actions")
-  .option(
-    "-a, --api-url <value>",
-    "Override the API URL, defaults to https://api.trigger.dev",
-    "https://api.trigger.dev"
-  )
-  .version(getVersion(), "-v, --version", "Display the version number")
-  .action(async (options) => {
-    try {
-      await printInitialBanner(false);
-      await loginCommand(options);
-      //todo login command
-    } catch (e) {
-      //todo error reporting
-      throw e;
-    }
-  });
+configureLoginCommand(program);
 
 program
   .command("logout")

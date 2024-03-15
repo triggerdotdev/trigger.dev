@@ -1,6 +1,6 @@
-import { intro, spinner } from "@clack/prompts";
+import { intro, log, outro, spinner } from "@clack/prompts";
 import { depot } from "@depot/cli";
-import { Span, context, trace } from "@opentelemetry/api";
+import { context, trace } from "@opentelemetry/api";
 import { ResolvedConfig, flattenAttributes, recordSpanException } from "@trigger.dev/core/v3";
 import chalk from "chalk";
 import { Command, Option as CommandOption } from "commander";
@@ -15,20 +15,24 @@ import { setTimeout } from "node:timers/promises";
 import terminalLink from "terminal-link";
 import invariant from "tiny-invariant";
 import { z } from "zod";
-import { fromZodError } from "zod-validation-error";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
-import { CommonCommandOptions } from "../cli/common.js";
-import { initializeTracing, getTracer } from "../telemetry/tracing";
+import {
+  CommonCommandOptions,
+  SkipCommandError,
+  SkipLoggingError,
+  commonOptions,
+  handleTelemetry,
+  tracer,
+  wrapCommandAction,
+} from "../cli/common.js";
 import { readConfig } from "../utilities/configFiles.js";
 import { createTempDir, readJSONFile, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
-import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
-
-const tracer = getTracer();
+import { login } from "./login";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -42,30 +46,33 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   config: z.string().optional(),
   projectRef: z.string().optional(),
   outputMetafile: z.string().optional(),
+  apiUrl: z.string().optional(),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
 
 export function configureDeployCommand(program: Command) {
-  program
-    .command("deploy")
-    .description("Deploy your Trigger.dev v3 project to the cloud.")
-    .argument("[path]", "The path to the project", ".")
-    .option(
-      "-e, --env <env>",
-      "Deploy to a specific environment (currently only prod and staging are supported)",
-      "prod"
-    )
-    .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
-    .option(
-      "-c, --config <config file>",
-      "The name of the config file, found at [path]",
-      "trigger.config.mjs"
-    )
-    .option(
-      "-p, --project-ref <project ref>",
-      "The project ref. Required if there is no config file."
-    )
+  return commonOptions(
+    program
+      .command("deploy")
+      .description("Deploy your Trigger.dev v3 project to the cloud.")
+      .argument("[path]", "The path to the project", ".")
+      .option(
+        "-e, --env <env>",
+        "Deploy to a specific environment (currently only prod and staging are supported)",
+        "prod"
+      )
+      .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
+      .option(
+        "-c, --config <config file>",
+        "The name of the config file, found at [path]",
+        "trigger.config.mjs"
+      )
+      .option(
+        "-p, --project-ref <project ref>",
+        "The project ref. Required if there is no config file."
+      )
+  )
     .addOption(
       new CommandOption(
         "--self-hosted",
@@ -108,94 +115,46 @@ export function configureDeployCommand(program: Command) {
         "If provided, will save the esbuild metafile for the build to the specified path"
       ).hideHelp()
     )
-    .option(
-      "-l, --log-level <level>",
-      "The log level to use (debug, info, log, warn, error, none)",
-      "log"
-    )
-    .option("--skip-telemetry", "Opt-out of sending telemetry")
     .action(async (path, options) => {
-      const provider = options.skipTelemetry ? undefined : initializeTracing();
-
-      await tracer.startActiveSpan("deployCommand", async (span) => {
-        try {
-          const exitCode = await deployCommand(path, options, span);
-
-          span.end();
-          await provider?.forceFlush();
-
-          process.exitCode = exitCode;
-        } catch (e) {
-          recordSpanException(span, e);
-
-          throw e;
-        }
+      await handleTelemetry(async () => {
+        await printStandloneInitialBanner(true);
+        await deployCommand(path, options);
       });
     });
 }
 
-function logErrorAndRecordException(message: string, span?: Span) {
-  logger.error(message);
-
-  span && recordSpanException(span, message);
+export async function deployCommand(dir: string, options: unknown) {
+  return await wrapCommandAction("deployCommand", DeployCommandOptions, options, async (opts) => {
+    return await _deployCommand(dir, opts);
+  });
 }
 
-export async function deployCommand(dir: string, anyOptions: unknown, span?: Span) {
-  const options = DeployCommandOptions.safeParse(anyOptions);
+async function _deployCommand(dir: string, options: DeployCommandOptions) {
+  const span = trace.getSpan(context.active());
 
-  if (!options.success) {
-    logErrorAndRecordException(fromZodError(options.error).toString(), span);
+  intro("Deploying project");
 
-    return 1;
-  }
-
-  span?.setAttributes({
-    "options.env": options.data.env,
-    "options.selfHosted": options.data.selfHosted,
-    "options.registry": options.data.registry,
-    "options.pushImage": options.data.pushImage,
-    "options.loadImage": options.data.loadImage,
-    "options.buildPlatform": options.data.buildPlatform,
-    "options.skipDeploy": options.data.skipDeploy,
-    "options.skipTypecheck": options.data.skipTypecheck,
-  });
-
-  if (options.data.logLevel) {
-    logger.loggerLevel = options.data.logLevel;
-  }
-
-  logger.debug("Running the deploy command with the following options", {
-    options: options.data,
-    dir,
-    spanContext: trace.getSpan(context.active())?.spanContext(),
-  });
-
-  const authorization = await isLoggedIn();
+  const authorization = await login({ embedded: true, defaultApiUrl: options.apiUrl });
 
   if (!authorization.ok) {
     if (authorization.error === "fetch failed") {
-      logErrorAndRecordException(
-        `Failed to connect to ${authorization.config?.apiUrl}. Are you sure it's the correct URL?`,
-        span
+      throw new Error(
+        `Failed to connect to ${authorization.auth?.apiUrl}. Are you sure it's the correct URL?`
       );
     } else {
-      logErrorAndRecordException("You must login first. Use `trigger.dev login` to login.", span);
+      throw new Error("You must login first. Use `trigger.dev login` to login.");
     }
-
-    return 1;
   }
 
   span?.setAttributes({
     "cli.userId": authorization.userId,
     "cli.email": authorization.email,
-    "cli.config.apiUrl": authorization.config.apiUrl,
+    "cli.config.apiUrl": authorization.auth.apiUrl,
   });
 
-  await printStandloneInitialBanner(true);
-
   const resolvedConfig = await readConfig(dir, {
-    configFile: options.data.config,
-    projectRef: options.data.projectRef,
+    configFile: options.config,
+    projectRef: options.projectRef,
   });
 
   logger.debug("Resolved config", { resolvedConfig });
@@ -210,91 +169,40 @@ export async function deployCommand(dir: string, anyOptions: unknown, span?: Spa
     ...flattenAttributes(resolvedConfig.config.retries, "resolvedConfig.config.retries"),
   });
 
-  const apiClient = new CliApiClient(authorization.config.apiUrl, authorization.config.accessToken);
+  const apiClient = new CliApiClient(authorization.auth.apiUrl, authorization.auth.accessToken);
 
   const deploymentEnv = await apiClient.getProjectEnv({
     projectRef: resolvedConfig.config.project,
-    env: options.data.env,
+    env: options.env,
   });
 
   if (!deploymentEnv.success) {
     throw new Error(deploymentEnv.error);
   }
 
-  const environmentClient = new CliApiClient(
-    authorization.config.apiUrl,
-    deploymentEnv.data.apiKey
-  );
+  const environmentClient = new CliApiClient(authorization.auth.apiUrl, deploymentEnv.data.apiKey);
 
-  intro(
-    `Preparing to deploy "${deploymentEnv.data.name}" (${resolvedConfig.config.project}) to ${options.data.env}`
+  log.step(
+    `Preparing to deploy "${deploymentEnv.data.name}" (${resolvedConfig.config.project}) to ${options.env}`
   );
 
   // Step 1: Build the project into a temporary directory
   const compilation = await compileProject(
     resolvedConfig.config,
-    options.data,
+    options,
     resolvedConfig.status === "file" ? resolvedConfig.path : undefined
   );
 
-  if (typeof compilation === "string" || !compilation) {
-    span && recordSpanException(span, compilation);
-
-    return 1;
-  }
-
   logger.debug("Compilation result", { compilation });
 
-  const envVarResult = await tracer.startActiveSpan("detectEnvVars", async (span) => {
-    span.setAttribute("envVars.check", compilation.envVars);
-
-    const environmentVariablesSpinner = spinner();
-
-    environmentVariablesSpinner.start("Checking environment variables");
-
-    const environmentVariables = await environmentClient.getEnvironmentVariables(
-      resolvedConfig.config.project
+  if (compilation.envVars.length > 0) {
+    await checkEnvVars(
+      compilation.envVars ?? [],
+      resolvedConfig.config,
+      options,
+      environmentClient,
+      authorization.auth.apiUrl
     );
-
-    if (!environmentVariables.success) {
-      environmentVariablesSpinner.stop(`Failed to fetch environment variables, skipping check`);
-    } else {
-      // Check to see if all the environment variables in the compilation exist
-      const missingEnvironmentVariables = compilation.envVars.filter(
-        (envVar) => environmentVariables.data.variables[envVar] === undefined
-      );
-
-      if (missingEnvironmentVariables.length > 0) {
-        environmentVariablesSpinner.stop(
-          `Found missing env vars in ${options.data.env}: ${arrayToSentence(
-            missingEnvironmentVariables
-          )}. Aborting deployment. ${chalk.bgBlueBright(
-            terminalLink(
-              "Manage env vars",
-              `${authorization.config.apiUrl}/projects/v3/${resolvedConfig.config.project}/environment-variables`
-            )
-          )}`
-        );
-
-        span.setAttributes({
-          "envVars.missing": missingEnvironmentVariables,
-        });
-
-        span.end();
-
-        return 1;
-      }
-
-      environmentVariablesSpinner.stop(`Environment variable check passed`);
-    }
-
-    span.end();
-
-    return 0;
-  });
-
-  if (envVarResult !== 0) {
-    return envVarResult;
   }
 
   // Step 2: Initialize a deployment on the server (response will have everything we need to build an image)
@@ -304,20 +212,15 @@ export async function deployCommand(dir: string, anyOptions: unknown, span?: Spa
   });
 
   if (!deploymentResponse.success) {
-    logErrorAndRecordException(`Failed to start deployment: ${deploymentResponse.error}`, span);
-
-    return 1;
+    throw new Error(`Failed to start deployment: ${deploymentResponse.error}`);
   }
 
   // If the deployment doesn't have any externalBuildData, then we can't use the remote image builder
   // TODO: handle this and allow the user to the build and push the image themselves
-  if (!deploymentResponse.data.externalBuildData && !options.data.selfHosted) {
-    logErrorAndRecordException(
-      `Failed to start deployment, as your instance of trigger.dev does not support hosting. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.`,
-      span
+  if (!deploymentResponse.data.externalBuildData && !options.selfHosted) {
+    throw new Error(
+      `Failed to start deployment, as your instance of trigger.dev does not support hosting. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.`
     );
-
-    return 1;
   }
 
   const version = deploymentResponse.data.version;
@@ -328,7 +231,7 @@ export async function deployCommand(dir: string, anyOptions: unknown, span?: Spa
   const registryHost = new URL(deploymentEnv.data.apiUrl).host;
 
   const buildImage = async () => {
-    if (options.data.selfHosted) {
+    if (options.selfHosted) {
       return buildAndPushSelfHostedImage({
         imageTag: deploymentResponse.data.imageTag,
         cwd: compilation.path,
@@ -337,17 +240,19 @@ export async function deployCommand(dir: string, anyOptions: unknown, span?: Spa
         deploymentVersion: version,
         contentHash: deploymentResponse.data.contentHash,
         projectRef: resolvedConfig.config.project,
-        buildPlatform: options.data.buildPlatform,
+        buildPlatform: options.buildPlatform,
       });
     }
 
     if (!deploymentResponse.data.externalBuildData) {
-      return "Failed to initialize deployment. The deployment does not have any external build data. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.";
+      throw new Error(
+        "Failed to initialize deployment. The deployment does not have any external build data. To deploy this project, you must use the --self-hosted flag to build and push the image yourself."
+      );
     }
 
     return buildAndPushImage({
       registryHost,
-      auth: authorization.config.accessToken,
+      auth: authorization.auth.accessToken,
       imageTag: deploymentResponse.data.imageTag,
       buildId: deploymentResponse.data.externalBuildData.buildId,
       buildToken: deploymentResponse.data.externalBuildData.buildToken,
@@ -358,28 +263,20 @@ export async function deployCommand(dir: string, anyOptions: unknown, span?: Spa
       deploymentVersion: deploymentResponse.data.version,
       contentHash: deploymentResponse.data.contentHash,
       projectRef: resolvedConfig.config.project,
-      loadImage: options.data.loadImage,
-      buildPlatform: options.data.buildPlatform,
+      loadImage: options.loadImage,
+      buildPlatform: options.buildPlatform,
     });
   };
 
   const image = await buildImage();
 
-  if (typeof image === "string") {
-    deploymentSpinner.stop(image);
-    span && recordSpanException(span, image);
-
-    return 1;
-  }
-
   if (!image.ok) {
     deploymentSpinner.stop(`Failed to build project image: ${image.error}`);
-    span && recordSpanException(span, image.error);
 
-    return 1;
+    throw new SkipLoggingError(`Failed to build project image: ${image.error}`);
   }
 
-  const imageReference = options.data.selfHosted
+  const imageReference = options.selfHosted
     ? `${image.image}${image.digest ? `@${image.digest}` : ""}`
     : `${registryHost}/${image.image}${image.digest ? `@${image.digest}` : ""}`;
 
@@ -387,12 +284,12 @@ export async function deployCommand(dir: string, anyOptions: unknown, span?: Spa
     "image.reference": imageReference,
   });
 
-  if (options.data.skipDeploy) {
+  if (options.skipDeploy) {
     deploymentSpinner.stop(
       `Project image built: ${imageReference}. Skipping deployment as requested`
     );
 
-    return 0;
+    throw new SkipCommandError("Skipping deployment as requested");
   }
 
   deploymentSpinner.message(
@@ -410,9 +307,8 @@ export async function deployCommand(dir: string, anyOptions: unknown, span?: Spa
 
   if (!startIndexingResponse.success) {
     deploymentSpinner.stop(`Failed to start indexing: ${startIndexingResponse.error}`);
-    span && recordSpanException(span, startIndexingResponse.error);
 
-    return 1;
+    throw new SkipLoggingError(`Failed to start indexing: ${startIndexingResponse.error}`);
   }
 
   const finishedDeployment = await waitForDeploymentToFinish(
@@ -422,40 +318,40 @@ export async function deployCommand(dir: string, anyOptions: unknown, span?: Spa
 
   if (!finishedDeployment) {
     deploymentSpinner.stop(`Deployment failed to complete`);
-    logErrorAndRecordException("Deployment failed to complete", span);
 
-    return 1;
+    throw new SkipLoggingError("Deployment failed to complete: unknown issue");
   }
 
   if (typeof finishedDeployment === "string") {
     deploymentSpinner.stop(`Deployment failed to complete: ${finishedDeployment}`);
-    logErrorAndRecordException(finishedDeployment, span);
 
-    return 1;
+    throw new SkipLoggingError(`Deployment failed to complete: ${finishedDeployment}`);
   }
 
   const deploymentLink = terminalLink(
     "View deployment",
-    `${authorization.config.apiUrl}/projects/v3/${resolvedConfig.config.project}/deployments/${finishedDeployment.id}`
+    `${authorization.auth.apiUrl}/projects/v3/${resolvedConfig.config.project}/deployments/${finishedDeployment.id}`
   );
 
   switch (finishedDeployment.status) {
     case "DEPLOYED": {
+      deploymentSpinner.stop("Deployment completed");
+
       const taskCount = finishedDeployment.worker?.tasks.length ?? 0;
 
       if (taskCount === 0) {
-        deploymentSpinner.stop(
-          `Deployment of ${version} completed with no detected tasks. Please make sure you are exporting tasks in your project. ${deploymentLink}`
+        outro(
+          `Version ${version} deployed with no detected tasks. Please make sure you are exporting tasks in your project. ${deploymentLink}`
         );
       } else {
-        deploymentSpinner.stop(
-          `Deployment of ${version} completed with ${taskCount} detected task${
+        outro(
+          `Version ${version} deployed with ${taskCount} detected task${
             taskCount === 1 ? "" : "s"
           } ${deploymentLink}`
         );
       }
 
-      return 0;
+      break;
     }
     case "FAILED": {
       if (finishedDeployment.errorData) {
@@ -463,24 +359,82 @@ export async function deployCommand(dir: string, anyOptions: unknown, span?: Spa
           `Deployment encountered an error: ${finishedDeployment.errorData.name}. ${deploymentLink}`
         );
         logger.error(finishedDeployment.errorData.stack);
-        span && recordSpanException(span, finishedDeployment.errorData.stack);
+
+        throw new SkipLoggingError(
+          `Deployment encountered an error: ${finishedDeployment.errorData.name}`
+        );
       } else {
         deploymentSpinner.stop(
           `Deployment failed with an unknown error. Please contact eric@trigger.dev for help. ${deploymentLink}`
         );
 
-        span && recordSpanException(span, "Deployment failed with an unknown error");
+        throw new SkipLoggingError("Deployment failed with an unknown error");
       }
-
-      return 1;
     }
     case "CANCELED": {
       deploymentSpinner.stop(`Deployment was canceled. ${deploymentLink}`);
-      span && recordSpanException(span, "Deployment was canceled");
 
-      return 1;
+      throw new SkipLoggingError("Deployment was canceled");
     }
   }
+}
+
+async function checkEnvVars(
+  envVars: string[],
+  config: ResolvedConfig,
+  options: DeployCommandOptions,
+  environmentClient: CliApiClient,
+  apiUrl: string
+) {
+  return await tracer.startActiveSpan("detectEnvVars", async (span) => {
+    try {
+      span.setAttribute("envVars.check", envVars);
+
+      const environmentVariablesSpinner = spinner();
+
+      environmentVariablesSpinner.start("Checking environment variables");
+
+      const environmentVariables = await environmentClient.getEnvironmentVariables(config.project);
+
+      if (!environmentVariables.success) {
+        environmentVariablesSpinner.stop(`Failed to fetch environment variables, skipping check`);
+      } else {
+        // Check to see if all the environment variables in the compilation exist
+        const missingEnvironmentVariables = envVars.filter(
+          (envVar) => environmentVariables.data.variables[envVar] === undefined
+        );
+
+        if (missingEnvironmentVariables.length > 0) {
+          environmentVariablesSpinner.stop(
+            `Found missing env vars in ${options.env}: ${arrayToSentence(
+              missingEnvironmentVariables
+            )}. Aborting deployment. ${chalk.bgBlueBright(
+              terminalLink(
+                "Manage env vars",
+                `${apiUrl}/projects/v3/${config.project}/environment-variables`
+              )
+            )}`
+          );
+
+          span.setAttributes({
+            "envVars.missing": missingEnvironmentVariables,
+          });
+
+          throw new SkipLoggingError("Found missing environment variables");
+        }
+
+        environmentVariablesSpinner.stop(`Environment variable check passed`);
+      }
+
+      span.end();
+    } catch (e) {
+      recordSpanException(span, e);
+
+      span.end();
+
+      throw e;
+    }
+  });
 }
 
 // Poll every 1 second for the deployment to finish
@@ -785,10 +739,7 @@ async function compileProject(
         const typecheck = await typecheckProject(config, options);
 
         if (!typecheck) {
-          span.recordException(new Error("Typecheck failed, aborting deployment"));
-          span.end();
-
-          return "Typecheck failed, aborting deployment";
+          throw new Error("Typecheck failed, aborting deployment");
         }
       }
 
@@ -858,10 +809,7 @@ async function compileProject(
           ),
         });
 
-        span.recordException(new Error("Build failed, aborting deployment"));
-        span.end();
-
-        return "Build failed, aborting deployment";
+        throw new Error("Build failed, aborting deployment");
       }
 
       if (options.outputMetafile) {
@@ -907,10 +855,7 @@ async function compileProject(
           ),
         });
 
-        span.recordException(new Error("Build failed, aborting deployment"));
-        span.end();
-
-        return "Build failed, aborting deployment";
+        throw new Error("Build failed, aborting deployment");
       }
 
       if (options.outputMetafile) {
@@ -990,11 +935,9 @@ async function compileProject(
       );
 
       if (!resolvingDependenciesResult) {
-        span.recordException(new Error("Failed to resolve dependencies"));
-        span.end();
-
-        return "Failed to resolve dependencies";
+        throw new Error("Failed to resolve dependencies");
       }
+
       // Write the Containerfile to /tmp/dir/Containerfile
       const containerFilePath = new URL(
         importResolve("./Containerfile.prod", import.meta.url)
@@ -1033,7 +976,7 @@ async function compileProject(
 
       span.end();
 
-      return e instanceof Error ? e.message : JSON.stringify(e);
+      throw e;
     }
   });
 }

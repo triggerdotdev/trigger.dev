@@ -101,7 +101,7 @@ export async function devCommand(dir: string, anyOptions: unknown) {
   let watcher;
 
   try {
-    const devInstance = await startDev(dir, options.data, authorization.config);
+    const devInstance = await startDev(dir, options.data, authorization.auth);
     watcher = devInstance.watcher;
     const { waitUntilExit } = devInstance.devReactElement;
     await waitUntilExit();
