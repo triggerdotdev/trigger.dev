@@ -1,4 +1,4 @@
-import { TaskRunAttemptStatus } from "@trigger.dev/database";
+import { TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 
@@ -53,7 +53,7 @@ export class TestTaskPresenter {
         number: BigInt;
         friendlyId: string;
         createdAt: Date;
-        status: TaskRunAttemptStatus;
+        status: TaskRunStatus;
         payload: string;
         payloadType: string;
         runtimeEnvironmentId: string;
@@ -73,13 +73,6 @@ export class TestTaskPresenter {
       ORDER BY 
           tr."createdAt" DESC
       LIMIT 5
-    ), latestattempts AS (
-        SELECT
-            "taskRunId",
-            status,
-            ROW_NUMBER() OVER(PARTITION BY "taskRunId" ORDER BY "createdAt" DESC) AS rank
-        FROM
-            "TaskRunAttempt"
     )
     SELECT 
         taskr.id,
@@ -87,17 +80,12 @@ export class TestTaskPresenter {
         taskr."friendlyId",
         taskr."taskIdentifier",
         taskr."createdAt",
-        tra.status,
+        taskr.status,
         taskr.payload,
         taskr."payloadType",
         taskr."runtimeEnvironmentId"
     FROM 
         taskruns AS taskr
-    LEFT JOIN
-        latestattempts AS tra
-        ON taskr.id = tra."taskRunId"
-    WHERE
-        tra.rank = 1
     ORDER BY
         taskr."createdAt" DESC;`;
 

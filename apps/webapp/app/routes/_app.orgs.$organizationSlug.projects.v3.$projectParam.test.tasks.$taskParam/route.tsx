@@ -22,6 +22,7 @@ import {
 } from "~/components/primitives/Resizable";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
+import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { TestTaskPresenter } from "~/presenters/v3/TestTaskPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -210,7 +211,7 @@ export default function Page() {
                       </Paragraph>
                       <div className="flex items-center gap-1 text-xs text-text-dimmed">
                         <div>Run #{run.number}</div>
-                        <TaskRunAttemptStatusCombo status={run.status} />
+                        <TaskRunStatusCombo status={run.status} />
                       </div>
                     </div>
                   </button>
