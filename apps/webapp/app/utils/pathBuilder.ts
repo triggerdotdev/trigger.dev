@@ -363,6 +363,10 @@ export function v3ProjectSettingsPath(organization: OrgForPath, project: Project
   return `${v3ProjectPath(organization, project)}/settings`;
 }
 
+export function v3DeploymentsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/deployments`;
+}
+
 // Integration
 export function integrationClientPath(organization: OrgForPath, client: IntegrationForPath) {
   return `${organizationIntegrationsPath(organization)}/${clientParam(client)}`;
