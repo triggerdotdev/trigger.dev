@@ -74,6 +74,14 @@ export class ResumeAttemptService {
       return;
     }
 
+    if (attempt.taskRun.status !== "WAITING_TO_RESUME") {
+      logger.error("Run is not resumable", {
+        attemptId: params.attemptId,
+        runId: attempt.taskRunId,
+      });
+      return;
+    }
+
     switch (params.type) {
       case "WAIT_FOR_DURATION": {
         // Nothing to do, but thanks for checking in!
@@ -143,6 +151,10 @@ export class ResumeAttemptService {
           );
 
           if (!completion) {
+            logger.error("Failed to get completion payload", {
+              attemptId: params.attemptId,
+              completedAttemptId,
+            });
             await marqs?.acknowledgeMessage(attempt.taskRunId);
             return;
           }
@@ -150,17 +162,36 @@ export class ResumeAttemptService {
           completions.push(completion);
 
           const executionPayload = await sharedQueueTasks.getExecutionPayloadFromAttempt(
-            completedAttempt.id,
-            false
+            completedAttempt.id
           );
 
           if (!executionPayload) {
+            logger.error("Failed to get execution payload", {
+              attemptId: params.attemptId,
+              completedAttemptId,
+            });
             await marqs?.acknowledgeMessage(attempt.taskRunId);
             return;
           }
 
           executions.push(executionPayload.execution);
         }
+
+        await prisma.taskRunAttempt.update({
+          where: {
+            id: params.attemptId,
+          },
+          data: {
+            status: "EXECUTING",
+            taskRun: {
+              update: {
+                data: {
+                  status: "EXECUTING",
+                },
+              },
+            },
+          },
+        });
 
         socketIo.coordinatorNamespace.emit("RESUME", {
           version: "v1",

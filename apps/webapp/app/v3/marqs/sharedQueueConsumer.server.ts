@@ -575,22 +575,6 @@ export class SharedQueueConsumer {
             return;
           }
 
-          await prisma.taskRunAttempt.update({
-            where: {
-              id: resumableAttempt.id,
-            },
-            data: {
-              status: "EXECUTING",
-              taskRun: {
-                update: {
-                  data: {
-                    status: "EXECUTING",
-                  },
-                },
-              },
-            },
-          });
-
           socketIo.providerNamespace.emit("RESTORE", {
             version: "v1",
             id: latestCheckpoint.id,
@@ -643,8 +627,7 @@ export class SharedQueueConsumer {
           completions.push(completion);
 
           const executionPayload = await this._tasks.getExecutionPayloadFromAttempt(
-            completedAttempt.id,
-            false
+            completedAttempt.id
           );
 
           if (!executionPayload) {
@@ -731,15 +714,6 @@ export class SharedQueueConsumer {
             setTimeout(() => this.#doWork(), this._options.interval);
             return;
           }
-
-          await prisma.taskRunAttempt.update({
-            where: {
-              id: resumableAttempt.id,
-            },
-            data: {
-              status: "EXECUTING",
-            },
-          });
 
           // The attempt will resume automatically after restore
           socketIo.providerNamespace.emit("RESTORE", {
@@ -828,7 +802,7 @@ class SharedQueueTasks {
 
   async getExecutionPayloadFromAttempt(
     id: string,
-    setToExecuting = true
+    setToExecuting?: boolean
   ): Promise<ProdTaskRunExecutionPayload | undefined> {
     const attempt = await prisma.taskRunAttempt.findUnique({
       where: {
@@ -862,28 +836,28 @@ class SharedQueueTasks {
       return;
     }
 
-    if (attempt.status === "CANCELED") {
-      return;
+    switch (attempt.status) {
+      case "CANCELED":
+      case "EXECUTING": {
+        logger.error("Invalid attempt status for execution payload retrieval", {
+          attemptId: id,
+          status: attempt.status,
+        });
+        return;
+      }
     }
 
-    if (attempt.status === "FAILED") {
-      return;
-    }
-
-    if (attempt.status === "COMPLETED") {
-      return;
-    }
-
-    if (attempt.taskRun.status === "CANCELED") {
-      return;
-    }
-
-    if (attempt.taskRun.status === "COMPLETED_SUCCESSFULLY") {
-      return;
-    }
-
-    if (attempt.taskRun.status === "COMPLETED_WITH_ERRORS") {
-      return;
+    switch (attempt.taskRun.status) {
+      case "CANCELED":
+      case "EXECUTING":
+      case "INTERRUPTED": {
+        logger.error("Invalid run status for execution payload retrieval", {
+          attemptId: id,
+          runId: attempt.taskRunId,
+          status: attempt.taskRun.status,
+        });
+        return;
+      }
     }
 
     if (setToExecuting) {

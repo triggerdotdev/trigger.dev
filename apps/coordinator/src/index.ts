@@ -363,7 +363,7 @@ class TaskCoordinator {
         next();
       },
       onConnection: async (socket, handler, sender) => {
-        const logger = new SimpleLogger(`[task][${socket.id}]`);
+        const logger = new SimpleLogger(`[prod-worker][${socket.id}]`);
 
         this.#platformSocket?.send("LOG", {
           metadata: {
@@ -441,9 +441,11 @@ class TaskCoordinator {
 
           const { canCheckpoint, willSimulate } = await this.#checkpointer.initialize();
 
-          callback({ willCheckpointAndRestore: canCheckpoint || willSimulate });
+          const willCheckpointAndRestore = canCheckpoint || willSimulate;
 
-          if (!canCheckpoint) {
+          callback({ willCheckpointAndRestore });
+
+          if (!willCheckpointAndRestore) {
             return;
           }
 
@@ -476,7 +478,13 @@ class TaskCoordinator {
 
           const { canCheckpoint, willSimulate } = await this.#checkpointer.initialize();
 
-          callback({ willCheckpointAndRestore: canCheckpoint || willSimulate });
+          const willCheckpointAndRestore = canCheckpoint || willSimulate;
+
+          callback({ willCheckpointAndRestore });
+
+          if (!willCheckpointAndRestore) {
+            return;
+          }
 
           const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
 
@@ -502,7 +510,13 @@ class TaskCoordinator {
 
           const { canCheckpoint, willSimulate } = await this.#checkpointer.initialize();
 
-          callback({ willCheckpointAndRestore: canCheckpoint || willSimulate });
+          const willCheckpointAndRestore = canCheckpoint || willSimulate;
+
+          callback({ willCheckpointAndRestore });
+
+          if (!willCheckpointAndRestore) {
+            return;
+          }
 
           const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
 

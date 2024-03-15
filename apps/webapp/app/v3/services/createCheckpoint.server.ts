@@ -44,6 +44,11 @@ export class CreateCheckpointService {
       },
       data: {
         status: "PAUSED",
+        taskRun: {
+          update: {
+            status: "WAITING_TO_RESUME",
+          },
+        },
       },
     });
 
