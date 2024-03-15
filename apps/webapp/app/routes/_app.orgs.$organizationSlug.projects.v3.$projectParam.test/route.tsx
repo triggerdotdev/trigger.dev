@@ -1,17 +1,13 @@
 import { Link, Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Fragment } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
-import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 import {
   environmentBorderClassName,
   environmentTextClassName,
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -30,7 +26,6 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { TextLink } from "~/components/primitives/TextLink";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
 import { useLinkStatus } from "~/hooks/useLinkStatus";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
@@ -43,8 +38,7 @@ import {
 } from "~/presenters/v3/TestPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3ProjectPath, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
-import { createSearchParams } from "~/utils/searchParams";
+import { ProjectParamSchema, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
 
 export const TestSearchParams = z.object({
   environment: z.string().optional(),

@@ -51,7 +51,7 @@ type SearchParamsResult<TParams extends ParamType> =
   | { success: true; params: SearchParams<TParams> }
   | { success: false; error: string };
 
-type ParamType = Record<string, string>;
+type ParamType = Record<string, any>;
 
 export function createSearchParams<TParams extends ParamType>(
   url: string,

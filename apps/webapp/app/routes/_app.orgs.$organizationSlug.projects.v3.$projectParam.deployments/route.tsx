@@ -1,12 +1,16 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { TerminalSquareIcon } from "lucide-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
+import { UserAvatar } from "~/components/UserProfilePhoto";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
@@ -19,6 +23,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
+import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
@@ -26,10 +31,18 @@ import { DeploymentListPresenter } from "~/presenters/v3/DeploymentListPresenter
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, docsPath, v3DeploymentPath } from "~/utils/pathBuilder";
+import { createSearchParams } from "~/utils/searchParams";
+
+const SearchParams = z.object({
+  page: z.coerce.number().optional(),
+});
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+
+  const searchParams = createSearchParams(request.url, SearchParams);
+  const page = searchParams.success ? searchParams.params.get("page") ?? 1 : 1;
 
   try {
     const presenter = new DeploymentListPresenter();
@@ -37,6 +50,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       userId,
       organizationSlug,
       projectSlug: projectParam,
+      page,
     });
 
     return typedjson(result);
@@ -59,7 +73,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Tasks" />
+        <PageTitle title="Deployments" />
       </NavBar>
       <PageBody>
         <div className={cn("grid h-full grid-cols-1 gap-4")}>
@@ -74,8 +88,8 @@ export default function Page() {
                       <TableHeaderCell>Version</TableHeaderCell>
                       <TableHeaderCell>Status</TableHeaderCell>
                       <TableHeaderCell>Tasks</TableHeaderCell>
-                      <TableHeaderCell>Deployed by</TableHeaderCell>
                       <TableHeaderCell>Deployed at</TableHeaderCell>
+                      <TableHeaderCell>Deployed by</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
@@ -89,22 +103,50 @@ export default function Page() {
                         const path = v3DeploymentPath(organization, project, deployment);
                         return (
                           <TableRow key={deployment.id} className="group">
-                            <TableCell to={path}>{deployment.shortCode}</TableCell>
-                            <TableCell to={path}>{deployment.version}</TableCell>
+                            <TableCell to={path}>
+                              <div className="flex items-center gap-2">
+                                <Paragraph variant="extra-small">{deployment.shortCode}</Paragraph>
+                                {deployment.label && (
+                                  <Badge variant="outline-rounded">{deployment.label}</Badge>
+                                )}
+                              </div>
+                            </TableCell>
                             <TableCell to={path}>
                               <EnvironmentLabel
                                 environment={deployment.environment}
                                 userName={usernameForEnv}
                               />
                             </TableCell>
-                            <TableCell to={path}>{deployment.status}</TableCell>
-                            <TableCell to={path}>{deployment.tasksCount ?? "–"}</TableCell>
+                            <TableCell to={path}>{deployment.version}</TableCell>
                             <TableCell to={path}>
-                              {deployment.deployedBy ? <div></div> : "–"}
+                              <DeploymentStatus status={deployment.status} />
+                            </TableCell>
+                            <TableCell to={path}>
+                              {deployment.tasksCount !== null ? deployment.tasksCount : "–"}
                             </TableCell>
                             <TableCell to={path}>
                               {deployment.deployedAt ? (
                                 <DateTime date={deployment.deployedAt} />
+                              ) : (
+                                "–"
+                              )}
+                            </TableCell>
+                            <TableCell to={path}>
+                              {deployment.deployedBy ? (
+                                <div className="flex items-center gap-1">
+                                  <UserAvatar
+                                    avatarUrl={deployment.deployedBy.avatarUrl}
+                                    name={
+                                      deployment.deployedBy.name ??
+                                      deployment.deployedBy.displayName
+                                    }
+                                    className="h-4 w-4"
+                                  />
+                                  <Paragraph variant="extra-small">
+                                    {deployment.deployedBy.name ??
+                                      deployment.deployedBy.displayName}
+                                  </Paragraph>
+                                </div>
                               ) : (
                                 "–"
                               )}
@@ -122,6 +164,7 @@ export default function Page() {
                     )}
                   </TableBody>
                 </Table>
+                <PaginationControls currentPage={currentPage} totalPages={totalPages} />
               </div>
             ) : (
               <CreateDeploymentInstructions />

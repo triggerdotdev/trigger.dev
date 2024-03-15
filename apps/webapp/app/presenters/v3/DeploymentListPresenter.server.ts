@@ -5,7 +5,7 @@ import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
 import { getUsername } from "~/utils/username";
 
-const pageSize = 20;
+const pageSize = 2;
 
 export class DeploymentListPresenter {
   #prismaClient: PrismaClient;
@@ -66,6 +66,18 @@ export class DeploymentListPresenter {
       },
     });
 
+    const labeledDeployments = await this.#prismaClient.workerDeploymentPromotion.findMany({
+      where: {
+        environmentId: {
+          in: project.environments.map((env) => env.id),
+        },
+      },
+      select: {
+        deploymentId: true,
+        label: true,
+      },
+    });
+
     const deployments = await this.#prismaClient.$queryRaw<
       {
         id: string;
@@ -74,7 +86,7 @@ export class DeploymentListPresenter {
         status: WorkerDeploymentStatus;
         environmentId: string;
         deployedAt: Date | null;
-        tasksCount: number | null;
+        tasksCount: BigInt | null;
         userId: string | null;
         userName: string | null;
         userDisplayName: string | null;
@@ -112,13 +124,18 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
           throw new Error(`Environment not found for deployment ${deployment.id}`);
         }
 
+        const label = labeledDeployments.find(
+          (labeledDeployment) => labeledDeployment.deploymentId === deployment.id
+        );
+
         return {
           id: deployment.id,
           shortCode: deployment.shortCode,
           version: deployment.version,
           status: deployment.status,
           deployedAt: deployment.deployedAt,
-          tasksCount: deployment.tasksCount,
+          tasksCount: deployment.tasksCount ? Number(deployment.tasksCount) : null,
+          label: label?.label,
           environment: {
             id: environment.id,
             type: environment.type,
