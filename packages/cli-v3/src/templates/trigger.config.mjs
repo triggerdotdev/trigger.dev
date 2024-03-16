@@ -2,7 +2,7 @@
 /** @type {import('@trigger.dev/sdk/v3').Config} */
 
 export default {
-  project: "yubjwjsfkxnylobaqvqz",
+  project: "${projectRef}",
   retries: {
     enabledInDev: false,
     default: {

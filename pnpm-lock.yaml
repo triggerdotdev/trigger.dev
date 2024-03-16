@@ -2179,7 +2179,7 @@ importers:
 
   references/v3-catalog:
     specifiers:
-      '@trigger.dev/sdk': workspace:*
+      '@trigger.dev/sdk': 2.3.18
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 20.4.2
       concurrently: ^8.2.0
@@ -2193,7 +2193,7 @@ importers:
       tsconfig-paths: ^3.14.1
       typescript: 5.1.6
     dependencies:
-      '@trigger.dev/sdk': link:../../packages/trigger-sdk
+      '@trigger.dev/sdk': 2.3.18
       msw: 2.2.1_typescript@5.1.6
       openai: 4.28.0
       stripe: 12.14.0
@@ -17709,12 +17709,26 @@ packages:
       react-dom: 18.2.0_react@18.2.0
     dev: false
 
+  /@trigger.dev/core-backend/2.3.18:
+    resolution: {integrity: sha512-LVeeerraGeqKNd2gtajQY+mnGWqkYW7Q2r5oWpL5xIZ8aQg3HRhSIfZs1dryexwKlfqnRjGWueGTy2+j1tbzcg==}
+    engines: {node: '>=18.0.0'}
+    dev: false
+
   /@trigger.dev/core/2.0.7:
     resolution: {integrity: sha512-z86G0sbqu0ePP0eg3jA/v65TOq9ZLCHUpgis/cqaLopsybnMScWt9S9MV1Dq9FVqHHqKvyuLBugZTJwsj+FXGg==}
     engines: {node: '>=16.8.0'}
     dependencies:
       ulid: 2.3.0
       zod: 3.21.4
+      zod-error: 1.5.0
+    dev: false
+
+  /@trigger.dev/core/2.3.18:
+    resolution: {integrity: sha512-j2EdCeyMkZ+zlVnnHl5zmBb+YURSw4x75NqQU1G5X08pQAza7G0qEn8DDGIMR5ieUMiHP0WS9oYy/voYdNfibQ==}
+    engines: {node: '>=18.0.0'}
+    dependencies:
+      ulidx: 2.2.1
+      zod: 3.22.3
       zod-error: 1.5.0
     dev: false
 
@@ -17755,6 +17769,31 @@ packages:
     transitivePeerDependencies:
       - bufferutil
       - encoding
+      - supports-color
+      - utf-8-validate
+    dev: false
+
+  /@trigger.dev/sdk/2.3.18:
+    resolution: {integrity: sha512-Bjxgl4BbWOAL8rhxeBkl7SzvLLRBMJjiftq/7W7u96MDyPRFUoZZvVMSZzTJufnLBf/xS2JTi8LWU8gzhDJDvw==}
+    engines: {node: '>=18.0.0'}
+    dependencies:
+      '@trigger.dev/core': 2.3.18
+      '@trigger.dev/core-backend': 2.3.18
+      chalk: 5.3.0
+      cronstrue: 2.21.0
+      debug: 4.3.4
+      evt: 2.5.7
+      get-caller-file: 2.0.5
+      git-remote-origin-url: 4.0.0
+      git-repo-info: 2.1.1
+      slug: 6.1.0
+      terminal-link: 3.0.0
+      ulid: 2.3.0
+      uuid: 9.0.0
+      ws: 8.16.0
+      zod: 3.22.3
+    transitivePeerDependencies:
+      - bufferutil
       - supports-color
       - utf-8-validate
     dev: false

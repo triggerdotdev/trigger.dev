@@ -10,6 +10,7 @@ export type LoginResult =
       ok: true;
       userId: string;
       email: string;
+      dashboardUrl: string;
       auth: {
         apiUrl: string;
         accessToken: string;
@@ -53,8 +54,9 @@ export async function isLoggedIn(): Promise<LoginResult> {
       }
 
       span.setAttributes({
-        userId: userData.data.userId,
-        email: userData.data.email,
+        "login.userId": userData.data.userId,
+        "login.email": userData.data.email,
+        "login.dashboardUrl": userData.data.dashboardUrl,
       });
 
       span.end();
@@ -63,6 +65,7 @@ export async function isLoggedIn(): Promise<LoginResult> {
         ok: true as const,
         userId: userData.data.userId,
         email: userData.data.email,
+        dashboardUrl: userData.data.dashboardUrl,
         auth: {
           apiUrl: config.apiUrl,
           accessToken: config.accessToken,

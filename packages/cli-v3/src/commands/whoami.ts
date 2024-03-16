@@ -14,6 +14,7 @@ type WhoAmIResult =
       data: {
         userId: string;
         email: string;
+        dashboardUrl: string;
       };
     }
   | {

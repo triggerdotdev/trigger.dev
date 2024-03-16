@@ -108,6 +108,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
                 ok: true as const,
                 userId: whoAmIResult.data.userId,
                 email: whoAmIResult.data.email,
+                dashboardUrl: whoAmIResult.data.dashboardUrl,
                 auth: {
                   accessToken: authConfig.accessToken,
                   apiUrl: authConfig.apiUrl ?? opts.defaultApiUrl,
@@ -127,6 +128,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
               ok: true as const,
               userId: whoAmIResult.data.userId,
               email: whoAmIResult.data.email,
+              dashboardUrl: whoAmIResult.data.dashboardUrl,
               auth: {
                 accessToken: authConfig.accessToken,
                 apiUrl: authConfig.apiUrl ?? opts.defaultApiUrl,
@@ -188,6 +190,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
           ok: true as const,
           userId: whoAmIResult.data.userId,
           email: whoAmIResult.data.email,
+          dashboardUrl: whoAmIResult.data.dashboardUrl,
           auth: {
             accessToken: indexResult.token,
             apiUrl: authConfig?.apiUrl ?? opts.defaultApiUrl,

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getTracer, provider } from "../telemetry/tracing";
 import { fromZodError } from "zod-validation-error";
 import { logger } from "../utilities/logger";
+import { outro } from "@clack/prompts";
 
 export const CommonCommandOptions = z.object({
   apiUrl: z.string().optional(),
@@ -26,6 +27,7 @@ export function commonOptions(command: Command) {
 
 export class SkipLoggingError extends Error {}
 export class SkipCommandError extends Error {}
+export class OutroCommandError extends SkipCommandError {}
 
 export async function handleTelemetry(action: () => Promise<void>) {
   try {
@@ -74,6 +76,8 @@ export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
     } catch (e) {
       if (e instanceof SkipLoggingError) {
         recordSpanException(span, e);
+      } else if (e instanceof OutroCommandError) {
+        outro("Operation cancelled");
       } else if (e instanceof SkipCommandError) {
         // do nothing
       } else {

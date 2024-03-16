@@ -1,14 +1,14 @@
 import { Command } from "commander";
-import { z } from "zod";
+import { configureDeployCommand } from "../commands/deploy.js";
 import { configureDevCommand } from "../commands/dev.js";
-import { configureLoginCommand, loginCommand } from "../commands/login.js";
+import { configureInitCommand } from "../commands/init.js";
+import { configureLoginCommand } from "../commands/login.js";
 import { logoutCommand } from "../commands/logout.js";
 import { updateCommand } from "../commands/update.js";
 import { configureWhoamiCommand } from "../commands/whoami.js";
 import { COMMAND_NAME } from "../consts.js";
 import { getVersion } from "../utilities/getVersion.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";
-import { configureDeployCommand } from "../commands/deploy.js";
 
 export const program = new Command();
 
@@ -18,6 +18,7 @@ program
   .version(getVersion(), "-v, --version", "Display the version number");
 
 configureLoginCommand(program);
+configureInitCommand(program);
 
 program
   .command("logout")

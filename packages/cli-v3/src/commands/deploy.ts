@@ -201,7 +201,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       resolvedConfig.config,
       options,
       environmentClient,
-      authorization.auth.apiUrl
+      authorization.dashboardUrl
     );
   }
 
@@ -330,7 +330,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const deploymentLink = terminalLink(
     "View deployment",
-    `${authorization.auth.apiUrl}/projects/v3/${resolvedConfig.config.project}/deployments/${finishedDeployment.id}`
+    `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.config.project}/deployments/${finishedDeployment.id}`
   );
 
   switch (finishedDeployment.status) {
