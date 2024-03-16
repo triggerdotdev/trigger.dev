@@ -36,11 +36,17 @@ class DockerTaskOperations implements TaskOperations {
     }
   }
 
-  async create(opts: { attemptId: string; image: string; machine: Machine; envId: string }) {
+  async create(opts: {
+    runId: string;
+    attemptId: string;
+    image: string;
+    machine: Machine;
+    envId: string;
+  }) {
     const containerName = this.#getRunContainerName(opts.attemptId);
 
     const { exitCode } = logger.debug(
-      await $`docker run --network=host -d -e OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} -e COORDINATOR_HOST=${COORDINATOR_HOST} -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ENV_ID=${opts.envId} -e TRIGGER_ATTEMPT_ID=${opts.attemptId} --name=${containerName} ${opts.image}`
+      await $`docker run --network=host -d -e OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} -e COORDINATOR_HOST=${COORDINATOR_HOST} -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ENV_ID=${opts.envId} -e TRIGGER_RUN_ID=${opts.runId} -e TRIGGER_ATTEMPT_ID=${opts.attemptId} --name=${containerName} ${opts.image}`
     );
 
     if (exitCode !== 0) {
@@ -48,7 +54,12 @@ class DockerTaskOperations implements TaskOperations {
     }
   }
 
-  async restore(opts: { attemptId: string; checkpointRef: string; machine: Machine }) {
+  async restore(opts: {
+    runId: string;
+    attemptId: string;
+    checkpointRef: string;
+    machine: Machine;
+  }) {
     const containerName = this.#getRunContainerName(opts.attemptId);
 
     if (this.opts.forceSimulate) {

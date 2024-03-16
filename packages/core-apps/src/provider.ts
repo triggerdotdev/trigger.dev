@@ -76,6 +76,7 @@ export class ProviderShell implements Provider {
           if (message.data.type === "SCHEDULE_ATTEMPT") {
             this.tasks.create({
               envId: message.data.envId,
+              runId: message.data.runId,
               attemptId: message.data.id,
               image: message.data.image,
               machine: {},
@@ -153,6 +154,7 @@ export class ProviderShell implements Provider {
 
           try {
             await this.tasks.restore({
+              runId: message.runId,
               attemptId: message.attemptId,
               checkpointRef: message.location,
               // TODO

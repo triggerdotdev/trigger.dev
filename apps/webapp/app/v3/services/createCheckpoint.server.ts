@@ -32,9 +32,11 @@ export class CreateCheckpointService {
         runtimeEnvironmentId: attempt.taskRun.runtimeEnvironmentId,
         projectId: attempt.taskRun.projectId,
         attemptId: attempt.id,
+        runId: attempt.taskRunId,
         location: params.location,
         type: params.docker ? "DOCKER" : "KUBERNETES",
         reason: params.reason.type,
+        metadata: JSON.stringify(params.reason),
       },
     });
 
@@ -46,7 +48,10 @@ export class CreateCheckpointService {
         status: "PAUSED",
         taskRun: {
           update: {
-            status: "WAITING_TO_RESUME",
+            status:
+              params.reason.type === "RETRYING_AFTER_FAILURE"
+                ? "RETRYING_AFTER_FAILURE"
+                : "WAITING_TO_RESUME",
           },
         },
       },
@@ -64,6 +69,10 @@ export class CreateCheckpointService {
       case "WAIT_FOR_TASK":
       case "WAIT_FOR_BATCH": {
         await marqs?.acknowledgeMessage(attempt.taskRunId);
+        break;
+      }
+      case "RETRYING_AFTER_FAILURE": {
+        // ACK is already handled by attempt completion
         break;
       }
       default: {

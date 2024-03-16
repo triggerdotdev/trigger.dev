@@ -390,6 +390,12 @@ export class SharedQueueConsumer {
               orderBy: { number: "desc" },
             },
             tags: true,
+            checkpoints: {
+              take: 1,
+              orderBy: {
+                createdAt: "desc",
+              },
+            },
           },
         });
 
@@ -443,15 +449,42 @@ export class SharedQueueConsumer {
         });
 
         try {
-          await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
-            backgroundWorkerId: deployment.worker.friendlyId,
-            data: {
-              type: "SCHEDULE_ATTEMPT",
-              id: taskRunAttempt.id,
-              image: deployment.imageReference,
-              envId: environment.id,
-            },
-          });
+          const latestCheckpoint = lockedTaskRun.checkpoints[0];
+
+          if (lockedTaskRun.status === "RETRYING_AFTER_FAILURE" && latestCheckpoint) {
+            if (latestCheckpoint.reason !== "RETRYING_AFTER_FAILURE") {
+              logger.error("Latest checkpoint is invalid", {
+                queueMessage: message.data,
+                messageId: message.messageId,
+                resumableAttemptId: taskRunAttempt.id,
+                latestCheckpointId: latestCheckpoint.id,
+              });
+              await marqs?.acknowledgeMessage(message.messageId);
+              setTimeout(() => this.#doWork(), this._options.interval);
+              return;
+            }
+
+            socketIo.providerNamespace.emit("RESTORE", {
+              version: "v1",
+              checkpointId: latestCheckpoint.id,
+              runId: latestCheckpoint.runId,
+              attemptId: latestCheckpoint.attemptId,
+              type: latestCheckpoint.type,
+              location: latestCheckpoint.location,
+              reason: latestCheckpoint.reason ?? undefined,
+            });
+          } else {
+            await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
+              backgroundWorkerId: deployment.worker.friendlyId,
+              data: {
+                type: "SCHEDULE_ATTEMPT",
+                id: taskRunAttempt.id,
+                image: deployment.imageReference,
+                envId: environment.id,
+                runId: taskRunAttempt.taskRunId,
+              },
+            });
+          }
 
           this._inProgressAttempts.set(taskRunAttempt.friendlyId, message.messageId);
         } catch (e) {
@@ -577,7 +610,8 @@ export class SharedQueueConsumer {
 
           socketIo.providerNamespace.emit("RESTORE", {
             version: "v1",
-            id: latestCheckpoint.id,
+            checkpointId: latestCheckpoint.id,
+            runId: latestCheckpoint.runId,
             attemptId: latestCheckpoint.attemptId,
             type: latestCheckpoint.type,
             location: latestCheckpoint.location,
@@ -718,7 +752,8 @@ export class SharedQueueConsumer {
           // The attempt will resume automatically after restore
           socketIo.providerNamespace.emit("RESTORE", {
             version: "v1",
-            id: latestCheckpoint.id,
+            checkpointId: latestCheckpoint.id,
+            runId: latestCheckpoint.runId,
             attemptId: latestCheckpoint.attemptId,
             type: latestCheckpoint.type,
             location: latestCheckpoint.location,
@@ -949,6 +984,34 @@ class SharedQueueTasks {
     };
 
     return payload;
+  }
+
+  async getLatestExecutionPayloadFromRun(
+    id: string,
+    setToExecuting?: boolean
+  ): Promise<ProdTaskRunExecutionPayload | undefined> {
+    const run = await prisma.taskRun.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        attempts: {
+          take: 1,
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+      },
+    });
+
+    const latestAttempt = run?.attempts[0];
+
+    if (!latestAttempt) {
+      logger.error("No attempts for run", { id });
+      return;
+    }
+
+    return this.getExecutionPayloadFromAttempt(latestAttempt.id, setToExecuting);
   }
 
   async taskHeartbeat(attemptFriendlyId: string, seconds: number = 60) {

@@ -27,11 +27,12 @@ class ProdWorker {
   private contentHash = process.env.TRIGGER_CONTENT_HASH!;
   private projectRef = process.env.TRIGGER_PROJECT_REF!;
   private envId = process.env.TRIGGER_ENV_ID!;
+  private runId = process.env.TRIGGER_RUN_ID || "index-only";
   private attemptId = process.env.TRIGGER_ATTEMPT_ID || "index-only";
   private deploymentId = process.env.TRIGGER_DEPLOYMENT_ID!;
 
   private executing = false;
-  private completed = false;
+  private completed = new Set<string>();
   private paused = false;
 
   private nextResumeAfter: "WAIT_FOR_DURATION" | "WAIT_FOR_TASK" | "WAIT_FOR_BATCH" | undefined;
@@ -163,6 +164,7 @@ class ProdWorker {
         "x-trigger-attempt-id": this.attemptId,
         "x-trigger-env-id": this.envId,
         "x-trigger-deployment-id": this.deploymentId,
+        "x-trigger-run-id": this.runId,
       },
       handlers: {
         RESUME: async (message) => {
@@ -178,27 +180,42 @@ class ProdWorker {
         RESUME_AFTER_DURATION: async (message) => {
           this.#backgroundWorker.waitCompletedNotification();
         },
-        EXECUTE_TASK_RUN: async (message) => {
-          if (this.executing || this.completed) {
-            logger.error("dropping execute request, already executing or completed");
+        EXECUTE_TASK_RUN: async ({ executionPayload }) => {
+          if (this.executing) {
+            logger.error("dropping execute request, already executing");
+            return;
+          }
+
+          if (this.completed.has(executionPayload.execution.attempt.id)) {
+            logger.error("dropping execute request, already completed");
             return;
           }
 
           this.executing = true;
-          const completion = await this.#backgroundWorker.executeTaskRun(message.executionPayload);
+          const completion = await this.#backgroundWorker.executeTaskRun(executionPayload);
 
           logger.log("completed", completion);
 
-          this.completed = true;
+          this.completed.add(executionPayload.execution.attempt.id);
           this.executing = false;
 
-          await this.#coordinatorSocket.socket.emitWithAck("TASK_RUN_COMPLETED", {
-            version: "v1",
-            execution: message.executionPayload.execution,
-            completion,
-          });
+          const { didCheckpoint } = await this.#coordinatorSocket.socket.emitWithAck(
+            "TASK_RUN_COMPLETED",
+            {
+              version: "v1",
+              execution: executionPayload.execution,
+              completion,
+            }
+          );
 
-          process.exit(0);
+          // Forcing a reconnect will ensure the connection handler runs and signals we are ready for another execution
+          this.#coordinatorSocket.close();
+          this.#coordinatorSocket.connect();
+
+          // if (thisIsTheFinalAttempt) {
+          //   // TODO: We need to flush telemetry first
+          //   process.exit(0);
+          // }
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
           if (!this.executing) {
@@ -308,6 +325,7 @@ class ProdWorker {
         socket.emit("READY_FOR_EXECUTION", {
           version: "v1",
           attemptId: this.attemptId,
+          runId: this.runId,
         });
       },
     });
@@ -390,6 +408,7 @@ class ProdWorker {
           this.#coordinatorSocket.send("READY_FOR_EXECUTION", {
             version: "v1",
             attemptId: this.attemptId,
+            runId: this.runId,
           });
           return reply.empty();
 
