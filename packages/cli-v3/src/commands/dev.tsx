@@ -25,20 +25,23 @@ import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions } from "../cli/common.js";
-import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
-import { getConfigPath, readConfig } from "../utilities/configFiles";
+import { readConfig } from "../utilities/configFiles";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
-import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 import { UncaughtExceptionError } from "../workers/common/errors";
+import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
+import { fromZodError } from "zod-validation-error";
 
 let apiClient: CliApiClient | undefined;
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugger: z.boolean().default(false),
   debugOtel: z.boolean().default(false),
+  config: z.string().optional(),
+  projectRef: z.string().optional(),
 });
 
 type DevCommandOptions = z.infer<typeof DevCommandOptions>;
@@ -52,6 +55,15 @@ export function configureDevCommand(program: Command) {
       "-l, --log-level <level>",
       "The log level to use (debug, info, log, warn, error, none)",
       "log"
+    )
+    .option(
+      "-c, --config <config file>",
+      "The name of the config file, found at [path]",
+      "trigger.config.mjs"
+    )
+    .option(
+      "-p, --project-ref <project ref>",
+      "The project ref. Required if there is no config file."
     )
     .option("--debugger", "Enable the debugger")
     .option("--debug-otel", "Enable OpenTelemetry debugging")
@@ -69,7 +81,9 @@ export async function devCommand(dir: string, anyOptions: unknown) {
   const options = DevCommandOptions.safeParse(anyOptions);
 
   if (!options.success) {
-    throw new Error(`Invalid options: ${options.error}`);
+    console.log(fromZodError(options.error).toString());
+
+    process.exit(1);
   }
 
   const authorization = await isLoggedIn();
@@ -111,28 +125,44 @@ async function startDev(
 
     await printStandloneInitialBanner(true);
 
-    const configPath = await getConfigPath(dir);
-    let config = await readConfig(configPath);
-
-    watcher = watch(configPath, {
-      persistent: true,
-    }).on("change", async (_event) => {
-      config = await readConfig(configPath);
-      logger.log(`${basename(configPath)} changed...`);
-      logger.debug("New config", { config });
-      rerender(await getDevReactElement(config, authorization));
+    let config = await readConfig(dir, {
+      projectRef: options.projectRef,
+      configFile: options.config,
     });
+
+    logger.debug("Initial config", { config });
+
+    if (config.status === "file") {
+      watcher = watch(config.path, {
+        persistent: true,
+      }).on("change", async (_event) => {
+        config = await readConfig(dir, { configFile: options.config });
+
+        if (config.status === "file") {
+          logger.log(`${basename(config.path)} changed...`);
+          logger.debug("New config", { config: config.config });
+          rerender(await getDevReactElement(config.config, authorization, config.path));
+        } else {
+          logger.debug("New config", { config: config.config });
+          rerender(await getDevReactElement(config.config, authorization));
+        }
+      });
+    }
 
     async function getDevReactElement(
       configParam: ResolvedConfig,
-      authorization: { apiUrl: string; accessToken: string }
+      authorization: { apiUrl: string; accessToken: string },
+      configPath?: string
     ) {
       const accessToken = authorization.accessToken;
       const apiUrl = authorization.apiUrl;
 
       apiClient = new CliApiClient(apiUrl, accessToken);
 
-      const devEnv = await apiClient.getProjectEnv({ projectRef: config.project, env: "dev" });
+      const devEnv = await apiClient.getProjectEnv({
+        projectRef: config.config.project,
+        env: "dev",
+      });
 
       if (!devEnv.success) {
         throw new Error(devEnv.error);
@@ -149,11 +179,18 @@ async function startDev(
           projectName={devEnv.data.name}
           debuggerOn={options.debugger}
           debugOtel={options.debugOtel}
+          configPath={configPath}
         />
       );
     }
 
-    const devReactElement = render(await getDevReactElement(config, authorization));
+    const devReactElement = render(
+      await getDevReactElement(
+        config.config,
+        authorization,
+        config.status === "file" ? config.path : undefined
+      )
+    );
 
     rerender = devReactElement.rerender;
 
@@ -179,6 +216,7 @@ type DevProps = {
   projectName: string;
   debuggerOn: boolean;
   debugOtel: boolean;
+  configPath?: string;
 };
 
 function useDev({
@@ -189,6 +227,7 @@ function useDev({
   projectName,
   debuggerOn,
   debugOtel,
+  configPath,
 }: DevProps) {
   useEffect(() => {
     const websocketUrl = new URL(apiUrl);
@@ -308,9 +347,23 @@ function useDev({
         importResolve("./workers/dev/worker-setup.js", import.meta.url)
       ).href.replace("file://", "");
 
-      const entryPointContents = workerFacade
+      let entryPointContents = workerFacade
         .replace("__TASKS__", createTaskFileImports(taskFiles))
         .replace("__WORKER_SETUP__", `import { tracingSDK, sender } from "${workerSetupPath}";`);
+
+      if (configPath) {
+        logger.debug("Importing project config from", { configPath });
+
+        entryPointContents = entryPointContents.replace(
+          "__IMPORTED_PROJECT_CONFIG__",
+          `import importedConfig from "${configPath}";`
+        );
+      } else {
+        entryPointContents = entryPointContents.replace(
+          "__IMPORTED_PROJECT_CONFIG__",
+          `const importedConfig = undefined;`
+        );
+      }
 
       let firstBuild = true;
 
@@ -335,6 +388,7 @@ function useDev({
         outdir: "out",
         define: {
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
+          __PROJECT_CONFIG__: JSON.stringify(config),
         },
         plugins: [
           {
@@ -409,7 +463,7 @@ function useDev({
                   await environmentClient.getEnvironmentVariables(config.project);
 
                 const backgroundWorker = new BackgroundWorker(fullPath, {
-                  projectDir: config.projectDir,
+                  projectConfig: config,
                   dependencies,
                   env: {
                     TRIGGER_API_URL: apiUrl,

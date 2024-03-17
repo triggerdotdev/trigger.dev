@@ -2,6 +2,7 @@ import {
   BackgroundWorkerProperties,
   BackgroundWorkerServerMessages,
   CreateBackgroundWorkerResponse,
+  ResolvedConfig,
   SemanticInternalAttributes,
   TaskMetadataWithFilePath,
   TaskRunBuiltInError,
@@ -107,9 +108,23 @@ export class BackgroundWorkerCoordinator {
   }
 
   async handleMessage(id: string, message: BackgroundWorkerServerMessages) {
+    logger.debug(`Received message from worker ${id}`, { workerMessage: message });
+
     switch (message.type) {
       case "EXECUTE_RUNS": {
         await Promise.all(message.payloads.map((payload) => this.#executeTaskRun(id, payload)));
+        break;
+      }
+      case "CANCEL_ATTEMPT": {
+        // Need to cancel the attempt somehow here
+        const worker = this._backgroundWorkers.get(id);
+
+        if (!worker) {
+          logger.error(`Could not find worker ${id}`);
+          return;
+        }
+
+        await worker.cancelRun(message.taskRunId);
       }
     }
   }
@@ -148,14 +163,26 @@ export class BackgroundWorkerCoordinator {
 
     const elapsed = performance.now() - now;
 
+    const retryingText =
+      !completion.ok && completion.skippedRetrying
+        ? " (retrying skipped)"
+        : !completion.ok && completion.retry !== undefined
+        ? ` (retrying in ${completion.retry.delay}ms)`
+        : "";
+
     const resultText = !completion.ok
       ? completion.error.type === "INTERNAL_ERROR" &&
-        completion.error.code === TaskRunErrorCodes.TASK_EXECUTION_ABORTED
+        (completion.error.code === TaskRunErrorCodes.TASK_EXECUTION_ABORTED ||
+          completion.error.code === TaskRunErrorCodes.TASK_RUN_CANCELLED)
         ? chalk.yellow("cancelled")
-        : chalk.red("error")
+        : chalk.red(`error${retryingText}`)
       : chalk.green("success");
 
-    const errorText = !completion.ok ? this.#formatErrorLog(completion.error) : "";
+    const errorText = !completion.ok
+      ? this.#formatErrorLog(completion.error)
+      : "retry" in completion
+      ? `retry in ${completion.retry}ms`
+      : "";
 
     const elapsedText = chalk.dim(`(${elapsed.toFixed(2)}ms)`);
 
@@ -202,10 +229,18 @@ class CleanupProcessError extends Error {
   }
 }
 
+class CancelledProcessError extends Error {
+  constructor() {
+    super("Cancelled");
+
+    this.name = "CancelledProcessError";
+  }
+}
+
 export type BackgroundWorkerParams = {
   env: Record<string, string>;
   dependencies?: Record<string, string>;
-  projectDir: string;
+  projectConfig: ResolvedConfig;
   debuggerOn: boolean;
   debugOtel?: boolean;
 };
@@ -331,9 +366,9 @@ export class BackgroundWorker {
       const taskRunProcess = new TaskRunProcess(
         this.path,
         {
-          ...this.#readEnvVars(),
           ...this.params.env,
           ...(payload.environment ?? {}),
+          ...this.#readEnvVars(),
         },
         this.metadata,
         this.params
@@ -353,6 +388,16 @@ export class BackgroundWorker {
     }
 
     return this._taskRunProcesses.get(payload.execution.run.id) as TaskRunProcess;
+  }
+
+  async cancelRun(taskRunId: string) {
+    const taskRunProcess = this._taskRunProcesses.get(taskRunId);
+
+    if (!taskRunProcess) {
+      return;
+    }
+
+    await taskRunProcess.cancel();
   }
 
   // We need to fork the process before we can execute any tasks
@@ -381,6 +426,18 @@ export class BackgroundWorker {
 
       return result;
     } catch (e) {
+      if (e instanceof CancelledProcessError) {
+        return {
+          id: payload.execution.attempt.id,
+          ok: false,
+          retry: undefined,
+          error: {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.TASK_RUN_CANCELLED,
+          },
+        };
+      }
+
       if (e instanceof CleanupProcessError) {
         return {
           id: payload.execution.attempt.id,
@@ -434,7 +491,7 @@ export class BackgroundWorker {
   ): Promise<TaskRunBuiltInError> {
     return {
       ...error,
-      stackTrace: correctErrorStackTrace(error.stackTrace, this.params.projectDir),
+      stackTrace: correctErrorStackTrace(error.stackTrace, this.params.projectConfig.projectDir),
     };
   }
 }
@@ -452,6 +509,7 @@ class TaskRunProcess {
   private _attemptStatuses: Map<string, "PENDING" | "REJECTED" | "RESOLVED"> = new Map();
   private _currentExecution: TaskRunExecution | undefined;
   private _isBeingKilled: boolean = false;
+  private _isBeingCancelled: boolean = false;
   public onTaskHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<number> = new Evt();
 
@@ -471,6 +529,12 @@ class TaskRunProcess {
     });
   }
 
+  async cancel() {
+    this._isBeingCancelled = true;
+
+    await this.cleanup(true);
+  }
+
   async initialize() {
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
@@ -478,7 +542,7 @@ class TaskRunProcess {
       env: {
         ...this.env,
         OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
-          [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectDir,
+          [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectConfig.projectDir,
         }),
         ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
       },
@@ -605,7 +669,9 @@ class TaskRunProcess {
 
         const { rejecter } = attemptPromise;
 
-        if (this._isBeingKilled) {
+        if (this._isBeingCancelled) {
+          rejecter(new CancelledProcessError());
+        } else if (this._isBeingKilled) {
           rejecter(new CleanupProcessError());
         } else {
           rejecter(new UnexpectedExitError(code));

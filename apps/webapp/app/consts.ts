@@ -1,5 +1,6 @@
 export const LIVE_ENVIRONMENT = "live";
 export const DEV_ENVIRONMENT = "development";
+export const CURRENT_DEPLOYMENT_LABEL = "current";
 export const MAX_LIVE_PROJECTS = 1;
 export const DEFAULT_MAX_CONCURRENT_RUNS = 10;
 export const MAX_CONCURRENT_RUNS_LIMIT = 20;
@@ -10,3 +11,4 @@ export const RUN_CHUNK_EXECUTION_BUFFER = 350;
 export const MAX_RUN_CHUNK_EXECUTION_LIMIT = 120000; // 2 minutes
 export const VERCEL_RESPONSE_TIMEOUT_STATUS_CODES = [408, 504];
 export const MAX_BATCH_TRIGGER_ITEMS = 100;
+export const MAX_TASK_RUN_ATTEMPTS = 250;

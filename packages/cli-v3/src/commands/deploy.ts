@@ -18,13 +18,14 @@ import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions } from "../cli/common.js";
-import { getConfigPath, readConfig } from "../utilities/configFiles.js";
+import { readConfig } from "../utilities/configFiles.js";
 import { createTempDir, readJSONFile, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
+import { fromZodError } from "zod-validation-error";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -35,6 +36,8 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   selfHosted: z.boolean().default(false),
   registry: z.string().optional(),
   pushImage: z.boolean().default(false),
+  config: z.string().optional(),
+  projectRef: z.string().optional(),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -50,6 +53,15 @@ export function configureDeployCommand(program: Command) {
       "prod"
     )
     .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
+    .option(
+      "-c, --config <config file>",
+      "The name of the config file, found at [path]",
+      "trigger.config.mjs"
+    )
+    .option(
+      "-p, --project-ref <project ref>",
+      "The project ref. Required if there is no config file."
+    )
     .addOption(
       new CommandOption(
         "--self-hosted",
@@ -105,7 +117,9 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
   const options = DeployCommandOptions.safeParse(anyOptions);
 
   if (!options.success) {
-    throw new Error(`Invalid options: ${options.error}`);
+    console.log(fromZodError(options.error).toString());
+
+    process.exit(1);
   }
 
   if (options.data.logLevel) {
@@ -133,13 +147,17 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   await printStandloneInitialBanner(true);
 
-  const configPath = await getConfigPath(dir);
-  const config = await readConfig(configPath);
+  const resolvedConfig = await readConfig(dir, {
+    configFile: options.data.config,
+    projectRef: options.data.projectRef,
+  });
+
+  logger.debug("Resolved config", { resolvedConfig });
 
   const apiClient = new CliApiClient(authorization.config.apiUrl, authorization.config.accessToken);
 
   const deploymentEnv = await apiClient.getProjectEnv({
-    projectRef: config.project,
+    projectRef: resolvedConfig.config.project,
     env: options.data.env,
   });
 
@@ -153,11 +171,15 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
   );
 
   intro(
-    `Preparing to deploy "${deploymentEnv.data.name}" (${config.project}) to ${options.data.env}`
+    `Preparing to deploy "${deploymentEnv.data.name}" (${resolvedConfig.config.project}) to ${options.data.env}`
   );
 
   // Step 1: Build the project into a temporary directory
-  const compilation = await compileProject(config, options.data);
+  const compilation = await compileProject(
+    resolvedConfig.config,
+    options.data,
+    resolvedConfig.status === "file" ? resolvedConfig.path : undefined
+  );
 
   logger.debug("Compilation result", { compilation });
 
@@ -165,7 +187,9 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   environmentVariablesSpinner.start("Checking environment variables");
 
-  const environmentVariables = await environmentClient.getEnvironmentVariables(config.project);
+  const environmentVariables = await environmentClient.getEnvironmentVariables(
+    resolvedConfig.config.project
+  );
 
   if (!environmentVariables.success) {
     environmentVariablesSpinner.stop(`Failed to fetch environment variables, skipping check`);
@@ -182,7 +206,7 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
         )}. Aborting deployment. ${chalk.bgBlueBright(
           terminalLink(
             "Manage env vars",
-            `${authorization.config.apiUrl}/projects/v3/${config.project}/environment-variables`
+            `${authorization.config.apiUrl}/projects/v3/${resolvedConfig.config.project}/environment-variables`
           )
         )}`
       );
@@ -224,11 +248,11 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
       return buildAndPushSelfHostedImage({
         imageTag: deploymentResponse.data.imageTag,
         cwd: compilation.path,
-        projectId: config.project,
+        projectId: resolvedConfig.config.project,
         deploymentId: deploymentResponse.data.id,
         deploymentVersion: version,
         contentHash: deploymentResponse.data.contentHash,
-        projectRef: config.project,
+        projectRef: resolvedConfig.config.project,
         buildPlatform: options.data.buildPlatform,
       });
     }
@@ -248,11 +272,11 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
       buildToken: deploymentResponse.data.externalBuildData.buildToken,
       buildProjectId: deploymentResponse.data.externalBuildData.projectId,
       cwd: compilation.path,
-      projectId: config.project,
+      projectId: resolvedConfig.config.project,
       deploymentId: deploymentResponse.data.id,
       deploymentVersion: deploymentResponse.data.version,
       contentHash: deploymentResponse.data.contentHash,
-      projectRef: config.project,
+      projectRef: resolvedConfig.config.project,
       loadImage: options.data.loadImage,
       buildPlatform: options.data.buildPlatform,
     });
@@ -306,7 +330,7 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   const deploymentLink = terminalLink(
     "View deployment",
-    `${authorization.config.apiUrl}/projects/v3/${config.project}/deployments/${finishedDeployment.id}`
+    `${authorization.config.apiUrl}/projects/v3/${resolvedConfig.config.project}/deployments/${finishedDeployment.id}`
   );
 
   switch (finishedDeployment.status) {
@@ -569,7 +593,11 @@ function extractImageDigest(outputs: string[]) {
   }
 }
 
-async function compileProject(config: ResolvedConfig, options: DeployCommandOptions) {
+async function compileProject(
+  config: ResolvedConfig,
+  options: DeployCommandOptions,
+  configPath?: string
+) {
   if (!options.skipTypecheck) {
     await typecheckProject(config, options);
   }
@@ -590,9 +618,23 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
     importResolve("./workers/prod/worker-setup.js", import.meta.url)
   ).href.replace("file://", "");
 
-  const workerContents = workerFacade
+  let workerContents = workerFacade
     .replace("__TASKS__", createTaskFileImports(taskFiles))
     .replace("__WORKER_SETUP__", `import { tracingSDK } from "${workerSetupPath}";`);
+
+  if (configPath) {
+    logger.debug("Importing project config from", { configPath });
+
+    workerContents = workerContents.replace(
+      "__IMPORTED_PROJECT_CONFIG__",
+      `import importedConfig from "${configPath}";`
+    );
+  } else {
+    workerContents = workerContents.replace(
+      "__IMPORTED_PROJECT_CONFIG__",
+      `const importedConfig = undefined;`
+    );
+  }
 
   const result = await build({
     stdin: {
@@ -613,6 +655,7 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
     outdir: "out",
     define: {
       TRIGGER_API_URL: `"${config.triggerUrl}"`,
+      __PROJECT_CONFIG__: JSON.stringify(config),
     },
   });
 
@@ -646,6 +689,9 @@ async function compileProject(config: ResolvedConfig, options: DeployCommandOpti
     format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
     target: ["node18", "es2020"],
     outdir: "out",
+    define: {
+      __PROJECT_CONFIG__: JSON.stringify(config),
+    },
   });
 
   if (entryPointResult.errors.length > 0) {

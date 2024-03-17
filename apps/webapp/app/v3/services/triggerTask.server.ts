@@ -57,10 +57,10 @@ export class TriggerTaskService extends BaseService {
           attributes: {
             properties: {
               [SemanticInternalAttributes.PAYLOAD]: body.payload,
+              [SemanticInternalAttributes.SHOW_ACTIONS]: true,
             },
             style: {
-              icon: "play",
-              variant: PRIMARY_VARIANT,
+              icon: "task",
             },
             runIsTest: body.options?.test ?? false,
             batchId: options.batchId,
@@ -100,6 +100,7 @@ export class TriggerTaskService extends BaseService {
 
             const taskRun = await tx.taskRun.create({
               data: {
+                status: "PENDING",
                 number: counter.lastNumber,
                 friendlyId: generateFriendlyId("run"),
                 runtimeEnvironmentId: environment.id,

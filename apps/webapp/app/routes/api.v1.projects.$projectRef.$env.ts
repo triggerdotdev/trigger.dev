@@ -76,10 +76,17 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ error: "Project not found" }, { status: 404 });
   }
 
-  const devEnvironment = project.environments[0];
+  if (!project.environments.length) {
+    return json(
+      { error: `Environment "${env}" not found or is unsupported for this project.` },
+      { status: 404 }
+    );
+  }
+
+  const runtimeEnv = project.environments[0];
 
   const result: GetProjectEnvResponse = {
-    apiKey: devEnvironment.apiKey,
+    apiKey: runtimeEnv.apiKey,
     name: project.name,
     apiUrl: processEnv.APP_ORIGIN,
   };

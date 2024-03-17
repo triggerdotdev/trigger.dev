@@ -393,6 +393,7 @@ model RuntimeEnvironment {
   checkpoints                Checkpoint[]
   workerDeployments          WorkerDeployment[]
   workerDeploymentPromotions WorkerDeploymentPromotion[]
+  taskRunAttempts            TaskRunAttempt[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -1564,6 +1565,8 @@ model TaskRun {
   number     Int    @default(0)
   friendlyId String @unique
 
+  status TaskRunStatus @default(PENDING)
+
   idempotencyKey String
   taskIdentifier String
 
@@ -1604,6 +1607,38 @@ model TaskRun {
   dependency TaskRunDependency?
 
   @@unique([runtimeEnvironmentId, idempotencyKey])
+}
+
+enum TaskRunStatus {
+  /// Task is waiting to be executed by a worker
+  PENDING
+
+  /// Task is currently being executed by a worker
+  EXECUTING
+
+  /// Task has been paused by the system, and will be resumed by the system
+  WAITING_TO_RESUME
+
+  /// Task has failed and is waiting to be retried
+  RETRYING_AFTER_FAILURE
+
+  /// Task has been paused by the user, and can be resumed by the user
+  PAUSED
+
+  /// Task has been canceled by the user
+  CANCELED
+
+  /// Task was interrupted during execution, mostly this happens in development environments
+  INTERRUPTED
+
+  /// Task has been completed successfully
+  COMPLETED_SUCCESSFULLY
+
+  /// Task has been completed with errors
+  COMPLETED_WITH_ERRORS
+
+  /// Task has failed to complete, due to an error in the system
+  SYSTEM_FAILURE
 }
 
 model TaskRunDependency {
@@ -1660,6 +1695,9 @@ model TaskRunAttempt {
   backgroundWorkerTask   BackgroundWorkerTask @relation(fields: [backgroundWorkerTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   backgroundWorkerTaskId String
 
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
   queue   TaskQueue @relation(fields: [queueId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   queueId String
 
@@ -1678,7 +1716,8 @@ model TaskRunAttempt {
   taskRunDependency      TaskRunDependency? @relation("dependentAttempt")
   batchTaskRunDependency BatchTaskRun?
 
-  checkpoints Checkpoint[]
+  checkpoints       Checkpoint[]
+  batchTaskRunItems BatchTaskRunItem[]
 
   @@unique([taskRunId, number])
 }
@@ -1826,6 +1865,8 @@ model BatchTaskRun {
 
   friendlyId String @unique
 
+  status BatchTaskRunStatus @default(PENDING)
+
   idempotencyKey String
   taskIdentifier String
 
@@ -1844,6 +1885,11 @@ model BatchTaskRun {
   @@unique([runtimeEnvironmentId, idempotencyKey])
 }
 
+enum BatchTaskRunStatus {
+  PENDING
+  COMPLETED
+}
+
 model BatchTaskRunItem {
   id String @id @default(cuid())
 
@@ -1854,6 +1900,9 @@ model BatchTaskRunItem {
 
   taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   taskRunId String  @unique
+
+  taskRunAttempt   TaskRunAttempt? @relation(fields: [taskRunAttemptId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  taskRunAttemptId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

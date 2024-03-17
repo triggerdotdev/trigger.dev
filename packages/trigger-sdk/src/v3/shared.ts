@@ -1,9 +1,16 @@
 import { SpanKind } from "@opentelemetry/api";
 import { SemanticAttributes } from "@opentelemetry/semantic-conventions";
 import {
+  HandleErrorFnParams,
+  HandleErrorResult,
+  InitFnParams,
+  InitOutput,
+  MiddlewareFnParams,
   QueueOptions,
   RetryOptions,
+  RunFnParams,
   SemanticInternalAttributes,
+  SuccessFnParams,
   TaskRunContext,
   accessoryAttributes,
   apiClientManager,
@@ -16,42 +23,7 @@ import {
 import * as packageJson from "../../package.json";
 import { tracer } from "./tracer";
 
-export type InitOutput = Record<string, any> | void | undefined;
-
-export type RunFnParams<TPayload, TInitOutput extends InitOutput> = Prettify<{
-  payload: TPayload;
-  ctx: Context;
-  init: TInitOutput;
-}>;
-
-export type MiddlewareFnParams<TPayload> = Prettify<{
-  payload: TPayload;
-  ctx: Context;
-  next: () => Promise<void>;
-}>;
-
-export type InitFnParams<TPayload> = Prettify<{
-  payload: TPayload;
-  ctx: Context;
-}>;
-
 export type Context = TaskRunContext;
-
-export type SuccessFnParams<TPayload, TOutput, TInitOutput extends InitOutput> = RunFnParams<
-  TPayload,
-  TInitOutput
-> &
-  Prettify<{
-    output: TOutput;
-  }>;
-
-export type ErrorFnParams<TPayload, TInitOutput extends InitOutput> = RunFnParams<
-  TPayload,
-  TInitOutput
-> &
-  Prettify<{
-    error: unknown;
-  }>;
 
 type RequireOne<T, K extends keyof T> = {
   [X in Exclude<keyof T, K>]?: T[X];
@@ -65,21 +37,24 @@ export function queue(options: { name: string } & QueueOptions): Queue {
   return options;
 }
 
-export type RunOptions<TPayload, TOutput = any, TInitOutput extends InitOutput = any> = {
+export type TaskOptions<TPayload, TOutput = any, TInitOutput extends InitOutput = any> = {
   id: string;
   retry?: RetryOptions;
   queue?: QueueOptions;
   machine?: {
-    image?: "ffmpeg" | "puppeteer";
     cpu?: number;
     memory?: number;
   };
-  run: (params: RunFnParams<TPayload, TInitOutput>) => Promise<TOutput>;
-  init?: (params: InitFnParams<TPayload>) => Promise<TInitOutput>;
-  cleanup?: (params: RunFnParams<TPayload, TInitOutput>) => Promise<void>;
-  middleware?: (params: MiddlewareFnParams<TPayload>) => Promise<void>;
-  onSuccess?: (params: SuccessFnParams<TPayload, TOutput, TInitOutput>) => Promise<void>;
-  onError?: (params: ErrorFnParams<TPayload, TInitOutput>) => Promise<void>;
+  run: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<TOutput>;
+  init?: (payload: TPayload, params: InitFnParams) => Promise<TInitOutput>;
+  handleError?: (
+    payload: TPayload,
+    error: unknown,
+    params: HandleErrorFnParams<TInitOutput>
+  ) => HandleErrorResult;
+  cleanup?: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<void>;
+  middleware?: (payload: TPayload, params: MiddlewareFnParams) => Promise<void>;
+  onSuccess?: (payload: TPayload, params: SuccessFnParams<TOutput, TInitOutput>) => Promise<void>;
 };
 
 type InvokeHandle = {
@@ -145,7 +120,7 @@ export type DynamicBaseOptions = {
 };
 
 export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
-  params: RunOptions<TInput, TOutput, TInitOutput>
+  params: TaskOptions<TInput, TOutput, TInitOutput>
 ): Task<TInput, TOutput> {
   const task: Task<TInput, TOutput> = {
     trigger: async ({ payload, options }) => {
@@ -447,6 +422,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
         init: params.init,
         cleanup: params.cleanup,
         middleware: params.middleware,
+        handleError: params.handleError,
       },
     },
     enumerable: false,

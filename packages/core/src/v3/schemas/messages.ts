@@ -33,6 +33,11 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     payloads: z.array(TaskRunExecutionPayload),
   }),
   z.object({
+    type: z.literal("CANCEL_ATTEMPT"),
+    taskAttemptId: z.string(),
+    taskRunId: z.string(),
+  }),
+  z.object({
     type: z.literal("SCHEDULE_ATTEMPT"),
     id: z.string(),
     image: z.string(),
@@ -176,7 +181,7 @@ export const TaskMetadata = z.object({
   exportName: z.string(),
   packageVersion: z.string(),
   queue: QueueOptions.optional(),
-  retry: RetryOptions.required().optional(),
+  retry: RetryOptions.optional(),
 });
 
 export type TaskMetadata = z.infer<typeof TaskMetadata>;

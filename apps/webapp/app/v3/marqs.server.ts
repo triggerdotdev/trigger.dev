@@ -611,13 +611,13 @@ export class MarQS {
       String(this.options.defaultConcurrency ?? 10)
     );
 
-    logger.debug("Dequeue message result", {
-      result,
-    });
-
     if (!result) {
       return;
     }
+
+    logger.debug("Dequeue message result", {
+      result,
+    });
 
     if (result.length !== 2) {
       return;

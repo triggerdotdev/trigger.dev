@@ -17,6 +17,8 @@ import { marqs } from "../marqs.server";
 import { CancelAttemptService } from "../services/cancelAttempt.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
 import { attributesFromAuthenticatedEnv } from "../tracer.server";
+import { DevSubscriber, devPubSub } from "./devPubSub.server";
+import { CancelTaskRunService } from "../services/cancelTaskRun.server";
 
 const tracer = trace.getTracer("devQueueConsumer");
 
@@ -36,9 +38,11 @@ export type DevQueueConsumerOptions = {
 
 export class DevQueueConsumer {
   private _backgroundWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
+  private _backgroundWorkerSubscriber: Map<string, DevSubscriber> = new Map();
   private _deprecatedWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
   private _enabled = false;
-  private _options: Required<DevQueueConsumerOptions>;
+  private _maximumItemsPerTrace: number;
+  private _traceTimeoutSeconds: number;
   private _perTraceCountdown: number | undefined;
   private _lastNewTrace: Date | undefined;
   private _currentSpanContext: Context | undefined;
@@ -47,16 +51,15 @@ export class DevQueueConsumer {
   private _currentSpan: Span | undefined;
   private _endSpanInNextIteration = false;
   private _inProgressAttempts: Map<string, string> = new Map(); // Keys are task attempt friendly IDs, values are TaskRun ids/queue message ids
+  private _inProgressRuns: Map<string, string> = new Map(); // Keys are task run friendly IDs, values are TaskRun internal ids/queue message ids
 
   constructor(
     public env: AuthenticatedEnvironment,
     private _sender: ZodMessageSender<typeof serverWebsocketMessages>,
-    options: DevQueueConsumerOptions = {}
+    private _options: DevQueueConsumerOptions = {}
   ) {
-    this._options = {
-      maximumItemsPerTrace: options.maximumItemsPerTrace ?? 1_000, // 1k items per trace
-      traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
-    };
+    this._traceTimeoutSeconds = _options.traceTimeoutSeconds ?? 60;
+    this._maximumItemsPerTrace = _options.maximumItemsPerTrace ?? 1_000;
   }
 
   // This method is called when a background worker is deprecated and will no longer be used unless a run is locked to it
@@ -87,6 +90,21 @@ export class DevQueueConsumer {
 
     logger.debug("Registered background worker", { backgroundWorker: backgroundWorker.id });
 
+    const subscriber = await devPubSub.subscribe(`backgroundWorker:${backgroundWorker.id}:*`);
+
+    subscriber.on("CANCEL_ATTEMPT", async (message) => {
+      await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
+        backgroundWorkerId: backgroundWorker.friendlyId,
+        data: {
+          type: "CANCEL_ATTEMPT",
+          taskAttemptId: message.attemptId,
+          taskRunId: message.taskRunId,
+        },
+      });
+    });
+
+    this._backgroundWorkerSubscriber.set(backgroundWorker.id, subscriber);
+
     // Start reading from the queue if we haven't already
     this.#enable();
   }
@@ -107,7 +125,11 @@ export class DevQueueConsumer {
     logger.debug("Task run completed", { taskRunCompletion: completion, execution });
 
     const service = new CompleteAttemptService();
-    await service.call(completion, execution, this.env);
+    const result = await service.call(completion, execution, this.env);
+
+    if (result === "COMPLETED") {
+      this._inProgressRuns.delete(execution.run.id);
+    }
   }
 
   public async taskHeartbeat(workerId: string, id: string, seconds: number = 60) {
@@ -132,20 +154,57 @@ export class DevQueueConsumer {
     this._enabled = false;
 
     // We need to cancel all the in progress task run attempts and ack the messages so they will stop processing
-    await this.#cancelInProgressAttempts(reason);
+    await this.#cancelInProgressRunsAndAttempts(reason);
+
+    // We need to unsubscribe from the background worker channels
+    for (const [id, subscriber] of this._backgroundWorkerSubscriber) {
+      logger.debug("Unsubscribing from background worker channel", { id });
+
+      await subscriber.stopListening();
+      this._backgroundWorkerSubscriber.delete(id);
+
+      logger.debug("Unsubscribed from background worker channel", { id });
+    }
   }
 
-  async #cancelInProgressAttempts(reason: string) {
-    const service = new CancelAttemptService();
+  async #cancelInProgressRunsAndAttempts(reason: string) {
+    const cancelAttemptService = new CancelAttemptService();
+    const cancelTaskRunService = new CancelTaskRunService();
 
     const cancelledAt = new Date();
 
     const inProgressAttempts = new Map(this._inProgressAttempts);
+    const inProgressRuns = new Map(this._inProgressRuns);
 
     this._inProgressAttempts.clear();
+    this._inProgressRuns.clear();
+
+    const inProgressRunsWithNoInProgressAttempts: string[] = [];
+    const inProgressAttemptRunIds = new Set(inProgressAttempts.values());
+
+    for (const [runId, messageId] of inProgressRuns) {
+      if (!inProgressAttemptRunIds.has(messageId)) {
+        inProgressRunsWithNoInProgressAttempts.push(messageId);
+      }
+    }
+
+    logger.debug("Cancelling in progress runs and attempts", {
+      attempts: Array.from(inProgressAttempts.keys()),
+      runs: Array.from(inProgressRuns.keys()),
+    });
 
     for (const [attemptId, messageId] of inProgressAttempts) {
-      await this.#cancelInProgressAttempt(attemptId, messageId, service, cancelledAt, reason);
+      await this.#cancelInProgressAttempt(
+        attemptId,
+        messageId,
+        cancelAttemptService,
+        cancelledAt,
+        reason
+      );
+    }
+
+    for (const runId of inProgressRunsWithNoInProgressAttempts) {
+      await this.#cancelInProgressRun(runId, cancelTaskRunService, cancelledAt, reason);
     }
   }
 
@@ -156,12 +215,40 @@ export class DevQueueConsumer {
     cancelledAt: Date,
     reason: string
   ) {
+    logger.debug("Cancelling in progress attempt", { attemptId, messageId });
+
     try {
       await cancelAttemptService.call(attemptId, messageId, cancelledAt, reason, this.env);
     } catch (e) {
       logger.error("Failed to cancel in progress attempt", {
         attemptId,
         messageId,
+        error: e,
+      });
+    }
+  }
+
+  async #cancelInProgressRun(
+    runId: string,
+    service: CancelTaskRunService,
+    cancelledAt: Date,
+    reason: string
+  ) {
+    logger.debug("Cancelling in progress run", { runId });
+
+    const taskRun = await prisma.taskRun.findUnique({
+      where: { id: runId },
+    });
+
+    if (!taskRun) {
+      return;
+    }
+
+    try {
+      await service.call(taskRun, { reason, cancelAttempts: false, cancelledAt });
+    } catch (e) {
+      logger.error("Failed to cancel in progress run", {
+        runId,
         error: e,
       });
     }
@@ -189,7 +276,7 @@ export class DevQueueConsumer {
     // Check if the trace has expired
     if (
       this._perTraceCountdown === 0 ||
-      Date.now() - this._lastNewTrace!.getTime() > this._options.traceTimeoutSeconds * 1000 ||
+      Date.now() - this._lastNewTrace!.getTime() > this._traceTimeoutSeconds * 1000 ||
       this._currentSpanContext === undefined ||
       this._endSpanInNextIteration
     ) {
@@ -309,6 +396,7 @@ export class DevQueueConsumer {
       data: {
         lockedAt: new Date(),
         lockedById: backgroundTask.id,
+        status: "EXECUTING",
       },
       include: {
         attempts: {
@@ -365,6 +453,7 @@ export class DevQueueConsumer {
         backgroundWorkerTaskId: backgroundTask.id,
         status: "EXECUTING" as const,
         queueId: queue.id,
+        runtimeEnvironmentId: this.env.id,
       },
     });
 
@@ -441,7 +530,13 @@ export class DevQueueConsumer {
         },
       });
 
+      logger.debug("Saving the in progress attempt", {
+        taskRunAttempt: taskRunAttempt.id,
+        messageId: message.messageId,
+      });
+
       this._inProgressAttempts.set(taskRunAttempt.friendlyId, message.messageId);
+      this._inProgressRuns.set(lockedTaskRun.friendlyId, message.messageId);
     } catch (e) {
       if (e instanceof Error) {
         this._currentSpan?.recordException(e);
@@ -460,6 +555,7 @@ export class DevQueueConsumer {
           data: {
             lockedAt: null,
             lockedById: null,
+            status: "PENDING",
           },
         }),
         prisma.taskRunAttempt.delete({
@@ -468,6 +564,9 @@ export class DevQueueConsumer {
           },
         }),
       ]);
+
+      this._inProgressAttempts.delete(taskRunAttempt.friendlyId);
+      this._inProgressRuns.delete(lockedTaskRun.friendlyId);
 
       // Finally we need to nack the message so it can be retried
       await marqs?.nackMessage(message.messageId);

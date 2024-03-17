@@ -1,4 +1,5 @@
 import {
+  Config,
   CoordinatorToProdWorkerMessages,
   ProdWorkerToCoordinatorMessages,
   TaskResource,
@@ -8,6 +9,8 @@ import { HttpReply, getTextBody, SimpleLogger, getRandomPortNumber } from "@trig
 import { createServer } from "node:http";
 import { ProdBackgroundWorker } from "./backgroundWorker";
 import { UncaughtExceptionError } from "../common/errors";
+
+declare const __PROJECT_CONFIG__: Config;
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
 const COORDINATOR_HOST = process.env.COORDINATOR_HOST || "127.0.0.1";
@@ -22,7 +25,6 @@ class ProdWorker {
   private apiUrl = process.env.TRIGGER_API_URL!;
   private apiKey = process.env.TRIGGER_SECRET_KEY!;
   private contentHash = process.env.TRIGGER_CONTENT_HASH!;
-  private projectDir = process.env.TRIGGER_PROJECT_DIR!;
   private projectRef = process.env.TRIGGER_PROJECT_REF!;
   private envId = process.env.TRIGGER_ENV_ID!;
   private attemptId = process.env.TRIGGER_ATTEMPT_ID || "index-only";
@@ -49,7 +51,7 @@ class ProdWorker {
     this.#coordinatorSocket = this.#createCoordinatorSocket();
 
     this.#backgroundWorker = new ProdBackgroundWorker("worker.js", {
-      projectDir: this.projectDir,
+      projectConfig: __PROJECT_CONFIG__,
       env: {
         TRIGGER_API_URL: this.apiUrl,
         TRIGGER_SECRET_KEY: this.apiKey,
@@ -196,6 +198,16 @@ class ProdWorker {
             completion,
           });
 
+          process.exit(0);
+        },
+        REQUEST_ATTEMPT_CANCELLATION: async (message) => {
+          if (!this.executing) {
+            return;
+          }
+
+          await this.#backgroundWorker.cancelAttempt(message.attemptId);
+        },
+        REQUEST_EXIT: async () => {
           process.exit(0);
         },
       },

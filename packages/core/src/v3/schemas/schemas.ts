@@ -6,6 +6,7 @@ import {
   BackgroundWorkerServerMessages,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
+  RetryOptions,
 } from "./messages";
 import { TaskResource } from "./resources";
 
@@ -14,6 +15,12 @@ export const Config = z.object({
   triggerDirectories: z.string().array().optional(),
   triggerUrl: z.string().optional(),
   projectDir: z.string().optional(),
+  retries: z
+    .object({
+      enabledInDev: z.boolean().default(true),
+      default: RetryOptions.optional(),
+    })
+    .optional(),
 });
 
 export type Config = z.infer<typeof Config>;
@@ -215,6 +222,12 @@ export const PlatformToCoordinatorMessages = {
       attemptId: z.string(),
     }),
   },
+  REQUEST_ATTEMPT_CANCELLATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      attemptId: z.string(),
+    }),
+  },
 };
 
 export const ClientToSharedQueueMessages = {
@@ -366,6 +379,17 @@ export const CoordinatorToProdWorkerMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       executionPayload: ProdTaskRunExecutionPayload,
+    }),
+  },
+  REQUEST_ATTEMPT_CANCELLATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      attemptId: z.string(),
+    }),
+  },
+  REQUEST_EXIT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
     }),
   },
 };

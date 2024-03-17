@@ -30,6 +30,9 @@ export const TaskRunErrorCodes = {
   TASK_EXECUTION_FAILED: "TASK_EXECUTION_FAILED",
   TASK_EXECUTION_ABORTED: "TASK_EXECUTION_ABORTED",
   TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE: "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE",
+  TASK_RUN_CANCELLED: "TASK_RUN_CANCELLED",
+  TASK_OUTPUT_ERROR: "TASK_OUTPUT_ERROR",
+  HANDLE_ERROR_ERROR: "HANDLE_ERROR_ERROR",
 } as const;
 
 export const TaskRunInternalError = z.object({
@@ -41,7 +44,11 @@ export const TaskRunInternalError = z.object({
     "TASK_EXECUTION_FAILED",
     "TASK_EXECUTION_ABORTED",
     "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE",
+    "TASK_RUN_CANCELLED",
+    "TASK_OUTPUT_ERROR",
+    "HANDLE_ERROR_ERROR",
   ]),
+  message: z.string().optional(),
 });
 
 export type TaskRunInternalError = z.infer<typeof TaskRunInternalError>;
@@ -154,6 +161,7 @@ export type TaskRunContext = z.infer<typeof TaskRunContext>;
 export const TaskRunExecutionRetry = z.object({
   timestamp: z.number(),
   delay: z.number(),
+  error: z.unknown().optional(),
 });
 
 export type TaskRunExecutionRetry = z.infer<typeof TaskRunExecutionRetry>;
@@ -163,6 +171,7 @@ export const TaskRunFailedExecutionResult = z.object({
   id: z.string(),
   error: TaskRunError,
   retry: TaskRunExecutionRetry.optional(),
+  skippedRetrying: z.boolean().optional(),
 });
 
 export type TaskRunFailedExecutionResult = z.infer<typeof TaskRunFailedExecutionResult>;

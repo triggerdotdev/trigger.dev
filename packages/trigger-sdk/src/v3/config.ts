@@ -1,5 +1,1 @@
-export interface Config {
-  project: string;
-  triggerDirectories?: string | string[];
-  triggerUrl?: string;
-}
+export type { ProjectConfig as Config } from "@trigger.dev/core/v3";

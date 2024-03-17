@@ -1,6 +1,7 @@
 import { TrashIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
-import { RuntimeEnvironment, TaskRunAttemptStatus } from "@trigger.dev/database";
+import { RuntimeEnvironment, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
+import type { TaskRunStatus as TaskRunStatusType } from "@trigger.dev/database";
 import { useCallback } from "react";
 import { z } from "zod";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
@@ -16,21 +17,10 @@ import {
   SelectValue,
 } from "../../primitives/Select";
 import { TimeFrameFilter } from "../TimeFrameFilter";
-import { TaskRunStatus } from "./TaskRunStatus";
+import { TaskRunStatusCombo } from "./TaskRunStatus";
 
-export const allTaskRunStatuses = [
-  "ENQUEUED",
-  "PENDING",
-  "EXECUTING",
-  "PAUSED",
-  "FAILED",
-  "COMPLETED",
-  "CANCELED",
-] as const;
-
-export type ExtendedTaskAttemptStatus = (typeof allTaskRunStatuses)[number];
-
-export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
+export const allTaskRunStatuses = Object.values(TaskRunStatus) as TaskRunStatusType[];
+export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);
 
 export const TaskRunListSearchFilters = z.object({
   cursor: z.string().optional(),
@@ -174,7 +164,7 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
             </SelectItem>
             {allTaskRunStatuses.map((status) => (
               <SelectItem key={status} value={status}>
-                <TaskRunStatus status={status} className="text-xs" />
+                <TaskRunStatusCombo status={status} className="text-xs" />
               </SelectItem>
             ))}
           </SelectContent>

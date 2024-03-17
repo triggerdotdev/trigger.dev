@@ -3,9 +3,8 @@ import {
   ChevronRightIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
-  NoSymbolIcon,
 } from "@heroicons/react/20/solid";
-import { Link, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
+import { Link, Outlet, useNavigate, useParams, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { useEffect, useRef, useState } from "react";
@@ -15,6 +14,7 @@ import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -27,7 +27,6 @@ import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
 import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
-import { LiveCountUp, LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
@@ -239,6 +238,9 @@ function TasksTreeView({
     },
   });
 
+  const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
+  const maxTimelineWidth = minTimelineWidth * 10;
+
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr] overflow-hidden">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
@@ -334,7 +336,6 @@ function TasksTreeView({
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleExpandNode(node.id);
-                        selectNode(node.id);
                         scrollToNode(node.id);
                       }}
                     >
@@ -385,8 +386,8 @@ function TasksTreeView({
               durationMs={nanosecondsToMilliseconds(totalDuration * 1.05)}
               scale={scale}
               className="h-full overflow-hidden"
-              minWidth={initialTimelineDimensions?.width ?? 300}
-              maxWidth={2000}
+              minWidth={minTimelineWidth}
+              maxWidth={maxTimelineWidth}
             >
               {/* Follows the cursor */}
               <CurrentTimeIndicator totalDuration={totalDuration} />
@@ -569,14 +570,14 @@ function NodeStatusIcon({ node }: { node: RunEvent }) {
   }
 
   if (node.data.isError) {
-    return <TaskRunStatusIcon status="FAILED" className={cn("size-4")} />;
+    return <TaskRunStatusIcon status="COMPLETED_WITH_ERRORS" className={cn("size-4")} />;
   }
 
   if (node.data.isPartial) {
     return <TaskRunStatusIcon status={"EXECUTING"} className={cn("size-4")} />;
   }
 
-  return <TaskRunStatusIcon status="COMPLETED" className={cn("size-4")} />;
+  return <TaskRunStatusIcon status="COMPLETED_SUCCESSFULLY" className={cn("size-4")} />;
 }
 
 function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {
@@ -591,15 +592,30 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
   const [mouseOver, setMouseOver] = useState(false);
   const organization = useOrganization();
   const project = useProject();
+  const { spanParam } = useParams();
 
   return (
-    <Link
-      to={v3RunPath(organization, project, {
-        friendlyId: runFriendlyId,
-      })}
+    <LinkButton
+      variant="minimal/medium"
+      to={
+        spanParam
+          ? v3RunSpanPath(
+              organization,
+              project,
+              {
+                friendlyId: runFriendlyId,
+              },
+              { spanId: spanParam }
+            )
+          : v3RunPath(organization, project, {
+              friendlyId: runFriendlyId,
+            })
+      }
       onMouseEnter={() => setMouseOver(true)}
       onMouseLeave={() => setMouseOver(false)}
-      className="mt-1 flex h-8 items-center gap-2"
+      fullWidth
+      textAlignLeft
+      shortcut={{ key: "p" }}
     >
       {mouseOver ? (
         <ShowParentIconSelected className="h-4 w-4 text-indigo-500" />
@@ -612,7 +628,7 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
       >
         Show parent items
       </Paragraph>
-    </Link>
+    </LinkButton>
   );
 }
 

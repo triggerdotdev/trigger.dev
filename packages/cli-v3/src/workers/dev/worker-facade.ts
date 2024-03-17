@@ -1,40 +1,36 @@
-import { type TracingSDK } from "@trigger.dev/core/v3";
+import { Config, ProjectConfig, TaskExecutor, type TracingSDK } from "@trigger.dev/core/v3";
 import "source-map-support/register.js";
 
 __WORKER_SETUP__;
 declare const __WORKER_SETUP__: unknown;
+
+__IMPORTED_PROJECT_CONFIG__;
+declare const __IMPORTED_PROJECT_CONFIG__: unknown;
+declare const importedConfig: ProjectConfig | undefined;
+
+declare const __PROJECT_CONFIG__: Config;
 declare const tracingSDK: TracingSDK;
 
 const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
 const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.version);
 
-import { SpanKind } from "@opentelemetry/api";
 import {
   ConsoleInterceptor,
   DevRuntimeManager,
   OtelTaskLogger,
-  SemanticInternalAttributes,
   TaskMetadataWithFilePath,
-  TaskRunContext,
   TaskRunErrorCodes,
   TaskRunExecution,
-  TaskRunExecutionRetry,
   TriggerTracer,
   ZodMessageHandler,
   ZodMessageSender,
-  accessoryAttributes,
-  calculateNextRetryDelay,
   childToWorkerMessages,
   logger,
-  parseError,
   runtime,
-  taskContextManager,
   workerToChildMessages,
-  type BackgroundWorkerProperties,
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../../../package.json";
 
-import { flattenAttributes } from "@trigger.dev/core/v3";
 import { TaskMetadataWithFunctions } from "../../types.js";
 
 declare const sender: ZodMessageSender<typeof childToWorkerMessages>;
@@ -61,129 +57,6 @@ const TaskFiles: Record<string, string> = {};
 
 __TASKS__;
 declare const __TASKS__: Record<string, string>;
-
-class TaskExecutor {
-  constructor(public task: TaskMetadataWithFunctions) {}
-
-  async determineRetrying(
-    execution: TaskRunExecution,
-    error: unknown
-  ): Promise<TaskRunExecutionRetry | undefined> {
-    if (!this.task.retry) {
-      return;
-    }
-
-    const retry = this.task.retry;
-
-    const delay = calculateNextRetryDelay(retry, execution.attempt.number);
-
-    return typeof delay === "undefined" ? undefined : { timestamp: Date.now() + delay, delay };
-  }
-
-  async execute(
-    execution: TaskRunExecution,
-    worker: BackgroundWorkerProperties,
-    traceContext: Record<string, unknown>
-  ) {
-    const parsedPayload = JSON.parse(execution.run.payload);
-    const ctx = TaskRunContext.parse(execution);
-    const attemptMessage = `Attempt ${execution.attempt.number}`;
-
-    const output = await taskContextManager.runWith(
-      {
-        ctx,
-        payload: parsedPayload,
-        worker,
-      },
-      async () => {
-        tracingSDK.asyncResourceDetector.resolveWithAttributes({
-          ...taskContextManager.attributes,
-          [SemanticInternalAttributes.SDK_VERSION]: this.task.packageVersion,
-          [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
-        });
-
-        return await tracer.startActiveSpan(
-          attemptMessage,
-          async (span) => {
-            return await consoleInterceptor.intercept(console, async () => {
-              const init = await this.#callTaskInit(parsedPayload, ctx);
-
-              try {
-                const output = await this.#callRun(parsedPayload, ctx, init);
-
-                span.setAttributes(flattenAttributes(output, SemanticInternalAttributes.OUTPUT));
-
-                return output;
-              } finally {
-                await this.#callTaskCleanup(parsedPayload, ctx, init);
-              }
-            });
-          },
-          {
-            kind: SpanKind.CONSUMER,
-            attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "attempt",
-              ...flattenAttributes(parsedPayload, SemanticInternalAttributes.PAYLOAD),
-              ...accessoryAttributes({
-                items: [
-                  {
-                    text: ctx.task.filePath,
-                  },
-                  {
-                    text: `${ctx.task.exportName}.run()`,
-                  },
-                ],
-                style: "codepath",
-              }),
-            },
-          },
-          tracer.extractContext(traceContext)
-        );
-      }
-    );
-
-    return { output: JSON.stringify(output), outputType: "application/json" };
-  }
-
-  async #callRun(payload: unknown, ctx: TaskRunContext, init: unknown) {
-    const runFn = this.task.fns.run;
-    const middlewareFn = this.task.fns.middleware;
-
-    if (!runFn) {
-      throw new Error("Task does not have a run function");
-    }
-
-    if (!middlewareFn) {
-      return runFn({ payload, ctx });
-    }
-
-    return middlewareFn({ payload, ctx, next: async () => runFn({ payload, ctx, init }) });
-  }
-
-  async #callTaskInit(payload: unknown, ctx: TaskRunContext) {
-    const initFn = this.task.fns.init;
-
-    if (!initFn) {
-      return {};
-    }
-
-    return tracer.startActiveSpan("init", async (span) => {
-      return await initFn({ payload, ctx });
-    });
-  }
-
-  async #callTaskCleanup(payload: unknown, ctx: TaskRunContext, init: unknown) {
-    const cleanupFn = this.task.fns.cleanup;
-
-    if (!cleanupFn) {
-      return;
-    }
-
-    return tracer.startActiveSpan("cleanup", async (span) => {
-      return await cleanupFn({ payload, ctx, init });
-    });
-  }
-}
 
 function getTasks(): Array<TaskMetadataWithFunctions> {
   const result: Array<TaskMetadataWithFunctions> = [];
@@ -227,7 +100,16 @@ runtime.registerTasks(tasks);
 const taskExecutors: Map<string, TaskExecutor> = new Map();
 
 for (const task of tasks) {
-  taskExecutors.set(task.id, new TaskExecutor(task));
+  taskExecutors.set(
+    task.id,
+    new TaskExecutor(task, {
+      tracer,
+      tracingSDK,
+      consoleInterceptor,
+      projectConfig: __PROJECT_CONFIG__,
+      importedConfig,
+    })
+  );
 }
 
 let _execution: TaskRunExecution | undefined;
@@ -285,21 +167,7 @@ const handler = new ZodMessageHandler({
 
         return sender.send("TASK_RUN_COMPLETED", {
           execution,
-          result: {
-            id: execution.attempt.id,
-            ok: true,
-            ...result,
-          },
-        });
-      } catch (e) {
-        return sender.send("TASK_RUN_COMPLETED", {
-          execution,
-          result: {
-            id: execution.attempt.id,
-            ok: false,
-            error: parseError(e),
-            retry: await executor.determineRetrying(execution, e),
-          },
+          result,
         });
       } finally {
         _execution = undefined;

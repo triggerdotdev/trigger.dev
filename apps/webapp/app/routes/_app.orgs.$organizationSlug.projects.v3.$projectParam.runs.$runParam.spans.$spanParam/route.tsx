@@ -1,4 +1,5 @@
-import { useParams } from "@remix-run/react";
+import { QueueListIcon, StopCircleIcon } from "@heroicons/react/20/solid";
+import { Form, useFetcher, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { ReactNode } from "react";
@@ -6,22 +7,23 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
-import { TaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
+import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3RunPath, v3SpanParamsSchema } from "~/utils/pathBuilder";
+import { v3RunPath, v3RunSpanPath, v3SpanParamsSchema } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -45,9 +47,15 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const { runParam } = useParams();
+  const cancelFetcher = useFetcher();
 
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
+    <div
+      className={cn(
+        "grid h-full max-h-full overflow-hidden bg-background-bright",
+        event.showActionBar ? "grid-rows-[2.5rem_1fr_2.5rem]" : "grid-rows-[2.5rem_1fr]"
+      )}
+    >
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon name={event.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
@@ -85,7 +93,7 @@ export default function Page() {
             )}
             {event.style.variant === "primary" && (
               <Property label="Status">
-                <TaskRunStatus
+                <TaskRunAttemptStatusCombo
                   status={
                     event.isCancelled
                       ? "CANCELED"
@@ -134,34 +142,52 @@ export default function Page() {
           )}
         </div>
       </div>
+      {event.showActionBar === true ? (
+        <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
+          <div className="flex items-center gap-4">
+            {event.runId !== runParam && (
+              <LinkButton
+                to={v3RunSpanPath(
+                  organization,
+                  project,
+                  { friendlyId: event.runId },
+                  { spanId: event.spanId }
+                )}
+                variant="minimal/small"
+                LeadingIcon={QueueListIcon}
+                shortcut={{ key: "f" }}
+              >
+                Focus on span
+              </LinkButton>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            {event.isPartial && runParam && (
+              <cancelFetcher.Form
+                action={`/resources/taskruns/${event.runId}/cancel`}
+                method="post"
+              >
+                <Button
+                  type="submit"
+                  name="redirectUrl"
+                  value={v3RunSpanPath(
+                    organization,
+                    project,
+                    { friendlyId: runParam },
+                    { spanId: event.spanId }
+                  )}
+                  variant="danger/small"
+                  LeadingIcon={cancelFetcher.state === "idle" ? StopCircleIcon : "spinner-white"}
+                  disabled={cancelFetcher.state !== "idle"}
+                >
+                  {cancelFetcher.state === "idle" ? "Cancel" : "Canceling..."}
+                </Button>
+              </cancelFetcher.Form>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
-  );
-}
-
-function PropertyTable({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className="grid grid-cols-[auto,1fr] items-baseline gap-x-4 gap-y-2">{children}</div>;
-}
-
-type PropertyProps = {
-  label: ReactNode;
-  labelClassName?: string;
-  children: ReactNode;
-};
-
-function Property({ label, labelClassName, children }: PropertyProps) {
-  return (
-    <>
-      <div className={labelClassName}>
-        {typeof label === "string" ? <Paragraph variant="small">{label}</Paragraph> : label}
-      </div>
-      <div>
-        {typeof children === "string" ? (
-          <Paragraph variant="small/bright">{children}</Paragraph>
-        ) : (
-          children
-        )}
-      </div>
-    </>
   );
 }
 

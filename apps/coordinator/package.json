@@ -4,7 +4,6 @@
   "version": "0.0.1",
   "description": "",
   "main": "dist/index.cjs",
-  "type": "module",
   "scripts": {
     "build": "npm run build:bundle",
     "build:bundle": "esbuild src/index.ts --bundle --outfile=dist/index.mjs --platform=node --format=esm --target=esnext --banner:js=\"const require = createRequire(import.meta.url);\"",

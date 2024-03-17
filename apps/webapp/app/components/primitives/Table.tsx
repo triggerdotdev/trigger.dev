@@ -123,6 +123,7 @@ type TableCellProps = TableCellBasicProps & {
   onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
   hasAction?: boolean;
   isSticky?: boolean;
+  actionClassName?: string;
 };
 
 const stickyStyles =
@@ -132,6 +133,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
   (
     {
       className,
+      actionClassName,
       alignment = "left",
       children,
       colSpan,
@@ -176,11 +178,11 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         colSpan={colSpan}
       >
         {to ? (
-          <Link to={to} className={flexClasses}>
+          <Link to={to} className={cn(flexClasses, actionClassName)}>
             {children}
           </Link>
         ) : onClick ? (
-          <button onClick={onClick} className={flexClasses}>
+          <button onClick={onClick} className={cn(flexClasses, actionClassName)}>
             {children}
           </button>
         ) : (
