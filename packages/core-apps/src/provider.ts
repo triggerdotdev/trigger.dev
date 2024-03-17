@@ -142,7 +142,30 @@ export class ProviderShell implements Provider {
             });
           } catch (error) {
             logger.error("index failed", error);
+
+            if (error instanceof Error) {
+              return {
+                success: false,
+                error: {
+                  name: "Provider error",
+                  message: error.message,
+                  stack: error.stack,
+                },
+              };
+            } else {
+              return {
+                success: false,
+                error: {
+                  name: "Provider error",
+                  message: "Unknown error",
+                },
+              };
+            }
           }
+
+          return {
+            success: true,
+          };
         },
         RESTORE: async (message) => {
           if (message.type.toLowerCase() !== this.options.type.toLowerCase()) {

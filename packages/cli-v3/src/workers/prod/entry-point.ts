@@ -137,17 +137,32 @@ class ProdWorker {
     this.#httpServer = this.#createHttpServer();
   }
 
+  #returnValidatedExtraHeaders(headers: Record<string, string>) {
+    for (const [key, value] of Object.entries(headers)) {
+      if (value === undefined) {
+        throw new Error(`Extra header is undefined: ${key}`);
+      }
+    }
+
+    return headers;
+  }
+
   #createCoordinatorSocket() {
+    const extraHeaders = this.#returnValidatedExtraHeaders({
+      "x-machine-name": MACHINE_NAME,
+      "x-pod-name": POD_NAME,
+      "x-trigger-content-hash": this.contentHash,
+      "x-trigger-project-ref": this.projectRef,
+      "x-trigger-attempt-id": this.attemptId,
+      "x-trigger-env-id": this.envId,
+      "x-trigger-deployment-id": this.deploymentId,
+      "x-trigger-run-id": this.runId,
+    });
+
     logger.log("connecting to coordinator", {
       host: COORDINATOR_HOST,
       port: COORDINATOR_PORT,
-      deploymentId: this.deploymentId,
-      podName: POD_NAME,
-      machineName: MACHINE_NAME,
-      contentHash: this.contentHash,
-      projectRef: this.projectRef,
-      attemptId: this.attemptId,
-      envId: this.envId,
+      extraHeaders,
     });
 
     const coordinatorConnection = new ZodSocketConnection({
@@ -156,16 +171,7 @@ class ProdWorker {
       port: COORDINATOR_PORT,
       clientMessages: ProdWorkerToCoordinatorMessages,
       serverMessages: CoordinatorToProdWorkerMessages,
-      extraHeaders: {
-        "x-machine-name": MACHINE_NAME,
-        "x-pod-name": POD_NAME,
-        "x-trigger-content-hash": this.contentHash,
-        "x-trigger-project-ref": this.projectRef,
-        "x-trigger-attempt-id": this.attemptId,
-        "x-trigger-env-id": this.envId,
-        "x-trigger-deployment-id": this.deploymentId,
-        "x-trigger-run-id": this.runId,
-      },
+      extraHeaders,
       handlers: {
         RESUME: async (message) => {
           for (let i = 0; i < message.completions.length; i++) {

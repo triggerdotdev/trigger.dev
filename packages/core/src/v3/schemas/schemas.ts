@@ -72,6 +72,19 @@ export const PlatformToProviderMessages = {
       apiKey: z.string(),
       apiUrl: z.string(),
     }),
+    callback: z.discriminatedUnion("success", [
+      z.object({
+        success: z.literal(false),
+        error: z.object({
+          name: z.string(),
+          message: z.string(),
+          stack: z.string().optional(),
+        }),
+      }),
+      z.object({
+        success: z.literal(true),
+      }),
+    ]),
   },
   INVOKE: {
     message: z.object({
