@@ -205,6 +205,8 @@ class ProdWorker {
           this.completed.add(executionPayload.execution.attempt.id);
           this.executing = false;
 
+          await this.#backgroundWorker.flushTelemetry();
+
           const { didCheckpoint, shouldExit } = await this.#coordinatorSocket.socket.emitWithAck(
             "TASK_RUN_COMPLETED",
             {

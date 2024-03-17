@@ -88,6 +88,10 @@ export class ProdBackgroundWorker {
     await this._taskRunProcess?.cleanup(true);
   }
 
+  async flushTelemetry() {
+    await this._taskRunProcess?.cleanup(false);
+  }
+
   async initialize(options?: { env?: Record<string, string> }) {
     if (this._initialized) {
       throw new Error("Worker already initialized");
@@ -388,7 +392,7 @@ class TaskRunProcess {
           resolver(result);
         },
         READY_TO_DISPOSE: async (message) => {
-          this.#kill();
+          // noop
         },
         TASK_HEARTBEAT: async (message) => {
           this.onTaskHeartbeat.post(message.id);

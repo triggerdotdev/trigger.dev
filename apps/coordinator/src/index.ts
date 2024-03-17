@@ -494,7 +494,7 @@ class TaskCoordinator {
             },
           });
 
-          confirmCompletion({ didCheckpoint: true, shouldExit: true });
+          confirmCompletion({ didCheckpoint: true, shouldExit: false });
         });
 
         socket.on("WAIT_FOR_DURATION", async (message, callback) => {
