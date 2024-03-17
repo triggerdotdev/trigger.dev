@@ -190,45 +190,47 @@ export class ProdBackgroundWorker {
       payload.execution.worker.version
     );
 
-    const taskRunProcess = new TaskRunProcess(
-      this.path,
-      {
-        ...this.params.env,
-        ...(payload.environment ?? {}),
-      },
-      metadata,
-      this.params
-    );
+    if (!this._taskRunProcess) {
+      const taskRunProcess = new TaskRunProcess(
+        this.path,
+        {
+          ...this.params.env,
+          ...(payload.environment ?? {}),
+        },
+        metadata,
+        this.params
+      );
 
-    this._taskRunProcess = taskRunProcess;
+      taskRunProcess.onExit.attach(() => {
+        this._taskRunProcess = undefined;
+      });
 
-    taskRunProcess.onExit.attach(() => {
-      this._taskRunProcess = undefined;
-    });
+      taskRunProcess.onTaskHeartbeat.attach((id) => {
+        this.onTaskHeartbeat.post(id);
+      });
 
-    taskRunProcess.onTaskHeartbeat.attach((id) => {
-      this.onTaskHeartbeat.post(id);
-    });
+      taskRunProcess.onWaitForBatch.attach((message) => {
+        this.onWaitForBatch.post(message);
+      });
 
-    taskRunProcess.onWaitForBatch.attach((message) => {
-      this.onWaitForBatch.post(message);
-    });
+      taskRunProcess.onWaitForDuration.attach((message) => {
+        this.onWaitForDuration.post(message);
+      });
 
-    taskRunProcess.onWaitForDuration.attach((message) => {
-      this.onWaitForDuration.post(message);
-    });
+      taskRunProcess.onWaitForTask.attach((message) => {
+        this.onWaitForTask.post(message);
+      });
 
-    taskRunProcess.onWaitForTask.attach((message) => {
-      this.onWaitForTask.post(message);
-    });
+      this.preCheckpointNotification.attach((message) => {
+        taskRunProcess.preCheckpointNotification.post(message);
+      });
 
-    this.preCheckpointNotification.attach((message) => {
-      taskRunProcess.preCheckpointNotification.post(message);
-    });
+      await taskRunProcess.initialize();
 
-    await taskRunProcess.initialize();
+      this._taskRunProcess = taskRunProcess;
+    }
 
-    return taskRunProcess;
+    return this._taskRunProcess;
   }
 
   // We need to fork the process before we can execute any tasks
