@@ -899,6 +899,16 @@ class SharedQueueTasks {
       await prisma.taskRunAttempt.update({
         where: {
           id,
+          taskRun: {
+            status: {
+              notIn: [
+                "CANCELED",
+                "COMPLETED_SUCCESSFULLY",
+                "COMPLETED_WITH_ERRORS",
+                "SYSTEM_FAILURE",
+              ],
+            },
+          },
         },
         data: {
           status: "EXECUTING",

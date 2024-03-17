@@ -406,7 +406,7 @@ class TaskCoordinator {
           }
 
           if (!executionAck.success) {
-            logger.error("execution unsuccessful", { attemptId: socket.data.attemptId });
+            logger.error("failed to get execution payload", { attemptId: socket.data.attemptId });
 
             socket.emit("REQUEST_EXIT", {
               version: "v1",
@@ -437,15 +437,19 @@ class TaskCoordinator {
             });
           };
 
-          const completeWithoutCheckpoint = () => {
+          const confirmCompletion = ({
+            didCheckpoint,
+            shouldExit,
+          }: {
+            didCheckpoint: boolean;
+            shouldExit: boolean;
+          }) => {
             sendCompletionToPlatform();
-            callback({ didCheckpoint: false });
+            callback({ didCheckpoint, shouldExit });
           };
 
-          let willRetry = false;
-
           if (completion.ok) {
-            completeWithoutCheckpoint();
+            confirmCompletion({ didCheckpoint: false, shouldExit: true });
             return;
           }
 
@@ -453,12 +457,12 @@ class TaskCoordinator {
             completion.error.type === "INTERNAL_ERROR" &&
             completion.error.code === "TASK_RUN_CANCELLED"
           ) {
-            completeWithoutCheckpoint();
+            confirmCompletion({ didCheckpoint: false, shouldExit: true });
             return;
           }
 
           if (completion.retry === undefined) {
-            completeWithoutCheckpoint();
+            confirmCompletion({ didCheckpoint: false, shouldExit: true });
             return;
           }
 
@@ -467,7 +471,7 @@ class TaskCoordinator {
           const willCheckpointAndRestore = canCheckpoint || willSimulate;
 
           if (!willCheckpointAndRestore) {
-            completeWithoutCheckpoint();
+            confirmCompletion({ didCheckpoint: false, shouldExit: false });
             return;
           }
 
@@ -475,7 +479,7 @@ class TaskCoordinator {
 
           if (!checkpoint) {
             logger.error("Failed to checkpoint", { podName: socket.data.podName });
-            completeWithoutCheckpoint();
+            confirmCompletion({ didCheckpoint: false, shouldExit: false });
             return;
           }
 
@@ -490,8 +494,7 @@ class TaskCoordinator {
             },
           });
 
-          sendCompletionToPlatform();
-          callback({ didCheckpoint: true });
+          confirmCompletion({ didCheckpoint: true, shouldExit: true });
         });
 
         socket.on("WAIT_FOR_DURATION", async (message, callback) => {

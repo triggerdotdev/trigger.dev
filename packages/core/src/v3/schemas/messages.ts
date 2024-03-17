@@ -306,6 +306,7 @@ export const ProdWorkerToChildMessages = {
       flush: z.boolean().default(false),
       kill: z.boolean().default(true),
     }),
+    callback: z.void(),
   },
   WAIT_COMPLETED_NOTIFICATION: {
     message: z.object({

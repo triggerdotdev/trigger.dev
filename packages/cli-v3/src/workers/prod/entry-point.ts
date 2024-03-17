@@ -205,7 +205,7 @@ class ProdWorker {
           this.completed.add(executionPayload.execution.attempt.id);
           this.executing = false;
 
-          const { didCheckpoint } = await this.#coordinatorSocket.socket.emitWithAck(
+          const { didCheckpoint, shouldExit } = await this.#coordinatorSocket.socket.emitWithAck(
             "TASK_RUN_COMPLETED",
             {
               version: "v1",
@@ -214,14 +214,16 @@ class ProdWorker {
             }
           );
 
+          logger.log("completion acknowledged", { didCheckpoint, shouldExit });
+
+          if (shouldExit) {
+            await this.#backgroundWorker.close();
+            process.exit(0);
+          }
+
           // Forcing a reconnect will ensure the connection handler runs and signals we are ready for another execution
           this.#coordinatorSocket.close();
           this.#coordinatorSocket.connect();
-
-          // if (thisIsTheFinalAttempt) {
-          //   // TODO: We need to flush telemetry first
-          //   process.exit(0);
-          // }
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
           if (!this.executing) {

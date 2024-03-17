@@ -339,6 +339,7 @@ export const ProdWorkerToCoordinatorMessages = {
     }),
     callback: z.object({
       didCheckpoint: z.boolean(),
+      shouldExit: z.boolean(),
     }),
   },
   WAIT_FOR_DURATION: {

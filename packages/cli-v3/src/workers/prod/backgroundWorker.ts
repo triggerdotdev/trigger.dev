@@ -75,7 +75,7 @@ export class ProdBackgroundWorker {
     private params: BackgroundWorkerParams
   ) {}
 
-  close() {
+  async close() {
     if (this._closed) {
       return;
     }
@@ -84,14 +84,8 @@ export class ProdBackgroundWorker {
 
     this.onTaskHeartbeat.detach();
 
-    // We need to close all the task run processes
-    this._taskRunProcess?.cleanup(true);
-
-    // Delete worker files
-    this._onClose.post();
-
-    safeDeleteFileSync(this.path);
-    safeDeleteFileSync(`${this.path}.map`);
+    // We need to close the task run process
+    await this._taskRunProcess?.cleanup(true);
   }
 
   async initialize(options?: { env?: Record<string, string> }) {
@@ -434,12 +428,12 @@ class TaskRunProcess {
       return;
     }
 
-    await this._ipc?.send("CLEANUP", {
+    this._isBeingKilled = kill;
+
+    await this._ipc?.sendWithAck("CLEANUP", {
       flush: true,
       kill,
     });
-
-    this._isBeingKilled = kill;
   }
 
   async executeTaskRun(payload: TaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
