@@ -4,7 +4,7 @@ import {
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
-import { Link, Outlet, useNavigate, useRevalidator } from "@remix-run/react";
+import { Link, Outlet, useNavigate, useParams, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { useEffect, useRef, useState } from "react";
@@ -14,6 +14,7 @@ import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -591,15 +592,30 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
   const [mouseOver, setMouseOver] = useState(false);
   const organization = useOrganization();
   const project = useProject();
+  const { spanParam } = useParams();
 
   return (
-    <Link
-      to={v3RunPath(organization, project, {
-        friendlyId: runFriendlyId,
-      })}
+    <LinkButton
+      variant="minimal/medium"
+      to={
+        spanParam
+          ? v3RunSpanPath(
+              organization,
+              project,
+              {
+                friendlyId: runFriendlyId,
+              },
+              { spanId: spanParam }
+            )
+          : v3RunPath(organization, project, {
+              friendlyId: runFriendlyId,
+            })
+      }
       onMouseEnter={() => setMouseOver(true)}
       onMouseLeave={() => setMouseOver(false)}
-      className="mt-1 flex h-8 items-center gap-2"
+      fullWidth
+      textAlignLeft
+      shortcut={{ key: "p" }}
     >
       {mouseOver ? (
         <ShowParentIconSelected className="h-4 w-4 text-indigo-500" />
@@ -612,7 +628,7 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
       >
         Show parent items
       </Paragraph>
-    </Link>
+    </LinkButton>
   );
 }
 
