@@ -180,7 +180,7 @@ export default function Page() {
                   LeadingIcon={cancelFetcher.state === "idle" ? StopCircleIcon : "spinner-white"}
                   disabled={cancelFetcher.state !== "idle"}
                 >
-                  {cancelFetcher.state === "idle" ? "Cancel" : "Cancelling..."}
+                  {cancelFetcher.state === "idle" ? "Cancel" : "Canceling..."}
                 </Button>
               </cancelFetcher.Form>
             )}
