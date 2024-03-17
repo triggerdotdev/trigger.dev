@@ -531,6 +531,7 @@ export class EventRepository {
     const style = {
       [SemanticInternalAttributes.STYLE_ICON]: "task",
       [SemanticInternalAttributes.STYLE_VARIANT]: PRIMARY_VARIANT,
+      ...options.attributes.style,
     };
 
     if (!options.attributes.runId) {
