@@ -1,4 +1,4 @@
-import { $ } from "execa";
+import { $, type ExecaChildProcess, execa } from "execa";
 import { Machine } from "@trigger.dev/core/v3";
 import { SimpleLogger, TaskOperations, ProviderShell } from "@trigger.dev/core-apps";
 
@@ -14,6 +14,10 @@ type InitializeReturn = {
   canCheckpoint: boolean;
   willSimulate: boolean;
 };
+
+function isExecaChildProcess(maybeExeca: unknown): maybeExeca is Awaited<ExecaChildProcess> {
+  return typeof maybeExeca === "object" && maybeExeca !== null && "escapedCommand" in maybeExeca;
+}
 
 class DockerTaskOperations implements TaskOperations {
   #initialized = false;
@@ -84,12 +88,37 @@ class DockerTaskOperations implements TaskOperations {
       port: COORDINATOR_PORT,
     });
 
-    const { exitCode } = logger.debug(
-      await $`docker run --network=host --rm -e TRIGGER_SECRET_KEY=${opts.apiKey} -e TRIGGER_API_URL=${opts.apiUrl} -e COORDINATOR_HOST=${COORDINATOR_HOST} -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ENV_ID=${opts.envId} -e INDEX_TASKS=true --name=${containerName} ${opts.imageTag}`
-    );
+    try {
+      logger.debug(
+        await execa("docker", [
+          "run",
+          "--network=host",
+          "--rm",
+          `--env=TRIGGER_SECRET_KEY=${opts.apiKey}`,
+          `--env=TRIGGER_API_URL=${opts.apiUrl}`,
+          `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
+          `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
+          `--env=POD_NAME=${containerName}`,
+          `--env=TRIGGER_ENV_ID=${opts.envId}`,
+          `--env=INDEX_TASKS=true`,
+          `--name=${containerName}`,
+          `${opts.imageTag}`,
+        ])
+      );
+    } catch (error: any) {
+      if (!isExecaChildProcess(error)) {
+        throw error;
+      }
 
-    if (exitCode !== 0) {
-      throw new Error("docker run command failed");
+      logger.error("Index failed:", {
+        opts,
+        exitCode: error.exitCode,
+        escapedCommand: error.escapedCommand,
+        stdout: error.stdout,
+        stderr: error.stderr,
+      });
+
+      throw new Error(`Index failed with: ${error.stderr || error.stdout}`);
     }
   }
 
@@ -104,12 +133,37 @@ class DockerTaskOperations implements TaskOperations {
 
     const containerName = this.#getRunContainerName(opts.attemptId);
 
-    const { exitCode } = logger.debug(
-      await $`docker run --network=host -d -e OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} -e COORDINATOR_HOST=${COORDINATOR_HOST} -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ENV_ID=${opts.envId} -e TRIGGER_RUN_ID=${opts.runId} -e TRIGGER_ATTEMPT_ID=${opts.attemptId} --name=${containerName} ${opts.image}`
-    );
+    try {
+      logger.debug(
+        await execa("docker", [
+          "run",
+          "--network=host",
+          "--detach",
+          `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}`,
+          `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
+          `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
+          `--env=POD_NAME=${containerName}`,
+          `--env=TRIGGER_ENV_ID=${opts.envId}`,
+          `--env=TRIGGER_RUN_ID=${opts.runId}`,
+          `--env=TRIGGER_ATTEMPT_ID=${opts.attemptId}`,
+          `--name=${containerName}`,
+          `${opts.image}`,
+        ])
+      );
+    } catch (error) {
+      if (!isExecaChildProcess(error)) {
+        throw error;
+      }
 
-    if (exitCode !== 0) {
-      throw new Error("docker run command failed");
+      logger.error("Create failed:", {
+        opts,
+        exitCode: error.exitCode,
+        escapedCommand: error.escapedCommand,
+        stdout: error.stdout,
+        stderr: error.stderr,
+      });
+
+      throw new Error(`Create failed with: ${error.stderr || error.stdout}`);
     }
   }
 
