@@ -9,10 +9,10 @@ import {
   SpanEvents,
   TaskEventStyle,
   correctErrorStackTrace,
-  flattenAndNormalizeAttributes,
   flattenAttributes,
   isExceptionSpanEvent,
   omit,
+  primitiveValueOrflattenedAttributes,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
 import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
@@ -178,10 +178,7 @@ export class EventRepository {
       metadata: event.metadata as Attributes,
       style: event.style as Attributes,
       output: options?.attributes.output
-        ? flattenAndNormalizeAttributes(
-            options.attributes.output,
-            SemanticInternalAttributes.OUTPUT
-          )
+        ? primitiveValueOrflattenedAttributes(options.attributes.output, undefined)
         : undefined,
     });
   }

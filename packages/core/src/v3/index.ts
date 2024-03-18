@@ -42,7 +42,7 @@ export { ConsoleInterceptor } from "./consoleInterceptor";
 export {
   flattenAttributes,
   unflattenAttributes,
-  flattenAndNormalizeAttributes,
+  primitiveValueOrflattenedAttributes,
 } from "./utils/flattenAttributes";
 export { defaultRetryOptions, calculateNextRetryDelay, calculateResetAt } from "./utils/retries";
 export { accessoryAttributes } from "./utils/styleAttributes";
