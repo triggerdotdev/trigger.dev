@@ -174,14 +174,14 @@ export default function Page() {
               <Dialog>
                 <DialogTrigger asChild>
                   <Button variant="danger/small" LeadingIcon={StopCircleIcon}>
-                    Cancel
+                    Cancel run
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>Cancel this run?</DialogHeader>
                   <DialogDescription>
-                    Canceling a run will stop execution. If you want to this later you will have to
-                    Replay the entire run with the original payload.
+                    Canceling a run will stop execution. If you want to run this later you will have
+                    to replay the entire run with the original payload.
                   </DialogDescription>
                   <DialogFooter>
                     <cancelFetcher.Form
@@ -204,7 +204,7 @@ export default function Page() {
                         disabled={cancelFetcher.state !== "idle"}
                         shortcut={{ modifiers: ["meta"], key: "enter" }}
                       >
-                        {cancelFetcher.state === "idle" ? "Cancel" : "Canceling..."}
+                        {cancelFetcher.state === "idle" ? "Cancel run" : "Canceling..."}
                       </Button>
                     </cancelFetcher.Form>
                   </DialogFooter>
