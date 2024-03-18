@@ -5,7 +5,9 @@ import {
   flattenAttributes,
   recordSpanException,
 } from "@trigger.dev/core/v3";
+import chalk from "chalk";
 import { Command } from "commander";
+import { execa } from "execa";
 import { join, relative, resolve } from "node:path";
 import terminalLink from "terminal-link";
 import { z } from "zod";
@@ -21,15 +23,13 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { readConfig } from "../utilities/configFiles.js";
+import { createFileFromTemplate } from "../utilities/createFileFromTemplate";
+import { createFile, pathExists } from "../utilities/fileSystem";
+import { getUserPackageManager } from "../utilities/getUserPackageManager";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger";
-import { login } from "./login";
 import { resolveInternalFilePath } from "../utilities/resolveInternalFilePath";
-import { createFileFromTemplate } from "../utilities/createFileFromTemplate";
-import { getUserPackageManager } from "../utilities/getUserPackageManager";
-import { execa } from "execa";
-import { createFile, isDirectory, pathExists } from "../utilities/fileSystem";
-import chalk from "chalk";
+import { login } from "./login";
 
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -146,7 +146,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
   const projectDashboard = terminalLink(
     "project dashboard",
-    `${authorization.dashboardUrl}/projects/${selectedProject.externalRef}`
+    `${authorization.dashboardUrl}/projects/v3/${selectedProject.externalRef}`
   );
 
   log.success("Successfully initialized project for Trigger.dev v3 🫡");
@@ -157,7 +157,18 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
     )} in your project directory`
   );
   log.info(`   2. Visit your ${projectDashboard} to view your newly created tasks.`);
-  log.info(`   3. Head over to our v3 docs at https://trigger.dev/docs/v3 to learn more.`);
+  log.info(
+    `   3. Head over to our ${terminalLink(
+      "v3 docs",
+      "https://trigger.dev/docs/v3"
+    )} to learn more.`
+  );
+  log.info(
+    `   4. Need help? Join our ${terminalLink(
+      "Discord community",
+      "https://trigger.dev/discord"
+    )} or email us at ${chalk.cyan("help@trigger.dev")}`
+  );
 
   outro(`Project initialized successfully. Happy coding!`);
 }
