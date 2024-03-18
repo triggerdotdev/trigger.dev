@@ -1,7 +1,93 @@
+import { flattenAttributes, recordSpanException } from "@trigger.dev/core/v3";
+import { Command } from "commander";
 import { z } from "zod";
+import { getTracer, provider } from "../telemetry/tracing";
+import { fromZodError } from "zod-validation-error";
+import { logger } from "../utilities/logger";
+import { outro } from "@clack/prompts";
 
 export const CommonCommandOptions = z.object({
+  apiUrl: z.string().optional(),
   logLevel: z.enum(["debug", "info", "log", "warn", "error", "none"]).default("log"),
+  skipTelemetry: z.boolean().default(false),
 });
 
 export type CommonCommandOptions = z.infer<typeof CommonCommandOptions>;
+
+export function commonOptions(command: Command) {
+  return command
+    .option("-a, --api-url <value>", "Override the API URL", "https://api.trigger.dev")
+    .option(
+      "-l, --log-level <level>",
+      "The log level to use (debug, info, log, warn, error, none)",
+      "log"
+    )
+    .option("--skip-telemetry", "Opt-out of sending telemetry");
+}
+
+export class SkipLoggingError extends Error {}
+export class SkipCommandError extends Error {}
+export class OutroCommandError extends SkipCommandError {}
+
+export async function handleTelemetry(action: () => Promise<void>) {
+  try {
+    await action();
+
+    await provider?.forceFlush();
+  } catch (e) {
+    await provider?.forceFlush();
+
+    process.exitCode = 1;
+  }
+}
+
+export const tracer = getTracer();
+
+export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
+  name: string,
+  schema: T,
+  options: unknown,
+  action: (opts: z.output<T>) => Promise<TResult>
+): Promise<TResult> {
+  return await tracer.startActiveSpan(name, async (span) => {
+    try {
+      const parsedOptions = schema.safeParse(options);
+
+      if (!parsedOptions.success) {
+        throw new Error(fromZodError(parsedOptions.error).toString());
+      }
+
+      span.setAttributes({
+        ...flattenAttributes(parsedOptions.data, "cli.options"),
+      });
+
+      logger.loggerLevel = parsedOptions.data.logLevel;
+
+      logger.debug(`Running "${name}" with the following options`, {
+        options: options,
+        spanContext: span?.spanContext(),
+      });
+
+      const result = await action(parsedOptions.data);
+
+      span.end();
+
+      return result;
+    } catch (e) {
+      if (e instanceof SkipLoggingError) {
+        recordSpanException(span, e);
+      } else if (e instanceof OutroCommandError) {
+        outro("Operation cancelled");
+      } else if (e instanceof SkipCommandError) {
+        // do nothing
+      } else {
+        recordSpanException(span, e);
+        logger.error(e instanceof Error ? e.message : String(e));
+      }
+
+      span.end();
+
+      throw e;
+    }
+  });
+}

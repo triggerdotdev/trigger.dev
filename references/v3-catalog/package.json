@@ -14,7 +14,7 @@
     "start:stripe": "ts-node -r tsconfig-paths/register -r dotenv/config src/stripeUsage.ts"
   },
   "dependencies": {
-    "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/sdk": "2.3.18",
     "msw": "^2.2.1",
     "openai": "^4.28.0",
     "stripe": "^12.14.0"

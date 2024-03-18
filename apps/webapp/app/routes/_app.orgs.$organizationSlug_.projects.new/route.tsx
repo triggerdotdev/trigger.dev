@@ -54,6 +54,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
   }
 
+  const url = new URL(request.url);
+
   return typedjson({
     organization: {
       id: organization.id,
@@ -61,6 +63,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       slug: organizationSlug,
       projectsCount: organization._count.projects,
     },
+    defaultVersion: url.searchParams.get("version") ?? "v2",
   });
 }
 
@@ -100,7 +103,7 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function NewOrganizationPage() {
-  const { organization } = useTypedLoaderData<typeof loader>();
+  const { organization, defaultVersion } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const { v3Enabled } = useFeatures();
 
@@ -144,7 +147,7 @@ export default function NewOrganizationPage() {
                 <SelectGroup>
                   <Select
                     {...conform.input(projectVersion, { type: "select" })}
-                    defaultValue={"v2"}
+                    defaultValue={defaultVersion}
                   >
                     <SelectTrigger width="full" size="medium">
                       <SelectValue placeholder="Project version" />
