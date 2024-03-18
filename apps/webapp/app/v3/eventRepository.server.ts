@@ -564,7 +564,6 @@ export class EventRepository {
       queueName: options.attributes.queueName,
       batchId: options.attributes.batchId ?? undefined,
       properties: {
-        ...style,
         ...(flattenAttributes(metadata, SemanticInternalAttributes.METADATA) as Record<
           string,
           string
