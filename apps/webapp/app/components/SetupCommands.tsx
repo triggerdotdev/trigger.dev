@@ -134,7 +134,7 @@ export function TriggerDevStep({ extra }: { extra?: string }) {
 
 export function InitCommandV3() {
   const project = useProject();
-  const projectRef = `proj_${project.ref}`;
+  const projectRef = project.ref;
   return (
     <ClientTabs defaultValue="npm">
       <ClientTabsList>

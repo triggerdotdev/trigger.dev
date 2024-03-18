@@ -42,6 +42,7 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     id: z.string(),
     image: z.string(),
     envId: z.string(),
+    runId: z.string(),
   }),
 ]);
 
@@ -305,6 +306,7 @@ export const ProdWorkerToChildMessages = {
       flush: z.boolean().default(false),
       kill: z.boolean().default(true),
     }),
+    callback: z.void(),
   },
   WAIT_COMPLETED_NOTIFICATION: {
     message: z.object({

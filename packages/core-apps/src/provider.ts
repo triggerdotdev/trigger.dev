@@ -76,6 +76,7 @@ export class ProviderShell implements Provider {
           if (message.data.type === "SCHEDULE_ATTEMPT") {
             this.tasks.create({
               envId: message.data.envId,
+              runId: message.data.runId,
               attemptId: message.data.id,
               image: message.data.image,
               machine: {},
@@ -141,7 +142,30 @@ export class ProviderShell implements Provider {
             });
           } catch (error) {
             logger.error("index failed", error);
+
+            if (error instanceof Error) {
+              return {
+                success: false,
+                error: {
+                  name: "Provider error",
+                  message: error.message,
+                  stack: error.stack,
+                },
+              };
+            } else {
+              return {
+                success: false,
+                error: {
+                  name: "Provider error",
+                  message: "Unknown error",
+                },
+              };
+            }
           }
+
+          return {
+            success: true,
+          };
         },
         RESTORE: async (message) => {
           if (message.type.toLowerCase() !== this.options.type.toLowerCase()) {
@@ -153,6 +177,7 @@ export class ProviderShell implements Provider {
 
           try {
             await this.tasks.restore({
+              runId: message.runId,
               attemptId: message.attemptId,
               checkpointRef: message.location,
               // TODO

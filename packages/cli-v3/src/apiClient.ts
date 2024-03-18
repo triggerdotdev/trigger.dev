@@ -12,6 +12,8 @@ import {
   InitializeDeploymentRequestBody,
   StartDeploymentIndexingRequestBody,
   GetDeploymentResponseBody,
+  GetProjectsResponseBody,
+  GetProjectResponseBody,
 } from "@trigger.dev/core/v3";
 
 export class CliApiClient {
@@ -49,6 +51,32 @@ export class CliApiClient {
     }
 
     return zodfetch(WhoAmIResponseSchema, `${this.apiURL}/api/v2/whoami`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async getProject(projectRef: string) {
+    if (!this.accessToken) {
+      throw new Error("getProject: No access token");
+    }
+
+    return zodfetch(GetProjectResponseBody, `${this.apiURL}/api/v1/projects/${projectRef}`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async getProjects() {
+    if (!this.accessToken) {
+      throw new Error("getProjects: No access token");
+    }
+
+    return zodfetch(GetProjectsResponseBody, `${this.apiURL}/api/v1/projects`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",

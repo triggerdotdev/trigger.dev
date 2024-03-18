@@ -43,6 +43,15 @@ export const createJsonHeroDoc = task({
   },
 });
 
+export const immediateReturn = task({
+  id: "immediateReturn",
+  run: async (payload: any, { ctx }) => {
+    console.info("some");
+    console.warn("random");
+    console.error("logs");
+  },
+});
+
 export const simulateError = task({
   id: "simulateError",
   run: async (payload: { message: string }) => {

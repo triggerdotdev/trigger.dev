@@ -293,10 +293,19 @@ export class ZodIpcConnection<
     const currentId = this.#messageCounter++;
 
     return new Promise(async (resolve, reject) => {
+      const defaultTimeoutInMs = 2000;
+
       // Timeout if the ACK takes too long to get back to us
       const timeout = setTimeout(() => {
-        reject("timeout");
-      }, timeoutInMs ?? 2000);
+        reject(
+          JSON.stringify({
+            reason: "sendWithAck() timeout",
+            timeoutInMs: timeoutInMs ?? defaultTimeoutInMs,
+            type,
+            payload,
+          })
+        );
+      }, timeoutInMs ?? defaultTimeoutInMs);
 
       this.#acks.set(currentId, { resolve, reject, timeout });
 

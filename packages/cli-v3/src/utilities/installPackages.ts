@@ -2,7 +2,7 @@ import semver from "semver";
 import { execa } from "execa";
 import { logger } from "./logger";
 import { join } from "node:path";
-import { readJSONFile } from "./fileSystem";
+import { readJSONFile, writeJSONFile } from "./fileSystem";
 
 export type InstallPackagesOptions = { cwd?: string };
 
@@ -16,7 +16,11 @@ export async function installPackages(
   try {
     await readJSONFile(join(cwd, "package.json"));
   } catch (error) {
-    await execa("npm", ["init", "-y"], { cwd });
+    await writeJSONFile(join(cwd, "package.json"), {
+      name: "temp",
+      version: "1.0.0",
+      description: "",
+    });
   }
 
   // Detect with packages have already been installed at the specified version (use semver to compare)
