@@ -2,6 +2,7 @@ import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/databa
 import { Direction } from "~/components/runs/RunStatuses";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
+import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 
 type RunListOptions = {
   userId: string;
@@ -221,6 +222,7 @@ export class RunListPresenter {
           version: run.version,
           taskIdentifier: run.taskIdentifier,
           attempts: Number(run.attempts),
+          isCancellable: CANCELLABLE_STATUSES.includes(run.status),
           environment: {
             type: environment.type,
             slug: environment.slug,

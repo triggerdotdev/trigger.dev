@@ -15,6 +15,7 @@ import {
   TableBody,
   TableCell,
   TableCellChevron,
+  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -22,7 +23,11 @@ import {
 import { formatDuration } from "@trigger.dev/core/v3";
 import { TaskRunStatusCombo } from "./TaskRunStatus";
 import { useEnvironments } from "~/hooks/useEnvironments";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { StopCircleIcon } from "@heroicons/react/20/solid";
+import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
+import { CancelRunDialog } from "./CancelRunDialog";
+import { useLocation } from "@remix-run/react";
 
 type RunsTableProps = {
   total: number;
@@ -44,6 +49,7 @@ export function TaskRunsTable({
 }: RunsTableProps) {
   const organization = useOrganization();
   const project = useProject();
+  const location = useLocation();
 
   return (
     <Table>
@@ -104,7 +110,23 @@ export function TaskRunsTable({
                 <TableCell to={path}>
                   {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
                 </TableCell>
-                <TableCellChevron to={path} isSticky />
+                {run.isCancellable ? (
+                  <TableCellMenu isSticky>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="small-menu-item" LeadingIcon={StopCircleIcon}>
+                          Cancel run
+                        </Button>
+                      </DialogTrigger>
+                      <CancelRunDialog
+                        runFriendlyId={run.friendlyId}
+                        redirectPath={`${location.pathname}${location.search}`}
+                      />
+                    </Dialog>
+                  </TableCellMenu>
+                ) : (
+                  <TableCell to={path}>{""}</TableCell>
+                )}
               </TableRow>
             );
           })
