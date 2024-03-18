@@ -1,4 +1,5 @@
 import { QueueListIcon, StopCircleIcon } from "@heroicons/react/20/solid";
+import { DialogDescription } from "@radix-ui/react-dialog";
 import { Form, useFetcher, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
@@ -9,6 +10,13 @@ import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
@@ -163,26 +171,44 @@ export default function Page() {
           </div>
           <div className="flex items-center gap-4">
             {event.isPartial && runParam && (
-              <cancelFetcher.Form
-                action={`/resources/taskruns/${event.runId}/cancel`}
-                method="post"
-              >
-                <Button
-                  type="submit"
-                  name="redirectUrl"
-                  value={v3RunSpanPath(
-                    organization,
-                    project,
-                    { friendlyId: runParam },
-                    { spanId: event.spanId }
-                  )}
-                  variant="danger/small"
-                  LeadingIcon={cancelFetcher.state === "idle" ? StopCircleIcon : "spinner-white"}
-                  disabled={cancelFetcher.state !== "idle"}
-                >
-                  {cancelFetcher.state === "idle" ? "Cancel" : "Canceling..."}
-                </Button>
-              </cancelFetcher.Form>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="danger/small" LeadingIcon={StopCircleIcon}>
+                    Cancel
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>Cancel this run?</DialogHeader>
+                  <DialogDescription>
+                    Canceling a run will stop execution. If you want to this later you will have to
+                    Replay the entire run with the original payload.
+                  </DialogDescription>
+                  <DialogFooter>
+                    <cancelFetcher.Form
+                      action={`/resources/taskruns/${event.runId}/cancel`}
+                      method="post"
+                    >
+                      <Button
+                        type="submit"
+                        name="redirectUrl"
+                        value={v3RunSpanPath(
+                          organization,
+                          project,
+                          { friendlyId: runParam },
+                          { spanId: event.spanId }
+                        )}
+                        variant="danger/small"
+                        LeadingIcon={
+                          cancelFetcher.state === "idle" ? StopCircleIcon : "spinner-white"
+                        }
+                        disabled={cancelFetcher.state !== "idle"}
+                      >
+                        {cancelFetcher.state === "idle" ? "Cancel" : "Canceling..."}
+                      </Button>
+                    </cancelFetcher.Form>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             )}
           </div>
         </div>
