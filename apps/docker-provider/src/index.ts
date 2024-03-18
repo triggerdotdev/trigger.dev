@@ -1,4 +1,4 @@
-import { $ } from "execa";
+import { $, type ExecaChildProcess, execa } from "execa";
 import { Machine } from "@trigger.dev/core/v3";
 import { SimpleLogger, TaskOperations, ProviderShell } from "@trigger.dev/core-apps";
 
@@ -10,8 +10,67 @@ const OTEL_EXPORTER_OTLP_ENDPOINT =
 
 const logger = new SimpleLogger(`[${MACHINE_NAME}]`);
 
+type InitializeReturn = {
+  canCheckpoint: boolean;
+  willSimulate: boolean;
+};
+
+function isExecaChildProcess(maybeExeca: unknown): maybeExeca is Awaited<ExecaChildProcess> {
+  return typeof maybeExeca === "object" && maybeExeca !== null && "escapedCommand" in maybeExeca;
+}
+
 class DockerTaskOperations implements TaskOperations {
+  #initialized = false;
+  #canCheckpoint = false;
+
   constructor(private opts = { forceSimulate: false }) {}
+
+  async #initialize(): Promise<InitializeReturn> {
+    if (this.#initialized) {
+      return this.#getInitializeReturn();
+    }
+
+    logger.log("Initializing task operations");
+
+    if (this.opts.forceSimulate) {
+      logger.log("Forced simulation enabled. Will simulate regardless of checkpoint support.");
+    }
+
+    try {
+      await $`criu --version`;
+    } catch (error) {
+      logger.error("No checkpoint support: Missing CRIU binary. Will simulate instead.");
+      this.#canCheckpoint = false;
+      this.#initialized = true;
+
+      return this.#getInitializeReturn();
+    }
+
+    try {
+      await $`docker checkpoint`;
+    } catch (error) {
+      logger.error("No checkpoint support: Docker needs to have experimental features enabled");
+      logger.error("Will simulate instead");
+      this.#canCheckpoint = false;
+      this.#initialized = true;
+
+      return this.#getInitializeReturn();
+    }
+
+    logger.log("Full checkpoint support!");
+
+    this.#initialized = true;
+    this.#canCheckpoint = true;
+
+    return this.#getInitializeReturn();
+  }
+
+  #getInitializeReturn(): InitializeReturn {
+    return {
+      canCheckpoint: this.#canCheckpoint,
+      willSimulate: !this.#canCheckpoint || this.opts.forceSimulate,
+    };
+  }
 
   async index(opts: {
     contentHash: string;
@@ -20,6 +79,8 @@ class DockerTaskOperations implements TaskOperations {
     apiKey: string;
     apiUrl: string;
   }) {
+    await this.#initialize();
+
     const containerName = this.#getIndexContainerName(opts.contentHash);
 
     logger.log(`Indexing task ${opts.imageTag}`, {
@@ -27,31 +88,96 @@ class DockerTaskOperations implements TaskOperations {
       port: COORDINATOR_PORT,
     });
 
-    const { exitCode } = logger.debug(
-      await $`docker run --network=host --rm -e TRIGGER_SECRET_KEY=${opts.apiKey} -e TRIGGER_API_URL=${opts.apiUrl} -e COORDINATOR_HOST=${COORDINATOR_HOST} -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ENV_ID=${opts.envId} -e INDEX_TASKS=true --name=${containerName} ${opts.imageTag}`
-    );
+    try {
+      logger.debug(
+        await execa("docker", [
+          "run",
+          "--network=host",
+          "--rm",
+          `--env=TRIGGER_SECRET_KEY=${opts.apiKey}`,
+          `--env=TRIGGER_API_URL=${opts.apiUrl}`,
+          `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
+          `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
+          `--env=POD_NAME=${containerName}`,
+          `--env=TRIGGER_ENV_ID=${opts.envId}`,
+          `--env=INDEX_TASKS=true`,
+          `--name=${containerName}`,
+          `${opts.imageTag}`,
+        ])
+      );
+    } catch (error: any) {
+      if (!isExecaChildProcess(error)) {
+        throw error;
+      }
 
-    if (exitCode !== 0) {
-      throw new Error("docker run command failed");
+      logger.error("Index failed:", {
+        opts,
+        exitCode: error.exitCode,
+        escapedCommand: error.escapedCommand,
+        stdout: error.stdout,
+        stderr: error.stderr,
+      });
+
+      throw new Error(`Index failed with: ${error.stderr || error.stdout}`);
     }
   }
 
-  async create(opts: { attemptId: string; image: string; machine: Machine; envId: string }) {
+  async create(opts: {
+    runId: string;
+    attemptId: string;
+    image: string;
+    machine: Machine;
+    envId: string;
+  }) {
+    await this.#initialize();
+
     const containerName = this.#getRunContainerName(opts.attemptId);
 
-    const { exitCode } = logger.debug(
-      await $`docker run --network=host -d -e OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} -e COORDINATOR_HOST=${COORDINATOR_HOST} -e COORDINATOR_PORT=${COORDINATOR_PORT} -e POD_NAME=${containerName} -e TRIGGER_ENV_ID=${opts.envId} -e TRIGGER_ATTEMPT_ID=${opts.attemptId} --name=${containerName} ${opts.image}`
-    );
+    try {
+      logger.debug(
+        await execa("docker", [
+          "run",
+          "--network=host",
+          "--detach",
+          `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}`,
+          `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
+          `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
+          `--env=POD_NAME=${containerName}`,
+          `--env=TRIGGER_ENV_ID=${opts.envId}`,
+          `--env=TRIGGER_RUN_ID=${opts.runId}`,
+          `--env=TRIGGER_ATTEMPT_ID=${opts.attemptId}`,
+          `--name=${containerName}`,
+          `${opts.image}`,
+        ])
+      );
+    } catch (error) {
+      if (!isExecaChildProcess(error)) {
+        throw error;
+      }
 
-    if (exitCode !== 0) {
-      throw new Error("docker run command failed");
+      logger.error("Create failed:", {
+        opts,
+        exitCode: error.exitCode,
+        escapedCommand: error.escapedCommand,
+        stdout: error.stdout,
+        stderr: error.stderr,
+      });
+
+      throw new Error(`Create failed with: ${error.stderr || error.stdout}`);
     }
   }
 
-  async restore(opts: { attemptId: string; checkpointRef: string; machine: Machine }) {
+  async restore(opts: {
+    runId: string;
+    attemptId: string;
+    checkpointRef: string;
+    machine: Machine;
+  }) {
+    await this.#initialize();
+
     const containerName = this.#getRunContainerName(opts.attemptId);
 
-    if (this.opts.forceSimulate) {
+    if (!this.#canCheckpoint || this.opts.forceSimulate) {
       logger.log("Simulating restore");
 
       const { exitCode } = logger.debug(await $`docker unpause ${containerName}`);
@@ -73,10 +199,14 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   async delete(opts: { runId: string }) {
+    await this.#initialize();
+
     logger.log("noop: delete");
   }
 
   async get(opts: { runId: string }) {
+    await this.#initialize();
+
     logger.log("noop: get");
   }
 

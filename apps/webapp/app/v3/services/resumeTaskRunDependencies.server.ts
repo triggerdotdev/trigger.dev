@@ -12,7 +12,6 @@ export class ResumeTaskRunDependenciesService extends BaseService {
       include: {
         taskRun: {
           include: {
-            runtimeEnvironment: true,
             batchItem: true,
             dependency: {
               include: {
@@ -23,6 +22,7 @@ export class ResumeTaskRunDependenciesService extends BaseService {
           },
         },
         backgroundWorkerTask: true,
+        runtimeEnvironment: true,
       },
     });
 
@@ -30,7 +30,7 @@ export class ResumeTaskRunDependenciesService extends BaseService {
       return;
     }
 
-    if (taskAttempt.taskRun.runtimeEnvironment.type === "DEVELOPMENT") {
+    if (taskAttempt.runtimeEnvironment.type === "DEVELOPMENT") {
       return;
     }
 
@@ -45,8 +45,9 @@ export class ResumeTaskRunDependenciesService extends BaseService {
       return;
     }
 
-    if (dependency && dependency.dependentAttempt) {
+    if (dependency) {
       await this.#resumeDependency(dependency, taskAttempt);
+      return;
     }
   }
 

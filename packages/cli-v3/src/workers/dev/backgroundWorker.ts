@@ -547,8 +547,8 @@ class TaskRunProcess {
         ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
       },
       execArgv: this.worker.debuggerOn
-        ? ["--inspect-brk", "--trace-uncaught"]
-        : ["--trace-uncaught"],
+        ? ["--inspect-brk", "--trace-uncaught", "--no-warnings=ExperimentalWarning"]
+        : ["--trace-uncaught", "--no-warnings=ExperimentalWarning"],
     });
 
     this._child.on("message", this.#handleMessage.bind(this));

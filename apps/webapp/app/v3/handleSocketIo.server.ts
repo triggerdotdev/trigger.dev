@@ -50,7 +50,10 @@ function createCoordinatorNamespace(io: Server) {
     serverMessages: PlatformToCoordinatorMessages,
     handlers: {
       READY_FOR_EXECUTION: async (message) => {
-        const payload = await sharedQueueTasks.getExecutionPayloadFromAttempt(message.attemptId);
+        const payload = await sharedQueueTasks.getLatestExecutionPayloadFromRun(
+          message.runId,
+          true
+        );
 
         if (!payload) {
           return { success: false };
