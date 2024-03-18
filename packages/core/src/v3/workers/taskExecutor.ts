@@ -233,6 +233,7 @@ export class TaskExecutor {
     const delay = calculateNextRetryDelay(retry, execution.attempt.number);
 
     if (
+      execution.environment.type === "DEVELOPMENT" &&
       typeof this._config.retries?.enabledInDev === "boolean" &&
       !this._config.retries.enabledInDev
     ) {
