@@ -75,7 +75,7 @@ export class ProdBackgroundWorker {
     private params: BackgroundWorkerParams
   ) {}
 
-  close() {
+  async close() {
     if (this._closed) {
       return;
     }
@@ -84,14 +84,12 @@ export class ProdBackgroundWorker {
 
     this.onTaskHeartbeat.detach();
 
-    // We need to close all the task run processes
-    this._taskRunProcess?.cleanup(true);
+    // We need to close the task run process
+    await this._taskRunProcess?.cleanup(true);
+  }
 
-    // Delete worker files
-    this._onClose.post();
-
-    safeDeleteFileSync(this.path);
-    safeDeleteFileSync(`${this.path}.map`);
+  async flushTelemetry() {
+    await this._taskRunProcess?.cleanup(false);
   }
 
   async initialize(options?: { env?: Record<string, string> }) {
@@ -192,45 +190,47 @@ export class ProdBackgroundWorker {
       payload.execution.worker.version
     );
 
-    const taskRunProcess = new TaskRunProcess(
-      this.path,
-      {
-        ...this.params.env,
-        ...(payload.environment ?? {}),
-      },
-      metadata,
-      this.params
-    );
+    if (!this._taskRunProcess) {
+      const taskRunProcess = new TaskRunProcess(
+        this.path,
+        {
+          ...this.params.env,
+          ...(payload.environment ?? {}),
+        },
+        metadata,
+        this.params
+      );
 
-    this._taskRunProcess = taskRunProcess;
+      taskRunProcess.onExit.attach(() => {
+        this._taskRunProcess = undefined;
+      });
 
-    taskRunProcess.onExit.attach(() => {
-      this._taskRunProcess = undefined;
-    });
+      taskRunProcess.onTaskHeartbeat.attach((id) => {
+        this.onTaskHeartbeat.post(id);
+      });
 
-    taskRunProcess.onTaskHeartbeat.attach((id) => {
-      this.onTaskHeartbeat.post(id);
-    });
+      taskRunProcess.onWaitForBatch.attach((message) => {
+        this.onWaitForBatch.post(message);
+      });
 
-    taskRunProcess.onWaitForBatch.attach((message) => {
-      this.onWaitForBatch.post(message);
-    });
+      taskRunProcess.onWaitForDuration.attach((message) => {
+        this.onWaitForDuration.post(message);
+      });
 
-    taskRunProcess.onWaitForDuration.attach((message) => {
-      this.onWaitForDuration.post(message);
-    });
+      taskRunProcess.onWaitForTask.attach((message) => {
+        this.onWaitForTask.post(message);
+      });
 
-    taskRunProcess.onWaitForTask.attach((message) => {
-      this.onWaitForTask.post(message);
-    });
+      this.preCheckpointNotification.attach((message) => {
+        taskRunProcess.preCheckpointNotification.post(message);
+      });
 
-    this.preCheckpointNotification.attach((message) => {
-      taskRunProcess.preCheckpointNotification.post(message);
-    });
+      await taskRunProcess.initialize();
 
-    await taskRunProcess.initialize();
+      this._taskRunProcess = taskRunProcess;
+    }
 
-    return taskRunProcess;
+    return this._taskRunProcess;
   }
 
   // We need to fork the process before we can execute any tasks
@@ -394,7 +394,7 @@ class TaskRunProcess {
           resolver(result);
         },
         READY_TO_DISPOSE: async (message) => {
-          this.#kill();
+          // noop
         },
         TASK_HEARTBEAT: async (message) => {
           this.onTaskHeartbeat.post(message.id);
@@ -434,12 +434,12 @@ class TaskRunProcess {
       return;
     }
 
-    await this._ipc?.send("CLEANUP", {
+    this._isBeingKilled = kill;
+
+    await this._ipc?.sendWithAck("CLEANUP", {
       flush: true,
       kill,
     });
-
-    this._isBeingKilled = kill;
   }
 
   async executeTaskRun(payload: TaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
