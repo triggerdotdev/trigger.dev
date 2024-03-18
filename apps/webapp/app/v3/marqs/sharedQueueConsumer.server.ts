@@ -20,6 +20,7 @@ import { EnvironmentVariablesRepository } from "../environmentVariables/environm
 import { CancelAttemptService } from "../services/cancelAttempt.server";
 import { socketIo } from "../handleSocketIo.server";
 import { singleton } from "~/utils/singleton";
+import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
 
 const tracer = trace.getTracer("sharedQueueConsumer");
 
@@ -464,15 +465,8 @@ export class SharedQueueConsumer {
               return;
             }
 
-            socketIo.providerNamespace.emit("RESTORE", {
-              version: "v1",
-              checkpointId: latestCheckpoint.id,
-              runId: latestCheckpoint.runId,
-              attemptId: latestCheckpoint.attemptId,
-              type: latestCheckpoint.type,
-              location: latestCheckpoint.location,
-              reason: latestCheckpoint.reason ?? undefined,
-            });
+            const restoreService = new RestoreCheckpointService();
+            await restoreService.call({ checkpointId: latestCheckpoint.id });
           } else {
             await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
               backgroundWorkerId: deployment.worker.friendlyId,
@@ -608,15 +602,8 @@ export class SharedQueueConsumer {
             return;
           }
 
-          socketIo.providerNamespace.emit("RESTORE", {
-            version: "v1",
-            checkpointId: latestCheckpoint.id,
-            runId: latestCheckpoint.runId,
-            attemptId: latestCheckpoint.attemptId,
-            type: latestCheckpoint.type,
-            location: latestCheckpoint.location,
-            reason: latestCheckpoint.reason ?? undefined,
-          });
+          const restoreService = new RestoreCheckpointService();
+          await restoreService.call({ checkpointId: latestCheckpoint.id });
 
           setTimeout(() => this.#doWork(), this._options.interval);
           return;
@@ -750,15 +737,8 @@ export class SharedQueueConsumer {
           }
 
           // The attempt will resume automatically after restore
-          socketIo.providerNamespace.emit("RESTORE", {
-            version: "v1",
-            checkpointId: latestCheckpoint.id,
-            runId: latestCheckpoint.runId,
-            attemptId: latestCheckpoint.attemptId,
-            type: latestCheckpoint.type,
-            location: latestCheckpoint.location,
-            reason: latestCheckpoint.reason ?? undefined,
-          });
+          const restoreService = new RestoreCheckpointService();
+          await restoreService.call({ checkpointId: latestCheckpoint.id });
         } catch (e) {
           if (e instanceof Error) {
             this._currentSpan?.recordException(e);
