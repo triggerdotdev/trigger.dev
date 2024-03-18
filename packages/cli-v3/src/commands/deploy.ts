@@ -345,8 +345,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         );
       } else {
         outro(
-          `Version ${version} deployed with ${taskCount} detected task${
-            taskCount === 1 ? "" : "s"
+          `Version ${version} deployed with ${taskCount} detected task${taskCount === 1 ? "" : "s"
           } ${deploymentLink}`
         );
       }
@@ -510,14 +509,14 @@ type BuildAndPushImageOptions = {
 
 type BuildAndPushImageResults =
   | {
-      ok: true;
-      image: string;
-      digest?: string;
-    }
+    ok: true;
+    image: string;
+    digest?: string;
+  }
   | {
-      ok: false;
-      error: string;
-    };
+    ok: false;
+    error: string;
+  };
 
 async function buildAndPushImage(
   options: BuildAndPushImageOptions
@@ -579,6 +578,7 @@ async function buildAndPushImage(
         DEPOT_TOKEN: options.buildToken,
         DEPOT_PROJECT_ID: options.buildProjectId,
         DEPOT_NO_SUMMARY_LINK: "1",
+        DEPOT_NO_UPDATE_NOTIFIER: "1",
         DOCKER_CONFIG: dockerConfigDir,
       },
     });
