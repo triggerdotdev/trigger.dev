@@ -1,6 +1,7 @@
 import { defineConfig } from "tsup";
 
 const isDev = process.env.npm_lifecycle_event === "dev";
+const copyTemplates = "cp -r src/templates dist";
 
 export default defineConfig({
   clean: false,
@@ -14,7 +15,7 @@ export default defineConfig({
   sourcemap: true,
   target: "esnext",
   outDir: "dist",
-  onSuccess: isDev ? `node dist/index.js` : "",
+  onSuccess: isDev ? `${copyTemplates} && node dist/index.js` : copyTemplates,
   banner: {
     js: "import { createRequire } from 'module';const require = createRequire(import.meta.url);",
   },

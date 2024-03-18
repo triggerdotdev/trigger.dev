@@ -5,9 +5,30 @@ import { QueueOptions } from "./messages";
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
   email: z.string().email(),
+  dashboardUrl: z.string(),
 });
 
 export type WhoAmIResponse = z.infer<typeof WhoAmIResponseSchema>;
+
+export const GetProjectResponseBody = z.object({
+  id: z.string(),
+  externalRef: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  createdAt: z.coerce.date(),
+  organization: z.object({
+    id: z.string(),
+    title: z.string(),
+    slug: z.string(),
+    createdAt: z.coerce.date(),
+  }),
+});
+
+export type GetProjectResponseBody = z.infer<typeof GetProjectResponseBody>;
+
+export const GetProjectsResponseBody = z.array(GetProjectResponseBody);
+
+export type GetProjectsResponseBody = z.infer<typeof GetProjectsResponseBody>;
 
 export const GetProjectEnvResponse = z.object({
   apiKey: z.string(),

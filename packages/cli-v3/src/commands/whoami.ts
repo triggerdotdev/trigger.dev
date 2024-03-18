@@ -14,6 +14,7 @@ type WhoAmIResult =
       data: {
         userId: string;
         email: string;
+        dashboardUrl: string;
       };
     }
   | {
@@ -44,7 +45,10 @@ export function configureWhoamiCommand(program: Command) {
     });
 }
 
-export async function whoAmI(options?: WhoamiCommandOptions): Promise<WhoAmIResult> {
+export async function whoAmI(
+  options?: WhoamiCommandOptions,
+  embedded: boolean = false
+): Promise<WhoAmIResult> {
   if (options?.logLevel) {
     logger.loggerLevel = options?.logLevel;
   }
@@ -67,10 +71,7 @@ export async function whoAmI(options?: WhoamiCommandOptions): Promise<WhoAmIResu
     };
   }
 
-  const apiClient = new CliApiClient(
-    authentication.config.apiUrl,
-    authentication.config.accessToken
-  );
+  const apiClient = new CliApiClient(authentication.auth.apiUrl, authentication.auth.accessToken);
   const userData = await apiClient.whoAmI();
 
   if (!userData.success) {
@@ -82,15 +83,18 @@ export async function whoAmI(options?: WhoamiCommandOptions): Promise<WhoAmIResu
     };
   }
 
-  loadingSpinner.stop("Retrieved your account details");
-
-  note(
-    `User ID: ${userData.data.userId}
+  if (!embedded) {
+    loadingSpinner.stop("Retrieved your account details");
+    note(
+      `User ID: ${userData.data.userId}
 Email: ${userData.data.email}
-URL: ${chalkLink(authentication.config.apiUrl)}
+URL: ${chalkLink(authentication.auth.apiUrl)}
 `,
-    "Account details"
-  );
+      "Account details"
+    );
+  } else {
+    loadingSpinner.stop(`Retrieved your account details for ${userData.data.email}`);
+  }
 
   return userData;
 }

@@ -1,6 +1,7 @@
-import { intro, spinner } from "@clack/prompts";
+import { intro, log, outro, spinner } from "@clack/prompts";
 import { depot } from "@depot/cli";
-import { ResolvedConfig } from "@trigger.dev/core/v3";
+import { context, trace } from "@opentelemetry/api";
+import { ResolvedConfig, flattenAttributes, recordSpanException } from "@trigger.dev/core/v3";
 import chalk from "chalk";
 import { Command, Option as CommandOption } from "commander";
 import { Metafile, build } from "esbuild";
@@ -10,22 +11,28 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { exit } from "node:process";
 import { setTimeout } from "node:timers/promises";
 import terminalLink from "terminal-link";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
-import { CommonCommandOptions } from "../cli/common.js";
+import {
+  CommonCommandOptions,
+  SkipCommandError,
+  SkipLoggingError,
+  commonOptions,
+  handleTelemetry,
+  tracer,
+  wrapCommandAction,
+} from "../cli/common.js";
 import { readConfig } from "../utilities/configFiles.js";
 import { createTempDir, readJSONFile, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { detectPackageNameFromImportPath } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
-import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
-import { fromZodError } from "zod-validation-error";
+import { login } from "./login";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -38,30 +45,34 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   pushImage: z.boolean().default(false),
   config: z.string().optional(),
   projectRef: z.string().optional(),
+  outputMetafile: z.string().optional(),
+  apiUrl: z.string().optional(),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
 
 export function configureDeployCommand(program: Command) {
-  program
-    .command("deploy")
-    .description("Deploy your Trigger.dev v3 project to the cloud.")
-    .argument("[path]", "The path to the project", ".")
-    .option(
-      "-e, --env <env>",
-      "Deploy to a specific environment (currently only prod and staging are supported)",
-      "prod"
-    )
-    .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
-    .option(
-      "-c, --config <config file>",
-      "The name of the config file, found at [path]",
-      "trigger.config.mjs"
-    )
-    .option(
-      "-p, --project-ref <project ref>",
-      "The project ref. Required if there is no config file."
-    )
+  return commonOptions(
+    program
+      .command("deploy")
+      .description("Deploy your Trigger.dev v3 project to the cloud.")
+      .argument("[path]", "The path to the project", ".")
+      .option(
+        "-e, --env <env>",
+        "Deploy to a specific environment (currently only prod and staging are supported)",
+        "prod"
+      )
+      .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
+      .option(
+        "-c, --config <config file>",
+        "The name of the config file, found at [path]",
+        "trigger.config.mjs"
+      )
+      .option(
+        "-p, --project-ref <project ref>",
+        "The project ref. Required if there is no config file."
+      )
+  )
     .addOption(
       new CommandOption(
         "--self-hosted",
@@ -98,122 +109,100 @@ export function configureDeployCommand(program: Command) {
         .default("linux/amd64")
         .hideHelp()
     )
-    .option(
-      "-l, --log-level <level>",
-      "The log level to use (debug, info, log, warn, error, none)",
-      "log"
+    .addOption(
+      new CommandOption(
+        "--output-metafile <path>",
+        "If provided, will save the esbuild metafile for the build to the specified path"
+      ).hideHelp()
     )
     .action(async (path, options) => {
-      try {
+      await handleTelemetry(async () => {
+        await printStandloneInitialBanner(true);
         await deployCommand(path, options);
-      } catch (e) {
-        //todo error reporting
-        throw e;
-      }
+      });
     });
 }
 
-export async function deployCommand(dir: string, anyOptions: unknown) {
-  const options = DeployCommandOptions.safeParse(anyOptions);
-
-  if (!options.success) {
-    console.log(fromZodError(options.error).toString());
-
-    process.exit(1);
-  }
-
-  if (options.data.logLevel) {
-    logger.loggerLevel = options.data.logLevel;
-  }
-
-  logger.debug("Running the deploy command with the following options", {
-    options: options.data,
-    dir,
+export async function deployCommand(dir: string, options: unknown) {
+  return await wrapCommandAction("deployCommand", DeployCommandOptions, options, async (opts) => {
+    return await _deployCommand(dir, opts);
   });
+}
 
-  const authorization = await isLoggedIn();
+async function _deployCommand(dir: string, options: DeployCommandOptions) {
+  const span = trace.getSpan(context.active());
+
+  intro("Deploying project");
+
+  const authorization = await login({ embedded: true, defaultApiUrl: options.apiUrl });
 
   if (!authorization.ok) {
     if (authorization.error === "fetch failed") {
-      logger.error(
-        `Failed to connect to ${authorization.config?.apiUrl}. Are you sure it's the correct URL?`
+      throw new Error(
+        `Failed to connect to ${authorization.auth?.apiUrl}. Are you sure it's the correct URL?`
       );
     } else {
-      logger.error("You must login first. Use `trigger.dev login` to login.");
+      throw new Error("You must login first. Use `trigger.dev login` to login.");
     }
-    process.exitCode = 1;
-    return;
   }
 
-  await printStandloneInitialBanner(true);
+  span?.setAttributes({
+    "cli.userId": authorization.userId,
+    "cli.email": authorization.email,
+    "cli.config.apiUrl": authorization.auth.apiUrl,
+  });
 
   const resolvedConfig = await readConfig(dir, {
-    configFile: options.data.config,
-    projectRef: options.data.projectRef,
+    configFile: options.config,
+    projectRef: options.projectRef,
   });
 
   logger.debug("Resolved config", { resolvedConfig });
 
-  const apiClient = new CliApiClient(authorization.config.apiUrl, authorization.config.accessToken);
+  span?.setAttributes({
+    "resolvedConfig.status": resolvedConfig.status,
+    "resolvedConfig.path": resolvedConfig.status === "file" ? resolvedConfig.path : undefined,
+    "resolvedConfig.config.project": resolvedConfig.config.project,
+    "resolvedConfig.config.projectDir": resolvedConfig.config.projectDir,
+    "resolvedConfig.config.triggerUrl": resolvedConfig.config.triggerUrl,
+    "resolvedConfig.config.triggerDirectories": resolvedConfig.config.triggerDirectories,
+    ...flattenAttributes(resolvedConfig.config.retries, "resolvedConfig.config.retries"),
+  });
+
+  const apiClient = new CliApiClient(authorization.auth.apiUrl, authorization.auth.accessToken);
 
   const deploymentEnv = await apiClient.getProjectEnv({
     projectRef: resolvedConfig.config.project,
-    env: options.data.env,
+    env: options.env,
   });
 
   if (!deploymentEnv.success) {
     throw new Error(deploymentEnv.error);
   }
 
-  const environmentClient = new CliApiClient(
-    authorization.config.apiUrl,
-    deploymentEnv.data.apiKey
-  );
+  const environmentClient = new CliApiClient(authorization.auth.apiUrl, deploymentEnv.data.apiKey);
 
-  intro(
-    `Preparing to deploy "${deploymentEnv.data.name}" (${resolvedConfig.config.project}) to ${options.data.env}`
+  log.step(
+    `Preparing to deploy "${deploymentEnv.data.name}" (${resolvedConfig.config.project}) to ${options.env}`
   );
 
   // Step 1: Build the project into a temporary directory
   const compilation = await compileProject(
     resolvedConfig.config,
-    options.data,
+    options,
     resolvedConfig.status === "file" ? resolvedConfig.path : undefined
   );
 
   logger.debug("Compilation result", { compilation });
 
-  const environmentVariablesSpinner = spinner();
-
-  environmentVariablesSpinner.start("Checking environment variables");
-
-  const environmentVariables = await environmentClient.getEnvironmentVariables(
-    resolvedConfig.config.project
-  );
-
-  if (!environmentVariables.success) {
-    environmentVariablesSpinner.stop(`Failed to fetch environment variables, skipping check`);
-  } else {
-    // Check to see if all the environment variables in the compilation exist
-    const missingEnvironmentVariables = compilation.envVars.filter(
-      (envVar) => environmentVariables.data.variables[envVar] === undefined
+  if (compilation.envVars.length > 0) {
+    await checkEnvVars(
+      compilation.envVars ?? [],
+      resolvedConfig.config,
+      options,
+      environmentClient,
+      authorization.dashboardUrl
     );
-
-    if (missingEnvironmentVariables.length > 0) {
-      environmentVariablesSpinner.stop(
-        `Found missing env vars in ${options.data.env}: ${arrayToSentence(
-          missingEnvironmentVariables
-        )}. Aborting deployment. ${chalk.bgBlueBright(
-          terminalLink(
-            "Manage env vars",
-            `${authorization.config.apiUrl}/projects/v3/${resolvedConfig.config.project}/environment-variables`
-          )
-        )}`
-      );
-      exit(1);
-    }
-
-    environmentVariablesSpinner.stop(`Environment variable check passed`);
   }
 
   // Step 2: Initialize a deployment on the server (response will have everything we need to build an image)
@@ -223,17 +212,15 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
   });
 
   if (!deploymentResponse.success) {
-    logger.error(`Failed to start deployment: ${deploymentResponse.error}`);
-    exit(1);
+    throw new Error(`Failed to start deployment: ${deploymentResponse.error}`);
   }
 
   // If the deployment doesn't have any externalBuildData, then we can't use the remote image builder
   // TODO: handle this and allow the user to the build and push the image themselves
-  if (!deploymentResponse.data.externalBuildData && !options.data.selfHosted) {
-    logger.error(
+  if (!deploymentResponse.data.externalBuildData && !options.selfHosted) {
+    throw new Error(
       `Failed to start deployment, as your instance of trigger.dev does not support hosting. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.`
     );
-    exit(1);
   }
 
   const version = deploymentResponse.data.version;
@@ -244,7 +231,7 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
   const registryHost = new URL(deploymentEnv.data.apiUrl).host;
 
   const buildImage = async () => {
-    if (options.data.selfHosted) {
+    if (options.selfHosted) {
       return buildAndPushSelfHostedImage({
         imageTag: deploymentResponse.data.imageTag,
         cwd: compilation.path,
@@ -253,20 +240,19 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
         deploymentVersion: version,
         contentHash: deploymentResponse.data.contentHash,
         projectRef: resolvedConfig.config.project,
-        buildPlatform: options.data.buildPlatform,
+        buildPlatform: options.buildPlatform,
       });
     }
 
     if (!deploymentResponse.data.externalBuildData) {
-      deploymentSpinner.stop(
-        `Failed to initialize deployment. The deployment does not have any external build data. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.`
+      throw new Error(
+        "Failed to initialize deployment. The deployment does not have any external build data. To deploy this project, you must use the --self-hosted flag to build and push the image yourself."
       );
-      exit(1);
     }
 
     return buildAndPushImage({
       registryHost,
-      auth: authorization.config.accessToken,
+      auth: authorization.auth.accessToken,
       imageTag: deploymentResponse.data.imageTag,
       buildId: deploymentResponse.data.externalBuildData.buildId,
       buildToken: deploymentResponse.data.externalBuildData.buildToken,
@@ -277,8 +263,8 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
       deploymentVersion: deploymentResponse.data.version,
       contentHash: deploymentResponse.data.contentHash,
       projectRef: resolvedConfig.config.project,
-      loadImage: options.data.loadImage,
-      buildPlatform: options.data.buildPlatform,
+      loadImage: options.loadImage,
+      buildPlatform: options.buildPlatform,
     });
   };
 
@@ -286,18 +272,24 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   if (!image.ok) {
     deploymentSpinner.stop(`Failed to build project image: ${image.error}`);
-    exit(1);
+
+    throw new SkipLoggingError(`Failed to build project image: ${image.error}`);
   }
 
-  const imageReference = options.data.selfHosted
+  const imageReference = options.selfHosted
     ? `${image.image}${image.digest ? `@${image.digest}` : ""}`
     : `${registryHost}/${image.image}${image.digest ? `@${image.digest}` : ""}`;
 
-  if (options.data.skipDeploy) {
+  span?.setAttributes({
+    "image.reference": imageReference,
+  });
+
+  if (options.skipDeploy) {
     deploymentSpinner.stop(
       `Project image built: ${imageReference}. Skipping deployment as requested`
     );
-    exit(0);
+
+    throw new SkipCommandError("Skipping deployment as requested");
   }
 
   deploymentSpinner.message(
@@ -315,7 +307,8 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   if (!startIndexingResponse.success) {
     deploymentSpinner.stop(`Failed to start indexing: ${startIndexingResponse.error}`);
-    exit(1);
+
+    throw new SkipLoggingError(`Failed to start indexing: ${startIndexingResponse.error}`);
   }
 
   const finishedDeployment = await waitForDeploymentToFinish(
@@ -325,25 +318,34 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
 
   if (!finishedDeployment) {
     deploymentSpinner.stop(`Deployment failed to complete`);
-    exit(1);
+
+    throw new SkipLoggingError("Deployment failed to complete: unknown issue");
+  }
+
+  if (typeof finishedDeployment === "string") {
+    deploymentSpinner.stop(`Deployment failed to complete: ${finishedDeployment}`);
+
+    throw new SkipLoggingError(`Deployment failed to complete: ${finishedDeployment}`);
   }
 
   const deploymentLink = terminalLink(
     "View deployment",
-    `${authorization.config.apiUrl}/projects/v3/${resolvedConfig.config.project}/deployments/${finishedDeployment.id}`
+    `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.config.project}/deployments/${finishedDeployment.id}`
   );
 
   switch (finishedDeployment.status) {
     case "DEPLOYED": {
+      deploymentSpinner.stop("Deployment completed");
+
       const taskCount = finishedDeployment.worker?.tasks.length ?? 0;
 
       if (taskCount === 0) {
-        deploymentSpinner.stop(
-          `Deployment of ${version} completed with no detected tasks. Please make sure you are exporting tasks in your project. ${deploymentLink}`
+        outro(
+          `Version ${version} deployed with no detected tasks. Please make sure you are exporting tasks in your project. ${deploymentLink}`
         );
       } else {
-        deploymentSpinner.stop(
-          `Deployment of ${version} completed with ${taskCount} detected task${
+        outro(
+          `Version ${version} deployed with ${taskCount} detected task${
             taskCount === 1 ? "" : "s"
           } ${deploymentLink}`
         );
@@ -357,19 +359,82 @@ export async function deployCommand(dir: string, anyOptions: unknown) {
           `Deployment encountered an error: ${finishedDeployment.errorData.name}. ${deploymentLink}`
         );
         logger.error(finishedDeployment.errorData.stack);
+
+        throw new SkipLoggingError(
+          `Deployment encountered an error: ${finishedDeployment.errorData.name}`
+        );
       } else {
         deploymentSpinner.stop(
           `Deployment failed with an unknown error. Please contact eric@trigger.dev for help. ${deploymentLink}`
         );
-      }
 
-      exit(1);
+        throw new SkipLoggingError("Deployment failed with an unknown error");
+      }
     }
     case "CANCELED": {
       deploymentSpinner.stop(`Deployment was canceled. ${deploymentLink}`);
-      break;
+
+      throw new SkipLoggingError("Deployment was canceled");
     }
   }
+}
+
+async function checkEnvVars(
+  envVars: string[],
+  config: ResolvedConfig,
+  options: DeployCommandOptions,
+  environmentClient: CliApiClient,
+  apiUrl: string
+) {
+  return await tracer.startActiveSpan("detectEnvVars", async (span) => {
+    try {
+      span.setAttribute("envVars.check", envVars);
+
+      const environmentVariablesSpinner = spinner();
+
+      environmentVariablesSpinner.start("Checking environment variables");
+
+      const environmentVariables = await environmentClient.getEnvironmentVariables(config.project);
+
+      if (!environmentVariables.success) {
+        environmentVariablesSpinner.stop(`Failed to fetch environment variables, skipping check`);
+      } else {
+        // Check to see if all the environment variables in the compilation exist
+        const missingEnvironmentVariables = envVars.filter(
+          (envVar) => environmentVariables.data.variables[envVar] === undefined
+        );
+
+        if (missingEnvironmentVariables.length > 0) {
+          environmentVariablesSpinner.stop(
+            `Found missing env vars in ${options.env}: ${arrayToSentence(
+              missingEnvironmentVariables
+            )}. Aborting deployment. ${chalk.bgBlueBright(
+              terminalLink(
+                "Manage env vars",
+                `${apiUrl}/projects/v3/${config.project}/environment-variables`
+              )
+            )}`
+          );
+
+          span.setAttributes({
+            "envVars.missing": missingEnvironmentVariables,
+          });
+
+          throw new SkipLoggingError("Found missing environment variables");
+        }
+
+        environmentVariablesSpinner.stop(`Environment variable check passed`);
+      }
+
+      span.end();
+    } catch (e) {
+      recordSpanException(span, e);
+
+      span.end();
+
+      throw e;
+    }
+  });
 }
 
 // Poll every 1 second for the deployment to finish
@@ -378,31 +443,52 @@ async function waitForDeploymentToFinish(
   client: CliApiClient,
   timeoutInSeconds: number = 60
 ) {
-  const start = Date.now();
+  return tracer.startActiveSpan("waitForDeploymentToFinish", async (span) => {
+    try {
+      const start = Date.now();
+      let attempts = 0;
 
-  while (true) {
-    if (Date.now() - start > timeoutInSeconds * 1000) {
-      return;
+      while (true) {
+        if (Date.now() - start > timeoutInSeconds * 1000) {
+          span.recordException(new Error("Deployment timed out"));
+          span.end();
+          return;
+        }
+
+        const deployment = await client.getDeployment(deploymentId);
+
+        attempts++;
+
+        if (!deployment.success) {
+          throw new Error(deployment.error);
+        }
+
+        logger.debug(`Deployment status: ${deployment.data.status}`);
+
+        if (
+          deployment.data.status === "DEPLOYED" ||
+          deployment.data.status === "FAILED" ||
+          deployment.data.status === "CANCELED"
+        ) {
+          span.setAttributes({
+            "deployment.status": deployment.data.status,
+            "deployment.attempts": attempts,
+          });
+
+          span.end();
+
+          return deployment.data;
+        }
+
+        await setTimeout(1000);
+      }
+    } catch (error) {
+      recordSpanException(span, error);
+      span.end();
+
+      return error instanceof Error ? error.message : JSON.stringify(error);
     }
-
-    const deployment = await client.getDeployment(deploymentId);
-
-    if (!deployment.success) {
-      throw new Error(deployment.error);
-    }
-
-    logger.debug(`Deployment status: ${deployment.data.status}`);
-
-    if (
-      deployment.data.status === "DEPLOYED" ||
-      deployment.data.status === "FAILED" ||
-      deployment.data.status === "CANCELED"
-    ) {
-      return deployment.data;
-    }
-
-    await setTimeout(1000);
-  }
+  });
 }
 
 type BuildAndPushImageOptions = {
@@ -436,81 +522,106 @@ type BuildAndPushImageResults =
 async function buildAndPushImage(
   options: BuildAndPushImageOptions
 ): Promise<BuildAndPushImageResults> {
-  // Step 3: Ensure we are "logged in" to our registry by writing to $HOME/.docker/config.json
-  // TODO: make sure this works on windows
-  const dockerConfigDir = await ensureLoggedIntoDockerRegistry(options.registryHost, {
-    username: "trigger",
-    password: options.auth,
-  });
-
-  const args = [
-    "build",
-    "-f",
-    "Containerfile",
-    "--platform",
-    options.buildPlatform,
-    "--provenance",
-    "false",
-    "--build-arg",
-    `TRIGGER_PROJECT_ID=${options.projectId}`,
-    "--build-arg",
-    `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
-    "--build-arg",
-    `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
-    "--build-arg",
-    `TRIGGER_CONTENT_HASH=${options.contentHash}`,
-    "--build-arg",
-    `TRIGGER_PROJECT_REF=${options.projectRef}`,
-    "-t",
-    `${options.registryHost}/${options.imageTag}`,
-    ".",
-    "--push",
-    options.loadImage ? "--load" : undefined,
-  ].filter(Boolean) as string[];
-
-  logger.debug(`depot ${args.join(" ")}`);
-
-  // Step 4: Build and push the image
-  const childProcess = depot(args, {
-    cwd: options.cwd,
-    env: {
-      DEPOT_BUILD_ID: options.buildId,
-      DEPOT_TOKEN: options.buildToken,
-      DEPOT_PROJECT_ID: options.buildProjectId,
-      DEPOT_NO_SUMMARY_LINK: "1",
-      DOCKER_CONFIG: dockerConfigDir,
-    },
-  });
-
-  const errors: string[] = [];
-
-  try {
-    await new Promise<void>((res, rej) => {
-      // For some reason everything is output on stderr, not stdout
-      childProcess.stderr?.on("data", (data: Buffer) => {
-        const text = data.toString();
-
-        errors.push(text);
-        logger.debug(text);
-      });
-
-      childProcess.on("error", (e) => rej(e));
-      childProcess.on("close", () => res());
+  return tracer.startActiveSpan("buildAndPushImage", async (span) => {
+    span.setAttributes({
+      "options.registryHost": options.registryHost,
+      "options.imageTag": options.imageTag,
+      "options.buildPlatform": options.buildPlatform,
+      "options.projectId": options.projectId,
+      "options.deploymentId": options.deploymentId,
+      "options.deploymentVersion": options.deploymentVersion,
+      "options.contentHash": options.contentHash,
+      "options.projectRef": options.projectRef,
+      "options.loadImage": options.loadImage,
     });
 
-    const digest = extractImageDigest(errors);
+    // Step 3: Ensure we are "logged in" to our registry by writing to $HOME/.docker/config.json
+    // TODO: make sure this works on windows
+    const dockerConfigDir = await ensureLoggedIntoDockerRegistry(options.registryHost, {
+      username: "trigger",
+      password: options.auth,
+    });
 
-    return {
-      ok: true,
-      image: options.imageTag,
-      digest,
-    };
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : JSON.stringify(e),
-    };
-  }
+    const args = [
+      "build",
+      "-f",
+      "Containerfile",
+      "--platform",
+      options.buildPlatform,
+      "--provenance",
+      "false",
+      "--build-arg",
+      `TRIGGER_PROJECT_ID=${options.projectId}`,
+      "--build-arg",
+      `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
+      "--build-arg",
+      `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
+      "--build-arg",
+      `TRIGGER_CONTENT_HASH=${options.contentHash}`,
+      "--build-arg",
+      `TRIGGER_PROJECT_REF=${options.projectRef}`,
+      "-t",
+      `${options.registryHost}/${options.imageTag}`,
+      ".",
+      "--push",
+      options.loadImage ? "--load" : undefined,
+    ].filter(Boolean) as string[];
+
+    logger.debug(`depot ${args.join(" ")}`);
+
+    span.setAttribute("depot.command", `depot ${args.join(" ")}`);
+
+    // Step 4: Build and push the image
+    const childProcess = depot(args, {
+      cwd: options.cwd,
+      env: {
+        DEPOT_BUILD_ID: options.buildId,
+        DEPOT_TOKEN: options.buildToken,
+        DEPOT_PROJECT_ID: options.buildProjectId,
+        DEPOT_NO_SUMMARY_LINK: "1",
+        DOCKER_CONFIG: dockerConfigDir,
+      },
+    });
+
+    const errors: string[] = [];
+
+    try {
+      await new Promise<void>((res, rej) => {
+        // For some reason everything is output on stderr, not stdout
+        childProcess.stderr?.on("data", (data: Buffer) => {
+          const text = data.toString();
+
+          errors.push(text);
+          logger.debug(text);
+        });
+
+        childProcess.on("error", (e) => rej(e));
+        childProcess.on("close", () => res());
+      });
+
+      const digest = extractImageDigest(errors);
+
+      span.setAttributes({
+        "image.digest": digest,
+      });
+
+      span.end();
+
+      return {
+        ok: true as const,
+        image: options.imageTag,
+        digest,
+      };
+    } catch (e) {
+      recordSpanException(span, e);
+      span.end();
+
+      return {
+        ok: false as const,
+        error: e instanceof Error ? e.message : JSON.stringify(e),
+      };
+    }
+  });
 }
 
 type BuildAndPushSelfHostedImageOptions = Omit<
@@ -521,63 +632,87 @@ type BuildAndPushSelfHostedImageOptions = Omit<
 async function buildAndPushSelfHostedImage(
   options: BuildAndPushSelfHostedImageOptions
 ): Promise<BuildAndPushImageResults> {
-  const args = [
-    "build",
-    "-f",
-    "Containerfile",
-    "--platform",
-    options.buildPlatform,
-    "--build-arg",
-    `TRIGGER_PROJECT_ID=${options.projectId}`,
-    "--build-arg",
-    `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
-    "--build-arg",
-    `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
-    "--build-arg",
-    `TRIGGER_CONTENT_HASH=${options.contentHash}`,
-    "--build-arg",
-    `TRIGGER_PROJECT_REF=${options.projectRef}`,
-    "-t",
-    `${options.imageTag}`,
-    ".", // The build context
-  ].filter(Boolean) as string[];
-
-  logger.debug(`docker ${args.join(" ")}`);
-
-  // Step 4: Build and push the image
-  const childProcess = execa("docker", args, {
-    cwd: options.cwd,
-  });
-
-  const errors: string[] = [];
-
-  try {
-    await new Promise<void>((res, rej) => {
-      // For some reason everything is output on stderr, not stdout
-      childProcess.stderr?.on("data", (data: Buffer) => {
-        const text = data.toString();
-
-        errors.push(text);
-        logger.debug(text);
-      });
-
-      childProcess.on("error", (e) => rej(e));
-      childProcess.on("close", () => res());
+  return await tracer.startActiveSpan("buildAndPushSelfHostedImage", async (span) => {
+    span.setAttributes({
+      "options.imageTag": options.imageTag,
+      "options.buildPlatform": options.buildPlatform,
+      "options.projectId": options.projectId,
+      "options.deploymentId": options.deploymentId,
+      "options.deploymentVersion": options.deploymentVersion,
+      "options.contentHash": options.contentHash,
+      "options.projectRef": options.projectRef,
     });
 
-    const digest = extractImageDigest(errors);
+    const args = [
+      "build",
+      "-f",
+      "Containerfile",
+      "--platform",
+      options.buildPlatform,
+      "--build-arg",
+      `TRIGGER_PROJECT_ID=${options.projectId}`,
+      "--build-arg",
+      `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
+      "--build-arg",
+      `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
+      "--build-arg",
+      `TRIGGER_CONTENT_HASH=${options.contentHash}`,
+      "--build-arg",
+      `TRIGGER_PROJECT_REF=${options.projectRef}`,
+      "-t",
+      `${options.imageTag}`,
+      ".", // The build context
+    ].filter(Boolean) as string[];
 
-    return {
-      ok: true,
-      image: options.imageTag,
-      digest,
-    };
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : JSON.stringify(e),
-    };
-  }
+    logger.debug(`docker ${args.join(" ")}`);
+
+    span.setAttribute("docker.command", `docker ${args.join(" ")}`);
+
+    // Step 4: Build and push the image
+    const childProcess = execa("docker", args, {
+      cwd: options.cwd,
+    });
+
+    const errors: string[] = [];
+
+    try {
+      await new Promise<void>((res, rej) => {
+        // For some reason everything is output on stderr, not stdout
+        childProcess.stderr?.on("data", (data: Buffer) => {
+          const text = data.toString();
+
+          errors.push(text);
+          logger.debug(text);
+        });
+
+        childProcess.on("error", (e) => rej(e));
+        childProcess.on("close", () => res());
+      });
+
+      const digest = extractImageDigest(errors);
+
+      span.setAttributes({
+        "image.digest": digest,
+      });
+
+      span.end();
+
+      return {
+        ok: true as const,
+        image: options.imageTag,
+        digest,
+      };
+    } catch (e) {
+      recordSpanException(span, e);
+
+      span.end();
+
+      return {
+        ok: false as const,
+        error: e instanceof Error ? e.message : JSON.stringify(e),
+      };
+    }
+  });
 }
 
 function extractImageDigest(outputs: string[]) {
@@ -598,203 +733,252 @@ async function compileProject(
   options: DeployCommandOptions,
   configPath?: string
 ) {
-  if (!options.skipTypecheck) {
-    await typecheckProject(config, options);
-  }
+  return await tracer.startActiveSpan("compileProject", async (span) => {
+    try {
+      if (!options.skipTypecheck) {
+        const typecheck = await typecheckProject(config, options);
 
-  const compileSpinner = spinner();
-  compileSpinner.start(`Building project in ${config.projectDir}`);
+        if (!typecheck) {
+          throw new Error("Typecheck failed, aborting deployment");
+        }
+      }
 
-  const taskFiles = await gatherTaskFiles(config);
-  const workerFacade = readFileSync(
-    new URL(importResolve("./workers/prod/worker-facade.js", import.meta.url)).href.replace(
-      "file://",
-      ""
-    ),
-    "utf-8"
-  );
+      const compileSpinner = spinner();
+      compileSpinner.start(`Building project in ${config.projectDir}`);
 
-  const workerSetupPath = new URL(
-    importResolve("./workers/prod/worker-setup.js", import.meta.url)
-  ).href.replace("file://", "");
+      const taskFiles = await gatherTaskFiles(config);
+      const workerFacade = readFileSync(
+        new URL(importResolve("./workers/prod/worker-facade.js", import.meta.url)).href.replace(
+          "file://",
+          ""
+        ),
+        "utf-8"
+      );
 
-  let workerContents = workerFacade
-    .replace("__TASKS__", createTaskFileImports(taskFiles))
-    .replace("__WORKER_SETUP__", `import { tracingSDK } from "${workerSetupPath}";`);
+      const workerSetupPath = new URL(
+        importResolve("./workers/prod/worker-setup.js", import.meta.url)
+      ).href.replace("file://", "");
 
-  if (configPath) {
-    logger.debug("Importing project config from", { configPath });
+      let workerContents = workerFacade
+        .replace("__TASKS__", createTaskFileImports(taskFiles))
+        .replace("__WORKER_SETUP__", `import { tracingSDK } from "${workerSetupPath}";`);
 
-    workerContents = workerContents.replace(
-      "__IMPORTED_PROJECT_CONFIG__",
-      `import importedConfig from "${configPath}";`
-    );
-  } else {
-    workerContents = workerContents.replace(
-      "__IMPORTED_PROJECT_CONFIG__",
-      `const importedConfig = undefined;`
-    );
-  }
+      if (configPath) {
+        logger.debug("Importing project config from", { configPath });
 
-  const result = await build({
-    stdin: {
-      contents: workerContents,
-      resolveDir: process.cwd(),
-      sourcefile: "__entryPoint.ts",
-    },
-    bundle: true,
-    metafile: true,
-    write: false,
-    minify: false,
-    sourcemap: "external", // does not set the //# sourceMappingURL= comment in the file, we handle it ourselves
-    packages: "external", // https://esbuild.github.io/api/#packages
-    logLevel: "error",
-    platform: "node",
-    format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
-    target: ["node18", "es2020"],
-    outdir: "out",
-    define: {
-      TRIGGER_API_URL: `"${config.triggerUrl}"`,
-      __PROJECT_CONFIG__: JSON.stringify(config),
-    },
+        workerContents = workerContents.replace(
+          "__IMPORTED_PROJECT_CONFIG__",
+          `import importedConfig from "${configPath}";`
+        );
+      } else {
+        workerContents = workerContents.replace(
+          "__IMPORTED_PROJECT_CONFIG__",
+          `const importedConfig = undefined;`
+        );
+      }
+
+      const result = await build({
+        stdin: {
+          contents: workerContents,
+          resolveDir: process.cwd(),
+          sourcefile: "__entryPoint.ts",
+        },
+        bundle: true,
+        metafile: true,
+        write: false,
+        minify: false,
+        sourcemap: "external", // does not set the //# sourceMappingURL= comment in the file, we handle it ourselves
+        packages: "external", // https://esbuild.github.io/api/#packages
+        logLevel: "error",
+        platform: "node",
+        format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
+        target: ["node18", "es2020"],
+        outdir: "out",
+        define: {
+          TRIGGER_API_URL: `"${config.triggerUrl}"`,
+          __PROJECT_CONFIG__: JSON.stringify(config),
+        },
+      });
+
+      if (result.errors.length > 0) {
+        compileSpinner.stop("Build failed, aborting deployment");
+
+        span.setAttributes({
+          "build.workerErrors": result.errors.map(
+            (error) => `Error: ${error.text} at ${error.location?.file}`
+          ),
+        });
+
+        throw new Error("Build failed, aborting deployment");
+      }
+
+      if (options.outputMetafile) {
+        await writeJSONFile(join(options.outputMetafile, "worker.json"), result.metafile);
+      }
+
+      const entryPointContents = readFileSync(
+        new URL(importResolve("./workers/prod/entry-point.js", import.meta.url)).href.replace(
+          "file://",
+          ""
+        ),
+        "utf-8"
+      );
+
+      const entryPointResult = await build({
+        stdin: {
+          contents: entryPointContents,
+          resolveDir: process.cwd(),
+          sourcefile: "index.ts",
+        },
+        bundle: true,
+        metafile: true,
+        write: false,
+        minify: false,
+        sourcemap: false,
+        packages: "external", // https://esbuild.github.io/api/#packages
+        logLevel: "error",
+        platform: "node",
+        format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
+        target: ["node18", "es2020"],
+        outdir: "out",
+        define: {
+          __PROJECT_CONFIG__: JSON.stringify(config),
+        },
+      });
+
+      if (entryPointResult.errors.length > 0) {
+        compileSpinner.stop("Build failed, aborting deployment");
+
+        span.setAttributes({
+          "build.entryPointErrors": entryPointResult.errors.map(
+            (error) => `Error: ${error.text} at ${error.location?.file}`
+          ),
+        });
+
+        throw new Error("Build failed, aborting deployment");
+      }
+
+      if (options.outputMetafile) {
+        await writeJSONFile(
+          join(options.outputMetafile, "entry-point.json"),
+          entryPointResult.metafile
+        );
+      }
+
+      // Create a tmp directory to store the build
+      const tempDir = await createTempDir();
+
+      logger.debug(`Writing compiled files to ${tempDir}`);
+
+      // Get the metaOutput for the result build
+      const metaOutput = result.metafile!.outputs[join("out", "stdin.js")];
+
+      invariant(metaOutput, "Meta output for the result build is missing");
+
+      // Get the metaOutput for the entryPoint build
+      const entryPointMetaOutput = entryPointResult.metafile!.outputs[join("out", "stdin.js")];
+
+      invariant(entryPointMetaOutput, "Meta output for the entryPoint build is missing");
+
+      // Get the outputFile and the sourceMapFile for the result build
+      const workerOutputFile = result.outputFiles.find(
+        (file) => file.path === join(config.projectDir, "out", "stdin.js")
+      );
+
+      invariant(workerOutputFile, "Output file for the result build is missing");
+
+      const workerSourcemapFile = result.outputFiles.find(
+        (file) => file.path === join(config.projectDir, "out", "stdin.js.map")
+      );
+
+      invariant(workerSourcemapFile, "Sourcemap file for the result build is missing");
+
+      // Get the outputFile for the entryPoint build
+
+      const entryPointOutputFile = entryPointResult.outputFiles.find(
+        (file) => file.path === join(config.projectDir, "out", "stdin.js")
+      );
+
+      invariant(entryPointOutputFile, "Output file for the entryPoint build is missing");
+
+      // Save the result outputFile to /tmp/dir/worker.js (and make sure to map the sourceMap to the correct location in the file)
+      await writeFile(
+        join(tempDir, "worker.js"),
+        `${workerOutputFile.text}\n//# sourceMappingURL=worker.js.map`
+      );
+      // Save the sourceMapFile to /tmp/dir/worker.js.map
+      await writeFile(join(tempDir, "worker.js.map"), workerSourcemapFile.text);
+      // Save the entryPoint outputFile to /tmp/dir/index.js
+      await writeFile(join(tempDir, "index.js"), entryPointOutputFile.text);
+
+      // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
+      const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
+      const projectPackageJson = await readJSONFile(join(config.projectDir, "package.json"));
+      const dependencies = gatherRequiredDependencies(allImports, projectPackageJson);
+
+      const packageJsonContents = {
+        name: "trigger-worker",
+        version: "0.0.0",
+        description: "",
+        dependencies,
+      };
+
+      await writeJSONFile(join(tempDir, "package.json"), packageJsonContents);
+
+      compileSpinner.stop("Project built successfully");
+
+      const resolvingDependenciesResult = await resolveDependencies(
+        tempDir,
+        packageJsonContents,
+        config,
+        options
+      );
+
+      if (!resolvingDependenciesResult) {
+        throw new Error("Failed to resolve dependencies");
+      }
+
+      // Write the Containerfile to /tmp/dir/Containerfile
+      const containerFilePath = new URL(
+        importResolve("./Containerfile.prod", import.meta.url)
+      ).href.replace("file://", "");
+      // Copy the Containerfile to /tmp/dir/Containerfile
+      await copyFile(containerFilePath, join(tempDir, "Containerfile"));
+
+      const contentHasher = createHash("sha256");
+      contentHasher.update(Buffer.from(entryPointOutputFile.text));
+      contentHasher.update(Buffer.from(workerOutputFile.text));
+      contentHasher.update(Buffer.from(JSON.stringify(dependencies)));
+
+      const contentHash = contentHasher.digest("hex");
+
+      const workerSetupEnvVars = await findAllEnvironmentVariableReferencesInFile(workerSetupPath);
+
+      const workerFacadeEnvVars = findAllEnvironmentVariableReferences(workerContents);
+
+      const envVars = findAllEnvironmentVariableReferences(workerOutputFile.text);
+
+      // Remove workerFacadeEnvVars and workerSetupEnvVars from envVars
+      const finalEnvVars = envVars.filter(
+        (envVar) => !workerFacadeEnvVars.includes(envVar) && !workerSetupEnvVars.includes(envVar)
+      );
+
+      span.setAttributes({
+        contentHash: contentHash,
+        envVars: finalEnvVars,
+      });
+
+      span.end();
+
+      return { path: tempDir, contentHash, envVars: finalEnvVars };
+    } catch (e) {
+      recordSpanException(span, e);
+
+      span.end();
+
+      throw e;
+    }
   });
-
-  if (result.errors.length > 0) {
-    compileSpinner.stop("Build failed, aborting deployment");
-    exit(1);
-  }
-
-  const entryPointContents = readFileSync(
-    new URL(importResolve("./workers/prod/entry-point.js", import.meta.url)).href.replace(
-      "file://",
-      ""
-    ),
-    "utf-8"
-  );
-
-  const entryPointResult = await build({
-    stdin: {
-      contents: entryPointContents,
-      resolveDir: process.cwd(),
-      sourcefile: "index.ts",
-    },
-    bundle: true,
-    metafile: true,
-    write: false,
-    minify: false,
-    sourcemap: false,
-    packages: "external", // https://esbuild.github.io/api/#packages
-    logLevel: "error",
-    platform: "node",
-    format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
-    target: ["node18", "es2020"],
-    outdir: "out",
-    define: {
-      __PROJECT_CONFIG__: JSON.stringify(config),
-    },
-  });
-
-  if (entryPointResult.errors.length > 0) {
-    compileSpinner.stop("Build failed, aborting deployment");
-    exit(1);
-  }
-
-  // Create a tmp directory to store the build
-  const tempDir = await createTempDir();
-
-  logger.debug(`Writing compiled files to ${tempDir}`);
-
-  // Get the metaOutput for the result build
-  const metaOutput = result.metafile!.outputs[join("out", "stdin.js")];
-
-  invariant(metaOutput, "Meta output for the result build is missing");
-
-  // Get the metaOutput for the entryPoint build
-  const entryPointMetaOutput = entryPointResult.metafile!.outputs[join("out", "stdin.js")];
-
-  invariant(entryPointMetaOutput, "Meta output for the entryPoint build is missing");
-
-  // Get the outputFile and the sourceMapFile for the result build
-  const workerOutputFile = result.outputFiles.find(
-    (file) => file.path === join(config.projectDir, "out", "stdin.js")
-  );
-
-  invariant(workerOutputFile, "Output file for the result build is missing");
-
-  const workerSourcemapFile = result.outputFiles.find(
-    (file) => file.path === join(config.projectDir, "out", "stdin.js.map")
-  );
-
-  invariant(workerSourcemapFile, "Sourcemap file for the result build is missing");
-
-  // Get the outputFile for the entryPoint build
-
-  const entryPointOutputFile = entryPointResult.outputFiles.find(
-    (file) => file.path === join(config.projectDir, "out", "stdin.js")
-  );
-
-  invariant(entryPointOutputFile, "Output file for the entryPoint build is missing");
-
-  // Save the result outputFile to /tmp/dir/worker.js (and make sure to map the sourceMap to the correct location in the file)
-  await writeFile(
-    join(tempDir, "worker.js"),
-    `${workerOutputFile.text}\n//# sourceMappingURL=worker.js.map`
-  );
-  // Save the sourceMapFile to /tmp/dir/worker.js.map
-  await writeFile(join(tempDir, "worker.js.map"), workerSourcemapFile.text);
-  // Save the entryPoint outputFile to /tmp/dir/index.js
-  await writeFile(join(tempDir, "index.js"), entryPointOutputFile.text);
-
-  // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
-  const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
-  const projectPackageJson = await readJSONFile(join(config.projectDir, "package.json"));
-  const dependencies = gatherRequiredDependencies(allImports, projectPackageJson);
-
-  const packageJsonContents = {
-    name: "trigger-worker",
-    version: "0.0.0",
-    description: "",
-    dependencies,
-  };
-
-  await writeJSONFile(join(tempDir, "package.json"), packageJsonContents);
-
-  compileSpinner.stop("Project built successfully");
-
-  // Run npm install --package-lock-only in /tmp/dir to produce a package-lock.json
-  const resolvingDepsSpinner = spinner();
-
-  resolvingDepsSpinner.start("Resolving dependencies");
-
-  await resolveDependencies(tempDir, packageJsonContents, config, options);
-
-  resolvingDepsSpinner.stop("Dependencies resolved");
-  // Write the Containerfile to /tmp/dir/Containerfile
-  const containerFilePath = new URL(
-    importResolve("./Containerfile.prod", import.meta.url)
-  ).href.replace("file://", "");
-  // Copy the Containerfile to /tmp/dir/Containerfile
-  await copyFile(containerFilePath, join(tempDir, "Containerfile"));
-
-  const contentHasher = createHash("sha256");
-  contentHasher.update(Buffer.from(entryPointOutputFile.text));
-  contentHasher.update(Buffer.from(workerOutputFile.text));
-  contentHasher.update(Buffer.from(JSON.stringify(dependencies)));
-
-  const contentHash = contentHasher.digest("hex");
-
-  const workerSetupEnvVars = await findAllEnvironmentVariableReferencesInFile(workerSetupPath);
-
-  const workerFacadeEnvVars = findAllEnvironmentVariableReferences(workerContents);
-
-  const envVars = findAllEnvironmentVariableReferences(workerOutputFile.text);
-
-  // Remove workerFacadeEnvVars and workerSetupEnvVars from envVars
-  const finalEnvVars = envVars.filter(
-    (envVar) => !workerFacadeEnvVars.includes(envVar) && !workerSetupEnvVars.includes(envVar)
-  );
-
-  return { path: tempDir, contentHash, envVars: finalEnvVars };
 }
 
 // Let's first create a digest from the package.json, and then use that digest to lookup a cached package-lock.json
@@ -807,81 +991,146 @@ async function resolveDependencies(
   config: ResolvedConfig,
   options: DeployCommandOptions
 ) {
-  const hasher = createHash("sha256");
-  hasher.update(JSON.stringify(packageJsonContents));
-  const digest = hasher.digest("hex").slice(0, 16);
+  return await tracer.startActiveSpan("resolveDependencies", async (span) => {
+    const resolvingDepsSpinner = spinner();
+    resolvingDepsSpinner.start("Resolving dependencies");
 
-  const cacheDir = join(config.projectDir, ".trigger", "cache");
-  const cachePath = join(cacheDir, `${digest}.json`);
+    const hasher = createHash("sha256");
+    hasher.update(JSON.stringify(packageJsonContents));
+    const digest = hasher.digest("hex").slice(0, 16);
 
-  try {
-    const cachedPackageLock = await readFile(cachePath, "utf-8");
+    const cacheDir = join(config.projectDir, ".trigger", "cache");
+    const cachePath = join(cacheDir, `${digest}.json`);
 
-    logger.debug(`Using cached package-lock.json for ${digest}`);
-
-    await writeFile(join(projectDir, "package-lock.json"), cachedPackageLock);
-
-    return;
-  } catch (e) {
-    // If the file doesn't exist, we'll continue to the next step
-    if (e instanceof Error && "code" in e && e.code !== "ENOENT") {
-      throw e;
-    }
-
-    logger.debug(`No cached package-lock.json found for ${digest}`);
-
-    await execa("npm", ["install", "--package-lock-only"], {
-      cwd: projectDir,
+    span.setAttributes({
+      "packageJson.digest": digest,
+      "cache.path": cachePath,
+      ...flattenAttributes(packageJsonContents, "packageJson.contents"),
     });
 
-    const packageLockContents = await readFile(join(projectDir, "package-lock.json"), "utf-8");
+    try {
+      const cachedPackageLock = await readFile(cachePath, "utf-8");
 
-    logger.debug(`Writing package-lock.json to cache for ${digest}`);
+      logger.debug(`Using cached package-lock.json for ${digest}`);
 
-    // Make sure the cache directory exists
-    await mkdir(cacheDir, { recursive: true });
+      await writeFile(join(projectDir, "package-lock.json"), cachedPackageLock);
 
-    // Save the package-lock.json to the cache
-    await writeFile(cachePath, packageLockContents);
+      span.setAttributes({
+        "cache.hit": true,
+      });
 
-    // Write the package-lock.json to the project directory
-    await writeFile(join(projectDir, "package-lock.json"), packageLockContents);
-  }
+      span.end();
+
+      resolvingDepsSpinner.stop("Dependencies resolved");
+
+      return true;
+    } catch (e) {
+      // If the file doesn't exist, we'll continue to the next step
+      if (e instanceof Error && "code" in e && e.code !== "ENOENT") {
+        span.recordException(e as Error);
+        span.end();
+
+        resolvingDepsSpinner.stop(`Failed to resolve dependencies: ${e.message}`);
+
+        return false;
+      }
+
+      span.setAttributes({
+        "cache.hit": false,
+      });
+
+      logger.debug(`No cached package-lock.json found for ${digest}`);
+
+      try {
+        await execa("npm", ["install", "--package-lock-only"], {
+          cwd: projectDir,
+          stdio: logger.loggerLevel === "debug" ? "inherit" : "pipe",
+        });
+
+        const packageLockContents = await readFile(join(projectDir, "package-lock.json"), "utf-8");
+
+        logger.debug(`Writing package-lock.json to cache for ${digest}`);
+
+        // Make sure the cache directory exists
+        await mkdir(cacheDir, { recursive: true });
+
+        // Save the package-lock.json to the cache
+        await writeFile(cachePath, packageLockContents);
+
+        // Write the package-lock.json to the project directory
+        await writeFile(join(projectDir, "package-lock.json"), packageLockContents);
+
+        span.end();
+
+        resolvingDepsSpinner.stop("Dependencies resolved");
+
+        return true;
+      } catch (installError) {
+        logger.debug(`Failed to resolve dependencies: ${JSON.stringify(installError)}`);
+
+        recordSpanException(span, installError);
+
+        span.end();
+
+        resolvingDepsSpinner.stop(
+          "Failed to resolve dependencies. Rerun with --log-level=debug for more information"
+        );
+
+        return false;
+      }
+    }
+  });
 }
 
 async function typecheckProject(config: ResolvedConfig, options: DeployCommandOptions) {
-  const typecheckSpinner = spinner();
-  typecheckSpinner.start("Typechecking project");
+  return await tracer.startActiveSpan("typecheckProject", async (span) => {
+    try {
+      const typecheckSpinner = spinner();
+      typecheckSpinner.start("Typechecking project");
 
-  const tscTypecheck = execa("npm", ["exec", "tsc", "--", "--noEmit"], {
-    cwd: config.projectDir,
-  });
+      const tscTypecheck = execa("npm", ["exec", "tsc", "--", "--noEmit"], {
+        cwd: config.projectDir,
+      });
 
-  const stdouts: string[] = [];
-  const stderrs: string[] = [];
+      const stdouts: string[] = [];
+      const stderrs: string[] = [];
 
-  tscTypecheck.stdout?.on("data", (chunk) => stdouts.push(chunk.toString()));
-  tscTypecheck.stderr?.on("data", (chunk) => stderrs.push(chunk.toString()));
+      tscTypecheck.stdout?.on("data", (chunk) => stdouts.push(chunk.toString()));
+      tscTypecheck.stderr?.on("data", (chunk) => stderrs.push(chunk.toString()));
 
-  try {
-    await new Promise((resolve, reject) => {
-      tscTypecheck.addListener("exit", (code) => (code === 0 ? resolve(code) : reject(code)));
-    });
-  } catch (error) {
-    typecheckSpinner.stop(
-      `Typechecking failed, check the logs below to view the issues. To skip typechecking, pass the --skip-typecheck flag`
-    );
+      try {
+        await new Promise((resolve, reject) => {
+          tscTypecheck.addListener("exit", (code) => (code === 0 ? resolve(code) : reject(code)));
+        });
+      } catch (error) {
+        typecheckSpinner.stop(
+          `Typechecking failed, check the logs below to view the issues. To skip typechecking, pass the --skip-typecheck flag`
+        );
 
-    logger.log("");
+        logger.log("");
 
-    for (const stdout of stdouts) {
-      logger.log(stdout);
+        for (const stdout of stdouts) {
+          logger.log(stdout);
+        }
+
+        span.recordException(new Error(stdouts.join("\n")));
+        span.end();
+
+        return false;
+      }
+
+      typecheckSpinner.stop(`Typechecking passed with 0 errors`);
+
+      span.end();
+      return true;
+    } catch (e) {
+      recordSpanException(span, e);
+
+      span.end();
+
+      return false;
     }
-
-    exit(1);
-  }
-
-  typecheckSpinner.stop(`Typechecking passed with 0 errors`);
+  });
 }
 
 // Returns the dependencies that are required by the output that are found in output and the CLI package dependencies

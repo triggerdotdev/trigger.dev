@@ -41,7 +41,7 @@ After installation, run Trigger.dev with \`npx trigger.dev\`.`
 export async function printStandloneInitialBanner(performUpdateCheck = true) {
   const packageVersion = getVersion();
 
-  let text = `\n${logo()} ${chalkGrey(`${packageVersion}`)}`;
+  let text = `\n${logo()} ${chalkGrey("(v3 Developer Preview)")}`;
 
   if (performUpdateCheck) {
     const maybeNewVersion = await updateCheck();
