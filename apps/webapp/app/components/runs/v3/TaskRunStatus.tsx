@@ -10,19 +10,22 @@ import {
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import { TaskRunStatus } from "@trigger.dev/database";
+import { SnowflakeIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
 export function TaskRunStatusCombo({
   status,
   className,
+  iconClassName,
 }: {
   status: TaskRunStatus;
   className?: string;
+  iconClassName?: string;
 }) {
   return (
     <span className={cn("flex items-center gap-1", className)}>
-      <TaskRunStatusIcon status={status} className="h-4 w-4" />
+      <TaskRunStatusIcon status={status} className={cn("h-4 w-4", iconClassName)} />
       <TaskRunStatusLabel status={status} />
     </span>
   );
@@ -45,7 +48,7 @@ export function TaskRunStatusIcon({
     case "EXECUTING":
       return <Spinner className={cn(runStatusClassNameColor(status), className)} />;
     case "WAITING_TO_RESUME":
-      return <ClockIcon className={cn(runStatusClassNameColor(status), className)} />;
+      return <SnowflakeIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "RETRYING_AFTER_FAILURE":
       return <ArrowPathIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PAUSED":
@@ -73,11 +76,10 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
     case "PENDING":
       return "text-charcoal-500";
     case "EXECUTING":
+    case "RETRYING_AFTER_FAILURE":
       return "text-pending";
     case "WAITING_TO_RESUME":
-      return "text-charcoal-500";
-    case "RETRYING_AFTER_FAILURE":
-      return "text-charcoal-500";
+      return "text-sky-300";
     case "PAUSED":
       return "text-amber-300";
     case "CANCELED":
@@ -100,13 +102,13 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
 export function runStatusTitle(status: TaskRunStatus): string {
   switch (status) {
     case "PENDING":
-      return "Enqueued";
+      return "Queued";
     case "EXECUTING":
       return "Executing";
     case "WAITING_TO_RESUME":
-      return "Waiting";
+      return "Frozen";
     case "RETRYING_AFTER_FAILURE":
-      return "Retrying";
+      return "Reattempting";
     case "PAUSED":
       return "Paused";
     case "CANCELED":

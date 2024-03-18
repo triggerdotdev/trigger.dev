@@ -19,7 +19,17 @@ import {
 import { TimeFrameFilter } from "../TimeFrameFilter";
 import { TaskRunStatusCombo } from "./TaskRunStatus";
 
-export const allTaskRunStatuses = Object.values(TaskRunStatus) as TaskRunStatusType[];
+export const allTaskRunStatuses = [
+  "PENDING",
+  "EXECUTING",
+  "RETRYING_AFTER_FAILURE",
+  "WAITING_TO_RESUME",
+  "COMPLETED_SUCCESSFULLY",
+  "CANCELED",
+  "COMPLETED_WITH_ERRORS",
+  "INTERRUPTED",
+  "SYSTEM_FAILURE",
+] as TaskRunStatusType[];
 export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);
 
 export const TaskRunListSearchFilters = z.object({
@@ -164,7 +174,11 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
             </SelectItem>
             {allTaskRunStatuses.map((status) => (
               <SelectItem key={status} value={status}>
-                <TaskRunStatusCombo status={status} className="text-xs" />
+                <TaskRunStatusCombo
+                  status={status}
+                  className="text-xs"
+                  iconClassName="animate-none"
+                />
               </SelectItem>
             ))}
           </SelectContent>
