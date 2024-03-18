@@ -202,6 +202,7 @@ export default function Page() {
                           cancelFetcher.state === "idle" ? StopCircleIcon : "spinner-white"
                         }
                         disabled={cancelFetcher.state !== "idle"}
+                        shortcut={{ modifiers: ["meta"], key: "enter" }}
                       >
                         {cancelFetcher.state === "idle" ? "Cancel" : "Canceling..."}
                       </Button>
