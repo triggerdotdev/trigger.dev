@@ -15,7 +15,7 @@ export class CreateCheckpointService {
 
   public async call(
     params: InferSocketMessageSchema<typeof CoordinatorToPlatformMessages, "CHECKPOINT_CREATED">
-  ): Promise<Checkpoint> {
+  ): Promise<Checkpoint | undefined> {
     logger.debug(`Creating checkpoint`, params);
 
     const attempt = await this.#prismaClient.taskRunAttempt.findUniqueOrThrow({
@@ -24,8 +24,24 @@ export class CreateCheckpointService {
       },
       include: {
         taskRun: true,
+        backgroundWorker: {
+          select: {
+            deployment: {
+              select: {
+                imageReference: true,
+              },
+            },
+          },
+        },
       },
     });
+
+    const imageRef = attempt.backgroundWorker.deployment?.imageReference;
+
+    if (!imageRef) {
+      logger.error("No image ref", { attemptId: params.attemptId });
+      return;
+    }
 
     const checkpoint = await this.#prismaClient.checkpoint.create({
       data: {
@@ -38,6 +54,7 @@ export class CreateCheckpointService {
         type: params.docker ? "DOCKER" : "KUBERNETES",
         reason: params.reason.type,
         metadata: JSON.stringify(params.reason),
+        imageRef,
       },
     });
 

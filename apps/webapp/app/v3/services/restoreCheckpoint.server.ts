@@ -31,6 +31,7 @@ export class RestoreCheckpointService {
       type: checkpoint.type,
       location: checkpoint.location,
       reason: checkpoint.reason ?? undefined,
+      imageRef: checkpoint.imageRef,
     });
 
     return checkpoint;

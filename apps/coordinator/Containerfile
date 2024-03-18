@@ -35,7 +35,6 @@ COPY --from=pruner --chown=node:node /app/out/full/ .
 COPY --from=dev-deps --chown=node:node /app/ .
 COPY --chown=node:node turbo.json turbo.json
 
-RUN pnpm run -r --filter '@trigger.dev/core*' build
 RUN pnpm run -r --filter coordinator build:bundle
 
 FROM alpine AS cri-tools

@@ -1956,6 +1956,7 @@ model Checkpoint {
 
   type     CheckpointType
   location String
+  imageRef String
   reason   String?
   metadata String?
 

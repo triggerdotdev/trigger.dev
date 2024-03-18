@@ -1,15 +1,17 @@
-import { randomUUID } from "node:crypto";
 import * as k8s from "@kubernetes/client-node";
-import { Machine } from "@trigger.dev/core/v3";
-import { ProviderShell, SimpleLogger, TaskOperations } from "@trigger.dev/core-apps";
+import {
+  ProviderShell,
+  SimpleLogger,
+  TaskOperations,
+  TaskOperationsCreateOptions,
+  TaskOperationsIndexOptions,
+  TaskOperationsRestoreOptions,
+} from "@trigger.dev/core-apps";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 const NODE_NAME = process.env.NODE_NAME || "some-node";
 const OTEL_EXPORTER_OTLP_ENDPOINT =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318";
-
-const REGISTRY_FQDN = process.env.REGISTRY_FQDN || "localhost:5000";
-const REPO_NAME = process.env.REPO_NAME || "test";
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 
@@ -36,11 +38,11 @@ class KubernetesTaskOperations implements TaskOperations {
     this.#k8sApi = this.#createK8sApi();
   }
 
-  async index(opts: { contentHash: string; imageTag: string; envId: string }) {
+  async index(opts: TaskOperationsIndexOptions) {
     await this.#createJob(
       {
         metadata: {
-          name: `task-index-${opts.contentHash}`,
+          name: this.#getIndexContainerName(opts.contentHash),
           namespace: this.#namespace.metadata.name,
         },
         spec: {
@@ -62,7 +64,7 @@ class KubernetesTaskOperations implements TaskOperations {
               containers: [
                 {
                   name: opts.contentHash,
-                  image: opts.imageTag,
+                  image: opts.imageRef,
                   ports: [
                     {
                       containerPort: 8000,
@@ -82,6 +84,14 @@ class KubernetesTaskOperations implements TaskOperations {
                     {
                       name: "INDEX_TASKS",
                       value: "true",
+                    },
+                    {
+                      name: "TRIGGER_SECRET_KEY",
+                      value: opts.apiKey,
+                    },
+                    {
+                      name: "TRIGGER_API_URL",
+                      value: opts.apiUrl,
                     },
                     {
                       name: "TRIGGER_ENV_ID",
@@ -130,11 +140,11 @@ class KubernetesTaskOperations implements TaskOperations {
     );
   }
 
-  async create(opts: { attemptId: string; image: string; machine: Machine; envId: string }) {
+  async create(opts: TaskOperationsCreateOptions) {
     await this.#createPod(
       {
         metadata: {
-          name: `task-run-${opts.attemptId}-${randomUUID().slice(0, 5)}`,
+          name: this.#getRunContainerName(opts.attemptId),
           namespace: this.#namespace.metadata.name,
           labels: {
             app: "task-run",
@@ -209,18 +219,11 @@ class KubernetesTaskOperations implements TaskOperations {
     );
   }
 
-  async restore(opts: {
-    attemptId: string;
-    runId: string;
-    image: string;
-    name: string;
-    checkpointId: string;
-    machine: Machine;
-  }) {
+  async restore(opts: TaskOperationsRestoreOptions) {
     await this.#createPod(
       {
         metadata: {
-          name: opts.name,
+          name: this.#getRunContainerName(opts.attemptId),
           namespace: this.#namespace.metadata.name,
         },
         spec: {
@@ -232,14 +235,14 @@ class KubernetesTaskOperations implements TaskOperations {
           initContainers: [
             {
               name: "pull-base-image",
-              image: this.#getRestoreImage(opts.runId, opts.checkpointId),
+              image: opts.imageRef,
               command: ["sleep", "0"],
             },
           ],
           containers: [
             {
               name: opts.runId,
-              image: this.#getImageFromRunId(opts.runId),
+              image: opts.checkpointRef,
               ports: [
                 {
                   containerPort: 8000,
@@ -256,36 +259,37 @@ class KubernetesTaskOperations implements TaskOperations {
                   },
                 },
               },
-              env: [
-                {
-                  name: "DEBUG",
-                  value: "true",
-                },
-                {
-                  name: "POD_NAME",
-                  valueFrom: {
-                    fieldRef: {
-                      fieldPath: "metadata.name",
-                    },
-                  },
-                },
-                {
-                  name: "COORDINATOR_HOST",
-                  valueFrom: {
-                    fieldRef: {
-                      fieldPath: "status.hostIP",
-                    },
-                  },
-                },
-                {
-                  name: "NODE_NAME",
-                  valueFrom: {
-                    fieldRef: {
-                      fieldPath: "spec.nodeName",
-                    },
-                  },
-                },
-              ],
+              // TODO: check we definitely don't need to specify these again
+              // env: [
+              //   {
+              //     name: "DEBUG",
+              //     value: "true",
+              //   },
+              //   {
+              //     name: "POD_NAME",
+              //     valueFrom: {
+              //       fieldRef: {
+              //         fieldPath: "metadata.name",
+              //       },
+              //     },
+              //   },
+              //   {
+              //     name: "COORDINATOR_HOST",
+              //     valueFrom: {
+              //       fieldRef: {
+              //         fieldPath: "status.hostIP",
+              //       },
+              //     },
+              //   },
+              //   {
+              //     name: "NODE_NAME",
+              //     valueFrom: {
+              //       fieldRef: {
+              //         fieldPath: "spec.nodeName",
+              //       },
+              //     },
+              //   },
+              // ],
             },
           ],
         },
@@ -305,12 +309,12 @@ class KubernetesTaskOperations implements TaskOperations {
     await this.#getPod(opts.runId, this.#namespace);
   }
 
-  #getImageFromRunId(runId: string) {
-    return `${REGISTRY_FQDN}/${REPO_NAME}:${runId}`;
+  #getIndexContainerName(contentHash: string) {
+    return `task-index-${contentHash}`;
   }
 
-  #getRestoreImage(runId: string, checkpointId: string) {
-    return `${REGISTRY_FQDN}/${REPO_NAME}:${checkpointId}`;
+  #getRunContainerName(attemptId: string) {
+    return `task-run-${attemptId}`;
   }
 
   #createK8sApi() {

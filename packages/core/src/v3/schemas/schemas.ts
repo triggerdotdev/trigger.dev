@@ -102,6 +102,7 @@ export const PlatformToProviderMessages = {
       type: z.enum(["DOCKER", "KUBERNETES"]),
       location: z.string(),
       reason: z.string().optional(),
+      imageRef: z.string(),
     }),
   },
   DELETE: {

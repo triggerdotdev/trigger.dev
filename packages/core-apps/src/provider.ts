@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import {
   ClientToSharedQueueMessages,
   clientWebsocketMessages,
+  Machine,
   PlatformToProviderMessages,
   ProviderToPlatformMessages,
   SharedQueueToClientMessages,
@@ -20,12 +21,37 @@ const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "provider-secret";
 
 const logger = new SimpleLogger(`[${MACHINE_NAME}]`);
 
+export interface TaskOperationsIndexOptions {
+  contentHash: string;
+  imageRef: string;
+  envId: string;
+  apiKey: string;
+  apiUrl: string;
+}
+
+export interface TaskOperationsCreateOptions {
+  runId: string;
+  attemptId: string;
+  image: string;
+  machine: Machine;
+  envId: string;
+}
+
+export interface TaskOperationsRestoreOptions {
+  runId: string;
+  attemptId: string;
+  imageRef: string;
+  checkpointRef: string;
+  machine: Machine;
+}
+
 export interface TaskOperations {
-  create: (...args: any[]) => Promise<any>;
-  restore: (...args: any[]) => Promise<any>;
+  index: (opts: TaskOperationsIndexOptions) => Promise<any>;
+  create: (opts: TaskOperationsCreateOptions) => Promise<any>;
+  restore: (opts: TaskOperationsRestoreOptions) => Promise<any>;
+
   delete: (...args: any[]) => Promise<any>;
   get: (...args: any[]) => Promise<any>;
-  index: (...args: any[]) => Promise<any>;
 }
 
 type ProviderShellOptions = {
@@ -135,7 +161,7 @@ export class ProviderShell implements Provider {
           try {
             await this.tasks.index({
               contentHash: message.contentHash,
-              imageTag: message.imageTag,
+              imageRef: message.imageTag,
               envId: message.envId,
               apiKey: message.apiKey,
               apiUrl: message.apiUrl,
@@ -180,8 +206,11 @@ export class ProviderShell implements Provider {
               runId: message.runId,
               attemptId: message.attemptId,
               checkpointRef: message.location,
-              // TODO
-              // machine: message.machine,
+              machine: {
+                cpu: "1",
+                memory: "100Mi",
+              },
+              imageRef: message.imageRef,
             });
           } catch (error) {
             logger.error("restore failed", error);
@@ -228,6 +257,7 @@ export class ProviderShell implements Provider {
               cpu: "1",
               memory: "100Mi",
             },
+            runId: "<missing>",
           });
 
           return reply.text(`sent restore request: ${body}`);

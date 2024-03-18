@@ -1,6 +1,12 @@
 import { $, type ExecaChildProcess, execa } from "execa";
-import { Machine } from "@trigger.dev/core/v3";
-import { SimpleLogger, TaskOperations, ProviderShell } from "@trigger.dev/core-apps";
+import {
+  SimpleLogger,
+  TaskOperations,
+  ProviderShell,
+  TaskOperationsRestoreOptions,
+  TaskOperationsCreateOptions,
+  TaskOperationsIndexOptions,
+} from "@trigger.dev/core-apps";
 
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
 const COORDINATOR_PORT = process.env.COORDINATOR_PORT || 8020;
@@ -72,18 +78,12 @@ class DockerTaskOperations implements TaskOperations {
     };
   }
 
-  async index(opts: {
-    contentHash: string;
-    imageTag: string;
-    envId: string;
-    apiKey: string;
-    apiUrl: string;
-  }) {
+  async index(opts: TaskOperationsIndexOptions) {
     await this.#initialize();
 
     const containerName = this.#getIndexContainerName(opts.contentHash);
 
-    logger.log(`Indexing task ${opts.imageTag}`, {
+    logger.log(`Indexing task ${opts.imageRef}`, {
       host: COORDINATOR_HOST,
       port: COORDINATOR_PORT,
     });
@@ -94,15 +94,16 @@ class DockerTaskOperations implements TaskOperations {
           "run",
           "--network=host",
           "--rm",
+          `--env=INDEX_TASKS=true`,
           `--env=TRIGGER_SECRET_KEY=${opts.apiKey}`,
           `--env=TRIGGER_API_URL=${opts.apiUrl}`,
+          `--env=TRIGGER_ENV_ID=${opts.envId}`,
+          `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}`,
+          `--env=POD_NAME=${containerName}`,
           `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
           `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
-          `--env=POD_NAME=${containerName}`,
-          `--env=TRIGGER_ENV_ID=${opts.envId}`,
-          `--env=INDEX_TASKS=true`,
           `--name=${containerName}`,
-          `${opts.imageTag}`,
+          `${opts.imageRef}`,
         ])
       );
     } catch (error: any) {
@@ -122,13 +123,7 @@ class DockerTaskOperations implements TaskOperations {
     }
   }
 
-  async create(opts: {
-    runId: string;
-    attemptId: string;
-    image: string;
-    machine: Machine;
-    envId: string;
-  }) {
+  async create(opts: TaskOperationsCreateOptions) {
     await this.#initialize();
 
     const containerName = this.#getRunContainerName(opts.attemptId);
@@ -139,13 +134,13 @@ class DockerTaskOperations implements TaskOperations {
           "run",
           "--network=host",
           "--detach",
-          `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}`,
-          `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
-          `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
-          `--env=POD_NAME=${containerName}`,
           `--env=TRIGGER_ENV_ID=${opts.envId}`,
           `--env=TRIGGER_RUN_ID=${opts.runId}`,
           `--env=TRIGGER_ATTEMPT_ID=${opts.attemptId}`,
+          `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}`,
+          `--env=POD_NAME=${containerName}`,
+          `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
+          `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
           `--name=${containerName}`,
           `${opts.image}`,
         ])
@@ -167,12 +162,7 @@ class DockerTaskOperations implements TaskOperations {
     }
   }
 
-  async restore(opts: {
-    runId: string;
-    attemptId: string;
-    checkpointRef: string;
-    machine: Machine;
-  }) {
+  async restore(opts: TaskOperationsRestoreOptions) {
     await this.#initialize();
 
     const containerName = this.#getRunContainerName(opts.attemptId);
