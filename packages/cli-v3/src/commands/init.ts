@@ -80,7 +80,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
   intro("Initializing project");
 
-  const authorization = await login({ embedded: true, defaultApiUrl: options.apiUrl });
+  const authorization = await login({ embedded: true, defaultApiUrl: options.apiUrl, profile: options.profile });
 
   if (!authorization.ok) {
     if (authorization.error === "fetch failed") {
@@ -96,6 +96,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
     "cli.userId": authorization.userId,
     "cli.email": authorization.email,
     "cli.config.apiUrl": authorization.auth.apiUrl,
+    "cli.config.profile": authorization.profile,
   });
 
   if (!options.overrideConfig) {

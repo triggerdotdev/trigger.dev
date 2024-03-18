@@ -10,12 +10,14 @@ export const CommonCommandOptions = z.object({
   apiUrl: z.string().optional(),
   logLevel: z.enum(["debug", "info", "log", "warn", "error", "none"]).default("log"),
   skipTelemetry: z.boolean().default(false),
+  profile: z.string().default("default"),
 });
 
 export type CommonCommandOptions = z.infer<typeof CommonCommandOptions>;
 
 export function commonOptions(command: Command) {
   return command
+    .option("--profile <profile>", "The login profile to use", "default")
     .option("-a, --api-url <value>", "Override the API URL", "https://api.trigger.dev")
     .option(
       "-l, --log-level <level>",
@@ -25,9 +27,9 @@ export function commonOptions(command: Command) {
     .option("--skip-telemetry", "Opt-out of sending telemetry");
 }
 
-export class SkipLoggingError extends Error {}
-export class SkipCommandError extends Error {}
-export class OutroCommandError extends SkipCommandError {}
+export class SkipLoggingError extends Error { }
+export class SkipCommandError extends Error { }
+export class OutroCommandError extends SkipCommandError { }
 
 export async function handleTelemetry(action: () => Promise<void>) {
   try {

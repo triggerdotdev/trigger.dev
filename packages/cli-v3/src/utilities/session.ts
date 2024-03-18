@@ -1,34 +1,35 @@
 import { recordSpanException } from "@trigger.dev/core/v3";
 import { CliApiClient } from "../apiClient.js";
-import { readAuthConfigFile } from "./configFiles.js";
+import { readAuthConfigProfile } from "./configFiles.js";
 import { getTracer } from "../telemetry/tracing.js";
 
 const tracer = getTracer();
 
 export type LoginResult =
   | {
-      ok: true;
-      userId: string;
-      email: string;
-      dashboardUrl: string;
-      auth: {
-        apiUrl: string;
-        accessToken: string;
-      };
-    }
-  | {
-      ok: false;
-      error: string;
-      auth?: {
-        apiUrl: string;
-        accessToken: string;
-      };
+    ok: true;
+    profile: string,
+    userId: string;
+    email: string;
+    dashboardUrl: string;
+    auth: {
+      apiUrl: string;
+      accessToken: string;
     };
+  }
+  | {
+    ok: false;
+    error: string;
+    auth?: {
+      apiUrl: string;
+      accessToken: string;
+    };
+  };
 
-export async function isLoggedIn(): Promise<LoginResult> {
+export async function isLoggedIn(profile: string = "default"): Promise<LoginResult> {
   return await tracer.startActiveSpan("isLoggedIn", async (span) => {
     try {
-      const config = readAuthConfigFile();
+      const config = readAuthConfigProfile(profile);
 
       if (!config?.accessToken || !config?.apiUrl) {
         span.recordException(new Error("You must login first"));
@@ -57,12 +58,14 @@ export async function isLoggedIn(): Promise<LoginResult> {
         "login.userId": userData.data.userId,
         "login.email": userData.data.email,
         "login.dashboardUrl": userData.data.dashboardUrl,
+        "login.profile": profile,
       });
 
       span.end();
 
       return {
         ok: true as const,
+        profile,
         userId: userData.data.userId,
         email: userData.data.email,
         dashboardUrl: userData.data.dashboardUrl,
