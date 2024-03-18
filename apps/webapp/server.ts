@@ -76,6 +76,11 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
         mode: MODE,
       })
     );
+  } else {
+    // we need to do the health check here at /healthcheck
+    app.get("/healthcheck", (req, res) => {
+      res.status(200).send("OK");
+    });
   }
 
 
