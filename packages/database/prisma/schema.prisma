@@ -1591,8 +1591,9 @@ model TaskRun {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  attempts TaskRunAttempt[] @relation("attempts")
-  tags     TaskTag[]
+  attempts    TaskRunAttempt[] @relation("attempts")
+  tags        TaskTag[]
+  checkpoints Checkpoint[]
 
   lockedAt   DateTime?
   lockedBy   BackgroundWorkerTask? @relation(fields: [lockedById], references: [id])
@@ -1952,6 +1953,10 @@ model Checkpoint {
   type     CheckpointType
   location String
   reason   String?
+  metadata String?
+
+  run   TaskRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runId String
 
   attempt   TaskRunAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   attemptId String

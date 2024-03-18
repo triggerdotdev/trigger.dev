@@ -104,8 +104,6 @@ export class TaskListPresenter {
           "lockedById" IN(${Prisma.join(tasks.map((t) => t.id))})
             ) t
             WHERE rn = 1;`;
-      console.log(tasks.map((t) => t.id));
-      console.log(latestRuns);
     }
 
     return tasks.map((task) => {

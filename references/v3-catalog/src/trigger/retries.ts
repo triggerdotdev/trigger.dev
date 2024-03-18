@@ -5,18 +5,18 @@ import { interceptor } from "./utils/interceptor";
 export const taskWithRetries = task({
   id: "task-with-retries",
   retry: {
-    maxAttempts: 4,
+    maxAttempts: 3,
   },
   run: async (payload: any, { ctx }) => {
     const result = await retry.onThrow(
       async ({ attempt }) => {
-        if (attempt < 3) throw new Error("failedd");
+        if (attempt < 4) throw new Error("failedd");
 
         return {
           foo: "bar",
         };
       },
-      { maxAttempts: 3, randomize: false }
+      { maxAttempts: 4, randomize: false, factor: 4 }
     );
 
     const user = await cache("user", async () => {
@@ -35,7 +35,7 @@ export const taskWithRetries = task({
 
     logger.info("Fetched user", { user });
 
-    if (ctx.attempt.number <= 3) {
+    if (ctx.attempt.number <= 2) {
       throw new Error(`Attempt ${ctx.attempt.number} failed: ${payload}`);
     }
 
@@ -58,7 +58,7 @@ export const taskWithFetchRetries = task({
   middleware: (payload: any, { next }) => {
     return interceptor.run(next);
   },
-  run: async ({ payload, ctx }) => {
+  run: async (payload: any, { ctx }) => {
     //if the fetch fails, it will retry
     const headersResponse = await retry.fetch("http://my.host/test-headers", {
       retry: {
