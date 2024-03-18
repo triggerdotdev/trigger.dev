@@ -81,6 +81,7 @@ const EnvironmentSchema = z.object({
   CONTAINER_REGISTRY_ORIGIN: z.string().optional(),
   CONTAINER_REGISTRY_USERNAME: z.string().optional(),
   CONTAINER_REGISTRY_PASSWORD: z.string().optional(),
+  DEPLOY_REGISTRY_HOST: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

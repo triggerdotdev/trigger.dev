@@ -228,7 +228,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const deploymentSpinner = spinner();
 
   deploymentSpinner.start(`Deploying version ${version}`);
-  const registryHost = new URL(deploymentEnv.data.apiUrl).host;
+  const registryHost = deploymentResponse.data.registryHost ?? options.registry ?? "registry.trigger.dev";
 
   const buildImage = async () => {
     if (options.selfHosted) {
