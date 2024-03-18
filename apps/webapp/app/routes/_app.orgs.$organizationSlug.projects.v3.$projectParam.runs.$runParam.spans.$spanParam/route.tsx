@@ -1,9 +1,7 @@
 import { QueueListIcon, StopCircleIcon } from "@heroicons/react/20/solid";
-import { DialogDescription } from "@radix-ui/react-dialog";
-import { Form, useFetcher, useParams } from "@remix-run/react";
+import { useFetcher, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
-import { ReactNode } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -13,6 +11,7 @@ import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTrigger,
