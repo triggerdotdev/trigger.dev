@@ -24,7 +24,7 @@ import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
-import { CommonCommandOptions } from "../cli/common.js";
+import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { readConfig } from "../utilities/configFiles";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { detectPackageNameFromImportPath } from "../utilities/installPackages";
@@ -47,46 +47,31 @@ const DevCommandOptions = CommonCommandOptions.extend({
 type DevCommandOptions = z.infer<typeof DevCommandOptions>;
 
 export function configureDevCommand(program: Command) {
-  program
-    .command("dev")
-    .description("Run your Trigger.dev tasks locally")
-    .argument("[path]", "The path to the project", ".")
-    .option(
-      "-l, --log-level <level>",
-      "The log level to use (debug, info, log, warn, error, none)",
-      "log"
-    )
-    .option(
-      "-c, --config <config file>",
-      "The name of the config file, found at [path]",
-      "trigger.config.mjs"
-    )
-    .option(
-      "-p, --project-ref <project ref>",
-      "The project ref. Required if there is no config file."
-    )
-    .option("--debugger", "Enable the debugger")
-    .option("--debug-otel", "Enable OpenTelemetry debugging")
-    .action(async (path, options) => {
-      try {
-        await devCommand(path, options);
-      } catch (e) {
-        //todo error reporting
-        throw e;
-      }
+  return commonOptions(
+    program
+      .command("dev")
+      .description("Run your Trigger.dev tasks locally")
+      .argument("[path]", "The path to the project", ".")
+      .option(
+        "-c, --config <config file>",
+        "The name of the config file, found at [path]",
+        "trigger.config.mjs"
+      )
+      .option(
+        "-p, --project-ref <project ref>",
+        "The project ref. Required if there is no config file."
+      )
+      .option("--debugger", "Enable the debugger")
+      .option("--debug-otel", "Enable OpenTelemetry debugging")
+  ).action(async (path, options) => {
+    wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
+      await devCommand(path, opts);
     });
+  });
 }
 
-export async function devCommand(dir: string, anyOptions: unknown) {
-  const options = DevCommandOptions.safeParse(anyOptions);
-
-  if (!options.success) {
-    console.log(fromZodError(options.error).toString());
-
-    process.exit(1);
-  }
-
-  const authorization = await isLoggedIn();
+export async function devCommand(dir: string, options: DevCommandOptions) {
+  const authorization = await isLoggedIn(options.profile);
 
   if (!authorization.ok) {
     if (authorization.error === "fetch failed") {
@@ -101,7 +86,7 @@ export async function devCommand(dir: string, anyOptions: unknown) {
   let watcher;
 
   try {
-    const devInstance = await startDev(dir, options.data, authorization.auth);
+    const devInstance = await startDev(dir, options, authorization.auth);
     watcher = devInstance.watcher;
     const { waitUntilExit } = devInstance.devReactElement;
     await waitUntilExit();

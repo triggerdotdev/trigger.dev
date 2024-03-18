@@ -134,7 +134,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   intro("Deploying project");
 
-  const authorization = await login({ embedded: true, defaultApiUrl: options.apiUrl });
+  const authorization = await login({ embedded: true, defaultApiUrl: options.apiUrl, profile: options.profile });
 
   if (!authorization.ok) {
     if (authorization.error === "fetch failed") {

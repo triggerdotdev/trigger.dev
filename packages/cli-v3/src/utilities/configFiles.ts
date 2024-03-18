@@ -24,11 +24,53 @@ export const UserAuthConfigSchema = z.object({
 
 export type UserAuthConfig = z.infer<typeof UserAuthConfigSchema>;
 
+const UserAuthConfigFileSchema = z.record(UserAuthConfigSchema);
+
+type UserAuthConfigFile = z.infer<typeof UserAuthConfigFileSchema>;
+
 function getAuthConfigFilePath() {
   return path.join(getGlobalConfigFolderPath(), "default.json");
 }
 
-export function writeAuthConfigFile(config: UserAuthConfig) {
+export function writeAuthConfigProfile(config: UserAuthConfig, profile: string = "default") {
+  const existingConfig = readAuthConfigFile() || {};
+
+  existingConfig[profile] = config;
+
+  writeAuthConfigFile(existingConfig);
+}
+
+export function readAuthConfigProfile(profile: string = "default"): UserAuthConfig | undefined {
+  try {
+    const authConfigFilePath = getAuthConfigFilePath();
+
+    logger.debug(`Reading auth config file`, { authConfigFilePath });
+
+    const json = readJSONFileSync(authConfigFilePath);
+    const parsed = UserAuthConfigFileSchema.parse(json);
+    return parsed[profile];
+  } catch (error) {
+    logger.debug(`Error reading auth config file: ${error}`);
+    return undefined;
+  }
+}
+
+function readAuthConfigFile(): UserAuthConfigFile | undefined {
+  try {
+    const authConfigFilePath = getAuthConfigFilePath();
+
+    logger.debug(`Reading auth config file`, { authConfigFilePath });
+
+    const json = readJSONFileSync(authConfigFilePath);
+    const parsed = UserAuthConfigFileSchema.parse(json);
+    return parsed;
+  } catch (error) {
+    logger.debug(`Error reading auth config file: ${error}`);
+    return undefined;
+  }
+}
+
+function writeAuthConfigFile(config: UserAuthConfigFile) {
   const authConfigFilePath = getAuthConfigFilePath();
   mkdirSync(path.dirname(authConfigFilePath), {
     recursive: true,
@@ -36,19 +78,6 @@ export function writeAuthConfigFile(config: UserAuthConfig) {
   writeFileSync(path.join(authConfigFilePath), JSON.stringify(config), {
     encoding: "utf-8",
   });
-}
-
-export function readAuthConfigFile(): UserAuthConfig | undefined {
-  try {
-    const authConfigFilePath = getAuthConfigFilePath();
-
-    const json = readJSONFileSync(authConfigFilePath);
-    const parsed = UserAuthConfigSchema.parse(json);
-    return parsed;
-  } catch (error) {
-    logger.debug(`Error reading auth config file: ${error}`);
-    return undefined;
-  }
 }
 
 async function getConfigPath(dir: string, fileName?: string): Promise<string | undefined> {
@@ -62,14 +91,14 @@ export type ReadConfigOptions = {
 
 export type ReadConfigResult =
   | {
-      status: "file";
-      config: ResolvedConfig;
-      path: string;
-    }
+    status: "file";
+    config: ResolvedConfig;
+    path: string;
+  }
   | {
-      status: "in-memory";
-      config: ResolvedConfig;
-    };
+    status: "in-memory";
+    config: ResolvedConfig;
+  };
 
 export async function readConfig(
   dir: string,
