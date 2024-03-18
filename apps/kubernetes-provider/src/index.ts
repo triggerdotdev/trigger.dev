@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import k8s, { BatchV1Api, CoreV1Api, V1Job, V1Pod } from "@kubernetes/client-node";
+import * as k8s from "@kubernetes/client-node";
 import { Machine } from "@trigger.dev/core/v3";
 import { ProviderShell, SimpleLogger, TaskOperations } from "@trigger.dev/core-apps";
 
@@ -22,8 +22,8 @@ type Namespace = {
 class KubernetesTaskOperations implements TaskOperations {
   #namespace: Namespace;
   #k8sApi: {
-    core: CoreV1Api;
-    batch: BatchV1Api;
+    core: k8s.CoreV1Api;
+    batch: k8s.BatchV1Api;
   };
 
   constructor(namespace = "default") {
@@ -330,7 +330,7 @@ class KubernetesTaskOperations implements TaskOperations {
     };
   }
 
-  async #createPod(pod: V1Pod, namespace: Namespace) {
+  async #createPod(pod: k8s.V1Pod, namespace: Namespace) {
     try {
       const res = await this.#k8sApi.core.createNamespacedPod(namespace.metadata.name, pod);
       logger.debug(res.body);
@@ -373,7 +373,7 @@ class KubernetesTaskOperations implements TaskOperations {
     }
   }
 
-  async #createJob(job: V1Job, namespace: Namespace) {
+  async #createJob(job: k8s.V1Job, namespace: Namespace) {
     try {
       const res = await this.#k8sApi.batch.createNamespacedJob(namespace.metadata.name, job);
       logger.debug(res.body);
