@@ -253,7 +253,7 @@ export const TableCellMenu = forwardRef<
 type TableBlankRowProps = {
   className?: string;
   colSpan: number;
-  children: ReactNode;
+  children?: ReactNode;
 };
 
 export const TableBlankRow = forwardRef<HTMLTableRowElement, TableBlankRowProps>(

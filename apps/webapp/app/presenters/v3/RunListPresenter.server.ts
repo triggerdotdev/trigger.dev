@@ -23,6 +23,7 @@ const DEFAULT_PAGE_SIZE = 20;
 
 export type RunList = Awaited<ReturnType<RunListPresenter["call"]>>;
 export type RunListItem = RunList["runs"][0];
+export type RunListAppliedFilters = RunList["filters"];
 
 export class RunListPresenter {
   #prismaClient: PrismaClient;
@@ -233,6 +234,14 @@ export class RunListPresenter {
         previous,
       },
       possibleTasks: possibleTasks.map((task) => task.slug),
+      filters: {
+        tasks: tasks || [],
+        versions: versions || [],
+        statuses: statuses || [],
+        environments: environments || [],
+        from,
+        to,
+      },
       hasFilters,
     };
   }
