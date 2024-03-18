@@ -95,13 +95,27 @@ export function unflattenAttributes(obj: Attributes): Record<string, unknown> {
   return result;
 }
 
-export function flattenAndNormalizeAttributes(
+export function primitiveValueOrflattenedAttributes(
   obj: Record<string, unknown> | Array<unknown> | string | boolean | number | undefined,
-  prefix: string
-): Attributes {
+  prefix: string | undefined
+): Attributes | string | number | boolean | undefined {
+  if (
+    typeof obj === "string" ||
+    typeof obj === "number" ||
+    typeof obj === "boolean" ||
+    obj === null ||
+    obj === undefined
+  ) {
+    return obj;
+  }
+
   const attributes = flattenAttributes(obj, prefix);
 
-  if (typeof attributes[prefix] !== "undefined" && attributes[prefix] !== null) {
+  if (
+    prefix !== undefined &&
+    typeof attributes[prefix] !== "undefined" &&
+    attributes[prefix] !== null
+  ) {
     return attributes[prefix] as unknown as Attributes;
   }
 

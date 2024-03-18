@@ -84,6 +84,7 @@ export default function Page() {
               <TaskRunsTable
                 total={list.runs.length}
                 hasFilters={list.hasFilters}
+                filters={list.filters}
                 runs={list.runs}
                 isLoading={isLoading}
                 currentUser={user}

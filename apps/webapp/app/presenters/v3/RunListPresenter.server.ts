@@ -2,6 +2,7 @@ import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/databa
 import { Direction } from "~/components/runs/RunStatuses";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
+import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 
 type RunListOptions = {
   userId: string;
@@ -23,6 +24,7 @@ const DEFAULT_PAGE_SIZE = 20;
 
 export type RunList = Awaited<ReturnType<RunListPresenter["call"]>>;
 export type RunListItem = RunList["runs"][0];
+export type RunListAppliedFilters = RunList["filters"];
 
 export class RunListPresenter {
   #prismaClient: PrismaClient;
@@ -220,6 +222,7 @@ export class RunListPresenter {
           version: run.version,
           taskIdentifier: run.taskIdentifier,
           attempts: Number(run.attempts),
+          isCancellable: CANCELLABLE_STATUSES.includes(run.status),
           environment: {
             type: environment.type,
             slug: environment.slug,
@@ -233,6 +236,14 @@ export class RunListPresenter {
         previous,
       },
       possibleTasks: possibleTasks.map((task) => task.slug),
+      filters: {
+        tasks: tasks || [],
+        versions: versions || [],
+        statuses: statuses || [],
+        environments: environments || [],
+        from,
+        to,
+      },
       hasFilters,
     };
   }
