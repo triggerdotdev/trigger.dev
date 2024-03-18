@@ -141,6 +141,7 @@ export const InitializeDeploymentResponseBody = z.object({
   version: z.string(),
   imageTag: z.string(),
   externalBuildData: ExternalBuildData.optional().nullable(),
+  registryHost: z.string().optional(),
 });
 
 export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;

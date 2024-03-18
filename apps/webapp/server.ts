@@ -68,16 +68,20 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     next();
   });
 
-  app.all(
-    "*",
-    createRequestHandler({
-      build,
-      mode: MODE,
-    })
-  );
+  if (process.env.DASHBOARD_AND_API_DISABLED !== "true") {
+    app.all(
+      "*",
+      createRequestHandler({
+        build,
+        mode: MODE,
+      })
+    );
+  }
+
+
 
   const server = app.listen(port, () => {
-    console.log(`✅ app ready: http://localhost:${port} [NODE_ENV: ${MODE}]`);
+    console.log(`✅ server ready: http://localhost:${port} [NODE_ENV: ${MODE}]`);
 
     if (MODE === "development") {
       broadcastDevReady(build)

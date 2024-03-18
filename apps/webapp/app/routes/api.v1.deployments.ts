@@ -1,5 +1,6 @@
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
+import { InitializeDeploymentRequestBody, InitializeDeploymentResponseBody } from "@trigger.dev/core/v3";
+import { env } from "~/env.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { InitializeDeploymentService } from "~/v3/services/initializeDeployment.server";
@@ -31,15 +32,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { deployment, imageTag } = await service.call(authenticatedEnv, body.data);
 
+  const responseBody: InitializeDeploymentResponseBody = {
+    id: deployment.friendlyId,
+    contentHash: deployment.contentHash,
+    shortCode: deployment.shortCode,
+    version: deployment.version,
+    externalBuildData: deployment.externalBuildData as InitializeDeploymentResponseBody["externalBuildData"],
+    imageTag,
+    registryHost: env.DEPLOY_REGISTRY_HOST
+  }
+
   return json(
-    {
-      id: deployment.friendlyId,
-      contentHash: deployment.contentHash,
-      shortCode: deployment.shortCode,
-      version: deployment.version,
-      externalBuildData: deployment.externalBuildData,
-      imageTag,
-    },
+    responseBody,
     { status: 200 }
   );
 }
