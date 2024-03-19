@@ -6,6 +6,7 @@ import {
   TaskExecutor,
   ZodIpcConnection,
   type TracingSDK,
+  preciseDateOriginNow,
 } from "@trigger.dev/core/v3";
 import "source-map-support/register.js";
 
@@ -37,13 +38,16 @@ import * as packageJson from "../../../package.json";
 
 import { TaskMetadataWithFunctions } from "../../types";
 
+const preciseDateOrigin = preciseDateOriginNow();
+
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
-const consoleInterceptor = new ConsoleInterceptor(otelLogger);
+const consoleInterceptor = new ConsoleInterceptor(otelLogger, preciseDateOrigin);
 
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
   tracer: tracer,
   level: "info",
+  preciseDateOrigin
 });
 
 logger.setGlobalTaskLogger(otelTaskLogger);

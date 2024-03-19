@@ -37,7 +37,7 @@ class OTLPExporter {
     private readonly _verbose: boolean
   ) { }
 
-  async exportTraces(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse> {
+  async exportTraces(request: ExportTraceServiceRequest, immediate: boolean = false): Promise<ExportTraceServiceResponse> {
     this.#logExportTracesVerbose(request);
 
     const events = this.#filterResourceSpans(request.resourceSpans).flatMap((resourceSpan) => {
@@ -46,12 +46,16 @@ class OTLPExporter {
 
     this.#logEventsVerbose(events);
 
-    this._eventRepository.insertMany(events);
+    if (immediate) {
+      await this._eventRepository.insertManyImmediate(events);
+    } else {
+      await this._eventRepository.insertMany(events);
+    }
 
     return ExportTraceServiceResponse.create();
   }
 
-  async exportLogs(request: ExportLogsServiceRequest): Promise<ExportLogsServiceResponse> {
+  async exportLogs(request: ExportLogsServiceRequest, immediate: boolean = false): Promise<ExportLogsServiceResponse> {
     this.#logExportLogsVerbose(request);
 
     const events = this.#filterResourceLogs(request.resourceLogs).flatMap((resourceLog) => {
@@ -60,7 +64,11 @@ class OTLPExporter {
 
     this.#logEventsVerbose(events);
 
-    this._eventRepository.insertMany(events);
+    if (immediate) {
+      await this._eventRepository.insertManyImmediate(events);
+    } else {
+      await this._eventRepository.insertMany(events);
+    }
 
     return ExportLogsServiceResponse.create();
   }
@@ -147,7 +155,7 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
         level: logLevelToEventLevel(log.severityNumber),
         isError: logLevel === "ERROR",
         status: logLevelToEventStatus(log.severityNumber),
-        startTime: convertUnixNanoToDate(log.timeUnixNano),
+        startTime: log.timeUnixNano,
         properties: {
           ...convertKeyValueItemsToMap(log.attributes ?? [], [
             SemanticInternalAttributes.SPAN_ID,
@@ -213,7 +221,7 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
         kind: spanKindToEventKind(span.kind),
         level: "TRACE",
         status: spanStatusToEventStatus(span.status),
-        startTime: convertUnixNanoToDate(span.startTimeUnixNano),
+        startTime: span.startTimeUnixNano,
         links: spanLinksToEventLinks(span.links ?? []),
         events: spanEventsToEventEvents(span.events ?? []),
         duration: span.endTimeUnixNano - span.startTimeUnixNano,

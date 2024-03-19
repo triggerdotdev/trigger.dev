@@ -1,7 +1,7 @@
 import { intro, log, outro, spinner } from "@clack/prompts";
 import { depot } from "@depot/cli";
 import { context, trace } from "@opentelemetry/api";
-import { ResolvedConfig, flattenAttributes, recordSpanException } from "@trigger.dev/core/v3";
+import { ResolvedConfig, detectDependencyVersion, flattenAttributes, recordSpanException } from "@trigger.dev/core/v3";
 import chalk from "chalk";
 import { Command, Option as CommandOption } from "commander";
 import { Metafile, build } from "esbuild";
@@ -1161,7 +1161,7 @@ function gatherRequiredDependencies(
 
     const internalDependencyVersion = (packageJson.dependencies as Record<string, string>)[
       packageName
-    ];
+    ] ?? detectDependencyVersion(packageName);
 
     if (internalDependencyVersion) {
       dependencies[packageName] = internalDependencyVersion;

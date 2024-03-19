@@ -1762,7 +1762,8 @@ model TaskEvent {
   links  Json?
   events Json?
 
-  startTime DateTime
+  /// This is the time the event started in nanoseconds since the epoch
+  startTime BigInt
 
   /// This is the duration of the event in nanoseconds
   duration BigInt @default(0)

@@ -12,6 +12,8 @@ export async function installPackages(
 ) {
   const cwd = options?.cwd ?? process.cwd();
 
+  logger.debug(`Installing packages at ${cwd}:`, { packages });
+
   // Make sure the cwd has a package.json file (if not create a barebones one)
   try {
     await readJSONFile(join(cwd, "package.json"));
@@ -49,7 +51,7 @@ export async function installPackages(
     return;
   }
 
-  logger.debug(`Installing packages at ${cwd}:`);
+  logger.debug(`Found installable packages`);
   logger.table(
     Object.entries(installablePackages).map(([name, version]) => ({ name, version })),
     "debug"
