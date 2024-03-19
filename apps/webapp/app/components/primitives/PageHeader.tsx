@@ -5,12 +5,14 @@ import { cn } from "~/utils/cn";
 import { plansPath } from "~/utils/pathBuilder";
 import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
-import { LinkButton } from "./Buttons";
+import { Button, LinkButton } from "./Buttons";
 import { Header2 } from "./Headers";
 import { LoadingBarDivider } from "./LoadingBarDivider";
 import { NamedIcon } from "./NamedIcon";
 import { Paragraph } from "./Paragraph";
 import { Tabs, TabsProps } from "./Tabs";
+import { useOptionalProject } from "~/hooks/useProject";
+import { Feedback } from "../Feedback";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -21,11 +23,30 @@ export function NavBar({ children }: WithChildren) {
   const showUpgradePrompt = useShowUpgradePrompt(organization);
   const navigation = useNavigation();
   const isLoading = navigation.state === "loading" || navigation.state === "submitting";
+  const project = useOptionalProject();
+  const isV3Project = project?.version === "V3";
 
   return (
     <div>
       <div className="grid h-10 w-full grid-rows-[auto_1px] bg-background-bright">
-        <div className="flex w-full items-center justify-between pl-3 pr-1">{children}</div>
+        <div className="flex w-full items-center justify-between pl-3 pr-1">
+          {children}
+          {isV3Project && (
+            <Feedback
+              defaultValue="developer preview"
+              button={
+                <Button
+                  variant="secondary/small"
+                  LeadingIcon="log"
+                  leadingIconClassName="text-primary"
+                  data-action="help & feedback"
+                >
+                  Developer preview feedback
+                </Button>
+              }
+            />
+          )}
+        </div>
         <LoadingBarDivider isLoading={isLoading} />
       </div>
       {showUpgradePrompt.shouldShow && organization && (

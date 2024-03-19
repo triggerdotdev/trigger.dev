@@ -8,6 +8,7 @@ import {
 } from "@heroicons/react/20/solid";
 import type { TaskRunAttemptStatus as TaskRunAttemptStatusType } from "@trigger.dev/database";
 import { TaskRunAttemptStatus } from "@trigger.dev/database";
+import { SnowflakeIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
@@ -63,7 +64,7 @@ export function TaskRunAttemptStatusIcon({
     case "EXECUTING":
       return <Spinner className={cn(runAttemptStatusClassNameColor(status), className)} />;
     case "PAUSED":
-      return <PauseCircleIcon className={cn(runAttemptStatusClassNameColor(status), className)} />;
+      return <SnowflakeIcon className={cn(runAttemptStatusClassNameColor(status), className)} />;
     case "FAILED":
       return <XCircleIcon className={cn(runAttemptStatusClassNameColor(status), className)} />;
     case "CANCELED":
@@ -90,7 +91,7 @@ export function runAttemptStatusClassNameColor(status: ExtendedTaskAttemptStatus
     case "EXECUTING":
       return "text-pending";
     case "PAUSED":
-      return "text-amber-300";
+      return "text-sky-300";
     case "FAILED":
       return "text-error";
     case "CANCELED":
@@ -117,7 +118,7 @@ export function runAttemptStatusTitle(status: ExtendedTaskAttemptStatus | null):
     case "EXECUTING":
       return "Executing";
     case "PAUSED":
-      return "Paused";
+      return "Frozen";
     case "FAILED":
       return "Failed";
     case "CANCELED":
