@@ -191,7 +191,7 @@ function PossibleIntegrationsList({
               />
             </button>
           }
-          defaultValue="integration"
+          defaultValue="feature"
         />
 
         <Header2 className="mb-2 mt-6">Create an Integration</Header2>
