@@ -581,11 +581,7 @@ function NodeStatusIcon({ node }: { node: RunEvent }) {
 }
 
 function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {
-  return (
-    <div
-      className={cn("h-8 w-2 border-r", isError ? "border-rose-500/10" : "border-charcoal-800")}
-    />
-  );
+  return <div className={cn("h-8 w-2 border-r border-grid-bright")} />;
 }
 
 function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {

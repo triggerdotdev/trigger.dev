@@ -14,11 +14,12 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { chalkLink } from "../utilities/colors.js";
-import { readAuthConfigFile, writeAuthConfigFile } from "../utilities/configFiles.js";
+import { readAuthConfigProfile, writeAuthConfigProfile } from "../utilities/configFiles.js";
 import { getVersion } from "../utilities/getVersion.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import { LoginResult } from "../utilities/session.js";
 import { whoAmI } from "./whoami.js";
+import { logger } from "../utilities/logger.js";
 
 export const LoginCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string(),
@@ -48,12 +49,13 @@ export async function loginCommand(options: unknown) {
 }
 
 async function _loginCommand(options: LoginCommandOptions) {
-  return login({ defaultApiUrl: options.apiUrl, embedded: false });
+  return login({ defaultApiUrl: options.apiUrl, embedded: false, profile: options.profile });
 }
 
 export type LoginOptions = {
   defaultApiUrl?: string;
   embedded?: boolean;
+  profile?: string;
 };
 
 export async function login(options?: LoginOptions): Promise<LoginResult> {
@@ -63,16 +65,17 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
 
       span.setAttributes({
         "cli.config.apiUrl": opts.defaultApiUrl,
+        "cli.options.profile": opts.profile,
       });
 
       if (!opts.embedded) {
         intro("Logging in to Trigger.dev");
       }
 
-      const authConfig = readAuthConfigFile();
+      const authConfig = readAuthConfigProfile(options?.profile);
 
       if (authConfig && authConfig.accessToken) {
-        const whoAmIResult = await whoAmI(undefined, opts.embedded);
+        const whoAmIResult = await whoAmI({ profile: options?.profile ?? "default", skipTelemetry: !span.isRecording(), logLevel: logger.loggerLevel }, opts.embedded);
 
         if (!whoAmIResult.success) {
           throw new Error(whoAmIResult.error);
@@ -106,6 +109,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
 
               return {
                 ok: true as const,
+                profile: options?.profile ?? "default",
                 userId: whoAmIResult.data.userId,
                 email: whoAmIResult.data.email,
                 dashboardUrl: whoAmIResult.data.dashboardUrl,
@@ -126,6 +130,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
 
             return {
               ok: true as const,
+              profile: options?.profile ?? "default",
               userId: whoAmIResult.data.userId,
               email: whoAmIResult.data.email,
               dashboardUrl: whoAmIResult.data.dashboardUrl,
@@ -170,9 +175,9 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
 
         getPersonalAccessTokenSpinner.stop(`Logged in with token ${indexResult.obfuscatedToken}`);
 
-        writeAuthConfigFile({ accessToken: indexResult.token, apiUrl: opts.defaultApiUrl });
+        writeAuthConfigProfile({ accessToken: indexResult.token, apiUrl: opts.defaultApiUrl }, options?.profile);
 
-        const whoAmIResult = await whoAmI(undefined, opts.embedded);
+        const whoAmIResult = await whoAmI({ profile: options?.profile ?? "default", skipTelemetry: !span.isRecording(), logLevel: logger.loggerLevel }, opts.embedded);
 
         if (!whoAmIResult.success) {
           throw new Error(whoAmIResult.error);
@@ -188,6 +193,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
 
         return {
           ok: true as const,
+          profile: options?.profile ?? "default",
           userId: whoAmIResult.data.userId,
           email: whoAmIResult.data.email,
           dashboardUrl: whoAmIResult.data.dashboardUrl,
