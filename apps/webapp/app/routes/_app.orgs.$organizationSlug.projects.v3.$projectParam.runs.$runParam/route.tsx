@@ -13,6 +13,7 @@ import {
   millisecondsToNanoseconds,
   nanosecondsToMilliseconds,
 } from "@trigger.dev/core/v3";
+import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
@@ -610,13 +611,17 @@ function TimelineView({
                         node={node}
                       />
                     ) : (
-                      <Timeline.Point
-                        ms={nanosecondsToMilliseconds(node.data.offset)}
-                        className={cn(
-                          "-ml-1 h-3 w-3 rounded-full border-2 border-background-bright",
-                          eventBackgroundClassName(node.data)
+                      <Timeline.Point ms={nanosecondsToMilliseconds(node.data.offset)}>
+                        {(ms) => (
+                          <motion.div
+                            className={cn(
+                              "-ml-1 h-3 w-3 rounded-full border-2 border-background-bright",
+                              eventBackgroundClassName(node.data)
+                            )}
+                            layoutId={node.id}
+                          />
                         )}
-                      />
+                      </Timeline.Point>
                     )}
                   </Timeline.Row>
                 );
@@ -748,11 +753,12 @@ function SpanWithDuration({
 }: Timeline.SpanProps & { node: RunEvent; showDuration: boolean }) {
   return (
     <Timeline.Span {...props}>
-      <div
+      <motion.div
         className={cn(
           "relative flex h-4 w-full min-w-[2px] items-center rounded-sm",
           eventBackgroundClassName(node.data)
         )}
+        layoutId={node.id}
       >
         {node.data.isPartial && (
           <div
@@ -773,7 +779,7 @@ function SpanWithDuration({
             })}
           </div>
         </div>
-      </div>
+      </motion.div>
     </Timeline.Span>
   );
 }
