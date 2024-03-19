@@ -1,6 +1,8 @@
 import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
+import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
+import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { Feedback } from "~/components/Feedback";
@@ -28,13 +30,14 @@ import {
 import { TaskFunctionName, TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
+import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
 import { TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3RunsPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, v3RunsPath, v3TasksStreamingPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -66,6 +69,19 @@ export default function Page() {
   const user = useUser();
   const { tasks } = useTypedLoaderData<typeof loader>();
   const hasTasks = tasks.length > 0;
+
+  //live reload the page when the tasks change
+  const revalidator = useRevalidator();
+  const streamedEvents = useEventSource(v3TasksStreamingPath(organization, project), {
+    event: "message",
+  });
+
+  useEffect(() => {
+    if (streamedEvents !== null) {
+      revalidator.revalidate();
+    }
+    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
+  }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <PageContainer>
@@ -179,8 +195,6 @@ function classForTaskRunStatus(status: TaskRunStatus) {
 }
 
 function CreateTaskInstructions() {
-  const devEnvironment = useDevEnvironment();
-  invariant(devEnvironment, "Dev environment must be defined");
   return (
     <MainCenteredContainer className="max-w-prose">
       <div className="mb-6 flex items-center justify-between border-b">

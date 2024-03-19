@@ -4,19 +4,20 @@ import { ZodPubSub, ZodSubscriber } from "../utils/zodPubSub.server";
 import { env } from "~/env.server";
 
 const messageCatalog = {
-  CANCEL_ATTEMPT: z.object({
-    version: z.literal("v1").default("v1"),
-    backgroundWorkerId: z.string(),
-    attemptId: z.string(),
-    taskRunId: z.string(),
+  WORKER_CREATED: z.object({
+    environmentId: z.string(),
+    environmentType: z.string(),
+    createdAt: z.coerce.date(),
+    taskCount: z.number(),
+    type: z.union([z.literal("local"), z.literal("deployed")]),
   }),
 };
 
-export type DevSubscriber = ZodSubscriber<typeof messageCatalog>;
+export type ProjectSubscriber = ZodSubscriber<typeof messageCatalog>;
 
-export const devPubSub = singleton("devPubSub", initializeDevPubSub);
+export const projectPubSub = singleton("projectPubSub", initializeProjectPubSub);
 
-function initializeDevPubSub() {
+function initializeProjectPubSub() {
   return new ZodPubSub({
     redis: {
       port: env.REDIS_PORT,
