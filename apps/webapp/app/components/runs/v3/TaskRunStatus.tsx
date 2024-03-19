@@ -14,6 +14,23 @@ import { SnowflakeIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
+const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
+  PENDING: "Task is waiting to be executed",
+  EXECUTING: "Task is currently being executed",
+  RETRYING_AFTER_FAILURE: "Task is being reattempted after a failure",
+  WAITING_TO_RESUME: "Task has been frozen and is waiting to be resumed",
+  COMPLETED_SUCCESSFULLY: "Task has been successfully completed",
+  CANCELED: "Task has been canceled",
+  COMPLETED_WITH_ERRORS: "Task has failed with errors",
+  INTERRUPTED: "Task has failed because it was interrupted",
+  SYSTEM_FAILURE: "Task has failed due to a system failure",
+  PAUSED: "Task has been paused by the user",
+};
+
+export function descriptionForTaskRunStatus(status: TaskRunStatus): string {
+  return taskRunStatusDescriptions[status];
+}
+
 export function TaskRunStatusCombo({
   status,
   className,
