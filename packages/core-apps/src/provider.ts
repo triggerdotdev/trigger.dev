@@ -100,13 +100,17 @@ export class ProviderShell implements Provider {
         },
         BACKGROUND_WORKER_MESSAGE: async (message) => {
           if (message.data.type === "SCHEDULE_ATTEMPT") {
-            this.tasks.create({
-              envId: message.data.envId,
-              runId: message.data.runId,
-              attemptId: message.data.id,
-              image: message.data.image,
-              machine: {},
-            });
+            try {
+              this.tasks.create({
+                envId: message.data.envId,
+                runId: message.data.runId,
+                attemptId: message.data.id,
+                image: message.data.image,
+                machine: {},
+              });
+            } catch (error) {
+              logger.error("create failed", error);
+            }
           }
         },
       },

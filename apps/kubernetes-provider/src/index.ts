@@ -338,12 +338,8 @@ class KubernetesTaskOperations implements TaskOperations {
     try {
       const res = await this.#k8sApi.core.createNamespacedPod(namespace.metadata.name, pod);
       logger.debug(res.body);
-    } catch (err: any) {
-      if ("body" in err) {
-        logger.error(err.body);
-      } else {
-        logger.error(err);
-      }
+    } catch (err: unknown) {
+      this.#handleK8sError(err);
     }
   }
 
@@ -354,12 +350,8 @@ class KubernetesTaskOperations implements TaskOperations {
         opts.namespace.metadata.name
       );
       logger.debug(res.body);
-    } catch (err: any) {
-      if ("body" in err) {
-        logger.error(err.body);
-      } else {
-        logger.error(err);
-      }
+    } catch (err: unknown) {
+      this.#handleK8sError(err);
     }
   }
 
@@ -368,12 +360,8 @@ class KubernetesTaskOperations implements TaskOperations {
       const res = await this.#k8sApi.core.readNamespacedPod(podName, namespace.metadata.name);
       logger.debug(res.body);
       return res.body;
-    } catch (err: any) {
-      if ("body" in err) {
-        logger.error(err.body);
-      } else {
-        logger.error(err);
-      }
+    } catch (err: unknown) {
+      this.#handleK8sError(err);
     }
   }
 
@@ -381,12 +369,34 @@ class KubernetesTaskOperations implements TaskOperations {
     try {
       const res = await this.#k8sApi.batch.createNamespacedJob(namespace.metadata.name, job);
       logger.debug(res.body);
-    } catch (err: any) {
-      if ("body" in err) {
-        logger.error(err.body);
+    } catch (err: unknown) {
+      this.#handleK8sError(err);
+    }
+  }
+
+  #throwUnlessNonNullableObject(
+    candidate: unknown
+  ): asserts candidate is NonNullable<Record<string, unknown>> {
+    if (typeof candidate !== "object" || candidate !== null) {
+      throw candidate;
+    }
+  }
+
+  #handleK8sError(err: unknown) {
+    this.#throwUnlessNonNullableObject(err);
+
+    if ("body" in err && err.body) {
+      logger.error(err.body);
+      this.#throwUnlessNonNullableObject(err.body);
+
+      if (typeof err.body.message === "string") {
+        throw new Error(err.body?.message);
       } else {
-        logger.error(err);
+        throw err.body;
       }
+    } else {
+      logger.error(err);
+      throw err;
     }
   }
 }
