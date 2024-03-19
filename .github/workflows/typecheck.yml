@@ -3,7 +3,7 @@ on:
   workflow_call:
 jobs:
   typecheck:
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: buildjet-16vcpu-ubuntu-2204
 
     steps:
       - name: ⬇️ Checkout repo
