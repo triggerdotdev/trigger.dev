@@ -6,6 +6,7 @@
     "emitDecoratorMetadata": true,
     "declaration": false,
     "declarationMap": false,
+    "resolveJsonModule": true,
     "types": ["jest"],
     "lib": ["DOM", "DOM.Iterable"],
     "paths": {
