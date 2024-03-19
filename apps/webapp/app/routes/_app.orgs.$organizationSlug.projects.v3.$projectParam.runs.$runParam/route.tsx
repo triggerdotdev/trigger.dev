@@ -4,8 +4,10 @@ import {
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
+import { Time } from "@internationalized/date";
 import { Link, Outlet, useNavigate, useParams, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Virtualizer } from "@tanstack/react-virtual";
 import { formatDurationMilliseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -26,7 +28,15 @@ import {
 import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
-import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
+import {
+  GetNodePropsFn,
+  GetTreePropsFn,
+  TreeView,
+  TreeViewProps,
+  UseTreeStateOutput,
+  useTree,
+} from "~/components/primitives/TreeView/TreeView";
+import { NodesState } from "~/components/primitives/TreeView/reducer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
@@ -55,7 +65,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, runParam } = v3RunParamsSchema.parse(params);
 
   const presenter = new RunPresenter();
-  const { run, events, parentRunFriendlyId, duration, rootSpanStatus } = await presenter.call({
+  const result = await presenter.call({
     userId,
     organizationSlug,
     projectSlug: projectParam,
@@ -66,12 +76,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const resizeSettings = await getResizableRunSettings(request);
 
   return typedjson({
-    run,
-    events,
-    parentRunFriendlyId,
+    ...result,
     resizeSettings,
-    duration,
-    rootSpanStatus,
   });
 };
 
@@ -82,8 +88,16 @@ function getSpanId(path: string): string | undefined {
 }
 
 export default function Page() {
-  const { run, events, parentRunFriendlyId, resizeSettings, duration, rootSpanStatus } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    run,
+    events,
+    parentRunFriendlyId,
+    resizeSettings,
+    duration,
+    rootSpanStatus,
+    isCompleted,
+    rootStartedAt,
+  } = useTypedLoaderData<typeof loader>();
   const navigate = useNavigate();
   const organization = useOrganization();
   const pathName = usePathName();
@@ -142,6 +156,8 @@ export default function Page() {
               }}
               totalDuration={duration}
               rootSpanStatus={rootSpanStatus}
+              isCompleted={isCompleted}
+              rootStartedAt={rootStartedAt}
             />
           ) : (
             <ResizablePanelGroup
@@ -169,6 +185,8 @@ export default function Page() {
                   }}
                   totalDuration={duration}
                   rootSpanStatus={rootSpanStatus}
+                  isCompleted={isCompleted}
+                  rootStartedAt={rootStartedAt}
                 />
               </ResizablePanel>
               <ResizableHandle withHandle />
@@ -183,7 +201,16 @@ export default function Page() {
   );
 }
 
-const tickCount = 5;
+type TasksTreeViewProps = {
+  events: RunEvent[];
+  selectedId?: string;
+  parentRunFriendlyId?: string;
+  onSelectedIdChanged: (selectedId: string | undefined) => void;
+  totalDuration: number;
+  rootSpanStatus: "executing" | "completed" | "failed";
+  isCompleted: boolean;
+  rootStartedAt: Date | undefined;
+};
 
 function TasksTreeView({
   events,
@@ -192,14 +219,9 @@ function TasksTreeView({
   onSelectedIdChanged,
   totalDuration,
   rootSpanStatus,
-}: {
-  events: RunEvent[];
-  selectedId?: string;
-  parentRunFriendlyId?: string;
-  onSelectedIdChanged: (selectedId: string | undefined) => void;
-  totalDuration: number;
-  rootSpanStatus: "executing" | "completed" | "failed";
-}) {
+  isCompleted,
+  rootStartedAt,
+}: TasksTreeViewProps) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
   const [showDurations, setShowDurations] = useState(false);
@@ -207,8 +229,6 @@ function TasksTreeView({
   const parentRef = useRef<HTMLDivElement>(null);
   const treeScrollRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
-  const timelineContainerRef = useRef<HTMLDivElement>(null);
-  const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
 
   const {
     nodes,
@@ -237,9 +257,6 @@ function TasksTreeView({
       return false;
     },
   });
-
-  const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
-  const maxTimelineWidth = minTimelineWidth * 10;
 
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr] overflow-hidden">
@@ -378,170 +395,224 @@ function TasksTreeView({
         <ResizableHandle withHandle />
         {/* Timeline */}
         <ResizablePanel order={2} minSize={20} defaultSize={50}>
-          <div
-            className="h-full overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-            ref={timelineContainerRef}
-          >
-            <Timeline.Root
-              durationMs={nanosecondsToMilliseconds(totalDuration * 1.05)}
-              scale={scale}
-              className="h-full overflow-hidden"
-              minWidth={minTimelineWidth}
-              maxWidth={maxTimelineWidth}
-            >
-              {/* Follows the cursor */}
-              <CurrentTimeIndicator totalDuration={totalDuration} />
-
-              <Timeline.Row className="grid h-full grid-rows-[2rem_1fr]">
-                {/* The duration labels */}
-                <Timeline.Row>
-                  <Timeline.Row className="h-6">
-                    <Timeline.EquallyDistribute count={tickCount}>
-                      {(ms: number, index: number) => {
-                        if (index === tickCount - 1) return null;
-                        return (
-                          <Timeline.Point
-                            ms={ms}
-                            className={"relative bottom-[2px] text-xxs text-text-dimmed"}
-                          >
-                            {(ms) => (
-                              <div
-                                className={cn(
-                                  "whitespace-nowrap",
-                                  index === 0
-                                    ? "ml-1"
-                                    : index === tickCount - 1
-                                    ? "-ml-1 -translate-x-full"
-                                    : "-translate-x-1/2"
-                                )}
-                              >
-                                {formatDurationMilliseconds(ms, {
-                                  style: "short",
-                                  maxDecimalPoints: ms < 1000 ? 0 : 1,
-                                })}
-                              </div>
-                            )}
-                          </Timeline.Point>
-                        );
-                      }}
-                    </Timeline.EquallyDistribute>
-                    {rootSpanStatus !== "executing" && (
-                      <Timeline.Point
-                        ms={nanosecondsToMilliseconds(totalDuration)}
-                        className={cn(
-                          "relative bottom-[2px] text-xxs",
-                          rootSpanStatus === "completed" ? "text-success" : "text-error"
-                        )}
-                      >
-                        {(ms) => (
-                          <div className={cn("-translate-x-1/2 whitespace-nowrap")}>
-                            {formatDurationMilliseconds(ms, {
-                              style: "short",
-                              maxDecimalPoints: ms < 1000 ? 0 : 1,
-                            })}
-                          </div>
-                        )}
-                      </Timeline.Point>
-                    )}
-                  </Timeline.Row>
-                  <Timeline.Row className="h-2">
-                    <Timeline.EquallyDistribute count={tickCount}>
-                      {(ms: number, index: number) => {
-                        if (index === 0 || index === tickCount - 1) return null;
-                        return (
-                          <Timeline.Point
-                            ms={ms}
-                            className={"h-full border-r border-grid-dimmed"}
-                          />
-                        );
-                      }}
-                    </Timeline.EquallyDistribute>
-                    <Timeline.Point
-                      ms={nanosecondsToMilliseconds(totalDuration)}
-                      className={cn(
-                        "h-full border-r",
-                        rootSpanStatus === "completed" ? "border-success/30" : "border-error/30"
-                      )}
-                    />
-                  </Timeline.Row>
-                </Timeline.Row>
-                {/* Main timeline body */}
-                <Timeline.Row className="overflow-hidden">
-                  {/* The vertical tick lines */}
-                  <Timeline.EquallyDistribute count={tickCount}>
-                    {(ms: number, index: number) => {
-                      if (index === 0) return null;
-                      return (
-                        <Timeline.Point ms={ms} className={"h-full border-r border-grid-dimmed"} />
-                      );
-                    }}
-                  </Timeline.EquallyDistribute>
-                  {/* The completed line  */}
-                  {rootSpanStatus !== "executing" && (
-                    <Timeline.Point
-                      ms={nanosecondsToMilliseconds(totalDuration)}
-                      className={cn(
-                        "h-full border-r",
-                        rootSpanStatus === "completed" ? "border-success/30" : "border-error/30"
-                      )}
-                    />
-                  )}
-                  <TreeView
-                    parentRef={parentRef}
-                    scrollRef={timelineScrollRef}
-                    virtualizer={virtualizer}
-                    tree={events}
-                    nodes={nodes}
-                    getNodeProps={getNodeProps}
-                    getTreeProps={getTreeProps}
-                    parentClassName="h-full scrollbar-hide"
-                    renderNode={({ node, state, index, virtualizer, virtualItem }) => {
-                      return (
-                        <Timeline.Row
-                          key={index}
-                          className={cn(
-                            "group flex h-8 items-center",
-                            state.selected
-                              ? "bg-grid-dimmed hover:bg-grid-bright"
-                              : "bg-transparent hover:bg-grid-dimmed"
-                          )}
-                          // onMouseOver={() => console.log(`hover ${index}`)}
-                          onClick={(e) => {
-                            toggleNodeSelection(node.id);
-                          }}
-                        >
-                          {node.data.level === "TRACE" ? (
-                            <SpanWithDuration
-                              showDuration={state.selected ? true : showDurations}
-                              startMs={nanosecondsToMilliseconds(node.data.offset)}
-                              durationMs={nanosecondsToMilliseconds(node.data.duration)}
-                              node={node}
-                            />
-                          ) : (
-                            <Timeline.Point
-                              ms={nanosecondsToMilliseconds(node.data.offset)}
-                              className={cn(
-                                "-ml-1 h-3 w-3 rounded-full border-2 border-background-bright",
-                                eventBackgroundClassName(node.data)
-                              )}
-                            />
-                          )}
-                        </Timeline.Row>
-                      );
-                    }}
-                    onScroll={(scrollTop) => {
-                      //sync the scroll to the tree
-                      if (treeScrollRef.current && treeScrollRef.current.scrollTop !== scrollTop) {
-                        treeScrollRef.current.scrollTop = scrollTop;
-                      }
-                    }}
-                  />
-                </Timeline.Row>
-              </Timeline.Row>
-            </Timeline.Root>
-          </div>
+          <TimelineView
+            totalDuration={totalDuration}
+            scale={scale}
+            events={events}
+            rootSpanStatus={rootSpanStatus}
+            isCompleted={isCompleted}
+            rootStartedAt={rootStartedAt}
+            parentRef={parentRef}
+            timelineScrollRef={timelineScrollRef}
+            nodes={nodes}
+            getNodeProps={getNodeProps}
+            getTreeProps={getTreeProps}
+            showDurations={showDurations}
+            treeScrollRef={treeScrollRef}
+            virtualizer={virtualizer}
+            toggleNodeSelection={toggleNodeSelection}
+          />
         </ResizablePanel>
       </ResizablePanelGroup>
+    </div>
+  );
+}
+
+type TimelineViewProps = Pick<
+  TasksTreeViewProps,
+  "totalDuration" | "rootSpanStatus" | "events" | "isCompleted" | "rootStartedAt"
+> & {
+  scale: number;
+  parentRef: React.RefObject<HTMLDivElement>;
+  timelineScrollRef: React.RefObject<HTMLDivElement>;
+  virtualizer: Virtualizer<HTMLElement, Element>;
+  nodes: NodesState;
+  getNodeProps: UseTreeStateOutput["getNodeProps"];
+  getTreeProps: UseTreeStateOutput["getTreeProps"];
+  toggleNodeSelection: UseTreeStateOutput["toggleNodeSelection"];
+  showDurations: boolean;
+  treeScrollRef: React.RefObject<HTMLDivElement>;
+};
+
+const tickCount = 5;
+
+function TimelineView({
+  totalDuration,
+  scale,
+  rootSpanStatus,
+  parentRef,
+  timelineScrollRef,
+  virtualizer,
+  events,
+  nodes,
+  getNodeProps,
+  getTreeProps,
+  toggleNodeSelection,
+  showDurations,
+  treeScrollRef,
+}: TimelineViewProps) {
+  const timelineContainerRef = useRef<HTMLDivElement>(null);
+  const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
+  const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
+  const maxTimelineWidth = minTimelineWidth * 10;
+
+  return (
+    <div
+      className="h-full overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+      ref={timelineContainerRef}
+    >
+      <Timeline.Root
+        durationMs={nanosecondsToMilliseconds(totalDuration * 1.05)}
+        scale={scale}
+        className="h-full overflow-hidden"
+        minWidth={minTimelineWidth}
+        maxWidth={maxTimelineWidth}
+      >
+        {/* Follows the cursor */}
+        <CurrentTimeIndicator totalDuration={totalDuration} />
+
+        <Timeline.Row className="grid h-full grid-rows-[2rem_1fr]">
+          {/* The duration labels */}
+          <Timeline.Row>
+            <Timeline.Row className="h-6">
+              <Timeline.EquallyDistribute count={tickCount}>
+                {(ms: number, index: number) => {
+                  if (index === tickCount - 1) return null;
+                  return (
+                    <Timeline.Point
+                      ms={ms}
+                      className={"relative bottom-[2px] text-xxs text-text-dimmed"}
+                    >
+                      {(ms) => (
+                        <div
+                          className={cn(
+                            "whitespace-nowrap",
+                            index === 0
+                              ? "ml-1"
+                              : index === tickCount - 1
+                              ? "-ml-1 -translate-x-full"
+                              : "-translate-x-1/2"
+                          )}
+                        >
+                          {formatDurationMilliseconds(ms, {
+                            style: "short",
+                            maxDecimalPoints: ms < 1000 ? 0 : 1,
+                          })}
+                        </div>
+                      )}
+                    </Timeline.Point>
+                  );
+                }}
+              </Timeline.EquallyDistribute>
+              {rootSpanStatus !== "executing" && (
+                <Timeline.Point
+                  ms={nanosecondsToMilliseconds(totalDuration)}
+                  className={cn(
+                    "relative bottom-[2px] text-xxs",
+                    rootSpanStatus === "completed" ? "text-success" : "text-error"
+                  )}
+                >
+                  {(ms) => (
+                    <div className={cn("-translate-x-1/2 whitespace-nowrap")}>
+                      {formatDurationMilliseconds(ms, {
+                        style: "short",
+                        maxDecimalPoints: ms < 1000 ? 0 : 1,
+                      })}
+                    </div>
+                  )}
+                </Timeline.Point>
+              )}
+            </Timeline.Row>
+            <Timeline.Row className="h-2">
+              <Timeline.EquallyDistribute count={tickCount}>
+                {(ms: number, index: number) => {
+                  if (index === 0 || index === tickCount - 1) return null;
+                  return (
+                    <Timeline.Point ms={ms} className={"h-full border-r border-grid-dimmed"} />
+                  );
+                }}
+              </Timeline.EquallyDistribute>
+              <Timeline.Point
+                ms={nanosecondsToMilliseconds(totalDuration)}
+                className={cn(
+                  "h-full border-r",
+                  rootSpanStatus === "completed" ? "border-success/30" : "border-error/30"
+                )}
+              />
+            </Timeline.Row>
+          </Timeline.Row>
+          {/* Main timeline body */}
+          <Timeline.Row className="overflow-hidden">
+            {/* The vertical tick lines */}
+            <Timeline.EquallyDistribute count={tickCount}>
+              {(ms: number, index: number) => {
+                if (index === 0) return null;
+                return <Timeline.Point ms={ms} className={"h-full border-r border-grid-dimmed"} />;
+              }}
+            </Timeline.EquallyDistribute>
+            {/* The completed line  */}
+            {rootSpanStatus !== "executing" && (
+              <Timeline.Point
+                ms={nanosecondsToMilliseconds(totalDuration)}
+                className={cn(
+                  "h-full border-r",
+                  rootSpanStatus === "completed" ? "border-success/30" : "border-error/30"
+                )}
+              />
+            )}
+            <TreeView
+              parentRef={parentRef}
+              scrollRef={timelineScrollRef}
+              virtualizer={virtualizer}
+              tree={events}
+              nodes={nodes}
+              getNodeProps={getNodeProps}
+              getTreeProps={getTreeProps}
+              parentClassName="h-full scrollbar-hide"
+              renderNode={({ node, state, index, virtualizer, virtualItem }) => {
+                return (
+                  <Timeline.Row
+                    key={index}
+                    className={cn(
+                      "group flex h-8 items-center",
+                      state.selected
+                        ? "bg-grid-dimmed hover:bg-grid-bright"
+                        : "bg-transparent hover:bg-grid-dimmed"
+                    )}
+                    // onMouseOver={() => console.log(`hover ${index}`)}
+                    onClick={(e) => {
+                      toggleNodeSelection(node.id);
+                    }}
+                  >
+                    {node.data.level === "TRACE" ? (
+                      <SpanWithDuration
+                        showDuration={state.selected ? true : showDurations}
+                        startMs={nanosecondsToMilliseconds(node.data.offset)}
+                        durationMs={nanosecondsToMilliseconds(node.data.duration)}
+                        node={node}
+                      />
+                    ) : (
+                      <Timeline.Point
+                        ms={nanosecondsToMilliseconds(node.data.offset)}
+                        className={cn(
+                          "-ml-1 h-3 w-3 rounded-full border-2 border-background-bright",
+                          eventBackgroundClassName(node.data)
+                        )}
+                      />
+                    )}
+                  </Timeline.Row>
+                );
+              }}
+              onScroll={(scrollTop) => {
+                //sync the scroll to the tree
+                if (treeScrollRef.current && treeScrollRef.current.scrollTop !== scrollTop) {
+                  treeScrollRef.current.scrollTop = scrollTop;
+                }
+              }}
+            />
+          </Timeline.Row>
+        </Timeline.Row>
+      </Timeline.Root>
     </div>
   );
 }
