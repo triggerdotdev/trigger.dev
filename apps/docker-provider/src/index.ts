@@ -81,7 +81,7 @@ class DockerTaskOperations implements TaskOperations {
   async index(opts: TaskOperationsIndexOptions) {
     await this.#initialize();
 
-    const containerName = this.#getIndexContainerName(opts.contentHash);
+    const containerName = this.#getIndexContainerName(opts.shortCode);
 
     logger.log(`Indexing task ${opts.imageRef}`, {
       host: COORDINATOR_HOST,
@@ -200,12 +200,12 @@ class DockerTaskOperations implements TaskOperations {
     logger.log("noop: get");
   }
 
-  #getIndexContainerName(contentHash: string) {
-    return `task-index-${contentHash}`;
+  #getIndexContainerName(suffix: string) {
+    return `task-index-${suffix}`;
   }
 
-  #getRunContainerName(attemptId: string) {
-    return `task-run-${attemptId}`;
+  #getRunContainerName(suffix: string) {
+    return `task-run-${suffix}`;
   }
 }
 

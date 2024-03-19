@@ -42,7 +42,7 @@ class KubernetesTaskOperations implements TaskOperations {
     await this.#createJob(
       {
         metadata: {
-          name: this.#getIndexContainerName(opts.contentHash),
+          name: this.#getIndexContainerName(opts.shortCode),
           namespace: this.#namespace.metadata.name,
         },
         spec: {
@@ -63,7 +63,7 @@ class KubernetesTaskOperations implements TaskOperations {
               ],
               containers: [
                 {
-                  name: opts.contentHash,
+                  name: this.#getIndexContainerName(opts.shortCode),
                   image: opts.imageRef,
                   ports: [
                     {
@@ -159,7 +159,7 @@ class KubernetesTaskOperations implements TaskOperations {
           ],
           containers: [
             {
-              name: opts.attemptId,
+              name: this.#getRunContainerName(opts.attemptId),
               image: opts.image,
               ports: [
                 {
@@ -309,12 +309,12 @@ class KubernetesTaskOperations implements TaskOperations {
     await this.#getPod(opts.runId, this.#namespace);
   }
 
-  #getIndexContainerName(contentHash: string) {
-    return `task-index-${contentHash}`;
+  #getIndexContainerName(suffix: string) {
+    return `task-index-${suffix}`;
   }
 
-  #getRunContainerName(attemptId: string) {
-    return `task-run-${attemptId}`;
+  #getRunContainerName(suffix: string) {
+    return `task-run-${suffix}`;
   }
 
   #createK8sApi() {

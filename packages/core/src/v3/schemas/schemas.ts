@@ -67,7 +67,7 @@ export const PlatformToProviderMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       imageTag: z.string(),
-      contentHash: z.string(),
+      shortCode: z.string(),
       envId: z.string(),
       apiKey: z.string(),
       apiUrl: z.string(),

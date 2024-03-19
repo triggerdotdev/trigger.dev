@@ -22,7 +22,7 @@ const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "provider-secret";
 const logger = new SimpleLogger(`[${MACHINE_NAME}]`);
 
 export interface TaskOperationsIndexOptions {
-  contentHash: string;
+  shortCode: string;
   imageRef: string;
   envId: string;
   apiKey: string;
@@ -164,7 +164,7 @@ export class ProviderShell implements Provider {
         INDEX: async (message) => {
           try {
             await this.tasks.index({
-              contentHash: message.contentHash,
+              shortCode: message.shortCode,
               imageRef: message.imageTag,
               envId: message.envId,
               apiKey: message.apiKey,
