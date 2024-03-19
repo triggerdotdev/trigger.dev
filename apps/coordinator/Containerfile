@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:labs
 
-FROM node:18.18.2-bullseye-slim@sha256:21479df46c3173ee0cefc6b264928e10239152c4f74df872ca9369be01a245b7 AS node-18
+FROM node:18-bullseye-slim@sha256:a4edd54dcfdcacc8a4100fee71498e8671d99556a1acf5614539214a70092426 AS node-18
 
 WORKDIR /app
 
@@ -56,7 +56,5 @@ COPY --from=cri-tools --chown=node:node /cri-tools/crictl /usr/local/bin
 COPY --from=builder --chown=node:node /app/apps/coordinator/dist/index.mjs ./index.mjs
 
 EXPOSE 8000
-
-USER node
 
 CMD [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "./index.mjs" ]
