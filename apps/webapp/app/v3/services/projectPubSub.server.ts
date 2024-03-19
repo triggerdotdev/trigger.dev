@@ -9,6 +9,7 @@ const messageCatalog = {
     environmentType: z.string(),
     createdAt: z.coerce.date(),
     taskCount: z.number(),
+    type: z.union([z.literal("local"), z.literal("deployed")]),
   }),
 };
 

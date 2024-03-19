@@ -74,6 +74,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         environmentType: environment.type,
         createdAt: backgroundWorker.createdAt,
         taskCount: body.metadata.tasks.length,
+        type: "local",
       });
 
       return backgroundWorker;
