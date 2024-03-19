@@ -33,9 +33,15 @@ export function NavBar({ children }: WithChildren) {
           {children}
           {isV3Project && (
             <Feedback
+              defaultValue="developer preview"
               button={
-                <Button variant="tertiary/small" LeadingIcon="log" data-action="help & feedback">
-                  Help & Feedback
+                <Button
+                  variant="secondary/small"
+                  LeadingIcon="log"
+                  leadingIconClassName="text-primary"
+                  data-action="help & feedback"
+                >
+                  Developer preview feedback
                 </Button>
               }
             />
