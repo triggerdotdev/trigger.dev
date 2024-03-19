@@ -377,7 +377,7 @@ class KubernetesTaskOperations implements TaskOperations {
   #throwUnlessNonNullableObject(
     candidate: unknown
   ): asserts candidate is NonNullable<Record<string, unknown>> {
-    if (typeof candidate !== "object" || candidate !== null) {
+    if (typeof candidate !== "object" || candidate === null) {
       throw candidate;
     }
   }
