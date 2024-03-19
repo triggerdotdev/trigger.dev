@@ -35,6 +35,7 @@ export interface TaskOperationsCreateOptions {
   image: string;
   machine: Machine;
   envId: string;
+  version: string;
 }
 
 export interface TaskOperationsRestoreOptions {
@@ -107,6 +108,7 @@ export class ProviderShell implements Provider {
                 attemptId: message.data.id,
                 image: message.data.image,
                 machine: {},
+                version: message.version,
               });
             } catch (error) {
               logger.error("create failed", error);
@@ -262,6 +264,7 @@ export class ProviderShell implements Provider {
               memory: "100Mi",
             },
             runId: "<missing>",
+            version: "<missing>",
           });
 
           return reply.text(`sent restore request: ${body}`);

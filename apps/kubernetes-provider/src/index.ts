@@ -9,11 +9,12 @@ import {
 } from "@trigger.dev/core-apps";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
-const NODE_NAME = process.env.NODE_NAME || "some-node";
+const NODE_NAME = process.env.NODE_NAME || "local";
 const OTEL_EXPORTER_OTLP_ENDPOINT =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318";
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
+logger.log(`running in ${RUNTIME_ENV} mode`);
 
 type Namespace = {
   metadata: {
@@ -185,6 +186,10 @@ class KubernetesTaskOperations implements TaskOperations {
                 {
                   name: "TRIGGER_ATTEMPT_ID",
                   value: opts.attemptId,
+                },
+                {
+                  name: "TRIGGER_WORKER_VERSION",
+                  value: opts.version,
                 },
                 {
                   name: "OTEL_EXPORTER_OTLP_ENDPOINT",

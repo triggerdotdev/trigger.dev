@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { $ } from "execa";
+import { nanoid } from "nanoid";
 import { Server } from "socket.io";
 import {
   CoordinatorToPlatformMessages,
@@ -18,8 +18,7 @@ collectDefaultMetrics();
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8020);
 const NODE_NAME = process.env.NODE_NAME || "coordinator";
-const REGISTRY_FQDN = process.env.REGISTRY_FQDN || "localhost:5000";
-const REPO_NAME = process.env.REPO_NAME || "checkpoints";
+const REGISTRY_HOST = process.env.REGISTRY_HOST || "localhost:5000";
 const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
 const REGISTRY_TLS_VERIFY = process.env.REGISTRY_TLS_VERIFY === "false" ? "false" : "true";
 
@@ -34,6 +33,21 @@ type CheckpointerInitializeReturn = {
   canCheckpoint: boolean;
   willSimulate: boolean;
 };
+
+type CheckpointAndPushOptions = {
+  podName: string;
+  leaveRunning?: boolean;
+  projectRef: string;
+  deploymentVersion: string;
+};
+
+type CheckpointAndPushReturn = Promise<
+  | {
+      location: string;
+      docker: boolean;
+    }
+  | undefined
+>;
 
 class Checkpointer {
   #initialized = false;
@@ -51,26 +65,18 @@ class Checkpointer {
 
     this.#logger.log(`${this.#dockerMode ? "Docker" : "Kubernetes"} mode`);
 
-    if (this.opts.forceSimulate) {
-      this.#logger.log(
-        "Forced simulation enabled. Will simulate regardless of checkpoint support."
-      );
-    }
-
-    try {
-      await $`criu --version`;
-    } catch (error) {
-      this.#logger.error("No checkpoint support: Missing CRIU binary");
-      if (this.#dockerMode) {
-        this.#logger.error("Will simulate instead");
-      }
-      this.#canCheckpoint = false;
-      this.#initialized = true;
-
-      return this.#getInitializeReturn();
-    }
-
     if (this.#dockerMode) {
+      try {
+        await $`criu --version`;
+      } catch (error) {
+        this.#logger.error("No checkpoint support: Missing CRIU binary");
+        this.#logger.error("Will simulate instead");
+        this.#canCheckpoint = false;
+        this.#initialized = true;
+
+        return this.#getInitializeReturn();
+      }
+
       try {
         await $`docker checkpoint`;
       } catch (error) {
@@ -83,10 +89,14 @@ class Checkpointer {
 
         return this.#getInitializeReturn();
       }
+    } else {
+      // Always assume we can checkpoint in kubernetes mode
     }
 
     this.#logger.log(
-      `Full checkpoint support in ${this.#dockerMode ? "docker" : "kubernetes"} mode`
+      `Full checkpoint support${
+        this.#dockerMode && this.opts.forceSimulate ? " with forced simulation enabled." : "!"
+      }`
     );
 
     this.#initialized = true;
@@ -102,7 +112,21 @@ class Checkpointer {
     };
   }
 
-  async checkpointAndPush(podName: string, leaveRunning = false) {
+  #getImageRef(projectRef: string, deploymentVersion: string, shortCode: string) {
+    return `${REGISTRY_HOST}/trigger/${projectRef}:${deploymentVersion}.prod-${shortCode}`;
+  }
+
+  #getExportLocation(projectRef: string, deploymentVersion: string, shortCode: string) {
+    const basename = `${projectRef}-${deploymentVersion}-${shortCode}`;
+
+    if (this.#dockerMode) {
+      return basename;
+    } else {
+      return `${CHECKPOINT_PATH}/${basename}.tar`;
+    }
+  }
+
+  async checkpointAndPush(opts: CheckpointAndPushOptions): CheckpointAndPushReturn {
     await this.initialize();
 
     if (!this.#dockerMode && !this.#canCheckpoint) {
@@ -110,130 +134,96 @@ class Checkpointer {
       return;
     }
 
-    try {
-      const { path } = await this.#checkpointContainer(podName, leaveRunning);
-      const { tag } = await this.#buildImage(path, podName);
-      const { destination } = await this.#pushImage(tag);
+    const shortCode = nanoid(8);
+    const imageRef = this.#getImageRef(opts.projectRef, opts.deploymentVersion, shortCode);
+    const exportLocation = this.#getExportLocation(
+      opts.projectRef,
+      opts.deploymentVersion,
+      shortCode
+    );
 
+    try {
+      // Create checkpoint (docker)
       if (this.#dockerMode) {
-        this.#logger.log("checkpoint created:", { podName, path });
-      } else {
-        this.#logger.log("checkpointed and pushed image to:", destination);
+        this.#logger.log("Checkpointing:", opts.podName);
+
+        try {
+          if (this.opts.forceSimulate || !this.#canCheckpoint) {
+            this.#logger.log("Simulating checkpoint");
+            this.#logger.debug(await $`docker pause ${opts.podName}`);
+          } else {
+            if (opts.leaveRunning) {
+              this.#logger.debug(
+                await $`docker checkpoint create --leave-running ${opts.podName} ${exportLocation}`
+              );
+            } else {
+              this.#logger.debug(
+                await $`docker checkpoint create ${opts.podName} ${exportLocation}`
+              );
+            }
+          }
+        } catch (error: any) {
+          this.#logger.error(error.stderr);
+          return;
+        }
+
+        this.#logger.log("checkpoint created:", {
+          podName: opts.podName,
+          location: exportLocation,
+        });
+
+        return {
+          location: exportLocation,
+          docker: true,
+        };
       }
 
+      // Create checkpoint (CRI)
+      if (!this.#canCheckpoint) {
+        throw new Error("No checkpoint support in kubernetes mode.");
+      }
+
+      const containerId = this.#logger.debug(
+        // @ts-expect-error
+        await $`crictl ps`
+          .pipeStdout($({ stdin: "pipe" })`grep ${opts.podName}`)
+          .pipeStdout($({ stdin: "pipe" })`cut -f1 ${"-d "}`)
+      );
+
+      if (!containerId.stdout) {
+        throw new Error("could not find container id");
+      }
+
+      this.#logger.debug(await $`crictl checkpoint --export=${exportLocation} ${containerId}`);
+
+      // Create image from checkpoint
+      const container = this.#logger.debug(await $`buildah from scratch`);
+      this.#logger.debug(await $`buildah add ${container} ${exportLocation} /`);
+      this.#logger.debug(
+        await $`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
+      );
+      this.#logger.debug(await $`buildah commit ${container} ${imageRef}`);
+      this.#logger.debug(await $`buildah rm ${container}`);
+
+      // Push checkpoint image
+      this.#logger.debug(await $`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${imageRef}`);
+
+      this.#logger.log("checkpointed and pushed image to:", imageRef);
+
       return {
-        path,
-        tag,
-        destination: this.#dockerMode ? path : destination,
-        docker: this.#dockerMode,
+        location: imageRef,
+        docker: false,
       };
     } catch (error) {
       this.#logger.error("checkpoint failed", error);
       return;
     }
   }
-
-  async #checkpointContainer(podName: string, leaveRunning = false) {
-    await this.initialize();
-
-    if (this.#dockerMode) {
-      this.#logger.log("Checkpointing:", podName);
-
-      const path = randomUUID();
-
-      try {
-        if (this.opts.forceSimulate || !this.#canCheckpoint) {
-          this.#logger.log("Simulating checkpoint");
-          this.#logger.debug(await $`docker pause ${podName}`);
-        } else {
-          if (leaveRunning) {
-            this.#logger.debug(
-              await $`docker checkpoint create --leave-running ${podName} ${path}`
-            );
-          } else {
-            this.#logger.debug(await $`docker checkpoint create ${podName} ${path}`);
-          }
-        }
-      } catch (error: any) {
-        this.#logger.error(error.stderr);
-      }
-
-      return { path };
-    }
-
-    if (!this.#canCheckpoint) {
-      throw new Error("No checkpoint support. Simulation requires docker.");
-    }
-
-    const containerId = this.#logger.debug(
-      // @ts-expect-error
-      await $`crictl ps`
-        .pipeStdout($({ stdin: "pipe" })`grep ${podName}`)
-        .pipeStdout($({ stdin: "pipe" })`cut -f1 ${"-d "}`)
-    );
-
-    if (!containerId.stdout) {
-      throw new Error("could not find container id");
-    }
-
-    const exportPath = `${CHECKPOINT_PATH}/${podName}.tar`;
-
-    this.#logger.debug(await $`crictl checkpoint --export=${exportPath} ${containerId}`);
-
-    return {
-      path: exportPath,
-    };
-  }
-
-  async #buildImage(checkpointPath: string, tag: string) {
-    await this.initialize();
-
-    if (this.#dockerMode) {
-      // Nothing to do here
-      return { tag };
-    }
-
-    if (!this.#canCheckpoint) {
-      throw new Error("No checkpoint support. Simulation requires docker.");
-    }
-
-    const container = this.#logger.debug(await $`buildah from scratch`);
-    this.#logger.debug(await $`buildah add ${container} ${checkpointPath} /`);
-    this.#logger.debug(
-      await $`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
-    );
-    this.#logger.debug(await $`buildah commit ${container} ${REGISTRY_FQDN}/${REPO_NAME}:${tag}`);
-    this.#logger.debug(await $`buildah rm ${container}`);
-
-    return {
-      tag,
-    };
-  }
-
-  async #pushImage(tag: string) {
-    await this.initialize();
-
-    if (this.#dockerMode) {
-      // Nothing to do here
-      return { destination: "" };
-    }
-
-    if (!this.#canCheckpoint) {
-      throw new Error("No checkpoint support. Simulation requires docker.");
-    }
-
-    const destination = `${REGISTRY_FQDN}/${REPO_NAME}:${tag}`;
-    this.#logger.debug(await $`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${destination}`);
-
-    return {
-      destination,
-    };
-  }
 }
 
 class TaskCoordinator {
   #httpServer: ReturnType<typeof createServer>;
-  #checkpointer = new Checkpointer({ forceSimulate: true });
+  #checkpointer = new Checkpointer({ forceSimulate: false });
 
   #prodWorkerNamespace: ZodNamespace<
     typeof ProdWorkerToCoordinatorMessages,
@@ -353,6 +343,7 @@ class TaskCoordinator {
           setSocketDataFromHeader("attemptId", "x-trigger-attempt-id");
           setSocketDataFromHeader("envId", "x-trigger-env-id");
           setSocketDataFromHeader("deploymentId", "x-trigger-deployment-id");
+          setSocketDataFromHeader("deploymentVersion", "x-trigger-deployment-version");
         } catch (error) {
           logger(error);
           socket.disconnect(true);
@@ -475,7 +466,11 @@ class TaskCoordinator {
             return;
           }
 
-          const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
+          const checkpoint = await this.#checkpointer.checkpointAndPush({
+            podName: socket.data.podName,
+            projectRef: socket.data.projectRef,
+            deploymentVersion: socket.data.deploymentVersion,
+          });
 
           if (!checkpoint) {
             logger.error("Failed to checkpoint", { podName: socket.data.podName });
@@ -487,7 +482,7 @@ class TaskCoordinator {
             version: "v1",
             attemptId: socket.data.attemptId,
             docker: checkpoint.docker,
-            location: checkpoint.destination,
+            location: checkpoint.location,
             reason: {
               type: "RETRYING_AFTER_FAILURE",
               attemptNumber: execution.attempt.number,
@@ -514,7 +509,11 @@ class TaskCoordinator {
           // TODO: The worker should let us know when to checkpoint so we don't have to guess
           await new Promise((resolve) => setTimeout(resolve, 2_000));
 
-          const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
+          const checkpoint = await this.#checkpointer.checkpointAndPush({
+            podName: socket.data.podName,
+            projectRef: socket.data.projectRef,
+            deploymentVersion: socket.data.deploymentVersion,
+          });
 
           if (!checkpoint) {
             logger.error("Failed to checkpoint", { podName: socket.data.podName });
@@ -526,7 +525,7 @@ class TaskCoordinator {
             version: "v1",
             attemptId: socket.data.attemptId,
             docker: checkpoint.docker,
-            location: checkpoint.destination,
+            location: checkpoint.location,
             reason: {
               type: "WAIT_FOR_DURATION",
               ms: message.ms,
@@ -547,7 +546,11 @@ class TaskCoordinator {
             return;
           }
 
-          const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
+          const checkpoint = await this.#checkpointer.checkpointAndPush({
+            podName: socket.data.podName,
+            projectRef: socket.data.projectRef,
+            deploymentVersion: socket.data.deploymentVersion,
+          });
 
           if (!checkpoint) {
             logger.error("Failed to checkpoint", { podName: socket.data.podName });
@@ -558,7 +561,7 @@ class TaskCoordinator {
             version: "v1",
             attemptId: socket.data.attemptId,
             docker: checkpoint.docker,
-            location: checkpoint.destination,
+            location: checkpoint.location,
             reason: {
               type: "WAIT_FOR_TASK",
               id: message.id,
@@ -579,7 +582,11 @@ class TaskCoordinator {
             return;
           }
 
-          const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
+          const checkpoint = await this.#checkpointer.checkpointAndPush({
+            podName: socket.data.podName,
+            projectRef: socket.data.projectRef,
+            deploymentVersion: socket.data.deploymentVersion,
+          });
 
           if (!checkpoint) {
             logger.error("Failed to checkpoint", { podName: socket.data.podName });
@@ -590,7 +597,7 @@ class TaskCoordinator {
             version: "v1",
             attemptId: socket.data.attemptId,
             docker: checkpoint.docker,
-            location: checkpoint.destination,
+            location: checkpoint.location,
             reason: {
               type: "WAIT_FOR_BATCH",
               id: message.id,
@@ -667,7 +674,7 @@ class TaskCoordinator {
         }
         case "/checkpoint": {
           const body = await getTextBody(req);
-          await this.#checkpointer.checkpointAndPush(body);
+          // await this.#checkpointer.checkpointAndPush(body);
           return reply.text(`sent restore request: ${body}`);
         }
         default: {

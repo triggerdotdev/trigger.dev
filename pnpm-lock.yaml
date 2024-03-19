@@ -55,6 +55,7 @@ importers:
       dotenv: ^16.4.2
       esbuild: ^0.19.11
       execa: ^8.0.1
+      nanoid: ^5.0.6
       prom-client: ^15.1.0
       socket.io: ^4.7.4
       socket.io-client: ^4.7.4
@@ -64,6 +65,7 @@ importers:
       '@trigger.dev/core': link:../../packages/core
       '@trigger.dev/core-apps': link:../../packages/core-apps
       execa: 8.0.1
+      nanoid: 5.0.6
       prom-client: 15.1.0
       socket.io: 4.7.4
       socket.io-client: 4.7.4
@@ -30784,6 +30786,12 @@ packages:
   /nanoid/4.0.2:
     resolution: {integrity: sha512-7ZtY5KTCNheRGfEFxnedV5zFiORN1+Y1N6zvPTnHQd8ENUvfaDBeuJDZb2bN/oXwXxu3qkTXDzy57W5vAmDTBw==}
     engines: {node: ^14 || ^16 || >=18}
+    hasBin: true
+    dev: false
+
+  /nanoid/5.0.6:
+    resolution: {integrity: sha512-rRq0eMHoGZxlvaFOUdK1Ev83Bd1IgzzR+WJ3IbDJ7QOSdAxYjlurSPqFs9s4lJg29RT6nPwizFtJhQS6V5xgiA==}
+    engines: {node: ^18 || >=20}
     hasBin: true
     dev: false
 

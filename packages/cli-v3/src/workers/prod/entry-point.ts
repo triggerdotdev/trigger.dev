@@ -30,6 +30,7 @@ class ProdWorker {
   private runId = process.env.TRIGGER_RUN_ID || "index-only";
   private attemptId = process.env.TRIGGER_ATTEMPT_ID || "index-only";
   private deploymentId = process.env.TRIGGER_DEPLOYMENT_ID!;
+  private deploymentVersion = process.env.TRIGGER_DEPLOYMENT_VERSION!;
 
   private executing = false;
   private completed = new Set<string>();
@@ -157,6 +158,7 @@ class ProdWorker {
       "x-trigger-env-id": this.envId,
       "x-trigger-deployment-id": this.deploymentId,
       "x-trigger-run-id": this.runId,
+      "x-trigger-deployment-version": this.deploymentVersion,
     });
 
     logger.log("connecting to coordinator", {

@@ -740,7 +740,12 @@ async function buildAndPushSelfHostedImage(
 
       try {
         await new Promise<void>((res, rej) => {
-          // For some reason everything is output on stderr, not stdout
+          pushProcess.stdout?.on("data", (data: Buffer) => {
+            const text = data.toString();
+
+            logger.debug(text);
+          });
+
           pushProcess.stderr?.on("data", (data: Buffer) => {
             const text = data.toString();
 

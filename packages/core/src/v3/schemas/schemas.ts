@@ -426,4 +426,5 @@ export const ProdWorkerSocketData = z.object({
   attemptId: z.string(),
   podName: z.string(),
   deploymentId: z.string(),
+  deploymentVersion: z.string(),
 });

@@ -43,6 +43,7 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     image: z.string(),
     envId: z.string(),
     runId: z.string(),
+    version: z.string(),
   }),
 ]);
 

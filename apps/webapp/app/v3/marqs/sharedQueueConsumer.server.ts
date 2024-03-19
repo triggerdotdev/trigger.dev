@@ -476,6 +476,7 @@ export class SharedQueueConsumer {
                 image: deployment.imageReference,
                 envId: environment.id,
                 runId: taskRunAttempt.taskRunId,
+                version: deployment.version,
               },
             });
           }
