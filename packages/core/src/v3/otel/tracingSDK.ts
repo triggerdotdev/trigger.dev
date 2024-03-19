@@ -13,6 +13,7 @@ import {
   ResourceAttributes,
   ResourceDetectionConfig,
   detectResourcesSync,
+  processDetectorSync,
 } from "@opentelemetry/resources";
 import { LoggerProvider, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import {
@@ -89,7 +90,7 @@ export class TracingSDK {
       : {};
 
     const commonResources = detectResourcesSync({
-      detectors: [this.asyncResourceDetector],
+      detectors: [this.asyncResourceDetector, processDetectorSync],
     })
       .merge(
         new Resource({

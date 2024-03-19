@@ -19,6 +19,7 @@ import {
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
@@ -54,7 +55,6 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const { runParam } = useParams();
-  const cancelFetcher = useFetcher();
 
   return (
     <div
@@ -176,38 +176,15 @@ export default function Page() {
                     Cancel run
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>Cancel this run?</DialogHeader>
-                  <DialogDescription>
-                    Canceling a run will stop execution. If you want to run this later you will have
-                    to replay the entire run with the original payload.
-                  </DialogDescription>
-                  <DialogFooter>
-                    <cancelFetcher.Form
-                      action={`/resources/taskruns/${event.runId}/cancel`}
-                      method="post"
-                    >
-                      <Button
-                        type="submit"
-                        name="redirectUrl"
-                        value={v3RunSpanPath(
-                          organization,
-                          project,
-                          { friendlyId: runParam },
-                          { spanId: event.spanId }
-                        )}
-                        variant="danger/small"
-                        LeadingIcon={
-                          cancelFetcher.state === "idle" ? StopCircleIcon : "spinner-white"
-                        }
-                        disabled={cancelFetcher.state !== "idle"}
-                        shortcut={{ modifiers: ["meta"], key: "enter" }}
-                      >
-                        {cancelFetcher.state === "idle" ? "Cancel run" : "Canceling..."}
-                      </Button>
-                    </cancelFetcher.Form>
-                  </DialogFooter>
-                </DialogContent>
+                <CancelRunDialog
+                  runFriendlyId={event.runId}
+                  redirectPath={v3RunSpanPath(
+                    organization,
+                    project,
+                    { friendlyId: runParam },
+                    { spanId: event.spanId }
+                  )}
+                />
               </Dialog>
             )}
           </div>

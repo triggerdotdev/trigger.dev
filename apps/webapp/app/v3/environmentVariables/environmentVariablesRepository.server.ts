@@ -30,7 +30,7 @@ function parseSecretKey(key: string) {
 const SecretValue = z.object({ secret: z.string() });
 
 export class EnvironmentVariablesRepository implements Repository {
-  constructor(private prismaClient: PrismaClient = prisma) {}
+  constructor(private prismaClient: PrismaClient = prisma) { }
 
   async create(
     projectId: string,
@@ -415,7 +415,12 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     if (environment.type === "DEVELOPMENT") {
-      return [];
+      return [
+        {
+          key: "OTEL_EXPORTER_OTLP_ENDPOINT",
+          value: env.DEV_OTEL_EXPORTER_OTLP_ENDPOINT ?? env.APP_ORIGIN,
+        }
+      ];
     }
 
     return [
