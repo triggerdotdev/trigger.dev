@@ -1,4 +1,4 @@
-import { Config, ProjectConfig, TaskExecutor, type TracingSDK } from "@trigger.dev/core/v3";
+import { Config, ProjectConfig, TaskExecutor, preciseDateOriginNow, type TracingSDK } from "@trigger.dev/core/v3";
 import "source-map-support/register.js";
 
 __WORKER_SETUP__;
@@ -35,8 +35,10 @@ import { TaskMetadataWithFunctions } from "../../types.js";
 
 declare const sender: ZodMessageSender<typeof childToWorkerMessages>;
 
+const preciseDateOrigin = preciseDateOriginNow();
+
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
-const consoleInterceptor = new ConsoleInterceptor(otelLogger);
+const consoleInterceptor = new ConsoleInterceptor(otelLogger, preciseDateOrigin);
 
 const devRuntimeManager = new DevRuntimeManager();
 
@@ -46,6 +48,7 @@ const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
   tracer: tracer,
   level: "info",
+  preciseDateOrigin
 });
 
 logger.setGlobalTaskLogger(otelTaskLogger);

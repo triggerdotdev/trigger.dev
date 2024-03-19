@@ -50,3 +50,5 @@ export { eventFilterMatches } from "../eventFilterMatches";
 export { omit } from "./utils/omit";
 export { TracingSDK, type TracingDiagnosticLogLevel, recordSpanException } from "./otel";
 export { TaskExecutor, type TaskExecutorOptions } from "./workers/taskExecutor";
+export { detectDependencyVersion } from "./utils/detectDependencyVersion";
+export { type PreciseDateOrigin, calculatePreciseDateHrTime, preciseDateOriginNow } from "./utils/preciseDate";

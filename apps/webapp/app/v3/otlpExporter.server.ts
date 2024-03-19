@@ -147,7 +147,7 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
         level: logLevelToEventLevel(log.severityNumber),
         isError: logLevel === "ERROR",
         status: logLevelToEventStatus(log.severityNumber),
-        startTime: convertUnixNanoToDate(log.timeUnixNano),
+        startTime: log.timeUnixNano,
         properties: {
           ...convertKeyValueItemsToMap(log.attributes ?? [], [
             SemanticInternalAttributes.SPAN_ID,
@@ -213,7 +213,7 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
         kind: spanKindToEventKind(span.kind),
         level: "TRACE",
         status: spanStatusToEventStatus(span.status),
-        startTime: convertUnixNanoToDate(span.startTimeUnixNano),
+        startTime: span.startTimeUnixNano,
         links: spanLinksToEventLinks(span.links ?? []),
         events: spanEventsToEventEvents(span.events ?? []),
         duration: span.endTimeUnixNano - span.startTimeUnixNano,

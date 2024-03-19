@@ -5,6 +5,7 @@ import {
   ZodMessageHandler,
   ZodMessageSender,
   clientWebsocketMessages,
+  detectDependencyVersion,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
 import chalk from "chalk";
@@ -33,7 +34,6 @@ import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { UncaughtExceptionError } from "../workers/common/errors";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
-import { fromZodError } from "zod-validation-error";
 
 let apiClient: CliApiClient | undefined;
 
@@ -692,9 +692,9 @@ function gatherRequiredDependencies(outputMeta: Metafile["outputs"][string]) {
       continue;
     }
 
-    const internalDependencyVersion = (packageJson.dependencies as Record<string, string>)[
-      packageName
-    ];
+    const internalDependencyVersion =
+      (packageJson.dependencies as Record<string, string>)[packageName] ??
+      detectDependencyVersion(packageName);
 
     if (internalDependencyVersion) {
       dependencies[packageName] = internalDependencyVersion;
