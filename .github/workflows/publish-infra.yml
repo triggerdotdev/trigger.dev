@@ -1,9 +1,11 @@
-name: "🚢 Publish Container Images (dev)"
+name: "🚢 Publish Infra Images"
 
 on:
   push:
     tags:
-      - "dev-*"
+      - "infra-dev-*"
+      - "infra-test-*"
+      - "infra-prod-*"
     paths:
       - ".github/workflows/publish.yml"
       - "packages/**"
@@ -44,12 +46,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate build ID
+      - name: Generate image reference
         id: prep
+        # WARNING: This step expects the workflow to have been triggered by a specific tag format of: infra-${env}-*
         run: |
+          env=$(echo ${{ github.ref_name }} | cut -d- -f2)
           sha=${GITHUB_SHA::7}
           ts=$(date +%s)
-          echo "BUILD_ID=${{ matrix.package }}-${sha}-${ts}" >> "$GITHUB_OUTPUT"
+          if [[ "${{ matrix.package }}" == *-provider ]]; then
+            provider_type=$(echo ${{ matrix.package }} | cut -d- -f1)
+            repository=provider/${provider_type}
+          else
+            repository=${{ matrix.package }}
+          fi
+          echo "IMAGE_TAG=${env}-${sha}-${ts}" >> "$GITHUB_OUTPUT"
+          echo "REPOSITORY=${repository}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -63,7 +74,7 @@ jobs:
 
       - name: 🚢 Build Container Image
         run: |
-          docker build -t dev_image -f ./apps/${{ matrix.package }}/Containerfile .
+          docker build -t infra_image -f ./apps/${{ matrix.package }}/Containerfile .
 
       # ..to push image
       - name: 🐙 Login to GitHub Container Registry
@@ -75,9 +86,9 @@ jobs:
 
       - name: 🐙 Push to GitHub Container Registry
         run: |
-          docker tag dev_image $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          docker tag infra_image $REGISTRY/$REPOSITORY:$IMAGE_TAG
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
         env:
           REGISTRY: ghcr.io/triggerdotdev
-          REPOSITORY: dev
-          IMAGE_TAG: ${{ steps.prep.outputs.BUILD_ID }}
+          REPOSITORY: ${{ steps.prep.outputs.REPOSITORY }}
+          IMAGE_TAG: ${{ steps.prep.outputs.IMAGE_TAG }}
