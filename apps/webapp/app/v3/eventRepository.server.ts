@@ -153,6 +153,10 @@ export class EventRepository {
     this._flushScheduler.addToBatch(events);
   }
 
+  async insertManyImmediate(events: CreatableEvent[]) {
+    return await this.#flushBatch(events);
+  }
+
   async completeEvent(spanId: string, options?: UpdateEventOptions) {
     const events = await this.queryIncompleteEvents({ spanId });
 

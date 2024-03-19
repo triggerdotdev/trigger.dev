@@ -8,7 +8,7 @@ export async function action({ request }: ActionFunctionArgs) {
   if (contentType === "application/json") {
     const body = await request.json();
 
-    const exportResponse = await otlpExporter.exportTraces(body as ExportTraceServiceRequest);
+    const exportResponse = await otlpExporter.exportTraces(body as ExportTraceServiceRequest, true);
 
     return json(exportResponse, { status: 200 })
   } else if (contentType === "application/x-protobuf") {

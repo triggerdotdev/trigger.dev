@@ -37,7 +37,7 @@ class OTLPExporter {
     private readonly _verbose: boolean
   ) { }
 
-  async exportTraces(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse> {
+  async exportTraces(request: ExportTraceServiceRequest, immediate: boolean = false): Promise<ExportTraceServiceResponse> {
     this.#logExportTracesVerbose(request);
 
     const events = this.#filterResourceSpans(request.resourceSpans).flatMap((resourceSpan) => {
@@ -46,12 +46,16 @@ class OTLPExporter {
 
     this.#logEventsVerbose(events);
 
-    this._eventRepository.insertMany(events);
+    if (immediate) {
+      await this._eventRepository.insertManyImmediate(events);
+    } else {
+      await this._eventRepository.insertMany(events);
+    }
 
     return ExportTraceServiceResponse.create();
   }
 
-  async exportLogs(request: ExportLogsServiceRequest): Promise<ExportLogsServiceResponse> {
+  async exportLogs(request: ExportLogsServiceRequest, immediate: boolean = false): Promise<ExportLogsServiceResponse> {
     this.#logExportLogsVerbose(request);
 
     const events = this.#filterResourceLogs(request.resourceLogs).flatMap((resourceLog) => {
@@ -60,7 +64,11 @@ class OTLPExporter {
 
     this.#logEventsVerbose(events);
 
-    this._eventRepository.insertMany(events);
+    if (immediate) {
+      await this._eventRepository.insertManyImmediate(events);
+    } else {
+      await this._eventRepository.insertMany(events);
+    }
 
     return ExportLogsServiceResponse.create();
   }
