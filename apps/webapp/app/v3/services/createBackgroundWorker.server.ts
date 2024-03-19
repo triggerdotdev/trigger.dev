@@ -69,14 +69,12 @@ export class CreateBackgroundWorkerService extends BaseService {
       await createBackgroundTasks(body.metadata.tasks, backgroundWorker, environment, this._prisma);
 
       //send a notification that a new worker has been created
-      await projectPubSub.publish(
-        `project:${project.id}:env:${environment.id}`,
-        "DEV_WORKER_CREATED",
-        {
-          createdAt: backgroundWorker.createdAt,
-          taskCount: body.metadata.tasks.length,
-        }
-      );
+      await projectPubSub.publish(`project:${project.id}:env:${environment.id}`, "WORKER_CREATED", {
+        environmentId: environment.id,
+        environmentType: environment.type,
+        createdAt: backgroundWorker.createdAt,
+        taskCount: body.metadata.tasks.length,
+      });
 
       return backgroundWorker;
     });

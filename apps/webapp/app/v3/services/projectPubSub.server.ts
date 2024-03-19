@@ -4,7 +4,9 @@ import { ZodPubSub, ZodSubscriber } from "../utils/zodPubSub.server";
 import { env } from "~/env.server";
 
 const messageCatalog = {
-  DEV_WORKER_CREATED: z.object({
+  WORKER_CREATED: z.object({
+    environmentId: z.string(),
+    environmentType: z.string(),
     createdAt: z.coerce.date(),
     taskCount: z.number(),
   }),

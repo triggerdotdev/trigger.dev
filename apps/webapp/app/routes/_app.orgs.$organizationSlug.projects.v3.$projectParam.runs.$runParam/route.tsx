@@ -4,8 +4,7 @@ import {
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
-import { Time } from "@internationalized/date";
-import { Link, Outlet, useNavigate, useParams, useRevalidator } from "@remix-run/react";
+import { Outlet, useNavigate, useParams, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
 import {
@@ -33,14 +32,7 @@ import {
 import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
-import {
-  GetNodePropsFn,
-  GetTreePropsFn,
-  TreeView,
-  TreeViewProps,
-  UseTreeStateOutput,
-  useTree,
-} from "~/components/primitives/TreeView/TreeView";
+import { TreeView, UseTreeStateOutput, useTree } from "~/components/primitives/TreeView/TreeView";
 import { NodesState } from "~/components/primitives/TreeView/reducer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
