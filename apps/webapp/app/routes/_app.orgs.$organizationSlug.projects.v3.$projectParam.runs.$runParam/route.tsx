@@ -8,7 +8,11 @@ import { Time } from "@internationalized/date";
 import { Link, Outlet, useNavigate, useParams, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
-import { formatDurationMilliseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
+import {
+  formatDurationMilliseconds,
+  millisecondsToNanoseconds,
+  nanosecondsToMilliseconds,
+} from "@trigger.dev/core/v3";
 import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
@@ -95,7 +99,6 @@ export default function Page() {
     resizeSettings,
     duration,
     rootSpanStatus,
-    isCompleted,
     rootStartedAt,
   } = useTypedLoaderData<typeof loader>();
   const navigate = useNavigate();
@@ -156,7 +159,6 @@ export default function Page() {
               }}
               totalDuration={duration}
               rootSpanStatus={rootSpanStatus}
-              isCompleted={isCompleted}
               rootStartedAt={rootStartedAt}
             />
           ) : (
@@ -185,7 +187,6 @@ export default function Page() {
                   }}
                   totalDuration={duration}
                   rootSpanStatus={rootSpanStatus}
-                  isCompleted={isCompleted}
                   rootStartedAt={rootStartedAt}
                 />
               </ResizablePanel>
@@ -208,7 +209,6 @@ type TasksTreeViewProps = {
   onSelectedIdChanged: (selectedId: string | undefined) => void;
   totalDuration: number;
   rootSpanStatus: "executing" | "completed" | "failed";
-  isCompleted: boolean;
   rootStartedAt: Date | undefined;
 };
 
@@ -219,7 +219,6 @@ function TasksTreeView({
   onSelectedIdChanged,
   totalDuration,
   rootSpanStatus,
-  isCompleted,
   rootStartedAt,
 }: TasksTreeViewProps) {
   const [filterText, setFilterText] = useState("");
@@ -400,7 +399,6 @@ function TasksTreeView({
             scale={scale}
             events={events}
             rootSpanStatus={rootSpanStatus}
-            isCompleted={isCompleted}
             rootStartedAt={rootStartedAt}
             parentRef={parentRef}
             timelineScrollRef={timelineScrollRef}
@@ -420,7 +418,7 @@ function TasksTreeView({
 
 type TimelineViewProps = Pick<
   TasksTreeViewProps,
-  "totalDuration" | "rootSpanStatus" | "events" | "isCompleted" | "rootStartedAt"
+  "totalDuration" | "rootSpanStatus" | "events" | "rootStartedAt"
 > & {
   scale: number;
   parentRef: React.RefObject<HTMLDivElement>;
@@ -440,6 +438,7 @@ function TimelineView({
   totalDuration,
   scale,
   rootSpanStatus,
+  rootStartedAt,
   parentRef,
   timelineScrollRef,
   virtualizer,
@@ -456,20 +455,35 @@ function TimelineView({
   const minTimelineWidth = initialTimelineDimensions?.width ?? 300;
   const maxTimelineWidth = minTimelineWidth * 10;
 
+  //we want to live-update the duration if the root span is still executing
+  const [duration, setDuration] = useState(totalDuration);
+  useEffect(() => {
+    if (rootSpanStatus !== "executing" || !rootStartedAt) {
+      setDuration(totalDuration);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setDuration(millisecondsToNanoseconds(Date.now() - rootStartedAt.getTime()));
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [totalDuration, rootSpanStatus]);
+
   return (
     <div
       className="h-full overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
       ref={timelineContainerRef}
     >
       <Timeline.Root
-        durationMs={nanosecondsToMilliseconds(totalDuration * 1.05)}
+        durationMs={nanosecondsToMilliseconds(duration * 1.05)}
         scale={scale}
         className="h-full overflow-hidden"
         minWidth={minTimelineWidth}
         maxWidth={maxTimelineWidth}
       >
         {/* Follows the cursor */}
-        <CurrentTimeIndicator totalDuration={totalDuration} />
+        <CurrentTimeIndicator totalDuration={duration} />
 
         <Timeline.Row className="grid h-full grid-rows-[2rem_1fr]">
           {/* The duration labels */}
@@ -506,7 +520,7 @@ function TimelineView({
               </Timeline.EquallyDistribute>
               {rootSpanStatus !== "executing" && (
                 <Timeline.Point
-                  ms={nanosecondsToMilliseconds(totalDuration)}
+                  ms={nanosecondsToMilliseconds(duration)}
                   className={cn(
                     "relative bottom-[2px] text-xxs",
                     rootSpanStatus === "completed" ? "text-success" : "text-error"
@@ -533,7 +547,7 @@ function TimelineView({
                 }}
               </Timeline.EquallyDistribute>
               <Timeline.Point
-                ms={nanosecondsToMilliseconds(totalDuration)}
+                ms={nanosecondsToMilliseconds(duration)}
                 className={cn(
                   "h-full border-r",
                   rootSpanStatus === "completed" ? "border-success/30" : "border-error/30"
@@ -553,7 +567,7 @@ function TimelineView({
             {/* The completed line  */}
             {rootSpanStatus !== "executing" && (
               <Timeline.Point
-                ms={nanosecondsToMilliseconds(totalDuration)}
+                ms={nanosecondsToMilliseconds(duration)}
                 className={cn(
                   "h-full border-r",
                   rootSpanStatus === "completed" ? "border-success/30" : "border-error/30"
@@ -588,7 +602,11 @@ function TimelineView({
                       <SpanWithDuration
                         showDuration={state.selected ? true : showDurations}
                         startMs={nanosecondsToMilliseconds(node.data.offset)}
-                        durationMs={nanosecondsToMilliseconds(node.data.duration)}
+                        durationMs={
+                          node.data.duration
+                            ? nanosecondsToMilliseconds(node.data.duration)
+                            : nanosecondsToMilliseconds(duration - node.data.offset)
+                        }
                         node={node}
                       />
                     ) : (
