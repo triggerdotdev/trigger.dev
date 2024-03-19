@@ -1,12 +1,14 @@
 import type * as logsAPI from "@opentelemetry/api-logs";
 import { SeverityNumber } from "@opentelemetry/api-logs";
 import util from "node:util";
-import { flattenAttributes } from "./utils/flattenAttributes";
-import { SemanticInternalAttributes } from "./semanticInternalAttributes";
 import { iconStringForSeverity } from "./icons";
+import { SemanticInternalAttributes } from "./semanticInternalAttributes";
+import { flattenAttributes } from "./utils/flattenAttributes";
+import { type PreciseDateOrigin, calculatePreciseDateHrTime } from "./utils/preciseDate";
+
 
 export class ConsoleInterceptor {
-  constructor(private readonly logger: logsAPI.Logger) {}
+  constructor(private readonly logger: logsAPI.Logger, private readonly preciseDateOrigin: PreciseDateOrigin) { }
 
   // Intercept the console and send logs to the OpenTelemetry logger
   // during the execution of the callback
@@ -54,6 +56,7 @@ export class ConsoleInterceptor {
 
   #handleLog(severityNumber: SeverityNumber, severityText: string, ...args: unknown[]): void {
     const body = util.format(...args);
+    const timestamp = this.#getTimestampInHrTime();
 
     const parsed = tryParseJSON(body);
 
@@ -63,6 +66,7 @@ export class ConsoleInterceptor {
         severityText,
         body: getLogMessage(parsed.value, severityText),
         attributes: { ...this.#getAttributes(severityNumber), ...flattenAttributes(parsed.value) },
+        timestamp,
       });
 
       return;
@@ -73,7 +77,12 @@ export class ConsoleInterceptor {
       severityText,
       body,
       attributes: this.#getAttributes(severityNumber),
+      timestamp,
     });
+  }
+
+  #getTimestampInHrTime(): [number, number] {
+    return calculatePreciseDateHrTime(this.preciseDateOrigin);
   }
 
   #getAttributes(severityNumber: SeverityNumber): logsAPI.LogAttributes {

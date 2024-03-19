@@ -71,6 +71,7 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
   if (process.env.DASHBOARD_AND_API_DISABLED !== "true") {
     app.all(
       "*",
+      // @ts-ignore
       createRequestHandler({
         build,
         mode: MODE,

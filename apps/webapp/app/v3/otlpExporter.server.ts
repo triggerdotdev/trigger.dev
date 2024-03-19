@@ -35,9 +35,9 @@ class OTLPExporter {
   constructor(
     private readonly _eventRepository: EventRepository,
     private readonly _verbose: boolean
-  ) {}
+  ) { }
 
-  async exportTraces(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse> {
+  async exportTraces(request: ExportTraceServiceRequest, immediate: boolean = false): Promise<ExportTraceServiceResponse> {
     this.#logExportTracesVerbose(request);
 
     const events = this.#filterResourceSpans(request.resourceSpans).flatMap((resourceSpan) => {
@@ -46,12 +46,16 @@ class OTLPExporter {
 
     this.#logEventsVerbose(events);
 
-    this._eventRepository.insertMany(events);
+    if (immediate) {
+      await this._eventRepository.insertManyImmediate(events);
+    } else {
+      await this._eventRepository.insertMany(events);
+    }
 
     return ExportTraceServiceResponse.create();
   }
 
-  async exportLogs(request: ExportLogsServiceRequest): Promise<ExportLogsServiceResponse> {
+  async exportLogs(request: ExportLogsServiceRequest, immediate: boolean = false): Promise<ExportLogsServiceResponse> {
     this.#logExportLogsVerbose(request);
 
     const events = this.#filterResourceLogs(request.resourceLogs).flatMap((resourceLog) => {
@@ -60,7 +64,11 @@ class OTLPExporter {
 
     this.#logEventsVerbose(events);
 
-    this._eventRepository.insertMany(events);
+    if (immediate) {
+      await this._eventRepository.insertManyImmediate(events);
+    } else {
+      await this._eventRepository.insertMany(events);
+    }
 
     return ExportLogsServiceResponse.create();
   }
@@ -109,7 +117,7 @@ class OTLPExporter {
 
       if (!triggerAttribute) return false;
 
-      return isBoolValue(triggerAttribute.value) ? triggerAttribute.value.value.boolValue : false;
+      return isBoolValue(triggerAttribute.value) ? triggerAttribute.value.boolValue : false;
     });
   }
 
@@ -123,7 +131,7 @@ class OTLPExporter {
 
       if (!attribute) return false;
 
-      return isBoolValue(attribute.value) ? attribute.value.value.boolValue : false;
+      return isBoolValue(attribute.value) ? attribute.value.boolValue : false;
     });
   }
 }
@@ -141,13 +149,13 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
         traceId: binaryToHex(log.traceId),
         spanId: eventRepository.generateSpanId(),
         parentId: binaryToHex(log.spanId),
-        message: isStringValue(log.body) ? log.body.value.stringValue : `${log.severityText} log`,
+        message: isStringValue(log.body) ? log.body.stringValue : `${log.severityText} log`,
         isPartial: false,
         kind: "INTERNAL",
         level: logLevelToEventLevel(log.severityNumber),
         isError: logLevel === "ERROR",
         status: logLevelToEventStatus(log.severityNumber),
-        startTime: convertUnixNanoToDate(log.timeUnixNano),
+        startTime: log.timeUnixNano,
         properties: {
           ...convertKeyValueItemsToMap(log.attributes ?? [], [
             SemanticInternalAttributes.SPAN_ID,
@@ -201,10 +209,10 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
         traceId: binaryToHex(span.traceId),
         spanId: isPartial
           ? extractStringAttribute(
-              span?.attributes ?? [],
-              SemanticInternalAttributes.SPAN_ID,
-              binaryToHex(span.spanId)
-            )
+            span?.attributes ?? [],
+            SemanticInternalAttributes.SPAN_ID,
+            binaryToHex(span.spanId)
+          )
           : binaryToHex(span.spanId),
         parentId: binaryToHex(span.parentSpanId),
         message: span.name,
@@ -213,7 +221,7 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
         kind: spanKindToEventKind(span.kind),
         level: "TRACE",
         status: spanStatusToEventStatus(span.status),
-        startTime: convertUnixNanoToDate(span.startTimeUnixNano),
+        startTime: span.startTimeUnixNano,
         links: spanLinksToEventLinks(span.links ?? []),
         events: spanEventsToEventEvents(span.events ?? []),
         duration: span.endTimeUnixNano - span.startTimeUnixNano,
@@ -327,16 +335,16 @@ function convertKeyValueItemsToMap(
       if (filteredKeys.includes(attribute.key)) return map;
 
       map[`${prefix ? `${prefix}.` : ""}${attribute.key}`] = isStringValue(attribute.value)
-        ? attribute.value.value.stringValue
+        ? attribute.value.stringValue
         : isIntValue(attribute.value)
-        ? Number(attribute.value.value.intValue)
-        : isDoubleValue(attribute.value)
-        ? attribute.value.value.doubleValue
-        : isBoolValue(attribute.value)
-        ? attribute.value.value.boolValue
-        : isBytesValue(attribute.value)
-        ? binaryToHex(attribute.value.value.bytesValue)
-        : undefined;
+          ? Number(attribute.value.intValue)
+          : isDoubleValue(attribute.value)
+            ? attribute.value.doubleValue
+            : isBoolValue(attribute.value)
+              ? attribute.value.boolValue
+              : isBytesValue(attribute.value)
+                ? binaryToHex(attribute.value.bytesValue)
+                : undefined;
 
       return map;
     },
@@ -505,8 +513,8 @@ function logLevelToEventStatus(level: SeverityNumber): CreatableEventStatus {
   }
 }
 
-function convertUnixNanoToDate(unixNano: bigint): Date {
-  return new Date(Number(unixNano / BigInt(1_000_000)));
+function convertUnixNanoToDate(unixNano: bigint | number): Date {
+  return new Date(Number(BigInt(unixNano) / BigInt(1_000_000)));
 }
 
 function extractStringAttribute(attributes: KeyValue[], name: string): string | undefined;
@@ -520,7 +528,7 @@ function extractStringAttribute(
 
   if (!attribute) return fallback;
 
-  return isStringValue(attribute?.value) ? attribute.value.value.stringValue : fallback;
+  return isStringValue(attribute?.value) ? attribute.value.stringValue : fallback;
 }
 
 function extractNumberAttribute(attributes: KeyValue[], name: string): number | undefined;
@@ -534,7 +542,7 @@ function extractNumberAttribute(
 
   if (!attribute) return fallback;
 
-  return isIntValue(attribute?.value) ? Number(attribute.value.value.intValue) : fallback;
+  return isIntValue(attribute?.value) ? Number(attribute.value.intValue) : fallback;
 }
 
 function extractBooleanAttribute(attributes: KeyValue[], name: string): boolean | undefined;
@@ -548,7 +556,7 @@ function extractBooleanAttribute(
 
   if (!attribute) return fallback;
 
-  return isBoolValue(attribute?.value) ? attribute.value.value.boolValue : fallback;
+  return isBoolValue(attribute?.value) ? attribute.value.boolValue : fallback;
 }
 
 function isPartialSpan(span: Span): boolean {
@@ -560,58 +568,59 @@ function isPartialSpan(span: Span): boolean {
 
   if (!attribute) return false;
 
-  return isBoolValue(attribute.value) ? attribute.value.value.boolValue : false;
+  return isBoolValue(attribute.value) ? attribute.value.boolValue : false;
 }
 
 function isBoolValue(
   value: AnyValue | undefined
-): value is { value: { $case: "boolValue"; boolValue: boolean } } {
+): value is { boolValue: boolean } {
   if (!value) return false;
 
-  return (value.value && value.value.$case === "boolValue")!!;
+  return typeof value.boolValue === "boolean";
 }
 
 function isStringValue(
   value: AnyValue | undefined
-): value is { value: { $case: "stringValue"; stringValue: string } } {
+): value is { stringValue: string } {
   if (!value) return false;
 
-  return (value.value && value.value.$case === "stringValue")!!;
+  return typeof value.stringValue === "string";
 }
 
 function isIntValue(
   value: AnyValue | undefined
-): value is { value: { $case: "intValue"; intValue: bigint } } {
+): value is { intValue: bigint } {
   if (!value) return false;
 
-  return (value.value && value.value.$case === "intValue")!!;
+  return typeof value.intValue === "number";
 }
 
 function isDoubleValue(
   value: AnyValue | undefined
-): value is { value: { $case: "doubleValue"; doubleValue: number } } {
+): value is { doubleValue: number } {
   if (!value) return false;
 
-  return (value.value && value.value.$case === "doubleValue")!!;
+  return typeof value.doubleValue === "number";
 }
 
 function isBytesValue(
   value: AnyValue | undefined
-): value is { value: { $case: "bytesValue"; bytesValue: Buffer } } {
+): value is { bytesValue: Buffer } {
   if (!value) return false;
 
-  return (value.value && value.value.$case === "bytesValue")!!;
+  return Buffer.isBuffer(value.bytesValue);
 }
 
-function binaryToHex(buffer: Buffer): string;
-function binaryToHex(buffer: Buffer | undefined): string | undefined;
-function binaryToHex(buffer: Buffer | undefined): string | undefined {
+function binaryToHex(buffer: Buffer | string): string;
+function binaryToHex(buffer: Buffer | string | undefined): string | undefined;
+function binaryToHex(buffer: Buffer | string | undefined): string | undefined {
   if (!buffer) return undefined;
+  if (typeof buffer === "string") return buffer;
 
   return Buffer.from(Array.from(buffer)).toString("hex");
 }
 
 export const otlpExporter = new OTLPExporter(
   eventRepository,
-  process.env.OTL_EXPORTER_VERBOSE === "1"
+  process.env.OTLP_EXPORTER_VERBOSE === "1"
 );

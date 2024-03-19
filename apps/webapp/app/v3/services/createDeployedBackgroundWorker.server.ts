@@ -5,6 +5,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { BaseService } from "./baseService.server";
 import { createBackgroundTasks } from "./createBackgroundWorker.server";
 import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
+import { projectPubSub } from "./projectPubSub.server";
 
 export class CreateDeployedBackgroundWorkerService extends BaseService {
   public async call(
@@ -70,6 +71,19 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
           deploymentId: deployment.id,
         },
       });
+
+      //send a notification that a new worker has been created
+      await projectPubSub.publish(
+        `project:${environment.projectId}:env:${environment.id}`,
+        "WORKER_CREATED",
+        {
+          environmentId: environment.id,
+          environmentType: environment.type,
+          createdAt: backgroundWorker.createdAt,
+          taskCount: body.metadata.tasks.length,
+          type: "deployed",
+        }
+      );
 
       return backgroundWorker;
     });
