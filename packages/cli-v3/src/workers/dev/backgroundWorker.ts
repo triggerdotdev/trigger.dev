@@ -302,8 +302,8 @@ export class BackgroundWorker {
       const child = fork(this.path, {
         stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
         env: {
-          ...this.#readEnvVars(),
           ...this.params.env,
+          ...this.#readEnvVars(),
         },
       });
 
@@ -475,12 +475,18 @@ export class BackgroundWorker {
   }
 
   #readEnvVars() {
-    const result = {};
+    const result: { [key: string]: string } = {};
 
     dotenv.config({
       processEnv: result,
       path: [".env", ".env.local", ".env.development.local"].map((p) => resolve(process.cwd(), p)),
     });
+
+    process.env.TRIGGER_API_URL && (result.TRIGGER_API_URL = process.env.TRIGGER_API_URL);
+
+    // remove TRIGGER_API_URL and TRIGGER_SECRET_KEY, since those should be coming from the worker
+    delete result.TRIGGER_API_URL;
+    delete result.TRIGGER_SECRET_KEY;
 
     return result;
   }
