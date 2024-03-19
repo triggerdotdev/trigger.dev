@@ -8,6 +8,9 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
       short_sha: ${{ steps.get_commit.outputs.sha_short }}
     steps:
+      - name: Setup Depot CLI
+        uses: depot/setup-action@v1
+        
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
         with:
