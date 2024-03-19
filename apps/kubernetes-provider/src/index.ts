@@ -374,20 +374,18 @@ class KubernetesTaskOperations implements TaskOperations {
     }
   }
 
-  #throwUnlessNonNullableObject(
-    candidate: unknown
-  ): asserts candidate is NonNullable<Record<string, unknown>> {
+  #throwUnlessRecord(candidate: unknown): asserts candidate is Record<string, unknown> {
     if (typeof candidate !== "object" || candidate === null) {
       throw candidate;
     }
   }
 
   #handleK8sError(err: unknown) {
-    this.#throwUnlessNonNullableObject(err);
+    this.#throwUnlessRecord(err);
 
     if ("body" in err && err.body) {
       logger.error(err.body);
-      this.#throwUnlessNonNullableObject(err.body);
+      this.#throwUnlessRecord(err.body);
 
       if (typeof err.body.message === "string") {
         throw new Error(err.body?.message);
