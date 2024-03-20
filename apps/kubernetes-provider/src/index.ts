@@ -221,6 +221,27 @@ class KubernetesTaskOperations implements TaskOperations {
                   },
                 },
               ],
+              volumeMounts: [
+                {
+                  name: "dapi",
+                  mountPath: "/etc/dapi",
+                },
+              ],
+            },
+          ],
+          volumes: [
+            {
+              name: "dapi",
+              downwardAPI: {
+                items: [
+                  {
+                    path: "coordinator-host",
+                    fieldRef: {
+                      fieldPath: "status.hostIP",
+                    },
+                  },
+                ],
+              },
             },
           ],
         },
@@ -269,37 +290,27 @@ class KubernetesTaskOperations implements TaskOperations {
               //     },
               //   },
               // },
-              // TODO: check we definitely don't need to specify these again
-              // env: [
-              //   {
-              //     name: "DEBUG",
-              //     value: "true",
-              //   },
-              //   {
-              //     name: "POD_NAME",
-              //     valueFrom: {
-              //       fieldRef: {
-              //         fieldPath: "metadata.name",
-              //       },
-              //     },
-              //   },
-              //   {
-              //     name: "COORDINATOR_HOST",
-              //     valueFrom: {
-              //       fieldRef: {
-              //         fieldPath: "status.hostIP",
-              //       },
-              //     },
-              //   },
-              //   {
-              //     name: "NODE_NAME",
-              //     valueFrom: {
-              //       fieldRef: {
-              //         fieldPath: "spec.nodeName",
-              //       },
-              //     },
-              //   },
-              // ],
+              volumeMounts: [
+                {
+                  name: "dapi",
+                  mountPath: "/etc/dapi",
+                },
+              ],
+            },
+          ],
+          volumes: [
+            {
+              name: "dapi",
+              downwardAPI: {
+                items: [
+                  {
+                    path: "coordinator-host",
+                    fieldRef: {
+                      fieldPath: "status.hostIP",
+                    },
+                  },
+                ],
+              },
             },
           ],
         },
