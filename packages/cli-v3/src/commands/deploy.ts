@@ -330,7 +330,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const deploymentLink = terminalLink(
     "View deployment",
-    `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.config.project}/deployments/${finishedDeployment.id}`
+    `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.config.project}/deployments/${finishedDeployment.shortCode}`
   );
 
   switch (finishedDeployment.status) {
@@ -374,6 +374,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       deploymentSpinner.stop(`Deployment was canceled. ${deploymentLink}`);
 
       throw new SkipLoggingError("Deployment was canceled");
+    }
+    case "TIMED_OUT": {
+      deploymentSpinner.stop(`Deployment timed out. ${deploymentLink}`);
+
+      throw new SkipLoggingError("Deployment timed out");
     }
   }
 }
@@ -467,7 +472,8 @@ async function waitForDeploymentToFinish(
         if (
           deployment.data.status === "DEPLOYED" ||
           deployment.data.status === "FAILED" ||
-          deployment.data.status === "CANCELED"
+          deployment.data.status === "CANCELED" ||
+          deployment.data.status === "TIMED_OUT"
         ) {
           span.setAttributes({
             "deployment.status": deployment.data.status,

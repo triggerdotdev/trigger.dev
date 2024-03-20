@@ -48,7 +48,9 @@ export async function whoAmI(
   options?: WhoamiCommandOptions,
   embedded: boolean = false
 ): Promise<WhoAmIResult> {
-  intro(`Displaying your account details [${options?.profile ?? "default"}]`);
+  if (!embedded) {
+    intro(`Displaying your account details [${options?.profile ?? "default"}]`);
+  }
 
   const loadingSpinner = spinner();
   loadingSpinner.start("Checking your account details");

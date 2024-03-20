@@ -1,10 +1,11 @@
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { BaseService } from "./baseService.server";
-import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
-import { generateFriendlyId } from "../friendlyIdentifiers";
-import { customAlphabet } from "nanoid";
-import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
+import { customAlphabet } from "nanoid";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { generateFriendlyId } from "../friendlyIdentifiers";
+import { createRemoteImageBuild } from "../remoteImageBuilder.server";
+import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
+import { BaseService } from "./baseService.server";
+import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
@@ -55,6 +56,13 @@ export class InitializeDeploymentService extends BaseService {
           triggeredById: triggeredBy?.id,
         },
       });
+
+      await TimeoutDeploymentService.enqueue(
+        deployment.id,
+        "BUILDING",
+        "Building timed out",
+        new Date(Date.now() + 180_000) // 3 minutes
+      );
 
       const imageTag = `trigger/${environment.project.externalRef}:${deployment.version}.${environment.slug}`;
 
