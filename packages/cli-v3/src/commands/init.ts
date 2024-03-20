@@ -8,6 +8,8 @@ import {
 import chalk from "chalk";
 import { Command } from "commander";
 import { execa } from "execa";
+import { applyEdits, modify } from "jsonc-parser";
+import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import terminalLink from "terminal-link";
 import { z } from "zod";
@@ -24,7 +26,7 @@ import {
 } from "../cli/common.js";
 import { readConfig } from "../utilities/configFiles.js";
 import { createFileFromTemplate } from "../utilities/createFileFromTemplate";
-import { createFile, pathExists } from "../utilities/fileSystem";
+import { createFile, pathExists, readFile } from "../utilities/fileSystem";
 import { getUserPackageManager } from "../utilities/getUserPackageManager";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger";
@@ -80,7 +82,11 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
   intro("Initializing project");
 
-  const authorization = await login({ embedded: true, defaultApiUrl: options.apiUrl, profile: options.profile });
+  const authorization = await login({
+    embedded: true,
+    defaultApiUrl: options.apiUrl,
+    profile: options.profile,
+  });
 
   if (!authorization.ok) {
     if (authorization.error === "fetch failed") {
@@ -144,6 +150,12 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
   // Create the trigger dir
   await createTriggerDir(dir, options);
+
+  // Add trigger.config.ts to tsconfig.json
+  await addConfigFileToTsConfig(dir, options);
+
+  // Ignore .trigger dir
+  await gitIgnoreDotTriggerDir(dir, options);
 
   const projectDashboard = terminalLink(
     "project dashboard",
@@ -255,6 +267,101 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
   });
 }
 
+async function gitIgnoreDotTriggerDir(dir: string, options: InitCommandOptions) {
+  return await tracer.startActiveSpan("gitIgnoreDotTriggerDir", async (span) => {
+    try {
+      const projectDir = resolve(process.cwd(), dir);
+      const gitIgnorePath = join(projectDir, ".gitignore");
+
+      span.setAttributes({
+        "cli.projectDir": projectDir,
+        "cli.gitIgnorePath": gitIgnorePath,
+      });
+
+      if (!(await pathExists(gitIgnorePath))) {
+        // Create .gitignore file
+        await createFile(gitIgnorePath, ".trigger");
+
+        log.step(`Added .trigger to .gitignore`);
+
+        span.end();
+
+        return;
+      }
+
+      // Check if .gitignore already contains .trigger
+      const gitIgnoreContent = await readFile(gitIgnorePath);
+
+      if (gitIgnoreContent.includes(".trigger")) {
+        span.end();
+
+        return;
+      }
+
+      const newGitIgnoreContent = `${gitIgnoreContent}\n.trigger`;
+
+      await writeFile(gitIgnorePath, newGitIgnoreContent, "utf-8");
+
+      log.step(`Added .trigger to .gitignore`);
+
+      span.end();
+    } catch (e) {
+      if (!(e instanceof SkipCommandError)) {
+        recordSpanException(span, e);
+      }
+
+      span.end();
+
+      throw e;
+    }
+  });
+}
+
+async function addConfigFileToTsConfig(dir: string, options: InitCommandOptions) {
+  return await tracer.startActiveSpan("createTriggerDir", async (span) => {
+    try {
+      const projectDir = resolve(process.cwd(), dir);
+      const tsconfigPath = join(projectDir, "tsconfig.json");
+
+      span.setAttributes({
+        "cli.projectDir": projectDir,
+        "cli.tsconfigPath": tsconfigPath,
+      });
+
+      const tsconfigContent = await readFile(tsconfigPath);
+
+      const edits = modify(tsconfigContent, ["include", -1], "trigger.config.ts", {
+        isArrayInsertion: true,
+        formattingOptions: {
+          tabSize: 2,
+          insertSpaces: true,
+          eol: "\n",
+        },
+      });
+
+      logger.debug("tsconfig.json edits", { edits });
+
+      const newTsconfigContent = applyEdits(tsconfigContent, edits);
+
+      logger.debug("new tsconfig.json content", { newTsconfigContent });
+
+      await writeFile(tsconfigPath, newTsconfigContent, "utf-8");
+
+      log.step(`Added trigger.config.ts to tsconfig.json`);
+
+      span.end();
+    } catch (e) {
+      if (!(e instanceof SkipCommandError)) {
+        recordSpanException(span, e);
+      }
+
+      span.end();
+
+      throw e;
+    }
+  });
+}
+
 async function installPackages(dir: string, options: InitCommandOptions) {
   return await tracer.startActiveSpan("installPackages", async (span) => {
     const installSpinner = spinner();
@@ -332,8 +439,8 @@ async function writeConfigFile(
       spnnr.start("Creating config file");
 
       const projectDir = resolve(process.cwd(), dir);
-      const templatePath = resolveInternalFilePath("./templates/trigger.config.mjs");
-      const outputPath = join(projectDir, "trigger.config.mjs");
+      const templatePath = resolveInternalFilePath("./templates/trigger.config.ts");
+      const outputPath = join(projectDir, "trigger.config.ts");
 
       span.setAttributes({
         "cli.projectDir": projectDir,
