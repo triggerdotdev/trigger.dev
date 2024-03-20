@@ -216,7 +216,15 @@ class Checkpointer {
       // Push checkpoint image
       this.#logger.debug(await $`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${imageRef}`);
 
-      this.#logger.log("checkpointed and pushed image to:", imageRef);
+      this.#logger.log("Checkpointed and pushed image to:", { location: imageRef });
+
+      try {
+        await $`rm ${exportLocation}`;
+        this.#logger.log("Deleted checkpoint archive", { exportLocation });
+      } catch (error) {
+        this.#logger.error("Failed to delete checkpoint archive", { exportLocation });
+        this.#logger.debug(error);
+      }
 
       return {
         location: imageRef,
