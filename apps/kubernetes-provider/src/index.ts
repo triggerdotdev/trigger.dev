@@ -7,6 +7,7 @@ import {
   TaskOperationsIndexOptions,
   TaskOperationsRestoreOptions,
 } from "@trigger.dev/core-apps";
+import { randomUUID } from "crypto";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 const NODE_NAME = process.env.NODE_NAME || "local";
@@ -232,7 +233,7 @@ class KubernetesTaskOperations implements TaskOperations {
     await this.#createPod(
       {
         metadata: {
-          name: this.#getRunContainerName(opts.attemptId),
+          name: `${this.#getRunContainerName(opts.attemptId)}-${randomUUID().slice(0, 8)}`,
           namespace: this.#namespace.metadata.name,
         },
         spec: {
