@@ -13,8 +13,8 @@ export const feedbackTypeLabel = {
   bug: "Bug report",
   feature: "Feature request",
   help: "Help me out",
-  integration: "Request an Integration",
   enterprise: "Enterprise enquiry",
+  "developer preview": "Developer preview feedback",
 };
 
 export type FeedbackType = keyof typeof feedbackTypeLabel;

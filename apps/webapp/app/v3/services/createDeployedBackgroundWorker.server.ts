@@ -27,6 +27,10 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
         return;
       }
 
+      if (deployment.status !== "DEPLOYING") {
+        return;
+      }
+
       const backgroundWorker = await this._prisma.backgroundWorker.create({
         data: {
           friendlyId: generateFriendlyId("worker"),

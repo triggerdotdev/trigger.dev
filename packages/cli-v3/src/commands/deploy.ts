@@ -387,6 +387,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
       throw new SkipLoggingError("Deployment was canceled");
     }
+    case "TIMED_OUT": {
+      deploymentSpinner.stop(`Deployment timed out. ${deploymentLink}`);
+
+      throw new SkipLoggingError("Deployment timed out");
+    }
   }
 }
 
@@ -479,7 +484,8 @@ async function waitForDeploymentToFinish(
         if (
           deployment.data.status === "DEPLOYED" ||
           deployment.data.status === "FAILED" ||
-          deployment.data.status === "CANCELED"
+          deployment.data.status === "CANCELED" ||
+          deployment.data.status === "TIMED_OUT"
         ) {
           span.setAttributes({
             "deployment.status": deployment.data.status,

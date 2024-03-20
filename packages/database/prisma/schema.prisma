@@ -2065,6 +2065,8 @@ enum WorkerDeploymentStatus {
   DEPLOYED
   FAILED
   CANCELED
+  /// This is the status when the image is built and indexing does not finish in time
+  TIMED_OUT
 }
 
 model WorkerDeploymentPromotion {

@@ -21,6 +21,7 @@ import { CancelAttemptService } from "../services/cancelAttempt.server";
 import { socketIo } from "../handleSocketIo.server";
 import { singleton } from "~/utils/singleton";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
+import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
 
 const tracer = trace.getTracer("sharedQueueConsumer");
 
@@ -179,7 +180,7 @@ export class SharedQueueConsumer {
     this._taskFailures = 0;
     this._taskSuccesses = 0;
 
-    this.#doWork().finally(() => {});
+    this.#doWork().finally(() => { });
   }
 
   async #doWork() {
@@ -316,26 +317,7 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const deployment = await prisma.workerDeployment.findFirst({
-          where: {
-            environmentId: existingTaskRun.runtimeEnvironmentId,
-            projectId: existingTaskRun.projectId,
-            status: "DEPLOYED",
-            imageReference: {
-              not: null,
-            },
-          },
-          orderBy: {
-            updatedAt: "desc",
-          },
-          include: {
-            worker: {
-              include: {
-                tasks: true,
-              },
-            },
-          },
-        });
+        const deployment = await findCurrentWorkerDeployment(existingTaskRun.runtimeEnvironmentId);
 
         if (!deployment || !deployment.worker) {
           logger.error("No matching deployment found for task run", {

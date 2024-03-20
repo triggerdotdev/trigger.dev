@@ -1,53 +1,32 @@
-import { CommandLineIcon, ServerIcon } from "@heroicons/react/20/solid";
 import { useLocation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { TerminalIcon, TerminalSquareIcon } from "lucide-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
-import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
+import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
-import { ResizablePanel, ResizablePanelGroup } from "~/components/primitives/Resizable";
 import {
   Table,
-  TableBlankRow,
   TableBody,
   TableCell,
-  TableCellChevron,
   TableHeader,
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { TextLink } from "~/components/primitives/TextLink";
 import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
-import { DeploymentListPresenter } from "~/presenters/v3/DeploymentListPresenter.server";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import {
-  ProjectParamSchema,
-  docsPath,
-  runParam,
-  v3DeploymentParams,
-  v3DeploymentPath,
-  v3DeploymentsPath,
-  v3RunPath,
-} from "~/utils/pathBuilder";
-import { createSearchParams } from "~/utils/searchParams";
+import { v3DeploymentParams, v3DeploymentsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -111,6 +90,11 @@ export default function Page() {
               <DeploymentStatus status={deployment.status} className="text-sm" />
             </Property>
             <Property label="Tasks">{deployment.tasks ? deployment.tasks.length : "–"}</Property>
+            <Property label="Started at">
+              <Paragraph variant="small/bright">
+                <DateTimeAccurate date={deployment.createdAt} /> UTC
+              </Paragraph>
+            </Property>
             <Property label="Deployed at">
               <Paragraph variant="small/bright">
                 {deployment.deployedAt ? (

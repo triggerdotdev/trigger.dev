@@ -71,6 +71,7 @@ export class DeploymentPresenter {
         },
         status: true,
         deployedAt: true,
+        createdAt: true,
         promotions: {
           select: {
             label: true,
@@ -107,6 +108,7 @@ export class DeploymentPresenter {
         shortCode: deployment.shortCode,
         version: deployment.version,
         status: deployment.status,
+        createdAt: deployment.createdAt,
         deployedAt: deployment.deployedAt,
         tasks: deployment.worker?.tasks,
         label: deployment.promotions?.[0]?.label,

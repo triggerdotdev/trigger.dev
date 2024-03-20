@@ -1,8 +1,10 @@
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";
 import { BaseService } from "./baseService.server";
-import { env } from "~/env.server";
 import { DeploymentIndexFailed } from "./deploymentIndexFailed.server";
+import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { workerQueue } from "~/services/worker.server";
 
 export class IndexDeploymentService extends BaseService {
   public async call(id: string) {
@@ -43,7 +45,7 @@ export class IndexDeploymentService extends BaseService {
 
     // just broadcast for now - there should only ever be one provider connected
     try {
-      const responses = await socketIo.providerNamespace.timeout(10_000).emitWithAck("INDEX", {
+      const responses = await socketIo.providerNamespace.timeout(30_000).emitWithAck("INDEX", {
         version: "v1",
         shortCode: deployment.shortCode,
         imageTag: deployment.imageReference,
@@ -52,15 +54,42 @@ export class IndexDeploymentService extends BaseService {
         apiUrl: env.APP_ORIGIN,
       });
 
-      const indexFailed = new DeploymentIndexFailed();
+      logger.debug("Index ACK received", { responses });
 
-      for (const response of responses) {
-        if (!response.success) {
-          await indexFailed.call(deployment.friendlyId, response.error);
+      if (responses.length === 0) {
+        // timeout the deployment if 50 seconds have passed and the deployment is still not indexed
+        await TimeoutDeploymentService.enqueue(
+          deployment.id,
+          "DEPLOYING",
+          "Could not index deployment in time",
+          new Date(Date.now() + 50_000)
+        );
+      } else {
+        const indexFailed = new DeploymentIndexFailed();
+
+        for (const response of responses) {
+          if (!response.success) {
+            await indexFailed.call(deployment.friendlyId, response.error);
+          }
         }
       }
     } catch (error) {
       logger.error("No index ACK received within timeout", { error });
+
+      const indexFailed = new DeploymentIndexFailed();
+
+      await indexFailed.call(
+        deployment.friendlyId,
+        error instanceof Error
+          ? { message: error.message, name: error.name }
+          : { message: "Could not index deployment in time", name: "TimeoutError" }
+      );
     }
+  }
+
+  static async enqueue(id: string) {
+    const runAt = new Date(Date.now() + 1000); // 1 second from now (give eventually-consistent DO time)
+
+    await workerQueue.enqueue("v3.indexDeployment", { id }, { runAt });
   }
 }

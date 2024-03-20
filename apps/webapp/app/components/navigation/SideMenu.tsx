@@ -14,6 +14,7 @@ import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
 import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useEffect, useRef, useState } from "react";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { useFeatures } from "~/hooks/useFeatures";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
 import { MatchedProject } from "~/hooks/useProject";
@@ -54,6 +55,7 @@ import { LogoIcon } from "../LogoIcon";
 import { StepContentContainer } from "../StepContentContainer";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
+import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Buttons";
 import { ClipboardField } from "../primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
@@ -70,8 +72,6 @@ import {
 import { StepNumber } from "../primitives/StepNumber";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
-import { Badge } from "../primitives/Badge";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -269,7 +269,6 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               target="_blank"
             />
           )}
-
           <SideMenuItem
             name="Changelog"
             icon="star"
@@ -277,20 +276,37 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             data-action="changelog"
             target="_blank"
           />
-
-          <Feedback
-            button={
-              <Button
-                variant="small-menu-item"
-                LeadingIcon="log"
-                data-action="help & feedback"
-                fullWidth
-                textAlignLeft
-              >
-                Help & Feedback
-              </Button>
-            }
-          />
+          {project.version === "V2" ? (
+            <Feedback
+              button={
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon="log"
+                  data-action="help & feedback"
+                  fullWidth
+                  textAlignLeft
+                >
+                  Help & Feedback
+                </Button>
+              }
+            />
+          ) : (
+            <Feedback
+              defaultValue="developer preview"
+              button={
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon="log"
+                  leadingIconClassName="text-primary"
+                  data-action="help & feedback"
+                  fullWidth
+                  textAlignLeft
+                >
+                  <span className="text-primary">Give feedback on v3</span>
+                </Button>
+              }
+            />
+          )}
           {currentPlan && !currentPlan.subscription?.isPaying && currentPlan.usage.runCountCap && (
             <FreePlanUsage
               to={organizationBillingPath(organization)}

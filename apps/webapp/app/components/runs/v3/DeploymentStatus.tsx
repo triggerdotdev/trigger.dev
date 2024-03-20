@@ -1,16 +1,10 @@
 import {
-  ArrowPathIcon,
-  BoltSlashIcon,
-  BugAntIcon,
   CheckCircleIcon,
-  ClockIcon,
+  ExclamationTriangleIcon,
   NoSymbolIcon,
-  PauseCircleIcon,
-  RectangleStackIcon,
-  ServerStackIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
-import { TaskRunStatus, WorkerDeploymentStatus } from "@trigger.dev/database";
+import { WorkerDeploymentStatus } from "@trigger.dev/database";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
@@ -53,6 +47,12 @@ export function DeploymentStatusIcon({
       return <NoSymbolIcon className={cn(deploymentStatusClassNameColor(status), className)} />;
     case "FAILED":
       return <XCircleIcon className={cn(deploymentStatusClassNameColor(status), className)} />;
+    case "TIMED_OUT":
+      return (
+        <ExclamationTriangleIcon
+          className={cn(deploymentStatusClassNameColor(status), className)}
+        />
+      );
     default: {
       const _exhaustiveCheck: never = status;
       throw new Error(`Non-exhaustive match for value: ${status}`);
@@ -66,6 +66,7 @@ export function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): 
     case "BUILDING":
     case "DEPLOYING":
       return "text-pending";
+    case "TIMED_OUT":
     case "CANCELED":
       return "text-charcoal-500";
     case "DEPLOYED":
@@ -91,6 +92,8 @@ export function deploymentStatusTitle(status: WorkerDeploymentStatus): string {
       return "Deployed";
     case "CANCELED":
       return "Canceled";
+    case "TIMED_OUT":
+      return "Timed out";
     case "FAILED":
       return "Failed";
     default: {

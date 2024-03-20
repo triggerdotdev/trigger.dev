@@ -10,19 +10,39 @@ import {
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import { TaskRunStatus } from "@trigger.dev/database";
+import { SnowflakeIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
+
+const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
+  PENDING: "Task is waiting to be executed",
+  EXECUTING: "Task is currently being executed",
+  RETRYING_AFTER_FAILURE: "Task is being reattempted after a failure",
+  WAITING_TO_RESUME: "Task has been frozen and is waiting to be resumed",
+  COMPLETED_SUCCESSFULLY: "Task has been successfully completed",
+  CANCELED: "Task has been canceled",
+  COMPLETED_WITH_ERRORS: "Task has failed with errors",
+  INTERRUPTED: "Task has failed because it was interrupted",
+  SYSTEM_FAILURE: "Task has failed due to a system failure",
+  PAUSED: "Task has been paused by the user",
+};
+
+export function descriptionForTaskRunStatus(status: TaskRunStatus): string {
+  return taskRunStatusDescriptions[status];
+}
 
 export function TaskRunStatusCombo({
   status,
   className,
+  iconClassName,
 }: {
   status: TaskRunStatus;
   className?: string;
+  iconClassName?: string;
 }) {
   return (
     <span className={cn("flex items-center gap-1", className)}>
-      <TaskRunStatusIcon status={status} className="h-4 w-4" />
+      <TaskRunStatusIcon status={status} className={cn("h-4 w-4", iconClassName)} />
       <TaskRunStatusLabel status={status} />
     </span>
   );
@@ -45,7 +65,7 @@ export function TaskRunStatusIcon({
     case "EXECUTING":
       return <Spinner className={cn(runStatusClassNameColor(status), className)} />;
     case "WAITING_TO_RESUME":
-      return <ClockIcon className={cn(runStatusClassNameColor(status), className)} />;
+      return <SnowflakeIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "RETRYING_AFTER_FAILURE":
       return <ArrowPathIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PAUSED":
@@ -73,11 +93,10 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
     case "PENDING":
       return "text-charcoal-500";
     case "EXECUTING":
+    case "RETRYING_AFTER_FAILURE":
       return "text-pending";
     case "WAITING_TO_RESUME":
-      return "text-charcoal-500";
-    case "RETRYING_AFTER_FAILURE":
-      return "text-charcoal-500";
+      return "text-sky-300";
     case "PAUSED":
       return "text-amber-300";
     case "CANCELED":
@@ -100,13 +119,13 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
 export function runStatusTitle(status: TaskRunStatus): string {
   switch (status) {
     case "PENDING":
-      return "Enqueued";
+      return "Queued";
     case "EXECUTING":
       return "Executing";
     case "WAITING_TO_RESUME":
-      return "Waiting";
+      return "Frozen";
     case "RETRYING_AFTER_FAILURE":
-      return "Retrying";
+      return "Reattempting";
     case "PAUSED":
       return "Paused";
     case "CANCELED":
