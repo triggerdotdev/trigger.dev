@@ -502,9 +502,12 @@ class TaskCoordinator {
             reason: {
               type: "RETRYING_AFTER_FAILURE",
               attemptNumber: execution.attempt.number,
+              // TODO: attach completion data here
             },
           });
 
+          // TODO: replace this with
+          // callback({ didCheckpoint: true, shouldExit: false });
           confirmCompletion({ didCheckpoint: true, shouldExit: false });
         });
 
@@ -535,6 +538,12 @@ class TaskCoordinator {
             logger.error("Failed to checkpoint", { podName: socket.data.podName });
             // TODO: We have to let the worker know about failures so it can use its own timer
             return;
+          }
+
+          if (!checkpoint.docker) {
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
           }
 
           this.#platformSocket?.send("CHECKPOINT_CREATED", {
@@ -573,6 +582,12 @@ class TaskCoordinator {
             return;
           }
 
+          if (!checkpoint.docker) {
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+          }
+
           this.#platformSocket?.send("CHECKPOINT_CREATED", {
             version: "v1",
             attemptId: socket.data.attemptId,
@@ -607,6 +622,12 @@ class TaskCoordinator {
           if (!checkpoint) {
             logger.error("Failed to checkpoint", { podName: socket.data.podName });
             return;
+          }
+
+          if (!checkpoint.docker) {
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
           }
 
           this.#platformSocket?.send("CHECKPOINT_CREATED", {
