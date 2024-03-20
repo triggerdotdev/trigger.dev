@@ -1,4 +1,3 @@
-import { HandleErrorFnParams, HandleErrorResult } from ".";
 import { RetryOptions } from "../schemas";
 
 export interface ProjectConfig {
@@ -9,9 +8,5 @@ export interface ProjectConfig {
     enabledInDev?: boolean;
     default?: RetryOptions;
   };
-  handleError?: (
-    payload: any,
-    error: unknown,
-    params: HandleErrorFnParams<any>
-  ) => HandleErrorResult;
+  additionalPackages?: string[];
 }

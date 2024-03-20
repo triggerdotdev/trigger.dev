@@ -104,6 +104,14 @@ export class TracingSDK {
     const traceProvider = new NodeTracerProvider({
       forceFlushTimeoutMillis: config.forceFlushTimeoutMillis ?? 500,
       resource: commonResources,
+      spanLimits: {
+        attributeCountLimit: 1000,
+        attributeValueLengthLimit: 1000,
+        eventCountLimit: 100,
+        attributePerEventCountLimit: 100,
+        linkCountLimit: 10,
+        attributePerLinkCountLimit: 100,
+      },
     });
 
     const spanExporter = new OTLPTraceExporter({
@@ -128,6 +136,10 @@ export class TracingSDK {
     // To start a logger, you first need to initialize the Logger provider.
     const loggerProvider = new LoggerProvider({
       resource: commonResources,
+      logRecordLimits: {
+        attributeCountLimit: 1000,
+        attributeValueLengthLimit: 1000,
+      },
     });
 
     loggerProvider.addLogRecordProcessor(
