@@ -117,7 +117,7 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
           <Paragraph className="mb-4">
             If you're having trouble, check out our documentation or the Trigger.dev Status page.
           </Paragraph>
-          <div className="flex gap-x-2">
+          <div className="flex flex-wrap gap-2">
             <LinkButton to={docsPath("")} variant="tertiary/medium" LeadingIcon={BookOpenIcon}>
               Docs
             </LinkButton>
