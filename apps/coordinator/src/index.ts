@@ -231,7 +231,7 @@ class Checkpointer {
         docker: false,
       };
     } catch (error) {
-      this.#logger.error("checkpoint failed", error);
+      this.#logger.error("checkpoint failed", { options: opts, error });
       return;
     }
   }
