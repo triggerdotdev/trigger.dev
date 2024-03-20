@@ -33,6 +33,7 @@ import { ResumeTaskService } from "./tasks/resumeTask.server";
 import { ResumeTaskRunDependenciesService } from "~/v3/services/resumeTaskRunDependencies.server";
 import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.server";
+import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -120,6 +121,11 @@ const workerCatalog = {
   "v3.resumeTaskDependency": z.object({
     dependencyId: z.string(),
     sourceTaskAttemptId: z.string(),
+  }),
+  "v3.timeoutDeployment": z.object({
+    deploymentId: z.string(),
+    fromStatus: z.string(),
+    errorMessage: z.string(),
   }),
 };
 
@@ -295,8 +301,8 @@ function getWorkerQueue() {
                 graphileJob.id,
                 payload.orphanedEvents
                   ? {
-                      event: payload.orphanedEvents,
-                    }
+                    event: payload.orphanedEvents,
+                  }
                   : undefined
               );
               break;
@@ -482,6 +488,15 @@ function getWorkerQueue() {
           const service = new ResumeTaskDependencyService();
 
           return await service.call(payload.dependencyId, payload.sourceTaskAttemptId);
+        },
+      },
+      "v3.timeoutDeployment": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new TimeoutDeploymentService();
+
+          return await service.call(payload.deploymentId, payload.fromStatus, payload.errorMessage);
         },
       },
     },

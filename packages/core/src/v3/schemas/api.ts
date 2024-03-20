@@ -155,7 +155,7 @@ export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymen
 
 export const GetDeploymentResponseBody = z.object({
   id: z.string(),
-  status: z.enum(["PENDING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED"]),
+  status: z.enum(["PENDING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED", "TIMED_OUT"]),
   contentHash: z.string(),
   shortCode: z.string(),
   version: z.string(),
@@ -164,7 +164,7 @@ export const GetDeploymentResponseBody = z.object({
     .object({
       name: z.string(),
       message: z.string(),
-      stack: z.string(),
+      stack: z.string().optional(),
     })
     .optional()
     .nullable(),
