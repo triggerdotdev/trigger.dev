@@ -90,7 +90,15 @@ class Checkpointer {
         return this.#getInitializeReturn();
       }
     } else {
-      // Always assume we can checkpoint in kubernetes mode
+      try {
+        await $`buildah login --get-login ${REGISTRY_HOST}`;
+      } catch (error) {
+        this.#logger.error(`No checkpoint support: Not logged in to registry ${REGISTRY_HOST}`);
+        this.#canCheckpoint = false;
+        this.#initialized = true;
+
+        return this.#getInitializeReturn();
+      }
     }
 
     this.#logger.log(
