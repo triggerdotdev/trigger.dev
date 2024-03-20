@@ -261,14 +261,14 @@ class KubernetesTaskOperations implements TaskOperations {
               // resources: {
               //   limits: opts.machine,
               // },
-              lifecycle: {
-                postStart: {
-                  httpGet: {
-                    path: "/connect",
-                    port: 8000,
-                  },
-                },
-              },
+              // lifecycle: {
+              //   postStart: {
+              //     httpGet: {
+              //       path: "/connect",
+              //       port: 8000,
+              //     },
+              //   },
+              // },
               // TODO: check we definitely don't need to specify these again
               // env: [
               //   {
