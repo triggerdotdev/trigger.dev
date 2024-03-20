@@ -238,7 +238,7 @@ class KubernetesTaskOperations implements TaskOperations {
         spec: {
           imagePullSecrets: [
             {
-              name: "regcred",
+              name: "registry-trigger",
             },
           ],
           initContainers: [
