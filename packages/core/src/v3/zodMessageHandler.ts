@@ -103,7 +103,10 @@ export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> 
 
     for (const eventName of Object.keys(this.#schema)) {
       emitter.on(eventName, async (message: any, callback?: any): Promise<void> => {
-        log.info(`handling ${eventName}`, message);
+        log.info(`handling ${eventName}`, {
+          payload: message,
+          hasCallback: !!callback,
+        });
 
         let ack;
 

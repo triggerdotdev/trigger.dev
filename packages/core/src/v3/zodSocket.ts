@@ -148,7 +148,10 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
 
     for (const eventName of Object.keys(this.#handlers)) {
       emitter.on(eventName, async (message: any, callback?: any): Promise<void> => {
-        log.info(`handling ${eventName}`, { message, hasCallback: !!callback });
+        log.info(`handling ${eventName}`, {
+          payload: message,
+          hasCallback: !!callback,
+        });
 
         let ack;
 
