@@ -91,10 +91,10 @@ export class SimpleStructuredLogger implements StructuredLogger {
     loggerFunction: (message: string, ...args: any[]) => void,
     message: string,
     level: string,
-    ...args: Array<Record<string, unknown> | undefined>
+    ...args: StructuredArgs
   ) {
     const structuredLog = {
-      ...args,
+      ...(args.length === 1 ? args[0] : args),
       ...this.fields,
       timestamp: new Date(),
       name: this.name,
