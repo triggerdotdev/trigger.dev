@@ -1,5 +1,6 @@
 import {
   MessageCatalogToSocketIoEvents,
+  StructuredLogger,
   ZodMessageHandler,
   ZodMessageSender,
   clientWebsocketMessages,
@@ -11,6 +12,18 @@ import { logger } from "~/services/logger.server";
 import { SharedQueueConsumer } from "./marqs/sharedQueueConsumer.server";
 import { DisconnectReason, Namespace, Socket } from "socket.io";
 
+interface SharedSocketConnectionOptions {
+  namespace: Namespace<
+    MessageCatalogToSocketIoEvents<typeof clientWebsocketMessages>,
+    MessageCatalogToSocketIoEvents<typeof serverWebsocketMessages>
+  >;
+  socket: Socket<
+    MessageCatalogToSocketIoEvents<typeof clientWebsocketMessages>,
+    MessageCatalogToSocketIoEvents<typeof serverWebsocketMessages>
+  >;
+  logger?: StructuredLogger;
+}
+
 export class SharedSocketConnection {
   public id: string;
   public onClose: Evt<DisconnectReason> = new Evt();
@@ -19,17 +32,7 @@ export class SharedSocketConnection {
   private _sharedConsumer: SharedQueueConsumer;
   private _messageHandler: ZodMessageHandler<typeof clientWebsocketMessages>;
 
-  constructor(
-    namespace: Namespace<
-      MessageCatalogToSocketIoEvents<typeof clientWebsocketMessages>,
-      MessageCatalogToSocketIoEvents<typeof serverWebsocketMessages>
-    >,
-    private socket: Socket<
-      MessageCatalogToSocketIoEvents<typeof clientWebsocketMessages>,
-      MessageCatalogToSocketIoEvents<typeof serverWebsocketMessages>
-    >,
-    logger?: (...args: any[]) => void
-  ) {
+  constructor(opts: SharedSocketConnectionOptions) {
     this.id = randomUUID();
 
     this._sender = new ZodMessageSender({
@@ -38,7 +41,7 @@ export class SharedSocketConnection {
         return new Promise((resolve, reject) => {
           try {
             const { type, ...payload } = message;
-            namespace.emit(type, payload as any);
+            opts.namespace.emit(type, payload as any);
             resolve();
           } catch (err) {
             reject(err);
@@ -52,8 +55,8 @@ export class SharedSocketConnection {
       nextTickInterval: 1000,
     });
 
-    socket.on("disconnect", this.#handleClose.bind(this));
-    socket.on("error", this.#handleError.bind(this));
+    opts.socket.on("disconnect", this.#handleClose.bind(this));
+    opts.socket.on("error", this.#handleError.bind(this));
 
     this._messageHandler = new ZodMessageHandler({
       schema: clientWebsocketMessages,
@@ -78,7 +81,7 @@ export class SharedSocketConnection {
         },
       },
     });
-    this._messageHandler.registerHandlers(this.socket, logger);
+    this._messageHandler.registerHandlers(opts.socket, opts.logger ?? logger);
   }
 
   async initialize() {

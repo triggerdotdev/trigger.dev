@@ -132,14 +132,14 @@ function createSharedQueueConsumerNamespace(io: Server) {
     clientMessages: ClientToSharedQueueMessages,
     serverMessages: SharedQueueToClientMessages,
     onConnection: async (socket, handler, sender, logger) => {
-      const sharedSocketConnection = new SharedSocketConnection(
-        sharedQueue.namespace,
+      const sharedSocketConnection = new SharedSocketConnection({
+        namespace: sharedQueue.namespace,
         socket,
-        logger
-      );
+        logger,
+      });
 
       sharedSocketConnection.onClose.attach((closeEvent) => {
-        logger("Socket closed", { closeEvent });
+        logger.info("Socket closed", { closeEvent });
       });
 
       await sharedSocketConnection.initialize();

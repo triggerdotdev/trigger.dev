@@ -252,15 +252,15 @@ class ProdWorker {
             });
 
             if (success) {
-              logger("indexing done, shutting down..");
+              logger.info("indexing done, shutting down..");
               process.exit(0);
             } else {
-              logger("indexing failure, shutting down..");
+              logger.info("indexing failure, shutting down..");
               process.exit(1);
             }
           } catch (e) {
             if (e instanceof UncaughtExceptionError) {
-              logger("uncaught exception", e.originalError.message);
+              logger.error("uncaught exception", { message: e.originalError.message });
 
               socket.emit("INDEXING_FAILED", {
                 version: "v1",
@@ -272,7 +272,7 @@ class ProdWorker {
                 },
               });
             } else if (e instanceof Error) {
-              logger("error", e.message);
+              logger.error("error", { message: e.message });
 
               socket.emit("INDEXING_FAILED", {
                 version: "v1",
@@ -284,7 +284,7 @@ class ProdWorker {
                 },
               });
             } else if (typeof e === "string") {
-              logger("string error", e);
+              logger.error("string error", { message: e });
 
               socket.emit("INDEXING_FAILED", {
                 version: "v1",
@@ -295,7 +295,7 @@ class ProdWorker {
                 },
               });
             } else {
-              logger("unknown error", e);
+              logger.error("unknown error", { error: e });
 
               socket.emit("INDEXING_FAILED", {
                 version: "v1",

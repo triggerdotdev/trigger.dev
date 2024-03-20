@@ -30,3 +30,14 @@ export const workerLogger = new Logger(
     return fields ? { ...fields } : {};
   }
 );
+
+export const socketLogger = new Logger(
+  "socket",
+  (process.env.APP_LOG_LEVEL ?? "debug") as LogLevel,
+  [],
+  sensitiveDataReplacer,
+  () => {
+    const fields = currentFieldsStore.getStore();
+    return fields ? { ...fields } : {};
+  }
+);

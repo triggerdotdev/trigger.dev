@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { StructuredLogger } from "./zodNamespace";
 
 export type ZodMessageValueSchema<TDiscriminatedUnion extends z.ZodDiscriminatedUnion<any, any>> =
   | z.ZodFirstPartySchemaTypes
@@ -92,17 +93,17 @@ export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> 
     };
   }
 
-  public registerHandlers(emitter: EventEmitterLike, logger?: (...args: any[]) => void) {
-    const log = logger ?? console.log;
+  public registerHandlers(emitter: EventEmitterLike, logger?: StructuredLogger) {
+    const log = logger ?? console;
 
     if (!this.#handlers) {
-      log("No handlers provided");
+      log.info("No handlers provided");
       return;
     }
 
     for (const eventName of Object.keys(this.#schema)) {
       emitter.on(eventName, async (message: any, callback?: any): Promise<void> => {
-        log(`handling ${eventName}`, message);
+        log.info(`handling ${eventName}`, message);
 
         let ack;
 

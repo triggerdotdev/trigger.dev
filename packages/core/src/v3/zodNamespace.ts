@@ -25,6 +25,87 @@ export type ZodNamespaceSocket<
   z.infer<TSocketData>
 >;
 
+type StructuredArgs = (Record<string, unknown> | undefined)[];
+
+export interface StructuredLogger {
+  log: (message: string, ...args: StructuredArgs) => any;
+  error: (message: string, ...args: StructuredArgs) => any;
+  warn: (message: string, ...args: StructuredArgs) => any;
+  info: (message: string, ...args: StructuredArgs) => any;
+  debug: (message: string, ...args: StructuredArgs) => any;
+  child: (fields: Record<string, unknown>) => StructuredLogger;
+}
+
+export enum LogLevel {
+  "log",
+  "error",
+  "warn",
+  "info",
+  "debug",
+}
+
+export class SimpleStructuredLogger implements StructuredLogger {
+  constructor(
+    private name: string,
+    private level: LogLevel = ["1", "true"].includes(process.env.DEBUG ?? "")
+      ? LogLevel.debug
+      : LogLevel.info,
+    private fields?: Record<string, unknown>
+  ) {}
+
+  child(fields: Record<string, unknown>, level?: LogLevel) {
+    return new SimpleStructuredLogger(this.name, level, { ...this.fields, ...fields });
+  }
+
+  log(message: string, ...args: StructuredArgs) {
+    if (this.level < LogLevel.log) return;
+
+    this.#structuredLog(console.log, message, "log", ...args);
+  }
+
+  error(message: string, ...args: StructuredArgs) {
+    if (this.level < LogLevel.error) return;
+
+    this.#structuredLog(console.error, message, "error", ...args);
+  }
+
+  warn(message: string, ...args: StructuredArgs) {
+    if (this.level < LogLevel.warn) return;
+
+    this.#structuredLog(console.warn, message, "warn", ...args);
+  }
+
+  info(message: string, ...args: StructuredArgs) {
+    if (this.level < LogLevel.info) return;
+
+    this.#structuredLog(console.info, message, "info", ...args);
+  }
+
+  debug(message: string, ...args: StructuredArgs) {
+    if (this.level < LogLevel.debug) return;
+
+    this.#structuredLog(console.debug, message, "debug", ...args);
+  }
+
+  #structuredLog(
+    loggerFunction: (message: string, ...args: any[]) => void,
+    message: string,
+    level: string,
+    ...args: Array<Record<string, unknown> | undefined>
+  ) {
+    const structuredLog = {
+      ...args,
+      ...this.fields,
+      timestamp: new Date(),
+      name: this.name,
+      message,
+      level,
+    };
+
+    loggerFunction(JSON.stringify(structuredLog));
+  }
+}
+
 interface ZodNamespaceOptions<
   TClientMessages extends ZodSocketMessageCatalogSchema,
   TServerMessages extends ZodSocketMessageCatalogSchema,
@@ -38,32 +119,33 @@ interface ZodNamespaceOptions<
   socketData?: TSocketData;
   handlers?: ZodSocketMessageHandlers<TClientMessages>;
   authToken?: string;
+  logger?: StructuredLogger;
   preAuth?: (
     socket: ZodNamespaceSocket<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>,
     next: (err?: ExtendedError) => void,
-    logger: (...args: any[]) => void
+    logger: StructuredLogger
   ) => Promise<void>;
   postAuth?: (
     socket: ZodNamespaceSocket<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>,
     next: (err?: ExtendedError) => void,
-    logger: (...args: any[]) => void
+    logger: StructuredLogger
   ) => Promise<void>;
   onConnection?: (
     socket: ZodNamespaceSocket<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>,
     handler: ZodSocketMessageHandler<TClientMessages>,
     sender: ZodMessageSender<TServerMessages>,
-    logger: (...args: any[]) => void
+    logger: StructuredLogger
   ) => Promise<void>;
   onDisconnect?: (
     socket: ZodNamespaceSocket<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>,
     reason: DisconnectReason,
     description: any,
-    logger: (...args: any[]) => void
+    logger: StructuredLogger
   ) => Promise<void>;
   onError?: (
     socket: ZodNamespaceSocket<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>,
     err: Error,
-    logger: (...args: any[]) => void
+    logger: StructuredLogger
   ) => Promise<void>;
 }
 
@@ -73,6 +155,7 @@ export class ZodNamespace<
   TSocketData extends z.ZodObject<any, any, any> = any,
   TServerSideEvents extends EventsMap = DefaultEventsMap,
 > {
+  #logger: StructuredLogger;
   #handler: ZodSocketMessageHandler<TClientMessages>;
   sender: ZodMessageSender<TServerMessages>;
 
@@ -87,6 +170,8 @@ export class ZodNamespace<
   constructor(
     opts: ZodNamespaceOptions<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>
   ) {
+    this.#logger = opts.logger ?? new SimpleStructuredLogger(opts.name);
+
     this.#handler = new ZodSocketMessageHandler({
       schema: opts.clientMessages,
       handlers: opts.handlers,
@@ -114,7 +199,7 @@ export class ZodNamespace<
 
     if (opts.preAuth) {
       this.namespace.use(async (socket, next) => {
-        const logger = createLogger(`[${opts.name}][${socket.id}][preAuth]`);
+        const logger = this.#logger.child({ socketId: socket.id, socketStage: "preAuth" });
 
         if (typeof opts.preAuth === "function") {
           await opts.preAuth(socket, next, logger);
@@ -124,21 +209,21 @@ export class ZodNamespace<
 
     if (opts.authToken) {
       this.namespace.use((socket, next) => {
-        const logger = createLogger(`[${opts.name}][${socket.id}][auth]`);
+        const logger = this.#logger.child({ socketId: socket.id, socketStage: "auth" });
 
         const { auth } = socket.handshake;
 
         if (!("token" in auth)) {
-          logger("no token");
+          logger.error("no token");
           return socket.disconnect(true);
         }
 
         if (auth.token !== opts.authToken) {
-          logger("invalid token");
+          logger.error("invalid token");
           return socket.disconnect(true);
         }
 
-        logger("success");
+        logger.info("success");
 
         next();
       });
@@ -146,7 +231,7 @@ export class ZodNamespace<
 
     if (opts.postAuth) {
       this.namespace.use(async (socket, next) => {
-        const logger = createLogger(`[${opts.name}][${socket.id}][postAuth]`);
+        const logger = this.#logger.child({ socketId: socket.id, socketStage: "auth" });
 
         if (typeof opts.postAuth === "function") {
           await opts.postAuth(socket, next, logger);
@@ -155,13 +240,13 @@ export class ZodNamespace<
     }
 
     this.namespace.on("connection", async (socket) => {
-      const logger = createLogger(`[${opts.name}][${socket.id}]`);
-      logger("connection");
+      const logger = this.#logger.child({ socketId: socket.id, socketStage: "connection" });
+      logger.info("connected");
 
       this.#handler.registerHandlers(socket, logger);
 
       socket.on("disconnect", async (reason, description) => {
-        logger("disconnect", { reason, description });
+        logger.info("disconnect", { reason, description });
 
         if (opts.onDisconnect) {
           await opts.onDisconnect(socket, reason, description, logger);
@@ -169,7 +254,7 @@ export class ZodNamespace<
       });
 
       socket.on("error", async (error) => {
-        logger("error", error);
+        logger.error("error", { error });
 
         if (opts.onError) {
           await opts.onError(socket, error, logger);
@@ -185,8 +270,4 @@ export class ZodNamespace<
   fetchSockets() {
     return this.namespace.fetchSockets();
   }
-}
-
-function createLogger(prefix: string) {
-  return (...args: any[]) => console.log(prefix, ...args);
 }

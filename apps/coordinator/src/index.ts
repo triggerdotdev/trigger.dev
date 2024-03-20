@@ -344,7 +344,7 @@ class TaskCoordinator {
         function setSocketDataFromHeader(dataKey: keyof typeof socket.data, headerName: string) {
           const value = socket.handshake.headers[headerName];
           if (!value) {
-            logger(`missing required header: ${headerName}`);
+            logger.error("missing required header", { headerName });
             throw new Error("missing header");
           }
           0;
@@ -361,12 +361,12 @@ class TaskCoordinator {
           setSocketDataFromHeader("deploymentId", "x-trigger-deployment-id");
           setSocketDataFromHeader("deploymentVersion", "x-trigger-deployment-version");
         } catch (error) {
-          logger(error);
+          logger.error("setSocketDataFromHeader error", { error });
           socket.disconnect(true);
           return;
         }
 
-        logger("success", socket.data);
+        logger.debug("success", socket.data);
 
         next();
       },
