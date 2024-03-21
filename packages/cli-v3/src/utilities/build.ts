@@ -1,7 +1,6 @@
 import { Config } from "@trigger.dev/core/v3";
 import type { Plugin } from "esbuild";
 import { logger } from "./logger";
-import { createRequire } from "node:module";
 
 export function bundleDependenciesPlugin(config: Config): Plugin {
   return {
@@ -39,19 +38,10 @@ export function bundleDependenciesPlugin(config: Config): Plugin {
 }
 
 function resolvePath(path: string): string {
-  try {
-    logger.debug("[bundle-dependencies] Attempting to resolve path using ESM resolver", {
-      path,
-      importMetaUrl: import.meta.url,
-    });
+  logger.debug("[bundle-dependencies] Attempting to resolve path using ESM resolver", {
+    path,
+    importMetaUrl: import.meta.url,
+  });
 
-    return createRequire(import.meta.url).resolve(path);
-  } catch (error) {
-    logger.debug("[bundle-dependencies] Failed. Falling back to require.resolve", {
-      path,
-      error,
-    });
-
-    return require.resolve(path);
-  }
+  return require.resolve(path);
 }
