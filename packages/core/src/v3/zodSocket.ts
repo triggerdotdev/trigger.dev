@@ -342,7 +342,7 @@ export class ZodSocketConnection<
     });
 
     this.socket.on("disconnect", async (reason, description) => {
-      this.#logger.info("disconnect");
+      this.#logger.info("disconnect", { reason, description });
 
       if (opts.onDisconnect) {
         await opts.onDisconnect(this.socket, reason, description, this.#logger);
