@@ -94,7 +94,7 @@
     "@opentelemetry/sdk-trace-node": "^1.21.0",
     "@opentelemetry/semantic-conventions": "^1.21.0",
     "@traceloop/instrumentation-openai": "^0.3.9",
-    "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/core": "workspace:^2.3.18",
     "@types/degit": "^2.8.3",
     "chalk": "^5.2.0",
     "chokidar": "^3.5.3",
