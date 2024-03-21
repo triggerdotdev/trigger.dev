@@ -41,13 +41,10 @@ type CheckpointAndPushOptions = {
   deploymentVersion: string;
 };
 
-type CheckpointAndPushReturn = Promise<
-  | {
-      location: string;
-      docker: boolean;
-    }
-  | undefined
->;
+type CheckpointData = {
+  location: string;
+  docker: boolean;
+};
 
 class Checkpointer {
   #initialized = false;
@@ -134,7 +131,26 @@ class Checkpointer {
     }
   }
 
-  async checkpointAndPush(opts: CheckpointAndPushOptions): CheckpointAndPushReturn {
+  async checkpointAndPush(opts: CheckpointAndPushOptions): Promise<CheckpointData | undefined> {
+    const start = performance.now();
+    logger.log(`checkpointAndPush() start`, { start, opts });
+
+    const result = await this.#checkpointAndPush(opts);
+
+    const end = performance.now();
+
+    logger.log(`checkpointAndPush() end`, {
+      start,
+      end,
+      diff: end - start,
+      opts,
+      success: !!result,
+    });
+
+    return result;
+  }
+
+  async #checkpointAndPush(opts: CheckpointAndPushOptions): Promise<CheckpointData | undefined> {
     await this.initialize();
 
     if (!this.#dockerMode && !this.#canCheckpoint) {
