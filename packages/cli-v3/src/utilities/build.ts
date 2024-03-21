@@ -1,8 +1,10 @@
-import { Config } from "@trigger.dev/core/v3";
+import { ResolvedConfig } from "@trigger.dev/core/v3";
 import type { Plugin } from "esbuild";
 import { logger } from "./logger";
+import { join } from "node:path";
+import { createRequire } from "node:module";
 
-export function bundleDependenciesPlugin(config: Config): Plugin {
+export function bundleDependenciesPlugin(config: ResolvedConfig): Plugin {
   return {
     name: "bundle-dependencies",
     setup(build) {
@@ -15,7 +17,7 @@ export function bundleDependenciesPlugin(config: Config): Plugin {
           // bundle it if the path matches the pattern
           if (typeof pattern === "string" ? args.path === pattern : pattern.test(args.path)) {
             try {
-              const resolvedPath = resolvePath(args.path);
+              const resolvedPath = resolvePath(args.path, config);
 
               logger.debug(`Bundling ${args.path} as ${resolvedPath}`);
 
@@ -37,11 +39,27 @@ export function bundleDependenciesPlugin(config: Config): Plugin {
   };
 }
 
-function resolvePath(path: string): string {
-  logger.debug("[bundle-dependencies] Attempting to resolve path using ESM resolver", {
-    path,
-    importMetaUrl: import.meta.url,
-  });
+function resolvePath(path: string, config: ResolvedConfig): string {
+  const requireUrl = join(config.projectDir, "index.js");
 
-  return require.resolve(path);
+  try {
+    const tmpRequire = createRequire(requireUrl);
+
+    logger.debug("[bundle-dependencies] Attempting to resolve path using require.resolve", {
+      path,
+      requireUrl,
+    });
+
+    return tmpRequire.resolve(path);
+  } catch (e) {
+    logger.debug(
+      "[bundle-dependencies] Attempting to resolve path using ESM import.meta.url resolver",
+      {
+        path,
+        importMetaUrl: import.meta.url,
+      }
+    );
+
+    return require.resolve(path);
+  }
 }
