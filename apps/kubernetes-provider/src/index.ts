@@ -276,6 +276,7 @@ class KubernetesTaskOperations implements TaskOperations {
           },
         },
         spec: {
+          restartPolicy: "Never",
           imagePullSecrets: [
             {
               name: "registry-trigger",
