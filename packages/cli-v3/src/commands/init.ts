@@ -241,7 +241,7 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
         return;
       }
 
-      const exampleFile = resolveInternalFilePath(`./templates/examples/${example}.js`);
+      const exampleFile = resolveInternalFilePath(`./templates/examples/${example}.ts.template`);
       const outputPath = join(triggerDir, "example.ts");
 
       await createFileFromTemplate({
@@ -439,7 +439,7 @@ async function writeConfigFile(
       spnnr.start("Creating config file");
 
       const projectDir = resolve(process.cwd(), dir);
-      const templatePath = resolveInternalFilePath("./templates/trigger.config.ts");
+      const templatePath = resolveInternalFilePath("./templates/trigger.config.ts.template");
       const outputPath = join(projectDir, "trigger.config.ts");
 
       span.setAttributes({

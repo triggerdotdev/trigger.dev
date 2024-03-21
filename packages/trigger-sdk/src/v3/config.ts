@@ -1,1 +1,1 @@
-export type { ProjectConfig as Config } from "@trigger.dev/core/v3";
+export type { ProjectConfig as TriggerConfig } from "@trigger.dev/core/v3";
