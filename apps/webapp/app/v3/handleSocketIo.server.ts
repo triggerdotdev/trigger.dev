@@ -67,7 +67,11 @@ function createCoordinatorNamespace(io: Server) {
       },
       TASK_RUN_COMPLETED: async (message) => {
         const completeAttempt = new CompleteAttemptService();
-        await completeAttempt.call(message.completion, message.execution);
+        await completeAttempt.call({
+          completion: message.completion,
+          execution: message.execution,
+          checkpoint: message.checkpoint,
+        });
       },
       TASK_HEARTBEAT: async (message) => {
         await sharedQueueTasks.taskHeartbeat(message.attemptFriendlyId);

@@ -14,14 +14,25 @@ export class CreateCheckpointService {
   }
 
   public async call(
-    params: InferSocketMessageSchema<typeof CoordinatorToPlatformMessages, "CHECKPOINT_CREATED">
+    params: Omit<
+      InferSocketMessageSchema<typeof CoordinatorToPlatformMessages, "CHECKPOINT_CREATED">,
+      "version"
+    >
   ): Promise<Checkpoint | undefined> {
     logger.debug(`Creating checkpoint`, params);
 
-    const attempt = await this.#prismaClient.taskRunAttempt.findUniqueOrThrow({
-      where: {
-        id: params.attemptId,
-      },
+    const isFriendlyId = (id: string) => {
+      return id.startsWith("attempt_");
+    };
+
+    const attempt = await this.#prismaClient.taskRunAttempt.findUnique({
+      where: isFriendlyId(params.attemptId)
+        ? {
+            friendlyId: params.attemptId,
+          }
+        : {
+            id: params.attemptId,
+          },
       include: {
         taskRun: true,
         backgroundWorker: {
@@ -35,6 +46,11 @@ export class CreateCheckpointService {
         },
       },
     });
+
+    if (!attempt) {
+      logger.error("Attempt not found", { attemptId: params.attemptId });
+      return;
+    }
 
     const imageRef = attempt.backgroundWorker.deployment?.imageReference;
 
@@ -63,7 +79,7 @@ export class CreateCheckpointService {
 
     await this.#prismaClient.taskRunAttempt.update({
       where: {
-        id: params.attemptId,
+        id: attempt.id,
       },
       data: {
         status: "PAUSED",

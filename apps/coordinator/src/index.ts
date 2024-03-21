@@ -151,10 +151,10 @@ class Checkpointer {
     );
 
     try {
+      this.#logger.log("Checkpointing:", { opts });
+
       // Create checkpoint (docker)
       if (this.#dockerMode) {
-        this.#logger.log("Checkpointing:", opts.podName);
-
         try {
           if (this.opts.forceSimulate || !this.#canCheckpoint) {
             this.#logger.log("Simulating checkpoint");
@@ -436,22 +436,26 @@ class TaskCoordinator {
         socket.on("TASK_RUN_COMPLETED", async ({ completion, execution }, callback) => {
           logger.log("completed task", { completionId: completion.id });
 
-          const sendCompletionToPlatform = () => {
-            this.#platformSocket?.send("TASK_RUN_COMPLETED", {
-              version: "v1",
-              execution,
-              completion,
-            });
+          type CheckpointData = {
+            docker: boolean;
+            location: string;
           };
 
           const confirmCompletion = ({
             didCheckpoint,
             shouldExit,
+            checkpoint,
           }: {
             didCheckpoint: boolean;
             shouldExit: boolean;
+            checkpoint?: CheckpointData;
           }) => {
-            sendCompletionToPlatform();
+            this.#platformSocket?.send("TASK_RUN_COMPLETED", {
+              version: "v1",
+              execution,
+              completion,
+              checkpoint,
+            });
             callback({ didCheckpoint, shouldExit });
           };
 
@@ -494,21 +498,7 @@ class TaskCoordinator {
             return;
           }
 
-          this.#platformSocket?.send("CHECKPOINT_CREATED", {
-            version: "v1",
-            attemptId: socket.data.attemptId,
-            docker: checkpoint.docker,
-            location: checkpoint.location,
-            reason: {
-              type: "RETRYING_AFTER_FAILURE",
-              attemptNumber: execution.attempt.number,
-              // TODO: attach completion data here
-            },
-          });
-
-          // TODO: replace this with
-          // callback({ didCheckpoint: true, shouldExit: false });
-          confirmCompletion({ didCheckpoint: true, shouldExit: false });
+          confirmCompletion({ didCheckpoint: true, shouldExit: false, checkpoint });
         });
 
         socket.on("WAIT_FOR_DURATION", async (message, callback) => {

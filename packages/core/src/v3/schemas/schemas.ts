@@ -180,6 +180,12 @@ export const CoordinatorToPlatformMessages = {
       version: z.literal("v1").default("v1"),
       execution: ProdTaskRunExecution,
       completion: TaskRunExecutionResult,
+      checkpoint: z
+        .object({
+          docker: z.boolean(),
+          location: z.string(),
+        })
+        .optional(),
     }),
   },
   TASK_HEARTBEAT: {
