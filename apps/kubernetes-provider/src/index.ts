@@ -159,6 +159,30 @@ class KubernetesTaskOperations implements TaskOperations {
               name: "registry-trigger",
             },
           ],
+          initContainers: [
+            {
+              name: "populate-taskinfo",
+              image: "busybox",
+              command: ["/bin/sh", "-c"],
+              args: ["printenv COORDINATOR_HOST | tee /etc/taskinfo/coordinator-host"],
+              env: [
+                {
+                  name: "COORDINATOR_HOST",
+                  valueFrom: {
+                    fieldRef: {
+                      fieldPath: "status.hostIP",
+                    },
+                  },
+                },
+              ],
+              volumeMounts: [
+                {
+                  name: "taskinfo",
+                  mountPath: "/etc/taskinfo",
+                },
+              ],
+            },
+          ],
           containers: [
             {
               name: this.#getRunContainerName(opts.attemptId),
@@ -223,25 +247,16 @@ class KubernetesTaskOperations implements TaskOperations {
               ],
               volumeMounts: [
                 {
-                  name: "dapi",
-                  mountPath: "/etc/dapi",
+                  name: "taskinfo",
+                  mountPath: "/etc/taskinfo",
                 },
               ],
             },
           ],
           volumes: [
             {
-              name: "dapi",
-              downwardAPI: {
-                items: [
-                  {
-                    path: "coordinator-host",
-                    fieldRef: {
-                      fieldPath: "status.hostIP",
-                    },
-                  },
-                ],
-              },
+              name: "taskinfo",
+              emptyDir: {},
             },
           ],
         },
@@ -269,6 +284,28 @@ class KubernetesTaskOperations implements TaskOperations {
               image: opts.imageRef,
               command: ["sleep", "0"],
             },
+            {
+              name: "populate-taskinfo",
+              image: "busybox",
+              command: ["/bin/sh", "-c"],
+              args: ["printenv COORDINATOR_HOST | tee /etc/taskinfo/coordinator-host"],
+              env: [
+                {
+                  name: "COORDINATOR_HOST",
+                  valueFrom: {
+                    fieldRef: {
+                      fieldPath: "status.hostIP",
+                    },
+                  },
+                },
+              ],
+              volumeMounts: [
+                {
+                  name: "taskinfo",
+                  mountPath: "/etc/taskinfo",
+                },
+              ],
+            },
           ],
           containers: [
             {
@@ -292,25 +329,16 @@ class KubernetesTaskOperations implements TaskOperations {
               // },
               volumeMounts: [
                 {
-                  name: "dapi",
-                  mountPath: "/etc/dapi",
+                  name: "taskinfo",
+                  mountPath: "/etc/taskinfo",
                 },
               ],
             },
           ],
           volumes: [
             {
-              name: "dapi",
-              downwardAPI: {
-                items: [
-                  {
-                    path: "coordinator-host",
-                    fieldRef: {
-                      fieldPath: "status.hostIP",
-                    },
-                  },
-                ],
-              },
+              name: "taskinfo",
+              emptyDir: {},
             },
           ],
         },
