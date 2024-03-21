@@ -42,7 +42,8 @@ import {
 import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
-import { SetOptional } from "type-fest";
+import type { SetOptional } from "type-fest";
+import { bundleDependenciesPlugin } from "../utilities/build";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -873,6 +874,7 @@ async function compileProject(
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
+        plugins: [bundleDependenciesPlugin(config)],
       });
 
       if (result.errors.length > 0) {

@@ -39,6 +39,7 @@ import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { UncaughtExceptionError } from "../workers/common/errors";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
+import { bundleDependenciesPlugin } from "../utilities/build";
 
 let apiClient: CliApiClient | undefined;
 
@@ -351,6 +352,7 @@ function useDev({
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
         plugins: [
+          bundleDependenciesPlugin(config),
           {
             name: "trigger.dev v3",
             setup(build) {

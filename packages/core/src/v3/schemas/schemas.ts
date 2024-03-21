@@ -10,6 +10,15 @@ import {
 } from "./messages";
 import { TaskResource } from "./resources";
 
+const RegexSchema = z.custom<RegExp>((val) => {
+  try {
+    // Check to see if val is a regex
+    return typeof (val as RegExp).test === "function";
+  } catch {
+    return false;
+  }
+});
+
 export const Config = z.object({
   project: z.string(),
   triggerDirectories: z.string().array().optional(),
@@ -22,6 +31,7 @@ export const Config = z.object({
     })
     .optional(),
   additionalPackages: z.string().array().optional(),
+  dependenciesToBundle: z.array(z.union([z.string(), RegexSchema])).optional(),
 });
 
 export type Config = z.infer<typeof Config>;

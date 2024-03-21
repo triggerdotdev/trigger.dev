@@ -2183,6 +2183,7 @@ importers:
 
   references/v3-catalog:
     specifiers:
+      '@sindresorhus/slugify': ^2.2.1
       '@trigger.dev/sdk': 2.3.18
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 20.4.2
@@ -2197,6 +2198,7 @@ importers:
       tsconfig-paths: ^3.14.1
       typescript: 5.1.6
     dependencies:
+      '@sindresorhus/slugify': 2.2.1
       '@trigger.dev/sdk': 2.3.18
       msw: 2.2.1_typescript@5.1.6
       openai: 4.28.0
@@ -15468,6 +15470,21 @@ packages:
   /@sindresorhus/is/5.6.0:
     resolution: {integrity: sha512-TV7t8GKYaJWsn00tFDqBw8+Uqmr8A0fRU1tvTQhyZzGv0sJCGRQL3JGMI3ucuKo3XIZdUP+Lx7/gh2t3lewy7g==}
     engines: {node: '>=14.16'}
+    dev: false
+
+  /@sindresorhus/slugify/2.2.1:
+    resolution: {integrity: sha512-MkngSCRZ8JdSOCHRaYd+D01XhvU3Hjy6MGl06zhOk614hp9EOAp5gIkBeQg7wtmxpitU6eAL4kdiRMcJa2dlrw==}
+    engines: {node: '>=12'}
+    dependencies:
+      '@sindresorhus/transliterate': 1.6.0
+      escape-string-regexp: 5.0.0
+    dev: false
+
+  /@sindresorhus/transliterate/1.6.0:
+    resolution: {integrity: sha512-doH1gimEu3A46VX6aVxpHTeHrytJAG6HgdxntYnCFiIFHEM/ZGpG8KiZGBChchjQmG0XFIBL552kBTjVcMZXwQ==}
+    engines: {node: '>=12'}
+    dependencies:
+      escape-string-regexp: 5.0.0
     dev: false
 
   /@sinonjs/commons/3.0.0:
