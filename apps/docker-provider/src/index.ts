@@ -126,7 +126,7 @@ class DockerTaskOperations implements TaskOperations {
   async create(opts: TaskOperationsCreateOptions) {
     await this.#initialize();
 
-    const containerName = this.#getRunContainerName(opts.attemptId);
+    const containerName = this.#getRunContainerName(opts.runId);
 
     try {
       logger.debug(
@@ -165,7 +165,7 @@ class DockerTaskOperations implements TaskOperations {
   async restore(opts: TaskOperationsRestoreOptions) {
     await this.#initialize();
 
-    const containerName = this.#getRunContainerName(opts.attemptId);
+    const containerName = this.#getRunContainerName(opts.runId);
 
     if (!this.#canCheckpoint || this.opts.forceSimulate) {
       logger.log("Simulating restore");

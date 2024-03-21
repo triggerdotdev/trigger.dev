@@ -35,7 +35,7 @@ type CheckpointerInitializeReturn = {
 };
 
 type CheckpointAndPushOptions = {
-  podName: string;
+  runId: string;
   leaveRunning?: boolean;
   projectRef: string;
   deploymentVersion: string;
@@ -153,20 +153,22 @@ class Checkpointer {
     try {
       this.#logger.log("Checkpointing:", { opts });
 
+      const containterName = this.#getRunContainerName(opts.runId);
+
       // Create checkpoint (docker)
       if (this.#dockerMode) {
         try {
           if (this.opts.forceSimulate || !this.#canCheckpoint) {
             this.#logger.log("Simulating checkpoint");
-            this.#logger.debug(await $`docker pause ${opts.podName}`);
+            this.#logger.debug(await $`docker pause ${containterName}`);
           } else {
             if (opts.leaveRunning) {
               this.#logger.debug(
-                await $`docker checkpoint create --leave-running ${opts.podName} ${exportLocation}`
+                await $`docker checkpoint create --leave-running ${containterName} ${exportLocation}`
               );
             } else {
               this.#logger.debug(
-                await $`docker checkpoint create ${opts.podName} ${exportLocation}`
+                await $`docker checkpoint create ${containterName} ${exportLocation}`
               );
             }
           }
@@ -176,7 +178,7 @@ class Checkpointer {
         }
 
         this.#logger.log("checkpoint created:", {
-          podName: opts.podName,
+          runId: opts.runId,
           location: exportLocation,
         });
 
@@ -194,7 +196,7 @@ class Checkpointer {
       const containerId = this.#logger.debug(
         // @ts-expect-error
         await $`crictl ps`
-          .pipeStdout($({ stdin: "pipe" })`grep ${opts.podName}`)
+          .pipeStdout($({ stdin: "pipe" })`grep ${containterName}`)
           .pipeStdout($({ stdin: "pipe" })`cut -f1 ${"-d "}`)
       );
 
@@ -235,11 +237,15 @@ class Checkpointer {
       return;
     }
   }
+
+  #getRunContainerName(suffix: string) {
+    return `task-run-${suffix}`;
+  }
 }
 
 class TaskCoordinator {
   #httpServer: ReturnType<typeof createServer>;
-  #checkpointer = new Checkpointer({ forceSimulate: false });
+  #checkpointer = new Checkpointer({ forceSimulate: true });
 
   #prodWorkerNamespace: ZodNamespace<
     typeof ProdWorkerToCoordinatorMessages,
@@ -487,13 +493,13 @@ class TaskCoordinator {
           }
 
           const checkpoint = await this.#checkpointer.checkpointAndPush({
-            podName: socket.data.podName,
+            runId: socket.data.runId,
             projectRef: socket.data.projectRef,
             deploymentVersion: socket.data.deploymentVersion,
           });
 
           if (!checkpoint) {
-            logger.error("Failed to checkpoint", { podName: socket.data.podName });
+            logger.error("Failed to checkpoint", { runId: socket.data.runId });
             confirmCompletion({ didCheckpoint: false, shouldExit: false });
             return;
           }
@@ -519,13 +525,13 @@ class TaskCoordinator {
           await new Promise((resolve) => setTimeout(resolve, 2_000));
 
           const checkpoint = await this.#checkpointer.checkpointAndPush({
-            podName: socket.data.podName,
+            runId: socket.data.runId,
             projectRef: socket.data.projectRef,
             deploymentVersion: socket.data.deploymentVersion,
           });
 
           if (!checkpoint) {
-            logger.error("Failed to checkpoint", { podName: socket.data.podName });
+            logger.error("Failed to checkpoint", { runId: socket.data.runId });
             // TODO: We have to let the worker know about failures so it can use its own timer
             return;
           }
@@ -562,13 +568,13 @@ class TaskCoordinator {
           }
 
           const checkpoint = await this.#checkpointer.checkpointAndPush({
-            podName: socket.data.podName,
+            runId: socket.data.runId,
             projectRef: socket.data.projectRef,
             deploymentVersion: socket.data.deploymentVersion,
           });
 
           if (!checkpoint) {
-            logger.error("Failed to checkpoint", { podName: socket.data.podName });
+            logger.error("Failed to checkpoint", { runId: socket.data.runId });
             return;
           }
 
@@ -604,13 +610,13 @@ class TaskCoordinator {
           }
 
           const checkpoint = await this.#checkpointer.checkpointAndPush({
-            podName: socket.data.podName,
+            runId: socket.data.runId,
             projectRef: socket.data.projectRef,
             deploymentVersion: socket.data.deploymentVersion,
           });
 
           if (!checkpoint) {
-            logger.error("Failed to checkpoint", { podName: socket.data.podName });
+            logger.error("Failed to checkpoint", { runId: socket.data.runId });
             return;
           }
 

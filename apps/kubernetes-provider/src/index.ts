@@ -146,7 +146,7 @@ class KubernetesTaskOperations implements TaskOperations {
     await this.#createPod(
       {
         metadata: {
-          name: this.#getRunContainerName(opts.attemptId),
+          name: this.#getRunContainerName(opts.runId),
           namespace: this.#namespace.metadata.name,
           labels: {
             app: "task-run",
@@ -161,7 +161,7 @@ class KubernetesTaskOperations implements TaskOperations {
           ],
           containers: [
             {
-              name: this.#getRunContainerName(opts.attemptId),
+              name: this.#getRunContainerName(opts.runId),
               image: opts.image,
               ports: [
                 {
@@ -245,7 +245,7 @@ class KubernetesTaskOperations implements TaskOperations {
     await this.#createPod(
       {
         metadata: {
-          name: `${this.#getRunContainerName(opts.attemptId)}-${randomUUID().slice(0, 8)}`,
+          name: `${this.#getRunContainerName(opts.runId)}-${randomUUID().slice(0, 8)}`,
           namespace: this.#namespace.metadata.name,
           labels: {
             app: "task-run",
@@ -289,7 +289,7 @@ class KubernetesTaskOperations implements TaskOperations {
           ],
           containers: [
             {
-              name: opts.runId,
+              name: this.#getRunContainerName(opts.runId),
               image: opts.checkpointRef,
               ports: [
                 {
@@ -329,7 +329,7 @@ class KubernetesTaskOperations implements TaskOperations {
 
   async delete(opts: { runId: string }) {
     await this.#deletePod({
-      podName: opts.runId,
+      runId: opts.runId,
       namespace: this.#namespace,
     });
   }
@@ -372,10 +372,10 @@ class KubernetesTaskOperations implements TaskOperations {
     }
   }
 
-  async #deletePod(opts: { podName: string; namespace: Namespace }) {
+  async #deletePod(opts: { runId: string; namespace: Namespace }) {
     try {
       const res = await this.#k8sApi.core.deleteNamespacedPod(
-        opts.podName,
+        opts.runId,
         opts.namespace.metadata.name
       );
       logger.debug(res.body);
@@ -384,9 +384,9 @@ class KubernetesTaskOperations implements TaskOperations {
     }
   }
 
-  async #getPod(podName: string, namespace: Namespace) {
+  async #getPod(runId: string, namespace: Namespace) {
     try {
-      const res = await this.#k8sApi.core.readNamespacedPod(podName, namespace.metadata.name);
+      const res = await this.#k8sApi.core.readNamespacedPod(runId, namespace.metadata.name);
       logger.debug(res.body);
       return res.body;
     } catch (err: unknown) {
