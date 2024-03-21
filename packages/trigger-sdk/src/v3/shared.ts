@@ -38,8 +38,48 @@ export function queue(options: { name: string } & QueueOptions): Queue {
 }
 
 export type TaskOptions<TPayload, TOutput = any, TInitOutput extends InitOutput = any> = {
+  /** An id for your task. This must be unique inside your project and not change between versions.  */
   id: string;
+  /** The retry settings when an uncaught error is thrown.
+   *
+   * If omitted it will use the values in your `trigger.config.ts` file.
+   * 
+   * @example
+   * 
+   * ```
+   * export const taskWithRetries = task({
+      id: "task-with-retries",
+      retry: {
+        maxAttempts: 10,
+        factor: 1.8,
+        minTimeoutInMs: 500,
+        maxTimeoutInMs: 30_000,
+        randomize: false,
+      },
+      run: async ({ payload, ctx }) => {
+        //...
+      },
+    });
+   * ```
+   * */
   retry?: RetryOptions;
+  /** Used to configure what should happen when more than one run is triggered at the same time.
+   * 
+   * @example 
+   * one at a time execution
+   * 
+   * ```ts
+   * export const oneAtATime = task({
+      id: "one-at-a-time",
+      queue: {
+        concurrencyLimit: 1,
+      },
+      run: async ({ payload, ctx }) => {
+        //...
+      },
+    });
+   * ```
+   */
   queue?: QueueOptions;
   machine?: {
     cpu?: number;

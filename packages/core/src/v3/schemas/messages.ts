@@ -157,10 +157,21 @@ export const RateLimitOptions = z.discriminatedUnion("type", [
 ]);
 
 export const RetryOptions = z.object({
+  /** The number of attempts before giving up */
   maxAttempts: z.number().int().optional(),
+  /** The exponential factor to use when calculating the next retry time.
+   *
+   * Each subsequent retry will be calculated as `previousTimeout * factor`
+   */
   factor: z.number().optional(),
+  /** The minimum time to wait before retrying */
   minTimeoutInMs: z.number().int().optional(),
+  /** The maximum time to wait before retrying */
   maxTimeoutInMs: z.number().int().optional(),
+  /** Randomize the timeout between retries.
+   *
+   * This can be useful to prevent the thundering herd problem where all retries happen at the same time.
+   */
   randomize: z.boolean().optional(),
 });
 
@@ -169,10 +180,44 @@ export type RetryOptions = z.infer<typeof RetryOptions>;
 export type RateLimitOptions = z.infer<typeof RateLimitOptions>;
 
 export const QueueOptions = z.object({
+  /** You can define a shared queue and then pass the name in to your task.
+   * 
+   * @example
+   * 
+   * ```ts
+   * const myQueue = queue({
+      name: "my-queue",
+      concurrencyLimit: 1,
+    });
+
+    export const task1 = task({
+      id: "task-1",
+      queue: {
+        name: "my-queue",
+      },
+      run: async (payload: { message: string }) => {
+        // ...
+      },
+    });
+
+    export const task2 = task({
+      id: "task-2",
+      queue: {
+        name: "my-queue",
+      },
+      run: async (payload: { message: string }) => {
+        // ...
+      },
+    });
+   * ```
+   */
+  name: z.string().optional(),
+  /** An optional property that specifies the maximum number of concurrent run executions.
+   *
+   * If this property is omitted, the task can potentially use up the full concurrency of an environment. */
+  concurrencyLimit: z.number().int().min(1).max(1000).optional(),
   /** @deprecated This feature is coming soon */
   rateLimit: RateLimitOptions.optional(),
-  concurrencyLimit: z.number().int().min(1).max(1000).optional(),
-  name: z.string().optional(),
 });
 
 export type QueueOptions = z.infer<typeof QueueOptions>;
