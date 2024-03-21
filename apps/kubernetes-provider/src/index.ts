@@ -271,6 +271,9 @@ class KubernetesTaskOperations implements TaskOperations {
         metadata: {
           name: `${this.#getRunContainerName(opts.attemptId)}-${randomUUID().slice(0, 8)}`,
           namespace: this.#namespace.metadata.name,
+          labels: {
+            app: "task-run",
+          },
         },
         spec: {
           imagePullSecrets: [
