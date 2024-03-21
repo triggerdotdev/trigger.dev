@@ -155,13 +155,18 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
 
         let ack;
 
-        // FIXME: this only works if the message doesn't have genuine payload prop
-        if ("payload" in message) {
-          ack = await this.handleMessage({ type: eventName, ...message });
-        } else {
-          // Handle messages not sent by ZodMessageSender
-          const { version, ...payload } = message;
-          ack = await this.handleMessage({ type: eventName, version, payload });
+        try {
+          // FIXME: this only works if the message doesn't have genuine payload prop
+          if ("payload" in message) {
+            ack = await this.handleMessage({ type: eventName, ...message });
+          } else {
+            // Handle messages not sent by ZodMessageSender
+            const { version, ...payload } = message;
+            ack = await this.handleMessage({ type: eventName, version, payload });
+          }
+        } catch (error) {
+          log.error("Error while handling message", { error });
+          return;
         }
 
         if (callback && typeof callback === "function") {

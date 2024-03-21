@@ -262,6 +262,7 @@ export const ProdChildToWorkerMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       ms: z.number(),
+      now: z.number(),
     }),
     callback: z.object({
       willCheckpointAndRestore: z.boolean(),

@@ -204,6 +204,7 @@ export const CoordinatorToPlatformMessages = {
         z.object({
           type: z.literal("WAIT_FOR_DURATION"),
           ms: z.number(),
+          now: z.number(),
         }),
         z.object({
           type: z.literal("WAIT_FOR_BATCH"),
@@ -353,6 +354,7 @@ export const ProdWorkerToCoordinatorMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       ms: z.number(),
+      now: z.number(),
     }),
     callback: z.object({
       willCheckpointAndRestore: z.boolean(),

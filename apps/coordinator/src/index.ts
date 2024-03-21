@@ -505,6 +505,12 @@ class TaskCoordinator {
           }
 
           confirmCompletion({ didCheckpoint: true, shouldExit: false, checkpoint });
+
+          if (!checkpoint.docker) {
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+          }
         });
 
         socket.on("WAIT_FOR_DURATION", async (message, callback) => {
@@ -550,6 +556,7 @@ class TaskCoordinator {
             reason: {
               type: "WAIT_FOR_DURATION",
               ms: message.ms,
+              now: message.now,
             },
           });
         });

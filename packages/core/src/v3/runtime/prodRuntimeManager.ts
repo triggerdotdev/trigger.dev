@@ -49,6 +49,8 @@ export class ProdRuntimeManager implements RuntimeManager {
   async waitForDuration(ms: number): Promise<void> {
     let timeout: NodeJS.Timeout | undefined;
 
+    const now = Date.now();
+
     const resolveAfterDuration = new Promise((resolve) => {
       timeout = setTimeout(resolve, ms);
     });
@@ -63,7 +65,10 @@ export class ProdRuntimeManager implements RuntimeManager {
     });
 
     // There is a slight delay before actually checkpointing, so this has a chance to return
-    const { willCheckpointAndRestore } = await this.ipc.sendWithAck("WAIT_FOR_DURATION", { ms });
+    const { willCheckpointAndRestore } = await this.ipc.sendWithAck("WAIT_FOR_DURATION", {
+      ms,
+      now,
+    });
 
     if (!willCheckpointAndRestore) {
       await resolveAfterDuration;

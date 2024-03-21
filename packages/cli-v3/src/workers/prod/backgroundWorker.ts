@@ -17,7 +17,6 @@ import {
 } from "@trigger.dev/core/v3";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { safeDeleteFileSync } from "../../utilities/fileSystem";
 import { UncaughtExceptionError } from "../common/errors";
 
 class UnexpectedExitError extends Error {
@@ -56,7 +55,7 @@ export class ProdBackgroundWorker {
 
   public onTaskHeartbeat: Evt<string> = new Evt();
 
-  public onWaitForDuration: Evt<{ version?: "v1"; ms: number }> = new Evt();
+  public onWaitForDuration: Evt<{ version?: "v1"; ms: number; now: number }> = new Evt();
   public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
   public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
 
@@ -343,7 +342,7 @@ class TaskRunProcess {
   public onExit: Evt<number> = new Evt();
 
   public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
-  public onWaitForDuration: Evt<{ version?: "v1"; ms: number }> = new Evt();
+  public onWaitForDuration: Evt<{ version?: "v1"; ms: number; now: number }> = new Evt();
   public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
 
   public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
