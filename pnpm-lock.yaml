@@ -1138,7 +1138,6 @@ importers:
       '@opentelemetry/semantic-conventions': 1.21.0
       '@traceloop/instrumentation-openai': 0.3.9_rr4fxqkzz7nhz3auplkqn4p6em
       '@trigger.dev/core': link:../core
-      '@trigger.dev/core-apps': link:../core-apps
       '@types/degit': 2.8.3
       chalk: 5.3.0
       chokidar: 3.5.3
@@ -1179,6 +1178,7 @@ importers:
       zod: 3.22.3
       zod-validation-error: 1.5.0_zod@3.22.3
     devDependencies:
+      '@trigger.dev/core-apps': link:../core-apps
       '@trigger.dev/tsconfig': link:../../config-packages/tsconfig
       '@types/gradient-string': 1.1.2
       '@types/jsonlines': 0.1.5
