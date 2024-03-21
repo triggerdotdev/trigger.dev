@@ -29,7 +29,11 @@ import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/c
 import { readConfig } from "../utilities/configFiles";
 import { readJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
-import { detectPackageNameFromImportPath, parsePackageName } from "../utilities/installPackages";
+import {
+  detectPackageNameFromImportPath,
+  parsePackageName,
+  stripWorkspaceFromVersion,
+} from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
@@ -674,7 +678,7 @@ async function gatherRequiredDependencies(
       detectDependencyVersion(packageName);
 
     if (internalDependencyVersion) {
-      dependencies[packageName] = internalDependencyVersion;
+      dependencies[packageName] = stripWorkspaceFromVersion(internalDependencyVersion);
     }
   }
 

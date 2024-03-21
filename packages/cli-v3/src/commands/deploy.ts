@@ -34,7 +34,11 @@ import {
 import { readConfig } from "../utilities/configFiles.js";
 import { createTempDir, readJSONFile, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
-import { detectPackageNameFromImportPath, parsePackageName } from "../utilities/installPackages";
+import {
+  detectPackageNameFromImportPath,
+  parsePackageName,
+  stripWorkspaceFromVersion,
+} from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
@@ -1227,7 +1231,7 @@ async function gatherRequiredDependencies(
     const externalDependencyVersion = (externalPackageJson?.dependencies ?? {})[packageName];
 
     if (externalDependencyVersion) {
-      dependencies[packageName] = externalDependencyVersion;
+      dependencies[packageName] = stripWorkspaceFromVersion(externalDependencyVersion);
       continue;
     }
 
@@ -1236,7 +1240,7 @@ async function gatherRequiredDependencies(
       detectDependencyVersion(packageName);
 
     if (internalDependencyVersion) {
-      dependencies[packageName] = internalDependencyVersion;
+      dependencies[packageName] = stripWorkspaceFromVersion(internalDependencyVersion);
     }
   }
 
