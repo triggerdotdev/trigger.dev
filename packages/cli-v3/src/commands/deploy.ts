@@ -864,7 +864,6 @@ async function compileProject(
         write: false,
         minify: false,
         sourcemap: "external", // does not set the //# sourceMappingURL= comment in the file, we handle it ourselves
-        packages: "external", // https://esbuild.github.io/api/#packages
         logLevel: "error",
         platform: "node",
         format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching

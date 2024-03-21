@@ -1107,6 +1107,7 @@ importers:
       supports-color: ^9.4.0
       terminal-link: ^3.0.0
       tiny-invariant: ^1.2.0
+      tsconfig-paths: ^4.2.0
       tsup: ^8.0.1
       type-fest: ^3.6.0
       typescript: ^5.3.3
@@ -1172,6 +1173,7 @@ importers:
       supports-color: 9.4.0
       terminal-link: 3.0.0
       tiny-invariant: 1.3.1
+      tsconfig-paths: 4.2.0
       update-check: 1.5.4
       url: 0.11.1
       ws: 8.12.0
@@ -37409,7 +37411,6 @@ packages:
       json5: 2.2.3
       minimist: 1.2.7
       strip-bom: 3.0.0
-    dev: true
 
   /tsconfig-resolver/3.0.1:
     resolution: {integrity: sha512-ZHqlstlQF449v8glscGRXzL6l2dZvASPCdXJRWG4gHEZlUVx2Jtmr+a2zeVG4LCsKhDXKRj5R3h0C/98UcVAQg==}

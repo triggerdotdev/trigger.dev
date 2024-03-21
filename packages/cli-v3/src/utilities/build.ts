@@ -1,65 +1,166 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3";
+import type * as esbuild from "esbuild";
 import type { Plugin } from "esbuild";
+import { extname, isAbsolute } from "node:path";
+import tsConfigPaths from "tsconfig-paths";
 import { logger } from "./logger";
-import { join } from "node:path";
-import { createRequire } from "node:module";
 
 export function bundleDependenciesPlugin(config: ResolvedConfig): Plugin {
+  const matchPath = config.tsconfigPath ? createMatchPath(config.tsconfigPath) : undefined;
+
+  function resolvePath(id: string) {
+    if (!matchPath) {
+      return id;
+    }
+    return matchPath(id, undefined, undefined, [".ts", ".tsx", ".js", ".jsx"]) || id;
+  }
+
   return {
     name: "bundle-dependencies",
     setup(build) {
       build.onResolve({ filter: /.*/ }, (args) => {
-        if (args.kind !== "import-statement") {
+        const resolvedPath = resolvePath(args.path);
+
+        logger.debug(`Checking if ${args.path} should be bundled or external`, {
+          ...args,
+          resolvedPath,
+        });
+
+        if (!isBareModuleId(resolvedPath)) {
+          logger.debug(`Bundling ${args.path} because its not a bareModuleId`, {
+            ...args,
+          });
+
+          return undefined; // let esbuild bundle it
+        }
+
+        if (args.path.startsWith("@trigger.dev/")) {
+          logger.debug(`Bundling ${args.path} because its a trigger.dev package`, {
+            ...args,
+          });
+
+          return undefined; // let esbuild bundle it
+        }
+
+        // Skip assets that are treated as files (.css, .svg, .png, etc.).
+        // Otherwise, esbuild would emit code that would attempt to require()
+        // or import these files --- which aren't JavaScript!
+        let loader;
+        try {
+          loader = getLoaderForFile(args.path);
+        } catch (e) {
+          if (!(e instanceof Error && e.message.startsWith("Cannot get loader for file"))) {
+            throw e;
+          }
+        }
+        if (loader === "file") {
           return undefined;
         }
 
         for (let pattern of config.dependenciesToBundle ?? []) {
-          // bundle it if the path matches the pattern
           if (typeof pattern === "string" ? args.path === pattern : pattern.test(args.path)) {
-            try {
-              const resolvedPath = resolvePath(args.path, config);
-
-              logger.debug(`Bundling ${args.path} as ${resolvedPath}`);
-
-              return {
-                path: resolvedPath,
-                external: false,
-              };
-            } catch (error) {
-              logger.error(`Failed to resolve path ${args.path}`, error);
-
-              return undefined;
-            }
+            return undefined; // let esbuild bundle it
           }
         }
 
-        return undefined;
+        logger.debug(`Externalizing ${args.path}`, {
+          ...args,
+        });
+
+        // Everything else should be external
+        return {
+          path: args.path,
+          external: true,
+        };
       });
     },
   };
 }
 
-function resolvePath(path: string, config: ResolvedConfig): string {
-  const requireUrl = join(config.projectDir, "index.js");
+function isBareModuleId(id: string): boolean {
+  return !id.startsWith("node:") && !id.startsWith(".") && !isAbsolute(id);
+}
 
-  try {
-    const tmpRequire = createRequire(requireUrl);
-
-    logger.debug("[bundle-dependencies] Attempting to resolve path using require.resolve", {
-      path,
-      requireUrl,
-    });
-
-    return tmpRequire.resolve(path);
-  } catch (e) {
-    logger.debug(
-      "[bundle-dependencies] Attempting to resolve path using ESM import.meta.url resolver",
-      {
-        path,
-        importMetaUrl: import.meta.url,
-      }
-    );
-
-    return require.resolve(path);
+export function createMatchPath(tsconfigPath: string | undefined) {
+  // There is no tsconfig to match paths against.
+  if (!tsconfigPath) {
+    return undefined;
   }
+
+  // When passing a absolute path, loadConfig assumes that the path contains
+  // a tsconfig file.
+  // Ref.: https://github.com/dividab/tsconfig-paths/blob/v4.0.0/src/__tests__/config-loader.test.ts#L74
+  let configLoaderResult = tsConfigPaths.loadConfig(tsconfigPath);
+
+  if (configLoaderResult.resultType === "failed") {
+    if (configLoaderResult.message === "Missing baseUrl in compilerOptions") {
+      throw new Error(
+        `🚨 Oops! No baseUrl found, please set compilerOptions.baseUrl in your tsconfig or jsconfig`
+      );
+    }
+    return undefined;
+  }
+
+  return tsConfigPaths.createMatchPath(
+    configLoaderResult.absoluteBaseUrl,
+    configLoaderResult.paths,
+    configLoaderResult.mainFields,
+    configLoaderResult.addMatchAll
+  );
+}
+
+const loaders: { [ext: string]: esbuild.Loader } = {
+  ".aac": "file",
+  ".avif": "file",
+  ".css": "file",
+  ".csv": "file",
+  ".eot": "file",
+  ".fbx": "file",
+  ".flac": "file",
+  ".gif": "file",
+  ".glb": "file",
+  ".gltf": "file",
+  ".gql": "text",
+  ".graphql": "text",
+  ".hdr": "file",
+  ".ico": "file",
+  ".jpeg": "file",
+  ".jpg": "file",
+  ".js": "jsx",
+  ".jsx": "jsx",
+  ".json": "json",
+  // We preprocess md and mdx files using @mdx-js/mdx and send through
+  // the JSX for esbuild to handle
+  ".md": "jsx",
+  ".mdx": "jsx",
+  ".mov": "file",
+  ".mp3": "file",
+  ".mp4": "file",
+  ".node": "copy",
+  ".ogg": "file",
+  ".otf": "file",
+  ".png": "file",
+  ".psd": "file",
+  ".sql": "text",
+  ".svg": "file",
+  ".ts": "ts",
+  ".tsx": "tsx",
+  ".ttf": "file",
+  ".wasm": "file",
+  ".wav": "file",
+  ".webm": "file",
+  ".webmanifest": "file",
+  ".webp": "file",
+  ".woff": "file",
+  ".woff2": "file",
+  ".zip": "file",
+};
+
+export function getLoaderForFile(file: string): esbuild.Loader {
+  const ext = extname(file);
+  const loader = loaders[ext];
+
+  if (loader) return loader;
+
+  throw new Error(`Cannot get loader for file ${file}`);
 }

@@ -183,6 +183,10 @@ export async function resolveConfig(path: string, config: Config): Promise<Resol
     config.projectDir = path;
   }
 
+  if (!config.tsconfigPath) {
+    config.tsconfigPath = await getConfigPath(path, "tsconfig.json");
+  }
+
   return config as ResolvedConfig;
 }
 

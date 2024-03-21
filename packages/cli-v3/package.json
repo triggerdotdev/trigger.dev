@@ -129,6 +129,7 @@
     "supports-color": "^9.4.0",
     "terminal-link": "^3.0.0",
     "tiny-invariant": "^1.2.0",
+    "tsconfig-paths": "^4.2.0",
     "update-check": "^1.5.4",
     "url": "^0.11.1",
     "ws": "^8.12.0",

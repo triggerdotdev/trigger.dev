@@ -24,6 +24,7 @@ export const Config = z.object({
   triggerDirectories: z.string().array().optional(),
   triggerUrl: z.string().optional(),
   projectDir: z.string().optional(),
+  tsconfigPath: z.string().optional(),
   retries: z
     .object({
       enabledInDev: z.boolean().default(true),
@@ -37,7 +38,7 @@ export const Config = z.object({
 export type Config = z.infer<typeof Config>;
 export type ResolvedConfig = RequireKeys<
   Config,
-  "triggerDirectories" | "triggerUrl" | "projectDir"
+  "triggerDirectories" | "triggerUrl" | "projectDir" | "tsconfigPath"
 >;
 
 export const Machine = z.object({
