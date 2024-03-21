@@ -10,7 +10,7 @@ import {
   TaskRunExecutionRetry,
 } from "../schemas";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
-import { ProjectConfig, TaskMetadataWithFunctions } from "../types";
+import { HandleErrorFunction, ProjectConfig, TaskMetadataWithFunctions } from "../types";
 import { flattenAttributes } from "../utils/flattenAttributes";
 import { accessoryAttributes } from "../utils/styleAttributes";
 import { calculateNextRetryDelay } from "../utils/retries";
@@ -25,6 +25,7 @@ export type TaskExecutorOptions = {
   consoleInterceptor: ConsoleInterceptor;
   projectConfig: Config;
   importedConfig: ProjectConfig | undefined;
+  handleErrorFn: HandleErrorFunction | undefined;
 };
 
 export class TaskExecutor {
@@ -33,6 +34,7 @@ export class TaskExecutor {
   private _consoleInterceptor: ConsoleInterceptor;
   private _config: Config;
   private _importedConfig: ProjectConfig | undefined;
+  private _handleErrorFn: HandleErrorFunction | undefined;
 
   constructor(
     public task: TaskMetadataWithFunctions,
@@ -43,6 +45,7 @@ export class TaskExecutor {
     this._consoleInterceptor = options.consoleInterceptor;
     this._config = options.projectConfig;
     this._importedConfig = options.importedConfig;
+    this._handleErrorFn = options.handleErrorFn;
   }
 
   async execute(
@@ -224,7 +227,9 @@ export class TaskExecutor {
     | { status: "skipped"; error?: unknown } // skipped is different than noop, it means that the task was skipped from retrying, instead of just not retrying
     | { status: "noop"; error?: unknown }
   > {
-    const retry = this.task.retry ?? this._config.retries?.default;
+    const retriesConfig = this._importedConfig?.retries ?? this._config.retries;
+
+    const retry = this.task.retry ?? retriesConfig?.default;
 
     if (!retry) {
       return { status: "noop" };
@@ -234,8 +239,8 @@ export class TaskExecutor {
 
     if (
       execution.environment.type === "DEVELOPMENT" &&
-      typeof this._config.retries?.enabledInDev === "boolean" &&
-      !this._config.retries.enabledInDev
+      typeof retriesConfig?.enabledInDev === "boolean" &&
+      !retriesConfig.enabledInDev
     ) {
       return { status: "skipped" };
     }
@@ -251,7 +256,7 @@ export class TaskExecutor {
               retryAt: delay ? new Date(Date.now() + delay) : undefined,
             })
           : this._importedConfig
-          ? await this._importedConfig.handleError?.(payload, error, {
+          ? await this._handleErrorFn?.(payload, error, {
               ctx,
               retry,
               retryDelayInMs: delay,

@@ -21,6 +21,7 @@ export const Config = z.object({
       default: RetryOptions.optional(),
     })
     .optional(),
+  additionalPackages: z.string().array().optional(),
 });
 
 export type Config = z.infer<typeof Config>;

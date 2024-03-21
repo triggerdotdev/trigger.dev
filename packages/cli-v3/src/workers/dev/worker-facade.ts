@@ -1,4 +1,11 @@
-import { Config, ProjectConfig, TaskExecutor, preciseDateOriginNow, type TracingSDK } from "@trigger.dev/core/v3";
+import {
+  Config,
+  ProjectConfig,
+  TaskExecutor,
+  preciseDateOriginNow,
+  type TracingSDK,
+  type HandleErrorFunction,
+} from "@trigger.dev/core/v3";
 import "source-map-support/register.js";
 
 __WORKER_SETUP__;
@@ -7,6 +14,7 @@ declare const __WORKER_SETUP__: unknown;
 __IMPORTED_PROJECT_CONFIG__;
 declare const __IMPORTED_PROJECT_CONFIG__: unknown;
 declare const importedConfig: ProjectConfig | undefined;
+declare const handleError: HandleErrorFunction | undefined;
 
 declare const __PROJECT_CONFIG__: Config;
 declare const tracingSDK: TracingSDK;
@@ -48,7 +56,7 @@ const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
   tracer: tracer,
   level: "info",
-  preciseDateOrigin
+  preciseDateOrigin,
 });
 
 logger.setGlobalTaskLogger(otelTaskLogger);
@@ -111,6 +119,7 @@ for (const task of tasks) {
       consoleInterceptor,
       projectConfig: __PROJECT_CONFIG__,
       importedConfig,
+      handleErrorFn: handleError,
     })
   );
 }

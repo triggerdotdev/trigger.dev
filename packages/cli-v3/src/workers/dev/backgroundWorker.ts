@@ -167,8 +167,8 @@ export class BackgroundWorkerCoordinator {
       !completion.ok && completion.skippedRetrying
         ? " (retrying skipped)"
         : !completion.ok && completion.retry !== undefined
-          ? ` (retrying in ${completion.retry.delay}ms)`
-          : "";
+        ? ` (retrying in ${completion.retry.delay}ms)`
+        : "";
 
     const resultText = !completion.ok
       ? completion.error.type === "INTERNAL_ERROR" &&
@@ -181,8 +181,8 @@ export class BackgroundWorkerCoordinator {
     const errorText = !completion.ok
       ? this.#formatErrorLog(completion.error)
       : "retry" in completion
-        ? `retry in ${completion.retry}ms`
-        : "";
+      ? `retry in ${completion.retry}ms`
+      : "";
 
     const elapsedText = chalk.dim(`(${elapsed.toFixed(2)}ms)`);
 
@@ -263,7 +263,7 @@ export class BackgroundWorker {
   constructor(
     public path: string,
     private params: BackgroundWorkerParams
-  ) { }
+  ) {}
 
   close() {
     if (this._closed) {
@@ -316,7 +316,7 @@ export class BackgroundWorker {
         resolved = true;
         child.kill();
         reject(new Error("Worker timed out"));
-      }, 1000);
+      }, 5000);
 
       child.on("message", async (msg: any) => {
         const message = this._handler.parseMessage(msg);
@@ -545,7 +545,8 @@ class TaskRunProcess {
     logger.debug("initializing task run process", {
       env: this.env,
       path: this.path,
-    })
+      processEnv: process.env,
+    });
 
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
@@ -700,7 +701,8 @@ class TaskRunProcess {
     }
 
     logger.log(
-      `[${this.metadata.version}][${this._currentExecution.run.id}.${this._currentExecution.attempt.number
+      `[${this.metadata.version}][${this._currentExecution.run.id}.${
+        this._currentExecution.attempt.number
       }] ${data.toString()}`
     );
   }
@@ -717,7 +719,8 @@ class TaskRunProcess {
     }
 
     logger.error(
-      `[${this.metadata.version}][${this._currentExecution.run.id}.${this._currentExecution.attempt.number
+      `[${this.metadata.version}][${this._currentExecution.run.id}.${
+        this._currentExecution.attempt.number
       }] ${data.toString()}`
     );
   }

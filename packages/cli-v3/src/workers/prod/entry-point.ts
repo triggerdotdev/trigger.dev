@@ -54,6 +54,7 @@ class ProdWorker {
     this.#backgroundWorker = new ProdBackgroundWorker("worker.js", {
       projectConfig: __PROJECT_CONFIG__,
       env: {
+        ...gatherProcessEnv(),
         TRIGGER_API_URL: this.apiUrl,
         TRIGGER_SECRET_KEY: this.apiKey,
         OTEL_EXPORTER_OTLP_ENDPOINT:
@@ -513,3 +514,19 @@ class ProdWorker {
 
 const prodWorker = new ProdWorker(HTTP_SERVER_PORT);
 prodWorker.start();
+
+function gatherProcessEnv() {
+  const env = {
+    NODE_ENV: process.env.NODE_ENV ?? "production",
+    PATH: process.env.PATH,
+    USER: process.env.USER,
+    SHELL: process.env.SHELL,
+    LANG: process.env.LANG,
+    TERM: process.env.TERM,
+    NODE_PATH: process.env.NODE_PATH,
+    HOME: process.env.HOME,
+  };
+
+  // Filter out undefined values
+  return Object.fromEntries(Object.entries(env).filter(([key, value]) => value !== undefined));
+}

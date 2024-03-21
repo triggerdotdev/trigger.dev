@@ -1,6 +1,6 @@
 {
   "extends": "@trigger.dev/tsconfig/node18.json",
-  "include": ["./src/**/*.ts", "trigger.config.mjs"],
+  "include": ["./src/**/*.ts", "trigger.config.ts"],
   "compilerOptions": {
     "baseUrl": ".",
     "lib": ["DOM", "DOM.Iterable"],
