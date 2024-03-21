@@ -159,30 +159,6 @@ class KubernetesTaskOperations implements TaskOperations {
               name: "registry-trigger",
             },
           ],
-          initContainers: [
-            {
-              name: "populate-taskinfo",
-              image: "busybox",
-              command: ["/bin/sh", "-c"],
-              args: ["printenv COORDINATOR_HOST | tee /etc/taskinfo/coordinator-host"],
-              env: [
-                {
-                  name: "COORDINATOR_HOST",
-                  valueFrom: {
-                    fieldRef: {
-                      fieldPath: "status.hostIP",
-                    },
-                  },
-                },
-              ],
-              volumeMounts: [
-                {
-                  name: "taskinfo",
-                  mountPath: "/etc/taskinfo",
-                },
-              ],
-            },
-          ],
           containers: [
             {
               name: this.#getRunContainerName(opts.attemptId),
