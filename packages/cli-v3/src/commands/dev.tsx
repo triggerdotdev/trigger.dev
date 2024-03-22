@@ -130,7 +130,17 @@ async function startDev(
       });
 
       if (!devEnv.success) {
-        throw new Error(devEnv.error);
+        if (devEnv.error === "Project not found") {
+          logger.error(
+            `Project not found: ${config.config.project}. Ensure you are using the correct project ref and CLI profile (use --profile). Currently using the "${options.profile}" profile, which points to ${authorization.apiUrl}`
+          );
+        } else {
+          logger.error(
+            `Failed to initialize dev environment: ${devEnv.error}. Using project ref ${config.config.project}`
+          );
+        }
+
+        process.exit(1);
       }
 
       const environmentClient = new CliApiClient(apiUrl, devEnv.data.apiKey);
