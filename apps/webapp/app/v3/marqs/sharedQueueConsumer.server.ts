@@ -614,39 +614,6 @@ export class SharedQueueConsumer {
           return;
         }
 
-        if (messageBody.data.checkpointEventId) {
-          try {
-            const restoreService = new RestoreCheckpointService();
-
-            const checkpoint = await restoreService.call({
-              eventId: messageBody.data.checkpointEventId,
-            });
-
-            if (!checkpoint) {
-              logger.error("Failed to restore checkpoint", {
-                queueMessage: message.data,
-                messageId: message.messageId,
-              });
-              await marqs?.acknowledgeMessage(message.messageId);
-              return;
-            }
-          } catch (e) {
-            if (e instanceof Error) {
-              this._currentSpan?.recordException(e);
-            } else {
-              this._currentSpan?.recordException(new Error(String(e)));
-            }
-
-            this._endSpanInNextIteration = true;
-
-            // Finally we need to nack the message so it can be retried
-            await marqs?.nackMessage(message.messageId);
-            return;
-          } finally {
-            setTimeout(() => this.#doWork(), this._options.interval);
-          }
-        }
-
         const completions: TaskRunExecutionResult[] = [];
         const executions: TaskRunExecution[] = [];
 

@@ -207,11 +207,12 @@ export const CoordinatorToPlatformMessages = {
         }),
         z.object({
           type: z.literal("WAIT_FOR_BATCH"),
-          id: z.string(),
+          batchFriendlyId: z.string(),
+          runFriendlyIds: z.string().array(),
         }),
         z.object({
           type: z.literal("WAIT_FOR_TASK"),
-          id: z.string(),
+          friendlyId: z.string(),
         }),
         z.object({
           type: z.literal("RETRYING_AFTER_FAILURE"),
@@ -376,7 +377,8 @@ export const ProdWorkerToCoordinatorMessages = {
   WAIT_FOR_TASK: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      id: z.string(),
+      friendlyId: z.string(),
+      // This is the attempt that is waiting
       attemptFriendlyId: z.string(),
     }),
     callback: z.object({
@@ -386,8 +388,9 @@ export const ProdWorkerToCoordinatorMessages = {
   WAIT_FOR_BATCH: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      id: z.string(),
-      runs: z.string().array(),
+      batchFriendlyId: z.string(),
+      runFriendlyIds: z.string().array(),
+      // This is the attempt that is waiting
       attemptFriendlyId: z.string(),
     }),
     callback: z.object({

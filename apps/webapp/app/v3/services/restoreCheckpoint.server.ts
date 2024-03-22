@@ -64,7 +64,7 @@ export class RestoreCheckpointService extends BaseService {
     }
 
     const eventService = new CreateCheckpointRestoreEventService(this._prisma);
-    await eventService.call({ checkpointId: checkpoint.id, type: "RESTORE" });
+    await eventService.restore({ checkpointId: checkpoint.id });
 
     socketIo.providerNamespace.emit("RESTORE", {
       version: "v1",

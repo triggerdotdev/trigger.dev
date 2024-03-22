@@ -2,6 +2,7 @@ import { PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import { marqs } from "../marqs.server";
 import { BaseService } from "./baseService.server";
+import { logger } from "~/services/logger.server";
 
 export class ResumeTaskDependencyService extends BaseService {
   public async call(dependencyId: string, sourceTaskAttemptId: string) {
@@ -34,9 +35,19 @@ export class ResumeTaskDependencyService extends BaseService {
     if (dependency.taskRun.runtimeEnvironment.type === "DEVELOPMENT") {
       return;
     }
+
     const dependentRun = dependency.dependentAttempt.taskRun;
 
     if (dependency.dependentAttempt.status === "PAUSED") {
+      if (!dependency.checkpointEventId) {
+        logger.error("Can't resume paused attempt without checkpoint event", {
+          attemptId: dependency.id,
+        });
+
+        await marqs?.acknowledgeMessage(dependentRun.id);
+        return;
+      }
+
       await marqs?.enqueueMessage(
         dependency.taskRun.runtimeEnvironment,
         dependentRun.queue,
@@ -45,6 +56,7 @@ export class ResumeTaskDependencyService extends BaseService {
           type: "RESUME",
           completedAttemptIds: [sourceTaskAttemptId],
           resumableAttemptId: dependency.dependentAttempt.id,
+          checkpointEventId: dependency.checkpointEventId,
         },
         dependentRun.concurrencyKey ?? undefined
       );

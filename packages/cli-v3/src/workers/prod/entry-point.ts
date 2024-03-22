@@ -28,7 +28,6 @@ class ProdWorker {
   private projectRef = process.env.TRIGGER_PROJECT_REF!;
   private envId = process.env.TRIGGER_ENV_ID!;
   private runId = process.env.TRIGGER_RUN_ID || "index-only";
-  private attemptId = process.env.TRIGGER_ATTEMPT_ID || "index-only";
   private deploymentId = process.env.TRIGGER_DEPLOYMENT_ID!;
   private deploymentVersion = process.env.TRIGGER_DEPLOYMENT_VERSION!;
 
@@ -187,7 +186,6 @@ class ProdWorker {
       "x-pod-name": POD_NAME,
       "x-trigger-content-hash": this.contentHash,
       "x-trigger-project-ref": this.projectRef,
-      "x-trigger-attempt-id": this.attemptId,
       "x-trigger-env-id": this.envId,
       "x-trigger-deployment-id": this.deploymentId,
       "x-trigger-run-id": this.runId,

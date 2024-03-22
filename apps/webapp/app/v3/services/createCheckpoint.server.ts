@@ -1,5 +1,9 @@
 import { CoordinatorToPlatformMessages, InferSocketMessageSchema } from "@trigger.dev/core/v3";
-import type { TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
+import type {
+  CheckpointRestoreEvent,
+  TaskRunAttemptStatus,
+  TaskRunStatus,
+} from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "../marqs.server";
@@ -85,18 +89,6 @@ export class CreateCheckpointService extends BaseService {
     });
 
     const eventService = new CreateCheckpointRestoreEventService(this._prisma);
-    const checkpointEvent = await eventService.call({
-      checkpointId: checkpoint.id,
-      type: "CHECKPOINT",
-    });
-
-    if (!checkpointEvent) {
-      logger.error("No checkpoint event", {
-        attemptId: attempt.id,
-        checkpointId: checkpoint.id,
-      });
-      return;
-    }
 
     await this._prisma.taskRunAttempt.update({
       where: {
@@ -112,32 +104,67 @@ export class CreateCheckpointService extends BaseService {
       },
     });
 
-    switch (params.reason.type) {
+    const { reason } = params;
+    let checkpointEvent: CheckpointRestoreEvent | undefined;
+
+    switch (reason.type) {
       case "WAIT_FOR_DURATION": {
-        await marqs?.replaceMessage(
-          attempt.taskRunId,
-          {
-            type: "RESUME_AFTER_DURATION",
-            resumableAttemptId: attempt.id,
-            checkpointEventId: checkpointEvent.id,
-          },
-          params.reason.now + params.reason.ms
-        );
+        checkpointEvent = await eventService.checkpoint({
+          checkpointId: checkpoint.id,
+        });
+
         break;
       }
-      // TODO: Attach the checkpoint event ID to in-progress dependencies
-      case "WAIT_FOR_TASK":
+      case "WAIT_FOR_TASK": {
+        checkpointEvent = await eventService.checkpoint({
+          checkpointId: checkpoint.id,
+          dependencyFriendlyRunId: reason.friendlyId,
+        });
+
+        await marqs?.acknowledgeMessage(attempt.taskRunId);
+        break;
+      }
       case "WAIT_FOR_BATCH": {
+        checkpointEvent = await eventService.checkpoint({
+          checkpointId: checkpoint.id,
+          batchDependencyFriendlyId: reason.batchFriendlyId,
+        });
+
         await marqs?.acknowledgeMessage(attempt.taskRunId);
         break;
       }
       case "RETRYING_AFTER_FAILURE": {
+        checkpointEvent = await eventService.checkpoint({
+          checkpointId: checkpoint.id,
+        });
+
         // ACK is already handled by attempt completion
         break;
       }
       default: {
         break;
       }
+    }
+
+    if (!checkpointEvent) {
+      logger.error("No checkpoint event", {
+        attemptId: attempt.id,
+        checkpointId: checkpoint.id,
+      });
+      await marqs?.acknowledgeMessage(attempt.taskRunId);
+      return;
+    }
+
+    if (reason.type === "WAIT_FOR_DURATION") {
+      await marqs?.replaceMessage(
+        attempt.taskRunId,
+        {
+          type: "RESUME_AFTER_DURATION",
+          resumableAttemptId: attempt.id,
+          checkpointEventId: checkpointEvent.id,
+        },
+        reason.now + reason.ms
+      );
     }
 
     return {

@@ -1,4 +1,4 @@
-import { logger, retry, task } from "@trigger.dev/sdk/v3";
+import { logger, retry, task, wait } from "@trigger.dev/sdk/v3";
 import { cache } from "./utils/cache";
 import { interceptor } from "./utils/interceptor";
 

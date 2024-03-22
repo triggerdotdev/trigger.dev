@@ -281,14 +281,14 @@ export const ProdChildToWorkerMessages = {
   WAIT_FOR_TASK: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      id: z.string(),
+      friendlyId: z.string(),
     }),
   },
   WAIT_FOR_BATCH: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      id: z.string(),
-      runs: z.string().array(),
+      batchFriendlyId: z.string(),
+      runFriendlyIds: z.string().array(),
     }),
   },
   UNCAUGHT_EXCEPTION: {

@@ -104,7 +104,7 @@ export class ProdRuntimeManager implements RuntimeManager {
     });
 
     await this.ipc.send("WAIT_FOR_TASK", {
-      id: params.id,
+      friendlyId: params.id,
     });
 
     return await promise;
@@ -128,8 +128,8 @@ export class ProdRuntimeManager implements RuntimeManager {
     );
 
     await this.ipc.send("WAIT_FOR_BATCH", {
-      id: params.id,
-      runs: params.runs,
+      batchFriendlyId: params.id,
+      runFriendlyIds: params.runs,
     });
 
     const results = await promise;

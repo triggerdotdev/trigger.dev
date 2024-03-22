@@ -1651,6 +1651,9 @@ model TaskRunDependency {
   taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   taskRunId String  @unique
 
+  checkpointEvent   CheckpointRestoreEvent? @relation(fields: [checkpointEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  checkpointEventId String?                 @unique
+
   /// An attempt that is dependent on this task run. 
   dependentAttempt   TaskRunAttempt? @relation("dependentAttempt", fields: [dependentAttemptId], references: [id])
   dependentAttemptId String?         @unique
@@ -1876,6 +1879,9 @@ model BatchTaskRun {
   idempotencyKey String
   taskIdentifier String
 
+  checkpointEvent   CheckpointRestoreEvent? @relation(fields: [checkpointEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  checkpointEventId String?                 @unique
+
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String
 
@@ -2005,6 +2011,9 @@ model CheckpointRestoreEvent {
 
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String
+
+  taskRunDependency      TaskRunDependency?
+  batchTaskRunDependency BatchTaskRun?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

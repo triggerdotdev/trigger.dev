@@ -515,6 +515,8 @@ class TaskCoordinator {
 
         socket.on("READY_FOR_RESUME", async (message) => {
           logger.log("[READY_FOR_RESUME]", message);
+
+          socket.data.attemptFriendlyId = message.attemptFriendlyId;
           this.#platformSocket?.send("READY_FOR_RESUME", message);
         });
 
@@ -723,7 +725,7 @@ class TaskCoordinator {
             location: checkpoint.location,
             reason: {
               type: "WAIT_FOR_TASK",
-              id: message.id,
+              friendlyId: message.friendlyId,
             },
           });
         });
@@ -765,7 +767,8 @@ class TaskCoordinator {
             location: checkpoint.location,
             reason: {
               type: "WAIT_FOR_BATCH",
-              id: message.id,
+              batchFriendlyId: message.batchFriendlyId,
+              runFriendlyIds: message.runFriendlyIds,
             },
           });
         });
