@@ -1055,7 +1055,6 @@ importers:
       '@opentelemetry/sdk-trace-base': ^1.21.0
       '@opentelemetry/sdk-trace-node': ^1.21.0
       '@opentelemetry/semantic-conventions': ^1.21.0
-      '@traceloop/instrumentation-openai': ^0.3.9
       '@trigger.dev/core': workspace:^2.3.18
       '@trigger.dev/core-apps': workspace:*
       '@trigger.dev/tsconfig': workspace:*
@@ -1138,7 +1137,6 @@ importers:
       '@opentelemetry/sdk-trace-base': 1.21.0_@opentelemetry+api@1.7.0
       '@opentelemetry/sdk-trace-node': 1.21.0_@opentelemetry+api@1.7.0
       '@opentelemetry/semantic-conventions': 1.21.0
-      '@traceloop/instrumentation-openai': 0.3.9_rr4fxqkzz7nhz3auplkqn4p6em
       '@trigger.dev/core': link:../core
       '@types/degit': 2.8.3
       chalk: 5.3.0
@@ -2187,7 +2185,9 @@ importers:
 
   references/v3-catalog:
     specifiers:
+      '@opentelemetry/api': ^1.7.0
       '@sindresorhus/slugify': ^2.2.1
+      '@traceloop/instrumentation-openai': ^0.3.9
       '@trigger.dev/sdk': 2.3.18
       '@trigger.dev/tsconfig': workspace:*
       '@types/node': 20.4.2
@@ -2202,7 +2202,9 @@ importers:
       tsconfig-paths: ^3.14.1
       typescript: 5.1.6
     dependencies:
+      '@opentelemetry/api': 1.7.0
       '@sindresorhus/slugify': 2.2.1
+      '@traceloop/instrumentation-openai': 0.3.9_@opentelemetry+api@1.7.0
       '@trigger.dev/sdk': 2.3.18
       msw: 2.2.1_typescript@5.1.6
       openai: 4.28.0
@@ -17710,12 +17712,12 @@ packages:
     engines: {node: '>=14'}
     dev: false
 
-  /@traceloop/instrumentation-openai/0.3.9_rr4fxqkzz7nhz3auplkqn4p6em:
+  /@traceloop/instrumentation-openai/0.3.9_@opentelemetry+api@1.7.0:
     resolution: {integrity: sha512-Ru2QBK6crx0dtWXd4aMyFNRP9cA2WF+8Rjt2ctOgu/R7M7fmNvtcXveY0qXZ1doKYzzt0+icZqs0ahJEn8WYcQ==}
     engines: {node: '>=14'}
     dependencies:
       '@opentelemetry/core': 1.21.0_@opentelemetry+api@1.7.0
-      '@opentelemetry/instrumentation': 0.48.0_rr4fxqkzz7nhz3auplkqn4p6em
+      '@opentelemetry/instrumentation': 0.48.0_@opentelemetry+api@1.7.0
       '@opentelemetry/semantic-conventions': 1.21.0
       '@traceloop/ai-semantic-conventions': 0.3.8
     transitivePeerDependencies:

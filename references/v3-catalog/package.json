@@ -14,7 +14,9 @@
     "start:stripe": "ts-node -r tsconfig-paths/register -r dotenv/config src/stripeUsage.ts"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.7.0",
     "@sindresorhus/slugify": "^2.2.1",
+    "@traceloop/instrumentation-openai": "^0.3.9",
     "@trigger.dev/sdk": "2.3.18",
     "msw": "^2.2.1",
     "openai": "^4.28.0",

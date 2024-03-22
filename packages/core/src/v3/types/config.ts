@@ -1,4 +1,5 @@
 import { RetryOptions } from "../schemas";
+import type { InstrumentationOption } from "@opentelemetry/instrumentation";
 
 export interface ProjectConfig {
   project: string;
@@ -25,4 +26,9 @@ export interface ProjectConfig {
    * The path to your project's tsconfig.json file. Will use tsconfig.json in the project directory if not provided.
    */
   tsconfigPath?: string;
+
+  /**
+   * The OpenTelemetry instrumentations to enable
+   */
+  instrumentations?: InstrumentationOption[];
 }

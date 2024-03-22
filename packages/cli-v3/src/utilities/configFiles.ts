@@ -131,7 +131,7 @@ export async function readConfig(
 
   const tempDir = await createTempDir();
 
-  const builtConfigFilePath = join(tempDir, "config.mjs");
+  const builtConfigFilePath = join(tempDir, "config.js");
   const builtConfigFileHref = pathToFileURL(builtConfigFilePath).href;
 
   logger.debug("Building config file", {
@@ -147,7 +147,7 @@ export async function readConfig(
     metafile: true,
     minify: false,
     write: true,
-    format: "esm",
+    format: "cjs",
     platform: "node",
     target: ["es2018", "node18"],
     outfile: builtConfigFilePath,

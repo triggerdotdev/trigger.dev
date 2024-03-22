@@ -26,7 +26,7 @@ import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
-import { bundleDependenciesPlugin } from "../utilities/build";
+import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
 import { chalkPurple } from "../utilities/colors";
 import { readConfig } from "../utilities/configFiles";
 import { readJSONFile } from "../utilities/fileSystem";
@@ -363,6 +363,7 @@ function useDev({
         },
         plugins: [
           bundleDependenciesPlugin(config),
+          workerSetupImportConfigPlugin(configPath),
           {
             name: "trigger.dev v3",
             setup(build) {

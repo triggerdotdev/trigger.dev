@@ -6,7 +6,6 @@ import {
   type TracingSDK,
   type HandleErrorFunction,
 } from "@trigger.dev/core/v3";
-import "source-map-support/register.js";
 
 __WORKER_SETUP__;
 declare const __WORKER_SETUP__: unknown;

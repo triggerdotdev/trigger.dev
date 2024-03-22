@@ -4,6 +4,38 @@ import type { Plugin } from "esbuild";
 import { extname, isAbsolute } from "node:path";
 import tsConfigPaths from "tsconfig-paths";
 import { logger } from "./logger";
+import { readFileSync } from "node:fs";
+
+export function workerSetupImportConfigPlugin(configPath?: string): Plugin {
+  return {
+    name: "trigger-worker-setup",
+    setup(build) {
+      if (!configPath) {
+        return;
+      }
+
+      build.onLoad({ filter: /worker-setup\.js$/ }, async (args) => {
+        let workerSetupContents = readFileSync(args.path, "utf-8");
+
+        workerSetupContents = workerSetupContents.replace(
+          "__SETUP_IMPORTED_PROJECT_CONFIG__",
+          `import * as setupImportedConfigExports from "${configPath}"; const setupImportedConfig = setupImportedConfigExports.config;`
+        );
+
+        logger.debug("Loading worker setup", {
+          args,
+          workerSetupContents,
+          configPath,
+        });
+
+        return {
+          contents: workerSetupContents,
+          loader: "js",
+        };
+      });
+    },
+  };
+}
 
 export function bundleDependenciesPlugin(config: ResolvedConfig): Plugin {
   const matchPath = config.tsconfigPath ? createMatchPath(config.tsconfigPath) : undefined;
@@ -16,18 +48,18 @@ export function bundleDependenciesPlugin(config: ResolvedConfig): Plugin {
   }
 
   return {
-    name: "bundle-dependencies",
+    name: "trigger-bundle-dependencies",
     setup(build) {
       build.onResolve({ filter: /.*/ }, (args) => {
         const resolvedPath = resolvePath(args.path);
 
-        logger.debug(`Checking if ${args.path} should be bundled or external`, {
+        logger.ignore(`Checking if ${args.path} should be bundled or external`, {
           ...args,
           resolvedPath,
         });
 
         if (!isBareModuleId(resolvedPath)) {
-          logger.debug(`Bundling ${args.path} because its not a bareModuleId`, {
+          logger.ignore(`Bundling ${args.path} because its not a bareModuleId`, {
             ...args,
           });
 
@@ -35,7 +67,7 @@ export function bundleDependenciesPlugin(config: ResolvedConfig): Plugin {
         }
 
         if (args.path.startsWith("@trigger.dev/")) {
-          logger.debug(`Bundling ${args.path} because its a trigger.dev package`, {
+          logger.ignore(`Bundling ${args.path} because its a trigger.dev package`, {
             ...args,
           });
 
@@ -63,7 +95,7 @@ export function bundleDependenciesPlugin(config: ResolvedConfig): Plugin {
           }
         }
 
-        logger.debug(`Externalizing ${args.path}`, {
+        logger.ignore(`Externalizing ${args.path}`, {
           ...args,
         });
 

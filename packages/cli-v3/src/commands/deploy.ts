@@ -42,8 +42,9 @@ import {
 import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
+
 import type { SetOptional } from "type-fest";
-import { bundleDependenciesPlugin } from "../utilities/build";
+import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
 import { Glob } from "glob";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
@@ -874,7 +875,7 @@ async function compileProject(
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
-        plugins: [bundleDependenciesPlugin(config)],
+        plugins: [bundleDependenciesPlugin(config), workerSetupImportConfigPlugin(configPath)],
       });
 
       if (result.errors.length > 0) {

@@ -1,4 +1,5 @@
 import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
 export { handleError } from "./src/handleError";
 
@@ -17,4 +18,5 @@ export const config: TriggerConfig = {
   additionalPackages: ["wrangler@3.35.0"],
   additionalFiles: ["./wrangler/wrangler.toml"],
   dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp"],
+  instrumentations: [new OpenAIInstrumentation()],
 };
