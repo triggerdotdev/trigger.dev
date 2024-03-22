@@ -1,15 +1,11 @@
-import { Await, useLoaderData, useLocation, useNavigate, useNavigation } from "@remix-run/react";
+import { Await, useLoaderData, useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs, defer } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { Suspense } from "react";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
-import {
-  PageButtons,
-  PageDescription,
-  PageHeader,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { RunsFilters } from "~/components/runs/RunFilters";
+import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsTable } from "~/components/runs/RunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -17,11 +13,8 @@ import { useUser } from "~/hooks/useUser";
 import { RunListPresenter } from "~/presenters/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema, docsPath, projectPath } from "~/utils/pathBuilder";
-import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
-import { RunListSearchSchema } from "~/components/runs/RunStatuses";
-import { RunsFilters } from "~/components/runs/RunFilters";
-import { Suspense } from "react";
-import { Spinner } from "~/components/primitives/Spinner";
+import { ListPagination } from "../../components/ListPagination";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -61,24 +54,21 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title={`${project.name} runs`} />
-          <PageButtons>
-            <LinkButton
-              LeadingIcon={"docs"}
-              to={docsPath("documentation/concepts/runs")}
-              variant="secondary/small"
-            >
-              Run documentation
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
-        <PageDescription>All job runs in this project</PageDescription>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title={`${project.name} runs`} />
+        <PageAccessories>
+          <LinkButton
+            variant={"minimal/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("documentation/concepts/runs")}
+          >
+            Run documentation
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
 
       <PageBody scrollable={false}>
-        <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+        <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <div className="mb-2 flex items-center justify-between gap-x-2">
             <RunsFilters />
             <Suspense fallback={<></>}>

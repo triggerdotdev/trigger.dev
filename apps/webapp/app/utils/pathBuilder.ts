@@ -1,14 +1,19 @@
 import type {
+  BackgroundWorkerTask,
   EventRecord,
   Integration,
+  TaskRun,
   TriggerHttpEndpoint,
   TriggerSource,
   Webhook,
+  WorkerDeployment,
 } from "@trigger.dev/database";
 import { z } from "zod";
+import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
+import { objectToSearchParams } from "./searchParams";
 
 export type OrgForPath = Pick<Organization, "slug">;
 export type ProjectForPath = Pick<Project, "slug">;
@@ -19,6 +24,10 @@ export type TriggerForPath = Pick<TriggerSource, "id">;
 export type EventForPath = Pick<EventRecord, "id">;
 export type WebhookForPath = Pick<Webhook, "id">;
 export type HttpEndpointForPath = Pick<TriggerHttpEndpoint, "key">;
+export type TaskForPath = Pick<BackgroundWorkerTask, "friendlyId">;
+export type v3RunForPath = Pick<TaskRun, "friendlyId">;
+export type v3SpanForPath = Pick<TaskRun, "spanId">;
+export type DeploymentForPath = Pick<WorkerDeployment, "shortCode">;
 
 export const OrganizationParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -62,6 +71,23 @@ export const TriggerSourceRunTaskParamsSchema = TriggerSourceRunParamsSchema.ext
 
 export const HttpEndpointParamSchema = ProjectParamSchema.extend({
   httpEndpointParam: z.string(),
+});
+
+//v3
+export const v3TaskParamsSchema = ProjectParamSchema.extend({
+  taskParam: z.string(),
+});
+
+export const v3RunParamsSchema = ProjectParamSchema.extend({
+  runParam: z.string(),
+});
+
+export const v3SpanParamsSchema = ProjectParamSchema.extend({
+  spanParam: z.string(),
+});
+
+export const v3DeploymentParams = ProjectParamSchema.extend({
+  deploymentParam: z.string(),
 });
 
 export function trimTrailingSlash(path: string) {
@@ -139,6 +165,10 @@ export function organizationSettingsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings`;
 }
 
+export function organizationIntegrationsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/integrations`;
+}
+
 export function usagePath(organization: OrgForPath) {
   return `${organizationPath(organization)}/billing`;
 }
@@ -212,10 +242,6 @@ export function projectJobsPath(organization: OrgForPath, project: ProjectForPat
   return projectPath(organization, project);
 }
 
-export function organizationIntegrationsPath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/integrations`;
-}
-
 export function projectTriggersPath(organization: OrgForPath, project: ProjectForPath) {
   return `${projectPath(organization, project)}/triggers`;
 }
@@ -272,6 +298,95 @@ export function newProjectPath(organization: OrgForPath) {
 
 function projectParam(project: ProjectForPath) {
   return project.slug;
+}
+
+//v3 project
+export function v3ProjectPath(organization: OrgForPath, project: ProjectForPath) {
+  return `/orgs/${organizationParam(organization)}/projects/v3/${projectParam(project)}`;
+}
+
+export function v3TasksStreamingPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/tasks/stream`;
+}
+
+export function v3ApiKeysPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/apikeys`;
+}
+
+export function v3EnvironmentVariablesPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/environment-variables`;
+}
+
+export function v3NewEnvironmentVariablesPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3EnvironmentVariablesPath(organization, project)}/new`;
+}
+
+export function v3TestPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environmentSlug?: string
+) {
+  return `${v3ProjectPath(organization, project)}/test${
+    environmentSlug ? `?environment=${environmentSlug}` : ""
+  }`;
+}
+
+export function v3TestTaskPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  task: TaskForPath,
+  environmentSlug: string
+) {
+  return `${v3TestPath(organization, project)}/tasks/${
+    task.friendlyId
+  }?environment=${environmentSlug}`;
+}
+
+export function v3RunsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  filters?: TaskRunListSearchFilters
+) {
+  const searchParams = objectToSearchParams(filters);
+  const query = searchParams ? `?${searchParams.toString()}` : "";
+  return `${v3ProjectPath(organization, project)}/runs${query}`;
+}
+
+export function v3RunPath(organization: OrgForPath, project: ProjectForPath, run: v3RunForPath) {
+  return `${v3RunsPath(organization, project)}/${run.friendlyId}`;
+}
+
+export function v3RunSpanPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  run: v3RunForPath,
+  span: v3SpanForPath
+) {
+  return `${v3RunPath(organization, project, run)}/spans/${span.spanId}`;
+}
+
+export function v3RunStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  run: v3RunForPath
+) {
+  return `${v3RunPath(organization, project, run)}/stream`;
+}
+
+export function v3ProjectSettingsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/settings`;
+}
+
+export function v3DeploymentsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/deployments`;
+}
+
+export function v3DeploymentPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  deployment: DeploymentForPath
+) {
+  return `${v3DeploymentsPath(organization, project)}/${deployment.shortCode}`;
 }
 
 // Integration

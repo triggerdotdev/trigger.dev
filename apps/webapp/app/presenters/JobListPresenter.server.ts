@@ -145,6 +145,12 @@ export class JobListPresenter {
           setupStatus: integration.integration.setupStatus,
         }));
 
+        //deduplicate integrations
+        const uniqueIntegrations = new Map<string, (typeof integrations)[0]>();
+        integrations.forEach((i) => {
+          uniqueIntegrations.set(i.key, i);
+        });
+
         let properties: DisplayProperty[] = [];
 
         if (eventSpecification.properties) {
@@ -176,7 +182,7 @@ export class JobListPresenter {
                   }`
                 : undefined,
             },
-            integrations,
+            integrations: Array.from(uniqueIntegrations.values()),
             hasIntegrationsRequiringAction: integrations.some(
               (i) => i.setupStatus === "MISSING_FIELDS"
             ),

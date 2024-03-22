@@ -4,6 +4,7 @@ import {
   ExclamationTriangleIcon,
   NoSymbolIcon,
   PauseCircleIcon,
+  TrashIcon,
   XCircleIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
@@ -86,19 +87,22 @@ export function RunsFilters() {
   }, []);
 
   return (
-    <div className="flex flex-row justify-between gap-x-2">
+    <div className="flex flex-row justify-between">
       <SelectGroup>
         <Select
           name="environment"
           value={environment ?? "ALL"}
           onValueChange={handleEnvironmentChange}
         >
-          <SelectTrigger size="secondary/small" width="full">
+          <SelectTrigger size="minimal" width="full">
             <SelectValue placeholder={"Select environment"} className="ml-2 p-0" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={"ALL"}>
-              <Paragraph variant="extra-small" className="pl-0.5">
+              <Paragraph
+                variant="extra-small"
+                className="pl-0.5 transition group-hover:text-text-bright"
+              >
                 All environments
               </Paragraph>
             </SelectItem>
@@ -116,12 +120,15 @@ export function RunsFilters() {
 
       <SelectGroup>
         <Select name="status" value={status ?? "ALL"} onValueChange={handleStatusChange}>
-          <SelectTrigger size="secondary/small" width="full">
+          <SelectTrigger size="minimal" width="full">
             <SelectValue placeholder="Select status" className="ml-2 p-0" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={"ALL"}>
-              <Paragraph variant="extra-small" className="pl-0.5">
+              <Paragraph
+                variant="extra-small"
+                className="pl-0.5 transition group-hover:text-text-bright"
+              >
                 All statuses
               </Paragraph>
             </SelectItem>
@@ -141,9 +148,7 @@ export function RunsFilters() {
 
       <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} />
 
-      <Button variant="tertiary/small" onClick={() => clearFilters()} LeadingIcon={"close"}>
-        Clear
-      </Button>
+      <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={TrashIcon} />
     </div>
   );
 }
@@ -209,7 +214,7 @@ export function filterStatusTitle(status: FilterableStatus): string {
 export function filterStatusClassNameColor(status: FilterableStatus): string {
   switch (status) {
     case "QUEUED":
-      return "text-slate-500";
+      return "text-charcoal-500";
     case "IN_PROGRESS":
       return "text-blue-500";
     case "WAITING":
@@ -219,7 +224,7 @@ export function filterStatusClassNameColor(status: FilterableStatus): string {
     case "FAILED":
       return "text-rose-500";
     case "CANCELED":
-      return "text-slate-500";
+      return "text-charcoal-500";
     case "TIMEDOUT":
       return "text-amber-300";
     default: {

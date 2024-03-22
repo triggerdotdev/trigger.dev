@@ -1,24 +1,22 @@
-import { CheckIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, CheckIcon } from "@heroicons/react/20/solid";
 import { StopIcon } from "@heroicons/react/24/outline";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { HowToConnectHttpEndpoint } from "~/components/helpContent/HelpContentText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header1 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import {
-  PageButtons,
-  PageHeader,
+  PageAccessories,
+  NavBar,
   PageInfoGroup,
   PageInfoProperty,
   PageInfoRow,
   PageTitle,
-  PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -32,11 +30,9 @@ import {
 import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { HttpEndpointPresenter } from "~/presenters/HttpEndpointPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
 import { HttpEndpointParamSchema, docsPath, projectHttpEndpointsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -64,18 +60,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    const data = useTypedMatchData<typeof loader>(match);
-    return (
-      <BreadcrumbLink
-        to={match.pathname}
-        title={data?.httpEndpoint.title ?? data?.httpEndpoint.key ?? "Endpoint"}
-      />
-    );
-  },
-};
-
 export default function Page() {
   const { httpEndpoint, unconfiguredEnvironments, secret } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
@@ -83,26 +67,24 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle
-            title={httpEndpoint.title ?? httpEndpoint.key}
-            backButton={{
-              to: projectHttpEndpointsPath(organization, project),
-              text: "HTTP endpoints",
-            }}
-            icon={httpEndpoint.icon ?? undefined}
-          />
-          <PageButtons>
-            <LinkButton
-              LeadingIcon={"docs"}
-              to={docsPath("documentation/concepts/http-endpoints")}
-              variant="secondary/small"
-            >
-              HTTP endpoints documentation
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
+      <NavBar>
+        <PageTitle
+          title={httpEndpoint.title ?? httpEndpoint.key}
+          backButton={{
+            to: projectHttpEndpointsPath(organization, project),
+            text: "HTTP endpoints",
+          }}
+        />
+        <PageAccessories>
+          <LinkButton
+            variant={"minimal/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("documentation/concepts/http-endpoints")}
+          >
+            HTTP endpoints documentation
+          </LinkButton>
+        </PageAccessories>
+
         {httpEndpoint.webhook && (
           <PageInfoRow>
             <PageInfoGroup>
@@ -114,7 +96,7 @@ export default function Page() {
             </PageInfoGroup>
           </PageInfoRow>
         )}
-      </PageHeader>
+      </NavBar>
       <PageBody>
         <Help defaultOpen={true}>
           {(open) => (
@@ -168,9 +150,9 @@ export default function Page() {
                               <TableCell>{httpEnvironment.source}</TableCell>
                               <TableCell>
                                 {httpEnvironment.immediateResponseFilter ? (
-                                  <CheckIcon className="h-4 w-4 text-slate-400" />
+                                  <CheckIcon className="h-4 w-4 text-charcoal-400" />
                                 ) : (
-                                  <StopIcon className="h-4 w-4 text-slate-850" />
+                                  <StopIcon className="h-4 w-4 text-charcoal-850" />
                                 )}
                               </TableCell>
                               <TableCell alignment="right">

@@ -16,8 +16,8 @@ const headerVariants = {
 };
 
 const textColorVariants = {
-  bright: "text-bright",
-  dimmed: "text-dimmed",
+  bright: "text-text-bright",
+  dimmed: "text-text-dimmed",
 };
 
 export type HeaderVariant = keyof typeof headerVariants;

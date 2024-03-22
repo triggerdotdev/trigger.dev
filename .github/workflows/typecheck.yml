@@ -3,7 +3,7 @@ on:
   workflow_call:
 jobs:
   typecheck:
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: buildjet-16vcpu-ubuntu-2204
 
     steps:
       - name: ⬇️ Checkout repo
@@ -24,6 +24,8 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile

@@ -1,0 +1,83 @@
+name: "🚢 Publish Container Images (dev)"
+
+on:
+  push:
+    tags:
+      - "dev-*"
+    paths:
+      - ".github/workflows/publish.yml"
+      - "packages/**"
+      - "!packages/**/*.md"
+      - "!packages/**/*.eslintrc"
+      - "apps/**"
+      - "!apps/**/*.md"
+      - "!apps/**/*.eslintrc"
+      - "integrations/**"
+      - "!integrations/**/*.md"
+      - "!integrations/**/*.eslintrc"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - "docker/Dockerfile"
+      - "docker/scripts/**"
+      - "tests/**"
+
+permissions:
+  id-token: write
+  packages: write
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        package: [coordinator, kubernetes-provider]
+    runs-on: buildjet-16vcpu-ubuntu-2204
+    env:
+      DOCKER_BUILDKIT: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate build ID
+        id: prep
+        run: |
+          sha=${GITHUB_SHA::7}
+          ts=$(date +%s)
+          echo "BUILD_ID=${{ matrix.package }}-${sha}-${ts}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ..to avoid rate limits when pulling images
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 🚢 Build Container Image
+        run: |
+          docker build -t dev_image -f ./apps/${{ matrix.package }}/Containerfile .
+
+      # ..to push image
+      - name: 🐙 Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🐙 Push to GitHub Container Registry
+        run: |
+          docker tag dev_image $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+        env:
+          REGISTRY: ghcr.io/triggerdotdev
+          REPOSITORY: dev
+          IMAGE_TAG: ${{ steps.prep.outputs.BUILD_ID }}

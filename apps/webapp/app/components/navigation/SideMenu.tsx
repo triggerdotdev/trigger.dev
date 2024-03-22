@@ -2,19 +2,23 @@ import {
   AcademicCapIcon,
   ArrowRightIcon,
   ArrowRightOnRectangleIcon,
+  BeakerIcon,
   ChartBarIcon,
   CursorArrowRaysIcon,
+  IdentificationIcon,
+  KeyIcon,
+  ServerStackIcon,
   ShieldCheckIcon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
 import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useEffect, useRef, useState } from "react";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { useFeatures } from "~/hooks/useFeatures";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
 import { MatchedProject } from "~/hooks/useProject";
 import { User } from "~/models/user.server";
-import { useV3Enabled } from "~/root";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { cn } from "~/utils/cn";
 import {
@@ -37,6 +41,13 @@ import {
   projectSettingsPath,
   projectSetupPath,
   projectTriggersPath,
+  v3ApiKeysPath,
+  v3DeploymentsPath,
+  v3EnvironmentVariablesPath,
+  v3ProjectPath,
+  v3ProjectSettingsPath,
+  v3RunsPath,
+  v3TestPath,
 } from "~/utils/pathBuilder";
 import { Feedback } from "../Feedback";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -44,6 +55,7 @@ import { LogoIcon } from "../LogoIcon";
 import { StepContentContainer } from "../StepContentContainer";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
+import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Buttons";
 import { ClipboardField } from "../primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
@@ -64,7 +76,13 @@ import { MenuCount, SideMenuItem } from "./SideMenuItem";
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
   MatchedProject,
-  "id" | "name" | "slug" | "hasInactiveExternalTriggers" | "jobCount" | "httpEndpointCount"
+  | "id"
+  | "name"
+  | "slug"
+  | "hasInactiveExternalTriggers"
+  | "jobCount"
+  | "httpEndpointCount"
+  | "version"
 >;
 
 type SideMenuProps = {
@@ -97,81 +115,29 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
   return (
     <div
       className={cn(
-        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-ui-border transition"
+        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-grid-bright bg-background-bright transition"
       )}
     >
       <div className="flex h-full flex-col">
         <div
           className={cn(
-            "flex items-center justify-between border-b bg-background px-1 py-1 transition",
-            showHeaderDivider ? " border-border" : "border-transparent"
+            "flex items-center justify-between px-1 py-1 transition",
+            showHeaderDivider ? " border-grid-bright" : "border-transparent"
           )}
         >
           <ProjectSelector organizations={organizations} project={project} />
           <UserMenu user={user} />
         </div>
         <div
-          className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
           ref={borderRef}
         >
           <div className="mb-6 flex flex-col gap-1 px-1">
-            <SideMenuHeader title={"Project"}>
-              <PopoverMenuItem
-                to={projectSetupPath(organization, project)}
-                title="Framework setup"
-                icon="plus"
-              />
-            </SideMenuHeader>
-            <SideMenuItem
-              name="Jobs"
-              icon="job"
-              iconColor="text-indigo-500"
-              count={project.jobCount}
-              to={projectPath(organization, project)}
-              data-action="jobs"
-            />
-            <SideMenuItem
-              name="Runs"
-              icon="runs"
-              iconColor="text-teal-500"
-              to={projectRunsPath(organization, project)}
-            />
-            <SideMenuItem
-              name="Triggers"
-              icon="trigger"
-              iconColor="text-amber-500"
-              to={projectTriggersPath(organization, project)}
-              data-action="triggers"
-              hasWarning={project.hasInactiveExternalTriggers}
-            />
-            <SideMenuItem
-              name="Events"
-              icon={CursorArrowRaysIcon}
-              iconColor="text-sky-500"
-              to={projectEventsPath(organization, project)}
-            />
-            <SideMenuItem
-              name="HTTP endpoints"
-              icon="http-endpoint"
-              iconColor="text-pink-500"
-              count={project.httpEndpointCount}
-              to={projectHttpEndpointsPath(organization, project)}
-              data-action="httpendpoints"
-            />
-            <SideMenuItem
-              name="Environments & API Keys"
-              icon="environment"
-              iconColor="text-rose-500"
-              to={projectEnvironmentsPath(organization, project)}
-              data-action="environments & api keys"
-            />
-            <SideMenuItem
-              name="Project settings"
-              icon="settings"
-              iconColor="text-teal-500"
-              to={projectSettingsPath(organization, project)}
-              data-action="project-settings"
-            />
+            {project.version === "V2" ? (
+              <V2ProjectSideMenu organization={organization} project={project} />
+            ) : (
+              <V3ProjectSideMenu organization={organization} project={project} />
+            )}
           </div>
           <div className="mb-1 flex flex-col gap-1 px-1">
             <SideMenuHeader title={"Organization"}>
@@ -183,13 +149,15 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                 leadingIconClassName="text-indigo-500"
               />
             </SideMenuHeader>
-            <SideMenuItem
-              name="Integrations"
-              icon="integration"
-              to={organizationIntegrationsPath(organization)}
-              data-action="integrations"
-              hasWarning={organization.hasUnconfiguredIntegrations}
-            />
+            {project.version === "V2" && (
+              <SideMenuItem
+                name="Integrations"
+                icon="integration"
+                to={organizationIntegrationsPath(organization)}
+                data-action="integrations"
+                hasWarning={organization.hasUnconfiguredIntegrations}
+              />
+            )}
             <SideMenuItem
               name="Projects"
               icon="folder"
@@ -219,7 +187,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             />
           </div>
         </div>
-        <div className="flex flex-col gap-1 border-t border-border p-1">
+        <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
           {currentPlan?.subscription?.isPaying === true && (
             <Dialog>
               <DialogTrigger asChild>
@@ -243,13 +211,13 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                       support with the Trigger.dev team.
                     </Paragraph>
                   </div>
-                  <hr className="border-slate-800" />
+                  <hr className="border-charcoal-800" />
                   <div>
                     <StepNumber stepNumber="1" title="Create a new Slack channel" />
                     <StepContentContainer>
                       <Paragraph>
                         In your Slack app, create a new channel from the main menu by going to File{" "}
-                        <ArrowRightIcon className="inline h-4 w-4 text-dimmed" /> New Channel
+                        <ArrowRightIcon className="inline h-4 w-4 text-text-dimmed" /> New Channel
                       </Paragraph>
                     </StepContentContainer>
                     <StepNumber stepNumber="2" title="Setup your channel" />
@@ -284,13 +252,23 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             data-action="join our discord"
             target="_blank"
           />
-          <SideMenuItem
-            name="Documentation"
-            icon="docs"
-            to="https://trigger.dev/docs"
-            data-action="documentation"
-            target="_blank"
-          />
+          {project.version === "V2" ? (
+            <SideMenuItem
+              name="Documentation"
+              icon="docs"
+              to="https://trigger.dev/docs"
+              data-action="documentation"
+              target="_blank"
+            />
+          ) : (
+            <SideMenuItem
+              name="Documentation (v3)"
+              icon="docs"
+              to="https://trigger.dev/docs"
+              data-action="documentation"
+              target="_blank"
+            />
+          )}
           <SideMenuItem
             name="Changelog"
             icon="star"
@@ -298,20 +276,37 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             data-action="changelog"
             target="_blank"
           />
-
-          <Feedback
-            button={
-              <Button
-                variant="small-menu-item"
-                LeadingIcon="log"
-                data-action="help & feedback"
-                fullWidth
-                textAlignLeft
-              >
-                Help & Feedback
-              </Button>
-            }
-          />
+          {project.version === "V2" ? (
+            <Feedback
+              button={
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon="log"
+                  data-action="help & feedback"
+                  fullWidth
+                  textAlignLeft
+                >
+                  Help & Feedback
+                </Button>
+              }
+            />
+          ) : (
+            <Feedback
+              defaultValue="developer preview"
+              button={
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon="log"
+                  leadingIconClassName="text-primary"
+                  data-action="help & feedback"
+                  fullWidth
+                  textAlignLeft
+                >
+                  <span className="text-primary">Give feedback on v3</span>
+                </Button>
+              }
+            />
+          )}
           {currentPlan && !currentPlan.subscription?.isPaying && currentPlan.usage.runCountCap && (
             <FreePlanUsage
               to={organizationBillingPath(organization)}
@@ -349,7 +344,7 @@ function ProjectSelector({
         <span className="truncate">{project.name ?? "Select a project"}</span>
       </PopoverArrowTrigger>
       <PopoverContent
-        className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+        className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
@@ -365,9 +360,13 @@ function ProjectSelector({
                       key={p.id}
                       to={projectPath(organization, p)}
                       title={
-                        <div className="flex w-full items-center justify-between text-bright">
+                        <div className="flex w-full items-center justify-between text-text-bright">
                           <span className="grow truncate text-left">{p.name}</span>
-                          <MenuCount count={p.jobCount} />
+                          {p.version === "V2" ? (
+                            <MenuCount count={p.jobCount} />
+                          ) : (
+                            <Badge variant="v3">v3</Badge>
+                          )}
                         </div>
                       }
                       isSelected={isSelected}
@@ -385,7 +384,7 @@ function ProjectSelector({
             </div>
           </Fragment>
         ))}
-        <div className="border-t border-slate-800 p-1">
+        <div className="border-t border-charcoal-800 p-1">
           <PopoverMenuItem to={newOrganizationPath()} title="New Organization" icon="plus" />
         </div>
       </PopoverContent>
@@ -396,7 +395,7 @@ function ProjectSelector({
 function UserMenu({ user }: { user: SideMenuUser }) {
   const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
   const navigation = useNavigation();
-  const v3Enabled = useV3Enabled();
+  const { v3Enabled } = useFeatures();
 
   useEffect(() => {
     setProfileMenuOpen(false);
@@ -404,16 +403,16 @@ function UserMenu({ user }: { user: SideMenuUser }) {
 
   return (
     <Popover onOpenChange={(open) => setProfileMenuOpen(open)}>
-      <PopoverCustomTrigger isOpen={isProfileMenuOpen} className="p-1">
+      <PopoverCustomTrigger isOpen={isProfileMenuOpen} className="p-1 hover:bg-transparent">
         <UserProfilePhoto
           className={cn(
-            "h-5 w-5 text-slate-600",
+            "h-5 w-5 rounded-full border border-transparent text-charcoal-600 transition hover:border-charcoal-600",
             user.isImpersonating && "rounded-full border border-yellow-500"
           )}
         />
       </PopoverCustomTrigger>
       <PopoverContent
-        className="min-w-[12rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+        className="min-w-[12rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         align="start"
       >
         <Fragment>
@@ -452,5 +451,138 @@ function UserMenu({ user }: { user: SideMenuUser }) {
         </Fragment>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function V2ProjectSideMenu({
+  project,
+  organization,
+}: {
+  project: SideMenuProject;
+  organization: MatchedOrganization;
+}) {
+  return (
+    <>
+      <SideMenuHeader title={"Project"}>
+        <PopoverMenuItem
+          to={projectSetupPath(organization, project)}
+          title="Framework setup"
+          icon="plus"
+        />
+      </SideMenuHeader>
+      <SideMenuItem
+        name="Jobs"
+        icon="job"
+        iconColor="text-indigo-500"
+        count={project.jobCount}
+        to={projectPath(organization, project)}
+        data-action="jobs"
+      />
+      <SideMenuItem
+        name="Runs"
+        icon="runs"
+        iconColor="text-teal-500"
+        to={projectRunsPath(organization, project)}
+      />
+      <SideMenuItem
+        name="Triggers"
+        icon="trigger"
+        iconColor="text-amber-500"
+        to={projectTriggersPath(organization, project)}
+        data-action="triggers"
+        hasWarning={project.hasInactiveExternalTriggers}
+      />
+      <SideMenuItem
+        name="Events"
+        icon={CursorArrowRaysIcon}
+        iconColor="text-sky-500"
+        to={projectEventsPath(organization, project)}
+      />
+      <SideMenuItem
+        name="HTTP endpoints"
+        icon="http-endpoint"
+        iconColor="text-pink-500"
+        count={project.httpEndpointCount}
+        to={projectHttpEndpointsPath(organization, project)}
+        data-action="httpendpoints"
+      />
+      <SideMenuItem
+        name="Environments & API Keys"
+        icon="environment"
+        iconColor="text-rose-500"
+        to={projectEnvironmentsPath(organization, project)}
+        data-action="environments & api keys"
+      />
+      <SideMenuItem
+        name="Project settings"
+        icon="settings"
+        iconColor="text-teal-500"
+        to={projectSettingsPath(organization, project)}
+        data-action="project-settings"
+      />
+    </>
+  );
+}
+
+function V3ProjectSideMenu({
+  project,
+  organization,
+}: {
+  project: SideMenuProject;
+  organization: MatchedOrganization;
+}) {
+  return (
+    <>
+      <SideMenuHeader title={"Project (v3)"} />
+      <SideMenuItem
+        name="Tasks"
+        icon={TaskIcon}
+        iconColor="text-blue-500"
+        count={project.jobCount}
+        to={v3ProjectPath(organization, project)}
+        data-action="tasks"
+      />
+      <SideMenuItem
+        name="Runs"
+        icon="runs"
+        iconColor="text-teal-500"
+        to={v3RunsPath(organization, project)}
+      />
+      <SideMenuItem
+        name="Test"
+        icon={BeakerIcon}
+        iconColor="text-lime-500"
+        to={v3TestPath(organization, project)}
+        data-action="test"
+      />
+      <SideMenuItem
+        name="API Keys"
+        icon={KeyIcon}
+        iconColor="text-amber-500"
+        to={v3ApiKeysPath(organization, project)}
+        data-action="api keys"
+      />
+      <SideMenuItem
+        name="Environment variables"
+        icon={IdentificationIcon}
+        iconColor="text-pink-500"
+        to={v3EnvironmentVariablesPath(organization, project)}
+        data-action="environment variables"
+      />
+      <SideMenuItem
+        name="Deployments"
+        icon={ServerStackIcon}
+        iconColor="text-blue-500"
+        to={v3DeploymentsPath(organization, project)}
+        data-action="deployments"
+      />
+      <SideMenuItem
+        name="Project settings"
+        icon="settings"
+        iconColor="text-teal-500"
+        to={v3ProjectSettingsPath(organization, project)}
+        data-action="project-settings"
+      />
+    </>
   );
 }

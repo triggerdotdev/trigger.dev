@@ -84,18 +84,18 @@ function ConcurrentRunsSlider({
             max={options.length - 1}
             step={1}
           >
-            <Slider.Track className="relative h-[8px] grow rounded-full bg-slate-850">
-              <Slider.Range className="absolute h-full rounded-full bg-indigo-500" />
+            <Slider.Track className="relative h-[8px] grow rounded-full bg-grid-bright">
+              <Slider.Range className="absolute h-full rounded-full bg-primary" />
             </Slider.Track>
             <Slider.Thumb
-              className="block h-5 w-5 rounded-full border-4 border-indigo-500 bg-slate-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-indigo-400 hover:bg-slate-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
+              className="block h-5 w-5 rounded-full border-4 border-primary bg-charcoal-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-primary hover:bg-charcoal-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
               aria-label="Concurrent runs slider"
             />
           </Slider.Root>
           <div className="ml-1.5 flex w-[99.85%] items-center justify-between">
             {options.map((tier, i) => {
               return (
-                <Paragraph variant="extra-small" className="text-slate-600" key={i}>
+                <Paragraph variant="extra-small" key={i}>
                   {tier.upto}
                 </Paragraph>
               );
@@ -103,13 +103,13 @@ function ConcurrentRunsSlider({
           </div>
         </div>
         <div className="flex h-full items-start">
-          <span className="ml-6 text-dimmed">=</span>
-          <Header2 className="min-w-[8ch] text-right text-dimmed">
+          <span className="ml-6 text-text-dimmed">=</span>
+          <Header2 className="min-w-[8ch] text-right text-text-dimmed">
             {formatCurrency(cost, true)}
           </Header2>
         </div>
       </div>
-      <hr className="mt-6 border-border" />
+      <hr className="mt-6 border-grid-bright" />
     </div>
   );
 }
@@ -157,11 +157,11 @@ function RunsSlider({
             max={runIncrements}
             step={1}
           >
-            <Slider.Track className="relative h-[8px] grow rounded-full bg-slate-850">
-              <Slider.Range className="absolute h-full rounded-full bg-indigo-500" />
+            <Slider.Track className="relative h-[8px] grow rounded-full bg-grid-bright">
+              <Slider.Range className="absolute h-full rounded-full bg-primary" />
             </Slider.Track>
             <Slider.Thumb
-              className="block h-5 w-5 rounded-full border-4 border-indigo-500 bg-slate-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-indigo-400 hover:bg-slate-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
+              className="block h-5 w-5 rounded-full border-4 border-primary bg-charcoal-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-primary hover:bg-charcoal-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
               aria-label="Concurrent runs slider"
             />
           </Slider.Root>
@@ -185,13 +185,13 @@ function RunsSlider({
           </div>
         </div>
         <div className="flex h-full items-start">
-          <span className="ml-6 text-dimmed">=</span>
-          <Header2 className="min-w-[8ch] text-right text-dimmed">
+          <span className="ml-6 text-text-dimmed">=</span>
+          <Header2 className="min-w-[8ch] text-right text-text-dimmed">
             {formatCurrency(cost, true)}
           </Header2>
         </div>
       </div>
-      <hr className="mt-6 border-border" />
+      <hr className="mt-6 border-grid-bright" />
     </div>
   );
 }
@@ -250,9 +250,7 @@ function SliderMarker({
             : "justify-middle right-0"
         )}
       >
-        <Paragraph variant="extra-small" className="text-slate-600">
-          {text}
-        </Paragraph>
+        <Paragraph variant="extra-small">{text}</Paragraph>
       </div>
     </div>
   );

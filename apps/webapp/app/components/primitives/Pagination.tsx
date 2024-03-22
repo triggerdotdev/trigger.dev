@@ -3,17 +3,14 @@ import { ChevronLeftIcon } from "@heroicons/react/24/solid";
 import { Link, useLocation } from "@remix-run/react";
 import { LinkDisabled } from "./LinkWithDisabled";
 import { cn } from "~/utils/cn";
+import { ButtonContent, LinkButton } from "./Buttons";
 
 export function PaginationControls({
   currentPage,
   totalPages,
-  pageSize,
-  totalResults,
 }: {
   currentPage: number;
   totalPages: number;
-  pageSize: number;
-  totalResults: number;
 }) {
   const location = useLocation();
   if (totalPages <= 1) {
@@ -21,65 +18,33 @@ export function PaginationControls({
   }
 
   return (
-    <div className="flex items-center justify-between rounded-b-lg border-t border-slate-850 bg-slate-700/20 py-3 pl-4 pr-3 text-slate-400">
-      <div className="flex flex-1 justify-between sm:hidden">
-        {currentPage > 1 && (
-          <Link
-            to={pageUrl(location, currentPage - 1)}
-            className="relative inline-flex items-center rounded-md border border-slate-300 bg-slate-700/20 px-4 py-2 text-xs hover:bg-slate-50"
-          >
-            Previous
-          </Link>
-        )}
-        {currentPage < totalPages && (
-          <Link
-            to={pageUrl(location, currentPage + 1)}
-            className="relative ml-3 inline-flex items-center rounded-md border border-slate-300 bg-slate-700/20 px-4 py-2 text-xs hover:bg-slate-50"
-          >
-            Next
-          </Link>
-        )}
-      </div>
-      <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm text-slate-400">
-            Showing <span className="font-medium">{(currentPage - 1) * pageSize + 1}</span> to{" "}
-            <span className="font-medium">{currentPage * pageSize}</span> of{" "}
-            <span className="font-medium">{totalResults}</span> results
-          </p>
-        </div>
-        <div>
-          <nav
-            className="isolate inline-flex -space-x-px rounded-md shadow-sm"
-            aria-label="Pagination"
-          >
-            <LinkDisabled
-              to={pageUrl(location, currentPage - 1)}
-              disabled={currentPage === 1}
-              className="relative inline-flex items-center rounded-l border border-slate-500 bg-slate-700/20 px-2 text-xs font-medium text-slate-400 transition hover:border-slate-400 hover:bg-slate-400 hover:text-slate-800 focus:z-20"
-              disabledClassName="opacity-30 cursor-default hover:bg-slate-700/20 hover:border-slate-500 hover:!text-slate-400"
-            >
-              <span className="sr-only">Previous</span>
-              <ChevronLeftIcon className="h-4 w-4" aria-hidden="true" />
-            </LinkDisabled>
+    <nav className="flex items-center gap-1" aria-label="Pagination">
+      <LinkDisabled
+        to={pageUrl(location, currentPage - 1)}
+        className={currentPage > 1 ? "group" : ""}
+        disabled={currentPage === 1}
+        disabledClassName="opacity-30 cursor-default"
+      >
+        <ButtonContent variant="minimal/medium" LeadingIcon={ChevronLeftIcon}>
+          Previous
+        </ButtonContent>
+      </LinkDisabled>
 
-            {calculatePageLinks(currentPage, totalPages).map((page, i) => (
-              <PageLinkComponent page={page} key={i} location={location} />
-            ))}
+      {calculatePageLinks(currentPage, totalPages).map((page, i) => (
+        <PageLinkComponent page={page} key={i} location={location} />
+      ))}
 
-            <LinkDisabled
-              to={pageUrl(location, currentPage + 1)}
-              disabled={currentPage === totalPages}
-              className="relative inline-flex items-center rounded-r border border-slate-500 bg-slate-700/20 px-2 text-xs font-medium text-slate-400 transition hover:border-slate-400 hover:bg-slate-400 hover:text-slate-800 focus:z-20"
-              disabledClassName="opacity-30 cursor-default hover:bg-slate-700/20 hover:border-slate-500 hover:!text-slate-400"
-            >
-              <span className="sr-only">Next</span>
-              <ChevronRightIcon className="h-4 w-4" aria-hidden="true" />
-            </LinkDisabled>
-          </nav>
-        </div>
-      </div>
-    </div>
+      <LinkDisabled
+        to={pageUrl(location, currentPage + 1)}
+        className={currentPage !== totalPages ? "group" : ""}
+        disabled={currentPage === totalPages}
+        disabledClassName="opacity-30 cursor-default"
+      >
+        <ButtonContent variant="minimal/medium" TrailingIcon={ChevronRightIcon}>
+          Next
+        </ButtonContent>
+      </LinkDisabled>
+    </nav>
   );
 }
 
@@ -92,10 +57,9 @@ function pageUrl(location: ReturnType<typeof useLocation>, page: number): string
 }
 
 const baseClass =
-  "relative inline-flex items-center border px-3.5 py-2 text-xs font-medium focus:z-20 transition";
-const unselectedClass =
-  "bg-slate-700/20 border-slate-500 text-slate-400 hover:bg-slate-400 hover:text-slate-900";
-const selectedClass = "z-10 bg-slate-500 border-slate-500 hover:bg-slate-400 text-slate-900";
+  "flex items-center justify-center border border-transparent h-8 w-8 text-xs font-medium transition text-text-dimmed rounded-sm";
+const unselectedClass = "hover:bg-tertiary hover:text-text-bright";
+const selectedClass = "border-text-dimmed text-text-bright hover:bg-tertiary";
 
 function PageLinkComponent({
   page,
@@ -105,25 +69,16 @@ function PageLinkComponent({
   location: ReturnType<typeof useLocation>;
 }) {
   if (page.type === "specific") {
-    if (page.isCurrent) {
-      return (
-        <Link to={pageUrl(location, page.page)} className={cn(baseClass, selectedClass)}>
-          {page.page}
-        </Link>
-      );
-    } else {
-      return (
-        <Link to={pageUrl(location, page.page)} className={cn(baseClass, unselectedClass)}>
-          {page.page}
-        </Link>
-      );
-    }
-  } else {
     return (
-      <span className="inline-flex items-center border-t-2 border-transparent px-4 pt-4 text-xs font-medium text-slate-500">
-        ...
-      </span>
+      <Link
+        to={pageUrl(location, page.page)}
+        className={cn(baseClass, page.isCurrent ? selectedClass : unselectedClass)}
+      >
+        {page.page}
+      </Link>
     );
+  } else {
+    return <span className={baseClass}>...</span>;
   }
 }
 

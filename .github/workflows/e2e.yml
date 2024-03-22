@@ -4,14 +4,13 @@ on:
 jobs:
   e2e:
     name: "🧪 E2E Tests"
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: buildjet-16vcpu-ubuntu-2204
     steps:
       - name: 🐳 Login to Docker Hub
-        if: github.event_name == 'push'
         uses: docker/login-action@v2
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN || vars.DOCKERHUB_TOKEN }}
 
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
@@ -32,6 +31,8 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile

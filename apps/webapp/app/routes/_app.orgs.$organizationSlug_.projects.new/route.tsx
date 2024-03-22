@@ -16,7 +16,16 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/primitives/Select";
 import { prisma } from "~/db.server";
+import { useFeatures } from "~/hooks/useFeatures";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { createProject } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
@@ -45,6 +54,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
   }
 
+  const url = new URL(request.url);
+
   return typedjson({
     organization: {
       id: organization.id,
@@ -52,11 +63,13 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       slug: organizationSlug,
       projectsCount: organization._count.projects,
     },
+    defaultVersion: url.searchParams.get("version") ?? "v2",
   });
 }
 
 const schema = z.object({
   projectName: z.string().min(3, "Project name must have at least 3 characters").max(50),
+  projectVersion: z.enum(["v2", "v3"]),
 });
 
 export const action: ActionFunction = async ({ request, params }) => {
@@ -76,6 +89,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       organizationSlug: organizationSlug,
       name: submission.value.projectName,
       userId,
+      version: submission.value.projectVersion,
     });
 
     return redirectWithSuccessMessage(
@@ -89,10 +103,11 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function NewOrganizationPage() {
-  const { organization } = useTypedLoaderData<typeof loader>();
+  const { organization, defaultVersion } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
+  const { v3Enabled } = useFeatures();
 
-  const [form, { projectName }] = useForm({
+  const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",
     // TODO: type this
     lastSubmission: lastSubmission as any,
@@ -126,15 +141,37 @@ export default function NewOrganizationPage() {
               />
               <FormError id={projectName.errorId}>{projectName.error}</FormError>
             </InputGroup>
+            {v3Enabled ? (
+              <InputGroup>
+                <Label htmlFor={projectVersion.id}>Project version</Label>
+                <SelectGroup>
+                  <Select
+                    {...conform.input(projectVersion, { type: "select" })}
+                    defaultValue={defaultVersion}
+                  >
+                    <SelectTrigger width="full" size="medium">
+                      <SelectValue placeholder="Project version" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="v2">Version 2</SelectItem>
+                      <SelectItem value="v3">Version 3 (Developer Preview)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </SelectGroup>
+                <FormError id={projectVersion.errorId}>{projectVersion.error}</FormError>
+              </InputGroup>
+            ) : (
+              <input {...conform.input(projectVersion, { type: "hidden" })} value="v2" />
+            )}
             <FormButtons
               confirmButton={
-                <Button type="submit" variant={"primary/small"} TrailingIcon="arrow-right">
+                <Button type="submit" variant={"primary/small"}>
                   Create
                 </Button>
               }
               cancelButton={
                 organization.projectsCount > 0 ? (
-                  <LinkButton to={organizationPath(organization)} variant={"secondary/small"}>
+                  <LinkButton to={organizationPath(organization)} variant={"tertiary/small"}>
                     Cancel
                   </LinkButton>
                 ) : undefined

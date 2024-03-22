@@ -19,7 +19,7 @@ const preview: Preview = {
       values: [
         {
           name: "App background",
-          value: "#0B1018",
+          value: "#15171A",
         },
       ],
     },

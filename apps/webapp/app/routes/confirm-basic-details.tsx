@@ -1,5 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import { HandRaisedIcon } from "@heroicons/react/24/solid";
 import { ActionFunction, json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
@@ -230,7 +231,7 @@ export default function Page() {
 
             <FormButtons
               confirmButton={
-                <Button type="submit" variant={"primary/small"} TrailingIcon={"arrow-right"}>
+                <Button type="submit" variant={"primary/small"} TrailingIcon={ArrowRightIcon}>
                   Continue
                 </Button>
               }

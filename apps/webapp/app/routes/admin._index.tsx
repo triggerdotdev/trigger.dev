@@ -31,8 +31,9 @@ export async function action({ request }: ActionFunctionArgs) {
   });
 }
 
-const headerClassName = "py-3 px-2 pr-3 text-xs font-semibold leading-tight text-bright text-left";
-const cellClassName = "whitespace-nowrap px-2 py-2 text-xs text-bright";
+const headerClassName =
+  "py-3 px-2 pr-3 text-xs font-semibold leading-tight text-text-bright text-left";
+const cellClassName = "whitespace-nowrap px-2 py-2 text-xs text-text-bright";
 
 export default function AdminDashboardRoute() {
   const user = useUser();
@@ -49,8 +50,8 @@ export default function AdminDashboardRoute() {
         Back to me
       </LinkButton>
 
-      <table className="w-full divide-y divide-border">
-        <thead className="sticky -top-4 bg-midnight-800 text-left">
+      <table className="divide-border w-full divide-y">
+        <thead className="bg-midnight-800 sticky -top-4 text-left">
           <tr>
             <th scope="col" className={headerClassName}>
               Email
@@ -72,10 +73,10 @@ export default function AdminDashboardRoute() {
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-border">
+        <tbody className="divide-border divide-y">
           {users.map((user) => {
             return (
-              <tr key={user.id} className="w-full px-4 py-2 text-left hover:bg-slate-900">
+              <tr key={user.id} className="w-full px-4 py-2 text-left hover:bg-charcoal-900">
                 <td className={cellClassName}>{user.email}</td>
                 <td className={cellClassName}>
                   <a

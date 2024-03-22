@@ -4,31 +4,36 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
+import { IndexDeploymentService } from "~/v3/services/indexDeployment.server";
+import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
+import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
 import { sendEmail } from "./email.server";
 import { IndexEndpointService } from "./endpoints/indexEndpoint.server";
 import { PerformEndpointIndexService } from "./endpoints/performEndpointIndexService";
+import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
 import { RecurringEndpointIndexService } from "./endpoints/recurringEndpointIndex.server";
 import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
+import { executionRateLimiter } from "./runExecutionRateLimiter.server";
+import { DeliverRunSubscriptionService } from "./runs/deliverRunSubscription.server";
+import { DeliverRunSubscriptionsService } from "./runs/deliverRunSubscriptions.server";
 import { MissingConnectionCreatedService } from "./runs/missingConnectionCreated.server";
 import { PerformRunExecutionV3Service } from "./runs/performRunExecutionV3.server";
+import { ResumeRunService } from "./runs/resumeRun.server";
 import { StartRunService } from "./runs/startRun.server";
 import { DeliverScheduledEventService } from "./schedules/deliverScheduledEvent.server";
 import { ActivateSourceService } from "./sources/activateSource.server";
 import { DeliverHttpSourceRequestService } from "./sources/deliverHttpSourceRequest.server";
+import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.server";
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout.server";
-import { ProbeEndpointService } from "./endpoints/probeEndpoint.server";
-import { DeliverRunSubscriptionService } from "./runs/deliverRunSubscription.server";
-import { DeliverRunSubscriptionsService } from "./runs/deliverRunSubscriptions.server";
 import { ResumeTaskService } from "./tasks/resumeTask.server";
-import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
-import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
-import { ResumeRunService } from "./runs/resumeRun.server";
-import { executionRateLimiter } from "./runExecutionRateLimiter.server";
-import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.server";
+import { ResumeTaskRunDependenciesService } from "~/v3/services/resumeTaskRunDependencies.server";
+import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
+import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.server";
+import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -101,6 +106,26 @@ const workerCatalog = {
   }),
   resumeRun: z.object({
     id: z.string(),
+  }),
+  // v3 tasks
+  "v3.indexDeployment": z.object({
+    id: z.string(),
+  }),
+  "v3.resumeTaskRunDependencies": z.object({
+    attemptId: z.string(),
+  }),
+  "v3.resumeBatchRun": z.object({
+    batchRunId: z.string(),
+    sourceTaskAttemptId: z.string(),
+  }),
+  "v3.resumeTaskDependency": z.object({
+    dependencyId: z.string(),
+    sourceTaskAttemptId: z.string(),
+  }),
+  "v3.timeoutDeployment": z.object({
+    deploymentId: z.string(),
+    fromStatus: z.string(),
+    errorMessage: z.string(),
   }),
 };
 
@@ -276,8 +301,8 @@ function getWorkerQueue() {
                 graphileJob.id,
                 payload.orphanedEvents
                   ? {
-                      event: payload.orphanedEvents,
-                    }
+                    event: payload.orphanedEvents,
+                  }
                   : undefined
               );
               break;
@@ -428,6 +453,52 @@ function getWorkerQueue() {
           return await service.call(payload.id);
         },
       },
+      // v3 tasks
+      "v3.indexDeployment": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new IndexDeploymentService();
+
+          return await service.call(payload.id);
+        },
+      },
+      "v3.resumeTaskRunDependencies": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new ResumeTaskRunDependenciesService();
+
+          return await service.call(payload.attemptId);
+        },
+      },
+      "v3.resumeBatchRun": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new ResumeBatchRunService();
+
+          return await service.call(payload.batchRunId, payload.sourceTaskAttemptId);
+        },
+      },
+      "v3.resumeTaskDependency": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new ResumeTaskDependencyService();
+
+          return await service.call(payload.dependencyId, payload.sourceTaskAttemptId);
+        },
+      },
+      "v3.timeoutDeployment": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new TimeoutDeploymentService();
+
+          return await service.call(payload.deploymentId, payload.fromStatus, payload.errorMessage);
+        },
+      },
     },
   });
 }
@@ -523,4 +594,4 @@ function getTaskOperationWorkerQueue() {
   });
 }
 
-export { executionWorker, workerQueue, taskOperationWorker };
+export { executionWorker, taskOperationWorker, workerQueue };

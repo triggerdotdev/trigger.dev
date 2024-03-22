@@ -9,7 +9,7 @@
       "request": "launch",
       "name": "Debug WebApp",
       "command": "pnpm run dev --filter webapp",
-      "envFile": "${workspaceFolder}/apps/webapp/.env",
+      "envFile": "${workspaceFolder}/.env",
       "cwd": "${workspaceFolder}",
       "sourceMaps": true
     },
@@ -33,9 +33,25 @@
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug V3 Dev CLI",
-      "command": "pnpm exec trigger.dev dev",
+      "command": "pnpm exec trigger.dev dev --log-level debug",
       "cwd": "${workspaceFolder}/references/v3-catalog",
       "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug V3 Deploy CLI",
+      "command": "pnpm exec trigger.dev deploy",
+      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "sourceMaps": true
+    },
+    {
+      "type": "node",
+      "request": "attach",
+      "name": "Attach to Trigger.dev CLI (v3)",
+      "port": 9229,
+      "restart": true,
+      "skipFiles": ["<node_internals>/**"]
     }
   ]
 }

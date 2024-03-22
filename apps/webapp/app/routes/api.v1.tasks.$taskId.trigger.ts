@@ -10,9 +10,10 @@ const ParamsSchema = z.object({
   taskId: z.string(),
 });
 
-const HeadersSchema = z.object({
+export const HeadersSchema = z.object({
   "idempotency-key": z.string().optional().nullable(),
   "trigger-version": z.string().optional().nullable(),
+  "x-trigger-span-parent-as-link": z.coerce.number().optional().nullable(),
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
@@ -41,6 +42,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const {
     "idempotency-key": idempotencyKey,
     "trigger-version": triggerVersion,
+    "x-trigger-span-parent-as-link": spanParentAsLink,
     traceparent,
     tracestate,
   } = headers.data;
@@ -70,7 +72,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
       idempotencyKey: idempotencyKey ?? undefined,
       triggerVersion: triggerVersion ?? undefined,
       traceContext: traceparent ? { traceparent, tracestate } : undefined,
+      spanParentAsLink: spanParentAsLink === 1,
     });
+
+    if (!run) {
+      return json({ error: "Task not found" }, { status: 404 });
+    }
 
     return json({
       id: run.friendlyId,

@@ -1,5 +1,6 @@
 import { NoopTaskLogger, TaskLogger } from "./taskLogger";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals";
+import { Span } from "@opentelemetry/api";
 
 const API_NAME = "logger";
 
@@ -44,6 +45,10 @@ export class LoggerAPI implements TaskLogger {
 
   public error(message: string, metadata?: Record<string, unknown>) {
     this.#getTaskLogger().error(message, metadata);
+  }
+
+  public trace<T>(name: string, fn: (span: Span) => Promise<T>): Promise<T> {
+    return this.#getTaskLogger().trace(name, fn);
   }
 
   #getTaskLogger(): TaskLogger {

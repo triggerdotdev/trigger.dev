@@ -1,27 +1,18 @@
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Fragment } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { Callout } from "~/components/primitives/Callout";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { WebhookDeliveryRunsTable } from "~/components/runs/WebhookDeliveryRunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { WebhookDeliveryPresenter } from "~/presenters/WebhookDeliveryPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
 import {
   TriggerSourceParamSchema,
-  projectTriggersPath,
-  projectWebhookTriggersPath,
-  trimTrailingSlash,
   webhookTriggerDeliveryRunsParentPath,
-  webhookTriggerPath,
 } from "~/utils/pathBuilder";
-import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
+import { ListPagination } from "../../components/ListPagination";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -49,32 +40,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   return typedjson({ webhook });
-};
-
-export const handle: Handle = {
-  //this one is complicated because we render outside the parent route (using triggers_ in the path)
-  breadcrumb: (match, matches) => {
-    const data = useTypedMatchData<typeof loader>(match);
-    if (!data) return null;
-
-    const org = useOrganization(matches);
-    const project = useProject(matches);
-
-    return (
-      <Fragment>
-        <BreadcrumbLink to={projectTriggersPath(org, project)} title="Triggers" />
-        <BreadcrumbIcon />
-        <BreadcrumbLink to={projectWebhookTriggersPath(org, project)} title="Webhook Triggers" />
-        <BreadcrumbIcon />
-        <BreadcrumbLink
-          to={webhookTriggerPath(org, project, { id: data.webhook.id })}
-          title={data.webhook.key}
-        />
-        <BreadcrumbIcon />
-        <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Deliveries" />
-      </Fragment>
-    );
-  },
 };
 
 export default function Page() {

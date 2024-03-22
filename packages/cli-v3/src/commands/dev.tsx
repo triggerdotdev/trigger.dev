@@ -1,107 +1,88 @@
 import {
   CreateBackgroundWorkerRequestBody,
+  ResolvedConfig,
   TaskResource,
   ZodMessageHandler,
   ZodMessageSender,
   clientWebsocketMessages,
+  detectDependencyVersion,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
 import chalk from "chalk";
 import { watch } from "chokidar";
 import { Command } from "commander";
-import { BuildContext, context } from "esbuild";
-import { findUp } from "find-up";
+import { BuildContext, Metafile, context } from "esbuild";
 import { resolve as importResolve } from "import-meta-resolve";
 import { Box, Text, render, useApp, useInput } from "ink";
 import { createHash } from "node:crypto";
 import fs, { readFileSync } from "node:fs";
 import { ClientRequestArgs } from "node:http";
-import { basename, dirname, join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { basename, dirname, join } from "node:path";
 import pThrottle from "p-throttle";
 import { WebSocket } from "partysocket";
 import React, { Suspense, useEffect } from "react";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
-import { ApiClient } from "../apiClient.js";
-import { CLOUD_API_URL } from "../consts.js";
-import { BackgroundWorker, BackgroundWorkerCoordinator } from "../dev/backgroundWorker.js";
+import { CliApiClient } from "../apiClient";
+import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
+import { readConfig } from "../utilities/configFiles";
+import { readJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { detectPackageNameFromImportPath, parsePackageName } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
-import { RequireKeys } from "../utilities/requiredKeys.js";
 import { isLoggedIn } from "../utilities/session.js";
-import { CommonCommandOptions } from "../cli/common.js";
+import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
+import { UncaughtExceptionError } from "../workers/common/errors";
+import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
 
-const CONFIG_FILES = ["trigger.config.js", "trigger.config.mjs"];
+let apiClient: CliApiClient | undefined;
 
-const ConfigSchema = z.object({
-  project: z.string(),
-  triggerDirectories: z.string().array().optional(),
-  triggerUrl: z.string().optional(),
-  projectDir: z.string().optional(),
+const DevCommandOptions = CommonCommandOptions.extend({
+  debugger: z.boolean().default(false),
+  debugOtel: z.boolean().default(false),
+  config: z.string().optional(),
+  projectRef: z.string().optional(),
 });
-
-type Config = z.infer<typeof ConfigSchema>;
-type ResolvedConfig = RequireKeys<Config, "triggerDirectories" | "triggerUrl" | "projectDir">;
-type TaskFile = {
-  triggerDir: string;
-  filePath: string;
-  importPath: string;
-  importName: string;
-};
-
-let apiClient: ApiClient | undefined;
-
-const DevCommandOptions = CommonCommandOptions;
 
 type DevCommandOptions = z.infer<typeof DevCommandOptions>;
 
 export function configureDevCommand(program: Command) {
-  program
-    .command("dev")
-    .description("Run your Trigger.dev tasks locally")
-    .argument("[path]", "The path to the project", ".")
-    .option(
-      "-l, --log-level <level>",
-      "The log level to use (debug, info, log, warn, error, none)",
-      "log"
-    )
-    .action(async (path, options) => {
-      try {
-        await devCommand(path, options);
-      } catch (e) {
-        //todo error reporting
-        throw e;
-      }
+  return commonOptions(
+    program
+      .command("dev")
+      .description("Run your Trigger.dev tasks locally")
+      .argument("[path]", "The path to the project", ".")
+      .option("-c, --config <config file>", "The name of the config file, found at [path]")
+      .option(
+        "-p, --project-ref <project ref>",
+        "The project ref. Required if there is no config file."
+      )
+      .option("--debugger", "Enable the debugger")
+      .option("--debug-otel", "Enable OpenTelemetry debugging")
+  ).action(async (path, options) => {
+    wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
+      await devCommand(path, opts);
     });
+  });
 }
 
-export async function devCommand(dir: string, anyOptions: unknown) {
-  const options = DevCommandOptions.safeParse(anyOptions);
-
-  if (!options.success) {
-    throw new Error(`Invalid options: ${options.error}`);
-  }
-
-  const authorization = await isLoggedIn();
+export async function devCommand(dir: string, options: DevCommandOptions) {
+  const authorization = await isLoggedIn(options.profile);
 
   if (!authorization.ok) {
-    logger.error("You must login first. Use `trigger.dev login` to login.");
+    if (authorization.error === "fetch failed") {
+      logger.error("Fetch failed. Platform down?");
+    } else {
+      logger.error("You must login first. Use `trigger.dev login` to login.");
+    }
     process.exitCode = 1;
     return;
   }
 
-  let watcher;
-
-  try {
-    const devInstance = await startDev(dir, options.data, authorization.config);
-    watcher = devInstance.watcher;
-    const { waitUntilExit } = devInstance.devReactElement;
-    await waitUntilExit();
-  } finally {
-    await watcher?.close();
-  }
+  const devInstance = await startDev(dir, options, authorization.auth);
+  const { waitUntilExit } = devInstance.devReactElement;
+  await waitUntilExit();
 }
 
 async function startDev(
@@ -109,7 +90,6 @@ async function startDev(
   options: DevCommandOptions,
   authorization: { apiUrl: string; accessToken: string }
 ) {
-  let watcher: ReturnType<typeof watch> | undefined;
   let rerender: (node: React.ReactNode) => void | undefined;
 
   try {
@@ -119,34 +99,35 @@ async function startDev(
 
     await printStandloneInitialBanner(true);
 
-    const configPath = await getConfigPath(dir);
-    let config = await readConfig(configPath);
+    logger.debug("Starting dev session", { dir, options, authorization });
 
-    watcher = watch(configPath, {
-      persistent: true,
-    }).on("change", async (_event) => {
-      config = await readConfig(configPath);
-      logger.log(`${basename(configPath)} changed...`);
-      logger.debug("New config", { config });
-      rerender(await getDevReactElement(config, authorization));
+    let config = await readConfig(dir, {
+      projectRef: options.projectRef,
+      configFile: options.config,
     });
+
+    logger.debug("Initial config", { config });
 
     async function getDevReactElement(
       configParam: ResolvedConfig,
-      authorization: { apiUrl: string; accessToken: string }
+      authorization: { apiUrl: string; accessToken: string },
+      configPath?: string
     ) {
       const accessToken = authorization.accessToken;
       const apiUrl = authorization.apiUrl;
 
-      apiClient = new ApiClient(apiUrl, accessToken);
+      apiClient = new CliApiClient(apiUrl, accessToken);
 
-      const devEnv = await apiClient.getProjectDevEnv({ projectRef: config.project });
+      const devEnv = await apiClient.getProjectEnv({
+        projectRef: config.config.project,
+        env: "dev",
+      });
 
       if (!devEnv.success) {
         throw new Error(devEnv.error);
       }
 
-      const environmentClient = new ApiClient(apiUrl, devEnv.data.apiKey);
+      const environmentClient = new CliApiClient(apiUrl, devEnv.data.apiKey);
 
       return (
         <DevUI
@@ -155,24 +136,30 @@ async function startDev(
           apiKey={devEnv.data.apiKey}
           environmentClient={environmentClient}
           projectName={devEnv.data.name}
+          debuggerOn={options.debugger}
+          debugOtel={options.debugOtel}
+          configPath={configPath}
         />
       );
     }
 
-    const devReactElement = render(await getDevReactElement(config, authorization));
+    const devReactElement = render(
+      await getDevReactElement(
+        config.config,
+        authorization,
+        config.status === "file" ? config.path : undefined
+      )
+    );
 
     rerender = devReactElement.rerender;
 
     return {
       devReactElement,
-      watcher,
       stop: async () => {
         devReactElement.unmount();
-        await watcher?.close();
       },
     };
   } catch (e) {
-    await watcher?.close();
     throw e;
   }
 }
@@ -181,11 +168,23 @@ type DevProps = {
   config: ResolvedConfig;
   apiUrl: string;
   apiKey: string;
-  environmentClient: ApiClient;
+  environmentClient: CliApiClient;
   projectName: string;
+  debuggerOn: boolean;
+  debugOtel: boolean;
+  configPath?: string;
 };
 
-function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevProps) {
+function useDev({
+  config,
+  apiUrl,
+  apiKey,
+  environmentClient,
+  projectName,
+  debuggerOn,
+  debugOtel,
+  configPath,
+}: DevProps) {
   useEffect(() => {
     const websocketUrl = new URL(apiUrl);
     websocketUrl.protocol = websocketUrl.protocol.replace("http", "ws");
@@ -194,17 +193,17 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
     const websocket = new WebSocket(websocketUrl.href, [], {
       WebSocket: WebsocketFactory(apiKey),
       connectionTimeout: 10000,
-      maxRetries: 6,
+      maxRetries: 10,
+      minReconnectionDelay: 1000,
+      maxReconnectionDelay: 30000,
+      reconnectionDelayGrowFactor: 1.4, // This leads to the following retry times: 1, 1.4, 1.96, 2.74, 3.84, 5.38, 7.53, 10.54, 14.76, 20.66
+      maxEnqueuedMessages: 250,
     });
-
-    websocket.addEventListener("open", (foo) => {});
-    websocket.addEventListener("close", (event) => {});
-    websocket.addEventListener("error", (event) => {});
 
     const sender = new ZodMessageSender({
       schema: clientWebsocketMessages,
       sender: async (message) => {
-        websocket?.send(JSON.stringify(message));
+        websocket.send(JSON.stringify(message));
       },
     });
 
@@ -212,13 +211,30 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
       `${apiUrl}/projects/v3/${config.project}`
     );
 
+    websocket.addEventListener("open", async (event) => {});
+    websocket.addEventListener("close", (event) => {});
+    websocket.addEventListener("error", (event) => {});
+
+    backgroundWorkerCoordinator.onWorkerTaskHeartbeat.attach(
+      async ({ worker, backgroundWorkerId, id }) => {
+        await sender.send("BACKGROUND_WORKER_MESSAGE", {
+          backgroundWorkerId,
+          data: {
+            type: "TASK_HEARTBEAT",
+            id,
+          },
+        });
+      }
+    );
+
     backgroundWorkerCoordinator.onTaskCompleted.attach(
-      async ({ backgroundWorkerId, completion }) => {
+      async ({ backgroundWorkerId, completion, execution }) => {
         await sender.send("BACKGROUND_WORKER_MESSAGE", {
           backgroundWorkerId,
           data: {
             type: "TASK_RUN_COMPLETED",
             completion,
+            execution,
           },
         });
       }
@@ -230,8 +246,8 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
       });
     });
 
-    backgroundWorkerCoordinator.onWorkerDeprecated.attach(async ({ id }) => {
-      await sender.send("WORKER_DEPRECATED", {
+    backgroundWorkerCoordinator.onWorkerDeprecated.attach(async ({ id, worker }) => {
+      await sender.send("BACKGROUND_WORKER_DEPRECATED", {
         backgroundWorkerId: id,
       });
     });
@@ -244,7 +260,13 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
       const messageHandler = new ZodMessageHandler({
         schema: serverWebsocketMessages,
         messages: {
-          SERVER_READY: async (payload) => {},
+          SERVER_READY: async (payload) => {
+            for (const worker of backgroundWorkerCoordinator.currentWorkers) {
+              await sender.send("READY_FOR_TASKS", {
+                backgroundWorkerId: worker.id,
+              });
+            }
+          },
           BACKGROUND_WORKER_MESSAGE: async (payload) => {
             await backgroundWorkerCoordinator.handleMessage(
               payload.backgroundWorkerId,
@@ -270,13 +292,34 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
       const taskFiles = await gatherTaskFiles(config);
 
       const workerFacade = readFileSync(
-        new URL(importResolve("./worker-facade.js", import.meta.url)).href.replace("file://", ""),
+        new URL(importResolve("./workers/dev/worker-facade.js", import.meta.url)).href.replace(
+          "file://",
+          ""
+        ),
         "utf-8"
       );
-      const entryPointContents = workerFacade.replace(
-        "__TASKS__",
-        createTaskFileImports(taskFiles)
-      );
+
+      const workerSetupPath = new URL(
+        importResolve("./workers/dev/worker-setup.js", import.meta.url)
+      ).href.replace("file://", "");
+
+      let entryPointContents = workerFacade
+        .replace("__TASKS__", createTaskFileImports(taskFiles))
+        .replace("__WORKER_SETUP__", `import { tracingSDK, sender } from "${workerSetupPath}";`);
+
+      if (configPath) {
+        logger.debug("Importing project config from", { configPath });
+
+        entryPointContents = entryPointContents.replace(
+          "__IMPORTED_PROJECT_CONFIG__",
+          `import * as importedConfigExports from "${configPath}"; const importedConfig = importedConfigExports.config; const handleError = importedConfigExports.handleError;`
+        );
+      } else {
+        entryPointContents = entryPointContents.replace(
+          "__IMPORTED_PROJECT_CONFIG__",
+          `const importedConfig = undefined; const handleError = undefined;`
+        );
+      }
 
       let firstBuild = true;
 
@@ -292,17 +335,16 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
         metafile: true,
         write: false,
         minify: false,
-        sourcemap: true,
-        logLevel: "silent",
+        sourcemap: "external", // does not set the //# sourceMappingURL= comment in the file, we handle it ourselves
+        packages: "external", // https://esbuild.github.io/api/#packages
+        logLevel: "error",
         platform: "node",
-        format: "esm",
+        format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
         target: ["node18", "es2020"],
         outdir: "out",
         define: {
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
-        },
-        banner: {
-          js: "import { createRequire } from 'module';const require = createRequire(import.meta.url);",
+          __PROJECT_CONFIG__: JSON.stringify(config),
         },
         plugins: [
           {
@@ -341,12 +383,6 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
                   (file) => file.path === sourceMapFileKey
                 );
 
-                if (!sourceMapFile) {
-                  throw new Error(
-                    `Could not find source map file for entry point ${metaOutput.entryPoint}`
-                  );
-                }
-
                 const md5Hasher = createHash("md5");
                 md5Hasher.update(Buffer.from(outputFile.contents.buffer));
 
@@ -360,87 +396,126 @@ function useDev({ config, apiUrl, apiKey, environmentClient, projectName }: DevP
                 }
 
                 // Create a file at join(dir, ".trigger", path) with the fileContents
-                const fullPath = join(config.projectDir, ".trigger", `${contentHash}.mjs`);
+                const fullPath = join(config.projectDir, ".trigger", `${contentHash}.js`);
+                const sourceMapPath = `${fullPath}.map`;
+
+                const outputFileWithSourceMap = `${
+                  outputFile.text
+                }\n//# sourceMappingURL=${basename(sourceMapPath)}`;
 
                 await fs.promises.mkdir(dirname(fullPath), { recursive: true });
-                await fs.promises.writeFile(fullPath, outputFile.text);
-                const sourceMapPath = `${fullPath}.map`;
-                await fs.promises.writeFile(sourceMapPath, sourceMapFile.text);
+                await fs.promises.writeFile(fullPath, outputFileWithSourceMap);
+
+                logger.debug(`Wrote background worker to ${fullPath}`);
+
+                const dependencies = await gatherRequiredDependencies(metaOutput, config);
+
+                if (sourceMapFile) {
+                  const sourceMapPath = `${fullPath}.map`;
+                  await fs.promises.writeFile(sourceMapPath, sourceMapFile.text);
+                }
+
+                const environmentVariablesResponse =
+                  await environmentClient.getEnvironmentVariables(config.project);
+
+                const processEnv = gatherProcessEnv();
 
                 const backgroundWorker = new BackgroundWorker(fullPath, {
-                  projectDir: config.projectDir,
+                  projectConfig: config,
+                  dependencies,
                   env: {
+                    ...processEnv,
                     TRIGGER_API_URL: apiUrl,
-                    TRIGGER_API_KEY: apiKey,
+                    TRIGGER_SECRET_KEY: apiKey,
+                    ...(environmentVariablesResponse.success
+                      ? environmentVariablesResponse.data.variables
+                      : {}),
                   },
+                  debuggerOn,
+                  debugOtel,
                 });
 
-                await backgroundWorker.initialize();
+                try {
+                  await backgroundWorker.initialize();
 
-                latestWorkerContentHash = contentHash;
+                  latestWorkerContentHash = contentHash;
 
-                let packageVersion: string | undefined;
+                  let packageVersion: string | undefined;
 
-                const taskResources: Array<TaskResource> = [];
+                  const taskResources: Array<TaskResource> = [];
 
-                if (!backgroundWorker.tasks) {
-                  throw new Error(`Background Worker started without tasks`);
-                }
+                  if (!backgroundWorker.tasks) {
+                    throw new Error(`Background Worker started without tasks`);
+                  }
 
-                for (const task of backgroundWorker.tasks) {
-                  taskResources.push({
-                    id: task.id,
-                    filePath: task.filePath,
-                    exportName: task.exportName,
-                  });
+                  for (const task of backgroundWorker.tasks) {
+                    taskResources.push(task);
 
-                  packageVersion = task.packageVersion;
-                }
+                    packageVersion = task.packageVersion;
+                  }
 
-                if (!packageVersion) {
-                  throw new Error(`Background Worker started without package version`);
-                }
+                  if (!packageVersion) {
+                    throw new Error(`Background Worker started without package version`);
+                  }
 
-                const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
-                  localOnly: true,
-                  metadata: {
-                    packageVersion,
-                    // This is a hack to get around the funky node16 typescript module resolution issue
-                    cliPackageVersion: packageJson.version,
-                    tasks: taskResources,
-                    contentHash: contentHash,
-                  },
-                };
+                  const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
+                    localOnly: true,
+                    metadata: {
+                      packageVersion,
+                      cliPackageVersion: packageJson.version,
+                      tasks: taskResources,
+                      contentHash: contentHash,
+                    },
+                  };
 
-                const backgroundWorkerRecord = await environmentClient.createBackgroundWorker(
-                  config.project,
-                  backgroundWorkerBody
-                );
-
-                if (!backgroundWorkerRecord.success) {
-                  throw new Error(backgroundWorkerRecord.error);
-                }
-
-                backgroundWorker.metadata = backgroundWorkerRecord.data;
-
-                if (firstBuild) {
-                  logger.log(
-                    chalk.green(
-                      `Background worker started (${backgroundWorkerRecord.data.version})`
-                    )
+                  const backgroundWorkerRecord = await environmentClient.createBackgroundWorker(
+                    config.project,
+                    backgroundWorkerBody
                   );
-                } else {
-                  logger.log(
-                    chalk.dim(`Background worker rebuilt (${backgroundWorkerRecord.data.version})`)
+
+                  if (!backgroundWorkerRecord.success) {
+                    throw new Error(backgroundWorkerRecord.error);
+                  }
+
+                  backgroundWorker.metadata = backgroundWorkerRecord.data;
+
+                  if (firstBuild) {
+                    logger.log(
+                      chalk.green(
+                        `Background worker started (${backgroundWorkerRecord.data.version})`
+                      )
+                    );
+                  } else {
+                    logger.log(
+                      chalk.dim(
+                        `Background worker rebuilt (${backgroundWorkerRecord.data.version})`
+                      )
+                    );
+                  }
+
+                  firstBuild = false;
+
+                  await backgroundWorkerCoordinator.registerWorker(
+                    backgroundWorkerRecord.data,
+                    backgroundWorker
                   );
+                } catch (e) {
+                  if (e instanceof UncaughtExceptionError) {
+                    if (e.originalError.stack) {
+                      logger.error("Background worker failed to start", e.originalError.stack);
+                    }
+
+                    return;
+                  }
+
+                  if (e instanceof Error) {
+                    logger.error(`Background worker failed to start`, e.stack);
+
+                    return;
+                  }
+
+                  logger.error(`Background worker failed to start: ${e}`);
                 }
-
-                firstBuild = false;
-
-                await backgroundWorkerCoordinator.registerWorker(
-                  backgroundWorkerRecord.data,
-                  backgroundWorker
-                );
               });
             },
           },
@@ -575,118 +650,84 @@ function WebsocketFactory(apiKey: string) {
   };
 }
 
-function createTaskFileImports(taskFiles: TaskFile[]) {
-  return taskFiles
-    .map(
-      (taskFile) =>
-        `import * as ${taskFile.importName} from "./${taskFile.importPath}"; TaskFileImports["${
-          taskFile.importName
-        }"] = ${taskFile.importName}; TaskFiles["${taskFile.importName}"] = ${JSON.stringify(
-          taskFile
-        )};`
-    )
-    .join("\n");
-}
+// Returns the dependencies that are required by the output that are found in output and the CLI package dependencies
+// Returns the dependency names and the version to use (taken from the CLI deps package.json)
+async function gatherRequiredDependencies(
+  outputMeta: Metafile["outputs"][string],
+  config: ResolvedConfig
+) {
+  const dependencies: Record<string, string> = {};
 
-// Find all the top-level .js or .ts files in the trigger directories
-async function gatherTaskFiles(config: ResolvedConfig): Promise<Array<TaskFile>> {
-  const taskFiles: Array<TaskFile> = [];
+  for (const file of outputMeta.imports) {
+    if (file.kind !== "require-call" || !file.external) {
+      continue;
+    }
 
-  for (const triggerDir of config.triggerDirectories) {
-    const files = await fs.promises.readdir(triggerDir, { withFileTypes: true });
-    for (const file of files) {
-      if (!file.isFile()) continue;
-      if (!file.name.endsWith(".js") && !file.name.endsWith(".ts")) continue;
+    const packageName = detectPackageNameFromImportPath(file.path);
 
-      const fullPath = join(triggerDir, file.name);
+    if (dependencies[packageName]) {
+      continue;
+    }
 
-      const filePath = relative(config.projectDir, fullPath);
-      const importPath = filePath.replace(/\.(js|ts)$/, "");
-      const importName = importPath.replace(/\//g, "_");
+    const internalDependencyVersion =
+      (packageJson.dependencies as Record<string, string>)[packageName] ??
+      detectDependencyVersion(packageName);
 
-      taskFiles.push({ triggerDir, importPath, importName, filePath });
+    if (internalDependencyVersion) {
+      dependencies[packageName] = internalDependencyVersion;
     }
   }
 
-  return taskFiles;
-}
+  if (config.additionalPackages) {
+    const projectPackageJson = await readJSONFile(join(config.projectDir, "package.json"));
 
-async function getConfigPath(dir: string): Promise<string> {
-  const path = await findUp(CONFIG_FILES, { cwd: dir });
+    for (const packageName of config.additionalPackages) {
+      if (dependencies[packageName]) {
+        continue;
+      }
 
-  if (!path) {
-    throw new Error("No config file found.");
-  }
+      const packageParts = parsePackageName(packageName);
 
-  return path;
-}
+      if (packageParts.version) {
+        dependencies[packageParts.name] = packageParts.version;
+        continue;
+      } else {
+        const externalDependencyVersion = {
+          ...projectPackageJson?.devDependencies,
+          ...projectPackageJson?.dependencies,
+        }[packageName];
 
-async function readConfig(path: string): Promise<ResolvedConfig> {
-  try {
-    // import the config file
-    const userConfigModule = await import(`${pathToFileURL(path).href}?_ts=${Date.now()}`);
-    const rawConfig = await normalizeConfig(userConfigModule ? userConfigModule.default : {});
-    const config = ConfigSchema.parse(rawConfig);
-
-    return resolveConfig(path, config);
-  } catch (error) {
-    console.error(`Failed to load config file at ${path}`);
-    throw error;
-  }
-}
-
-async function resolveConfig(path: string, config: Config): Promise<ResolvedConfig> {
-  if (!config.triggerDirectories) {
-    config.triggerDirectories = await findTriggerDirectories(path);
-  }
-
-  config.triggerDirectories = resolveTriggerDirectories(config.triggerDirectories);
-
-  if (!config.triggerUrl) {
-    config.triggerUrl = CLOUD_API_URL;
-  }
-
-  if (!config.projectDir) {
-    config.projectDir = dirname(path);
-  }
-
-  return config as ResolvedConfig;
-}
-
-async function normalizeConfig(config: any): Promise<any> {
-  if (typeof config === "function") {
-    config = config();
-  }
-
-  return await config;
-}
-
-function resolveTriggerDirectories(dirs: string[]): string[] {
-  return dirs.map((dir) => resolve(dir));
-}
-
-const IGNORED_DIRS = ["node_modules", ".git", "dist", "build"];
-
-async function findTriggerDirectories(filePath: string): Promise<string[]> {
-  const dirPath = dirname(filePath);
-  return getTriggerDirectories(dirPath);
-}
-
-async function getTriggerDirectories(dirPath: string): Promise<string[]> {
-  const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-  const triggerDirectories: string[] = [];
-
-  for (const entry of entries) {
-    if (!entry.isDirectory() || IGNORED_DIRS.includes(entry.name)) continue;
-
-    const fullPath = join(dirPath, entry.name);
-
-    if (entry.name === "trigger") {
-      triggerDirectories.push(fullPath);
+        if (externalDependencyVersion) {
+          dependencies[packageParts.name] = externalDependencyVersion;
+          continue;
+        } else {
+          logger.warn(
+            `Could not find version for package ${packageName}, add a version specifier to the package name (e.g. ${packageParts.name}@latest) or add it to your project's package.json`
+          );
+        }
+      }
     }
-
-    triggerDirectories.push(...(await getTriggerDirectories(fullPath)));
   }
 
-  return triggerDirectories;
+  return dependencies;
+}
+
+function gatherProcessEnv() {
+  const env = {
+    NODE_ENV: process.env.NODE_ENV ?? "development",
+    PATH: process.env.PATH,
+    USER: process.env.USER,
+    SHELL: process.env.SHELL,
+    NVM_INC: process.env.NVM_INC,
+    NVM_DIR: process.env.NVM_DIR,
+    NVM_BIN: process.env.NVM_BIN,
+    LANG: process.env.LANG,
+    TERM: process.env.TERM,
+    NODE_PATH: process.env.NODE_PATH,
+    HOME: process.env.HOME,
+    BUN_INSTALL: process.env.BUN_INSTALL,
+  };
+
+  // Filter out undefined values
+  return Object.fromEntries(Object.entries(env).filter(([key, value]) => value !== undefined));
 }

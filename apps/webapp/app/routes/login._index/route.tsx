@@ -1,13 +1,7 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { Form } from "@remix-run/react";
-import { getMatchesData, metaV1 } from "@remix-run/v1-meta";
-import {
-  TypedMetaFunction,
-  UseDataFunctionReturn,
-  redirect,
-  typedjson,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { GitHubDarkIcon } from "@trigger.dev/companyicons";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -15,19 +9,28 @@ import { Header1 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
-import type { LoaderType as RootLoader } from "~/root";
 import { isGithubAuthSupported } from "~/services/auth.server";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
-import { appEnvTitleTag } from "~/utils";
 import { requestUrl } from "~/utils/requestUrl.server";
 
-export const meta: TypedMetaFunction<typeof loader> = (args) => {
-  const matchesData = getMatchesData(args) as { root: UseDataFunctionReturn<RootLoader> };
+export const meta: MetaFunction = ({ matches }) => {
+  const parentMeta = matches
+    .flatMap((match) => match.meta ?? [])
+    .filter((meta) => {
+      if ("title" in meta) return false;
+      if ("name" in meta && meta.name === "viewport") return false;
+      return true;
+    });
 
-  return metaV1(args, {
-    title: `Login to Trigger.dev${appEnvTitleTag(matchesData.root.appEnv)}`,
-  });
+  return [
+    ...parentMeta,
+    { title: `Login to Trigger.dev` },
+    {
+      name: "viewport",
+      content: "width=device-width,initial-scale=1",
+    },
+  ];
 };
 
 export type PromiseReturnType<T extends (...arguments_: any) => Promise<any>> = Awaited<
@@ -71,7 +74,7 @@ export default function LoginPage() {
         className="w-full"
       >
         <div className="flex flex-col items-center">
-          <Header1 className="pb-4 font-normal sm:text-2xl md:text-3xl lg:text-4xl">
+          <Header1 className="pb-4 font-semibold sm:text-2xl md:text-3xl lg:text-4xl">
             Welcome
           </Header1>
           <Paragraph variant="base" className="mb-6">
@@ -86,20 +89,18 @@ export default function LoginPage() {
                   fullWidth
                   data-action="continue with github"
                 >
-                  <NamedIcon name={"github"} className={"mr-2 h-6 w-6"} />
-                  Continue with GitHub
+                  <GitHubDarkIcon className={"mr-2 size-5"} />
+                  <span className="text-charcoal-900">Continue with GitHub</span>
                 </Button>
               )}
               <LinkButton
                 to="/login/magic"
-                variant="secondary/extra-large"
+                variant="tertiary/extra-large"
                 fullWidth
                 data-action="continue with email"
+                className="text-text-bright"
               >
-                <NamedIcon
-                  name={"envelope"}
-                  className={"mr-1.5 h-4 w-4 text-dimmed transition group-hover:text-bright"}
-                />
+                <NamedIcon name={"envelope"} className={"mr-2 size-5 text-text-bright"} />
                 Continue with Email
               </LinkButton>
             </div>

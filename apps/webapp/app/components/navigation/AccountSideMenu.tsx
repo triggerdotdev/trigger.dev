@@ -1,32 +1,28 @@
-import { Link } from "@remix-run/react";
+import { ShieldCheckIcon } from "@heroicons/react/20/solid";
+import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { DiscordIcon } from "@trigger.dev/companyicons";
 import { User } from "@trigger.dev/database";
+import { useFeatures } from "~/hooks/useFeatures";
 import { cn } from "~/utils/cn";
 import { accountPath, personalAccessTokensPath, rootPath } from "~/utils/pathBuilder";
-import { Header3 } from "../primitives/Headers";
-import { ArrowLeftIcon, ChevronLeftIcon } from "@heroicons/react/24/solid";
-import { SideMenuHeader } from "./SideMenuHeader";
-import { SideMenuItem } from "./SideMenuItem";
-import { DiscordIcon } from "@trigger.dev/companyicons";
 import { Feedback } from "../Feedback";
 import { Button, LinkButton } from "../primitives/Buttons";
-import { ShieldCheckIcon } from "@heroicons/react/20/solid";
-import { useV3Enabled } from "~/root";
+import { SideMenuHeader } from "./SideMenuHeader";
+import { SideMenuItem } from "./SideMenuItem";
 
 export function AccountSideMenu({ user }: { user: User }) {
-  const v3Enabled = useV3Enabled();
+  const { v3Enabled } = useFeatures();
 
   return (
     <div
       className={cn(
-        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-ui-border transition"
+        "flex h-full flex-col gap-y-8 overflow-hidden border-r border-grid-bright bg-background-bright transition"
       )}
     >
       <div className="flex h-full flex-col">
-        <div
-          className={cn("flex items-center justify-between border-b bg-background p-px transition")}
-        >
+        <div className={cn("flex items-center justify-between border-b p-px transition")}>
           <LinkButton
-            variant="tertiary/medium"
+            variant="minimal/medium"
             LeadingIcon={ArrowLeftIcon}
             to={rootPath()}
             fullWidth
@@ -35,7 +31,7 @@ export function AccountSideMenu({ user }: { user: User }) {
             Account
           </LinkButton>
         </div>
-        <div className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+        <div className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <div className="mb-6 flex flex-col gap-1 px-1">
             <SideMenuHeader title={user.name ?? user.displayName ?? user.email} />
 
@@ -60,7 +56,7 @@ export function AccountSideMenu({ user }: { user: User }) {
             </div>
           )}
         </div>
-        <div className="flex flex-col gap-1 border-t border-border p-1">
+        <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
           <SideMenuItem
             name="Join our Discord"
             icon={DiscordIcon}

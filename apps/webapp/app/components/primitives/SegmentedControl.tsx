@@ -25,7 +25,7 @@ export default function SegmentedControl({
   onChange,
 }: SegmentedControlProps) {
   return (
-    <div className={cn("flex h-10 rounded bg-slate-850", fullWidth ? "w-full" : "w-fit")}>
+    <div className={cn("flex h-10 rounded bg-charcoal-700", fullWidth ? "w-full" : "w-fit")}>
       <RadioGroup
         value={value}
         defaultValue={defaultValue ?? options[0].value}
@@ -46,11 +46,11 @@ export default function SegmentedControl({
                 cn(
                   "relative flex h-full grow cursor-pointer text-center font-normal focus:outline-none",
                   active
-                    ? "ring-offset-2 focus-visible:ring focus-visible:ring-indigo-500 focus-visible:ring-opacity-60"
+                    ? "ring-offset-2 focus-visible:ring focus-visible:ring-primary focus-visible:ring-opacity-60"
                     : "",
                   checked
-                    ? "text-bright"
-                    : "rounded-[2px] text-dimmed transition hover:bg-slate-750/50 hover:text-bright"
+                    ? "text-text-bright"
+                    : "rounded-[2px] text-text-dimmed transition hover:bg-charcoal-750/50 hover:text-text-bright"
                 )
               }
             >
@@ -64,7 +64,7 @@ export default function SegmentedControl({
                       <motion.div
                         layoutId={`segmented-control-${name}`}
                         transition={{ duration: 0.4, type: "spring" }}
-                        className="absolute inset-0 rounded-[2px] bg-indigo-600 shadow-md"
+                        className="absolute inset-0 rounded-[2px] shadow-md outline outline-3 outline-primary"
                       ></motion.div>
                     )}
                   </div>

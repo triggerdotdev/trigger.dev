@@ -4,7 +4,7 @@ on:
 jobs:
   unitTests:
     name: "🧪 Unit Tests"
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: buildjet-16vcpu-ubuntu-2204
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
@@ -24,6 +24,8 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: ⎔ Setup Deno
         uses: denoland/setup-deno@v1

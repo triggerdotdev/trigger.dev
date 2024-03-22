@@ -77,7 +77,7 @@ export default function ChoosePlanPage() {
           </SheetHeader>
           <SheetBody>
             <PricingCalculator plans={plans} />
-            <div className="mt-8 rounded border border-border p-6">
+            <div className="mt-8 rounded border border-grid-bright p-6">
               <RunsVolumeDiscountTable brackets={plans.paid.runs?.pricing?.brackets ?? []} />
             </div>
           </SheetBody>

@@ -1,7 +1,6 @@
 import { StopIcon } from "@heroicons/react/24/outline";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { formatDuration } from "~/utils";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
 import { DateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
@@ -16,6 +15,7 @@ import {
   TableRow,
 } from "../primitives/Table";
 import { RunStatus } from "./RunStatuses";
+import { formatDuration } from "@trigger.dev/core/v3";
 
 type RunTableItem = {
   id: string;
@@ -95,9 +95,9 @@ export function WebhookDeliveryRunsTable({
                 </TableCell>
                 <TableCell>
                   {run.verified ? (
-                    <CheckIcon className="h-4 w-4 text-slate-400" />
+                    <CheckIcon className="h-4 w-4 text-charcoal-400" />
                   ) : (
-                    <StopIcon className="h-4 w-4 text-slate-850" />
+                    <StopIcon className="h-4 w-4 text-charcoal-850" />
                   )}
                 </TableCell>
                 <TableCell>{run.createdAt ? <DateTime date={run.createdAt} /> : "–"}</TableCell>
@@ -108,9 +108,9 @@ export function WebhookDeliveryRunsTable({
         {isLoading && (
           <TableBlankRow
             colSpan={8}
-            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-slate-900/90"
+            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
           >
-            <Spinner /> <span className="text-dimmed">Loading…</span>
+            <Spinner /> <span className="text-text-dimmed">Loading…</span>
           </TableBlankRow>
         )}
       </TableBody>

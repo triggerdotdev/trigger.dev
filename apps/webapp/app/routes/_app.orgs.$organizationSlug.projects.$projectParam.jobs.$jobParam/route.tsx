@@ -2,37 +2,27 @@ import { Outlet, useLocation } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import {
-  PageButtons,
-  PageHeader,
+  PageAccessories,
+  NavBar,
   PageInfoGroup,
   PageInfoProperty,
   PageInfoRow,
   PageTabs,
   PageTitle,
-  PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useOptionalRun } from "~/hooks/useRun";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { JobPresenter } from "~/presenters/JobPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { titleCase } from "~/utils";
-import { Handle } from "~/utils/handle";
-import {
-  JobParamsSchema,
-  jobPath,
-  jobSettingsPath,
-  jobTestPath,
-  trimTrailingSlash,
-} from "~/utils/pathBuilder";
+import { JobParamsSchema, jobPath, jobSettingsPath, jobTestPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -58,18 +48,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    const data = useTypedMatchData<typeof loader>(match);
-    return (
-      <BreadcrumbLink
-        to={trimTrailingSlash(match?.pathname ?? "")}
-        title={data?.job.title ?? "Job"}
-      />
-    );
-  },
-};
-
 export default function Job() {
   const organization = useOrganization();
   const project = useProject();
@@ -82,84 +60,84 @@ export default function Job() {
 
   return renderHeader ? (
     <PageContainer>
-      <PageHeader hideBorder>
-        <PageTitleRow>
-          <PageTitle title={job.title} />
-          {!isTestPage && (
-            <PageButtons>
-              <LinkButton
-                to={jobTestPath(organization, project, job)}
-                variant="primary/small"
-                shortcut={{ key: "t" }}
-              >
-                Test
-              </LinkButton>
-            </PageButtons>
-          )}
-        </PageTitleRow>
-        <PageInfoRow>
-          <PageInfoGroup>
-            <PageInfoProperty
-              icon={job.event.icon}
-              label={"Trigger"}
-              value={job.event.title}
-              to={job.event.link ?? undefined}
-            />
-            {job.dynamic && <PageInfoProperty icon="dynamic" value={"Dynamic"} />}
-            <PageInfoProperty icon="id" label={"ID"} value={job.slug} />
-            {job.properties &&
-              job.properties.map((property, index) => (
-                <PageInfoProperty
-                  key={index}
-                  icon="property"
-                  label={property.label}
-                  value={property.text}
-                />
-              ))}
-            {job.integrations.length > 0 && (
-              <PageInfoProperty
-                label="Integrations"
-                value={
-                  <span className="flex gap-0.5">
-                    {job.integrations.map((integration, index) => (
-                      <NamedIcon key={index} name={integration.icon} className={"h-4 w-4"} />
-                    ))}
-                  </span>
-                }
-              />
-            )}
-            <PageInfoProperty
-              icon="pulse"
-              label={"STATUS"}
-              value={titleCase(job.status.toLowerCase())}
-            />
-          </PageInfoGroup>
-          <PageInfoGroup alignment="right">
-            <Paragraph variant="extra-small" className="text-slate-600">
-              UID: {job.id}
-            </Paragraph>
-          </PageInfoGroup>
-        </PageInfoRow>
-
-        {job.noRunsHelp && (
-          <Callout variant="info" to={job.noRunsHelp.link} className="mt-2">
-            {job.noRunsHelp.text}
-          </Callout>
+      <NavBar>
+        <PageTitle title={job.title} />
+        {!isTestPage && (
+          <PageAccessories>
+            <LinkButton
+              to={jobTestPath(organization, project, job)}
+              variant="primary/small"
+              shortcut={{ key: "t" }}
+            >
+              Test
+            </LinkButton>
+          </PageAccessories>
         )}
+      </NavBar>
+      <PageBody className="grid grid-rows-[auto_1fr] px-4" scrollable={false}>
+        <div className="py-4">
+          <PageInfoRow>
+            <PageInfoGroup>
+              <PageInfoProperty
+                icon={job.event.icon}
+                label={"Trigger"}
+                value={job.event.title}
+                to={job.event.link ?? undefined}
+              />
+              {job.dynamic && <PageInfoProperty icon="dynamic" value={"Dynamic"} />}
+              <PageInfoProperty icon="id" label={"ID"} value={job.slug} />
+              {job.properties &&
+                job.properties.map((property, index) => (
+                  <PageInfoProperty
+                    key={index}
+                    icon="property"
+                    label={property.label}
+                    value={property.text}
+                  />
+                ))}
+              {job.integrations.length > 0 && (
+                <PageInfoProperty
+                  label="Integrations"
+                  value={
+                    <span className="flex gap-0.5">
+                      {job.integrations.map((integration, index) => (
+                        <NamedIcon key={index} name={integration.icon} className={"h-4 w-4"} />
+                      ))}
+                    </span>
+                  }
+                />
+              )}
+              <PageInfoProperty
+                icon="pulse"
+                label={"STATUS"}
+                value={titleCase(job.status.toLowerCase())}
+              />
+            </PageInfoGroup>
+            <PageInfoGroup alignment="right">
+              <Paragraph variant="extra-small" className="text-charcoal-600">
+                UID: {job.id}
+              </Paragraph>
+            </PageInfoGroup>
+          </PageInfoRow>
 
-        <PageTabs
-          layoutId="jobs"
-          tabs={[
-            { label: "Runs", to: jobPath(organization, project, job) },
-            { label: "Test", to: jobTestPath(organization, project, job) },
-            {
-              label: "Settings",
-              to: jobSettingsPath(organization, project, job),
-            },
-          ]}
-        />
-      </PageHeader>
-      <PageBody>
+          {job.noRunsHelp && (
+            <Callout variant="info" to={job.noRunsHelp.link} className="mt-2">
+              {job.noRunsHelp.text}
+            </Callout>
+          )}
+
+          <PageTabs
+            layoutId="jobs"
+            tabs={[
+              { label: "Runs", to: jobPath(organization, project, job) },
+              { label: "Test", to: jobTestPath(organization, project, job) },
+              {
+                label: "Settings",
+                to: jobSettingsPath(organization, project, job),
+              },
+            ]}
+          />
+        </div>
         <Outlet />
       </PageBody>
     </PageContainer>

@@ -12,7 +12,6 @@ import {
   UpdatingDuration,
 } from "./RunCard";
 import { sensitiveDataReplacer } from "~/services/sensitiveDataReplacer";
-import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import { CodeBlock } from "../code/CodeBlock";
 import { DateTime } from "../primitives/DateTime";
@@ -31,6 +30,7 @@ import { TaskStatusIcon } from "./TaskStatus";
 import { ClientOnly } from "remix-utils/client-only";
 import { Spinner } from "../primitives/Spinner";
 import type { DetailedTask } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam.tasks.$taskParam/route";
+import { formatDuration } from "@trigger.dev/core/v3";
 
 export function TaskDetail({ task }: { task: DetailedTask }) {
   const {

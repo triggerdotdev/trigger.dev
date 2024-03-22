@@ -1,0 +1,28 @@
+{
+  "name": "kubernetes-provider",
+  "private": true,
+  "version": "0.0.1",
+  "description": "",
+  "main": "dist/index.cjs",
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:bundle",
+    "build:bundle": "esbuild src/index.ts --bundle --outfile=dist/index.mjs --platform=node --format=esm --target=esnext --banner:js=\"const require = createRequire(import.meta.url);\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@kubernetes/client-node": "^0.20.0",
+    "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/core-apps": "workspace:*",
+    "socket.io-client": "^4.7.4"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.2",
+    "esbuild": "^0.19.11",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

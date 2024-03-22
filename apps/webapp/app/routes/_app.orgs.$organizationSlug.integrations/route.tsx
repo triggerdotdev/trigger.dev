@@ -9,7 +9,6 @@ import { ConnectToIntegrationSheet } from "~/components/integrations/ConnectToIn
 import { IntegrationWithMissingFieldSheet } from "~/components/integrations/IntegrationWithMissingFieldSheet";
 import { NoIntegrationSheet } from "~/components/integrations/NoIntegrationSheet";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -18,13 +17,7 @@ import { Header2 } from "~/components/primitives/Headers";
 import { Help, HelpContent, HelpTrigger } from "~/components/primitives/Help";
 import { Input } from "~/components/primitives/Input";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
-import {
-  PageButtons,
-  PageDescription,
-  PageHeader,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Switch } from "~/components/primitives/Switch";
 import {
   Table,
@@ -45,7 +38,6 @@ import {
   IntegrationsPresenter,
 } from "~/presenters/IntegrationsPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
 import { OrganizationParamsSchema, docsPath, integrationClientPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -61,10 +53,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson(data);
 };
 
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Integrations" />,
-};
-
 export default function Integrations() {
   const { clients, clientMissingFields, options, callbackUrl } =
     useTypedLoaderData<typeof loader>();
@@ -72,32 +60,27 @@ export default function Integrations() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Integrations & APIs" />
-          <PageButtons>
-            <LinkButton
-              to={docsPath("/integrations/introduction")}
-              variant="secondary/small"
-              LeadingIcon="docs"
-            >
-              Integrations documentation
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
-        <PageDescription>
-          Easily use an Integration, an existing Node.js SDK or make HTTP calls from a Job.
-        </PageDescription>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Integrations & APIs" />
+        <PageAccessories>
+          <LinkButton
+            to={docsPath("/integrations/introduction")}
+            variant="minimal/small"
+            LeadingIcon="docs"
+          >
+            Integrations documentation
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
 
       <PageBody scrollable={false}>
-        <div className="grid h-full max-w-full grid-cols-[2fr_3fr] divide-x divide-slate-900 overflow-hidden">
+        <div className="grid h-full max-w-full grid-cols-[2fr_3fr] divide-x divide-charcoal-900 overflow-hidden">
           <PossibleIntegrationsList
             options={options}
             organizationId={organization.id}
             callbackUrl={callbackUrl}
           />
-          <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+          <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             {clientMissingFields.length > 0 && (
               <IntegrationsWithMissingFields
                 clients={clientMissingFields}
@@ -133,7 +116,7 @@ function PossibleIntegrationsList({
   });
 
   return (
-    <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+    <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
       <div className="p-4">
         <div className="flex items-center justify-between">
           <Header2 className="mb-2">Connect an API</Header2>
@@ -150,7 +133,6 @@ function PossibleIntegrationsList({
         </div>
         <Input
           placeholder="Search APIs"
-          className="mb-2"
           variant="medium"
           icon="search"
           fullWidth={true}
@@ -202,24 +184,24 @@ function PossibleIntegrationsList({
             <button className="w-full">
               <DetailCell
                 leadingIcon="plus"
-                leadingIconClassName="text-dimmed"
+                leadingIconClassName="text-text-dimmed"
                 label="Request an API and we'll add it to the list as an Integration"
                 trailingIcon="chevron-right"
-                trailingIconClassName="text-slate-700 group-hover:text-bright"
+                trailingIconClassName="text-charcoal-700 group-hover:text-text-bright"
               />
             </button>
           }
-          defaultValue="integration"
+          defaultValue="feature"
         />
 
         <Header2 className="mb-2 mt-6">Create an Integration</Header2>
         <a href="https://docs.trigger.dev/integrations/create" target="_blank">
           <DetailCell
             leadingIcon="integration"
-            leadingIconClassName="text-dimmed"
+            leadingIconClassName="text-text-dimmed"
             label="Learn how to create your own API Integrations"
             trailingIcon="external-link"
-            trailingIconClassName="text-slate-700 group-hover:text-bright"
+            trailingIconClassName="text-charcoal-700 group-hover:text-text-bright"
           />
         </a>
       </div>
@@ -333,7 +315,7 @@ function ConnectedIntegrationsList({
                                 client.customClientId ? (
                                   `${client.customClientId.substring(0, 8)}…`
                                 ) : (
-                                  <span className="text-slate-600">Auto</span>
+                                  <span className="text-charcoal-600">Auto</span>
                                 )
                               }
                               content={
@@ -449,7 +431,7 @@ function IntegrationsWithMissingFields({
                     integration={integration}
                     organizationId={organizationId}
                     button={
-                      <ChevronRightIcon className="h-4 w-4 text-dimmed transition group-hover:text-bright" />
+                      <ChevronRightIcon className="h-4 w-4 text-text-dimmed transition group-hover:text-text-bright" />
                     }
                     callbackUrl={callbackUrl}
                     existingIntegration={client}
@@ -482,7 +464,7 @@ function AddIntegrationConnection({
       leadingIcon={icon ?? identifier}
       label={name}
       trailingIcon="plus"
-      trailingIconClassName="text-slate-700 group-hover:text-bright"
+      trailingIconClassName="text-charcoal-700 group-hover:text-text-bright"
     />
   );
 }

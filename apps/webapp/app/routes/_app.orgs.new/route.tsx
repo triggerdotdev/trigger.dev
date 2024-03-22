@@ -17,6 +17,14 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { RadioGroupItem } from "~/components/primitives/RadioButton";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/primitives/Select";
 import { featuresForRequest } from "~/features.server";
 import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
@@ -28,6 +36,7 @@ import { projectPath, rootPath, selectPlanPath } from "~/utils/pathBuilder";
 const schema = z.object({
   orgName: z.string().min(3).max(50),
   projectName: z.string().min(3).max(50),
+  projectVersion: z.enum(["v2", "v3"]),
   companySize: z.string().optional(),
 });
 
@@ -57,6 +66,7 @@ export const action: ActionFunction = async ({ request }) => {
       userId,
       projectName: submission.value.projectName,
       companySize: submission.value.companySize ?? null,
+      projectVersion: submission.value.projectVersion,
     });
 
     const project = organization.projects[0];
@@ -68,7 +78,7 @@ export const action: ActionFunction = async ({ request }) => {
       "Set-Cookie": await commitCurrentProjectSession(session),
     };
 
-    if (isManagedCloud) {
+    if (isManagedCloud && submission.value.projectVersion === "v2") {
       return redirect(selectPlanPath(organization), {
         headers,
       });
@@ -85,10 +95,10 @@ export const action: ActionFunction = async ({ request }) => {
 export default function NewOrganizationPage() {
   const { hasOrganizations } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
-  const { isManagedCloud } = useFeatures();
+  const { isManagedCloud, v3Enabled } = useFeatures();
   const navigation = useNavigation();
 
-  const [form, { orgName, projectName }] = useForm({
+  const [form, { orgName, projectName, projectVersion }] = useForm({
     id: "create-organization",
     // TODO: type this
     lastSubmission: lastSubmission as any,
@@ -127,6 +137,25 @@ export default function NewOrganizationPage() {
             <Hint>Your Jobs will live inside this Project.</Hint>
             <FormError id={projectName.errorId}>{projectName.error}</FormError>
           </InputGroup>
+          {v3Enabled ? (
+            <InputGroup>
+              <Label htmlFor={projectVersion.id}>Project version</Label>
+              <SelectGroup>
+                <Select {...conform.input(projectVersion, { type: "select" })} defaultValue={"v2"}>
+                  <SelectTrigger width="full" size="medium">
+                    <SelectValue placeholder="Project version" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="v2">Version 2</SelectItem>
+                    <SelectItem value="v3">Version 3 (Developer Preview)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SelectGroup>
+              <FormError id={projectVersion.errorId}>{projectVersion.error}</FormError>
+            </InputGroup>
+          ) : (
+            <input {...conform.input(projectVersion, { type: "hidden" })} value="v2" />
+          )}
           {isManagedCloud && (
             <InputGroup>
               <Label htmlFor={projectName.id}>Number of employees</Label>
@@ -165,18 +194,13 @@ export default function NewOrganizationPage() {
 
           <FormButtons
             confirmButton={
-              <Button
-                type="submit"
-                variant={"primary/small"}
-                TrailingIcon="arrow-right"
-                disabled={isLoading}
-              >
+              <Button type="submit" variant={"primary/small"} disabled={isLoading}>
                 Create
               </Button>
             }
             cancelButton={
               hasOrganizations ? (
-                <LinkButton to={rootPath()} variant={"secondary/small"}>
+                <LinkButton to={rootPath()} variant={"tertiary/small"}>
                   Cancel
                 </LinkButton>
               ) : null

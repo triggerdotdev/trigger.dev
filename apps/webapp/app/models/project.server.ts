@@ -8,7 +8,12 @@ export type { Project } from "@trigger.dev/database";
 const externalRefGenerator = customAlphabet("abcdefghijklmnopqrstuvwxyz", 20);
 
 export async function createProject(
-  { organizationSlug, name, userId }: { organizationSlug: string; name: string; userId: string },
+  {
+    organizationSlug,
+    name,
+    userId,
+    version,
+  }: { organizationSlug: string; name: string; userId: string; version: "v2" | "v3" },
   attemptCount = 0
 ): Promise<Project & { organization: Organization }> {
   //check the user has permissions to do this
@@ -41,6 +46,7 @@ export async function createProject(
         organizationSlug,
         name,
         userId,
+        version,
       },
       attemptCount + 1
     );
@@ -55,7 +61,8 @@ export async function createProject(
           slug: organizationSlug,
         },
       },
-      externalRef: externalRefGenerator(),
+      externalRef: `proj_${externalRefGenerator()}`,
+      version: version === "v3" ? "V3" : "V2",
     },
     include: {
       organization: {
@@ -68,7 +75,10 @@ export async function createProject(
 
   // Create the dev and prod environments
   await createEnvironment(organization, project, "PRODUCTION");
-  await createEnvironment(organization, project, "STAGING");
+
+  if (project.version === "V2") {
+    await createEnvironment(organization, project, "STAGING");
+  }
 
   for (const member of project.organization.members) {
     await createEnvironment(organization, project, "DEVELOPMENT", member);

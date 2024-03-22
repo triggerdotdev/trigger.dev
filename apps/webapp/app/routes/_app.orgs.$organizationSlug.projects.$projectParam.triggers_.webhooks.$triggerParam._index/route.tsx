@@ -2,31 +2,20 @@ import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Fragment } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { Callout, variantClasses } from "~/components/primitives/Callout";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RunListSearchSchema } from "~/components/runs/RunStatuses";
 import { RunsTable } from "~/components/runs/RunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
 import { WebhookSourcePresenter } from "~/presenters/WebhookSourcePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
-import {
-  TriggerSourceParamSchema,
-  projectTriggersPath,
-  projectWebhookTriggersPath,
-  trimTrailingSlash,
-  webhookTriggerRunsParentPath,
-} from "~/utils/pathBuilder";
-import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
+import { TriggerSourceParamSchema, webhookTriggerRunsParentPath } from "~/utils/pathBuilder";
+import { ListPagination } from "../../components/ListPagination";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -59,53 +48,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 const schema = z.object({
   jobId: z.string(),
 });
-
-/* export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, triggerParam } = TriggerSourceParamSchema.parse(params);
-
-  const formData = await request.formData();
-  const submission = parse(formData, { schema });
-
-  if (!submission.value) {
-    return json(submission);
-  }
-
-  try {
-    const service = new ActivateSourceService();
-
-    const result = await service.call(triggerParam);
-
-    return redirectWithSuccessMessage(
-      externalTriggerPath({ slug: organizationSlug }, { slug: projectParam }, { id: triggerParam }),
-      request,
-      `Retrying registration now`
-    );
-  } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
-  }
-}; */
-
-export const handle: Handle = {
-  //this one is complicated because we render outside the parent route (using triggers_ in the path)
-  breadcrumb: (match, matches) => {
-    const data = useTypedMatchData<typeof loader>(match);
-    if (!data) return null;
-
-    const org = useOrganization(matches);
-    const project = useProject(matches);
-
-    return (
-      <Fragment>
-        <BreadcrumbLink to={projectTriggersPath(org, project)} title="Triggers" />
-        <BreadcrumbIcon />
-        <BreadcrumbLink to={projectWebhookTriggersPath(org, project)} title="Webhook Triggers" />
-        <BreadcrumbIcon />
-        <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title={data.trigger.key} />
-      </Fragment>
-    );
-  },
-};
 
 export default function Page() {
   const { trigger } = useTypedLoaderData<typeof loader>();

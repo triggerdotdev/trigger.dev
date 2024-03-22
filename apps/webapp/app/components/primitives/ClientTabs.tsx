@@ -26,7 +26,7 @@ const ClientTabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex items-center justify-center whitespace-nowrap border-r border-slate-700 px-2 text-sm ring-offset-background transition-all first:pl-0 last:border-none data-[state=active]:text-indigo-500 data-[state=inactive]:text-dimmed data-[state=inactive]:hover:text-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+      "ring-offset-background focus-visible:ring-ring inline-flex items-center justify-center whitespace-nowrap border-r border-charcoal-700 px-2 text-sm transition-all first:pl-0 last:border-none data-[state=active]:text-indigo-500 data-[state=inactive]:text-text-dimmed data-[state=inactive]:hover:text-text-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
       className
     )}
     {...props}
@@ -41,7 +41,7 @@ const ClientTabsContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     className={cn(
-      "mt-1 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+      "ring-offset-background focus-visible:ring-ring mt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
       className
     )}
     {...props}
@@ -62,7 +62,7 @@ export type TabsProps = {
 export function ClientTabsWithUnderline({ className, tabs, currentValue, layoutId }: TabsProps) {
   return (
     <TabsPrimitive.List
-      className={cn(`flex flex-row gap-x-6 border-b border-slate-700`, className)}
+      className={cn(`flex flex-row gap-x-6 border-b border-charcoal-700`, className)}
     >
       {tabs.map((tab, index) => {
         const isActive = currentValue === tab.value;
@@ -75,7 +75,7 @@ export function ClientTabsWithUnderline({ className, tabs, currentValue, layoutI
             <span
               className={cn(
                 "text-sm transition duration-200",
-                isActive ? "text-indigo-500" : "text-slate-200"
+                isActive ? "text-indigo-500" : "text-charcoal-200"
               )}
             >
               {tab.label}
@@ -83,7 +83,7 @@ export function ClientTabsWithUnderline({ className, tabs, currentValue, layoutI
             {isActive ? (
               <motion.div layoutId={layoutId} className="mt-1 h-0.5 w-full bg-indigo-500" />
             ) : (
-              <div className="mt-1 h-0.5 w-full bg-slate-500 opacity-0 transition duration-200 group-hover:opacity-100" />
+              <div className="mt-1 h-0.5 w-full bg-charcoal-500 opacity-0 transition duration-200 group-hover:opacity-100" />
             )}
           </TabsPrimitive.Trigger>
         );

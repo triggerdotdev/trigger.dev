@@ -1,0 +1,48 @@
+FROM node:18-alpine@sha256:ca9f6cb0466f9638e59e0c249d335a07c867cd50c429b5c7830dda1bed584649 AS node-18-alpine
+
+WORKDIR /app
+
+FROM node-18-alpine AS pruner
+
+COPY --chown=node:node . .
+RUN npx -q turbo@1.10.9 prune --scope=kubernetes-provider --docker
+RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
+
+FROM node-18-alpine AS base
+
+RUN apk add --no-cache dumb-init
+
+COPY --chown=node:node .gitignore .gitignore
+COPY --from=pruner --chown=node:node /app/out/json/ .
+COPY --from=pruner --chown=node:node /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=pruner --chown=node:node /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
+
+FROM base AS dev-deps
+RUN corepack enable
+ENV NODE_ENV development
+
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm fetch --no-frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --ignore-scripts --no-frozen-lockfile
+
+FROM base AS builder
+RUN corepack enable
+
+COPY --from=pruner --chown=node:node /app/out/full/ .
+COPY --from=dev-deps --chown=node:node /app/ .
+COPY --chown=node:node turbo.json turbo.json
+
+RUN pnpm run -r --filter '@trigger.dev/core*' build
+RUN pnpm run -r --filter kubernetes-provider build:bundle
+
+FROM base AS runner
+
+RUN corepack enable
+ENV NODE_ENV production
+
+COPY --from=builder --chown=node:node /app/apps/kubernetes-provider/dist/index.mjs ./index.mjs
+
+EXPOSE 8000
+
+USER node
+
+CMD [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "./index.mjs" ]

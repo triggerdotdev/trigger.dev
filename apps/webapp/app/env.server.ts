@@ -70,6 +70,19 @@ const EnvironmentSchema = z.object({
 
   //v3
   V3_ENABLED: z.string().default("false"),
+  OTLP_EXPORTER_TRACES_URL: z.string().optional(),
+  LOG_TELEMETRY: z.string().default("true"),
+  IMAGE_REGISTRY: z.string().default("docker.io"),
+  IMAGE_REPO: z.string().default("task"),
+  PROVIDER_SECRET: z.string().default("provider-secret"),
+  COORDINATOR_SECRET: z.string().default("coordinator-secret"),
+  DEPOT_TOKEN: z.string().optional(),
+  DEPOT_PROJECT_ID: z.string().optional(),
+  CONTAINER_REGISTRY_ORIGIN: z.string().optional(),
+  CONTAINER_REGISTRY_USERNAME: z.string().optional(),
+  CONTAINER_REGISTRY_PASSWORD: z.string().optional(),
+  DEPLOY_REGISTRY_HOST: z.string().optional(),
+  DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

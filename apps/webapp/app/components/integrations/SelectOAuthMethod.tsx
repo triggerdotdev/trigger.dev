@@ -8,6 +8,7 @@ import { Paragraph } from "../primitives/Paragraph";
 import { Client } from "~/presenters/IntegrationsPresenter.server";
 import { UpdateOAuthForm } from "./UpdateOAuthForm";
 import { LinkButton } from "../primitives/Buttons";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 
 export function SelectOAuthMethod({
   integration,
@@ -114,8 +115,8 @@ export function SelectOAuthMethod({
               We support external authentication providers through Auth Resolvers. Read the docs to
               learn more:{" "}
               <LinkButton
-                variant="secondary/small"
-                LeadingIcon={"docs"}
+                variant={"tertiary/small"}
+                LeadingIcon={BookOpenIcon}
                 TrailingIcon={"external-link"}
                 to="https://trigger.dev/docs/documentation/guides/using-integrations-byo-auth"
                 target="_blank"

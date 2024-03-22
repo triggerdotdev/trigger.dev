@@ -1,17 +1,8 @@
 import { ErrorBoundary as HighlightErrorBoundary } from "@highlight-run/react";
-import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
+import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
-import {
-  Links,
-  LiveReload,
-  Meta,
-  Outlet,
-  Scripts,
-  ScrollRestoration,
-  useMatches,
-} from "@remix-run/react";
-import { metaV1 } from "@remix-run/v1-meta";
-import { TypedMetaFunction, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { Links, LiveReload, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
+import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExternalScripts } from "remix-utils/external-scripts";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
@@ -24,7 +15,6 @@ import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { useHighlight } from "./hooks/useHighlight";
 import { usePostHog } from "./hooks/usePostHog";
-import { useTypedMatchesData } from "./hooks/useTypedMatchData";
 import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
 
@@ -32,29 +22,26 @@ export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
 };
 
-export const meta: TypedMetaFunction<typeof loader> = (args) => {
-  return metaV1(args, {
-    title: `Trigger.dev${appEnvTitleTag(args.data?.appEnv)}`,
-    charset: "utf-8",
-    viewport: "width=1024, initial-scale=1",
-    robots: args.data.features.isManagedCloud ? "index, follow" : "noindex, nofollow",
-  });
+export const meta: MetaFunction = ({ data }) => {
+  const typedData = data as UseDataFunctionReturn<typeof loader>;
+  return [
+    { title: `Trigger.dev${appEnvTitleTag(typedData.appEnv)}` },
+    {
+      name: "viewport",
+      content: "width=1024, initial-scale=1",
+    },
+    {
+      name: "robots",
+      content: typedData.features.isManagedCloud ? "index, follow" : "noindex, nofollow",
+    },
+  ];
 };
-
-export function useV3Enabled() {
-  const routeMatch = useTypedMatchesData<typeof loader>({
-    id: "root",
-  });
-
-  return routeMatch?.v3Enabled ?? false;
-}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
   const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
   const highlightProjectId = env.HIGHLIGHT_PROJECT_ID;
-  const v3Enabled = env.V3_ENABLED === "true";
   const features = featuresForRequest(request);
 
   return typedjson(
@@ -66,7 +53,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       features,
       appEnv: env.APP_ENV,
       appOrigin: env.APP_ORIGIN,
-      v3Enabled,
     },
     { headers: { "Set-Cookie": await commitSession(session) } }
   );
@@ -87,10 +73,12 @@ export function ErrorBoundary() {
     <>
       <html lang="en" className="h-full">
         <head>
+          <meta charSet="utf-8" />
+
           <Meta />
           <Links />
         </head>
-        <body className="h-full overflow-hidden bg-darkBackground">
+        <body className="bg-darkBackground h-full overflow-hidden">
           <AppContainer>
             <MainCenteredContainer>
               <RouteErrorDisplay />
@@ -122,7 +110,7 @@ function App() {
           <Meta />
           <Links />
         </head>
-        <body className="h-full overflow-hidden bg-darkBackground">
+        <body className="bg-darkBackground h-full overflow-hidden">
           <HighlightErrorBoundary>
             <Outlet />
           </HighlightErrorBoundary>

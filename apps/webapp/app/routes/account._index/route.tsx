@@ -5,7 +5,6 @@ import { ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { Button } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -15,13 +14,12 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { prisma } from "~/db.server";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
 import { accountPath } from "~/utils/pathBuilder";
 
 function createSchema(
@@ -111,12 +109,6 @@ export const action: ActionFunction = async ({ request }) => {
   }
 };
 
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    return <BreadcrumbLink to={match.pathname} title={"Profile"} />;
-  },
-};
-
 export default function Page() {
   const user = useUser();
   const lastSubmission = useActionData();
@@ -132,11 +124,9 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle title="Your profile" />
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Your profile" />
+      </NavBar>
 
       <PageBody>
         <Form method="post" {...form.props} className="max-w-md">

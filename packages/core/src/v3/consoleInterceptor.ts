@@ -1,14 +1,18 @@
 import type * as logsAPI from "@opentelemetry/api-logs";
 import { SeverityNumber } from "@opentelemetry/api-logs";
 import util from "node:util";
+import { iconStringForSeverity } from "./icons";
+import { SemanticInternalAttributes } from "./semanticInternalAttributes";
 import { flattenAttributes } from "./utils/flattenAttributes";
+import { type PreciseDateOrigin, calculatePreciseDateHrTime } from "./utils/preciseDate";
+
 
 export class ConsoleInterceptor {
-  constructor(private readonly logger: logsAPI.Logger) {}
+  constructor(private readonly logger: logsAPI.Logger, private readonly preciseDateOrigin: PreciseDateOrigin) { }
 
   // Intercept the console and send logs to the OpenTelemetry logger
   // during the execution of the callback
-  async intercept<T, R extends Promise<T>>(console: Console, callback: () => R): Promise<T> {
+  async intercept<T>(console: Console, callback: () => Promise<T>): Promise<T> {
     // Save the original console methods
     const originalConsole = {
       log: console.log,
@@ -52,6 +56,7 @@ export class ConsoleInterceptor {
 
   #handleLog(severityNumber: SeverityNumber, severityText: string, ...args: unknown[]): void {
     const body = util.format(...args);
+    const timestamp = this.#getTimestampInHrTime();
 
     const parsed = tryParseJSON(body);
 
@@ -60,7 +65,8 @@ export class ConsoleInterceptor {
         severityNumber,
         severityText,
         body: getLogMessage(parsed.value, severityText),
-        attributes: { ...this.#getAttributes(), ...flattenAttributes(parsed.value) },
+        attributes: { ...this.#getAttributes(severityNumber), ...flattenAttributes(parsed.value) },
+        timestamp,
       });
 
       return;
@@ -70,14 +76,24 @@ export class ConsoleInterceptor {
       severityNumber,
       severityText,
       body,
-      attributes: this.#getAttributes(),
+      attributes: this.#getAttributes(severityNumber),
+      timestamp,
     });
   }
 
-  #getAttributes(): logsAPI.LogAttributes {
-    return {
-      "log.type": "console",
-    };
+  #getTimestampInHrTime(): [number, number] {
+    return calculatePreciseDateHrTime(this.preciseDateOrigin);
+  }
+
+  #getAttributes(severityNumber: SeverityNumber): logsAPI.LogAttributes {
+    const icon = iconStringForSeverity(severityNumber);
+    let result: logsAPI.LogAttributes = {};
+
+    if (icon !== undefined) {
+      result[SemanticInternalAttributes.STYLE_ICON] = icon;
+    }
+
+    return result;
   }
 }
 

@@ -2,30 +2,24 @@ import { CalendarDaysIcon, ReceiptRefundIcon } from "@heroicons/react/20/solid";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Outlet } from "@remix-run/react";
 import { ActiveSubscription } from "@trigger.dev/billing";
+import { formatDurationInDays } from "@trigger.dev/core/v3";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
-  PageButtons,
-  PageHeader,
+  PageAccessories,
+  NavBar,
   PageInfoGroup,
   PageInfoProperty,
   PageInfoRow,
   PageTabs,
   PageTitle,
-  PageTitleRow,
 } from "~/components/primitives/PageHeader";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { formatDurationInDays } from "~/utils";
-import { Handle } from "~/utils/handle";
 import { plansPath, stripePortalPath, usagePath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={match.pathname} title="Usage & Billing" />,
-};
+import { Callout } from "~/components/primitives/Callout";
 
 function planLabel(subscription: ActiveSubscription | undefined, periodEnd: Date) {
   if (!subscription) {
@@ -54,24 +48,28 @@ export default function Page() {
   const { isManagedCloud } = useFeatures();
   const currentPlan = useCurrentPlan();
 
+  const hasV3Project = organization.projects.some((p) => p.version === "V3");
+  const hasV2Project = organization.projects.some((p) => p.version === "V2");
+  const allV3Projects = organization.projects.every((p) => p.version === "V3");
+
   return (
     <PageContainer>
-      <PageHeader hideBorder>
-        <PageTitleRow>
-          <PageTitle title={isManagedCloud ? "Usage & Billing" : "Usage"} />
-          <PageButtons>
-            {isManagedCloud && (
-              <>
-                {currentPlan?.subscription?.isPaying && (
-                  <>
-                    <LinkButton to={stripePortalPath(organization)} variant="secondary/small">
-                      Invoices
-                    </LinkButton>
-                    <LinkButton to={stripePortalPath(organization)} variant="secondary/small">
-                      Manage card details
-                    </LinkButton>
-                  </>
-                )}
+      <NavBar>
+        <PageTitle title={isManagedCloud ? "Usage & Billing" : "Usage"} />
+        <PageAccessories>
+          {isManagedCloud && (
+            <>
+              {currentPlan?.subscription?.isPaying && (
+                <>
+                  <LinkButton to={stripePortalPath(organization)} variant="secondary/small">
+                    Invoices
+                  </LinkButton>
+                  <LinkButton to={stripePortalPath(organization)} variant="secondary/small">
+                    Manage card details
+                  </LinkButton>
+                </>
+              )}
+              {hasV2Project && (
                 <LinkButton
                   to={plansPath(organization)}
                   variant="primary/small"
@@ -80,53 +78,72 @@ export default function Page() {
                 >
                   Upgrade
                 </LinkButton>
-              </>
-            )}
-          </PageButtons>
-        </PageTitleRow>
-
-        <PageInfoRow>
-          <PageInfoGroup>
-            {currentPlan?.subscription && (
-              <PageInfoProperty
-                icon={<ReceiptRefundIcon className="h-4 w-4 text-green-600" />}
-                value={planLabel(currentPlan.subscription, currentPlan.usage.periodEnd)}
-              />
-            )}
-            {currentPlan?.subscription?.isPaying && (
-              <PageInfoProperty
-                icon={<CalendarDaysIcon className="h-4 w-4 text-green-600" />}
-                label={"Billing period"}
-                value={
-                  <>
-                    <DateTime date={currentPlan.usage.periodStart} includeTime={false} /> to{" "}
-                    <DateTime date={currentPlan.usage.periodEnd} includeTime={false} /> (
-                    {formatDurationInDays(currentPlan.usage.periodRemainingDuration)} remaining)
-                  </>
-                }
-              />
-            )}
-          </PageInfoGroup>
-        </PageInfoRow>
-        {isManagedCloud && (
-          <PageTabs
-            tabs={[
-              {
-                label: "Usage",
-                to: usagePath(organization),
-              },
-              {
-                label: "Plans",
-                to: plansPath(organization),
-              },
-            ]}
-            layoutId="usage-and-billing"
-          />
-        )}
-      </PageHeader>
+              )}
+            </>
+          )}
+        </PageAccessories>
+      </NavBar>
       <PageBody scrollable={false}>
-        <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-          <Outlet />
+        <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+          <div className="px-4 pt-4">
+            {allV3Projects ? (
+              <Callout variant="warning" className="mb-3">
+                This organization only has v3 projects. These are currently free. Usage data and
+                billing will be available soon.
+              </Callout>
+            ) : hasV3Project ? (
+              <Callout variant="warning" className="mb-3">
+                This organization has a mix of v2 and v3 projects – v3 projects do not count towards
+                your usage (below) and are currently free.
+              </Callout>
+            ) : null}
+            {hasV2Project && (
+              <PageInfoRow>
+                <PageInfoGroup>
+                  {currentPlan?.subscription && (
+                    <PageInfoProperty
+                      icon={<ReceiptRefundIcon className="h-4 w-4 text-green-600" />}
+                      value={planLabel(currentPlan.subscription, currentPlan.usage.periodEnd)}
+                    />
+                  )}
+                  {currentPlan?.subscription?.isPaying && (
+                    <PageInfoProperty
+                      icon={<CalendarDaysIcon className="h-4 w-4 text-green-600" />}
+                      label={"Billing period"}
+                      value={
+                        <>
+                          <DateTime date={currentPlan.usage.periodStart} includeTime={false} /> to{" "}
+                          <DateTime date={currentPlan.usage.periodEnd} includeTime={false} /> (
+                          {formatDurationInDays(currentPlan.usage.periodRemainingDuration)}{" "}
+                          remaining)
+                        </>
+                      }
+                    />
+                  )}
+                </PageInfoGroup>
+              </PageInfoRow>
+            )}
+            {hasV2Project && isManagedCloud && (
+              <PageTabs
+                tabs={[
+                  {
+                    label: "Usage",
+                    to: usagePath(organization),
+                  },
+                  {
+                    label: "Plans",
+                    to: plansPath(organization),
+                  },
+                ]}
+                layoutId="usage-and-billing"
+              />
+            )}
+          </div>
+          {hasV2Project && (
+            <div className="overflow-y-auto pb-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+              <Outlet />
+            </div>
+          )}
         </div>
       </PageBody>
     </PageContainer>

@@ -1,5 +1,10 @@
+import { Attributes, Span, SpanOptions } from "@opentelemetry/api";
 import { Logger, SeverityNumber } from "@opentelemetry/api-logs";
+import { iconStringForSeverity } from "../icons";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes";
+import { TriggerTracer } from "../tracer";
 import { flattenAttributes } from "../utils/flattenAttributes";
+import { PreciseDateOrigin, calculatePreciseDateHrTime } from "../utils/preciseDate";
 
 export type LogLevel = "log" | "error" | "warn" | "info" | "debug";
 
@@ -7,7 +12,9 @@ const logLevels: Array<LogLevel> = ["error", "warn", "log", "info", "debug"];
 
 export type TaskLoggerConfig = {
   logger: Logger;
+  tracer: TriggerTracer;
   level: LogLevel;
+  preciseDateOrigin: PreciseDateOrigin;
 };
 
 export interface TaskLogger {
@@ -16,6 +23,7 @@ export interface TaskLogger {
   info(message: string, properties?: Record<string, unknown>): void;
   warn(message: string, properties?: Record<string, unknown>): void;
   error(message: string, properties?: Record<string, unknown>): void;
+  trace<T>(name: string, fn: (span: Span) => Promise<T>, options?: SpanOptions): Promise<T>;
 }
 
 export class OtelTaskLogger implements TaskLogger {
@@ -61,19 +69,40 @@ export class OtelTaskLogger implements TaskLogger {
     severityNumber: SeverityNumber,
     properties?: Record<string, unknown>
   ) {
+    const timestamp = this.#getTimestampInHrTime();
+
+    let attributes: Attributes = { ...flattenAttributes(properties) };
+
+    const icon = iconStringForSeverity(severityNumber);
+    if (icon !== undefined) {
+      attributes[SemanticInternalAttributes.STYLE_ICON] = icon;
+    }
+
     this._config.logger.emit({
       severityNumber,
       severityText,
       body: message,
-      attributes: { ...flattenAttributes(properties), "log.type": "logger" },
+      attributes,
+      timestamp
     });
+  }
+
+  trace<T>(name: string, fn: (span: Span) => Promise<T>, options?: SpanOptions): Promise<T> {
+    return this._config.tracer.startActiveSpan(name, fn, options);
+  }
+
+  #getTimestampInHrTime(): [number, number] {
+    return calculatePreciseDateHrTime(this._config.preciseDateOrigin);
   }
 }
 
 export class NoopTaskLogger implements TaskLogger {
-  debug() {}
-  log() {}
-  info() {}
-  warn() {}
-  error() {}
+  debug() { }
+  log() { }
+  info() { }
+  warn() { }
+  error() { }
+  trace<T>(name: string, fn: (span: Span) => Promise<T>): Promise<T> {
+    return fn({} as Span);
+  }
 }

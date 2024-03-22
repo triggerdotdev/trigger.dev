@@ -38,7 +38,7 @@ export function UsageBar({
 
   return (
     <div className="h-fit w-full py-16">
-      <div className="relative h-3 w-full rounded-sm bg-slate-800">
+      <div className="relative h-3 w-full rounded-sm bg-charcoal-800">
         {billingLimit && (
           <motion.div
             initial={{ width: 0 }}
@@ -145,16 +145,16 @@ function Legend({ text, value, position, percentage, tooltipContent }: LegendPro
   return (
     <div
       className={cn(
-        "absolute left-full z-10 flex border-slate-400",
+        "absolute left-full z-10 flex border-charcoal-400",
         positions[position],
         flipLegendPosition === true ? "-translate-x-full border-r" : "border-l"
       )}
     >
       <SimpleTooltip
         button={
-          <Paragraph className="mr-px h-fit whitespace-nowrap bg-background px-1.5 text-xs text-dimmed">
+          <Paragraph className="mr-px h-fit whitespace-nowrap bg-background-dimmed px-1.5 text-xs text-text-dimmed">
             {text}
-            <span className="ml-1 text-bright">{value}</span>
+            <span className="ml-1 text-text-bright">{value}</span>
           </Paragraph>
         }
         variant="dark"

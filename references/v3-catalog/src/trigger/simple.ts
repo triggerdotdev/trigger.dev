@@ -1,14 +1,14 @@
-import { task, wait, type Context, logger } from "@trigger.dev/sdk/v3";
+import { logger, task, wait } from "@trigger.dev/sdk/v3";
 
 export const simplestTask = task({
   id: "fetch-post-task",
-  run: async ({ payload }: { payload: { url: string } }) => {
+  run: async (payload: { url: string }) => {
     const response = await fetch(payload.url, {
       method: "POST",
       body: JSON.stringify({
         hello: "world",
         taskId: "fetch-post-task",
-        foo: "barrrrrrrrrrrrrrrrrr",
+        foo: "barrrrrrrrrrrrrrrrrrr",
       }),
     });
 
@@ -18,7 +18,7 @@ export const simplestTask = task({
 
 export const createJsonHeroDoc = task({
   id: "create-jsonhero-doc",
-  run: async ({ payload, ctx }: { payload: { title: string; content: any }; ctx: Context }) => {
+  run: async (payload: { title: string; content: any }, { ctx }) => {
     // Sleep for 5 seconds
     await wait.for({ seconds: 5 });
 
@@ -43,9 +43,18 @@ export const createJsonHeroDoc = task({
   },
 });
 
+export const immediateReturn = task({
+  id: "immediateReturn",
+  run: async (payload: any, { ctx }) => {
+    console.info("some");
+    console.warn("random");
+    console.error("logs");
+  },
+});
+
 export const simulateError = task({
   id: "simulateError",
-  run: async ({ payload, ctx }: { payload: { message: string }; ctx: Context }) => {
+  run: async (payload: { message: string }) => {
     // Sleep for 1 second
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -59,10 +68,17 @@ function thisFunctionWillThrow() {
 
 export const parentTask = task({
   id: "parent-task",
-  run: async ({ payload, ctx }: { payload: { message: string }; ctx: Context }) => {
+  run: async (payload: { message: string }, { ctx }) => {
     logger.info("Parent task payload", { payload });
 
+    console.info("This is an info message");
+    logger.info("This is an info message from logger.info");
     console.log(JSON.stringify({ ctx, message: "This is the parent task context" }));
+    logger.log(JSON.stringify({ ctx, message: "This is the parent task context from logger.log" }));
+    console.warn("You've been warned buddy");
+    logger.warn("You've been warned buddy from logger.warn");
+    console.error("This is an error message");
+    logger.error("This is an error message from logger.error");
 
     await wait.for({ seconds: 5 });
 
@@ -91,13 +107,7 @@ export const parentTask = task({
 
 export const childTask = task({
   id: "child-task",
-  run: async ({
-    payload,
-    ctx,
-  }: {
-    payload: { message: string; forceError: boolean };
-    ctx: Context;
-  }) => {
+  run: async (payload: { message: string; forceError: boolean }, { ctx }) => {
     logger.info("Child task payload", { payload });
 
     await wait.for({ seconds: 10 });

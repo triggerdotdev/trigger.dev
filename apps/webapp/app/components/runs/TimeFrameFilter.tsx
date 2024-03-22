@@ -1,21 +1,12 @@
 import { ChevronDownIcon } from "lucide-react";
 import { useCallback, useState } from "react";
-import {
-  Calendar,
-  CalendarDateTime,
-  DateValue,
-  getLocalTimeZone,
-  today,
-} from "@internationalized/date";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { ClientTabs, ClientTabsContent, ClientTabsWithUnderline } from "../primitives/ClientTabs";
+import { DateField } from "../primitives/DateField";
 import { formatDateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
-import { DateField } from "../primitives/DateField";
-import { useLocales } from "../primitives/LocaleProvider";
-import { createCalendar } from "@internationalized/date";
 
 type RunTimeFrameFilterProps = {
   from?: number;
@@ -50,18 +41,15 @@ export function TimeFrameFilter({ from, to, onRangeChanged }: RunTimeFrameFilter
   return (
     <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen} modal>
       <PopoverTrigger asChild>
-        <Button
-          variant="secondary/small"
-          className="bg-slate-800 group-hover:bg-tertiary-foreground"
-        >
-          <Paragraph variant="extra-small" className="mr-2">
+        <Button variant="minimal/small">
+          <Paragraph variant="extra-small" className="transition group-hover:text-text-bright">
             {title(from, to, relativeTimeSeconds)}
           </Paragraph>
-          <ChevronDownIcon className="h-4 w-4 text-bright" />
+          <ChevronDownIcon className="-ml-1.5 size-4 transition group-hover:text-text-bright" />
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="start" className="bg-popover p-2">
+      <PopoverContent align="start" className="bg-background-dimmed p-2">
         <ClientTabs
           value={activeTab}
           onValueChange={(v) => setActiveTab(v as Mode)}
@@ -135,13 +123,14 @@ function RelativeTimeFrame({
           variant={value === timeframe.value ? "primary/small" : "tertiary/small"}
           className={cn(
             "w-full",
-            value !== timeframe.value && "border border-slate-700 group-hover:bg-slate-700"
+            value !== timeframe.value &&
+              "border border-charcoal-700 text-xs group-hover:bg-charcoal-700"
           )}
           onClick={() => {
             onValueChange(timeframe.value);
           }}
         >
-          <Paragraph variant="extra-small">{timeframe.label}</Paragraph>
+          {timeframe.label}
         </Button>
       ))}
     </div>

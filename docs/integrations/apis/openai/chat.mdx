@@ -26,7 +26,7 @@ await io.openai.chat.completions.create("chat-completion", {
 Creates a model response for the given chat conversation, but runs the request in the background using [io.backgroundFetch()](/sdk/io/backgroundfetch)
 
 ```ts example.ts
-await io.openai.chat.completions.create("chat-completion", {
+await io.openai.chat.completions.backgroundCreate("chat-completion", {
   model: "gpt-3.5-turbo",
   messages: [
     {

@@ -15,6 +15,7 @@ import { environmentKeys, FilterableEnvironment } from "~/components/runs/RunSta
 import { TimeFrameFilter } from "../runs/TimeFrameFilter";
 import { useCallback } from "react";
 import { Button } from "../primitives/Buttons";
+import { TrashIcon } from "@heroicons/react/20/solid";
 
 export function EventsFilters() {
   const navigate = useNavigate();
@@ -66,19 +67,22 @@ export function EventsFilters() {
   }, []);
 
   return (
-    <div className="flex flex-row justify-between gap-x-2">
+    <div className="flex flex-row justify-between">
       <SelectGroup>
         <Select
           name="environment"
           value={environment ?? "ALL"}
           onValueChange={handleEnvironmentChange}
         >
-          <SelectTrigger size="secondary/small" width="full">
+          <SelectTrigger size="minimal" width="full">
             <SelectValue placeholder={"Select environment"} className="ml-2 p-0" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={"ALL"}>
-              <Paragraph variant="extra-small" className="pl-0.5">
+              <Paragraph
+                variant="extra-small"
+                className="pl-0.5 transition group-hover:text-text-bright"
+              >
                 All environments
               </Paragraph>
             </SelectItem>
@@ -96,9 +100,7 @@ export function EventsFilters() {
 
       <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} />
 
-      <Button variant="tertiary/small" onClick={() => clearFilters()} LeadingIcon={"close"}>
-        Clear
-      </Button>
+      <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={TrashIcon} />
     </div>
   );
 }

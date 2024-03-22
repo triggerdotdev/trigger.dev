@@ -1,0 +1,38 @@
+---
+title: "Wait until"
+description: "Wait until a date, then continue execution."
+---
+
+This example sends a reminder email to a user at the specified datetime.
+
+```ts /trigger/reminder-email.ts
+export const sendReminderEmail = task({
+  id: "send-reminder-email",
+  run: async (payload: { to: string; name: string; date: string }) => {
+    //wait until the date
+    await wait.until({ date: new Date(payload.date) });
+
+    //todo send email
+    const { data, error } = await resend.emails.send({
+      from: "hello@trigger.dev",
+      to: payload.to,
+      subject: "Don't forget…",
+      html: `<p>Hello ${payload.name},</p><p>...</p>`,
+    });
+  },
+});
+```
+
+This allows you to write linear code without having to worry about the complexity of scheduling or managing CRON jobs.
+
+<Snippet file="v3/paused-execution-free.mdx" />
+
+## `throwIfInThePast`
+
+You can optionally throw an error if the date is already in the past when the function is called:
+
+```ts
+await wait.until({ date: new Date(date), throwIfInThePast: true });
+```
+
+You can of course use try/catch if you want to do something special in this case.

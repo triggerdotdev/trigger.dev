@@ -17,7 +17,6 @@ import type { RunBasicStatus } from "~/models/jobRun.server";
 import { ViewRun } from "~/presenters/RunPresenter.server";
 import { cancelSchema } from "~/routes/resources.runs.$runId.cancel";
 import { schema } from "~/routes/resources.runs.$runId.rerun";
-import { formatDuration, formatDurationMilliseconds } from "~/utils";
 import { cn } from "~/utils/cn";
 import { runCompletedPath, runTaskPath, runTriggerPath } from "~/utils/pathBuilder";
 import { CodeBlock } from "../code/CodeBlock";
@@ -30,13 +29,12 @@ import { Header2 } from "../primitives/Headers";
 import { Icon } from "../primitives/Icon";
 import { NamedIcon } from "../primitives/NamedIcon";
 import {
-  PageButtons,
-  PageHeader,
+  PageAccessories,
+  NavBar,
   PageInfoGroup,
   PageInfoProperty,
   PageInfoRow,
   PageTitle,
-  PageTitleRow,
 } from "../primitives/PageHeader";
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
@@ -53,6 +51,7 @@ import {
 } from "./RunCard";
 import { TaskCard } from "./TaskCard";
 import { TaskCardSkeleton } from "./TaskCardSkeleton";
+import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 
 type RunOverviewProps = {
   run: ViewRun;
@@ -96,79 +95,79 @@ export function RunOverview({ run, trigger, showRerun, paths, currentUser }: Run
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle
-            backButton={{
-              to: paths.back,
-              text: "Runs",
-            }}
-            title={
-              typeof run.number === "number" ? `Run #${run.number}` : `Run ${run.id.slice(0, 8)}`
-            }
-          />
-          <PageButtons>
-            {run.isTest && (
-              <span className="flex items-center gap-1 text-xs uppercase text-slate-600">
-                <NamedIcon name="beaker" className="h-4 w-4 text-slate-600" />
-                Test run
-              </span>
-            )}
-            {showRerun && run.isFinished && (
-              <RerunPopover
-                runId={run.id}
-                runPath={paths.run}
-                runsPath={paths.runsPath}
-                environmentType={run.environment.type}
-                status={run.basicStatus}
-              />
-            )}
-            {!run.isFinished && <CancelRun runId={run.id} />}
-          </PageButtons>
-        </PageTitleRow>
-        <PageInfoRow>
-          <PageInfoGroup>
-            <PageInfoProperty
-              icon={<RunStatusIcon status={run.status} className="h-4 w-4" />}
-              label={"Status"}
-              value={runStatusTitle(run.status)}
+      <NavBar>
+        <PageTitle
+          backButton={{
+            to: paths.back,
+            text: "Runs",
+          }}
+          title={
+            typeof run.number === "number" ? `Run #${run.number}` : `Run ${run.id.slice(0, 8)}`
+          }
+        />
+        <PageAccessories>
+          {run.isTest && (
+            <span className="flex items-center gap-1 text-xs uppercase text-charcoal-600">
+              <NamedIcon name="beaker" className="h-4 w-4 text-charcoal-600" />
+              Test run
+            </span>
+          )}
+          {showRerun && run.isFinished && (
+            <RerunPopover
+              runId={run.id}
+              runPath={paths.run}
+              runsPath={paths.runsPath}
+              environmentType={run.environment.type}
+              status={run.basicStatus}
             />
-            <PageInfoProperty
-              icon={"calendar"}
-              label={"Started"}
-              value={run.startedAt ? <DateTime date={run.startedAt} /> : "Not started yet"}
-            />
-            <PageInfoProperty icon={"property"} label={"Version"} value={`v${run.version}`} />
-            <PageInfoProperty
-              label={"Env"}
-              value={<EnvironmentLabel environment={run.environment} userName={usernameForEnv} />}
-            />
-            <PageInfoProperty
-              icon={"clock"}
-              label={"Duration"}
-              value={formatDuration(run.startedAt, run.completedAt, { style: "short" })}
-            />
-            <PageInfoProperty
-              icon={<Icon icon="alarm-filled" className="h-4 w-4 text-blue-500" />}
-              label={"Execution Time"}
-              value={formatDurationMilliseconds(run.executionDuration, { style: "short" })}
-            />
-            <PageInfoProperty
-              icon={<Icon icon="list-numbers" className="h-4 w-4 text-yellow-500" />}
-              label={"Execution Count"}
-              value={<>{run.executionCount}</>}
-            />
-          </PageInfoGroup>
-          <PageInfoGroup alignment="right">
-            <Paragraph variant="extra-small" className="whitespace-nowrap text-slate-600">
-              RUN ID: {run.id}
-            </Paragraph>
-          </PageInfoGroup>
-        </PageInfoRow>
-      </PageHeader>
+          )}
+          {!run.isFinished && <CancelRun runId={run.id} />}
+        </PageAccessories>
+      </NavBar>
       <PageBody scrollable={false}>
+        <div className="px-4 pt-4">
+          <PageInfoRow>
+            <PageInfoGroup>
+              <PageInfoProperty
+                icon={<RunStatusIcon status={run.status} className="h-4 w-4" />}
+                label={"Status"}
+                value={runStatusTitle(run.status)}
+              />
+              <PageInfoProperty
+                icon={"calendar"}
+                label={"Started"}
+                value={run.startedAt ? <DateTime date={run.startedAt} /> : "Not started yet"}
+              />
+              <PageInfoProperty icon={"property"} label={"Version"} value={`v${run.version}`} />
+              <PageInfoProperty
+                label={"Env"}
+                value={<EnvironmentLabel environment={run.environment} userName={usernameForEnv} />}
+              />
+              <PageInfoProperty
+                icon={"clock"}
+                label={"Duration"}
+                value={formatDuration(run.startedAt, run.completedAt, { style: "short" })}
+              />
+              <PageInfoProperty
+                icon={<Icon icon="alarm-filled" className="h-4 w-4 text-blue-500" />}
+                label={"Execution Time"}
+                value={formatDurationMilliseconds(run.executionDuration, { style: "short" })}
+              />
+              <PageInfoProperty
+                icon={<Icon icon="list-numbers" className="h-4 w-4 text-yellow-500" />}
+                label={"Execution Count"}
+                value={<>{run.executionCount}</>}
+              />
+            </PageInfoGroup>
+            <PageInfoGroup alignment="right">
+              <Paragraph variant="extra-small" className="whitespace-nowrap text-charcoal-600">
+                RUN ID: {run.id}
+              </Paragraph>
+            </PageInfoGroup>
+          </PageInfoRow>
+        </div>
         <div className="grid h-full grid-cols-2 gap-2">
-          <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+          <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <div>
               {run.status === "SUCCESS" &&
                 (run.tasks.length === 0 || run.tasks.every((t) => t.noop)) && (
@@ -285,7 +284,7 @@ export function RunOverview({ run, trigger, showRerun, paths, currentUser }: Run
           </div>
 
           {/* Detail view */}
-          <div className="overflow-y-auto py-4 pr-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+          <div className="overflow-y-auto py-4 pr-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <Header2 className="mb-2">Details</Header2>
             {selectedId ? <Outlet /> : <Callout variant="info">Select a task or trigger</Callout>}
           </div>
@@ -359,7 +358,7 @@ function RerunPopover({
             </div>
           )}
 
-          <div className="flex flex-col items-start divide-y divide-slate-800">
+          <div className="flex flex-col items-start divide-y divide-charcoal-800">
             <div className="p-4">
               <Paragraph variant="small" className="mb-3">
                 Start a brand new Job run with the same Trigger data as this one. This will re-do
@@ -371,9 +370,9 @@ function RerunPopover({
                 name={conform.INTENT}
                 value="start"
                 fullWidth
-                className="text-bright"
+                className="text-text-bright"
               >
-                <BoltIcon className="mr-1 h-3.5 w-3.5 text-bright" />
+                <BoltIcon className="mr-1 h-3.5 w-3.5 text-text-bright" />
                 Run again
               </Button>
             </div>
@@ -389,9 +388,9 @@ function RerunPopover({
                   name={conform.INTENT}
                   value="continue"
                   fullWidth
-                  className="text-bright"
+                  className="text-text-bright"
                 >
-                  <PlayIcon className="mr-1 h-3.5 w-3.5 text-bright" />
+                  <PlayIcon className="mr-1 h-3.5 w-3.5 text-text-bright" />
                   Retry Job run
                 </Button>
               </div>

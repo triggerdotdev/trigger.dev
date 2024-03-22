@@ -196,3 +196,5 @@ function logError(error: unknown, request?: Request) {
 const sqsEventConsumer = singleton("sqsEventConsumer", getSharedSqsEventConsumer);
 
 export { wss } from "./v3/handleWebsockets.server";
+export { socketIo } from "./v3/handleSocketIo.server";
+export { registryProxy } from "./v3/registryProxy.server";

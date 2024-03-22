@@ -1,24 +1,20 @@
+import { useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { PageHeader, PageTitle, PageTitleRow } from "~/components/primitives/PageHeader";
-import { requireUserId } from "~/services/session.server";
-import { EventParamSchema, projectEventsPath, projectPath } from "~/utils/pathBuilder";
-import { BreadcrumbLink } from "~/components/navigation/Breadcrumb";
-import { Handle } from "~/utils/handle";
 import { EventDetail } from "~/components/event/EventDetail";
-import { EventPresenter } from "~/presenters/EventPresenter.server";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
-import { Fragment } from "react";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { RunsFilters } from "~/components/runs/RunFilters";
+import { RunListSearchSchema } from "~/components/runs/RunStatuses";
+import { RunsTable } from "~/components/runs/RunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { RunListSearchSchema } from "~/components/runs/RunStatuses";
-import { RunListPresenter } from "~/presenters/RunListPresenter.server";
-import { RunsTable } from "~/components/runs/RunsTable";
-import { RunsFilters } from "~/components/runs/RunFilters";
-import { ListPagination } from "../_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam._index/ListPagination";
 import { useUser } from "~/hooks/useUser";
-import { useNavigation } from "@remix-run/react";
+import { EventPresenter } from "~/presenters/EventPresenter.server";
+import { RunListPresenter } from "~/presenters/RunListPresenter.server";
+import { requireUserId } from "~/services/session.server";
+import { EventParamSchema, projectEventsPath, projectPath } from "~/utils/pathBuilder";
+import { ListPagination } from "../../components/ListPagination";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -63,20 +59,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
-export const handle: Handle = {
-  breadcrumb: (match) => {
-    const eventData = useTypedMatchData<typeof loader>(match);
-
-    return (
-      <Fragment>
-        {eventData && eventData.event && (
-          <BreadcrumbLink to={match.pathname} title={eventData.event.name} />
-        )}
-      </Fragment>
-    );
-  },
-};
-
 export default function Page() {
   const { event, list } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
@@ -87,25 +69,23 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle
-            title={event.name}
-            backButton={{
-              to: projectEventsPath(organization, project),
-              text: "Events",
-            }}
-          />
-        </PageTitleRow>
-      </PageHeader>
+      <NavBar>
+        <PageTitle
+          title={event.name}
+          backButton={{
+            to: projectEventsPath(organization, project),
+            text: "Events",
+          }}
+        />
+      </NavBar>
 
       <PageBody scrollable={false}>
         <div className="grid h-full grid-cols-2">
-          <div className="overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+          <div className="overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <EventDetail event={event} />
           </div>
 
-          <div className="overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+          <div className="overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <div className="mb-2 flex items-center justify-between gap-x-2">
               <RunsFilters />
               <div className="flex items-center justify-end gap-x-2">
