@@ -1,7 +1,12 @@
 import { intro, log, outro, spinner } from "@clack/prompts";
 import { depot } from "@depot/cli";
 import { context, trace } from "@opentelemetry/api";
-import { ResolvedConfig, detectDependencyVersion, flattenAttributes, recordSpanException } from "@trigger.dev/core/v3";
+import {
+  ResolvedConfig,
+  detectDependencyVersion,
+  flattenAttributes,
+  recordSpanException,
+} from "@trigger.dev/core/v3";
 import chalk from "chalk";
 import { Command, Option as CommandOption } from "commander";
 import { Metafile, build } from "esbuild";
@@ -29,7 +34,7 @@ import {
 import { readConfig } from "../utilities/configFiles.js";
 import { createTempDir, readJSONFile, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
-import { detectPackageNameFromImportPath } from "../utilities/installPackages";
+import { detectPackageNameFromImportPath, parsePackageName } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
@@ -64,11 +69,7 @@ export function configureDeployCommand(program: Command) {
         "prod"
       )
       .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
-      .option(
-        "-c, --config <config file>",
-        "The name of the config file, found at [path]",
-        "trigger.config.mjs"
-      )
+      .option("-c, --config <config file>", "The name of the config file, found at [path]")
       .option(
         "-p, --project-ref <project ref>",
         "The project ref. Required if there is no config file."
@@ -838,12 +839,12 @@ async function compileProject(
 
         workerContents = workerContents.replace(
           "__IMPORTED_PROJECT_CONFIG__",
-          `import importedConfig from "${configPath}";`
+          `import * as importedConfigExports from "${configPath}"; const importedConfig = importedConfigExports.config; const handleError = importedConfigExports.handleError;`
         );
       } else {
         workerContents = workerContents.replace(
           "__IMPORTED_PROJECT_CONFIG__",
-          `const importedConfig = undefined;`
+          `const importedConfig = undefined; const handleError = undefined;`
         );
       }
 
@@ -983,8 +984,7 @@ async function compileProject(
 
       // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
       const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
-      const projectPackageJson = await readJSONFile(join(config.projectDir, "package.json"));
-      const dependencies = gatherRequiredDependencies(allImports, projectPackageJson);
+      const dependencies = await gatherRequiredDependencies(allImports, config);
 
       const packageJsonContents = {
         name: "trigger-worker",
@@ -1205,10 +1205,12 @@ async function typecheckProject(config: ResolvedConfig, options: DeployCommandOp
 
 // Returns the dependencies that are required by the output that are found in output and the CLI package dependencies
 // Returns the dependency names and the version to use (taken from the CLI deps package.json)
-function gatherRequiredDependencies(
+async function gatherRequiredDependencies(
   imports: Metafile["outputs"][string]["imports"],
-  externalPackageJson?: { dependencies: Record<string, string> }
+  config: ResolvedConfig
 ) {
+  const externalPackageJson = await readJSONFile(join(config.projectDir, "package.json"));
+
   const dependencies: Record<string, string> = {};
 
   for (const file of imports) {
@@ -1229,12 +1231,41 @@ function gatherRequiredDependencies(
       continue;
     }
 
-    const internalDependencyVersion = (packageJson.dependencies as Record<string, string>)[
-      packageName
-    ] ?? detectDependencyVersion(packageName);
+    const internalDependencyVersion =
+      (packageJson.dependencies as Record<string, string>)[packageName] ??
+      detectDependencyVersion(packageName);
 
     if (internalDependencyVersion) {
       dependencies[packageName] = internalDependencyVersion;
+    }
+  }
+
+  if (config.additionalPackages) {
+    for (const packageName of config.additionalPackages) {
+      if (dependencies[packageName]) {
+        continue;
+      }
+
+      const packageParts = parsePackageName(packageName);
+
+      if (packageParts.version) {
+        dependencies[packageParts.name] = packageParts.version;
+        continue;
+      } else {
+        const externalDependencyVersion = {
+          ...externalPackageJson?.devDependencies,
+          ...externalPackageJson?.dependencies,
+        }[packageName];
+
+        if (externalDependencyVersion) {
+          dependencies[packageParts.name] = externalDependencyVersion;
+          continue;
+        } else {
+          logger.warn(
+            `Could not find version for package ${packageName}, add a version specifier to the package name (e.g. ${packageParts.name}@latest) or add it to your project's package.json`
+          );
+        }
+      }
     }
   }
 

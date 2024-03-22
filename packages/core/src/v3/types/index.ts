@@ -7,7 +7,9 @@ export * from "./config";
 export type InitOutput = Record<string, any> | void | undefined;
 
 export type RunFnParams<TInitOutput extends InitOutput> = Prettify<{
+  /** Metadata about the task, run, attempt, queue, environment, organization, project and batch.  */
   ctx: Context;
+  /** If you use the `init` function, this will be whatever you returned. */
   init?: TInitOutput;
 }>;
 
@@ -47,6 +49,19 @@ export type HandleErrorResult =
   | void
   | HandleErrorModificationOptions
   | Promise<undefined | void | HandleErrorModificationOptions>;
+
+export type HandleErrorArgs = {
+  ctx: Context;
+  retry?: RetryOptions;
+  retryAt?: Date;
+  retryDelayInMs?: number;
+};
+
+export type HandleErrorFunction = (
+  payload: any,
+  error: unknown,
+  params: HandleErrorArgs
+) => HandleErrorResult;
 
 export type TaskMetadataWithFunctions = TaskMetadataWithFilePath & {
   fns: {

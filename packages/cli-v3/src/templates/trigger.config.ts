@@ -1,8 +1,7 @@
-// @ts-check
-/** @type {import('@trigger.dev/sdk/v3').Config} */
+import type { ProjectConfig } from "@trigger.dev/core/v3";
 
-export default {
-  project: "yubjwjsfkxnylobaqvqz",
+export const config: ProjectConfig = {
+  project: "${projectRef}",
   retries: {
     enabledInDev: false,
     default: {

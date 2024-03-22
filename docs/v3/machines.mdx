@@ -1,0 +1,23 @@
+---
+title: "Machines"
+description: "Configure the number of vCPUs and GBs of RAM you want the task to use."
+---
+
+The `machine` configuration is optional. Using higher spec machines will increase the cost of running the task but can also improve the performance of the task if it is CPU or memory bound.
+
+```ts /trigger/heavy-task.ts
+export const heavyTask = task({
+  id: "heavy-task",
+  machine: {
+    cpu: 2,
+    memory: 4,
+  },
+  run: async ({ payload, ctx }) => {
+    //...
+  },
+});
+```
+
+## Possible configurations
+
+<Snippet file="incomplete-docs.mdx" />

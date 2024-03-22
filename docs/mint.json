@@ -49,6 +49,10 @@
     {
       "name": "Examples",
       "url": "https://trigger.dev/apis"
+    },
+    {
+      "name": "v3 Developer Preview",
+      "url": "v3"
     }
   ],
   "redirects": [
@@ -427,6 +431,157 @@
     {
       "group": "Overview",
       "pages": ["examples/introduction"]
+    },
+    {
+      "group": "",
+      "pages": ["v3/introduction"]
+    },
+    {
+      "group": "Getting Started",
+      "pages": [
+        "v3/quick-start",
+        "v3/upgrading-from-v2",
+        "v3/changelog",
+        "v3/feature-matrix",
+        "v3/limits"
+      ]
+    },
+    {
+      "group": "Fundamentals",
+      "pages": [
+        "v3/trigger-folder",
+        "v3/tasks-overview",
+        "v3/triggering",
+        {
+          "group": "Task types",
+          "pages": ["v3/tasks-regular", "v3/tasks-scheduled", "v3/tasks-zod", "v3/tasks-webhooks"]
+        }
+      ]
+    },
+    {
+      "group": "Development",
+      "pages": ["v3/cli-dev", "v3/run-tests"]
+    },
+    {
+      "group": "Deployment",
+      "pages": [
+        "v3/deploy-environment-variables",
+        "v3/cli-deploy",
+        "v3/github-actions",
+        {
+          "group": "Deployment integrations",
+          "pages": ["v3/vercel-integration"]
+        }
+      ]
+    },
+    {
+      "group": "Writing tasks",
+      "pages": [
+        "v3/writing-tasks-introduction",
+        "v3/logging",
+        "v3/errors-retrying",
+        {
+          "group": "Wait",
+          "pages": [
+            "v3/wait",
+            "v3/wait-for",
+            "v3/wait-until",
+            "v3/wait-for-event",
+            "v3/wait-for-request"
+          ]
+        },
+        "v3/queue-concurrency",
+        "v3/versioning",
+        "v3/machines",
+        "v3/idempotency",
+        "v3/reattempting-replaying",
+        "v3/trigger-filters",
+        "v3/notifications",
+        "v3/rollbacks",
+        "v3/using-apis",
+        "v3/middleware",
+        "v3/automated-tests"
+      ]
+    },
+    {
+      "group": "Dashboard",
+      "pages": [
+        "v3/dashboard-overview",
+        "v3/dashboard-runs",
+        "v3/dashboard-tests",
+        "v3/dashboard-environment-variables"
+      ]
+    },
+    {
+      "group": "API reference",
+      "pages": [
+        {
+          "group": "Functions",
+          "pages": [
+            "v3/reference-task",
+            "v3/reference-cron-task",
+            "v3/reference-cron-dynamic",
+            "v3/reference-interval-task",
+            "v3/reference-interval-dynamic",
+            "v3/reference-zod-task",
+            "v3/reference-zod-catalog",
+            "v3/reference-task-trigger",
+            "v3/reference-task-trigger-and-wait",
+            "v3/reference-task-batch-trigger",
+            "v3/reference-task-batch-trigger-and-wait",
+            "v3/reference-wait-for",
+            "v3/reference-wait-until",
+            "v3/reference-wait-for-event",
+            "v3/reference-wait-for-request",
+            "v3/reference-retry-on-throw",
+            "v3/reference-retry-fetch",
+            "v3/reference-retry-intercept-fetch",
+            "v3/reference-notification-catalog",
+            "v3/reference-notify",
+            "v3/reference-queue"
+          ]
+        },
+        {
+          "group": "Objects",
+          "pages": ["v3/reference-context"]
+        },
+        {
+          "group": "CLI",
+          "pages": [
+            "v3/reference-cli-init",
+            "v3/reference-cli-dev",
+            "v3/reference-cli-deploy",
+            "v3/reference-cli-login",
+            "v3/reference-cli-logout",
+            "v3/reference-cli-update",
+            "v3/reference-cli-build",
+            "v3/reference-cli-who-am-i"
+          ]
+        },
+        "v3/reference-trigger-config"
+      ]
+    },
+    {
+      "group": "Architecture",
+      "pages": [
+        "v3/architecture-how-it-works",
+        "v3/architecture-multi-tenant-queue",
+        "v3/architecture-reliability"
+      ]
+    },
+    {
+      "group": "Open source",
+      "pages": ["v3/github-repo", "v3/open-source-self-hosting", "v3/open-source-contributing"]
+    },
+    {
+      "group": "Help",
+      "pages": [
+        "v3/help-faqs",
+        "v3/community",
+        "v3/help-email",
+        "v3/help-slack",
+        "v3/help-uptime-status"
+      ]
     }
   ],
   "footerSocials": {

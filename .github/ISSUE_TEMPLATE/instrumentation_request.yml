@@ -1,0 +1,21 @@
+name: OpenTelemetry Auto-Instrumentation Request
+description: Suggest an SDK that you'd like to be auto-instrumented in the Run log view
+title: "auto-instrumentation: "
+labels: ["🌟 enhancement"]
+body:
+  - type: textarea
+    attributes:
+      label: What API or SDK would you to have automatic spans for?
+      description: A clear description of which API or SDK you'd like, and links to it.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Is there an existing OpenTelemetry auto-instrumentation package?
+      description: You can search for existing ones – https://opentelemetry.io/ecosystem/registry/?component=instrumentation&language=js
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Additional information
+      description: Add any other information related to the feature here. If your feature request is related to any issues or discussions, link them here.

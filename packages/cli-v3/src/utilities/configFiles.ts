@@ -1,14 +1,15 @@
 import { Config, ResolvedConfig } from "@trigger.dev/core/v3";
 import { findUp } from "find-up";
 import { mkdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import xdgAppPaths from "xdg-app-paths";
 import { z } from "zod";
 import { CLOUD_API_URL, CONFIG_FILES } from "../consts.js";
-import { readJSONFileSync } from "./fileSystem.js";
+import { createTempDir, readJSONFileSync } from "./fileSystem.js";
 import { logger } from "./logger.js";
 import { findTriggerDirectories, resolveTriggerDirectories } from "./taskFiles.js";
+import { build } from "esbuild";
 
 function getGlobalConfigFolderPath() {
   const configDir = xdgAppPaths("trigger").config();
@@ -81,6 +82,12 @@ function writeAuthConfigFile(config: UserAuthConfigFile) {
 }
 
 async function getConfigPath(dir: string, fileName?: string): Promise<string | undefined> {
+  logger.debug("Searching for the config file", {
+    dir,
+    fileName,
+    configFiles: CONFIG_FILES,
+  });
+
   return await findUp(fileName ? [fileName] : CONFIG_FILES, { cwd: dir });
 }
 
@@ -91,26 +98,20 @@ export type ReadConfigOptions = {
 
 export type ReadConfigResult =
   | {
-    status: "file";
-    config: ResolvedConfig;
-    path: string;
-  }
+      status: "file";
+      config: ResolvedConfig;
+      path: string;
+    }
   | {
-    status: "in-memory";
-    config: ResolvedConfig;
-  };
+      status: "in-memory";
+      config: ResolvedConfig;
+    };
 
 export async function readConfig(
   dir: string,
   options?: ReadConfigOptions
 ): Promise<ReadConfigResult> {
   const absoluteDir = path.resolve(process.cwd(), dir);
-
-  logger.debug("Searching for the config file", {
-    dir,
-    options,
-    absoluteDir,
-  });
 
   const configPath = await getConfigPath(dir, options?.configFile);
 
@@ -128,9 +129,36 @@ export async function readConfig(
     }
   }
 
+  const tempDir = await createTempDir();
+
+  const builtConfigFilePath = join(tempDir, "config.mjs");
+  const builtConfigFileHref = pathToFileURL(builtConfigFilePath).href;
+
+  logger.debug("Building config file", {
+    configPath,
+    builtConfigFileHref,
+    builtConfigFilePath,
+  });
+
+  // We need to build the path to the config file, and then import it?
+  await build({
+    entryPoints: [configPath],
+    bundle: true,
+    metafile: true,
+    minify: false,
+    write: true,
+    format: "esm",
+    platform: "node",
+    target: ["es2018", "node18"],
+    outfile: builtConfigFilePath,
+    logLevel: "silent",
+  });
+
   // import the config file
-  const userConfigModule = await import(`${pathToFileURL(configPath).href}?_ts=${Date.now()}`);
-  const rawConfig = await normalizeConfig(userConfigModule ? userConfigModule.default : {});
+  const userConfigModule = await import(builtConfigFileHref);
+  const rawConfig = await normalizeConfig(
+    userConfigModule ? userConfigModule.config : { project: options?.projectRef }
+  );
   const config = Config.parse(rawConfig);
 
   return {

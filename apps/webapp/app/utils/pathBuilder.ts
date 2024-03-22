@@ -132,6 +132,10 @@ export function logoutPath() {
   return `/logout`;
 }
 
+export function revokeInvitePath() {
+  return `/invite-revoke`;
+}
+
 // Org
 export function organizationPath(organization: OrgForPath) {
   return `/orgs/${organizationParam(organization)}`;
