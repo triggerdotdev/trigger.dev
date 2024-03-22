@@ -38,13 +38,94 @@ export function queue(options: { name: string } & QueueOptions): Queue {
 }
 
 export type TaskOptions<TPayload, TOutput = any, TInitOutput extends InitOutput = any> = {
+  /** An id for your task. This must be unique inside your project and not change between versions.  */
   id: string;
+  /** The retry settings when an uncaught error is thrown.
+   *
+   * If omitted it will use the values in your `trigger.config.ts` file.
+   * 
+   * @example
+   * 
+   * ```
+   * export const taskWithRetries = task({
+      id: "task-with-retries",
+      retry: {
+        maxAttempts: 10,
+        factor: 1.8,
+        minTimeoutInMs: 500,
+        maxTimeoutInMs: 30_000,
+        randomize: false,
+      },
+      run: async ({ payload, ctx }) => {
+        //...
+      },
+    });
+   * ```
+   * */
   retry?: RetryOptions;
+  /** Used to configure what should happen when more than one run is triggered at the same time.
+   * 
+   * @example 
+   * one at a time execution
+   * 
+   * ```ts
+   * export const oneAtATime = task({
+      id: "one-at-a-time",
+      queue: {
+        concurrencyLimit: 1,
+      },
+      run: async ({ payload, ctx }) => {
+        //...
+      },
+    });
+   * ```
+   */
   queue?: QueueOptions;
+  /** Configure the spec of the machine you want your task to run on.
+   * 
+   * @example
+   * 
+   * ```ts
+   * export const heavyTask = task({
+      id: "heavy-task",
+      machine: {
+        cpu: 2,
+        memory: 4,
+      },
+      run: async ({ payload, ctx }) => {
+        //...
+      },
+    });
+   * ```
+  */
   machine?: {
-    cpu?: number;
-    memory?: number;
+    /** vCPUs. The default is 0.5.
+     *
+     * Possible values:
+     * - 0.25
+     * - 0.5
+     * - 1
+     * - 2
+     * - 4
+     */
+    cpu?: 0.25 | 0.5 | 1 | 2 | 4;
+    /** In GBs of RAM. The default is 0.5.
+     *
+     * Possible values:
+     * - 0.25
+     * - 0.5
+     * - 1
+     * - 2
+     * - 4
+     * - 8
+     */
+    memory?: 0.25 | 0.5 | 1 | 2 | 4 | 8;
   };
+  /** This gets called when a task is triggered. It's where you put the code you want to execute.
+   *
+   * @param payload - The payload that is passed to your task when it's triggered. This must be JSON serializable.
+   * @param params - Metadata about the run.
+   */
   run: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<TOutput>;
   init?: (payload: TPayload, params: InitFnParams) => Promise<TInitOutput>;
   handleError?: (
