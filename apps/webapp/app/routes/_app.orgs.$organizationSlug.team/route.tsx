@@ -31,7 +31,12 @@ import { useUser } from "~/hooks/useUser";
 import { getTeamMembersAndInvites, removeTeamMember } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUserId } from "~/services/session.server";
-import { inviteTeamMemberPath, organizationTeamPath, resendInvitePath } from "~/utils/pathBuilder";
+import {
+  inviteTeamMemberPath,
+  organizationTeamPath,
+  resendInvitePath,
+  revokeInvitePath,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -147,8 +152,9 @@ export default function Page() {
                       Invite sent {<DateTime date={invite.updatedAt} />}
                     </Paragraph>
                   </div>
-                  <div className="flex grow items-center justify-end gap-4">
+                  <div className="flex grow items-center justify-end gap-x-2">
                     <ResendButton invite={invite} />
+                    <RevokeButton invite={invite} />
                   </div>
                 </li>
               ))}
@@ -272,11 +278,28 @@ function LeaveTeamModal({
 
 function ResendButton({ invite }: { invite: Invite }) {
   return (
-    <Form method="post" action={resendInvitePath()}>
+    <Form method="post" action={resendInvitePath()} className="flex">
       <input type="hidden" value={invite.id} name="inviteId" />
       <Button type="submit" variant="tertiary/small">
         Resend invite
       </Button>
+    </Form>
+  );
+}
+
+function RevokeButton({ invite }: { invite: Invite }) {
+  const organization = useOrganization();
+
+  return (
+    <Form method="post" action={revokeInvitePath()} className="flex">
+      <input type="hidden" value={invite.id} name="inviteId" />
+      <input type="hidden" value={organization.slug} name="slug" />
+      <Button
+        type="submit"
+        variant="danger/small"
+        LeadingIcon="trash-can"
+        leadingIconClassName="text-white"
+      />
     </Form>
   );
 }
