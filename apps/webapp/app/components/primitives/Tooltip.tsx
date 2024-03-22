@@ -4,7 +4,7 @@ import { cn } from "~/utils/cn";
 
 const variantClasses = {
   basic:
-    "bg-background-dimmed border border-charcoal-800 rounded-md px-3 py-1.5 text-sm text-text-bright shadow-md fade-in-50",
+    "bg-background-dimmed border border-charcoal-700 rounded-md px-3 py-1.5 text-sm text-text-bright shadow-md fade-in-50",
   dark: "bg-background-dimmed border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50",
 };
 
@@ -55,6 +55,7 @@ function SimpleTooltip({
   side,
   hidden,
   variant,
+  disableHoverableContent = false,
   className,
 }: {
   button: React.ReactNode;
@@ -62,10 +63,11 @@ function SimpleTooltip({
   side?: React.ComponentProps<typeof TooltipContent>["side"];
   hidden?: boolean;
   variant?: Variant;
+  disableHoverableContent?: boolean;
   className?: string;
 }) {
   return (
-    <TooltipProvider>
+    <TooltipProvider disableHoverableContent={disableHoverableContent}>
       <Tooltip>
         <TooltipTrigger className="h-fit">{button}</TooltipTrigger>
         <TooltipContent
@@ -73,36 +75,6 @@ function SimpleTooltip({
           hidden={hidden}
           className={cn("text-xs", className)}
           variant={variant}
-        >
-          {content}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-export function LoginTooltip({
-  children,
-  side,
-  content,
-  className,
-}: {
-  children: React.ReactNode;
-  side: "top" | "bottom" | "left" | "right";
-  content: React.ReactNode | string;
-  className?: string;
-}) {
-  return (
-    <TooltipProvider delayDuration={2500} disableHoverableContent>
-      <Tooltip>
-        <TooltipTrigger asChild>{children}</TooltipTrigger>
-        <TooltipContent
-          className={cn(
-            "max-w-xs border-charcoal-800 bg-charcoal-900 px-5 py-4 backdrop-blur-md",
-            className
-          )}
-          side={side}
-          sideOffset={14}
         >
           {content}
         </TooltipContent>

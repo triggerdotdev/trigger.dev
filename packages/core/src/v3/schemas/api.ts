@@ -5,9 +5,30 @@ import { QueueOptions } from "./messages";
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
   email: z.string().email(),
+  dashboardUrl: z.string(),
 });
 
 export type WhoAmIResponse = z.infer<typeof WhoAmIResponseSchema>;
+
+export const GetProjectResponseBody = z.object({
+  id: z.string(),
+  externalRef: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  createdAt: z.coerce.date(),
+  organization: z.object({
+    id: z.string(),
+    title: z.string(),
+    slug: z.string(),
+    createdAt: z.coerce.date(),
+  }),
+});
+
+export type GetProjectResponseBody = z.infer<typeof GetProjectResponseBody>;
+
+export const GetProjectsResponseBody = z.array(GetProjectResponseBody);
+
+export type GetProjectsResponseBody = z.infer<typeof GetProjectsResponseBody>;
 
 export const GetProjectEnvResponse = z.object({
   apiKey: z.string(),
@@ -120,6 +141,7 @@ export const InitializeDeploymentResponseBody = z.object({
   version: z.string(),
   imageTag: z.string(),
   externalBuildData: ExternalBuildData.optional().nullable(),
+  registryHost: z.string().optional(),
 });
 
 export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;
@@ -133,7 +155,7 @@ export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymen
 
 export const GetDeploymentResponseBody = z.object({
   id: z.string(),
-  status: z.enum(["PENDING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED"]),
+  status: z.enum(["PENDING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED", "TIMED_OUT"]),
   contentHash: z.string(),
   shortCode: z.string(),
   version: z.string(),
@@ -142,7 +164,7 @@ export const GetDeploymentResponseBody = z.object({
     .object({
       name: z.string(),
       message: z.string(),
-      stack: z.string(),
+      stack: z.string().optional(),
     })
     .optional()
     .nullable(),

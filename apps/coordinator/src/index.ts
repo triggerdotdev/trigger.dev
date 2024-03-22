@@ -349,6 +349,7 @@ class TaskCoordinator {
           setSocketDataFromHeader("podName", "x-pod-name");
           setSocketDataFromHeader("contentHash", "x-trigger-content-hash");
           setSocketDataFromHeader("projectRef", "x-trigger-project-ref");
+          setSocketDataFromHeader("runId", "x-trigger-run-id");
           setSocketDataFromHeader("attemptId", "x-trigger-attempt-id");
           setSocketDataFromHeader("envId", "x-trigger-env-id");
           setSocketDataFromHeader("deploymentId", "x-trigger-deployment-id");
@@ -363,7 +364,7 @@ class TaskCoordinator {
         next();
       },
       onConnection: async (socket, handler, sender) => {
-        const logger = new SimpleLogger(`[task][${socket.id}]`);
+        const logger = new SimpleLogger(`[prod-worker][${socket.id}]`);
 
         this.#platformSocket?.send("LOG", {
           metadata: {
@@ -391,6 +392,7 @@ class TaskCoordinator {
           const executionAck = await this.#platformSocket?.sendWithAck("READY_FOR_EXECUTION", {
             version: "v1",
             attemptId: message.attemptId,
+            runId: message.runId,
           });
 
           if (!executionAck) {
@@ -404,7 +406,7 @@ class TaskCoordinator {
           }
 
           if (!executionAck.success) {
-            logger.error("execution unsuccessful", { attemptId: socket.data.attemptId });
+            logger.error("failed to get execution payload", { attemptId: socket.data.attemptId });
 
             socket.emit("REQUEST_EXIT", {
               version: "v1",
@@ -424,16 +426,75 @@ class TaskCoordinator {
           this.#platformSocket?.send("READY_FOR_RESUME", message);
         });
 
-        socket.on("TASK_RUN_COMPLETED", async (message, callback) => {
-          logger.log("completed task", { completionId: message.completion.id });
+        socket.on("TASK_RUN_COMPLETED", async ({ completion, execution }, callback) => {
+          logger.log("completed task", { completionId: completion.id });
 
-          this.#platformSocket?.send("TASK_RUN_COMPLETED", {
+          const sendCompletionToPlatform = () => {
+            this.#platformSocket?.send("TASK_RUN_COMPLETED", {
+              version: "v1",
+              execution,
+              completion,
+            });
+          };
+
+          const confirmCompletion = ({
+            didCheckpoint,
+            shouldExit,
+          }: {
+            didCheckpoint: boolean;
+            shouldExit: boolean;
+          }) => {
+            sendCompletionToPlatform();
+            callback({ didCheckpoint, shouldExit });
+          };
+
+          if (completion.ok) {
+            confirmCompletion({ didCheckpoint: false, shouldExit: true });
+            return;
+          }
+
+          if (
+            completion.error.type === "INTERNAL_ERROR" &&
+            completion.error.code === "TASK_RUN_CANCELLED"
+          ) {
+            confirmCompletion({ didCheckpoint: false, shouldExit: true });
+            return;
+          }
+
+          if (completion.retry === undefined) {
+            confirmCompletion({ didCheckpoint: false, shouldExit: true });
+            return;
+          }
+
+          const { canCheckpoint, willSimulate } = await this.#checkpointer.initialize();
+
+          const willCheckpointAndRestore = canCheckpoint || willSimulate;
+
+          if (!willCheckpointAndRestore) {
+            confirmCompletion({ didCheckpoint: false, shouldExit: false });
+            return;
+          }
+
+          const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
+
+          if (!checkpoint) {
+            logger.error("Failed to checkpoint", { podName: socket.data.podName });
+            confirmCompletion({ didCheckpoint: false, shouldExit: false });
+            return;
+          }
+
+          this.#platformSocket?.send("CHECKPOINT_CREATED", {
             version: "v1",
-            execution: message.execution,
-            completion: message.completion,
+            attemptId: socket.data.attemptId,
+            docker: checkpoint.docker,
+            location: checkpoint.destination,
+            reason: {
+              type: "RETRYING_AFTER_FAILURE",
+              attemptNumber: execution.attempt.number,
+            },
           });
 
-          callback();
+          confirmCompletion({ didCheckpoint: true, shouldExit: false });
         });
 
         socket.on("WAIT_FOR_DURATION", async (message, callback) => {
@@ -441,9 +502,11 @@ class TaskCoordinator {
 
           const { canCheckpoint, willSimulate } = await this.#checkpointer.initialize();
 
-          callback({ willCheckpointAndRestore: canCheckpoint || willSimulate });
+          const willCheckpointAndRestore = canCheckpoint || willSimulate;
 
-          if (!canCheckpoint) {
+          callback({ willCheckpointAndRestore });
+
+          if (!willCheckpointAndRestore) {
             return;
           }
 
@@ -476,7 +539,13 @@ class TaskCoordinator {
 
           const { canCheckpoint, willSimulate } = await this.#checkpointer.initialize();
 
-          callback({ willCheckpointAndRestore: canCheckpoint || willSimulate });
+          const willCheckpointAndRestore = canCheckpoint || willSimulate;
+
+          callback({ willCheckpointAndRestore });
+
+          if (!willCheckpointAndRestore) {
+            return;
+          }
 
           const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
 
@@ -502,7 +571,13 @@ class TaskCoordinator {
 
           const { canCheckpoint, willSimulate } = await this.#checkpointer.initialize();
 
-          callback({ willCheckpointAndRestore: canCheckpoint || willSimulate });
+          const willCheckpointAndRestore = canCheckpoint || willSimulate;
+
+          callback({ willCheckpointAndRestore });
+
+          if (!willCheckpointAndRestore) {
+            return;
+          }
 
           const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
 

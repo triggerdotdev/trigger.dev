@@ -302,8 +302,8 @@ export class BackgroundWorker {
       const child = fork(this.path, {
         stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
         env: {
-          ...this.#readEnvVars(),
           ...this.params.env,
+          ...this.#readEnvVars(),
         },
       });
 
@@ -316,7 +316,7 @@ export class BackgroundWorker {
         resolved = true;
         child.kill();
         reject(new Error("Worker timed out"));
-      }, 1000);
+      }, 5000);
 
       child.on("message", async (msg: any) => {
         const message = this._handler.parseMessage(msg);
@@ -475,12 +475,18 @@ export class BackgroundWorker {
   }
 
   #readEnvVars() {
-    const result = {};
+    const result: { [key: string]: string } = {};
 
     dotenv.config({
       processEnv: result,
       path: [".env", ".env.local", ".env.development.local"].map((p) => resolve(process.cwd(), p)),
     });
+
+    process.env.TRIGGER_API_URL && (result.TRIGGER_API_URL = process.env.TRIGGER_API_URL);
+
+    // remove TRIGGER_API_URL and TRIGGER_SECRET_KEY, since those should be coming from the worker
+    delete result.TRIGGER_API_URL;
+    delete result.TRIGGER_SECRET_KEY;
 
     return result;
   }
@@ -536,6 +542,12 @@ class TaskRunProcess {
   }
 
   async initialize() {
+    logger.debug("initializing task run process", {
+      env: this.env,
+      path: this.path,
+      processEnv: process.env,
+    });
+
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
       cwd: dirname(this.path),
@@ -544,11 +556,12 @@ class TaskRunProcess {
         OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
           [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectConfig.projectDir,
         }),
+        OTEL_EXPORTER_OTLP_COMPRESSION: "none",
         ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
       },
       execArgv: this.worker.debuggerOn
-        ? ["--inspect-brk", "--trace-uncaught"]
-        : ["--trace-uncaught"],
+        ? ["--inspect-brk", "--trace-uncaught", "--no-warnings=ExperimentalWarning"]
+        : ["--trace-uncaught", "--no-warnings=ExperimentalWarning"],
     });
 
     this._child.on("message", this.#handleMessage.bind(this));

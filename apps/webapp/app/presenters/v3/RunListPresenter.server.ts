@@ -1,8 +1,8 @@
-import { Prisma, TaskRunAttemptStatus } from "@trigger.dev/database";
+import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import { Direction } from "~/components/runs/RunStatuses";
-import { ExtendedTaskAttemptStatus } from "~/components/runs/v3/RunFilters";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
+import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 
 type RunListOptions = {
   userId: string;
@@ -10,7 +10,7 @@ type RunListOptions = {
   //filters
   tasks: string[] | undefined;
   versions: string[] | undefined;
-  statuses: ExtendedTaskAttemptStatus[] | undefined;
+  statuses: TaskRunStatus[] | undefined;
   environments: string[] | undefined;
   from: number | undefined;
   to: number | undefined;
@@ -24,6 +24,7 @@ const DEFAULT_PAGE_SIZE = 20;
 
 export type RunList = Awaited<ReturnType<RunListPresenter["call"]>>;
 export type RunListItem = RunList["runs"][0];
+export type RunListAppliedFilters = RunList["filters"];
 
 export class RunListPresenter {
   #prismaClient: PrismaClient;
@@ -45,10 +46,7 @@ export class RunListPresenter {
     cursor,
     pageSize = DEFAULT_PAGE_SIZE,
   }: RunListOptions) {
-    const filterByEnqueuedStatus = statuses ? statuses.includes("ENQUEUED") : false;
-    statuses = statuses ? statuses.filter((s) => s !== "ENQUEUED") : undefined;
-    const hasStatusFilters =
-      filterByEnqueuedStatus || (statuses !== undefined && statuses.length > 0);
+    const hasStatusFilters = statuses && statuses.length > 0;
 
     const hasFilters =
       tasks !== undefined ||
@@ -100,9 +98,9 @@ export class RunListPresenter {
         taskIdentifier: string;
         version: string | null;
         runtimeEnvironmentId: string;
-        status: TaskRunAttemptStatus | null;
+        status: TaskRunStatus;
         createdAt: Date;
-        startedAt: Date | null;
+        lockedAt: Date | null;
         completedAt: Date | null;
         isTest: boolean;
         attempts: BigInt;
@@ -115,9 +113,9 @@ export class RunListPresenter {
     tr."taskIdentifier" AS "taskIdentifier",
     bw.version AS version,
     tr."runtimeEnvironmentId" AS "runtimeEnvironmentId",
-    tra.status AS status,
+    tr.status AS status,
     tr."createdAt" AS "createdAt",
-    tra."startedAt" AS "startedAt",
+    tr."lockedAt" AS "lockedAt",
     tra."completedAt" AS "completedAt",
     tr."isTest" AS "isTest",
     COUNT(tra.id) AS attempts
@@ -151,11 +149,11 @@ export class RunListPresenter {
       ${hasStatusFilters ? Prisma.sql`AND (` : Prisma.empty}
       ${
         statuses && statuses.length > 0
-          ? Prisma.sql`tra.status = ANY(ARRAY[${Prisma.join(statuses)}]::"TaskRunAttemptStatus"[])`
+          ? Prisma.sql`tr.status = ANY(ARRAY[${Prisma.join(statuses)}]::"TaskRunStatus"[])`
           : Prisma.empty
       }
-      ${statuses && statuses.length > 0 && filterByEnqueuedStatus ? Prisma.sql` OR ` : Prisma.empty}
-      ${filterByEnqueuedStatus ? Prisma.sql`tra.status IS NULL` : Prisma.empty}
+      ${statuses && statuses.length > 0 && hasStatusFilters ? Prisma.sql` OR ` : Prisma.empty}
+      ${hasStatusFilters ? Prisma.sql`tr.status IS NULL` : Prisma.empty}
       ${hasStatusFilters ? Prisma.sql`) ` : Prisma.empty}
       ${
         environments && environments.length > 0
@@ -217,13 +215,14 @@ export class RunListPresenter {
           friendlyId: run.runFriendlyId,
           number: Number(run.number),
           createdAt: run.createdAt,
-          startedAt: run.startedAt,
+          startedAt: run.lockedAt,
           completedAt: run.completedAt,
           isTest: run.isTest,
           status: run.status,
           version: run.version,
           taskIdentifier: run.taskIdentifier,
           attempts: Number(run.attempts),
+          isCancellable: CANCELLABLE_STATUSES.includes(run.status),
           environment: {
             type: environment.type,
             slug: environment.slug,
@@ -237,6 +236,14 @@ export class RunListPresenter {
         previous,
       },
       possibleTasks: possibleTasks.map((task) => task.slug),
+      filters: {
+        tasks: tasks || [],
+        versions: versions || [],
+        statuses: statuses || [],
+        environments: environments || [],
+        from,
+        to,
+      },
       hasFilters,
     };
   }

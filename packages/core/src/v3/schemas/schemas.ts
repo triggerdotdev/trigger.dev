@@ -21,6 +21,7 @@ export const Config = z.object({
       default: RetryOptions.optional(),
     })
     .optional(),
+  additionalPackages: z.string().array().optional(),
 });
 
 export type Config = z.infer<typeof Config>;
@@ -72,6 +73,19 @@ export const PlatformToProviderMessages = {
       apiKey: z.string(),
       apiUrl: z.string(),
     }),
+    callback: z.discriminatedUnion("success", [
+      z.object({
+        success: z.literal(false),
+        error: z.object({
+          name: z.string(),
+          message: z.string(),
+          stack: z.string().optional(),
+        }),
+      }),
+      z.object({
+        success: z.literal(true),
+      }),
+    ]),
   },
   INVOKE: {
     message: z.object({
@@ -83,7 +97,8 @@ export const PlatformToProviderMessages = {
   RESTORE: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      id: z.string(),
+      checkpointId: z.string(),
+      runId: z.string(),
       attemptId: z.string(),
       type: z.enum(["DOCKER", "KUBERNETES"]),
       location: z.string(),
@@ -141,6 +156,7 @@ export const CoordinatorToPlatformMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),
+      runId: z.string(),
     }),
     callback: z.discriminatedUnion("success", [
       z.object({
@@ -190,6 +206,10 @@ export const CoordinatorToPlatformMessages = {
         z.object({
           type: z.literal("WAIT_FOR_TASK"),
           id: z.string(),
+        }),
+        z.object({
+          type: z.literal("RETRYING_AFTER_FAILURE"),
+          attemptNumber: z.number(),
         }),
       ]),
     }),
@@ -296,6 +316,7 @@ export const ProdWorkerToCoordinatorMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),
+      runId: z.string(),
     }),
   },
   READY_FOR_RESUME: {
@@ -317,7 +338,10 @@ export const ProdWorkerToCoordinatorMessages = {
       execution: ProdTaskRunExecution,
       completion: TaskRunExecutionResult,
     }),
-    callback: z.void(),
+    callback: z.object({
+      didCheckpoint: z.boolean(),
+      shouldExit: z.boolean(),
+    }),
   },
   WAIT_FOR_DURATION: {
     message: z.object({
@@ -398,6 +422,7 @@ export const ProdWorkerSocketData = z.object({
   contentHash: z.string(),
   projectRef: z.string(),
   envId: z.string(),
+  runId: z.string(),
   attemptId: z.string(),
   podName: z.string(),
   deploymentId: z.string(),

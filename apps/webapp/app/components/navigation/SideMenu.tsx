@@ -7,12 +7,14 @@ import {
   CursorArrowRaysIcon,
   IdentificationIcon,
   KeyIcon,
+  ServerStackIcon,
   ShieldCheckIcon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
 import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useEffect, useRef, useState } from "react";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { useFeatures } from "~/hooks/useFeatures";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
 import { MatchedProject } from "~/hooks/useProject";
@@ -40,6 +42,7 @@ import {
   projectSetupPath,
   projectTriggersPath,
   v3ApiKeysPath,
+  v3DeploymentsPath,
   v3EnvironmentVariablesPath,
   v3ProjectPath,
   v3ProjectSettingsPath,
@@ -52,6 +55,7 @@ import { LogoIcon } from "../LogoIcon";
 import { StepContentContainer } from "../StepContentContainer";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
+import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Buttons";
 import { ClipboardField } from "../primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
@@ -68,8 +72,6 @@ import {
 import { StepNumber } from "../primitives/StepNumber";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
-import { Badge } from "../primitives/Badge";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -267,7 +269,6 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               target="_blank"
             />
           )}
-
           <SideMenuItem
             name="Changelog"
             icon="star"
@@ -275,20 +276,37 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             data-action="changelog"
             target="_blank"
           />
-
-          <Feedback
-            button={
-              <Button
-                variant="small-menu-item"
-                LeadingIcon="log"
-                data-action="help & feedback"
-                fullWidth
-                textAlignLeft
-              >
-                Help & Feedback
-              </Button>
-            }
-          />
+          {project.version === "V2" ? (
+            <Feedback
+              button={
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon="log"
+                  data-action="help & feedback"
+                  fullWidth
+                  textAlignLeft
+                >
+                  Help & Feedback
+                </Button>
+              }
+            />
+          ) : (
+            <Feedback
+              defaultValue="developer preview"
+              button={
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon="log"
+                  leadingIconClassName="text-primary"
+                  data-action="help & feedback"
+                  fullWidth
+                  textAlignLeft
+                >
+                  <span className="text-primary">Give feedback on v3</span>
+                </Button>
+              }
+            />
+          )}
           {currentPlan && !currentPlan.subscription?.isPaying && currentPlan.usage.runCountCap && (
             <FreePlanUsage
               to={organizationBillingPath(organization)}
@@ -550,6 +568,13 @@ function V3ProjectSideMenu({
         iconColor="text-pink-500"
         to={v3EnvironmentVariablesPath(organization, project)}
         data-action="environment variables"
+      />
+      <SideMenuItem
+        name="Deployments"
+        icon={ServerStackIcon}
+        iconColor="text-blue-500"
+        to={v3DeploymentsPath(organization, project)}
+        data-action="deployments"
       />
       <SideMenuItem
         name="Project settings"

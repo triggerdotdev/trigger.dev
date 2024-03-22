@@ -79,24 +79,21 @@ export class RunPresenter {
             n.data.startTime.getTime() - treeRootStartTimeMs
           );
           totalDuration = Math.max(totalDuration, offset + n.data.duration);
-          return { ...n, data: { ...n.data, offset, isRoot: n.id === traceSummary.rootSpan.id } };
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              //set partial nodes to null duration
+              duration: n.data.isPartial ? null : n.data.duration,
+              offset,
+              isRoot: n.id === traceSummary.rootSpan.id,
+            },
+          };
         })
       : [];
 
-    //if any elements are partial we want the total duration to represent all of the time until now
-    totalDuration = events.some((e) => e.data.isPartial)
-      ? millisecondsToNanoseconds(Date.now() - treeRootStartTimeMs)
-      : totalDuration;
-
     //total duration should be a minimum of 1ms
     totalDuration = Math.max(totalDuration, millisecondsToNanoseconds(1));
-
-    //we need to adjust any partial nodes so they run the full duration
-    for (const event of events) {
-      if (event.data.isPartial) {
-        event.data.duration = totalDuration - event.data.offset;
-      }
-    }
 
     let rootSpanStatus: "executing" | "completed" | "failed" = "executing";
     if (events[0]) {
@@ -123,6 +120,7 @@ export class RunPresenter {
       parentRunFriendlyId:
         tree?.id === traceSummary.rootSpan.id ? undefined : traceSummary.rootSpan.runId,
       duration: totalDuration,
+      rootStartedAt: tree?.data.startTime,
     };
   }
 }

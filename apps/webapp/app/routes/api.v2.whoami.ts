@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { WhoAmIResponse } from "@trigger.dev/core/v3";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 
@@ -29,6 +30,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const result: WhoAmIResponse = {
     userId: authenticationResult.userId,
     email: user.email,
+    dashboardUrl: env.APP_ORIGIN,
   };
   return json(result);
 }

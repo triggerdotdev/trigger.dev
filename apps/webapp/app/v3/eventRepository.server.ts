@@ -9,10 +9,10 @@ import {
   SpanEvents,
   TaskEventStyle,
   correctErrorStackTrace,
-  flattenAndNormalizeAttributes,
   flattenAttributes,
   isExceptionSpanEvent,
   omit,
+  primitiveValueOrflattenedAttributes,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
 import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
@@ -67,7 +67,7 @@ export type TraceEventOptions = {
   attributes: TraceAttributes;
   environment: AuthenticatedEnvironment;
   taskSlug: string;
-  startTime?: Date;
+  startTime?: bigint;
   endTime?: Date;
   immediate?: boolean;
 };
@@ -153,6 +153,10 @@ export class EventRepository {
     this._flushScheduler.addToBatch(events);
   }
 
+  async insertManyImmediate(events: CreatableEvent[]) {
+    return await this.#flushBatch(events);
+  }
+
   async completeEvent(spanId: string, options?: UpdateEventOptions) {
     const events = await this.queryIncompleteEvents({ spanId });
 
@@ -172,16 +176,12 @@ export class EventRepository {
       status: options?.attributes.isError ? "ERROR" : "OK",
       links: event.links ?? [],
       events: event.events ?? [],
-      duration:
-        ((options?.endTime ?? new Date()).getTime() - event.startTime.getTime()) * 1_000_000, // convert to nanoseconds
+      duration: calculateDurationFromStart(event.startTime, options?.endTime),
       properties: event.properties as Attributes,
       metadata: event.metadata as Attributes,
       style: event.style as Attributes,
       output: options?.attributes.output
-        ? flattenAndNormalizeAttributes(
-            options.attributes.output,
-            SemanticInternalAttributes.OUTPUT
-          )
+        ? primitiveValueOrflattenedAttributes(options.attributes.output, undefined)
         : undefined,
     });
   }
@@ -208,7 +208,7 @@ export class EventRepository {
         },
         ...((event.events as any[]) ?? []),
       ],
-      duration: (cancelledAt.getTime() - event.startTime.getTime()) * 1_000_000, // convert to nanoseconds
+      duration: calculateDurationFromStart(event.startTime, cancelledAt),
       properties: event.properties as Attributes,
       metadata: event.metadata as Attributes,
       style: event.style as Attributes,
@@ -288,7 +288,7 @@ export class EventRepository {
           isError: event.isError,
           isPartial: ancestorCancelled ? false : event.isPartial,
           isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
-          startTime: event.startTime,
+          startTime: getDateFromNanoseconds(event.startTime),
           level: event.level,
           events: event.events,
         },
@@ -371,8 +371,8 @@ export class EventRepository {
   public async recordEvent(message: string, options: TraceEventOptions) {
     const propagatedContext = extractContextFromCarrier(options.context ?? {});
 
-    const startTime = options.startTime ?? new Date();
-    const durationInMs = options.endTime ? options.endTime.getTime() - startTime.getTime() : 100;
+    const startTime = options.startTime ?? getNowInNanoseconds();
+    const duration = options.endTime ? calculateDurationFromStart(startTime, options.endTime) : 100;
 
     const traceId = propagatedContext?.traceparent?.traceId ?? this.generateTraceId();
     const parentId = propagatedContext?.traceparent?.spanId;
@@ -417,7 +417,7 @@ export class EventRepository {
       status: "OK",
       startTime,
       isPartial: false,
-      duration: durationInMs * 1_000_000, // convert to nanoseconds
+      duration, // convert to nanoseconds
       environmentId: options.environment.id,
       environmentType: options.environment.type,
       organizationId: options.environment.organizationId,
@@ -462,7 +462,7 @@ export class EventRepository {
     const propagatedContext = extractContextFromCarrier(options.context ?? {});
 
     const start = process.hrtime.bigint();
-    const startTime = new Date();
+    const startTime = getNowInNanoseconds();
 
     const traceId = options.spanParentAsLink
       ? this.generateTraceId()
@@ -480,14 +480,14 @@ export class EventRepository {
     const links: Link[] =
       options.spanParentAsLink && propagatedContext?.traceparent
         ? [
-            {
-              context: {
-                traceId: propagatedContext.traceparent.traceId,
-                spanId: propagatedContext.traceparent.spanId,
-                traceFlags: TraceFlags.SAMPLED,
-              },
+          {
+            context: {
+              traceId: propagatedContext.traceparent.traceId,
+              spanId: propagatedContext.traceparent.spanId,
+              traceFlags: TraceFlags.SAMPLED,
             },
-          ]
+          },
+        ]
         : [];
 
     const eventBuilder = {
@@ -531,6 +531,7 @@ export class EventRepository {
     const style = {
       [SemanticInternalAttributes.STYLE_ICON]: "task",
       [SemanticInternalAttributes.STYLE_VARIANT]: PRIMARY_VARIANT,
+      ...options.attributes.style,
     };
 
     if (!options.attributes.runId) {
@@ -550,7 +551,7 @@ export class EventRepository {
       level: "TRACE",
       kind: options.kind,
       status: "OK",
-      startTime: startTime,
+      startTime,
       environmentId: options.environment.id,
       environmentType: options.environment.type,
       organizationId: options.environment.organizationId,
@@ -563,7 +564,6 @@ export class EventRepository {
       queueName: options.attributes.queueName,
       batchId: options.attributes.batchId ?? undefined,
       properties: {
-        ...style,
         ...(flattenAttributes(metadata, SemanticInternalAttributes.METADATA) as Record<
           string,
           string
@@ -742,9 +742,9 @@ function prepareEvent(event: QueriedEvent): PreparedEvent {
 function parseEventsField(events: Prisma.JsonValue): SpanEvents {
   const eventsUnflattened = events
     ? (events as any[]).map((e) => ({
-        ...e,
-        properties: unflattenAttributes(e.properties as Attributes),
-      }))
+      ...e,
+      properties: unflattenAttributes(e.properties as Attributes),
+    }))
     : undefined;
 
   const spanEvents = SpanEvents.safeParse(eventsUnflattened);
@@ -813,7 +813,7 @@ function calculateDurationIfAncestorIsCancelled(
       );
 
       if (cancellationEvent) {
-        return (cancellationEvent.time.getTime() - event.startTime.getTime()) * 1_000_000;
+        return calculateDurationFromStart(event.startTime, cancellationEvent.time);
       }
     }
   }
@@ -938,8 +938,8 @@ function transformException(
     ...exception,
     stacktrace: exception.stacktrace
       ? correctErrorStackTrace(exception.stacktrace, projectDirAttributeValue, {
-          removeFirstLine: true,
-        })
+        removeFirstLine: true,
+      })
       : undefined,
   };
 }
@@ -954,4 +954,16 @@ function filteredAttributes(attributes: Attributes, prefix: string): Attributes 
   }
 
   return result;
+}
+
+function calculateDurationFromStart(startTime: bigint, endTime: Date = new Date()) {
+  return Number(BigInt(endTime.getTime() * 1_000_000) - startTime);
+}
+
+function getNowInNanoseconds(): bigint {
+  return BigInt(new Date().getTime() * 1_000_000);
+}
+
+function getDateFromNanoseconds(nanoseconds: bigint) {
+  return new Date(Number(nanoseconds) / 1_000_000);
 }

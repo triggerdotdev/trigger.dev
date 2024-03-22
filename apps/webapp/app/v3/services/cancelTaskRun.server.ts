@@ -8,7 +8,7 @@ import { assertUnreachable } from "../utils/asserts.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
 import { logger } from "~/services/logger.server";
 
-const CANCELLABLE_STATUSES: Array<TaskRunStatus> = [
+export const CANCELLABLE_STATUSES: Array<TaskRunStatus> = [
   "PENDING",
   "EXECUTING",
   "PAUSED",

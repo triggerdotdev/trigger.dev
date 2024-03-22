@@ -1,6 +1,8 @@
 import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
+import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { TaskRunAttemptStatus } from "@trigger.dev/database";
+import { TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
+import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { Feedback } from "~/components/Feedback";
@@ -25,17 +27,17 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { TaskPath } from "~/components/runs/v3/TaskPath";
-import { TaskRunStatus } from "~/components/runs/v3/TaskRunStatus";
-import { useAppOrigin } from "~/hooks/useAppOrigin";
+import { TaskFunctionName, TaskPath } from "~/components/runs/v3/TaskPath";
+import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
+import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
 import { TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3RunsPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, v3RunsPath, v3TasksStreamingPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -68,6 +70,19 @@ export default function Page() {
   const { tasks } = useTypedLoaderData<typeof loader>();
   const hasTasks = tasks.length > 0;
 
+  //live reload the page when the tasks change
+  const revalidator = useRevalidator();
+  const streamedEvents = useEventSource(v3TasksStreamingPath(organization, project), {
+    event: "message",
+  });
+
+  useEffect(() => {
+    if (streamedEvents !== null) {
+      revalidator.revalidate();
+    }
+    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
+  }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <PageContainer>
       <NavBar>
@@ -83,8 +98,12 @@ export default function Page() {
                     <TableRow>
                       <TableHeaderCell>Task ID</TableHeaderCell>
                       <TableHeaderCell>Task</TableHeaderCell>
+                      <TableHeaderCell>Path</TableHeaderCell>
                       <TableHeaderCell>Environment</TableHeaderCell>
                       <TableHeaderCell>Last run</TableHeaderCell>
+                      <TableHeaderCell>
+                        <div className="sr-only">Last run status</div>
+                      </TableHeaderCell>
                       <TableHeaderCell>Created at</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
@@ -104,30 +123,38 @@ export default function Page() {
                           <TableRow key={task.id} className="group">
                             <TableCell to={path}>{task.slug}</TableCell>
                             <TableCell to={path}>
-                              <TaskPath
-                                filePath={task.filePath}
-                                functionName={`${task.exportName}()`}
+                              <TaskFunctionName
+                                functionName={task.exportName}
+                                variant="extra-small"
                               />
                             </TableCell>
+                            <TableCell to={path}>{task.filePath}</TableCell>
                             <TableCell to={path}>
                               <EnvironmentLabel
                                 environment={task.environment}
                                 userName={usernameForEnv}
                               />
                             </TableCell>
+
                             <TableCell to={path}>
                               {task.latestRun ? (
                                 <div
                                   className={cn(
                                     "flex items-center gap-2",
-                                    classForTaskAttemptStatus(task.latestRun.status)
+                                    classForTaskRunStatus(task.latestRun.status)
                                   )}
                                 >
-                                  <DateTime date={task.latestRun.updatedAt} />
-                                  <TaskRunStatus status={task.latestRun.status} />
+                                  <DateTime date={task.latestRun.createdAt} />
                                 </div>
                               ) : (
                                 "Never run"
+                              )}
+                            </TableCell>
+                            <TableCell to={path}>
+                              {task.latestRun ? (
+                                <TaskRunStatusCombo status={task.latestRun.status} />
+                              ) : (
+                                "–"
                               )}
                             </TableCell>
                             <TableCell to={path}>
@@ -157,9 +184,10 @@ export default function Page() {
   );
 }
 
-function classForTaskAttemptStatus(status: TaskRunAttemptStatus) {
+function classForTaskRunStatus(status: TaskRunStatus) {
   switch (status) {
-    case "FAILED":
+    case "SYSTEM_FAILURE":
+    case "COMPLETED_WITH_ERRORS":
       return "text-error";
     default:
       return "";
@@ -167,8 +195,6 @@ function classForTaskAttemptStatus(status: TaskRunAttemptStatus) {
 }
 
 function CreateTaskInstructions() {
-  const devEnvironment = useDevEnvironment();
-  invariant(devEnvironment, "Dev environment must be defined");
   return (
     <MainCenteredContainer className="max-w-prose">
       <div className="mb-6 flex items-center justify-between border-b">

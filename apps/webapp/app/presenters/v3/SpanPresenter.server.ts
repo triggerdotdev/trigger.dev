@@ -55,6 +55,7 @@ export class SpanPresenter {
         output: span.output ? JSON.stringify(span.output, null, 2) : undefined,
         payload: span.payload ? JSON.stringify(span.payload, null, 2) : undefined,
         properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
+        showActionBar: (span.properties?.show as any)?.actions === true,
       },
     };
   }

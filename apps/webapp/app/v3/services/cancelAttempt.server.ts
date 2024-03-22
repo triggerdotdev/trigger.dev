@@ -6,6 +6,7 @@ import { logger } from "~/services/logger.server";
 
 import { PrismaClientOrTransaction, prisma } from "~/db.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
+import { CANCELLABLE_STATUSES } from "./cancelTaskRun.server";
 
 export class CancelAttemptService extends BaseService {
   public async call(
@@ -54,7 +55,9 @@ export class CancelAttemptService extends BaseService {
           taskRun: {
             update: {
               data: {
-                status: "INTERRUPTED",
+                status: CANCELLABLE_STATUSES.includes(taskRunAttempt.taskRun.status)
+                  ? "INTERRUPTED"
+                  : undefined,
               },
             },
           },

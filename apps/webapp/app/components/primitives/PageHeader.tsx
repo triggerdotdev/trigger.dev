@@ -1,6 +1,7 @@
 import { ArrowUpRightIcon } from "@heroicons/react/20/solid";
 import { Link, useNavigation } from "@remix-run/react";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
+import { useOptionalProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { plansPath } from "~/utils/pathBuilder";
 import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
@@ -21,6 +22,7 @@ export function NavBar({ children }: WithChildren) {
   const showUpgradePrompt = useShowUpgradePrompt(organization);
   const navigation = useNavigation();
   const isLoading = navigation.state === "loading" || navigation.state === "submitting";
+  const project = useOptionalProject();
 
   return (
     <div>

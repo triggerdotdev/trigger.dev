@@ -1,8 +1,15 @@
 import { TrashIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
-import { RuntimeEnvironment, TaskRunAttemptStatus } from "@trigger.dev/database";
+import type { TaskRunStatus as TaskRunStatusType } from "@trigger.dev/database";
+import { RuntimeEnvironment, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import { useCallback } from "react";
 import { z } from "zod";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/primitives/Tooltip";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
 import { Button } from "../../primitives/Buttons";
@@ -16,21 +23,21 @@ import {
   SelectValue,
 } from "../../primitives/Select";
 import { TimeFrameFilter } from "../TimeFrameFilter";
-import { TaskRunStatus } from "./TaskRunStatus";
+import { TaskRunStatusCombo, descriptionForTaskRunStatus } from "./TaskRunStatus";
 
 export const allTaskRunStatuses = [
-  "ENQUEUED",
   "PENDING",
   "EXECUTING",
-  "PAUSED",
-  "FAILED",
-  "COMPLETED",
+  "RETRYING_AFTER_FAILURE",
+  "WAITING_TO_RESUME",
+  "COMPLETED_SUCCESSFULLY",
   "CANCELED",
-] as const;
+  "COMPLETED_WITH_ERRORS",
+  "INTERRUPTED",
+  "SYSTEM_FAILURE",
+] as TaskRunStatusType[];
 
-export type ExtendedTaskAttemptStatus = (typeof allTaskRunStatuses)[number];
-
-export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
+export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);
 
 export const TaskRunListSearchFilters = z.object({
   cursor: z.string().optional(),
@@ -161,10 +168,20 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
       <SelectGroup>
         <Select name="status" value={statuses?.at(0) ?? "ALL"} onValueChange={handleStatusChange}>
           <SelectTrigger size="minimal" width="full">
-            <SelectValue placeholder="Select status" className="ml-2 p-0" />
+            <SelectValue placeholder="Select status" className="ml-2 p-0">
+              {statuses?.at(0) ? (
+                <TaskRunStatusCombo
+                  status={statuses[0]}
+                  className="text-xs"
+                  iconClassName="animate-none"
+                />
+              ) : (
+                "All statuses"
+              )}
+            </SelectValue>
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={"ALL"}>
+          <SelectContent className="overflow-visible">
+            <SelectItem value={"ALL"} className="">
               <Paragraph
                 variant="extra-small"
                 className="pl-0.5 transition group-hover:text-text-bright"
@@ -173,9 +190,24 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
               </Paragraph>
             </SelectItem>
             {allTaskRunStatuses.map((status) => (
-              <SelectItem key={status} value={status}>
-                <TaskRunStatus status={status} className="text-xs" />
-              </SelectItem>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger className="group flex w-full flex-col py-0">
+                    <SelectItem key={status} value={status} className="">
+                      <TaskRunStatusCombo
+                        status={status}
+                        className="text-xs"
+                        iconClassName="animate-none"
+                      />
+                      <TooltipContent side="right" sideOffset={9}>
+                        <Paragraph variant="extra-small">
+                          {descriptionForTaskRunStatus(status)}
+                        </Paragraph>
+                      </TooltipContent>
+                    </SelectItem>
+                  </TooltipTrigger>
+                </Tooltip>
+              </TooltipProvider>
             ))}
           </SelectContent>
         </Select>

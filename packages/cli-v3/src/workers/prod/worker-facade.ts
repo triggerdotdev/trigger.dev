@@ -6,6 +6,8 @@ import {
   TaskExecutor,
   ZodIpcConnection,
   type TracingSDK,
+  preciseDateOriginNow,
+  HandleErrorFunction,
 } from "@trigger.dev/core/v3";
 import "source-map-support/register.js";
 
@@ -15,6 +17,7 @@ declare const __WORKER_SETUP__: unknown;
 __IMPORTED_PROJECT_CONFIG__;
 declare const __IMPORTED_PROJECT_CONFIG__: unknown;
 declare const importedConfig: ProjectConfig | undefined;
+declare const handleError: HandleErrorFunction | undefined;
 
 declare const __PROJECT_CONFIG__: Config;
 declare const tracingSDK: TracingSDK;
@@ -37,13 +40,16 @@ import * as packageJson from "../../../package.json";
 
 import { TaskMetadataWithFunctions } from "../../types";
 
+const preciseDateOrigin = preciseDateOriginNow();
+
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
-const consoleInterceptor = new ConsoleInterceptor(otelLogger);
+const consoleInterceptor = new ConsoleInterceptor(otelLogger, preciseDateOrigin);
 
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
   tracer: tracer,
   level: "info",
+  preciseDateOrigin,
 });
 
 logger.setGlobalTaskLogger(otelTaskLogger);
@@ -106,6 +112,7 @@ for (const task of tasks) {
       consoleInterceptor,
       projectConfig: __PROJECT_CONFIG__,
       importedConfig,
+      handleErrorFn: handleError,
     })
   );
 }

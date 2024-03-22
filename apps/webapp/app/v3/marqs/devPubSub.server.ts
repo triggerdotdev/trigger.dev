@@ -26,13 +26,6 @@ function initializeDevPubSub() {
       enableAutoPipelining: true,
       ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
     },
-    schema: {
-      CANCEL_ATTEMPT: z.object({
-        version: z.literal("v1").default("v1"),
-        backgroundWorkerId: z.string(),
-        attemptId: z.string(),
-        taskRunId: z.string(),
-      }),
-    },
+    schema: messageCatalog,
   });
 }

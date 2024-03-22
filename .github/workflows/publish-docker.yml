@@ -3,21 +3,14 @@ on:
   workflow_call:
 jobs:
   publish:
-    strategy:
-      fail-fast: true # when a job fails, all remaining ones will be cancelled
-      matrix:
-        runs-on: [buildjet-4vcpu-ubuntu-2204, buildjet-4vcpu-ubuntu-2204-arm]
-    name: ${{matrix.runs-on}}
-    runs-on: ${{matrix.runs-on}}
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get_version.outputs.version }}
       short_sha: ${{ steps.get_commit.outputs.sha_short }}
     steps:
-      - name: 🐳 Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Setup Depot CLI
+        uses: depot/setup-action@v1
+        
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
         with:
@@ -43,18 +36,11 @@ jobs:
             echo "Invalid reference: ${GITHUB_REF}"
             exit 1
           fi
-          if [[ ${{matrix.runs-on}} == *-arm ]]; then
-            IMAGE_TAG="${IMAGE_TAG}-arm"
-          fi
           echo "::set-output name=version::${IMAGE_TAG}"
       - name: 🔢 Get the commit hash
         id: get_commit
         run: |
           echo ::set-output name=sha_short::$(echo ${{ github.sha }} | cut -c1-7)
-
-      - name: 🐳 Build Docker Image
-        run: |
-          docker build -t release_build_image -f ./docker/Dockerfile .
 
       - name: 🐙 Login to GitHub Container Registry
         uses: docker/login-action@v2
@@ -63,24 +49,11 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🐙 Push to GitHub Container Registry
-        run: |
-          docker tag release_build_image $REGISTRY/$REPOSITORY:$IMAGE_TAG
-          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
-        env:
-          REGISTRY: ghcr.io/triggerdotdev
-          REPOSITORY: trigger.dev
-          IMAGE_TAG: ${{ steps.get_version.outputs.version }}
-
-      - name: 🐙 Push 'latest' to GitHub Container Registry
-        if: startsWith(github.ref, 'refs/tags/v.docker')
-        run: |
-          LATEST=latest
-          if [[ ${{matrix.runs-on}} == *-arm ]]; then
-            LATEST="${LATEST}-arm"
-          fi
-          docker tag release_build_image $REGISTRY/$REPOSITORY:$LATEST
-          docker push $REGISTRY/$REPOSITORY:$LATEST
-        env:
-          REGISTRY: ghcr.io/triggerdotdev
-          REPOSITORY: trigger.dev
+      - name: 🐳 Build image and push to GitHub Container Registry
+        uses: depot/build-push-action@v1
+        with:
+          file: ./docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/triggerdotdev/trigger.dev:${{ steps.get_version.outputs.version }}
+          push: true

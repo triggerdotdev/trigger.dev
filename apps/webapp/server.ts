@@ -68,16 +68,26 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     next();
   });
 
-  app.all(
-    "*",
-    createRequestHandler({
-      build,
-      mode: MODE,
-    })
-  );
+  if (process.env.DASHBOARD_AND_API_DISABLED !== "true") {
+    app.all(
+      "*",
+      // @ts-ignore
+      createRequestHandler({
+        build,
+        mode: MODE,
+      })
+    );
+  } else {
+    // we need to do the health check here at /healthcheck
+    app.get("/healthcheck", (req, res) => {
+      res.status(200).send("OK");
+    });
+  }
+
+
 
   const server = app.listen(port, () => {
-    console.log(`✅ app ready: http://localhost:${port} [NODE_ENV: ${MODE}]`);
+    console.log(`✅ server ready: http://localhost:${port} [NODE_ENV: ${MODE}]`);
 
     if (MODE === "development") {
       broadcastDevReady(build)

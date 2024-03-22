@@ -42,7 +42,7 @@ export { ConsoleInterceptor } from "./consoleInterceptor";
 export {
   flattenAttributes,
   unflattenAttributes,
-  flattenAndNormalizeAttributes,
+  primitiveValueOrflattenedAttributes,
 } from "./utils/flattenAttributes";
 export { defaultRetryOptions, calculateNextRetryDelay, calculateResetAt } from "./utils/retries";
 export { accessoryAttributes } from "./utils/styleAttributes";
@@ -50,3 +50,5 @@ export { eventFilterMatches } from "../eventFilterMatches";
 export { omit } from "./utils/omit";
 export { TracingSDK, type TracingDiagnosticLogLevel, recordSpanException } from "./otel";
 export { TaskExecutor, type TaskExecutorOptions } from "./workers/taskExecutor";
+export { detectDependencyVersion } from "./utils/detectDependencyVersion";
+export { type PreciseDateOrigin, calculatePreciseDateHrTime, preciseDateOriginNow } from "./utils/preciseDate";

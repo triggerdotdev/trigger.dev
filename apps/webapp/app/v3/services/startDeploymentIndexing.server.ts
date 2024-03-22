@@ -1,8 +1,8 @@
 import { StartDeploymentIndexingRequestBody } from "@trigger.dev/core/v3";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { workerQueue } from "~/services/worker.server";
-import { BaseService } from "./baseService.server";
 import { registryProxy } from "../registryProxy.server";
+import { BaseService } from "./baseService.server";
+import { IndexDeploymentService } from "./indexDeployment.server";
 
 export class StartDeploymentIndexing extends BaseService {
   public async call(
@@ -22,7 +22,7 @@ export class StartDeploymentIndexing extends BaseService {
       },
     });
 
-    await workerQueue.enqueue("v3.indexDeployment", { id: deployment.id });
+    await IndexDeploymentService.enqueue(deployment.id);
 
     return deployment;
   }

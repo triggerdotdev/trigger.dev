@@ -1,14 +1,15 @@
 import { Config, ResolvedConfig } from "@trigger.dev/core/v3";
 import { findUp } from "find-up";
 import { mkdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import xdgAppPaths from "xdg-app-paths";
 import { z } from "zod";
 import { CLOUD_API_URL, CONFIG_FILES } from "../consts.js";
-import { readJSONFileSync } from "./fileSystem.js";
+import { createTempDir, readJSONFileSync } from "./fileSystem.js";
 import { logger } from "./logger.js";
 import { findTriggerDirectories, resolveTriggerDirectories } from "./taskFiles.js";
+import { build } from "esbuild";
 
 function getGlobalConfigFolderPath() {
   const configDir = xdgAppPaths("trigger").config();
@@ -24,11 +25,53 @@ export const UserAuthConfigSchema = z.object({
 
 export type UserAuthConfig = z.infer<typeof UserAuthConfigSchema>;
 
+const UserAuthConfigFileSchema = z.record(UserAuthConfigSchema);
+
+type UserAuthConfigFile = z.infer<typeof UserAuthConfigFileSchema>;
+
 function getAuthConfigFilePath() {
   return path.join(getGlobalConfigFolderPath(), "default.json");
 }
 
-export function writeAuthConfigFile(config: UserAuthConfig) {
+export function writeAuthConfigProfile(config: UserAuthConfig, profile: string = "default") {
+  const existingConfig = readAuthConfigFile() || {};
+
+  existingConfig[profile] = config;
+
+  writeAuthConfigFile(existingConfig);
+}
+
+export function readAuthConfigProfile(profile: string = "default"): UserAuthConfig | undefined {
+  try {
+    const authConfigFilePath = getAuthConfigFilePath();
+
+    logger.debug(`Reading auth config file`, { authConfigFilePath });
+
+    const json = readJSONFileSync(authConfigFilePath);
+    const parsed = UserAuthConfigFileSchema.parse(json);
+    return parsed[profile];
+  } catch (error) {
+    logger.debug(`Error reading auth config file: ${error}`);
+    return undefined;
+  }
+}
+
+function readAuthConfigFile(): UserAuthConfigFile | undefined {
+  try {
+    const authConfigFilePath = getAuthConfigFilePath();
+
+    logger.debug(`Reading auth config file`, { authConfigFilePath });
+
+    const json = readJSONFileSync(authConfigFilePath);
+    const parsed = UserAuthConfigFileSchema.parse(json);
+    return parsed;
+  } catch (error) {
+    logger.debug(`Error reading auth config file: ${error}`);
+    return undefined;
+  }
+}
+
+function writeAuthConfigFile(config: UserAuthConfigFile) {
   const authConfigFilePath = getAuthConfigFilePath();
   mkdirSync(path.dirname(authConfigFilePath), {
     recursive: true,
@@ -38,20 +81,13 @@ export function writeAuthConfigFile(config: UserAuthConfig) {
   });
 }
 
-export function readAuthConfigFile(): UserAuthConfig | undefined {
-  try {
-    const authConfigFilePath = getAuthConfigFilePath();
-
-    const json = readJSONFileSync(authConfigFilePath);
-    const parsed = UserAuthConfigSchema.parse(json);
-    return parsed;
-  } catch (error) {
-    logger.debug(`Error reading auth config file: ${error}`);
-    return undefined;
-  }
-}
-
 async function getConfigPath(dir: string, fileName?: string): Promise<string | undefined> {
+  logger.debug("Searching for the config file", {
+    dir,
+    fileName,
+    configFiles: CONFIG_FILES,
+  });
+
   return await findUp(fileName ? [fileName] : CONFIG_FILES, { cwd: dir });
 }
 
@@ -77,12 +113,6 @@ export async function readConfig(
 ): Promise<ReadConfigResult> {
   const absoluteDir = path.resolve(process.cwd(), dir);
 
-  logger.debug("Searching for the config file", {
-    dir,
-    options,
-    absoluteDir,
-  });
-
   const configPath = await getConfigPath(dir, options?.configFile);
 
   if (!configPath) {
@@ -99,9 +129,36 @@ export async function readConfig(
     }
   }
 
+  const tempDir = await createTempDir();
+
+  const builtConfigFilePath = join(tempDir, "config.mjs");
+  const builtConfigFileHref = pathToFileURL(builtConfigFilePath).href;
+
+  logger.debug("Building config file", {
+    configPath,
+    builtConfigFileHref,
+    builtConfigFilePath,
+  });
+
+  // We need to build the path to the config file, and then import it?
+  await build({
+    entryPoints: [configPath],
+    bundle: true,
+    metafile: true,
+    minify: false,
+    write: true,
+    format: "esm",
+    platform: "node",
+    target: ["es2018", "node18"],
+    outfile: builtConfigFilePath,
+    logLevel: "silent",
+  });
+
   // import the config file
-  const userConfigModule = await import(`${pathToFileURL(configPath).href}?_ts=${Date.now()}`);
-  const rawConfig = await normalizeConfig(userConfigModule ? userConfigModule.default : {});
+  const userConfigModule = await import(builtConfigFileHref);
+  const rawConfig = await normalizeConfig(
+    userConfigModule ? userConfigModule.config : { project: options?.projectRef }
+  );
   const config = Config.parse(rawConfig);
 
   return {

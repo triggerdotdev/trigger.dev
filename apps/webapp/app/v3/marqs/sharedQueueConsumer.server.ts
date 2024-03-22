@@ -20,6 +20,8 @@ import { EnvironmentVariablesRepository } from "../environmentVariables/environm
 import { CancelAttemptService } from "../services/cancelAttempt.server";
 import { socketIo } from "../handleSocketIo.server";
 import { singleton } from "~/utils/singleton";
+import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
+import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
 
 const tracer = trace.getTracer("sharedQueueConsumer");
 
@@ -178,7 +180,7 @@ export class SharedQueueConsumer {
     this._taskFailures = 0;
     this._taskSuccesses = 0;
 
-    this.#doWork().finally(() => {});
+    this.#doWork().finally(() => { });
   }
 
   async #doWork() {
@@ -315,26 +317,7 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const deployment = await prisma.workerDeployment.findFirst({
-          where: {
-            environmentId: existingTaskRun.runtimeEnvironmentId,
-            projectId: existingTaskRun.projectId,
-            status: "DEPLOYED",
-            imageReference: {
-              not: null,
-            },
-          },
-          orderBy: {
-            updatedAt: "desc",
-          },
-          include: {
-            worker: {
-              include: {
-                tasks: true,
-              },
-            },
-          },
-        });
+        const deployment = await findCurrentWorkerDeployment(existingTaskRun.runtimeEnvironmentId);
 
         if (!deployment || !deployment.worker) {
           logger.error("No matching deployment found for task run", {
@@ -390,6 +373,12 @@ export class SharedQueueConsumer {
               orderBy: { number: "desc" },
             },
             tags: true,
+            checkpoints: {
+              take: 1,
+              orderBy: {
+                createdAt: "desc",
+              },
+            },
           },
         });
 
@@ -443,15 +432,35 @@ export class SharedQueueConsumer {
         });
 
         try {
-          await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
-            backgroundWorkerId: deployment.worker.friendlyId,
-            data: {
-              type: "SCHEDULE_ATTEMPT",
-              id: taskRunAttempt.id,
-              image: deployment.imageReference,
-              envId: environment.id,
-            },
-          });
+          const latestCheckpoint = lockedTaskRun.checkpoints[0];
+
+          if (lockedTaskRun.status === "RETRYING_AFTER_FAILURE" && latestCheckpoint) {
+            if (latestCheckpoint.reason !== "RETRYING_AFTER_FAILURE") {
+              logger.error("Latest checkpoint is invalid", {
+                queueMessage: message.data,
+                messageId: message.messageId,
+                resumableAttemptId: taskRunAttempt.id,
+                latestCheckpointId: latestCheckpoint.id,
+              });
+              await marqs?.acknowledgeMessage(message.messageId);
+              setTimeout(() => this.#doWork(), this._options.interval);
+              return;
+            }
+
+            const restoreService = new RestoreCheckpointService();
+            await restoreService.call({ checkpointId: latestCheckpoint.id });
+          } else {
+            await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
+              backgroundWorkerId: deployment.worker.friendlyId,
+              data: {
+                type: "SCHEDULE_ATTEMPT",
+                id: taskRunAttempt.id,
+                image: deployment.imageReference,
+                envId: environment.id,
+                runId: taskRunAttempt.taskRunId,
+              },
+            });
+          }
 
           this._inProgressAttempts.set(taskRunAttempt.friendlyId, message.messageId);
         } catch (e) {
@@ -575,30 +584,8 @@ export class SharedQueueConsumer {
             return;
           }
 
-          await prisma.taskRunAttempt.update({
-            where: {
-              id: resumableAttempt.id,
-            },
-            data: {
-              status: "EXECUTING",
-              taskRun: {
-                update: {
-                  data: {
-                    status: "EXECUTING",
-                  },
-                },
-              },
-            },
-          });
-
-          socketIo.providerNamespace.emit("RESTORE", {
-            version: "v1",
-            id: latestCheckpoint.id,
-            attemptId: latestCheckpoint.attemptId,
-            type: latestCheckpoint.type,
-            location: latestCheckpoint.location,
-            reason: latestCheckpoint.reason ?? undefined,
-          });
+          const restoreService = new RestoreCheckpointService();
+          await restoreService.call({ checkpointId: latestCheckpoint.id });
 
           setTimeout(() => this.#doWork(), this._options.interval);
           return;
@@ -643,8 +630,7 @@ export class SharedQueueConsumer {
           completions.push(completion);
 
           const executionPayload = await this._tasks.getExecutionPayloadFromAttempt(
-            completedAttempt.id,
-            false
+            completedAttempt.id
           );
 
           if (!executionPayload) {
@@ -732,24 +718,9 @@ export class SharedQueueConsumer {
             return;
           }
 
-          await prisma.taskRunAttempt.update({
-            where: {
-              id: resumableAttempt.id,
-            },
-            data: {
-              status: "EXECUTING",
-            },
-          });
-
           // The attempt will resume automatically after restore
-          socketIo.providerNamespace.emit("RESTORE", {
-            version: "v1",
-            id: latestCheckpoint.id,
-            attemptId: latestCheckpoint.attemptId,
-            type: latestCheckpoint.type,
-            location: latestCheckpoint.location,
-            reason: latestCheckpoint.reason ?? undefined,
-          });
+          const restoreService = new RestoreCheckpointService();
+          await restoreService.call({ checkpointId: latestCheckpoint.id });
         } catch (e) {
           if (e instanceof Error) {
             this._currentSpan?.recordException(e);
@@ -828,7 +799,7 @@ class SharedQueueTasks {
 
   async getExecutionPayloadFromAttempt(
     id: string,
-    setToExecuting = true
+    setToExecuting?: boolean
   ): Promise<ProdTaskRunExecutionPayload | undefined> {
     const attempt = await prisma.taskRunAttempt.findUnique({
       where: {
@@ -862,34 +833,44 @@ class SharedQueueTasks {
       return;
     }
 
-    if (attempt.status === "CANCELED") {
-      return;
+    switch (attempt.status) {
+      case "CANCELED":
+      case "EXECUTING": {
+        logger.error("Invalid attempt status for execution payload retrieval", {
+          attemptId: id,
+          status: attempt.status,
+        });
+        return;
+      }
     }
 
-    if (attempt.status === "FAILED") {
-      return;
-    }
-
-    if (attempt.status === "COMPLETED") {
-      return;
-    }
-
-    if (attempt.taskRun.status === "CANCELED") {
-      return;
-    }
-
-    if (attempt.taskRun.status === "COMPLETED_SUCCESSFULLY") {
-      return;
-    }
-
-    if (attempt.taskRun.status === "COMPLETED_WITH_ERRORS") {
-      return;
+    switch (attempt.taskRun.status) {
+      case "CANCELED":
+      case "EXECUTING":
+      case "INTERRUPTED": {
+        logger.error("Invalid run status for execution payload retrieval", {
+          attemptId: id,
+          runId: attempt.taskRunId,
+          status: attempt.taskRun.status,
+        });
+        return;
+      }
     }
 
     if (setToExecuting) {
       await prisma.taskRunAttempt.update({
         where: {
           id,
+          taskRun: {
+            status: {
+              notIn: [
+                "CANCELED",
+                "COMPLETED_SUCCESSFULLY",
+                "COMPLETED_WITH_ERRORS",
+                "SYSTEM_FAILURE",
+              ],
+            },
+          },
         },
         data: {
           status: "EXECUTING",
@@ -975,6 +956,34 @@ class SharedQueueTasks {
     };
 
     return payload;
+  }
+
+  async getLatestExecutionPayloadFromRun(
+    id: string,
+    setToExecuting?: boolean
+  ): Promise<ProdTaskRunExecutionPayload | undefined> {
+    const run = await prisma.taskRun.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        attempts: {
+          take: 1,
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+      },
+    });
+
+    const latestAttempt = run?.attempts[0];
+
+    if (!latestAttempt) {
+      logger.error("No attempts for run", { id });
+      return;
+    }
+
+    return this.getExecutionPayloadFromAttempt(latestAttempt.id, setToExecuting);
   }
 
   async taskHeartbeat(attemptFriendlyId: string, seconds: number = 60) {

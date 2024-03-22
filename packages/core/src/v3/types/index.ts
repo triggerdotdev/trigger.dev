@@ -48,6 +48,19 @@ export type HandleErrorResult =
   | HandleErrorModificationOptions
   | Promise<undefined | void | HandleErrorModificationOptions>;
 
+export type HandleErrorArgs = {
+  ctx: Context;
+  retry?: RetryOptions;
+  retryAt?: Date;
+  retryDelayInMs?: number;
+};
+
+export type HandleErrorFunction = (
+  payload: any,
+  error: unknown,
+  params: HandleErrorArgs
+) => HandleErrorResult;
+
 export type TaskMetadataWithFunctions = TaskMetadataWithFilePath & {
   fns: {
     run: (payload: any, params: RunFnParams<any>) => Promise<any>;

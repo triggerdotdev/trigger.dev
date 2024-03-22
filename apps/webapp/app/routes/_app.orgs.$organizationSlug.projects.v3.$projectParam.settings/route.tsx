@@ -2,7 +2,6 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { ActionFunction, json } from "@remix-run/server-runtime";
-import { redirect } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -11,7 +10,6 @@ import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
-import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -19,15 +17,9 @@ import { Label } from "~/components/primitives/Label";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { prisma } from "~/db.server";
 import { useProject } from "~/hooks/useProject";
-import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import {
-  clearCurrentProjectId,
-  commitCurrentProjectSession,
-} from "~/services/currentProject.server";
-import { DeleteProjectService } from "~/services/deleteProject.server";
-import { logger } from "~/services/logger.server";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUserId } from "~/services/session.server";
-import { organizationPath, projectPath, v3ProjectPath } from "~/utils/pathBuilder";
+import { v3ProjectPath } from "~/utils/pathBuilder";
 
 export function createSchema(
   constraints: {
@@ -126,7 +118,7 @@ export default function Page() {
             <Fieldset>
               <InputGroup>
                 <Label>Project ref</Label>
-                <ClipboardField value={`proj_${project.ref}`} variant={"secondary/small"} />
+                <ClipboardField value={project.ref} variant={"secondary/small"} />
                 <Hint>
                   This goes in your{" "}
                   <InlineCode variant="extra-extra-small">trigger.config</InlineCode> file.

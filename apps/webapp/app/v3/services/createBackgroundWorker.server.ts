@@ -7,6 +7,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "../marqs.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
+import { projectPubSub } from "./projectPubSub.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -66,6 +67,15 @@ export class CreateBackgroundWorkerService extends BaseService {
       });
 
       await createBackgroundTasks(body.metadata.tasks, backgroundWorker, environment, this._prisma);
+
+      //send a notification that a new worker has been created
+      await projectPubSub.publish(`project:${project.id}:env:${environment.id}`, "WORKER_CREATED", {
+        environmentId: environment.id,
+        environmentType: environment.type,
+        createdAt: backgroundWorker.createdAt,
+        taskCount: body.metadata.tasks.length,
+        type: "local",
+      });
 
       return backgroundWorker;
     });

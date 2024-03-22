@@ -131,10 +131,11 @@ export function TriggerDevStep({ extra }: { extra?: string }) {
 }
 
 // Trigger.dev version 3 setup commands
+const v3PackageTag = "v3";
 
 export function InitCommandV3() {
   const project = useProject();
-  const projectRef = `proj_${project.ref}`;
+  const projectRef = project.ref;
   return (
     <ClientTabs defaultValue="npm">
       <ClientTabsList>
@@ -147,7 +148,7 @@ export function InitCommandV3() {
           variant="primary/medium"
           iconButton
           className="mb-4"
-          value={`npx trigger.dev@latest init -p ${projectRef}`}
+          value={`npx trigger.dev@${v3PackageTag} init -p ${projectRef}`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
@@ -155,7 +156,7 @@ export function InitCommandV3() {
           variant="primary/medium"
           iconButton
           className="mb-4"
-          value={`pnpm dlx trigger.dev@latest init -p ${projectRef}`}
+          value={`pnpm dlx trigger.dev@${v3PackageTag} init -p ${projectRef}`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
@@ -163,7 +164,7 @@ export function InitCommandV3() {
           variant="primary/medium"
           iconButton
           className="mb-4"
-          value={`yarn dlx trigger.dev@latest init -p ${projectRef}`}
+          value={`yarn dlx trigger.dev@${v3PackageTag} init -p ${projectRef}`}
         />
       </ClientTabsContent>
     </ClientTabs>
@@ -183,7 +184,7 @@ export function TriggerDevStepV3() {
           variant="primary/medium"
           iconButton
           className="mb-4"
-          value={`npx trigger.dev@latest dev`}
+          value={`npx trigger.dev@${v3PackageTag} dev`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
@@ -191,7 +192,7 @@ export function TriggerDevStepV3() {
           variant="primary/medium"
           iconButton
           className="mb-4"
-          value={`pnpm dlx trigger.dev@latest dev`}
+          value={`pnpm dlx trigger.dev@${v3PackageTag} dev`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
@@ -199,7 +200,7 @@ export function TriggerDevStepV3() {
           variant="primary/medium"
           iconButton
           className="mb-4"
-          value={`yarn dlx trigger.dev@latest dev`}
+          value={`yarn dlx trigger.dev@${v3PackageTag} dev`}
         />
       </ClientTabsContent>
     </ClientTabs>

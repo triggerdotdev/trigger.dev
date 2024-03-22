@@ -5,6 +5,7 @@ import {
   ZodMessageHandler,
   ZodMessageSender,
   clientWebsocketMessages,
+  detectDependencyVersion,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
 import chalk from "chalk";
@@ -24,10 +25,11 @@ import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
-import { CommonCommandOptions } from "../cli/common.js";
+import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { readConfig } from "../utilities/configFiles";
+import { readJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
-import { detectPackageNameFromImportPath } from "../utilities/installPackages";
+import { detectPackageNameFromImportPath, parsePackageName } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
@@ -46,44 +48,27 @@ const DevCommandOptions = CommonCommandOptions.extend({
 type DevCommandOptions = z.infer<typeof DevCommandOptions>;
 
 export function configureDevCommand(program: Command) {
-  program
-    .command("dev")
-    .description("Run your Trigger.dev tasks locally")
-    .argument("[path]", "The path to the project", ".")
-    .option(
-      "-l, --log-level <level>",
-      "The log level to use (debug, info, log, warn, error, none)",
-      "log"
-    )
-    .option(
-      "-c, --config <config file>",
-      "The name of the config file, found at [path]",
-      "trigger.config.mjs"
-    )
-    .option(
-      "-p, --project-ref <project ref>",
-      "The project ref. Required if there is no config file."
-    )
-    .option("--debugger", "Enable the debugger")
-    .option("--debug-otel", "Enable OpenTelemetry debugging")
-    .action(async (path, options) => {
-      try {
-        await devCommand(path, options);
-      } catch (e) {
-        //todo error reporting
-        throw e;
-      }
+  return commonOptions(
+    program
+      .command("dev")
+      .description("Run your Trigger.dev tasks locally")
+      .argument("[path]", "The path to the project", ".")
+      .option("-c, --config <config file>", "The name of the config file, found at [path]")
+      .option(
+        "-p, --project-ref <project ref>",
+        "The project ref. Required if there is no config file."
+      )
+      .option("--debugger", "Enable the debugger")
+      .option("--debug-otel", "Enable OpenTelemetry debugging")
+  ).action(async (path, options) => {
+    wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
+      await devCommand(path, opts);
     });
+  });
 }
 
-export async function devCommand(dir: string, anyOptions: unknown) {
-  const options = DevCommandOptions.safeParse(anyOptions);
-
-  if (!options.success) {
-    throw new Error(`Invalid options: ${options.error}`);
-  }
-
-  const authorization = await isLoggedIn();
+export async function devCommand(dir: string, options: DevCommandOptions) {
+  const authorization = await isLoggedIn(options.profile);
 
   if (!authorization.ok) {
     if (authorization.error === "fetch failed") {
@@ -95,16 +80,9 @@ export async function devCommand(dir: string, anyOptions: unknown) {
     return;
   }
 
-  let watcher;
-
-  try {
-    const devInstance = await startDev(dir, options.data, authorization.config);
-    watcher = devInstance.watcher;
-    const { waitUntilExit } = devInstance.devReactElement;
-    await waitUntilExit();
-  } finally {
-    await watcher?.close();
-  }
+  const devInstance = await startDev(dir, options, authorization.auth);
+  const { waitUntilExit } = devInstance.devReactElement;
+  await waitUntilExit();
 }
 
 async function startDev(
@@ -112,7 +90,6 @@ async function startDev(
   options: DevCommandOptions,
   authorization: { apiUrl: string; accessToken: string }
 ) {
-  let watcher: ReturnType<typeof watch> | undefined;
   let rerender: (node: React.ReactNode) => void | undefined;
 
   try {
@@ -122,29 +99,14 @@ async function startDev(
 
     await printStandloneInitialBanner(true);
 
+    logger.debug("Starting dev session", { dir, options, authorization });
+
     let config = await readConfig(dir, {
       projectRef: options.projectRef,
       configFile: options.config,
     });
 
     logger.debug("Initial config", { config });
-
-    if (config.status === "file") {
-      watcher = watch(config.path, {
-        persistent: true,
-      }).on("change", async (_event) => {
-        config = await readConfig(dir, { configFile: options.config });
-
-        if (config.status === "file") {
-          logger.log(`${basename(config.path)} changed...`);
-          logger.debug("New config", { config: config.config });
-          rerender(await getDevReactElement(config.config, authorization, config.path));
-        } else {
-          logger.debug("New config", { config: config.config });
-          rerender(await getDevReactElement(config.config, authorization));
-        }
-      });
-    }
 
     async function getDevReactElement(
       configParam: ResolvedConfig,
@@ -193,14 +155,11 @@ async function startDev(
 
     return {
       devReactElement,
-      watcher,
       stop: async () => {
         devReactElement.unmount();
-        await watcher?.close();
       },
     };
   } catch (e) {
-    await watcher?.close();
     throw e;
   }
 }
@@ -353,12 +312,12 @@ function useDev({
 
         entryPointContents = entryPointContents.replace(
           "__IMPORTED_PROJECT_CONFIG__",
-          `import importedConfig from "${configPath}";`
+          `import * as importedConfigExports from "${configPath}"; const importedConfig = importedConfigExports.config; const handleError = importedConfigExports.handleError;`
         );
       } else {
         entryPointContents = entryPointContents.replace(
           "__IMPORTED_PROJECT_CONFIG__",
-          `const importedConfig = undefined;`
+          `const importedConfig = undefined; const handleError = undefined;`
         );
       }
 
@@ -378,7 +337,7 @@ function useDev({
         minify: false,
         sourcemap: "external", // does not set the //# sourceMappingURL= comment in the file, we handle it ourselves
         packages: "external", // https://esbuild.github.io/api/#packages
-        logLevel: "warning",
+        logLevel: "error",
         platform: "node",
         format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
         target: ["node18", "es2020"],
@@ -449,7 +408,7 @@ function useDev({
 
                 logger.debug(`Wrote background worker to ${fullPath}`);
 
-                const dependencies = gatherRequiredDependencies(metaOutput);
+                const dependencies = await gatherRequiredDependencies(metaOutput, config);
 
                 if (sourceMapFile) {
                   const sourceMapPath = `${fullPath}.map`;
@@ -459,10 +418,13 @@ function useDev({
                 const environmentVariablesResponse =
                   await environmentClient.getEnvironmentVariables(config.project);
 
+                const processEnv = gatherProcessEnv();
+
                 const backgroundWorker = new BackgroundWorker(fullPath, {
                   projectConfig: config,
                   dependencies,
                   env: {
+                    ...processEnv,
                     TRIGGER_API_URL: apiUrl,
                     TRIGGER_SECRET_KEY: apiKey,
                     ...(environmentVariablesResponse.success
@@ -690,7 +652,10 @@ function WebsocketFactory(apiKey: string) {
 
 // Returns the dependencies that are required by the output that are found in output and the CLI package dependencies
 // Returns the dependency names and the version to use (taken from the CLI deps package.json)
-function gatherRequiredDependencies(outputMeta: Metafile["outputs"][string]) {
+async function gatherRequiredDependencies(
+  outputMeta: Metafile["outputs"][string],
+  config: ResolvedConfig
+) {
   const dependencies: Record<string, string> = {};
 
   for (const file of outputMeta.imports) {
@@ -704,14 +669,65 @@ function gatherRequiredDependencies(outputMeta: Metafile["outputs"][string]) {
       continue;
     }
 
-    const internalDependencyVersion = (packageJson.dependencies as Record<string, string>)[
-      packageName
-    ];
+    const internalDependencyVersion =
+      (packageJson.dependencies as Record<string, string>)[packageName] ??
+      detectDependencyVersion(packageName);
 
     if (internalDependencyVersion) {
       dependencies[packageName] = internalDependencyVersion;
     }
   }
 
+  if (config.additionalPackages) {
+    const projectPackageJson = await readJSONFile(join(config.projectDir, "package.json"));
+
+    for (const packageName of config.additionalPackages) {
+      if (dependencies[packageName]) {
+        continue;
+      }
+
+      const packageParts = parsePackageName(packageName);
+
+      if (packageParts.version) {
+        dependencies[packageParts.name] = packageParts.version;
+        continue;
+      } else {
+        const externalDependencyVersion = {
+          ...projectPackageJson?.devDependencies,
+          ...projectPackageJson?.dependencies,
+        }[packageName];
+
+        if (externalDependencyVersion) {
+          dependencies[packageParts.name] = externalDependencyVersion;
+          continue;
+        } else {
+          logger.warn(
+            `Could not find version for package ${packageName}, add a version specifier to the package name (e.g. ${packageParts.name}@latest) or add it to your project's package.json`
+          );
+        }
+      }
+    }
+  }
+
   return dependencies;
+}
+
+function gatherProcessEnv() {
+  const env = {
+    NODE_ENV: process.env.NODE_ENV ?? "development",
+    PATH: process.env.PATH,
+    USER: process.env.USER,
+    SHELL: process.env.SHELL,
+    NVM_INC: process.env.NVM_INC,
+    NVM_DIR: process.env.NVM_DIR,
+    NVM_BIN: process.env.NVM_BIN,
+    LANG: process.env.LANG,
+    TERM: process.env.TERM,
+    NODE_PATH: process.env.NODE_PATH,
+    HOME: process.env.HOME,
+    BUN_INSTALL: process.env.BUN_INSTALL,
+  };
+
+  // Filter out undefined values
+  return Object.fromEntries(Object.entries(env).filter(([key, value]) => value !== undefined));
 }

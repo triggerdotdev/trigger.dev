@@ -27,11 +27,12 @@ class ProdWorker {
   private contentHash = process.env.TRIGGER_CONTENT_HASH!;
   private projectRef = process.env.TRIGGER_PROJECT_REF!;
   private envId = process.env.TRIGGER_ENV_ID!;
+  private runId = process.env.TRIGGER_RUN_ID || "index-only";
   private attemptId = process.env.TRIGGER_ATTEMPT_ID || "index-only";
   private deploymentId = process.env.TRIGGER_DEPLOYMENT_ID!;
 
   private executing = false;
-  private completed = false;
+  private completed = new Set<string>();
   private paused = false;
 
   private nextResumeAfter: "WAIT_FOR_DURATION" | "WAIT_FOR_TASK" | "WAIT_FOR_BATCH" | undefined;
@@ -53,6 +54,7 @@ class ProdWorker {
     this.#backgroundWorker = new ProdBackgroundWorker("worker.js", {
       projectConfig: __PROJECT_CONFIG__,
       env: {
+        ...gatherProcessEnv(),
         TRIGGER_API_URL: this.apiUrl,
         TRIGGER_SECRET_KEY: this.apiKey,
         OTEL_EXPORTER_OTLP_ENDPOINT:
@@ -136,17 +138,32 @@ class ProdWorker {
     this.#httpServer = this.#createHttpServer();
   }
 
+  #returnValidatedExtraHeaders(headers: Record<string, string>) {
+    for (const [key, value] of Object.entries(headers)) {
+      if (value === undefined) {
+        throw new Error(`Extra header is undefined: ${key}`);
+      }
+    }
+
+    return headers;
+  }
+
   #createCoordinatorSocket() {
+    const extraHeaders = this.#returnValidatedExtraHeaders({
+      "x-machine-name": MACHINE_NAME,
+      "x-pod-name": POD_NAME,
+      "x-trigger-content-hash": this.contentHash,
+      "x-trigger-project-ref": this.projectRef,
+      "x-trigger-attempt-id": this.attemptId,
+      "x-trigger-env-id": this.envId,
+      "x-trigger-deployment-id": this.deploymentId,
+      "x-trigger-run-id": this.runId,
+    });
+
     logger.log("connecting to coordinator", {
       host: COORDINATOR_HOST,
       port: COORDINATOR_PORT,
-      deploymentId: this.deploymentId,
-      podName: POD_NAME,
-      machineName: MACHINE_NAME,
-      contentHash: this.contentHash,
-      projectRef: this.projectRef,
-      attemptId: this.attemptId,
-      envId: this.envId,
+      extraHeaders,
     });
 
     const coordinatorConnection = new ZodSocketConnection({
@@ -155,15 +172,7 @@ class ProdWorker {
       port: COORDINATOR_PORT,
       clientMessages: ProdWorkerToCoordinatorMessages,
       serverMessages: CoordinatorToProdWorkerMessages,
-      extraHeaders: {
-        "x-machine-name": MACHINE_NAME,
-        "x-pod-name": POD_NAME,
-        "x-trigger-content-hash": this.contentHash,
-        "x-trigger-project-ref": this.projectRef,
-        "x-trigger-attempt-id": this.attemptId,
-        "x-trigger-env-id": this.envId,
-        "x-trigger-deployment-id": this.deploymentId,
-      },
+      extraHeaders,
       handlers: {
         RESUME: async (message) => {
           for (let i = 0; i < message.completions.length; i++) {
@@ -178,27 +187,46 @@ class ProdWorker {
         RESUME_AFTER_DURATION: async (message) => {
           this.#backgroundWorker.waitCompletedNotification();
         },
-        EXECUTE_TASK_RUN: async (message) => {
-          if (this.executing || this.completed) {
-            logger.error("dropping execute request, already executing or completed");
+        EXECUTE_TASK_RUN: async ({ executionPayload }) => {
+          if (this.executing) {
+            logger.error("dropping execute request, already executing");
+            return;
+          }
+
+          if (this.completed.has(executionPayload.execution.attempt.id)) {
+            logger.error("dropping execute request, already completed");
             return;
           }
 
           this.executing = true;
-          const completion = await this.#backgroundWorker.executeTaskRun(message.executionPayload);
+          const completion = await this.#backgroundWorker.executeTaskRun(executionPayload);
 
           logger.log("completed", completion);
 
-          this.completed = true;
+          this.completed.add(executionPayload.execution.attempt.id);
           this.executing = false;
 
-          await this.#coordinatorSocket.socket.emitWithAck("TASK_RUN_COMPLETED", {
-            version: "v1",
-            execution: message.executionPayload.execution,
-            completion,
-          });
+          await this.#backgroundWorker.flushTelemetry();
 
-          process.exit(0);
+          const { didCheckpoint, shouldExit } = await this.#coordinatorSocket.socket.emitWithAck(
+            "TASK_RUN_COMPLETED",
+            {
+              version: "v1",
+              execution: executionPayload.execution,
+              completion,
+            }
+          );
+
+          logger.log("completion acknowledged", { didCheckpoint, shouldExit });
+
+          if (shouldExit) {
+            await this.#backgroundWorker.close();
+            process.exit(0);
+          }
+
+          // Forcing a reconnect will ensure the connection handler runs and signals we are ready for another execution
+          this.#coordinatorSocket.close();
+          this.#coordinatorSocket.connect();
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
           if (!this.executing) {
@@ -308,6 +336,7 @@ class ProdWorker {
         socket.emit("READY_FOR_EXECUTION", {
           version: "v1",
           attemptId: this.attemptId,
+          runId: this.runId,
         });
       },
     });
@@ -390,6 +419,7 @@ class ProdWorker {
           this.#coordinatorSocket.send("READY_FOR_EXECUTION", {
             version: "v1",
             attemptId: this.attemptId,
+            runId: this.runId,
           });
           return reply.empty();
 
@@ -484,3 +514,19 @@ class ProdWorker {
 
 const prodWorker = new ProdWorker(HTTP_SERVER_PORT);
 prodWorker.start();
+
+function gatherProcessEnv() {
+  const env = {
+    NODE_ENV: process.env.NODE_ENV ?? "production",
+    PATH: process.env.PATH,
+    USER: process.env.USER,
+    SHELL: process.env.SHELL,
+    LANG: process.env.LANG,
+    TERM: process.env.TERM,
+    NODE_PATH: process.env.NODE_PATH,
+    HOME: process.env.HOME,
+  };
+
+  // Filter out undefined values
+  return Object.fromEntries(Object.entries(env).filter(([key, value]) => value !== undefined));
+}

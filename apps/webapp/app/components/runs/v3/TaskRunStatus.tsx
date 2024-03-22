@@ -1,4 +1,7 @@
 import {
+  ArrowPathIcon,
+  BoltSlashIcon,
+  BugAntIcon,
   CheckCircleIcon,
   ClockIcon,
   NoSymbolIcon,
@@ -6,26 +9,46 @@ import {
   RectangleStackIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
+import { TaskRunStatus } from "@trigger.dev/database";
+import { SnowflakeIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
-import { ExtendedTaskAttemptStatus } from "./RunFilters";
 
-export function TaskRunStatus({
+const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
+  PENDING: "Task is waiting to be executed",
+  EXECUTING: "Task is currently being executed",
+  RETRYING_AFTER_FAILURE: "Task is being reattempted after a failure",
+  WAITING_TO_RESUME: "Task has been frozen and is waiting to be resumed",
+  COMPLETED_SUCCESSFULLY: "Task has been successfully completed",
+  CANCELED: "Task has been canceled",
+  COMPLETED_WITH_ERRORS: "Task has failed with errors",
+  INTERRUPTED: "Task has failed because it was interrupted",
+  SYSTEM_FAILURE: "Task has failed due to a system failure",
+  PAUSED: "Task has been paused by the user",
+};
+
+export function descriptionForTaskRunStatus(status: TaskRunStatus): string {
+  return taskRunStatusDescriptions[status];
+}
+
+export function TaskRunStatusCombo({
   status,
   className,
+  iconClassName,
 }: {
-  status: ExtendedTaskAttemptStatus | null;
+  status: TaskRunStatus;
   className?: string;
+  iconClassName?: string;
 }) {
   return (
     <span className={cn("flex items-center gap-1", className)}>
-      <TaskRunStatusIcon status={status} className="h-4 w-4" />
+      <TaskRunStatusIcon status={status} className={cn("h-4 w-4", iconClassName)} />
       <TaskRunStatusLabel status={status} />
     </span>
   );
 }
 
-export function TaskRunStatusLabel({ status }: { status: ExtendedTaskAttemptStatus | null }) {
+export function TaskRunStatusLabel({ status }: { status: TaskRunStatus }) {
   return <span className={runStatusClassNameColor(status)}>{runStatusTitle(status)}</span>;
 }
 
@@ -33,28 +56,30 @@ export function TaskRunStatusIcon({
   status,
   className,
 }: {
-  status: ExtendedTaskAttemptStatus | null;
+  status: TaskRunStatus;
   className: string;
 }) {
-  if (status === null) {
-    return <RectangleStackIcon className={cn(runStatusClassNameColor(status), className)} />;
-  }
-
   switch (status) {
-    case "ENQUEUED":
-      return <RectangleStackIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PENDING":
-      return <ClockIcon className={cn(runStatusClassNameColor(status), className)} />;
+      return <RectangleStackIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "EXECUTING":
       return <Spinner className={cn(runStatusClassNameColor(status), className)} />;
+    case "WAITING_TO_RESUME":
+      return <SnowflakeIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "RETRYING_AFTER_FAILURE":
+      return <ArrowPathIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PAUSED":
       return <PauseCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
-    case "FAILED":
-      return <XCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "CANCELED":
       return <NoSymbolIcon className={cn(runStatusClassNameColor(status), className)} />;
-    case "COMPLETED":
+    case "INTERRUPTED":
+      return <BoltSlashIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "COMPLETED_SUCCESSFULLY":
       return <CheckCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "COMPLETED_WITH_ERRORS":
+      return <XCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "SYSTEM_FAILURE":
+      return <BugAntIcon className={cn(runStatusClassNameColor(status), className)} />;
 
     default: {
       const _exhaustiveCheck: never = status;
@@ -63,26 +88,27 @@ export function TaskRunStatusIcon({
   }
 }
 
-export function runStatusClassNameColor(status: ExtendedTaskAttemptStatus | null): string {
-  if (status === null) {
-    return "text-charcoal-500";
-  }
-
+export function runStatusClassNameColor(status: TaskRunStatus): string {
   switch (status) {
-    case "ENQUEUED":
-      return "text-charcoal-500";
     case "PENDING":
       return "text-charcoal-500";
     case "EXECUTING":
+    case "RETRYING_AFTER_FAILURE":
       return "text-pending";
+    case "WAITING_TO_RESUME":
+      return "text-sky-300";
     case "PAUSED":
       return "text-amber-300";
-    case "FAILED":
-      return "text-error";
     case "CANCELED":
       return "text-charcoal-500";
-    case "COMPLETED":
+    case "INTERRUPTED":
+      return "text-error";
+    case "COMPLETED_SUCCESSFULLY":
       return "text-success";
+    case "COMPLETED_WITH_ERRORS":
+      return "text-error";
+    case "SYSTEM_FAILURE":
+      return "text-error";
     default: {
       const _exhaustiveCheck: never = status;
       throw new Error(`Non-exhaustive match for value: ${status}`);
@@ -90,26 +116,28 @@ export function runStatusClassNameColor(status: ExtendedTaskAttemptStatus | null
   }
 }
 
-export function runStatusTitle(status: ExtendedTaskAttemptStatus | null): string {
-  if (status === null) {
-    return "Enqueued";
-  }
-
+export function runStatusTitle(status: TaskRunStatus): string {
   switch (status) {
-    case "ENQUEUED":
-      return "Enqueued";
     case "PENDING":
-      return "Pending";
+      return "Queued";
     case "EXECUTING":
       return "Executing";
+    case "WAITING_TO_RESUME":
+      return "Frozen";
+    case "RETRYING_AFTER_FAILURE":
+      return "Reattempting";
     case "PAUSED":
       return "Paused";
-    case "FAILED":
-      return "Failed";
     case "CANCELED":
       return "Canceled";
-    case "COMPLETED":
+    case "INTERRUPTED":
+      return "Interrupted";
+    case "COMPLETED_SUCCESSFULLY":
       return "Completed";
+    case "COMPLETED_WITH_ERRORS":
+      return "Failed";
+    case "SYSTEM_FAILURE":
+      return "System failure";
     default: {
       const _exhaustiveCheck: never = status;
       throw new Error(`Non-exhaustive match for value: ${status}`);

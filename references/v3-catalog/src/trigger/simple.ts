@@ -43,6 +43,15 @@ export const createJsonHeroDoc = task({
   },
 });
 
+export const immediateReturn = task({
+  id: "immediateReturn",
+  run: async (payload: any, { ctx }) => {
+    console.info("some");
+    console.warn("random");
+    console.error("logs");
+  },
+});
+
 export const simulateError = task({
   id: "simulateError",
   run: async (payload: { message: string }) => {
@@ -63,9 +72,13 @@ export const parentTask = task({
     logger.info("Parent task payload", { payload });
 
     console.info("This is an info message");
+    logger.info("This is an info message from logger.info");
     console.log(JSON.stringify({ ctx, message: "This is the parent task context" }));
+    logger.log(JSON.stringify({ ctx, message: "This is the parent task context from logger.log" }));
     console.warn("You've been warned buddy");
+    logger.warn("You've been warned buddy from logger.warn");
     console.error("This is an error message");
+    logger.error("This is an error message from logger.error");
 
     await wait.for({ seconds: 5 });
 
