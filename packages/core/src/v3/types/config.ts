@@ -9,6 +9,13 @@ export interface ProjectConfig {
     default?: RetryOptions;
   };
   additionalPackages?: string[];
+
+  /**
+   * List of additional files to include in your trigger.dev bundle. e.g. ["./prisma/schema.prisma"]
+   *
+   * Supports glob patterns.
+   */
+  additionalFiles?: string[];
   /**
    * List of patterns that determine if a module is included in your trigger.dev bundle. This is needed when consuming ESM only packages, since the trigger.dev bundle is currently built as a CJS module.
    */

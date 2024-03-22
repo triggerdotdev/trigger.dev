@@ -15,7 +15,7 @@ import { resolve as importResolve } from "import-meta-resolve";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import terminalLink from "terminal-link";
 import invariant from "tiny-invariant";
@@ -44,6 +44,7 @@ import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
 import type { SetOptional } from "type-fest";
 import { bundleDependenciesPlugin } from "../utilities/build";
+import { Glob } from "glob";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -1010,6 +1011,8 @@ async function compileProject(
 
       await writeJSONFile(join(tempDir, "package.json"), packageJsonContents);
 
+      await copyAdditionalFiles(config, tempDir);
+
       compileSpinner.stop("Project built successfully");
 
       const resolvingDependenciesResult = await resolveDependencies(
@@ -1285,6 +1288,56 @@ async function gatherRequiredDependencies(
 
   // Make sure we sort the dependencies by key to ensure consistent hashing
   return Object.fromEntries(Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+async function copyAdditionalFiles(config: ResolvedConfig, tempDir: string) {
+  const additionalFiles = config.additionalFiles ?? [];
+
+  if (additionalFiles.length === 0) {
+    return;
+  }
+
+  return await tracer.startActiveSpan(
+    "copyAdditionalFiles",
+    {
+      attributes: {
+        "config.additionalFiles": additionalFiles,
+      },
+    },
+    async (span) => {
+      try {
+        logger.debug(`Copying files to ${tempDir}`, {
+          additionalFiles,
+        });
+
+        const glob = new Glob(additionalFiles, {
+          withFileTypes: true,
+          ignore: ["node_modules"],
+          cwd: config.projectDir,
+          nodir: true,
+        });
+
+        for await (const file of glob) {
+          const relativeDestinationPath = join(
+            tempDir,
+            relative(config.projectDir, file.fullpath())
+          );
+
+          logger.debug(`Copying file ${file.fullpath()} to ${relativeDestinationPath}`);
+          await mkdir(dirname(relativeDestinationPath), { recursive: true });
+          await copyFile(file.fullpath(), relativeDestinationPath);
+        }
+
+        span.end();
+      } catch (error) {
+        recordSpanException(span, error);
+
+        span.end();
+
+        throw error;
+      }
+    }
+  );
 }
 
 async function ensureLoggedIntoDockerRegistry(

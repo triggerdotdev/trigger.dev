@@ -106,6 +106,7 @@
     "evt": "^2.4.13",
     "execa": "^8.0.0",
     "find-up": "^7.0.0",
+    "glob": "^10.3.10",
     "gradient-string": "^2.0.2",
     "import-meta-resolve": "^4.0.0",
     "ink": "^4.4.1",

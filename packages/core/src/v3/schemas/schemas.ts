@@ -32,6 +32,7 @@ export const Config = z.object({
     })
     .optional(),
   additionalPackages: z.string().array().optional(),
+  additionalFiles: z.string().array().optional(),
   dependenciesToBundle: z.array(z.union([z.string(), RegexSchema])).optional(),
 });
 

@@ -15,5 +15,6 @@ export const config: ProjectConfig = {
     },
   },
   additionalPackages: ["wrangler@3.35.0"],
+  additionalFiles: ["./wrangler/wrangler.toml"],
   dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp"],
 };
