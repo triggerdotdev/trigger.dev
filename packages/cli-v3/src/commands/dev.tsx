@@ -288,7 +288,7 @@ function useDev({
 
     async function runBuild() {
       if (ctx) {
-        await ctx.cancel();
+        // This will stop the watching
         await ctx.dispose();
       }
 
@@ -531,8 +531,9 @@ function useDev({
     }
 
     const throttle = pThrottle({
-      limit: 2,
+      limit: 1,
       interval: 1000,
+      strict: true,
     });
 
     const throttledRebuild = throttle(runBuild);
@@ -544,7 +545,7 @@ function useDev({
       }
     );
 
-    taskFileWatcher.on("add", async (path) => {
+    taskFileWatcher.on("change", async (path) => {
       throttledRebuild().catch((error) => {
         logger.error(error);
       });
