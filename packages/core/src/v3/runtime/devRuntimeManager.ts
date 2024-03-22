@@ -80,12 +80,12 @@ export class DevRuntimeManager implements RuntimeManager {
   }
 
   resumeTask(completion: TaskRunExecutionResult, execution: TaskRunExecution): void {
-    console.log(
-      JSON.stringify({
+    process.stdout.write(
+      `${JSON.stringify({
         message: "devRuntimeManager resumeTask",
         runId: execution.run.id,
         taskWaitIds: Array.from(this._taskWaits.keys()),
-      })
+      })}\n`
     );
 
     const wait = this._taskWaits.get(execution.run.id);
