@@ -9,6 +9,7 @@ import { HttpReply, getTextBody, SimpleLogger, getRandomPortNumber } from "@trig
 import { createServer } from "node:http";
 import { ProdBackgroundWorker } from "./backgroundWorker";
 import { UncaughtExceptionError } from "../common/errors";
+import { readFile } from "node:fs/promises";
 
 declare const __PROJECT_CONFIG__: Config;
 
@@ -50,7 +51,7 @@ class ProdWorker {
     port: number,
     private host = "0.0.0.0"
   ) {
-    this.#coordinatorSocket = this.#createCoordinatorSocket();
+    this.#coordinatorSocket = this.#createCoordinatorSocket(COORDINATOR_HOST);
 
     this.#backgroundWorker = new ProdBackgroundWorker("worker.js", {
       projectConfig: __PROJECT_CONFIG__,
@@ -95,14 +96,13 @@ class ProdWorker {
 
       this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
 
-      setTimeout(() => {
+      setTimeout(async () => {
         if (willCheckpointAndRestore) {
           this.paused = true;
           this.nextResumeAfter = "WAIT_FOR_DURATION";
         }
         // Forcing a reconnect will ensure the connection handler runs to trigger automatic resume
-        this.#coordinatorSocket.close();
-        this.#coordinatorSocket.connect();
+        this.#reconnect();
       }, 3_000);
     });
 
@@ -131,8 +131,7 @@ class ProdWorker {
           this.nextResumeAfter = "WAIT_FOR_TASK";
         }
         // Forcing a reconnect will ensure the connection handler runs to trigger automatic resume
-        this.#coordinatorSocket.close();
-        this.#coordinatorSocket.connect();
+        this.#reconnect();
       }, 3_000);
     });
 
@@ -161,13 +160,36 @@ class ProdWorker {
           this.nextResumeAfter = "WAIT_FOR_BATCH";
         }
         // Forcing a reconnect will ensure the connection handler runs to trigger automatic resume
-        this.#coordinatorSocket.close();
-        this.#coordinatorSocket.connect();
+        this.#reconnect();
       }, 3_000);
     });
 
     this.#httpPort = port;
     this.#httpServer = this.#createHttpServer();
+  }
+
+  async #reconnect() {
+    this.#coordinatorSocket.close();
+
+    try {
+      const coordinatorHost = (await readFile("/etc/taskinfo/coordinator-host", "utf-8")).replace(
+        "\n",
+        ""
+      );
+
+      logger.log("reconnecting", {
+        coordinatorHost: {
+          env: COORDINATOR_HOST,
+          volume: coordinatorHost,
+          current: this.#coordinatorSocket.socket.io.opts.hostname,
+        },
+      });
+
+      this.#coordinatorSocket = this.#createCoordinatorSocket(coordinatorHost);
+    } catch (error) {
+      logger.error("taskinfo read error during reconnect", { error });
+      this.#coordinatorSocket.connect();
+    }
   }
 
   #returnValidatedExtraHeaders(headers: Record<string, string>) {
@@ -180,7 +202,7 @@ class ProdWorker {
     return headers;
   }
 
-  #createCoordinatorSocket() {
+  #createCoordinatorSocket(host: string) {
     const extraHeaders = this.#returnValidatedExtraHeaders({
       "x-machine-name": MACHINE_NAME,
       "x-pod-name": POD_NAME,
@@ -204,7 +226,7 @@ class ProdWorker {
 
     const coordinatorConnection = new ZodSocketConnection({
       namespace: "prod-worker",
-      host: COORDINATOR_HOST,
+      host,
       port: COORDINATOR_PORT,
       clientMessages: ProdWorkerToCoordinatorMessages,
       serverMessages: CoordinatorToProdWorkerMessages,
@@ -262,9 +284,13 @@ class ProdWorker {
             process.exit(0);
           }
 
+          // Give coordinator a chance to request exit
+          await new Promise((resolve) => {
+            setTimeout(resolve, 5_000);
+          });
+
           // Forcing a reconnect will ensure the connection handler runs and signals we are ready for another execution
-          this.#coordinatorSocket.close();
-          this.#coordinatorSocket.connect();
+          this.#reconnect();
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
           if (!this.executing) {
@@ -381,6 +407,19 @@ class ProdWorker {
           runId: this.runId,
           totalCompletions: this.completed.size,
         });
+      },
+      onError: async (socket, err, logger) => {
+        logger.error("onError", {
+          error: {
+            name: err.name,
+            message: err.message,
+          },
+        });
+
+        this.#reconnect();
+      },
+      onDisconnect: async (socket, reason, description, logger) => {
+        // this.#reconnect();
       },
     });
 
