@@ -1,8 +1,8 @@
-import type { ProjectConfig } from "@trigger.dev/core/v3";
+import type { TriggerConfig } from "@trigger.dev/sdk/v3";
 
 export { handleError } from "./src/handleError";
 
-export const config: ProjectConfig = {
+export const config: TriggerConfig = {
   project: "yubjwjsfkxnylobaqvqz",
   retries: {
     enabledInDev: true,
