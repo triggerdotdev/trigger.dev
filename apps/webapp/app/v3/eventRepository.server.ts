@@ -7,6 +7,7 @@ import {
   SemanticInternalAttributes,
   SpanEvent,
   SpanEvents,
+  SpanMessagingEvent,
   TaskEventStyle,
   correctErrorStackTrace,
   flattenAttributes,
@@ -94,6 +95,11 @@ export type PreparedEvent = Omit<TaskEventRecord, "events" | "style" | "duration
   duration: number;
   events: SpanEvents;
   style: TaskEventStyle;
+};
+
+export type SpanLink = {
+  type: "run";
+  runId: string;
 };
 
 export type SpanSummary = {
@@ -364,6 +370,18 @@ export class EventRepository {
 
     const properties = sanitizedAttributes(fullEvent.properties);
 
+    const messagingEvent = SpanMessagingEvent.optional().safeParse((properties as any)?.messaging);
+
+    const links: SpanLink[] = [];
+
+    if (messagingEvent.success && messagingEvent.data) {
+      if ("id" in messagingEvent.data.message) {
+        if (messagingEvent.data.message.id.startsWith("run_")) {
+          links.push({ type: "run", runId: messagingEvent.data.message.id });
+        }
+      }
+    }
+
     const events = transformEvents(span.data.events, fullEvent.metadata as Attributes);
 
     return {
@@ -374,6 +392,7 @@ export class EventRepository {
       properties,
       events,
       show,
+      links,
     };
   }
 

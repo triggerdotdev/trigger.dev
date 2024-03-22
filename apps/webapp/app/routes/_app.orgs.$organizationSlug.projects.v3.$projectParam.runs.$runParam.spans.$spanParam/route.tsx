@@ -1,5 +1,5 @@
 import { QueueListIcon, StopCircleIcon } from "@heroicons/react/20/solid";
-import { useFetcher, useParams } from "@remix-run/react";
+import { useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -8,17 +8,11 @@ import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTrigger,
-} from "~/components/primitives/Dialog";
+import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import { TextLink } from "~/components/primitives/TextLink";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
@@ -136,6 +130,23 @@ export default function Page() {
               </Property>
             )}
           </PropertyTable>
+
+          {event.links && event.links.length > 0 && (
+            <div>
+              <Header2 spacing>Links</Header2>
+              <PropertyTable>
+                {event.links.map((link, index) => (
+                  <Property key={index} label={link.type === "run" ? "Run" : "Unknown"}>
+                    <Paragraph variant="small">
+                      <TextLink to={v3RunPath(organization, project, { friendlyId: link.runId })}>
+                        {link.runId}
+                      </TextLink>
+                    </Paragraph>
+                  </Property>
+                ))}
+              </PropertyTable>
+            </div>
+          )}
 
           {event.events !== undefined && <SpanEvents spanEvents={event.events} />}
           {event.payload !== undefined && (
