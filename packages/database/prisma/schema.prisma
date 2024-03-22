@@ -119,6 +119,8 @@ model Organization {
 
   runsEnabled Boolean @default(true)
 
+  v3Enabled Boolean @default(false)
+
   environments RuntimeEnvironment[]
   connections  IntegrationConnection[]
   endpoints    Endpoint[]

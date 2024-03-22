@@ -40,6 +40,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     select: {
       id: true,
       title: true,
+      v3Enabled: true,
       _count: {
         select: {
           projects: {
@@ -62,6 +63,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       title: organization.title,
       slug: organizationSlug,
       projectsCount: organization._count.projects,
+      v3Enabled: organization.v3Enabled,
     },
     defaultVersion: url.searchParams.get("version") ?? "v2",
   });
@@ -107,6 +109,8 @@ export default function NewOrganizationPage() {
   const lastSubmission = useActionData();
   const { v3Enabled } = useFeatures();
 
+  const canCreateV3Projects = organization.v3Enabled && v3Enabled;
+
   const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",
     // TODO: type this
@@ -141,7 +145,7 @@ export default function NewOrganizationPage() {
               />
               <FormError id={projectName.errorId}>{projectName.error}</FormError>
             </InputGroup>
-            {v3Enabled ? (
+            {canCreateV3Projects ? (
               <InputGroup>
                 <Label htmlFor={projectVersion.id}>Project version</Label>
                 <SelectGroup>
