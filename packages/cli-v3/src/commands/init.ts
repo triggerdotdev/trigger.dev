@@ -53,10 +53,6 @@ export function configureInitCommand(program: Command) {
         "The project ref to use when initializing the project"
       )
       .option(
-        "-p, --project-ref <project ref>",
-        "The project ref to use when initializing the project"
-      )
-      .option(
         "-t, --tag <package tag>",
         "The version of the @trigger.dev/sdk package to install",
         "latest"
