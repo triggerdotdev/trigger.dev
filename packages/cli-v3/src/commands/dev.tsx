@@ -13,7 +13,7 @@ import { watch } from "chokidar";
 import { Command } from "commander";
 import { BuildContext, Metafile, context } from "esbuild";
 import { resolve as importResolve } from "import-meta-resolve";
-import { Box, Text, render, useApp, useInput } from "ink";
+import { render, useInput } from "ink";
 import { createHash } from "node:crypto";
 import fs, { readFileSync } from "node:fs";
 import { ClientRequestArgs } from "node:http";
@@ -26,6 +26,7 @@ import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
+import { bundleDependenciesPlugin } from "../utilities/build";
 import { readConfig } from "../utilities/configFiles";
 import { readJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
@@ -39,7 +40,6 @@ import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { UncaughtExceptionError } from "../workers/common/errors";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
-import { bundleDependenciesPlugin } from "../utilities/build";
 
 let apiClient: CliApiClient | undefined;
 
@@ -593,58 +593,13 @@ function DevUIImp(props: DevProps) {
 }
 
 function useHotkeys() {
-  const { exit } = useApp();
-
-  useInput(async (input, key) => {
-    if (key.return) {
-      console.log("");
-      return;
-    }
-    switch (input.toLowerCase()) {
-      // clear console
-      case "c":
-        console.clear();
-        // This console.log causes Ink to re-render the `DevSession` component.
-        // Couldn't find a better way to tell it to do so...
-        console.log();
-        break;
-      // open browser
-      case "b": {
-        break;
-      }
-      // toggle inspector
-      // case "d": {
-      // 	if (inspect) {
-      // 		await openInspector(inspectorPort, props.worker);
-      // 	}
-      // 	break;
-      // }
-
-      // shut down
-      case "q":
-      case "x":
-        exit();
-        break;
-      default:
-        // nothing?
-        break;
-    }
-  });
+  useInput(async (input, key) => {});
 }
 
 function HotKeys() {
   useHotkeys();
 
-  return (
-    <Box borderStyle="round" paddingLeft={1} paddingRight={1}>
-      <Text bold={true}>[b]</Text>
-      <Text> open a browser, </Text>
-      <Text bold={true}>[c]</Text>
-      <Text> clear console, </Text>
-      <Text bold={true}>[x]</Text>
-      <Text> to exit</Text>
-    </Box>
-  );
+  return <></>;
 }
 
 function WebsocketFactory(apiKey: string) {
