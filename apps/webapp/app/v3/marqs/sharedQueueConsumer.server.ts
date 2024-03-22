@@ -703,6 +703,7 @@ export class SharedQueueConsumer {
           socketIo.coordinatorNamespace.emit("RESUME", {
             version: "v1",
             attemptId: resumableAttempt.id,
+            attemptFriendlyId: resumableAttempt.friendlyId,
             completions,
             executions,
           });

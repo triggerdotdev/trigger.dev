@@ -185,10 +185,6 @@ class KubernetesTaskOperations implements TaskOperations {
                   value: opts.runId,
                 },
                 {
-                  name: "TRIGGER_ATTEMPT_ID",
-                  value: opts.attemptId,
-                },
-                {
                   name: "TRIGGER_WORKER_VERSION",
                   value: opts.version,
                 },

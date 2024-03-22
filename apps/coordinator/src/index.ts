@@ -347,30 +347,36 @@ class TaskCoordinator {
       authToken: PLATFORM_SECRET,
       handlers: {
         RESUME: async (message) => {
-          const taskSocket = await this.#getAttemptSocket(message.attemptId);
+          const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
           if (!taskSocket) {
-            logger.log("Socket for attempt not found", { attemptId: message.attemptId });
+            logger.log("Socket for attempt not found", {
+              attemptFriendlyId: message.attemptFriendlyId,
+            });
             return;
           }
 
           taskSocket.emit("RESUME", message);
         },
         RESUME_AFTER_DURATION: async (message) => {
-          const taskSocket = await this.#getAttemptSocket(message.attemptId);
+          const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
           if (!taskSocket) {
-            logger.log("Socket for attempt not found", { attemptId: message.attemptId });
+            logger.log("Socket for attempt not found", {
+              attemptFriendlyId: message.attemptFriendlyId,
+            });
             return;
           }
 
           taskSocket.emit("RESUME_AFTER_DURATION", message);
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
-          const taskSocket = await this.#getAttemptSocket(message.attemptId);
+          const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
           if (!taskSocket) {
-            logger.log("Socket for attempt not found", { attemptId: message.attemptId });
+            logger.log("Socket for attempt not found", {
+              attemptFriendlyId: message.attemptFriendlyId,
+            });
             return;
           }
 
@@ -382,11 +388,21 @@ class TaskCoordinator {
     return platformConnection;
   }
 
-  async #getAttemptSocket(attemptId: string) {
+  async #getRunSocket(runId: string) {
     const sockets = await this.#prodWorkerNamespace.fetchSockets();
 
     for (const socket of sockets) {
-      if (socket.data.attemptId === attemptId) {
+      if (socket.data.runId === runId) {
+        return socket;
+      }
+    }
+  }
+
+  async #getAttemptSocket(attemptFriendlyId: string) {
+    const sockets = await this.#prodWorkerNamespace.fetchSockets();
+
+    for (const socket of sockets) {
+      if (socket.data.attemptFriendlyId === attemptFriendlyId) {
         return socket;
       }
     }
@@ -400,14 +416,22 @@ class TaskCoordinator {
       serverMessages: CoordinatorToProdWorkerMessages,
       socketData: ProdWorkerSocketData,
       postAuth: async (socket, next, logger) => {
-        function setSocketDataFromHeader(dataKey: keyof typeof socket.data, headerName: string) {
+        function setSocketDataFromHeader(
+          dataKey: keyof typeof socket.data,
+          headerName: string,
+          required: boolean = true
+        ) {
           const value = socket.handshake.headers[headerName];
-          if (!value) {
+
+          if (value) {
+            socket.data[dataKey] = Array.isArray(value) ? value[0] : value;
+            return;
+          }
+
+          if (required) {
             logger.error("missing required header", { headerName });
             throw new Error("missing header");
           }
-          0;
-          socket.data[dataKey] = Array.isArray(value) ? value[0] : value;
         }
 
         try {
@@ -415,7 +439,7 @@ class TaskCoordinator {
           setSocketDataFromHeader("contentHash", "x-trigger-content-hash");
           setSocketDataFromHeader("projectRef", "x-trigger-project-ref");
           setSocketDataFromHeader("runId", "x-trigger-run-id");
-          setSocketDataFromHeader("attemptId", "x-trigger-attempt-id");
+          setSocketDataFromHeader("attemptFriendlyId", "x-trigger-attempt-friendly-id", false);
           setSocketDataFromHeader("envId", "x-trigger-env-id");
           setSocketDataFromHeader("deploymentId", "x-trigger-deployment-id");
           setSocketDataFromHeader("deploymentVersion", "x-trigger-deployment-version");
@@ -433,10 +457,7 @@ class TaskCoordinator {
         const logger = new SimpleLogger(`[prod-worker][${socket.id}]`);
 
         this.#platformSocket?.send("LOG", {
-          metadata: {
-            projectRef: socket.data.projectRef,
-            attemptId: socket.data.attemptId,
-          },
+          metadata: socket.data,
           text: "connected",
         });
 
@@ -447,7 +468,7 @@ class TaskCoordinator {
 
           this.#platformSocket?.send("LOG", {
             version: "v1",
-            metadata: { attemptId: socket.data.attemptId },
+            metadata: socket.data,
             text: message.text,
           });
         });
@@ -462,7 +483,7 @@ class TaskCoordinator {
             );
 
             if (!executionAck) {
-              logger.error("no execution ack", { attemptId: socket.data.attemptId });
+              logger.error("no execution ack", { runId: socket.data.runId });
 
               socket.emit("REQUEST_EXIT", {
                 version: "v1",
@@ -472,7 +493,7 @@ class TaskCoordinator {
             }
 
             if (!executionAck.success) {
-              logger.error("failed to get execution payload", { attemptId: socket.data.attemptId });
+              logger.error("failed to get execution payload", { runId: socket.data.runId });
 
               socket.emit("REQUEST_EXIT", {
                 version: "v1",
@@ -485,6 +506,8 @@ class TaskCoordinator {
               version: "v1",
               executionPayload: executionAck.payload,
             });
+
+            socket.data.attemptFriendlyId = executionAck.payload.execution.attempt.id;
           } catch (error) {
             logger.error("Error", { error });
           }
@@ -781,10 +804,7 @@ class TaskCoordinator {
       },
       onDisconnect: async (socket, handler, sender, logger) => {
         this.#platformSocket?.send("LOG", {
-          metadata: {
-            projectRef: socket.data.projectRef,
-            attemptId: socket.data.attemptId,
-          },
+          metadata: socket.data,
           text: "disconnect",
         });
       },

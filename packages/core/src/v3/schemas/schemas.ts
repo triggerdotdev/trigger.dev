@@ -98,7 +98,6 @@ export const PlatformToProviderMessages = {
       version: z.literal("v1").default("v1"),
       checkpointId: z.string(),
       runId: z.string(),
-      attemptId: z.string(),
       type: z.enum(["DOCKER", "KUBERNETES"]),
       location: z.string(),
       reason: z.string().optional(),
@@ -155,7 +154,6 @@ export const CoordinatorToPlatformMessages = {
   READY_FOR_EXECUTION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      attemptId: z.string(),
       runId: z.string(),
       totalCompletions: z.number(),
     }),
@@ -172,7 +170,7 @@ export const CoordinatorToPlatformMessages = {
   READY_FOR_RESUME: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      attemptId: z.string(),
+      attemptFriendlyId: z.string(),
       type: z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]),
     }),
   },
@@ -240,6 +238,7 @@ export const PlatformToCoordinatorMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),
+      attemptFriendlyId: z.string(),
       completions: TaskRunExecutionResult.array(),
       executions: TaskRunExecution.array(),
     }),
@@ -248,12 +247,14 @@ export const PlatformToCoordinatorMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),
+      attemptFriendlyId: z.string(),
     }),
   },
   REQUEST_ATTEMPT_CANCELLATION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),
+      attemptFriendlyId: z.string(),
     }),
   },
 };
@@ -323,7 +324,6 @@ export const ProdWorkerToCoordinatorMessages = {
   READY_FOR_EXECUTION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      attemptId: z.string(),
       runId: z.string(),
       totalCompletions: z.number(),
     }),
@@ -331,7 +331,7 @@ export const ProdWorkerToCoordinatorMessages = {
   READY_FOR_RESUME: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      attemptId: z.string(),
+      attemptFriendlyId: z.string(),
       type: z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]),
     }),
   },
@@ -446,7 +446,7 @@ export const ProdWorkerSocketData = z.object({
   projectRef: z.string(),
   envId: z.string(),
   runId: z.string(),
-  attemptId: z.string(),
+  attemptFriendlyId: z.string().optional(),
   podName: z.string(),
   deploymentId: z.string(),
   deploymentVersion: z.string(),

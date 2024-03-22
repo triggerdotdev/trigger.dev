@@ -31,7 +31,6 @@ export interface TaskOperationsIndexOptions {
 
 export interface TaskOperationsCreateOptions {
   runId: string;
-  attemptId: string;
   image: string;
   machine: Machine;
   envId: string;
@@ -40,7 +39,6 @@ export interface TaskOperationsCreateOptions {
 
 export interface TaskOperationsRestoreOptions {
   runId: string;
-  attemptId: string;
   imageRef: string;
   checkpointRef: string;
   machine: Machine;
@@ -105,7 +103,6 @@ export class ProviderShell implements Provider {
               this.tasks.create({
                 envId: message.data.envId,
                 runId: message.data.runId,
-                attemptId: message.data.id,
                 image: message.data.image,
                 machine: {},
                 version: message.version,
@@ -210,7 +207,6 @@ export class ProviderShell implements Provider {
           try {
             await this.tasks.restore({
               runId: message.runId,
-              attemptId: message.attemptId,
               checkpointRef: message.location,
               machine: {
                 cpu: "1",
@@ -256,7 +252,6 @@ export class ProviderShell implements Provider {
           const body = await getTextBody(req);
 
           await this.tasks.create({
-            attemptId: body,
             envId: "placeholder",
             image: body,
             machine: {

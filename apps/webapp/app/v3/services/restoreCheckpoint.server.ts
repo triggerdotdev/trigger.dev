@@ -70,7 +70,6 @@ export class RestoreCheckpointService extends BaseService {
       version: "v1",
       checkpointId: checkpoint.id,
       runId: checkpoint.runId,
-      attemptId: checkpoint.attemptId,
       type: checkpoint.type,
       location: checkpoint.location,
       reason: checkpoint.reason ?? undefined,

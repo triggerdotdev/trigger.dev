@@ -194,8 +194,12 @@ class ProdWorker {
       "x-trigger-deployment-version": this.deploymentVersion,
     });
 
+    if (this.attemptFriendlyId) {
+      extraHeaders["x-trigger-attempt-friendly-id"] = this.attemptFriendlyId;
+    }
+
     logger.log("connecting to coordinator", {
-      host: COORDINATOR_HOST,
+      host,
       port: COORDINATOR_PORT,
       extraHeaders,
     });
@@ -353,9 +357,14 @@ class ProdWorker {
             return;
           }
 
+          if (!this.attemptFriendlyId) {
+            logger.error("Missing friendly ID");
+            return;
+          }
+
           socket.emit("READY_FOR_RESUME", {
             version: "v1",
-            attemptId: this.attemptId,
+            attemptFriendlyId: this.attemptFriendlyId,
             type: this.nextResumeAfter,
           });
 
@@ -371,8 +380,8 @@ class ProdWorker {
 
         socket.emit("READY_FOR_EXECUTION", {
           version: "v1",
-          attemptId: this.attemptId,
           runId: this.runId,
+          totalCompletions: this.completed.size,
         });
       },
     });
@@ -441,7 +450,6 @@ class ProdWorker {
         case "/ready":
           this.#coordinatorSocket.send("READY_FOR_EXECUTION", {
             version: "v1",
-            attemptId: this.attemptId,
             runId: this.runId,
             totalCompletions: this.completed.size,
           });

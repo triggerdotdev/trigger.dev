@@ -25,7 +25,7 @@ export class ResumeAttemptService {
     await $transaction(this.#prismaClient, async (tx) => {
       const attempt = await tx.taskRunAttempt.findUnique({
         where: {
-          id: params.attemptId,
+          friendlyId: params.attemptFriendlyId,
         },
         include: {
           taskRun: true,
@@ -71,13 +71,13 @@ export class ResumeAttemptService {
       });
 
       if (!attempt) {
-        logger.error("Could not find attempt", { attemptId: params.attemptId });
+        logger.error("Could not find attempt", { attemptFriendlyId: params.attemptFriendlyId });
         return;
       }
 
       if (attempt.taskRun.status !== "WAITING_TO_RESUME") {
         logger.error("Run is not resumable", {
-          attemptId: params.attemptId,
+          attemptId: attempt.id,
           runId: attempt.taskRunId,
         });
         return;
@@ -96,7 +96,7 @@ export class ResumeAttemptService {
             const dependentAttempt = attempt.taskRunDependency.taskRun.attempts[0];
 
             if (!dependentAttempt) {
-              logger.error("No dependent attempt", { attemptId: params.attemptId });
+              logger.error("No dependent attempt", { attemptId: attempt.id });
               return;
             }
 
@@ -104,7 +104,7 @@ export class ResumeAttemptService {
 
             await tx.taskRunAttempt.update({
               where: {
-                id: params.attemptId,
+                id: attempt.id,
               },
               data: {
                 taskRunDependency: {
@@ -116,7 +116,7 @@ export class ResumeAttemptService {
             const dependentBatchItems = attempt.batchTaskRunDependency.items;
 
             if (!dependentBatchItems) {
-              logger.error("No dependent batch items", { attemptId: params.attemptId });
+              logger.error("No dependent batch items", { attemptId: attempt.id });
               return;
             }
 
@@ -124,7 +124,7 @@ export class ResumeAttemptService {
 
             await tx.taskRunAttempt.update({
               where: {
-                id: params.attemptId,
+                id: attempt.id,
               },
               data: {
                 batchTaskRunDependency: {
@@ -133,12 +133,12 @@ export class ResumeAttemptService {
               },
             });
           } else {
-            logger.error("No dependencies", { attemptId: params.attemptId });
+            logger.error("No dependencies", { attemptId: attempt.id });
             return;
           }
 
           if (completedAttemptIds.length === 0) {
-            logger.error("No completed attempt IDs", { attemptId: params.attemptId });
+            logger.error("No completed attempt IDs", { attemptId: attempt.id });
             return;
           }
 
@@ -162,7 +162,7 @@ export class ResumeAttemptService {
 
             if (!completedAttempt) {
               logger.error("Completed attempt not found", {
-                attemptId: params.attemptId,
+                attemptId: attempt.id,
                 completedAttemptId,
               });
               await marqs?.acknowledgeMessage(attempt.taskRunId);
@@ -175,7 +175,7 @@ export class ResumeAttemptService {
 
             if (!completion) {
               logger.error("Failed to get completion payload", {
-                attemptId: params.attemptId,
+                attemptId: attempt.id,
                 completedAttemptId,
               });
               await marqs?.acknowledgeMessage(attempt.taskRunId);
@@ -190,7 +190,7 @@ export class ResumeAttemptService {
 
             if (!executionPayload) {
               logger.error("Failed to get execution payload", {
-                attemptId: params.attemptId,
+                attemptId: attempt.id,
                 completedAttemptId,
               });
               await marqs?.acknowledgeMessage(attempt.taskRunId);
@@ -202,7 +202,7 @@ export class ResumeAttemptService {
 
           await prisma.taskRunAttempt.update({
             where: {
-              id: params.attemptId,
+              id: attempt.id,
             },
             data: {
               status: "EXECUTING",
@@ -218,7 +218,8 @@ export class ResumeAttemptService {
 
           socketIo.coordinatorNamespace.emit("RESUME", {
             version: "v1",
-            attemptId: params.attemptId,
+            attemptId: attempt.id,
+            attemptFriendlyId: attempt.friendlyId,
             completions,
             executions,
           });
