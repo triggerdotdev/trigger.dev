@@ -11,8 +11,7 @@
     "start:openai": "ts-node -r tsconfig-paths/register -r dotenv/config src/openaiUsage.ts",
     "start:retries": "ts-node -r tsconfig-paths/register -r dotenv/config src/retriesUsage.ts",
     "start:batch": "ts-node -r tsconfig-paths/register -r dotenv/config src/batchUsage.ts",
-    "start:stripe": "ts-node -r tsconfig-paths/register -r dotenv/config src/stripeUsage.ts",
-    "postinstall": "npm version"
+    "start:stripe": "ts-node -r tsconfig-paths/register -r dotenv/config src/stripeUsage.ts"
   },
   "dependencies": {
     "@sindresorhus/slugify": "^2.2.1",
