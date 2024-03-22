@@ -59,11 +59,6 @@ export async function action({ request }: ActionFunctionArgs) {
     headers: { "Set-Cookie": await commitImpersonationSession(session) },
   });
 }
-
-const headerClassName =
-  "py-3 px-2 pr-3 text-xs font-semibold leading-tight text-text-bright text-left";
-const cellClassName = "whitespace-nowrap px-2 py-2 text-xs text-text-bright";
-
 export default function AdminDashboardRoute() {
   const user = useUser();
   const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
