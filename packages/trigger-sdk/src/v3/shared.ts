@@ -81,10 +81,47 @@ export type TaskOptions<TPayload, TOutput = any, TInitOutput extends InitOutput 
    * ```
    */
   queue?: QueueOptions;
+  /** Configure the spec of the machine you want your task to run on.
+   * 
+   * @example
+   * 
+   * ```ts
+   * export const heavyTask = task({
+      id: "heavy-task",
+      machine: {
+        cpu: 2,
+        memory: 4,
+      },
+      run: async ({ payload, ctx }) => {
+        //...
+      },
+    });
+   * ```
+  */
   machine?: {
-    cpu?: number;
-    memory?: number;
+    /** vCPUs. The default is 0.5.
+     *
+     * Possible values:
+     * - 0.25
+     * - 0.5
+     * - 1
+     * - 2
+     * - 4
+     */
+    cpu?: 0.25 | 0.5 | 1 | 2 | 4;
+    /** In GBs of RAM. The default is 0.5.
+     *
+     * Possible values:
+     * - 0.25
+     * - 0.5
+     * - 1
+     * - 2
+     * - 4
+     * - 8
+     */
+    memory?: 0.25 | 0.5 | 1 | 2 | 4 | 8;
   };
+  /** This gets called when a task is triggered. It's where you put the code you want to execute.  */
   run: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<TOutput>;
   init?: (payload: TPayload, params: InitFnParams) => Promise<TInitOutput>;
   handleError?: (
