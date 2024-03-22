@@ -162,7 +162,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   log.info("Next steps:");
   log.info(
     `   1. To start developing, run ${chalk.green(
-      "npx trigger.dev@latest dev"
+      `npx trigger.dev@${options.tag} dev`
     )} in your project directory`
   );
   log.info(`   2. Visit your ${projectDashboard} to view your newly created tasks.`);
