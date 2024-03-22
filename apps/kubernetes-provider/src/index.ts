@@ -78,6 +78,20 @@ class KubernetesTaskOperations implements TaskOperations {
                   //     memory: "50Mi",
                   //   },
                   // },
+                  lifecycle: {
+                    preStop: {
+                      httpGet: {
+                        path: "/preStop?cause=index",
+                        port: 8000,
+                      },
+                    },
+                    postStart: {
+                      httpGet: {
+                        path: "/postStart?cause=index",
+                        port: 8000,
+                      },
+                    },
+                  },
                   env: [
                     {
                       name: "DEBUG",
@@ -171,10 +185,28 @@ class KubernetesTaskOperations implements TaskOperations {
               // resources: {
               //   limits: opts.machine,
               // },
+              lifecycle: {
+                preStop: {
+                  httpGet: {
+                    path: "/preStop?cause=create",
+                    port: 8000,
+                  },
+                },
+                postStart: {
+                  httpGet: {
+                    path: "/postStart?cause=create",
+                    port: 8000,
+                  },
+                },
+              },
               env: [
                 {
                   name: "DEBUG",
                   value: "true",
+                },
+                {
+                  name: "HTTP_SERVER_PORT",
+                  value: "8000",
                 },
                 {
                   name: "TRIGGER_ENV_ID",
@@ -295,14 +327,20 @@ class KubernetesTaskOperations implements TaskOperations {
               // resources: {
               //   limits: opts.machine,
               // },
-              // lifecycle: {
-              //   postStart: {
-              //     httpGet: {
-              //       path: "/connect",
-              //       port: 8000,
-              //     },
-              //   },
-              // },
+              lifecycle: {
+                preStop: {
+                  httpGet: {
+                    path: "/preStop?cause=restore",
+                    port: 8000,
+                  },
+                },
+                postStart: {
+                  httpGet: {
+                    path: "/postStart?cause=restore",
+                    port: 8000,
+                  },
+                },
+              },
               volumeMounts: [
                 {
                   name: "taskinfo",
