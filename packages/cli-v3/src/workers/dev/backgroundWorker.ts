@@ -531,8 +531,6 @@ class TaskRunProcess {
       schema: workerToChildMessages,
       sender: async (message) => {
         if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
-          logger.debug(`[${this.runId}] sending message to task run process`, { message });
-
           this._child.send(message);
         }
       },
