@@ -31,7 +31,7 @@ jobs:
         env:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
         run: |
-          npx trigger.dev@latest deploy
+          npx trigger.dev@v3 deploy
 ```
 
 If you already have a GitHub action file, you can just add the final step "🚀 Deploy Trigger.dev" to your existing file.
