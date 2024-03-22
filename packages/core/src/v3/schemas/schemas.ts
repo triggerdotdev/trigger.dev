@@ -157,6 +157,7 @@ export const CoordinatorToPlatformMessages = {
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),
       runId: z.string(),
+      totalCompletions: z.number(),
     }),
     callback: z.discriminatedUnion("success", [
       z.object({
@@ -197,7 +198,7 @@ export const CoordinatorToPlatformMessages = {
   CHECKPOINT_CREATED: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      attemptId: z.string(),
+      attemptFriendlyId: z.string(),
       docker: z.boolean(),
       location: z.string(),
       reason: z.discriminatedUnion("type", [
@@ -324,6 +325,7 @@ export const ProdWorkerToCoordinatorMessages = {
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),
       runId: z.string(),
+      totalCompletions: z.number(),
     }),
   },
   READY_FOR_RESUME: {
@@ -365,6 +367,7 @@ export const ProdWorkerToCoordinatorMessages = {
       version: z.literal("v1").default("v1"),
       ms: z.number(),
       now: z.number(),
+      attemptFriendlyId: z.string(),
     }),
     callback: z.object({
       willCheckpointAndRestore: z.boolean(),
@@ -374,6 +377,7 @@ export const ProdWorkerToCoordinatorMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       id: z.string(),
+      attemptFriendlyId: z.string(),
     }),
     callback: z.object({
       willCheckpointAndRestore: z.boolean(),
@@ -384,6 +388,7 @@ export const ProdWorkerToCoordinatorMessages = {
       version: z.literal("v1").default("v1"),
       id: z.string(),
       runs: z.string().array(),
+      attemptFriendlyId: z.string(),
     }),
     callback: z.object({
       willCheckpointAndRestore: z.boolean(),

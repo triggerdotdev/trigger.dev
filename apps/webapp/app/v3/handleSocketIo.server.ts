@@ -52,7 +52,8 @@ function createCoordinatorNamespace(io: Server) {
       READY_FOR_EXECUTION: async (message) => {
         const payload = await sharedQueueTasks.getLatestExecutionPayloadFromRun(
           message.runId,
-          true
+          true,
+          !!message.totalCompletions
         );
 
         if (!payload) {

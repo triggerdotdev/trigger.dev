@@ -118,8 +118,6 @@ class DockerTaskOperations implements TaskOperations {
         stdout: error.stdout,
         stderr: error.stderr,
       });
-
-      throw new Error(`Index failed with: ${error.stderr || error.stdout}`);
     }
   }
 
@@ -157,8 +155,6 @@ class DockerTaskOperations implements TaskOperations {
         stdout: error.stdout,
         stderr: error.stderr,
       });
-
-      throw new Error(`Create failed with: ${error.stderr || error.stdout}`);
     }
   }
 

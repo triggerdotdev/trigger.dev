@@ -2,6 +2,7 @@ import {
   BackgroundWorkerProperties,
   Config,
   CreateBackgroundWorkerResponse,
+  InferSocketMessageSchema,
   ProdChildToWorkerMessages,
   ProdTaskRunExecutionPayload,
   ProdWorkerToChildMessages,
@@ -55,9 +56,15 @@ export class ProdBackgroundWorker {
 
   public onTaskHeartbeat: Evt<string> = new Evt();
 
-  public onWaitForDuration: Evt<{ version?: "v1"; ms: number; now: number }> = new Evt();
-  public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
-  public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
+  public onWaitForBatch: Evt<
+    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_BATCH">
+  > = new Evt();
+  public onWaitForDuration: Evt<
+    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_DURATION">
+  > = new Evt();
+  public onWaitForTask: Evt<
+    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_TASK">
+  > = new Evt();
 
   public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
   public onReadyForCheckpoint = Evt.create<{ version?: "v1" }>();
@@ -352,9 +359,15 @@ class TaskRunProcess {
   public onTaskHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<number> = new Evt();
 
-  public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
-  public onWaitForDuration: Evt<{ version?: "v1"; ms: number; now: number }> = new Evt();
-  public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
+  public onWaitForBatch: Evt<
+    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_BATCH">
+  > = new Evt();
+  public onWaitForDuration: Evt<
+    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_DURATION">
+  > = new Evt();
+  public onWaitForTask: Evt<
+    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_TASK">
+  > = new Evt();
 
   public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
   public onReadyForCheckpoint = Evt.create<{ version?: "v1" }>();

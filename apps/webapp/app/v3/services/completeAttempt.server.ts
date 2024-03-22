@@ -18,6 +18,7 @@ import { CancelAttemptService } from "./cancelAttempt.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { CreateCheckpointService } from "./createCheckpoint.server";
+import { TaskRun } from "@trigger.dev/database";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -188,27 +189,42 @@ export class CompleteAttemptService extends BaseService {
         return "RETRIED";
       }
 
-      if (checkpoint) {
-        const createCheckpoint = new CreateCheckpointService(this._prisma);
-        await createCheckpoint.call({
-          attemptId: execution.attempt.id,
-          docker: checkpoint.docker,
-          location: checkpoint.location,
-          reason: {
-            type: "RETRYING_AFTER_FAILURE",
-            attemptNumber: execution.attempt.number,
-          },
-        });
+      if (!checkpoint) {
+        await this.#enqueueRetry(taskRunAttempt.taskRun, completion.retry.timestamp);
+        return "RETRIED";
       }
 
-      // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
-      await marqs?.replaceMessage(
-        taskRunAttempt.taskRunId,
-        {
-          type: "EXECUTE",
-          taskIdentifier: taskRunAttempt.taskRun.taskIdentifier,
+      const createCheckpoint = new CreateCheckpointService(this._prisma);
+      const checkpointCreateResult = await createCheckpoint.call({
+        attemptFriendlyId: execution.attempt.id,
+        docker: checkpoint.docker,
+        location: checkpoint.location,
+        reason: {
+          type: "RETRYING_AFTER_FAILURE",
+          attemptNumber: execution.attempt.number,
         },
-        completion.retry.timestamp
+      });
+
+      if (!checkpointCreateResult) {
+        logger.error("Failed to create checkpoint", { checkpoint, execution: execution.run.id });
+
+        // Update the task run to be failed
+        await this._prisma.taskRun.update({
+          where: {
+            friendlyId: execution.run.id,
+          },
+          data: {
+            status: "SYSTEM_FAILURE",
+          },
+        });
+
+        return "COMPLETED";
+      }
+
+      await this.#enqueueRetry(
+        taskRunAttempt.taskRun,
+        completion.retry.timestamp,
+        checkpointCreateResult.event.id
       );
 
       return "RETRIED";
@@ -241,6 +257,19 @@ export class CompleteAttemptService extends BaseService {
 
       return "COMPLETED";
     }
+  }
+
+  async #enqueueRetry(run: TaskRun, retryTimestamp: number, checkpointEventId?: string) {
+    // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
+    return await marqs?.replaceMessage(
+      run.id,
+      {
+        type: "EXECUTE",
+        taskIdentifier: run.taskIdentifier,
+        checkpointEventId: checkpointEventId,
+      },
+      retryTimestamp
+    );
   }
 
   #generateMetadataAttributesForNextAttempt(execution: TaskRunExecution) {

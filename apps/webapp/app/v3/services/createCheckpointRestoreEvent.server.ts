@@ -3,16 +3,20 @@ import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 
 export class CreateCheckpointRestoreEventService extends BaseService {
-
   public async call(params: {
     checkpointId: string;
     type: CheckpointRestoreEventType;
   }): Promise<CheckpointRestoreEvent | undefined> {
-    const checkpoint = await this._prisma.checkpoint.findUniqueOrThrow({
+    const checkpoint = await this._prisma.checkpoint.findUnique({
       where: {
         id: params.checkpointId,
       },
     });
+
+    if (!checkpoint) {
+      logger.error("Checkpoint not found", { id: params.checkpointId });
+      return;
+    }
 
     logger.debug(`Creating checkpoint/restore event`, params);
 

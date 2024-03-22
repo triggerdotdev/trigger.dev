@@ -455,36 +455,39 @@ class TaskCoordinator {
         socket.on("READY_FOR_EXECUTION", async (message) => {
           logger.log("[READY_FOR_EXECUTION]", message);
 
-          const executionAck = await this.#platformSocket?.sendWithAck("READY_FOR_EXECUTION", {
-            version: "v1",
-            attemptId: message.attemptId,
-            runId: message.runId,
-          });
+          try {
+            const executionAck = await this.#platformSocket?.sendWithAck(
+              "READY_FOR_EXECUTION",
+              message
+            );
 
-          if (!executionAck) {
-            logger.error("no execution ack", { attemptId: socket.data.attemptId });
+            if (!executionAck) {
+              logger.error("no execution ack", { attemptId: socket.data.attemptId });
 
-            socket.emit("REQUEST_EXIT", {
+              socket.emit("REQUEST_EXIT", {
+                version: "v1",
+              });
+
+              return;
+            }
+
+            if (!executionAck.success) {
+              logger.error("failed to get execution payload", { attemptId: socket.data.attemptId });
+
+              socket.emit("REQUEST_EXIT", {
+                version: "v1",
+              });
+
+              return;
+            }
+
+            socket.emit("EXECUTE_TASK_RUN", {
               version: "v1",
+              executionPayload: executionAck.payload,
             });
-
-            return;
+          } catch (error) {
+            logger.error("Error", { error });
           }
-
-          if (!executionAck.success) {
-            logger.error("failed to get execution payload", { attemptId: socket.data.attemptId });
-
-            socket.emit("REQUEST_EXIT", {
-              version: "v1",
-            });
-
-            return;
-          }
-
-          socket.emit("EXECUTE_TASK_RUN", {
-            version: "v1",
-            executionPayload: executionAck.payload,
-          });
         });
 
         socket.on("READY_FOR_RESUME", async (message) => {
@@ -649,7 +652,7 @@ class TaskCoordinator {
 
           this.#platformSocket?.send("CHECKPOINT_CREATED", {
             version: "v1",
-            attemptId: socket.data.attemptId,
+            attemptFriendlyId: message.attemptFriendlyId,
             docker: checkpoint.docker,
             location: checkpoint.location,
             reason: {
@@ -692,7 +695,7 @@ class TaskCoordinator {
 
           this.#platformSocket?.send("CHECKPOINT_CREATED", {
             version: "v1",
-            attemptId: socket.data.attemptId,
+            attemptFriendlyId: message.attemptFriendlyId,
             docker: checkpoint.docker,
             location: checkpoint.location,
             reason: {
@@ -734,7 +737,7 @@ class TaskCoordinator {
 
           this.#platformSocket?.send("CHECKPOINT_CREATED", {
             version: "v1",
-            attemptId: socket.data.attemptId,
+            attemptFriendlyId: message.attemptFriendlyId,
             docker: checkpoint.docker,
             location: checkpoint.location,
             reason: {

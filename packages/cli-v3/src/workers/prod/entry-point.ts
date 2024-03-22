@@ -35,6 +35,7 @@ class ProdWorker {
   private executing = false;
   private completed = new Set<string>();
   private paused = false;
+  private attemptFriendlyId?: string;
 
   private nextResumeAfter: "WAIT_FOR_DURATION" | "WAIT_FOR_TASK" | "WAIT_FOR_BATCH" | undefined;
 
@@ -77,10 +78,18 @@ class ProdWorker {
     });
 
     this.#backgroundWorker.onWaitForDuration.attach(async (message) => {
+      if (!this.attemptFriendlyId) {
+        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+        return;
+      }
+
       // TODO: Switch to .send() once coordinator uses zod handler for all messages
       const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
         "WAIT_FOR_DURATION",
-        { version: "v1", ...message }
+        {
+          ...message,
+          attemptFriendlyId: this.attemptFriendlyId,
+        }
       );
 
       logger.log("WAIT_FOR_DURATION", { willCheckpointAndRestore });
@@ -99,10 +108,18 @@ class ProdWorker {
     });
 
     this.#backgroundWorker.onWaitForTask.attach(async (message) => {
+      if (!this.attemptFriendlyId) {
+        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+        return;
+      }
+
       // TODO: Switch to .send() once coordinator uses zod handler for all messages
       const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
         "WAIT_FOR_TASK",
-        { version: "v1", ...message }
+        {
+          ...message,
+          attemptFriendlyId: this.attemptFriendlyId,
+        }
       );
 
       logger.log("WAIT_FOR_TASK", { willCheckpointAndRestore });
@@ -121,10 +138,18 @@ class ProdWorker {
     });
 
     this.#backgroundWorker.onWaitForBatch.attach(async (message) => {
+      if (!this.attemptFriendlyId) {
+        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+        return;
+      }
+
       // TODO: Switch to .send() once coordinator uses zod handler for all messages
       const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
         "WAIT_FOR_BATCH",
-        { version: "v1", ...message }
+        {
+          ...message,
+          attemptFriendlyId: this.attemptFriendlyId,
+        }
       );
 
       logger.log("WAIT_FOR_BATCH", { willCheckpointAndRestore });
@@ -208,12 +233,14 @@ class ProdWorker {
           }
 
           this.executing = true;
+          this.attemptFriendlyId = executionPayload.execution.attempt.id;
           const completion = await this.#backgroundWorker.executeTaskRun(executionPayload);
 
           logger.log("completed", completion);
 
           this.completed.add(executionPayload.execution.attempt.id);
           this.executing = false;
+          this.attemptFriendlyId = undefined;
 
           await this.#backgroundWorker.flushTelemetry();
 
@@ -378,20 +405,6 @@ class ProdWorker {
         case "/whoami":
           return reply.text(this.contentHash);
 
-        case "/wait":
-          const { willCheckpointAndRestore } = await this.#coordinatorSocket.sendWithAck(
-            "WAIT_FOR_DURATION",
-            {
-              version: "v1",
-              ms: 60_000,
-              now: Date.now(),
-            }
-          );
-          logger.log("WAIT_FOR_DURATION", { willCheckpointAndRestore });
-          // this is required when C/Ring established connections
-          this.#coordinatorSocket.close();
-          return reply.text("sent WAIT");
-
         case "/connect":
           this.#coordinatorSocket.connect();
           return reply.empty();
@@ -430,6 +443,7 @@ class ProdWorker {
             version: "v1",
             attemptId: this.attemptId,
             runId: this.runId,
+            totalCompletions: this.completed.size,
           });
           return reply.empty();
 

@@ -10,7 +10,12 @@ import {
   ZodMessageSender,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
-import { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
+import {
+  BackgroundWorker,
+  BackgroundWorkerTask,
+  TaskRunAttemptStatus,
+  TaskRunStatus,
+} from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -29,15 +34,18 @@ const MessageBody = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("EXECUTE"),
     taskIdentifier: z.string(),
+    checkpointEventId: z.string().optional(),
   }),
   z.object({
     type: z.literal("RESUME"),
     completedAttemptIds: z.string().array(),
     resumableAttemptId: z.string(),
+    checkpointEventId: z.string().optional(),
   }),
   z.object({
     type: z.literal("RESUME_AFTER_DURATION"),
     resumableAttemptId: z.string(),
+    checkpointEventId: z.string(),
   }),
 ]);
 
@@ -180,7 +188,7 @@ export class SharedQueueConsumer {
     this._taskFailures = 0;
     this._taskSuccesses = 0;
 
-    this.#doWork().finally(() => { });
+    this.#doWork().finally(() => {});
   }
 
   async #doWork() {
@@ -302,11 +310,13 @@ export class SharedQueueConsumer {
           return;
         }
 
+        const retryingFromCheckpoint = !!messageBody.data.checkpointEventId;
+
         if (
-          existingTaskRun.status !== "PENDING" &&
-          existingTaskRun.status !== "RETRYING_AFTER_FAILURE"
+          (retryingFromCheckpoint && existingTaskRun.status !== "WAITING_TO_RESUME") ||
+          (!retryingFromCheckpoint && existingTaskRun.status !== "PENDING")
         ) {
-          logger.debug("Task run is not pending, aborting", {
+          logger.debug("Task run has invalid status for execution", {
             queueMessage: message.data,
             messageId: message.messageId,
             taskRun: existingTaskRun.id,
@@ -432,36 +442,37 @@ export class SharedQueueConsumer {
         });
 
         try {
-          const latestCheckpoint = lockedTaskRun.checkpoints[0];
+          if (messageBody.data.checkpointEventId) {
+            const restoreService = new RestoreCheckpointService();
 
-          if (lockedTaskRun.status === "RETRYING_AFTER_FAILURE" && latestCheckpoint) {
-            if (latestCheckpoint.reason !== "RETRYING_AFTER_FAILURE") {
-              logger.error("Latest checkpoint is invalid", {
+            const checkpoint = await restoreService.call({
+              eventId: messageBody.data.checkpointEventId,
+              isRetry: taskRunAttempt.number > 1,
+            });
+
+            if (!checkpoint) {
+              logger.error("Failed to restore checkpoint", {
                 queueMessage: message.data,
                 messageId: message.messageId,
-                resumableAttemptId: taskRunAttempt.id,
-                latestCheckpointId: latestCheckpoint.id,
               });
               await marqs?.acknowledgeMessage(message.messageId);
-              setTimeout(() => this.#doWork(), this._options.interval);
               return;
             }
 
-            const restoreService = new RestoreCheckpointService();
-            await restoreService.call({ checkpointId: latestCheckpoint.id });
-          } else {
-            await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
-              backgroundWorkerId: deployment.worker.friendlyId,
-              data: {
-                type: "SCHEDULE_ATTEMPT",
-                id: taskRunAttempt.id,
-                image: deployment.imageReference,
-                envId: environment.id,
-                runId: taskRunAttempt.taskRunId,
-                version: deployment.version,
-              },
-            });
+            return;
           }
+
+          await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
+            backgroundWorkerId: deployment.worker.friendlyId,
+            data: {
+              type: "SCHEDULE_ATTEMPT",
+              id: taskRunAttempt.id,
+              image: deployment.imageReference,
+              envId: environment.id,
+              runId: taskRunAttempt.taskRunId,
+              version: deployment.version,
+            },
+          });
 
           this._inProgressAttempts.set(taskRunAttempt.friendlyId, message.messageId);
         } catch (e) {
@@ -500,6 +511,39 @@ export class SharedQueueConsumer {
       }
       // Resume after dependency completed with no remaining retries
       case "RESUME": {
+        if (messageBody.data.checkpointEventId) {
+          try {
+            const restoreService = new RestoreCheckpointService();
+
+            const checkpoint = await restoreService.call({
+              eventId: messageBody.data.checkpointEventId,
+            });
+
+            if (!checkpoint) {
+              logger.error("Failed to restore checkpoint", {
+                queueMessage: message.data,
+                messageId: message.messageId,
+              });
+              await marqs?.acknowledgeMessage(message.messageId);
+              return;
+            }
+          } catch (e) {
+            if (e instanceof Error) {
+              this._currentSpan?.recordException(e);
+            } else {
+              this._currentSpan?.recordException(new Error(String(e)));
+            }
+
+            this._endSpanInNextIteration = true;
+
+            // Finally we need to nack the message so it can be retried
+            await marqs?.nackMessage(message.messageId);
+            return;
+          } finally {
+            setTimeout(() => this.#doWork(), this._options.interval);
+          }
+        }
+
         if (messageBody.data.completedAttemptIds.length < 1) {
           logger.error("No attempt IDs provided", {
             queueMessage: message.data,
@@ -570,26 +614,37 @@ export class SharedQueueConsumer {
           return;
         }
 
-        if (resumableAttempt.status === "PAUSED") {
-          // We need to restore the attempt from the latest checkpoint before we can resume
-          const latestCheckpoint = resumableAttempt.checkpoints[0];
+        if (messageBody.data.checkpointEventId) {
+          try {
+            const restoreService = new RestoreCheckpointService();
 
-          if (!latestCheckpoint) {
-            logger.error("No checkpoint found", {
-              queueMessage: message.data,
-              messageId: message.messageId,
-              resumableAttemptId: resumableAttempt.id,
+            const checkpoint = await restoreService.call({
+              eventId: messageBody.data.checkpointEventId,
             });
-            await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), this._options.interval);
+
+            if (!checkpoint) {
+              logger.error("Failed to restore checkpoint", {
+                queueMessage: message.data,
+                messageId: message.messageId,
+              });
+              await marqs?.acknowledgeMessage(message.messageId);
+              return;
+            }
+          } catch (e) {
+            if (e instanceof Error) {
+              this._currentSpan?.recordException(e);
+            } else {
+              this._currentSpan?.recordException(new Error(String(e)));
+            }
+
+            this._endSpanInNextIteration = true;
+
+            // Finally we need to nack the message so it can be retried
+            await marqs?.nackMessage(message.messageId);
             return;
+          } finally {
+            setTimeout(() => this.#doWork(), this._options.interval);
           }
-
-          const restoreService = new RestoreCheckpointService();
-          await restoreService.call({ checkpointId: latestCheckpoint.id });
-
-          setTimeout(() => this.#doWork(), this._options.interval);
-          return;
         }
 
         const completions: TaskRunExecutionResult[] = [];
@@ -669,59 +724,21 @@ export class SharedQueueConsumer {
       }
       // Resume after duration-based wait
       case "RESUME_AFTER_DURATION": {
-        const resumableAttempt = await prisma.taskRunAttempt.findUnique({
-          where: {
-            id: messageBody.data.resumableAttemptId,
-          },
-          include: {
-            checkpoints: {
-              take: 1,
-              orderBy: {
-                createdAt: "desc",
-              },
-            },
-            taskRun: true,
-          },
-        });
-
-        if (!resumableAttempt) {
-          logger.error("Resumable attempt not found", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-          });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
-          return;
-        }
-
-        if (resumableAttempt.status !== "PAUSED") {
-          logger.error("Attempt not paused", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-          });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
-          return;
-        }
-
         try {
-          // We need to restore the attempt from the latest checkpoint before we can resume
-          const latestCheckpoint = resumableAttempt.checkpoints[0];
+          const restoreService = new RestoreCheckpointService();
 
-          if (!latestCheckpoint) {
-            logger.error("No checkpoint found", {
+          const checkpoint = await restoreService.call({
+            eventId: messageBody.data.checkpointEventId,
+          });
+
+          if (!checkpoint) {
+            logger.error("Failed to restore checkpoint", {
               queueMessage: message.data,
               messageId: message.messageId,
-              resumableAttemptId: resumableAttempt.id,
             });
             await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), this._options.interval);
             return;
           }
-
-          // The attempt will resume automatically after restore
-          const restoreService = new RestoreCheckpointService();
-          await restoreService.call({ checkpointId: latestCheckpoint.id });
         } catch (e) {
           if (e instanceof Error) {
             this._currentSpan?.recordException(e);
@@ -800,7 +817,8 @@ class SharedQueueTasks {
 
   async getExecutionPayloadFromAttempt(
     id: string,
-    setToExecuting?: boolean
+    setToExecuting?: boolean,
+    isRetrying?: boolean
   ): Promise<ProdTaskRunExecutionPayload | undefined> {
     const attempt = await prisma.taskRunAttempt.findUnique({
       where: {
@@ -859,26 +877,42 @@ class SharedQueueTasks {
     }
 
     if (setToExecuting) {
+      const FINAL_RUN_STATUSES: TaskRunStatus[] = [
+        "CANCELED",
+        "COMPLETED_SUCCESSFULLY",
+        "COMPLETED_WITH_ERRORS",
+        "INTERRUPTED",
+        "SYSTEM_FAILURE",
+      ];
+      const FINAL_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["CANCELED", "COMPLETED", "FAILED"];
+
+      if (
+        FINAL_ATTEMPT_STATUSES.includes(attempt.status) ||
+        FINAL_RUN_STATUSES.includes(attempt.taskRun.status)
+      ) {
+        logger.error("Status already in final state", {
+          attempt: {
+            id: attempt.id,
+            status: attempt.status,
+          },
+          run: {
+            id: attempt.taskRunId,
+            status: attempt.taskRun.status,
+          },
+        });
+        return;
+      }
+
       await prisma.taskRunAttempt.update({
         where: {
           id,
-          taskRun: {
-            status: {
-              notIn: [
-                "CANCELED",
-                "COMPLETED_SUCCESSFULLY",
-                "COMPLETED_WITH_ERRORS",
-                "SYSTEM_FAILURE",
-              ],
-            },
-          },
         },
         data: {
           status: "EXECUTING",
           taskRun: {
             update: {
               data: {
-                status: "EXECUTING",
+                status: isRetrying ? "RETRYING_AFTER_FAILURE" : "EXECUTING",
               },
             },
           },
@@ -961,7 +995,8 @@ class SharedQueueTasks {
 
   async getLatestExecutionPayloadFromRun(
     id: string,
-    setToExecuting?: boolean
+    setToExecuting?: boolean,
+    isRetrying?: boolean
   ): Promise<ProdTaskRunExecutionPayload | undefined> {
     const run = await prisma.taskRun.findUnique({
       where: {
@@ -984,7 +1019,7 @@ class SharedQueueTasks {
       return;
     }
 
-    return this.getExecutionPayloadFromAttempt(latestAttempt.id, setToExecuting);
+    return this.getExecutionPayloadFromAttempt(latestAttempt.id, setToExecuting, isRetrying);
   }
 
   async taskHeartbeat(attemptFriendlyId: string, seconds: number = 60) {
