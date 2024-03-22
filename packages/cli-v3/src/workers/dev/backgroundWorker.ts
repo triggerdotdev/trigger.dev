@@ -364,6 +364,7 @@ export class BackgroundWorker {
 
     if (!this._taskRunProcesses.has(payload.execution.run.id)) {
       const taskRunProcess = new TaskRunProcess(
+        payload.execution.run.id,
         this.path,
         {
           ...this.params.env,
@@ -520,6 +521,7 @@ class TaskRunProcess {
   public onExit: Evt<number> = new Evt();
 
   constructor(
+    private runId: string,
     private path: string,
     private env: NodeJS.ProcessEnv,
     private metadata: BackgroundWorkerProperties,
@@ -542,7 +544,7 @@ class TaskRunProcess {
   }
 
   async initialize() {
-    logger.debug("initializing task run process", {
+    logger.debug(`[${this.runId}] initializing task run process`, {
       env: this.env,
       path: this.path,
       processEnv: process.env,
@@ -574,6 +576,8 @@ class TaskRunProcess {
     if (kill && this._isBeingKilled) {
       return;
     }
+
+    logger.debug(`[${this.runId}] cleaning up task run process`, { kill });
 
     await this._sender.send("CLEANUP", {
       flush: true,
@@ -615,6 +619,8 @@ class TaskRunProcess {
   }
 
   taskRunCompletedNotification(completion: TaskRunExecutionResult, execution: TaskRunExecution) {
+    logger.debug(`[${this.runId}] task run completed notification`, { completion, execution });
+
     if (!completion.ok && typeof completion.retry !== "undefined") {
       return;
     }
@@ -669,6 +675,8 @@ class TaskRunProcess {
   }
 
   async #handleExit(code: number) {
+    logger.debug(`[${this.runId}] task run process exiting`, { code });
+
     // Go through all the attempts currently pending and reject them
     for (const [id, status] of this._attemptStatuses.entries()) {
       if (status === "PENDING") {
