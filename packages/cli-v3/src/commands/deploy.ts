@@ -989,13 +989,23 @@ async function compileProject(
 
       // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
       const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
-      const dependencies = await gatherRequiredDependencies(allImports, config);
+
+      const externalPackageJson = await readJSONFile(join(config.projectDir, "package.json"));
+
+      const dependencies = await gatherRequiredDependencies(
+        allImports,
+        config,
+        externalPackageJson
+      );
 
       const packageJsonContents = {
         name: "trigger-worker",
         version: "0.0.0",
         description: "",
         dependencies,
+        scripts: {
+          postinstall: externalPackageJson?.scripts?.postinstall,
+        },
       };
 
       await writeJSONFile(join(tempDir, "package.json"), packageJsonContents);
@@ -1212,10 +1222,9 @@ async function typecheckProject(config: ResolvedConfig, options: DeployCommandOp
 // Returns the dependency names and the version to use (taken from the CLI deps package.json)
 async function gatherRequiredDependencies(
   imports: Metafile["outputs"][string]["imports"],
-  config: ResolvedConfig
+  config: ResolvedConfig,
+  projectPackageJson: any
 ) {
-  const externalPackageJson = await readJSONFile(join(config.projectDir, "package.json"));
-
   const dependencies: Record<string, string> = {};
 
   for (const file of imports) {
@@ -1229,7 +1238,7 @@ async function gatherRequiredDependencies(
       continue;
     }
 
-    const externalDependencyVersion = (externalPackageJson?.dependencies ?? {})[packageName];
+    const externalDependencyVersion = (projectPackageJson?.dependencies ?? {})[packageName];
 
     if (externalDependencyVersion) {
       dependencies[packageName] = stripWorkspaceFromVersion(externalDependencyVersion);
@@ -1258,8 +1267,8 @@ async function gatherRequiredDependencies(
         continue;
       } else {
         const externalDependencyVersion = {
-          ...externalPackageJson?.devDependencies,
-          ...externalPackageJson?.dependencies,
+          ...projectPackageJson?.devDependencies,
+          ...projectPackageJson?.dependencies,
         }[packageName];
 
         if (externalDependencyVersion) {
