@@ -121,7 +121,11 @@ export type TaskOptions<TPayload, TOutput = any, TInitOutput extends InitOutput 
      */
     memory?: 0.25 | 0.5 | 1 | 2 | 4 | 8;
   };
-  /** This gets called when a task is triggered. It's where you put the code you want to execute.  */
+  /** This gets called when a task is triggered. It's where you put the code you want to execute.
+   *
+   * @param payload - The payload that is passed to your task when it's triggered. This must be JSON serializable.
+   * @param params - Metadata about the run.
+   */
   run: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<TOutput>;
   init?: (payload: TPayload, params: InitFnParams) => Promise<TInitOutput>;
   handleError?: (
