@@ -1,18 +1,47 @@
+import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Header1 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
+import { PaginationControls } from "~/components/primitives/Pagination";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  Table,
+  TableBlankRow,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
 import { useUser } from "~/hooks/useUser";
 import { adminGetUsers } from "~/models/admin.server";
 import { commitImpersonationSession, setImpersonationId } from "~/services/impersonation.server";
+import { requireUserId } from "~/services/session.server";
+import { createSearchParams } from "~/utils/searchParams";
 
-export async function loader() {
-  const users = await adminGetUsers();
+export const SearchParams = z.object({
+  page: z.coerce.number().optional(),
+  search: z.string().optional(),
+});
 
-  return typedjson({ users });
-}
+export type SearchParams = z.infer<typeof SearchParams>;
+
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
+
+  const searchParams = createSearchParams(request.url, SearchParams);
+  if (!searchParams.success) {
+    throw new Error(searchParams.error);
+  }
+  const result = await adminGetUsers(userId, searchParams.params.getAll());
+
+  return typedjson(result);
+};
 
 const FormSchema = z.object({ id: z.string() });
 
@@ -37,80 +66,102 @@ const cellClassName = "whitespace-nowrap px-2 py-2 text-xs text-text-bright";
 
 export default function AdminDashboardRoute() {
   const user = useUser();
-  const { users } = useTypedLoaderData<typeof loader>();
+  const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
 
   return (
     <main
       aria-labelledby="primary-heading"
       className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto p-4 lg:order-last"
     >
-      <h1 className="mb-2 text-2xl">Accounts ({users.length})</h1>
+      <div className="mb-4 flex items-center justify-between">
+        <Header1>Users</Header1>
 
-      <LinkButton to="/" variant="secondary/small" className="mb-4">
-        Back to me
-      </LinkButton>
+        <LinkButton to="/" variant="tertiary/small" className="mb-4">
+          Back to me
+        </LinkButton>
+      </div>
 
-      <table className="divide-border w-full divide-y">
-        <thead className="bg-midnight-800 sticky -top-4 text-left">
-          <tr>
-            <th scope="col" className={headerClassName}>
-              Email
-            </th>
-            <th scope="col" className={headerClassName}>
-              GitHub username
-            </th>
-            <th scope="col" className={headerClassName}>
-              id
-            </th>
-            <th scope="col" className={headerClassName}>
-              Created At
-            </th>
-            <th scope="col" className={headerClassName}>
-              Admin?
-            </th>
-            <th scope="col" className={headerClassName}>
-              Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-border divide-y">
-          {users.map((user) => {
-            return (
-              <tr key={user.id} className="w-full px-4 py-2 text-left hover:bg-charcoal-900">
-                <td className={cellClassName}>{user.email}</td>
-                <td className={cellClassName}>
-                  <a
-                    href={`https://github.com/${user.displayName}`}
-                    target="_blank"
-                    className="text-indigo-500 underline"
-                    rel="noreferrer"
-                  >
-                    {user.displayName}
-                  </a>
-                </td>
-                <td className={cellClassName}>{user.id}</td>
-                <td className={cellClassName}>{user.createdAt.toISOString()}</td>
-                <td className={cellClassName}>{user.admin ? "✅" : ""}</td>
-                <td className={cellClassName}>
-                  <Form method="post" reloadDocument>
-                    <input type="hidden" name="id" value={user.id} />
+      <div className=" space-y-4">
+        <Form className="flex items-center gap-2">
+          <Input
+            placeholder="Search users or orgs"
+            variant="small"
+            icon={MagnifyingGlassIcon}
+            fullWidth={true}
+            name="search"
+            defaultValue={filters.search}
+          />
+          <Button type="submit" variant="secondary/small">
+            Search
+          </Button>
+        </Form>
 
-                    <Button
-                      type="submit"
-                      name="action"
-                      value="impersonate"
-                      className="mr-2"
-                      variant="primary/small"
-                    >
-                      Impersonate
-                    </Button>
-                  </Form>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell>Email</TableHeaderCell>
+              <TableHeaderCell>Orgs</TableHeaderCell>
+              <TableHeaderCell>GitHub</TableHeaderCell>
+              <TableHeaderCell>id</TableHeaderCell>
+              <TableHeaderCell>Created</TableHeaderCell>
+              <TableHeaderCell>Admin?</TableHeaderCell>
+              <TableHeaderCell>Actions</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {users.length === 0 ? (
+              <TableBlankRow colSpan={9}>
+                <Paragraph>No users found for search</Paragraph>
+              </TableBlankRow>
+            ) : (
+              users.map((user) => {
+                return (
+                  <TableRow key={user.id}>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>
+                      {user.orgMemberships.map((org) => (
+                        <Paragraph key={org.organization.slug} variant="extra-small">
+                          {org.organization.title} ({org.organization.slug})
+                        </Paragraph>
+                      ))}
+                    </TableCell>
+                    <TableCell>
+                      <a
+                        href={`https://github.com/${user.displayName}`}
+                        target="_blank"
+                        className="text-indigo-500 underline"
+                        rel="noreferrer"
+                      >
+                        {user.displayName}
+                      </a>
+                    </TableCell>
+                    <TableCell>{user.id}</TableCell>
+                    <TableCell>{user.createdAt.toISOString()}</TableCell>
+                    <TableCell>{user.admin ? "✅" : ""}</TableCell>
+                    <TableCell isSticky={true}>
+                      <Form method="post" reloadDocument>
+                        <input type="hidden" name="id" value={user.id} />
+
+                        <Button
+                          type="submit"
+                          name="action"
+                          value="impersonate"
+                          className="mr-2"
+                          variant="tertiary/small"
+                        >
+                          Impersonate
+                        </Button>
+                      </Form>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+
+        <PaginationControls currentPage={page} totalPages={pageCount} />
+      </div>
     </main>
   );
 }
