@@ -190,10 +190,10 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
               </Paragraph>
             </SelectItem>
             {allTaskRunStatuses.map((status) => (
-              <TooltipProvider>
+              <TooltipProvider key={status}>
                 <Tooltip>
                   <TooltipTrigger className="group flex w-full flex-col py-0">
-                    <SelectItem key={status} value={status} className="">
+                    <SelectItem value={status} className="">
                       <TaskRunStatusCombo
                         status={status}
                         className="text-xs"
