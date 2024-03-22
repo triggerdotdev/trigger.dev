@@ -27,6 +27,7 @@ import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { bundleDependenciesPlugin } from "../utilities/build";
+import { chalkPurple } from "../utilities/colors";
 import { readConfig } from "../utilities/configFiles";
 import { readJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
@@ -463,6 +464,19 @@ function useDev({
                     throw new Error(`Background Worker started without package version`);
                   }
 
+                  // Check for any duplicate task ids
+                  const taskIds = taskResources.map((task) => task.id);
+                  const duplicateTaskIds = taskIds.filter(
+                    (id, index) => taskIds.indexOf(id) !== index
+                  );
+
+                  if (duplicateTaskIds.length > 0) {
+                    logger.error(
+                      createDuplicateTaskIdOutputErrorMessage(duplicateTaskIds, taskResources)
+                    );
+                    return;
+                  }
+
                   const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
                     localOnly: true,
                     metadata: {
@@ -671,6 +685,23 @@ async function gatherRequiredDependencies(
   }
 
   return dependencies;
+}
+
+function createDuplicateTaskIdOutputErrorMessage(
+  duplicateTaskIds: Array<string>,
+  taskResources: Array<TaskResource>
+) {
+  const duplicateTable = duplicateTaskIds
+    .map((id) => {
+      const tasks = taskResources.filter((task) => task.id === id);
+
+      return `id "${chalkPurple(id)}" was found in:\n${tasks
+        .map((task) => `${task.filePath} -> ${task.exportName}`)
+        .join("\n")}`;
+    })
+    .join("\n\n");
+
+  return `Duplicate task ids detected:\n\n${duplicateTable}\n\n`;
 }
 
 function gatherProcessEnv() {
