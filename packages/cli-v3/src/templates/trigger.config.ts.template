@@ -11,5 +11,5 @@ export const config: TriggerConfig = {
       factor: 2,
       randomize: true,
     },
-  },
+  },${triggerDirectoriesOption}
 };

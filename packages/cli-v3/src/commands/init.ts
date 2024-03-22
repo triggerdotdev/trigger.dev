@@ -141,11 +141,11 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
     log.info("Skipping package installation");
   }
 
-  // Create the config file
-  await writeConfigFile(dir, selectedProject, options);
-
   // Create the trigger dir
-  await createTriggerDir(dir, options);
+  const triggerDir = await createTriggerDir(dir, options);
+
+  // Create the config file
+  await writeConfigFile(dir, selectedProject, options, triggerDir);
 
   // Add trigger.config.ts to tsconfig.json
   await addConfigFileToTsConfig(dir, options);
@@ -185,10 +185,12 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 async function createTriggerDir(dir: string, options: InitCommandOptions) {
   return await tracer.startActiveSpan("createTriggerDir", async (span) => {
     try {
+      const defaultValue = `${dir}/src/trigger`;
+
       const location = await text({
         message: "Where would you like to create the Trigger.dev directory?",
-        defaultValue: `${dir}/src/trigger`,
-        placeholder: `${dir}/src/trigger`,
+        defaultValue: defaultValue,
+        placeholder: defaultValue,
       });
 
       if (isCancel(location)) {
@@ -234,7 +236,7 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
         log.step(`Created directory at ${location}`);
 
         span.end();
-        return;
+        return { location, isCustomValue: location !== defaultValue };
       }
 
       const exampleFile = resolveInternalFilePath(`./templates/examples/${example}.ts.template`);
@@ -251,6 +253,8 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
       log.step(`Created example file at ${relativeOutputPath}`);
 
       span.end();
+
+      return { location, isCustomValue: location !== defaultValue };
     } catch (e) {
       if (!(e instanceof SkipCommandError)) {
         recordSpanException(span, e);
@@ -427,7 +431,8 @@ async function installPackages(dir: string, options: InitCommandOptions) {
 async function writeConfigFile(
   dir: string,
   project: GetProjectResponseBody,
-  options: InitCommandOptions
+  options: InitCommandOptions,
+  triggerDir: { location: string; isCustomValue: boolean }
 ) {
   return await tracer.startActiveSpan("writeConfigFile", async (span) => {
     try {
@@ -448,6 +453,9 @@ async function writeConfigFile(
         templatePath,
         replacements: {
           projectRef: project.externalRef,
+          triggerDirectoriesOption: triggerDir.isCustomValue
+            ? `\n  triggerDirectories: ["${triggerDir.location}"],`
+            : "",
         },
         outputPath,
         override: options.overrideConfig,
