@@ -354,6 +354,14 @@ export class EventRepository {
       ? null
       : unflattenAttributes(fullEvent.output as Attributes);
 
+    const show = unflattenAttributes(
+      filteredAttributes(fullEvent.properties as Attributes, SemanticInternalAttributes.SHOW)
+    )[SemanticInternalAttributes.SHOW] as
+      | {
+          actions?: boolean;
+        }
+      | undefined;
+
     const properties = sanitizedAttributes(fullEvent.properties);
 
     const events = transformEvents(span.data.events, fullEvent.metadata as Attributes);
@@ -365,6 +373,7 @@ export class EventRepository {
       output,
       properties,
       events,
+      show,
     };
   }
 
@@ -480,14 +489,14 @@ export class EventRepository {
     const links: Link[] =
       options.spanParentAsLink && propagatedContext?.traceparent
         ? [
-          {
-            context: {
-              traceId: propagatedContext.traceparent.traceId,
-              spanId: propagatedContext.traceparent.spanId,
-              traceFlags: TraceFlags.SAMPLED,
+            {
+              context: {
+                traceId: propagatedContext.traceparent.traceId,
+                spanId: propagatedContext.traceparent.spanId,
+                traceFlags: TraceFlags.SAMPLED,
+              },
             },
-          },
-        ]
+          ]
         : [];
 
     const eventBuilder = {
@@ -742,9 +751,9 @@ function prepareEvent(event: QueriedEvent): PreparedEvent {
 function parseEventsField(events: Prisma.JsonValue): SpanEvents {
   const eventsUnflattened = events
     ? (events as any[]).map((e) => ({
-      ...e,
-      properties: unflattenAttributes(e.properties as Attributes),
-    }))
+        ...e,
+        properties: unflattenAttributes(e.properties as Attributes),
+      }))
     : undefined;
 
   const spanEvents = SpanEvents.safeParse(eventsUnflattened);
@@ -938,8 +947,8 @@ function transformException(
     ...exception,
     stacktrace: exception.stacktrace
       ? correctErrorStackTrace(exception.stacktrace, projectDirAttributeValue, {
-        removeFirstLine: true,
-      })
+          removeFirstLine: true,
+        })
       : undefined,
   };
 }
