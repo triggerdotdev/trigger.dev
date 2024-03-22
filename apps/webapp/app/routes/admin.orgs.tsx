@@ -19,7 +19,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { useUser } from "~/hooks/useUser";
-import { adminGetUsers } from "~/models/admin.server";
+import { adminGetOrganizations, adminGetUsers } from "~/models/admin.server";
 import { commitImpersonationSession, setImpersonationId } from "~/services/impersonation.server";
 import { requireUserId } from "~/services/session.server";
 import { createSearchParams } from "~/utils/searchParams";
@@ -38,7 +38,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!searchParams.success) {
     throw new Error(searchParams.error);
   }
-  const result = await adminGetUsers(userId, searchParams.params.getAll());
+  const result = await adminGetOrganizations(userId, searchParams.params.getAll());
 
   return typedjson(result);
 };
@@ -50,18 +50,17 @@ export async function action({ request }: ActionFunctionArgs) {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  const payload = Object.fromEntries(await request.formData());
-  const { id } = FormSchema.parse(payload);
+  // const payload = Object.fromEntries(await request.formData());
+  // const { id } = FormSchema.parse(payload);
 
-  const session = await setImpersonationId(id, request);
+  // const session = await setImpersonationId(id, request);
 
-  return redirect("/", {
-    headers: { "Set-Cookie": await commitImpersonationSession(session) },
-  });
+  // return redirect("/", {
+  //   headers: { "Set-Cookie": await commitImpersonationSession(session) },
+  // });
 }
 export default function AdminDashboardRoute() {
-  const user = useUser();
-  const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
+  const { organizations, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
 
   return (
     <main
@@ -86,62 +85,63 @@ export default function AdminDashboardRoute() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHeaderCell>Email</TableHeaderCell>
-              <TableHeaderCell>Orgs</TableHeaderCell>
-              <TableHeaderCell>GitHub</TableHeaderCell>
+              <TableHeaderCell>Name</TableHeaderCell>
+              <TableHeaderCell>Slug</TableHeaderCell>
+              <TableHeaderCell>Members</TableHeaderCell>
               <TableHeaderCell>id</TableHeaderCell>
-              <TableHeaderCell>Created</TableHeaderCell>
-              <TableHeaderCell>Admin?</TableHeaderCell>
+              <TableHeaderCell>v3?</TableHeaderCell>
               <TableHeaderCell>Actions</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.length === 0 ? (
+            {organizations.length === 0 ? (
               <TableBlankRow colSpan={9}>
-                <Paragraph>No users found for search</Paragraph>
+                <Paragraph>No orgs found for search</Paragraph>
               </TableBlankRow>
             ) : (
-              users.map((user) => {
+              organizations.map((org) => {
                 return (
-                  <TableRow key={user.id}>
-                    <TableCell>{user.email}</TableCell>
+                  <TableRow key={org.id}>
+                    <TableCell>{org.title}</TableCell>
+                    <TableCell>{org.slug}</TableCell>
                     <TableCell>
-                      {user.orgMemberships.map((org) => (
+                      {org.members.map((member) => (
                         <LinkButton
-                          key={org.organization.slug}
+                          key={member.user.email}
                           variant="minimal/small"
-                          to={`/admin/orgs?search=${encodeURIComponent(org.organization.slug)}`}
+                          to={`/admin?search=${encodeURIComponent(member.user.email)}`}
                         >
-                          {org.organization.title} ({org.organization.slug})
+                          {member.user.email}
                         </LinkButton>
                       ))}
                     </TableCell>
-                    <TableCell>
-                      <a
-                        href={`https://github.com/${user.displayName}`}
-                        target="_blank"
-                        className="text-indigo-500 underline"
-                        rel="noreferrer"
-                      >
-                        {user.displayName}
-                      </a>
-                    </TableCell>
-                    <TableCell>{user.id}</TableCell>
-                    <TableCell>{user.createdAt.toISOString()}</TableCell>
-                    <TableCell>{user.admin ? "✅" : ""}</TableCell>
+                    <TableCell>{org.id}</TableCell>
+                    <TableCell>{org.v3Enabled ? "✅" : ""}</TableCell>
                     <TableCell isSticky={true}>
                       <Form method="post" reloadDocument>
-                        <input type="hidden" name="id" value={user.id} />
+                        <input type="hidden" name="id" value={org.id} />
 
-                        <Button
-                          type="submit"
-                          name="action"
-                          value="impersonate"
-                          className="mr-2"
-                          variant="tertiary/small"
-                        >
-                          Impersonate
-                        </Button>
+                        {org.v3Enabled ? (
+                          <Button
+                            type="submit"
+                            name="v3"
+                            value="disable"
+                            className="mr-2"
+                            variant="tertiary/small"
+                          >
+                            Disable v3
+                          </Button>
+                        ) : (
+                          <Button
+                            type="submit"
+                            name="v3"
+                            value="enable"
+                            className="mr-2"
+                            variant="tertiary/small"
+                          >
+                            Enable v3
+                          </Button>
+                        )}
                       </Form>
                     </TableCell>
                   </TableRow>

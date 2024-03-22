@@ -6,6 +6,8 @@ const pageSize = 20;
 export async function adminGetUsers(userId: string, { page, search }: SearchParams) {
   page = page || 1;
 
+  search = search ? decodeURIComponent(search) : undefined;
+
   const user = await prisma.user.findUnique({
     where: {
       id: userId,
@@ -90,6 +92,98 @@ export async function adminGetUsers(userId: string, { page, search }: SearchPara
     users,
     page,
     pageCount: Math.ceil(totalUsers / pageSize),
+    filters: {
+      search,
+    },
+  };
+}
+
+export async function adminGetOrganizations(userId: string, { page, search }: SearchParams) {
+  page = page || 1;
+
+  search = search ? decodeURIComponent(search) : undefined;
+
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+  });
+
+  if (user?.admin !== true) {
+    throw new Error("Unauthorized");
+  }
+
+  const organizations = await prisma.organization.findMany({
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      v3Enabled: true,
+      members: {
+        select: {
+          user: {
+            select: {
+              email: true,
+            },
+          },
+        },
+      },
+    },
+    where: search
+      ? {
+          OR: [
+            {
+              members: {
+                some: {
+                  user: {
+                    name: {
+                      contains: search,
+                      mode: "insensitive",
+                    },
+                  },
+                },
+              },
+            },
+            {
+              members: {
+                some: {
+                  user: {
+                    email: {
+                      contains: search,
+                      mode: "insensitive",
+                    },
+                  },
+                },
+              },
+            },
+            {
+              slug: {
+                contains: search,
+                mode: "insensitive",
+              },
+            },
+            {
+              title: {
+                contains: search,
+                mode: "insensitive",
+              },
+            },
+          ],
+        }
+      : undefined,
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: pageSize,
+    skip: (page - 1) * pageSize,
+  });
+
+  const totalOrgs = await prisma.organization.count();
+
+  return {
+    organizations,
+    page,
+    pageCount: Math.ceil(totalOrgs / pageSize),
     filters: {
       search,
     },
