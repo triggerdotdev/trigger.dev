@@ -436,6 +436,13 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
 
           span.setAttribute("messaging.message.id", response.data.batchId);
 
+          console.log(
+            JSON.stringify({
+              message: "Waiting for batch",
+              batchData: response.data,
+            })
+          );
+
           const result = await runtime.waitForBatch({
             id: response.data.batchId,
             runs: response.data.runs,

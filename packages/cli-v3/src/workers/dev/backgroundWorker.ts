@@ -531,7 +531,9 @@ class TaskRunProcess {
       schema: workerToChildMessages,
       sender: async (message) => {
         if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
-          this._child?.send?.(message);
+          logger.debug(`[${this.runId}] sending message to task run process`, { message });
+
+          this._child.send(message);
         }
       },
     });
@@ -547,7 +549,6 @@ class TaskRunProcess {
     logger.debug(`[${this.runId}] initializing task run process`, {
       env: this.env,
       path: this.path,
-      processEnv: process.env,
     });
 
     this._child = fork(this.path, {
@@ -619,11 +620,16 @@ class TaskRunProcess {
   }
 
   taskRunCompletedNotification(completion: TaskRunExecutionResult, execution: TaskRunExecution) {
-    logger.debug(`[${this.runId}] task run completed notification`, { completion, execution });
-
     if (!completion.ok && typeof completion.retry !== "undefined") {
       return;
     }
+
+    if (execution.run.id === this.runId) {
+      // We don't need to notify the task run process if it's the same as the one we're running
+      return;
+    }
+
+    logger.debug(`[${this.runId}] task run completed notification`, { completion, execution });
 
     this._sender.send("TASK_RUN_COMPLETED_NOTIFICATION", {
       completion,
