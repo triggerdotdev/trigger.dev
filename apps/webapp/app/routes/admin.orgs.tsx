@@ -19,7 +19,8 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { useUser } from "~/hooks/useUser";
-import { adminGetOrganizations, adminGetUsers } from "~/models/admin.server";
+import { adminGetOrganizations, adminGetUsers, setV3Enabled } from "~/models/admin.server";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { commitImpersonationSession, setImpersonationId } from "~/services/impersonation.server";
 import { requireUserId } from "~/services/session.server";
 import { createSearchParams } from "~/utils/searchParams";
@@ -43,21 +44,22 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson(result);
 };
 
-const FormSchema = z.object({ id: z.string() });
+const FormSchema = z.object({ id: z.string(), v3: z.enum(["enable", "disable"]) });
 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method.toLowerCase() !== "post") {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  // const payload = Object.fromEntries(await request.formData());
-  // const { id } = FormSchema.parse(payload);
+  const userId = await requireUserId(request);
 
-  // const session = await setImpersonationId(id, request);
+  const payload = Object.fromEntries(await request.formData());
 
-  // return redirect("/", {
-  //   headers: { "Set-Cookie": await commitImpersonationSession(session) },
-  // });
+  const { id, v3 } = FormSchema.parse(payload);
+
+  const result = await setV3Enabled(userId, id, v3 === "enable");
+
+  return redirectWithSuccessMessage("/admin/orgs", request, `v3 ${v3}d for org ${id}`);
 }
 export default function AdminDashboardRoute() {
   const { organizations, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
