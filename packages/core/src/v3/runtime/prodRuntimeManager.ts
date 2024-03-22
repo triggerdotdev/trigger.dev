@@ -64,7 +64,6 @@ export class ProdRuntimeManager implements RuntimeManager {
       this._waitForRestore = { resolve, reject };
     });
 
-    // There is a slight delay before actually checkpointing, so this has a chance to return
     const { willCheckpointAndRestore } = await this.ipc.sendWithAck("WAIT_FOR_DURATION", {
       ms,
       now,
@@ -75,9 +74,14 @@ export class ProdRuntimeManager implements RuntimeManager {
       return;
     }
 
-    // Checkpointing should happen after this line
+    this.ipc.send("READY_FOR_CHECKPOINT", {});
 
-    await waitForRestore;
+    // Don't wait for checkpoint beyond the requested wait duration
+    await Promise.race([waitForRestore, resolveAfterDuration]);
+
+    // The coordinator can then cancel any in-progress checkpoints
+    this.ipc.send("CANCEL_CHECKPOINT", {});
+
     clearTimeout(timeout);
   }
 

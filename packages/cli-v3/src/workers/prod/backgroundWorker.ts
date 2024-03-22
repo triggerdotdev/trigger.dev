@@ -60,6 +60,8 @@ export class ProdBackgroundWorker {
   public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
 
   public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
+  public onReadyForCheckpoint = Evt.create<{ version?: "v1" }>();
+  public onCancelCheckpoint = Evt.create<{ version?: "v1" }>();
 
   private _onClose: Evt<void> = new Evt();
 
@@ -220,6 +222,15 @@ export class ProdBackgroundWorker {
         this.onWaitForTask.post(message);
       });
 
+      taskRunProcess.onReadyForCheckpoint.attach((message) => {
+        this.onReadyForCheckpoint.post(message);
+      });
+
+      taskRunProcess.onCancelCheckpoint.attach((message) => {
+        this.onCancelCheckpoint.post(message);
+      });
+
+      // Notify down the chain
       this.preCheckpointNotification.attach((message) => {
         taskRunProcess.preCheckpointNotification.post(message);
       });
@@ -346,6 +357,8 @@ class TaskRunProcess {
   public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
 
   public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
+  public onReadyForCheckpoint = Evt.create<{ version?: "v1" }>();
+  public onCancelCheckpoint = Evt.create<{ version?: "v1" }>();
 
   constructor(
     private path: string,
@@ -413,6 +426,12 @@ class TaskRunProcess {
         },
         WAIT_FOR_TASK: async (message) => {
           this.onWaitForTask.post(message);
+        },
+        READY_FOR_CHECKPOINT: async (message) => {
+          this.onReadyForCheckpoint.post(message);
+        },
+        CANCEL_CHECKPOINT: async (message) => {
+          this.onCancelCheckpoint.post(message);
         },
       },
     });

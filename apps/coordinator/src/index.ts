@@ -52,6 +52,7 @@ class Checkpointer {
   #dockerMode = !process.env.KUBERNETES_PORT;
 
   #logger = new SimpleLogger("[checkptr]");
+  #abortControllers = new Map<string, AbortController>();
 
   constructor(private opts = { forceSimulate: false }) {}
 
@@ -138,7 +139,6 @@ class Checkpointer {
     const result = await this.#checkpointAndPush(opts);
 
     const end = performance.now();
-
     logger.log(`checkpointAndPush() end`, {
       start,
       end,
@@ -150,6 +150,22 @@ class Checkpointer {
     return result;
   }
 
+  isCheckpointing(runId: string) {
+    return this.#abortControllers.has(runId);
+  }
+
+  cancelCheckpoint(runId: string) {
+    const controller = this.#abortControllers.get(runId);
+
+    if (!controller) {
+      logger.debug("Nothing to cancel", { runId });
+      return;
+    }
+
+    controller.abort("cancelCheckpointing()");
+    this.#abortControllers.delete(runId);
+  }
+
   async #checkpointAndPush(opts: CheckpointAndPushOptions): Promise<CheckpointData | undefined> {
     await this.initialize();
 
@@ -158,15 +174,25 @@ class Checkpointer {
       return;
     }
 
-    const shortCode = nanoid(8);
-    const imageRef = this.#getImageRef(opts.projectRef, opts.deploymentVersion, shortCode);
-    const exportLocation = this.#getExportLocation(
-      opts.projectRef,
-      opts.deploymentVersion,
-      shortCode
-    );
+    if (this.#abortControllers.has(opts.runId)) {
+      logger.error("Checkpoint procedure already in progress", { opts });
+      return;
+    }
+
+    const controller = new AbortController();
+    this.#abortControllers.set(opts.runId, controller);
+
+    const $$ = $({ signal: controller.signal });
 
     try {
+      const shortCode = nanoid(8);
+      const imageRef = this.#getImageRef(opts.projectRef, opts.deploymentVersion, shortCode);
+      const exportLocation = this.#getExportLocation(
+        opts.projectRef,
+        opts.deploymentVersion,
+        shortCode
+      );
+
       this.#logger.log("Checkpointing:", { opts });
 
       const containterName = this.#getRunContainerName(opts.runId);
@@ -176,15 +202,15 @@ class Checkpointer {
         try {
           if (this.opts.forceSimulate || !this.#canCheckpoint) {
             this.#logger.log("Simulating checkpoint");
-            this.#logger.debug(await $`docker pause ${containterName}`);
+            this.#logger.debug(await $$`docker pause ${containterName}`);
           } else {
             if (opts.leaveRunning) {
               this.#logger.debug(
-                await $`docker checkpoint create --leave-running ${containterName} ${exportLocation}`
+                await $$`docker checkpoint create --leave-running ${containterName} ${exportLocation}`
               );
             } else {
               this.#logger.debug(
-                await $`docker checkpoint create ${containterName} ${exportLocation}`
+                await $$`docker checkpoint create ${containterName} ${exportLocation}`
               );
             }
           }
@@ -211,36 +237,40 @@ class Checkpointer {
 
       const containerId = this.#logger.debug(
         // @ts-expect-error
-        await $`crictl ps`
-          .pipeStdout($({ stdin: "pipe" })`grep ${containterName}`)
-          .pipeStdout($({ stdin: "pipe" })`cut -f1 ${"-d "}`)
+        await $$`crictl ps`
+          .pipeStdout($$({ stdin: "pipe" })`grep ${containterName}`)
+          .pipeStdout($$({ stdin: "pipe" })`cut -f1 ${"-d "}`)
       );
 
       if (!containerId.stdout) {
         throw new Error("could not find container id");
       }
 
-      this.#logger.debug(await $`crictl checkpoint --export=${exportLocation} ${containerId}`);
+      this.#logger.debug(await $$`crictl checkpoint --export=${exportLocation} ${containerId}`);
 
       // Create image from checkpoint
-      const container = this.#logger.debug(await $`buildah from scratch`);
-      this.#logger.debug(await $`buildah add ${container} ${exportLocation} /`);
+      const container = this.#logger.debug(await $$`buildah from scratch`);
+      this.#logger.debug(await $$`buildah add ${container} ${exportLocation} /`);
       this.#logger.debug(
-        await $`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
+        await $$`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
       );
-      this.#logger.debug(await $`buildah commit ${container} ${imageRef}`);
-      this.#logger.debug(await $`buildah rm ${container}`);
+      this.#logger.debug(await $$`buildah commit ${container} ${imageRef}`);
+      this.#logger.debug(await $$`buildah rm ${container}`);
 
       // Push checkpoint image
-      this.#logger.debug(await $`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${imageRef}`);
+      this.#logger.debug(await $$`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${imageRef}`);
 
       this.#logger.log("Checkpointed and pushed image to:", { location: imageRef });
 
       try {
-        await $`rm ${exportLocation}`;
+        await $$`rm ${exportLocation}`;
         this.#logger.log("Deleted checkpoint archive", { exportLocation });
+
+        // Disabled for now as this will increase restore time by having to pull the image again
+        // await $`buildah rmi ${imageRef}`;
+        // this.#logger.log("Deleted checkpoint image", { imageRef });
       } catch (error) {
-        this.#logger.error("Failed to delete checkpoint archive", { exportLocation });
+        this.#logger.error("Failed during checkpoint cleanup", { exportLocation });
         this.#logger.debug(error);
       }
 
@@ -251,6 +281,8 @@ class Checkpointer {
     } catch (error) {
       this.#logger.error("checkpoint failed", { options: opts, error });
       return;
+    } finally {
+      this.#abortControllers.delete(opts.runId);
     }
   }
 
@@ -272,6 +304,11 @@ class TaskCoordinator {
     typeof CoordinatorToPlatformMessages,
     typeof PlatformToCoordinatorMessages
   >;
+
+  #checkpointableTasks = new Map<
+    string,
+    { resolve: (value: void) => void; reject: (err?: any) => void }
+  >();
 
   constructor(
     private port: number,
@@ -529,8 +566,41 @@ class TaskCoordinator {
           }
         });
 
+        socket.on("READY_FOR_CHECKPOINT", async (message) => {
+          logger.log("[READY_FOR_CHECKPOINT]", message);
+
+          const checkpointable = this.#checkpointableTasks.get(socket.data.runId);
+
+          if (!checkpointable) {
+            logger.error("No checkpoint scheduled", { runId: socket.data.runId });
+            return;
+          }
+
+          checkpointable.resolve();
+        });
+
+        socket.on("CANCEL_CHECKPOINT", async (message) => {
+          logger.log("[CANCEL_CHECKPOINT]", message);
+
+          const checkpointWait = this.#checkpointableTasks.get(socket.data.runId);
+
+          if (checkpointWait) {
+            // Stop waiting for task to reach checkpointable state
+            checkpointWait.reject("Checkpoint cancelled");
+          }
+
+          // Cancel checkpointing procedure
+          this.#checkpointer.cancelCheckpoint(socket.data.runId);
+        });
+
         socket.on("WAIT_FOR_DURATION", async (message, callback) => {
           logger.log("[WAIT_FOR_DURATION]", message);
+
+          if (this.#checkpointableTasks.has(socket.data.runId)) {
+            logger.error("Checkpoint already in progress", { runId: socket.data.runId });
+            callback({ willCheckpointAndRestore: false });
+            return;
+          }
 
           const { canCheckpoint, willSimulate } = await this.#checkpointer.initialize();
 
@@ -542,9 +612,22 @@ class TaskCoordinator {
             return;
           }
 
-          // Wait for attempt to reach checkpointable state
-          // TODO: The worker should let us know when to checkpoint so we don't have to guess
-          await new Promise((resolve) => setTimeout(resolve, 2_000));
+          const isCheckpointable = new Promise((resolve, reject) => {
+            // We set a reasonable timeout to prevent waiting forever
+            setTimeout(reject, 10_000);
+
+            this.#checkpointableTasks.set(socket.data.runId, { resolve, reject });
+          });
+
+          try {
+            await isCheckpointable;
+          } catch (error) {
+            logger.error("Error while waiting for checkpointable state", { error });
+            // TODO: We may want to cancel the task as it's unlikely to recover
+            return;
+          } finally {
+            this.#checkpointableTasks.delete(socket.data.runId);
+          }
 
           const checkpoint = await this.#checkpointer.checkpointAndPush({
             runId: socket.data.runId,
@@ -553,8 +636,8 @@ class TaskCoordinator {
           });
 
           if (!checkpoint) {
+            // The task container will keep running until the wait duration has elapsed
             logger.error("Failed to checkpoint", { runId: socket.data.runId });
-            // TODO: We have to let the worker know about failures so it can use its own timer
             return;
           }
 

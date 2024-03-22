@@ -258,6 +258,16 @@ export const ProdChildToWorkerMessages = {
   READY_TO_DISPOSE: {
     message: z.undefined(),
   },
+  READY_FOR_CHECKPOINT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+    }),
+  },
+  CANCEL_CHECKPOINT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+    }),
+  },
   WAIT_FOR_DURATION: {
     message: z.object({
       version: z.literal("v1").default("v1"),

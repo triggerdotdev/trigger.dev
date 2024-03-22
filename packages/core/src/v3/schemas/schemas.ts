@@ -333,6 +333,16 @@ export const ProdWorkerToCoordinatorMessages = {
       type: z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]),
     }),
   },
+  READY_FOR_CHECKPOINT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+    }),
+  },
+  CANCEL_CHECKPOINT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+    }),
+  },
   TASK_HEARTBEAT: {
     message: z.object({
       version: z.literal("v1").default("v1"),

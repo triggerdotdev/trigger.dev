@@ -68,6 +68,14 @@ class ProdWorker {
       this.#coordinatorSocket.socket.emit("TASK_HEARTBEAT", { version: "v1", attemptFriendlyId });
     });
 
+    this.#backgroundWorker.onReadyForCheckpoint.attach(async (message) => {
+      this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
+    });
+
+    this.#backgroundWorker.onCancelCheckpoint.attach(async (message) => {
+      this.#coordinatorSocket.socket.emit("CANCEL_CHECKPOINT", { version: "v1" });
+    });
+
     this.#backgroundWorker.onWaitForDuration.attach(async (message) => {
       // TODO: Switch to .send() once coordinator uses zod handler for all messages
       const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
@@ -376,6 +384,7 @@ class ProdWorker {
             {
               version: "v1",
               ms: 60_000,
+              now: Date.now(),
             }
           );
           logger.log("WAIT_FOR_DURATION", { willCheckpointAndRestore });
