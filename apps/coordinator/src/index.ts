@@ -382,6 +382,18 @@ class TaskCoordinator {
 
           taskSocket.emit("REQUEST_ATTEMPT_CANCELLATION", message);
         },
+        READY_FOR_RETRY: async (message) => {
+          const taskSocket = await this.#getRunSocket(message.runId);
+
+          if (!taskSocket) {
+            logger.log("Socket for attempt not found", {
+              runId: message.runId,
+            });
+            return;
+          }
+
+          taskSocket.emit("READY_FOR_RETRY", message);
+        },
       },
     });
 
@@ -586,6 +598,11 @@ class TaskCoordinator {
 
           if (completion.retry === undefined) {
             completeWithoutCheckpoint(true);
+            return;
+          }
+
+          if (completion.retry.delay < 10_000) {
+            completeWithoutCheckpoint(false);
             return;
           }
 

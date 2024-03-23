@@ -312,15 +312,26 @@ export class SharedQueueConsumer {
 
         const retryingFromCheckpoint = !!messageBody.data.checkpointEventId;
 
+        const EXECUTABLE_RUN_STATUSES: {
+          fromCheckpoint: TaskRunStatus[];
+          withoutCheckpoint: TaskRunStatus[];
+        } = {
+          fromCheckpoint: ["WAITING_TO_RESUME"],
+          withoutCheckpoint: ["PENDING", "RETRYING_AFTER_FAILURE"],
+        };
+
         if (
-          (retryingFromCheckpoint && existingTaskRun.status !== "WAITING_TO_RESUME") ||
-          (!retryingFromCheckpoint && existingTaskRun.status !== "PENDING")
+          (retryingFromCheckpoint &&
+            !EXECUTABLE_RUN_STATUSES.fromCheckpoint.includes(existingTaskRun.status)) ||
+          (!retryingFromCheckpoint &&
+            !EXECUTABLE_RUN_STATUSES.withoutCheckpoint.includes(existingTaskRun.status))
         ) {
           logger.debug("Task run has invalid status for execution", {
             queueMessage: message.data,
             messageId: message.messageId,
             taskRun: existingTaskRun.id,
             status: existingTaskRun.status,
+            retryingFromCheckpoint,
           });
           await marqs?.acknowledgeMessage(message.messageId);
           setTimeout(() => this.#doWork(), this._options.interval);
@@ -441,13 +452,15 @@ export class SharedQueueConsumer {
           },
         });
 
+        const isRetry = taskRunAttempt.number > 1;
+
         try {
           if (messageBody.data.checkpointEventId) {
             const restoreService = new RestoreCheckpointService();
 
             const checkpoint = await restoreService.call({
               eventId: messageBody.data.checkpointEventId,
-              isRetry: taskRunAttempt.number > 1,
+              isRetry,
             });
 
             if (!checkpoint) {
@@ -460,19 +473,24 @@ export class SharedQueueConsumer {
             }
 
             return;
-          }
-
-          await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
-            backgroundWorkerId: deployment.worker.friendlyId,
-            data: {
-              type: "SCHEDULE_ATTEMPT",
-              id: taskRunAttempt.id,
-              image: deployment.imageReference,
-              envId: environment.id,
+          } else if (isRetry) {
+            socketIo.coordinatorNamespace.emit("READY_FOR_RETRY", {
+              version: "v1",
               runId: taskRunAttempt.taskRunId,
-              version: deployment.version,
-            },
-          });
+            });
+          } else {
+            await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
+              backgroundWorkerId: deployment.worker.friendlyId,
+              data: {
+                type: "SCHEDULE_ATTEMPT",
+                id: taskRunAttempt.id,
+                image: deployment.imageReference,
+                envId: environment.id,
+                runId: taskRunAttempt.taskRunId,
+                version: deployment.version,
+              },
+            });
+          }
 
           this._inProgressAttempts.set(taskRunAttempt.friendlyId, message.messageId);
         } catch (e) {

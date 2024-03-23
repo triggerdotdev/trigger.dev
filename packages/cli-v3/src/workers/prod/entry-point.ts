@@ -12,6 +12,7 @@ import { createServer } from "node:http";
 import { z } from "zod";
 import { ProdBackgroundWorker } from "./backgroundWorker";
 import { UncaughtExceptionError } from "../common/errors";
+import { setTimeout } from "node:timers/promises";
 
 declare const __PROJECT_CONFIG__: Config;
 
@@ -181,13 +182,6 @@ class ProdWorker {
     if (this.runningInKubernetes) {
       return;
     }
-
-    // We don't have access to the postStart lifecycle hook, so we set a reconnect timer
-    // TODO: Implement lifecycle hook for docker
-    setTimeout(async () => {
-      // Reconnecting when paused will trigger automatic resume
-      await this.#reconnect();
-    }, 3_000);
   }
 
   #returnValidatedExtraHeaders(headers: Record<string, string>) {
@@ -297,8 +291,10 @@ class ProdWorker {
           this.executing = false;
           this.attemptFriendlyId = undefined;
 
-          if (!this.runningInKubernetes) {
-            this.#reconnect();
+          if (willCheckpointAndRestore) {
+            this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
+            this.#coordinatorSocket.close();
+            return;
           }
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
@@ -310,6 +306,17 @@ class ProdWorker {
         },
         REQUEST_EXIT: async () => {
           process.exit(0);
+        },
+        READY_FOR_RETRY: async (message) => {
+          if (this.completed.size < 1) {
+            return;
+          }
+
+          this.#coordinatorSocket.socket.emit("READY_FOR_EXECUTION", {
+            version: "v1",
+            runId: this.runId,
+            totalCompletions: this.completed.size,
+          });
         },
       },
       onConnection: async (socket, handler, sender, logger) => {
@@ -381,9 +388,8 @@ class ProdWorker {
               });
             }
 
-            setTimeout(() => {
+            await setTimeout(200);
               process.exit(1);
-            }, 200);
           }
         }
 
@@ -563,7 +569,7 @@ class ProdWorker {
       logger.log("http server listening on port", this.#httpPort);
     });
 
-    httpServer.on("error", (error) => {
+    httpServer.on("error", async (error) => {
       // @ts-expect-error
       if (error.code != "EADDRINUSE") {
         return;
@@ -573,9 +579,8 @@ class ProdWorker {
 
       this.#httpPort = getRandomPortNumber();
 
-      setTimeout(() => {
+      await setTimeout(100);
         this.start();
-      }, 100);
     });
 
     return httpServer;

@@ -263,6 +263,12 @@ export const PlatformToCoordinatorMessages = {
       attemptFriendlyId: z.string(),
     }),
   },
+  READY_FOR_RETRY: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+    }),
+  },
 };
 
 export const ClientToSharedQueueMessages = {
@@ -445,6 +451,12 @@ export const CoordinatorToProdWorkerMessages = {
   REQUEST_EXIT: {
     message: z.object({
       version: z.literal("v1").default("v1"),
+    }),
+  },
+  READY_FOR_RETRY: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
     }),
   },
 };
