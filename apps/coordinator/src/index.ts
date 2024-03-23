@@ -456,6 +456,45 @@ class TaskCoordinator {
       onConnection: async (socket, handler, sender) => {
         const logger = new SimpleLogger(`[prod-worker][${socket.id}]`);
 
+        const checkpointInProgress = () => {
+          return this.#checkpointableTasks.has(socket.data.runId);
+        };
+
+        const readyToCheckpoint = async (): Promise<
+          { success: true } | { success: false; reason?: string }
+        > => {
+          if (checkpointInProgress()) {
+            return {
+              success: false,
+              reason: "checkpoint in progress",
+            };
+          }
+
+          const isCheckpointable = new Promise((resolve, reject) => {
+            // We set a reasonable timeout to prevent waiting forever
+            // TODO: We may also want to cancel the task as it's unlikely to recover
+            setTimeout(() => reject("timeout"), 10_000);
+
+            this.#checkpointableTasks.set(socket.data.runId, { resolve, reject });
+          });
+
+          try {
+            await isCheckpointable;
+            this.#checkpointableTasks.delete(socket.data.runId);
+
+            return {
+              success: true,
+            };
+          } catch (error) {
+            logger.error("Error while waiting for checkpointable state", { error });
+
+            return {
+              success: false,
+              reason: typeof error === "string" ? error : "unknown",
+            };
+          }
+        };
+
         this.#platformSocket?.send("LOG", {
           metadata: socket.data,
           text: "connected",
@@ -523,31 +562,17 @@ class TaskCoordinator {
         socket.on("TASK_RUN_COMPLETED", async ({ completion, execution }, callback) => {
           logger.log("completed task", { completionId: completion.id });
 
-          type CheckpointData = {
-            docker: boolean;
-            location: string;
-          };
-
-          const confirmCompletion = ({
-            didCheckpoint,
-            shouldExit,
-            checkpoint,
-          }: {
-            didCheckpoint: boolean;
-            shouldExit: boolean;
-            checkpoint?: CheckpointData;
-          }) => {
+          const completeWithoutCheckpoint = (shouldExit: boolean) => {
             this.#platformSocket?.send("TASK_RUN_COMPLETED", {
               version: "v1",
               execution,
               completion,
-              checkpoint,
             });
-            callback({ didCheckpoint, shouldExit });
+            callback({ willCheckpointAndRestore: false, shouldExit });
           };
 
           if (completion.ok) {
-            confirmCompletion({ didCheckpoint: false, shouldExit: true });
+            completeWithoutCheckpoint(true);
             return;
           }
 
@@ -555,12 +580,12 @@ class TaskCoordinator {
             completion.error.type === "INTERNAL_ERROR" &&
             completion.error.code === "TASK_RUN_CANCELLED"
           ) {
-            confirmCompletion({ didCheckpoint: false, shouldExit: true });
+            completeWithoutCheckpoint(true);
             return;
           }
 
           if (completion.retry === undefined) {
-            confirmCompletion({ didCheckpoint: false, shouldExit: true });
+            completeWithoutCheckpoint(true);
             return;
           }
 
@@ -569,7 +594,20 @@ class TaskCoordinator {
           const willCheckpointAndRestore = canCheckpoint || willSimulate;
 
           if (!willCheckpointAndRestore) {
-            confirmCompletion({ didCheckpoint: false, shouldExit: false });
+            completeWithoutCheckpoint(false);
+            return;
+          }
+
+          // The worker will then put itself in a checkpointable state
+          callback({ willCheckpointAndRestore: true, shouldExit: false });
+
+          const ready = await readyToCheckpoint();
+
+          if (!ready.success) {
+            logger.error("Failed to become checkpointable", {
+              runId: socket.data.runId,
+              reason: ready.reason,
+            });
             return;
           }
 
@@ -581,11 +619,16 @@ class TaskCoordinator {
 
           if (!checkpoint) {
             logger.error("Failed to checkpoint", { runId: socket.data.runId });
-            confirmCompletion({ didCheckpoint: false, shouldExit: false });
+            completeWithoutCheckpoint(false);
             return;
           }
 
-          confirmCompletion({ didCheckpoint: true, shouldExit: false, checkpoint });
+          this.#platformSocket?.send("TASK_RUN_COMPLETED", {
+            version: "v1",
+            execution,
+            completion,
+            checkpoint,
+          });
 
           if (!checkpoint.docker) {
             socket.emit("REQUEST_EXIT", {
@@ -624,7 +667,7 @@ class TaskCoordinator {
         socket.on("WAIT_FOR_DURATION", async (message, callback) => {
           logger.log("[WAIT_FOR_DURATION]", message);
 
-          if (this.#checkpointableTasks.has(socket.data.runId)) {
+          if (checkpointInProgress()) {
             logger.error("Checkpoint already in progress", { runId: socket.data.runId });
             callback({ willCheckpointAndRestore: false });
             return;
@@ -640,21 +683,14 @@ class TaskCoordinator {
             return;
           }
 
-          const isCheckpointable = new Promise((resolve, reject) => {
-            // We set a reasonable timeout to prevent waiting forever
-            setTimeout(reject, 10_000);
+          const ready = await readyToCheckpoint();
 
-            this.#checkpointableTasks.set(socket.data.runId, { resolve, reject });
-          });
-
-          try {
-            await isCheckpointable;
-          } catch (error) {
-            logger.error("Error while waiting for checkpointable state", { error });
-            // TODO: We may want to cancel the task as it's unlikely to recover
+          if (!ready.success) {
+            logger.error("Failed to become checkpointable", {
+              runId: socket.data.runId,
+              reason: ready.reason,
+            });
             return;
-          } finally {
-            this.#checkpointableTasks.delete(socket.data.runId);
           }
 
           const checkpoint = await this.#checkpointer.checkpointAndPush({

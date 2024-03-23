@@ -60,7 +60,7 @@ export class ProdRuntimeManager implements RuntimeManager {
       return;
     }
 
-    const waitForRestore = new Promise<TaskRunExecutionResult>((resolve, reject) => {
+    const waitForRestore = new Promise((resolve, reject) => {
       this._waitForRestore = { resolve, reject };
     });
 

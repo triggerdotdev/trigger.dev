@@ -3,13 +3,15 @@ import {
   CoordinatorToProdWorkerMessages,
   ProdWorkerToCoordinatorMessages,
   TaskResource,
+  WaitReason,
   ZodSocketConnection,
 } from "@trigger.dev/core/v3";
-import { HttpReply, getTextBody, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
+import { HttpReply, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { z } from "zod";
 import { ProdBackgroundWorker } from "./backgroundWorker";
 import { UncaughtExceptionError } from "../common/errors";
-import { readFile } from "node:fs/promises";
 
 declare const __PROJECT_CONFIG__: Config;
 
@@ -31,13 +33,14 @@ class ProdWorker {
   private runId = process.env.TRIGGER_RUN_ID || "index-only";
   private deploymentId = process.env.TRIGGER_DEPLOYMENT_ID!;
   private deploymentVersion = process.env.TRIGGER_DEPLOYMENT_VERSION!;
+  private runningInKubernetes = !!process.env.KUBERNETES_PORT;
 
   private executing = false;
   private completed = new Set<string>();
   private paused = false;
   private attemptFriendlyId?: string;
 
-  private nextResumeAfter: "WAIT_FOR_DURATION" | "WAIT_FOR_TASK" | "WAIT_FOR_BATCH" | undefined;
+  private nextResumeAfter?: WaitReason;
 
   #httpPort: number;
   #backgroundWorker: ProdBackgroundWorker;
@@ -93,18 +96,7 @@ class ProdWorker {
         }
       );
 
-      logger.log("WAIT_FOR_DURATION", { willCheckpointAndRestore });
-
-      this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
-
-      setTimeout(async () => {
-        if (willCheckpointAndRestore) {
-          this.paused = true;
-          this.nextResumeAfter = "WAIT_FOR_DURATION";
-        }
-        // Forcing a reconnect will ensure the connection handler runs to trigger automatic resume
-        this.#reconnect();
-      }, 3_000);
+      this.#prepareForCheckpoint("WAIT_FOR_DURATION", willCheckpointAndRestore);
     });
 
     this.#backgroundWorker.onWaitForTask.attach(async (message) => {
@@ -122,18 +114,7 @@ class ProdWorker {
         }
       );
 
-      logger.log("WAIT_FOR_TASK", { willCheckpointAndRestore });
-
-      this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
-
-      setTimeout(() => {
-        if (willCheckpointAndRestore) {
-          this.paused = true;
-          this.nextResumeAfter = "WAIT_FOR_TASK";
-        }
-        // Forcing a reconnect will ensure the connection handler runs to trigger automatic resume
-        this.#reconnect();
-      }, 3_000);
+      this.#prepareForCheckpoint("WAIT_FOR_TASK", willCheckpointAndRestore);
     });
 
     this.#backgroundWorker.onWaitForBatch.attach(async (message) => {
@@ -151,18 +132,7 @@ class ProdWorker {
         }
       );
 
-      logger.log("WAIT_FOR_BATCH", { willCheckpointAndRestore });
-
-      this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
-
-      setTimeout(() => {
-        if (willCheckpointAndRestore) {
-          this.paused = true;
-          this.nextResumeAfter = "WAIT_FOR_BATCH";
-        }
-        // Forcing a reconnect will ensure the connection handler runs to trigger automatic resume
-        this.#reconnect();
-      }, 3_000);
+      this.#prepareForCheckpoint("WAIT_FOR_BATCH", willCheckpointAndRestore);
     });
 
     this.#httpPort = port;
@@ -172,6 +142,11 @@ class ProdWorker {
   async #reconnect() {
     this.#coordinatorSocket.close();
 
+    if (!this.runningInKubernetes) {
+      this.#coordinatorSocket.connect();
+      return;
+    }
+
     try {
       const coordinatorHost = (await readFile("/etc/taskinfo/coordinator-host", "utf-8")).replace(
         "\n",
@@ -180,8 +155,8 @@ class ProdWorker {
 
       logger.log("reconnecting", {
         coordinatorHost: {
-          env: COORDINATOR_HOST,
-          volume: coordinatorHost,
+          fromEnv: COORDINATOR_HOST,
+          fromVolume: coordinatorHost,
           current: this.#coordinatorSocket.socket.io.opts.hostname,
         },
       });
@@ -191,6 +166,28 @@ class ProdWorker {
       logger.error("taskinfo read error during reconnect", { error });
       this.#coordinatorSocket.connect();
     }
+  }
+
+  #prepareForCheckpoint(reason: WaitReason, willCheckpointAndRestore: boolean) {
+    logger.log(reason, { willCheckpointAndRestore });
+
+    this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
+
+    if (willCheckpointAndRestore) {
+      this.paused = true;
+      this.nextResumeAfter = reason;
+    }
+
+    if (this.runningInKubernetes) {
+      return;
+    }
+
+    // We don't have access to the postStart lifecycle hook, so we set a reconnect timer
+    // TODO: Implement lifecycle hook for docker
+    setTimeout(async () => {
+      // Reconnecting when paused will trigger automatic resume
+      await this.#reconnect();
+    }, 3_000);
   }
 
   #returnValidatedExtraHeaders(headers: Record<string, string>) {
@@ -264,34 +261,45 @@ class ProdWorker {
           logger.log("completed", completion);
 
           this.completed.add(executionPayload.execution.attempt.id);
-          this.executing = false;
-          this.attemptFriendlyId = undefined;
 
           await this.#backgroundWorker.flushTelemetry();
 
-          const { didCheckpoint, shouldExit } = await this.#coordinatorSocket.socket.emitWithAck(
-            "TASK_RUN_COMPLETED",
-            {
+          const { willCheckpointAndRestore, shouldExit } =
+            await this.#coordinatorSocket.socket.emitWithAck("TASK_RUN_COMPLETED", {
               version: "v1",
               execution: executionPayload.execution,
               completion,
-            }
-          );
+            });
 
-          logger.log("completion acknowledged", { didCheckpoint, shouldExit });
+          logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
 
+          // Graceful shutdown on final attempt
           if (shouldExit) {
+            if (willCheckpointAndRestore) {
+              logger.log("WARNING: Will checkpoint but also requested exit. This won't end well.");
+            }
+
             await this.#backgroundWorker.close();
             process.exit(0);
           }
 
+          this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
+
           // Give coordinator a chance to request exit
+          // TODO: Consider disabling automatic reconnect instead, and re-enabling it on postStart hook
           await new Promise((resolve) => {
+            // The timeout duration is below the minimum wait duration that triggers a checkpoint
+            // We are unlikely to restore before this, so this will have resolved on restore
             setTimeout(resolve, 5_000);
           });
 
-          // Forcing a reconnect will ensure the connection handler runs and signals we are ready for another execution
-          this.#reconnect();
+          // Remove executing state as late as possible to prevent further execution until we've
+          this.executing = false;
+          this.attemptFriendlyId = undefined;
+
+          if (!this.runningInKubernetes) {
+            this.#reconnect();
+          }
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
           if (!this.executing) {
@@ -305,6 +313,8 @@ class ProdWorker {
         },
       },
       onConnection: async (socket, handler, sender, logger) => {
+        if (process.env.DEBUG === "true") return;
+
         if (process.env.INDEX_TASKS === "true") {
           try {
             const taskResources = await this.#initializeWorker();
@@ -417,7 +427,7 @@ class ProdWorker {
           },
         });
 
-        this.#reconnect();
+        await this.#reconnect();
       },
       onDisconnect: async (socket, reason, description, logger) => {
         // this.#reconnect();
@@ -430,71 +440,118 @@ class ProdWorker {
   #createHttpServer() {
     const httpServer = createServer(async (req, res) => {
       logger.log(`[${req.method}]`, req.url);
-
       const reply = new HttpReply(res);
 
-      switch (req.url) {
-        case "/complete":
-          setTimeout(() => process.exit(0), 1000);
-          return reply.text("ok");
+      try {
+        const url = new URL(req.url ?? "", `http://${req.headers.host}`);
 
-        case "/date":
-          const date = new Date();
-          return reply.text(date.toString());
+        switch (url.pathname) {
+          case "/health": {
+            return reply.text("ok");
+          }
 
-        case "/fail":
-          setTimeout(() => process.exit(1), 1000);
-          return reply.text("ok");
+          case "/status": {
+            return reply.json({
+              executing: this.executing,
+              pause: this.paused,
+              nextResumeAfter: this.nextResumeAfter,
+            });
+          }
 
-        case "/health":
-          return reply.text("ok");
+          case "/connect": {
+            this.#coordinatorSocket.connect();
 
-        case "/whoami":
-          return reply.text(this.contentHash);
+            return reply.text("Connected to coordinator");
+          }
 
-        case "/connect":
-          this.#coordinatorSocket.connect();
-          return reply.empty();
+          case "/close": {
+            await this.#coordinatorSocket.sendWithAck("LOG", {
+              version: "v1",
+              text: `[${req.method}] ${req.url}`,
+            });
 
-        case "/close":
-          this.#coordinatorSocket.sendWithAck("LOG", {
-            version: "v1",
-            text: "close without delay",
-          });
-          this.#coordinatorSocket.close();
-          return reply.empty();
-
-        case "/close-delay":
-          this.#coordinatorSocket.sendWithAck("LOG", {
-            version: "v1",
-            text: "close with delay",
-          });
-          setTimeout(() => {
             this.#coordinatorSocket.close();
-          }, 200);
-          return reply.empty();
 
-        case "/log":
-          this.#coordinatorSocket.sendWithAck("LOG", {
-            version: "v1",
-            text: await getTextBody(req),
-          });
-          return reply.empty();
+            return reply.text("Disconnected from coordinator");
+          }
 
-        case "/preStop":
-          logger.log("should do preStop stuff, e.g. checkpoint and graceful shutdown");
-          return reply.text("got preStop request");
+          case "/test": {
+            await this.#coordinatorSocket.sendWithAck("LOG", {
+              version: "v1",
+              text: `[${req.method}] ${req.url}`,
+            });
 
-        case "/ready":
-          this.#coordinatorSocket.send("READY_FOR_EXECUTION", {
-            version: "v1",
-            runId: this.runId,
-            totalCompletions: this.completed.size,
-          });
-          return reply.empty();
+            return reply.text("Received ACK from coordinator");
+          }
 
-        default:
-          return reply.empty(404);
+          case "/preStop": {
+            const schema = z.enum(["index", "create", "restore"]);
+
+            const cause = schema.safeParse(url.searchParams.get("cause"));
+
+            if (!cause.success) {
+              logger.error("Failed to parse cause", { cause });
+              return;
+            }
+
+            switch (cause.data) {
+              case "index": {
+                break;
+              }
+              case "create": {
+                break;
+              }
+              case "restore": {
+                break;
+              }
+              default: {
+                logger.error("Unhandled cause", { cause: cause.data });
+                break;
+              }
+            }
+            logger.log("preStop", { url: req.url });
+
+            return reply.text("preStop ok");
+          }
+
+          case "/postStart": {
+            const schema = z.enum(["index", "create", "restore"]);
+
+            const cause = schema.safeParse(url.searchParams.get("cause"));
+
+            if (!cause.success) {
+              logger.error("Failed to parse cause", { cause });
+              return;
+            }
+
+            switch (cause.data) {
+              case "index": {
+                break;
+              }
+              case "create": {
+                break;
+              }
+              case "restore": {
+                await this.#reconnect();
+                break;
+              }
+              default: {
+                logger.error("Unhandled cause", { cause: cause.data });
+                break;
+              }
+            }
+            logger.log("postStart", { url: req.url });
+
+            return reply.text("postStart ok");
+          }
+
+          default: {
+            return reply.empty(404);
+          }
+        }
+      } catch (error) {
+        logger.error("HTTP server error", { error });
+        reply.empty(500);
       }
     });
 

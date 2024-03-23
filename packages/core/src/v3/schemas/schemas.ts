@@ -37,6 +37,10 @@ export const Machine = z.object({
 
 export type Machine = z.infer<typeof Machine>;
 
+export const WaitReason = z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"])
+
+export type WaitReason = z.infer<typeof WaitReason>
+
 export const ProviderToPlatformMessages = {
   LOG: {
     message: z.object({
@@ -172,7 +176,7 @@ export const CoordinatorToPlatformMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptFriendlyId: z.string(),
-      type: z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]),
+      type: WaitReason,
     }),
   },
   TASK_RUN_COMPLETED: {
@@ -334,7 +338,7 @@ export const ProdWorkerToCoordinatorMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptFriendlyId: z.string(),
-      type: z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]),
+      type: WaitReason,
     }),
   },
   READY_FOR_CHECKPOINT: {
@@ -360,7 +364,7 @@ export const ProdWorkerToCoordinatorMessages = {
       completion: TaskRunExecutionResult,
     }),
     callback: z.object({
-      didCheckpoint: z.boolean(),
+      willCheckpointAndRestore: z.boolean(),
       shouldExit: z.boolean(),
     }),
   },

@@ -49,6 +49,7 @@ class KubernetesTaskOperations implements TaskOperations {
         },
         spec: {
           completions: 1,
+          backoffLimit: 0,
           ttlSecondsAfterFinished: 300,
           template: {
             metadata: {
@@ -78,20 +79,6 @@ class KubernetesTaskOperations implements TaskOperations {
                   //     memory: "50Mi",
                   //   },
                   // },
-                  lifecycle: {
-                    preStop: {
-                      httpGet: {
-                        path: "/preStop?cause=index",
-                        port: 8000,
-                      },
-                    },
-                    postStart: {
-                      httpGet: {
-                        path: "/postStart?cause=index",
-                        port: 8000,
-                      },
-                    },
-                  },
                   env: [
                     {
                       name: "DEBUG",
@@ -186,16 +173,14 @@ class KubernetesTaskOperations implements TaskOperations {
               //   limits: opts.machine,
               // },
               lifecycle: {
-                preStop: {
-                  httpGet: {
-                    path: "/preStop?cause=create",
-                    port: 8000,
+                postStart: {
+                  exec: {
+                    command: this.#getLifecycleCommand("postStart", "create"),
                   },
                 },
-                postStart: {
-                  httpGet: {
-                    path: "/postStart?cause=create",
-                    port: 8000,
+                preStop: {
+                  exec: {
+                    command: this.#getLifecycleCommand("preStop", "create"),
                   },
                 },
               },
@@ -328,16 +313,14 @@ class KubernetesTaskOperations implements TaskOperations {
               //   limits: opts.machine,
               // },
               lifecycle: {
-                preStop: {
-                  httpGet: {
-                    path: "/preStop?cause=restore",
-                    port: 8000,
+                postStart: {
+                  exec: {
+                    command: this.#getLifecycleCommand("postStart", "restore"),
                   },
                 },
-                postStart: {
-                  httpGet: {
-                    path: "/postStart?cause=restore",
-                    port: 8000,
+                preStop: {
+                  exec: {
+                    command: this.#getLifecycleCommand("preStop", "restore"),
                   },
                 },
               },
@@ -370,6 +353,10 @@ class KubernetesTaskOperations implements TaskOperations {
 
   async get(opts: { runId: string }) {
     await this.#getPod(opts.runId, this.#namespace);
+  }
+
+  #getLifecycleCommand(type: "postStart" | "preStop", cause: "index" | "create" | "restore") {
+    return ["/bin/sh", "-c", `sleep 1; wget -q -O- 127.0.0.1:8000/${type}?cause=${cause}`];
   }
 
   #getIndexContainerName(suffix: string) {

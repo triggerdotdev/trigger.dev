@@ -26,6 +26,14 @@ export class HttpReply {
       .writeHead(status ?? 200, { "Content-Type": contentType || "text/plain" })
       .end(text.endsWith("\n") ? text : `${text}\n`);
   }
+
+  json(value: any, pretty?: boolean) {
+    return this.text(
+      JSON.stringify(value, undefined, pretty ? 2 : undefined),
+      200,
+      "application/json"
+    );
+  }
 }
 
 function getRandomInteger(min: number, max: number) {
