@@ -5,9 +5,8 @@ import { generateErrorMessage } from "zod-error";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { IngestSendEvent } from "~/services/events/ingestSendEvent.server";
 import { eventRecordToApiJson } from "~/api.server";
-import { standardRateLimitter } from "~/services/apiRateLimit.server";
 
-export const action = standardRateLimitter.action("sendEvent", async ({ request }) => {
+export async function action({ request }: ActionFunctionArgs) {
   // Ensure this is a POST request
   if (request.method.toUpperCase() !== "POST") {
     return { status: 405, body: "Method Not Allowed" };
@@ -40,4 +39,4 @@ export const action = standardRateLimitter.action("sendEvent", async ({ request 
   }
 
   return json(eventRecordToApiJson(event));
-});
+}
