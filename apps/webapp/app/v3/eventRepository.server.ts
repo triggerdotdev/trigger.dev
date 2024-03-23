@@ -97,10 +97,20 @@ export type PreparedEvent = Omit<TaskEventRecord, "events" | "style" | "duration
   style: TaskEventStyle;
 };
 
-export type SpanLink = {
-  type: "run";
-  runId: string;
-};
+export type SpanLink =
+  | {
+      type: "run";
+      icon?: string;
+      title: string;
+      runId: string;
+    }
+  | {
+      type: "span";
+      icon?: string;
+      title: string;
+      traceId: string;
+      spanId: string;
+    };
 
 export type SpanSummary = {
   recordId: string;
@@ -377,9 +387,28 @@ export class EventRepository {
     if (messagingEvent.success && messagingEvent.data) {
       if ("id" in messagingEvent.data.message) {
         if (messagingEvent.data.message.id.startsWith("run_")) {
-          links.push({ type: "run", runId: messagingEvent.data.message.id });
+          links.push({
+            type: "run",
+            icon: "runs",
+            title: `Run ${messagingEvent.data.message.id}`,
+            runId: messagingEvent.data.message.id,
+          });
         }
       }
+    }
+
+    const backLinks = fullEvent.links as any as Link[] | undefined;
+
+    if (backLinks && backLinks.length > 0) {
+      backLinks.forEach((l) => {
+        links.push({
+          type: "span",
+          icon: "trigger",
+          title: `Triggered by`,
+          traceId: l.context.traceId,
+          spanId: l.context.spanId,
+        });
+      });
     }
 
     const events = transformEvents(span.data.events, fullEvent.metadata as Attributes);

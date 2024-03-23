@@ -25,7 +25,8 @@ import { useProject } from "~/hooks/useProject";
 import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3RunPath, v3RunSpanPath, v3SpanParamsSchema } from "~/utils/pathBuilder";
+import { v3RunPath, v3RunSpanPath, v3SpanParamsSchema, v3TraceSpanPath } from "~/utils/pathBuilder";
+import { SpanLink } from "~/v3/eventRepository.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -134,17 +135,11 @@ export default function Page() {
           {event.links && event.links.length > 0 && (
             <div>
               <Header2 spacing>Links</Header2>
-              <PropertyTable>
+              <div className="space-y-1">
                 {event.links.map((link, index) => (
-                  <Property key={index} label={link.type === "run" ? "Run" : "Unknown"}>
-                    <Paragraph variant="small">
-                      <TextLink to={v3RunPath(organization, project, { friendlyId: link.runId })}>
-                        {link.runId}
-                      </TextLink>
-                    </Paragraph>
-                  </Property>
+                  <SpanLinkElement key={index} link={link} />
                 ))}
-              </PropertyTable>
+              </div>
             </div>
           )}
 
@@ -294,4 +289,42 @@ function classNameForState(state: TimelineState) {
       return "bg-error";
     }
   }
+}
+
+function SpanLinkElement({ link }: { link: SpanLink }) {
+  const organization = useOrganization();
+  const project = useProject();
+
+  switch (link.type) {
+    case "run": {
+      return (
+        <LinkButton
+          to={v3RunPath(organization, project, { friendlyId: link.runId })}
+          variant="minimal/medium"
+          LeadingIcon={link.icon}
+          leadingIconClassName="text-text-dimmed"
+          fullWidth
+          textAlignLeft
+        >
+          {link.title}
+        </LinkButton>
+      );
+    }
+    case "span": {
+      return (
+        <LinkButton
+          to={v3TraceSpanPath(organization, project, link.traceId, link.spanId)}
+          variant="minimal/medium"
+          LeadingIcon={link.icon}
+          leadingIconClassName="text-text-dimmed"
+          fullWidth
+          textAlignLeft
+        >
+          {link.title}
+        </LinkButton>
+      );
+    }
+  }
+
+  return null;
 }
