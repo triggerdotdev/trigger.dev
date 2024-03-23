@@ -7,6 +7,7 @@ import {
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
 } from "@trigger.dev/core-apps";
+import { setTimeout } from "node:timers/promises";
 
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
 const COORDINATOR_PORT = process.env.COORDINATOR_PORT || 8020;
@@ -165,10 +166,28 @@ class DockerTaskOperations implements TaskOperations {
     if (!this.#canCheckpoint || this.opts.forceSimulate) {
       logger.log("Simulating restore");
 
-      const { exitCode } = logger.debug(await $`docker unpause ${containerName}`);
+      const unpause = logger.debug(await $`docker unpause ${containerName}`);
 
-      if (exitCode !== 0) {
+      if (unpause.exitCode !== 0) {
         throw new Error("docker unpause command failed");
+      }
+
+      // Emulate prod-like postStart command
+      // For this to work we need to first get the correct port, which is random during dev as we run with host networking and need to avoid clashes
+      const logs = logger.debug(await $`docker logs ${containerName}`);
+      const matches = logs.stdout.match(/http server listening on port (?<port>[0-9]+)/);
+
+      const port = Number(matches?.groups?.port);
+
+      if (!port) {
+        throw new Error("failed to extract port from logs");
+      }
+
+      try {
+        logger.debug(await this.#runLifecycleCommand(containerName, port, "postStart", "restore"));
+      } catch (error) {
+        logger.error("postStart error", { error });
+        throw new Error("postStart command failed");
       }
 
       return;
@@ -202,6 +221,35 @@ class DockerTaskOperations implements TaskOperations {
   #getRunContainerName(suffix: string) {
     return `task-run-${suffix}`;
   }
+
+  async #runLifecycleCommand(
+    containerName: string,
+    port: number,
+    type: "postStart" | "preStop",
+    cause: "index" | "create" | "restore",
+    retryCount = 0
+  ): Promise<ExecaChildProcess> {
+    try {
+      return await execa("docker", [
+        "exec",
+        containerName,
+        "wget",
+        "-q",
+        "-O-",
+        `127.0.0.1:${port}/${type}?cause=${cause}`,
+      ]);
+    } catch (error: any) {
+      if (retryCount < 6) {
+        logger.debug("retriable postStart error", { retryCount, message: error?.message });
+        await setTimeout(exponentialBackoff(retryCount + 1, 2, 50, 1150, 50));
+
+        return this.#runLifecycleCommand(containerName, port, type, cause, retryCount + 1);
+      }
+
+      logger.error("final postStart error", { message: error?.message });
+      throw new Error(`postStart command failed after ${retryCount - 1} retries`);
+    }
+  }
 }
 
 const provider = new ProviderShell({
@@ -210,3 +258,20 @@ const provider = new ProviderShell({
 });
 
 provider.listen();
+
+function exponentialBackoff(
+  retryCount: number,
+  exponential: number,
+  minDelay: number,
+  maxDelay: number,
+  jitter: number
+): number {
+  // Calculate the delay using the exponential backoff formula
+  const delay = Math.min(Math.pow(exponential, retryCount) * minDelay, maxDelay);
+
+  // Calculate the jitter
+  const jitterValue = Math.random() * jitter;
+
+  // Return the calculated delay with jitter
+  return delay + jitterValue;
+}
