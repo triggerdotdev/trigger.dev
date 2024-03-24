@@ -12,10 +12,30 @@ import { cn } from "~/utils/cn";
 
 type TaskIconProps = {
   name: string | undefined;
+  spanName: string;
   className?: string;
 };
 
-export function RunIcon({ name, className }: TaskIconProps) {
+type SpanNameIcons = {
+  matcher: RegExp;
+  iconName: string;
+};
+
+const spanNameIcons: SpanNameIcons[] = [{ matcher: /^prisma:/, iconName: "brand-prisma" }];
+
+export function RunIcon({ name, className, spanName }: TaskIconProps) {
+  const spanNameIcon = spanNameIcons.find(({ matcher }) => matcher.test(spanName));
+
+  if (spanNameIcon) {
+    return (
+      <NamedIcon
+        name={spanNameIcon.iconName}
+        className={cn(className)}
+        fallback={<InformationCircleIcon className={cn(className, "text-text-dimmed")} />}
+      />
+    );
+  }
+
   if (!name) return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
 
   switch (name) {

@@ -60,7 +60,11 @@ export default function Page() {
     >
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <div className="flex items-center gap-1 overflow-x-hidden">
-          <RunIcon name={event.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
+          <RunIcon
+            name={event.style?.icon}
+            spanName={event.message}
+            className="h-4 min-h-4 w-4 min-w-4"
+          />
           <Header2 className={cn("whitespace-nowrap")}>
             <SpanTitle {...event} size="large" />
           </Header2>
