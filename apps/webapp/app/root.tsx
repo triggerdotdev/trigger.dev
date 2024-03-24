@@ -1,4 +1,3 @@
-import { ErrorBoundary as HighlightErrorBoundary } from "@highlight-run/react";
 import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { Links, LiveReload, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
@@ -111,9 +110,7 @@ function App() {
           <Links />
         </head>
         <body className="bg-darkBackground h-full overflow-hidden">
-          <HighlightErrorBoundary>
-            <Outlet />
-          </HighlightErrorBoundary>
+          <Outlet />
           <Toast />
           <ScrollRestoration />
           <ExternalScripts />
