@@ -179,7 +179,7 @@
     "@types/node-fetch": "^2.6.2",
     "@types/prismjs": "^1.26.0",
     "@types/qs": "^6.9.7",
-    "@types/react": "18.2.17",
+    "@types/react": "18.2.69",
     "@types/react-collapse": "^5.0.4",
     "@types/react-dom": "18.2.7",
     "@types/semver": "^7.3.13",
