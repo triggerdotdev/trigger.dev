@@ -138,11 +138,6 @@ export class SharedQueueConsumer {
 
     logger.debug("Stopping shared queue consumer");
     this._enabled = false;
-
-    // TODO: think about automatic prod cancellation
-
-    // We need to cancel all the in progress task run attempts and ack the messages so they will stop processing
-    // await this.#cancelInProgressAttempts(reason);
   }
 
   async #cancelInProgressAttempts(reason: string) {
@@ -249,7 +244,7 @@ export class SharedQueueConsumer {
     const message = await marqs?.dequeueMessageInSharedQueue();
 
     if (!message) {
-      setTimeout(() => this.#doWork(), this._options.nextTickInterval);
+      this.#doMoreWork(this._options.nextTickInterval);
       return;
     }
 
@@ -272,8 +267,8 @@ export class SharedQueueConsumer {
         queueMessage: message.data,
         envId,
       });
-      await marqs?.acknowledgeMessage(message.messageId);
-      setTimeout(() => this.#doWork(), this._options.interval);
+
+      this.#ackAndDoMoreWork(message.messageId);
       return;
     }
 
@@ -286,9 +281,7 @@ export class SharedQueueConsumer {
         env: environment,
       });
 
-      await marqs?.acknowledgeMessage(message.messageId);
-
-      setTimeout(() => this.#doWork(), this._options.interval);
+      this.#ackAndDoMoreWork(message.messageId);
       return;
     }
 
@@ -305,8 +298,8 @@ export class SharedQueueConsumer {
             queueMessage: message.data,
             messageId: message.messageId,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -333,8 +326,8 @@ export class SharedQueueConsumer {
             status: existingTaskRun.status,
             retryingFromCheckpoint,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -345,8 +338,8 @@ export class SharedQueueConsumer {
             queueMessage: message.data,
             messageId: message.messageId,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -356,8 +349,8 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
             deployment: deployment.id,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -374,9 +367,7 @@ export class SharedQueueConsumer {
             taskSlugs: deployment.worker.tasks.map((task) => task.slug),
           });
 
-          await marqs?.acknowledgeMessage(message.messageId);
-
-          setTimeout(() => this.#doWork(), this._options.interval);
+          this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -412,9 +403,7 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
           });
 
-          await marqs?.acknowledgeMessage(message.messageId);
-
-          setTimeout(() => this.#doWork(), this._options.interval);
+          this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -428,8 +417,7 @@ export class SharedQueueConsumer {
         });
 
         if (!queue) {
-          await marqs?.nackMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.nextTickInterval);
+          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
           return;
         }
 
@@ -468,11 +456,10 @@ export class SharedQueueConsumer {
                 queueMessage: message.data,
                 messageId: message.messageId,
               });
-              await marqs?.acknowledgeMessage(message.messageId);
+
+              await this.#ackAndDoMoreWork(message.messageId);
               return;
             }
-
-            return;
           } else if (isRetry) {
             socketIo.coordinatorNamespace.emit("READY_FOR_RETRY", {
               version: "v1",
@@ -520,11 +507,10 @@ export class SharedQueueConsumer {
             }),
           ]);
 
-          // Finally we need to nack the message so it can be retried
-          await marqs?.nackMessage(message.messageId);
-        } finally {
-          setTimeout(() => this.#doWork(), this._options.interval);
+          await this.#nackAndDoMoreWork(message.messageId);
+          return;
         }
+
         break;
       }
       // Resume after dependency completed with no remaining retries
@@ -542,7 +528,8 @@ export class SharedQueueConsumer {
                 queueMessage: message.data,
                 messageId: message.messageId,
               });
-              await marqs?.acknowledgeMessage(message.messageId);
+
+              await this.#ackAndDoMoreWork(message.messageId);
               return;
             }
           } catch (e) {
@@ -554,12 +541,12 @@ export class SharedQueueConsumer {
 
             this._endSpanInNextIteration = true;
 
-            // Finally we need to nack the message so it can be retried
-            await marqs?.nackMessage(message.messageId);
+            await this.#nackAndDoMoreWork(message.messageId);
             return;
-          } finally {
-            setTimeout(() => this.#doWork(), this._options.interval);
           }
+
+          this.#doMoreWork();
+          return;
         }
 
         if (messageBody.data.completedAttemptIds.length < 1) {
@@ -567,8 +554,8 @@ export class SharedQueueConsumer {
             queueMessage: message.data,
             messageId: message.messageId,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -583,8 +570,8 @@ export class SharedQueueConsumer {
             queueMessage: message.data,
             messageId: message.messageId,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -607,8 +594,8 @@ export class SharedQueueConsumer {
             queueMessage: message.data,
             messageId: message.messageId,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -622,8 +609,7 @@ export class SharedQueueConsumer {
         });
 
         if (!queue) {
-          await marqs?.nackMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.nextTickInterval);
+          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
           return;
         }
 
@@ -655,16 +641,15 @@ export class SharedQueueConsumer {
               queueMessage: message.data,
               messageId: message.messageId,
             });
-            await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), this._options.interval);
+
+            await this.#ackAndDoMoreWork(message.messageId);
             return;
           }
 
           const completion = await this._tasks.getCompletionPayloadFromAttempt(completedAttempt.id);
 
           if (!completion) {
-            await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), this._options.interval);
+            await this.#ackAndDoMoreWork(message.messageId);
             return;
           }
 
@@ -675,8 +660,7 @@ export class SharedQueueConsumer {
           );
 
           if (!executionPayload) {
-            await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), this._options.interval);
+            await this.#ackAndDoMoreWork(message.messageId);
             return;
           }
 
@@ -701,11 +685,10 @@ export class SharedQueueConsumer {
 
           this._endSpanInNextIteration = true;
 
-          // Finally we need to nack the message so it can be retried
-          await marqs?.nackMessage(message.messageId);
-        } finally {
-          setTimeout(() => this.#doWork(), this._options.interval);
+          await this.#nackAndDoMoreWork(message.messageId);
+          return;
         }
+
         break;
       }
       // Resume after duration-based wait
@@ -722,7 +705,8 @@ export class SharedQueueConsumer {
               queueMessage: message.data,
               messageId: message.messageId,
             });
-            await marqs?.acknowledgeMessage(message.messageId);
+
+            await this.#ackAndDoMoreWork(message.messageId);
             return;
           }
         } catch (e) {
@@ -734,18 +718,34 @@ export class SharedQueueConsumer {
 
           this._endSpanInNextIteration = true;
 
-          // Finally we need to nack the message so it can be retried
-          await marqs?.nackMessage(message.messageId);
-        } finally {
-          setTimeout(() => this.#doWork(), this._options.interval);
+          await this.#nackAndDoMoreWork(message.messageId);
+          return;
         }
+
         break;
       }
     }
+
+    this.#doMoreWork();
+    return;
   }
 
   #envIdFromQueue(queueName: string) {
     return queueName.split(":")[1];
+  }
+
+  #doMoreWork(intervalInMs = this._options.interval) {
+    setTimeout(() => this.#doWork(), intervalInMs);
+  }
+
+  async #ackAndDoMoreWork(messageId: string, intervalInMs?: number) {
+    await marqs?.acknowledgeMessage(messageId);
+    this.#doMoreWork(intervalInMs);
+  }
+
+  async #nackAndDoMoreWork(messageId: string, intervalInMs?: number) {
+    await marqs?.nackMessage(messageId);
+    this.#doMoreWork(intervalInMs);
   }
 }
 

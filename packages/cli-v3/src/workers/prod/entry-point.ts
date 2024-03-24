@@ -97,7 +97,7 @@ class ProdWorker {
         }
       );
 
-      this.#prepareForCheckpoint("WAIT_FOR_DURATION", willCheckpointAndRestore);
+      this.#prepareForWait("WAIT_FOR_DURATION", willCheckpointAndRestore);
     });
 
     this.#backgroundWorker.onWaitForTask.attach(async (message) => {
@@ -115,7 +115,7 @@ class ProdWorker {
         }
       );
 
-      this.#prepareForCheckpoint("WAIT_FOR_TASK", willCheckpointAndRestore);
+      this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
     });
 
     this.#backgroundWorker.onWaitForBatch.attach(async (message) => {
@@ -133,7 +133,7 @@ class ProdWorker {
         }
       );
 
-      this.#prepareForCheckpoint("WAIT_FOR_BATCH", willCheckpointAndRestore);
+      this.#prepareForWait("WAIT_FOR_BATCH", willCheckpointAndRestore);
     });
 
     this.#httpPort = port;
@@ -169,8 +169,8 @@ class ProdWorker {
     }
   }
 
-  #prepareForCheckpoint(reason: WaitReason, willCheckpointAndRestore: boolean) {
-    logger.log(reason, { willCheckpointAndRestore });
+  #prepareForWait(reason: WaitReason, willCheckpointAndRestore: boolean) {
+    logger.log(`prepare for ${reason}`, { willCheckpointAndRestore });
 
     this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
 
@@ -178,8 +178,27 @@ class ProdWorker {
       this.paused = true;
       this.nextResumeAfter = reason;
     }
+  }
 
-    if (this.runningInKubernetes) {
+  async #prepareForRetry(willCheckpointAndRestore: boolean, shouldExit: boolean) {
+    logger.log("prepare for retry", { willCheckpointAndRestore, shouldExit });
+
+    // Graceful shutdown on final attempt
+    if (shouldExit) {
+      if (willCheckpointAndRestore) {
+        logger.log("WARNING: Will checkpoint but also requested exit. This won't end well.");
+      }
+
+      await this.#backgroundWorker.close();
+      process.exit(0);
+    }
+
+    this.executing = false;
+    this.attemptFriendlyId = undefined;
+
+    if (willCheckpointAndRestore) {
+      this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
+      this.#coordinatorSocket.close();
       return;
     }
   }
@@ -267,35 +286,7 @@ class ProdWorker {
 
           logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
 
-          // Graceful shutdown on final attempt
-          if (shouldExit) {
-            if (willCheckpointAndRestore) {
-              logger.log("WARNING: Will checkpoint but also requested exit. This won't end well.");
-            }
-
-            await this.#backgroundWorker.close();
-            process.exit(0);
-          }
-
-          this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
-
-          // Give coordinator a chance to request exit
-          // TODO: Consider disabling automatic reconnect instead, and re-enabling it on postStart hook
-          await new Promise((resolve) => {
-            // The timeout duration is below the minimum wait duration that triggers a checkpoint
-            // We are unlikely to restore before this, so this will have resolved on restore
-            setTimeout(resolve, 5_000);
-          });
-
-          // Remove executing state as late as possible to prevent further execution until we've
-          this.executing = false;
-          this.attemptFriendlyId = undefined;
-
-          if (willCheckpointAndRestore) {
-            this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
-            this.#coordinatorSocket.close();
-            return;
-          }
+          this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
           if (!this.executing) {
@@ -389,7 +380,7 @@ class ProdWorker {
             }
 
             await setTimeout(200);
-              process.exit(1);
+            process.exit(1);
           }
         }
 
@@ -410,7 +401,9 @@ class ProdWorker {
           });
 
           this.#backgroundWorker.waitCompletedNotification();
+
           this.paused = false;
+          this.nextResumeAfter = undefined;
 
           return;
         }
@@ -546,7 +539,6 @@ class ProdWorker {
                 break;
               }
             }
-            logger.log("postStart", { url: req.url });
 
             return reply.text("postStart ok");
           }
@@ -580,7 +572,7 @@ class ProdWorker {
       this.#httpPort = getRandomPortNumber();
 
       await setTimeout(100);
-        this.start();
+      this.start();
     });
 
     return httpServer;

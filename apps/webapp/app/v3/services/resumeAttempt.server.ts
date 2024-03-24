@@ -4,25 +4,20 @@ import {
   TaskRunExecution,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
-import { $transaction, PrismaClient, prisma } from "~/db.server";
+import { $transaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "../marqs.server";
 import { socketIo } from "../handleSocketIo.server";
 import { sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
+import { BaseService } from "./baseService.server";
 
-export class ResumeAttemptService {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
+export class ResumeAttemptService extends BaseService {
   public async call(
     params: InferSocketMessageSchema<typeof CoordinatorToPlatformMessages, "READY_FOR_RESUME">
   ): Promise<void> {
     logger.debug(`ResumeAttemptService.call()`, params);
 
-    await $transaction(this.#prismaClient, async (tx) => {
+    await $transaction(this._prisma, async (tx) => {
       const attempt = await tx.taskRunAttempt.findUnique({
         where: {
           friendlyId: params.attemptFriendlyId,
@@ -146,7 +141,7 @@ export class ResumeAttemptService {
           const executions: TaskRunExecution[] = [];
 
           for (const completedAttemptId of completedAttemptIds) {
-            const completedAttempt = await prisma.taskRunAttempt.findUnique({
+            const completedAttempt = await tx.taskRunAttempt.findUnique({
               where: {
                 id: completedAttemptId,
                 taskRun: {
@@ -200,7 +195,7 @@ export class ResumeAttemptService {
             executions.push(executionPayload.execution);
           }
 
-          await prisma.taskRunAttempt.update({
+          const updated = await tx.taskRunAttempt.update({
             where: {
               id: attempt.id,
             },
@@ -209,7 +204,7 @@ export class ResumeAttemptService {
               taskRun: {
                 update: {
                   data: {
-                    status: "EXECUTING",
+                    status: attempt.number > 1 ? "RETRYING_AFTER_FAILURE" : "EXECUTING",
                   },
                 },
               },
