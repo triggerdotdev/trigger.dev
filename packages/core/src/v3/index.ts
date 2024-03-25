@@ -44,11 +44,20 @@ export {
   unflattenAttributes,
   primitiveValueOrflattenedAttributes,
 } from "./utils/flattenAttributes";
-export { defaultRetryOptions, calculateNextRetryDelay, calculateResetAt } from "./utils/retries";
+export {
+  defaultRetryOptions,
+  defaultFetchRetryOptions,
+  calculateNextRetryDelay,
+  calculateResetAt,
+} from "./utils/retries";
 export { accessoryAttributes } from "./utils/styleAttributes";
 export { eventFilterMatches } from "../eventFilterMatches";
 export { omit } from "./utils/omit";
 export { TracingSDK, type TracingDiagnosticLogLevel, recordSpanException } from "./otel";
 export { TaskExecutor, type TaskExecutorOptions } from "./workers/taskExecutor";
 export { detectDependencyVersion } from "./utils/detectDependencyVersion";
-export { type PreciseDateOrigin, calculatePreciseDateHrTime, preciseDateOriginNow } from "./utils/preciseDate";
+export {
+  type PreciseDateOrigin,
+  calculatePreciseDateHrTime,
+  preciseDateOriginNow,
+} from "./utils/preciseDate";

@@ -21,7 +21,7 @@ import {
   flattenAttributes,
   runtime,
 } from "@trigger.dev/core/v3";
-import { defaultFetchRetryOptions } from "@trigger.dev/core/v3/utils/retries";
+import { defaultFetchRetryOptions } from "@trigger.dev/core/v3";
 import type { HttpHandler } from "msw";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { tracer } from "./tracer";
