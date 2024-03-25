@@ -62,7 +62,7 @@ export function authorizationRateLimitMiddleware({
 
   return async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
     if (log.requests) {
-      logger.info(`RateLimitter (${keyPrefix}): request to ${req.path}`);
+      logger.info(`RateLimiter (${keyPrefix}): request to ${req.path}`);
     }
 
     //first check if any of the pathMatchers match the request path
@@ -73,19 +73,19 @@ export function authorizationRateLimitMiddleware({
       )
     ) {
       if (log.requests) {
-        logger.info(`RateLimitter (${keyPrefix}): didn't match ${req.path}`);
+        logger.info(`RateLimiter (${keyPrefix}): didn't match ${req.path}`);
       }
       return next();
     }
 
     if (log.requests) {
-      logger.info(`RateLimitter (${keyPrefix}): matched ${req.path}`);
+      logger.info(`RateLimiter (${keyPrefix}): matched ${req.path}`);
     }
 
     const authorizationValue = req.headers.authorization;
     if (!authorizationValue) {
       if (log.requests) {
-        logger.info(`RateLimitter (${keyPrefix}): no key`);
+        logger.info(`RateLimiter (${keyPrefix}): no key`);
       }
       return res.status(401).send("Unauthorized");
     }
@@ -104,7 +104,7 @@ export function authorizationRateLimitMiddleware({
 
     if (success) {
       if (log.requests) {
-        logger.info(`RateLimitter (${keyPrefix}): under rate limit`, {
+        logger.info(`RateLimiter (${keyPrefix}): under rate limit`, {
           limit,
           reset,
           remaining,
@@ -115,7 +115,7 @@ export function authorizationRateLimitMiddleware({
     }
 
     if (log.rejections) {
-      logger.warn(`RateLimitter (${keyPrefix}): rate limit exceeded`, {
+      logger.warn(`RateLimiter (${keyPrefix}): rate limit exceeded`, {
         limit,
         reset,
         remaining,
