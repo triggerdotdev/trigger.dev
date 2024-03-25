@@ -38,6 +38,7 @@ type Options = {
   redis: RedisOptions;
   keyPrefix: string;
   pathMatchers: (RegExp | string)[];
+  pathWhiteList?: (RegExp | string)[];
   limiter: ConstructorParameters<typeof Ratelimit>[0]["limiter"];
 };
 
@@ -47,6 +48,7 @@ export function authorizationRateLimitMiddleware({
   keyPrefix,
   limiter,
   pathMatchers,
+  pathWhiteList = [],
   log = {
     rejections: true,
     requests: true,
@@ -78,6 +80,18 @@ export function authorizationRateLimitMiddleware({
       return next();
     }
 
+    // Check if the path matches any of the whitelisted paths
+    if (
+      pathWhiteList.some((matcher) =>
+        matcher instanceof RegExp ? matcher.test(path) : path === matcher
+      )
+    ) {
+      if (log.requests) {
+        logger.info(`RateLimiter (${keyPrefix}): whitelisted ${req.path}`);
+      }
+      return next();
+    }
+
     if (log.requests) {
       logger.info(`RateLimiter (${keyPrefix}): matched ${req.path}`);
     }
@@ -88,20 +102,18 @@ export function authorizationRateLimitMiddleware({
         logger.info(`RateLimiter (${keyPrefix}): no key`);
       }
       res.setHeader("Content-Type", "application/problem+json");
-      return res
-        .status(401)
-        .send(
-          JSON.stringify(
-            {
-              title: "Unauthorized",
-              status: 401,
-              type: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
-              detail: "No authorization header provided",
-            },
-            null,
-            2
-          )
-        );
+      return res.status(401).send(
+        JSON.stringify(
+          {
+            title: "Unauthorized",
+            status: 401,
+            type: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+            detail: "No authorization header provided",
+          },
+          null,
+          2
+        )
+      );
     }
 
     const hash = createHash("sha256");
@@ -170,6 +182,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
   },
   limiter: Ratelimit.slidingWindow(env.API_RATE_LIMIT_MAX, env.API_RATE_LIMIT_WINDOW as Duration),
   pathMatchers: [/^\/api/],
+  pathWhiteList: ["/api/v1/authorization-code", "/api/v1/token"],
   log: {
     rejections: true,
     requests: false,
