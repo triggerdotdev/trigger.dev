@@ -1,5 +1,5 @@
-import { type RetryOptions } from "../schemas";
 import { calculateResetAt as calculateResetAtInternal } from "../../retry";
+import { FetchRetryOptions, type RetryOptions } from "../schemas";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,
@@ -8,6 +8,17 @@ export const defaultRetryOptions = {
   maxTimeoutInMs: 60000,
   randomize: true,
 } satisfies RetryOptions;
+
+export const defaultFetchRetryOptions = {
+  byStatus: {
+    "429,408,409,5xx": {
+      strategy: "backoff",
+      ...defaultRetryOptions,
+    },
+  },
+  connectionError: defaultRetryOptions,
+  timeout: defaultRetryOptions,
+} satisfies FetchRetryOptions;
 
 /**
  *
