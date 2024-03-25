@@ -87,7 +87,21 @@ export function authorizationRateLimitMiddleware({
       if (log.requests) {
         logger.info(`RateLimiter (${keyPrefix}): no key`);
       }
-      return res.status(401).send("Unauthorized");
+      res.setHeader("Content-Type", "application/problem+json");
+      return res
+        .status(401)
+        .send(
+          JSON.stringify(
+            {
+              title: "Unauthorized",
+              status: 401,
+              type: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
+              detail: "No authorization header provided",
+            },
+            null,
+            2
+          )
+        );
     }
 
     const hash = createHash("sha256");
