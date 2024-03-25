@@ -10,7 +10,12 @@ import {
   ZodMessageSender,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
-import { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
+import {
+  BackgroundWorker,
+  BackgroundWorkerTask,
+  TaskRunAttemptStatus,
+  TaskRunStatus,
+} from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -29,15 +34,18 @@ const MessageBody = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("EXECUTE"),
     taskIdentifier: z.string(),
+    checkpointEventId: z.string().optional(),
   }),
   z.object({
     type: z.literal("RESUME"),
     completedAttemptIds: z.string().array(),
     resumableAttemptId: z.string(),
+    checkpointEventId: z.string().optional(),
   }),
   z.object({
     type: z.literal("RESUME_AFTER_DURATION"),
     resumableAttemptId: z.string(),
+    checkpointEventId: z.string(),
   }),
 ]);
 
@@ -130,11 +138,6 @@ export class SharedQueueConsumer {
 
     logger.debug("Stopping shared queue consumer");
     this._enabled = false;
-
-    // TODO: think about automatic prod cancellation
-
-    // We need to cancel all the in progress task run attempts and ack the messages so they will stop processing
-    // await this.#cancelInProgressAttempts(reason);
   }
 
   async #cancelInProgressAttempts(reason: string) {
@@ -180,7 +183,7 @@ export class SharedQueueConsumer {
     this._taskFailures = 0;
     this._taskSuccesses = 0;
 
-    this.#doWork().finally(() => { });
+    this.#doWork().finally(() => {});
   }
 
   async #doWork() {
@@ -241,7 +244,7 @@ export class SharedQueueConsumer {
     const message = await marqs?.dequeueMessageInSharedQueue();
 
     if (!message) {
-      setTimeout(() => this.#doWork(), this._options.nextTickInterval);
+      this.#doMoreWork(this._options.nextTickInterval);
       return;
     }
 
@@ -264,8 +267,8 @@ export class SharedQueueConsumer {
         queueMessage: message.data,
         envId,
       });
-      await marqs?.acknowledgeMessage(message.messageId);
-      setTimeout(() => this.#doWork(), this._options.interval);
+
+      this.#ackAndDoMoreWork(message.messageId);
       return;
     }
 
@@ -278,9 +281,7 @@ export class SharedQueueConsumer {
         env: environment,
       });
 
-      await marqs?.acknowledgeMessage(message.messageId);
-
-      setTimeout(() => this.#doWork(), this._options.interval);
+      this.#ackAndDoMoreWork(message.messageId);
       return;
     }
 
@@ -297,23 +298,36 @@ export class SharedQueueConsumer {
             queueMessage: message.data,
             messageId: message.messageId,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
+        const retryingFromCheckpoint = !!messageBody.data.checkpointEventId;
+
+        const EXECUTABLE_RUN_STATUSES: {
+          fromCheckpoint: TaskRunStatus[];
+          withoutCheckpoint: TaskRunStatus[];
+        } = {
+          fromCheckpoint: ["WAITING_TO_RESUME"],
+          withoutCheckpoint: ["PENDING", "RETRYING_AFTER_FAILURE"],
+        };
+
         if (
-          existingTaskRun.status !== "PENDING" &&
-          existingTaskRun.status !== "RETRYING_AFTER_FAILURE"
+          (retryingFromCheckpoint &&
+            !EXECUTABLE_RUN_STATUSES.fromCheckpoint.includes(existingTaskRun.status)) ||
+          (!retryingFromCheckpoint &&
+            !EXECUTABLE_RUN_STATUSES.withoutCheckpoint.includes(existingTaskRun.status))
         ) {
-          logger.debug("Task run is not pending, aborting", {
+          logger.debug("Task run has invalid status for execution", {
             queueMessage: message.data,
             messageId: message.messageId,
             taskRun: existingTaskRun.id,
             status: existingTaskRun.status,
+            retryingFromCheckpoint,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -324,8 +338,8 @@ export class SharedQueueConsumer {
             queueMessage: message.data,
             messageId: message.messageId,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -335,8 +349,8 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
             deployment: deployment.id,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -353,9 +367,7 @@ export class SharedQueueConsumer {
             taskSlugs: deployment.worker.tasks.map((task) => task.slug),
           });
 
-          await marqs?.acknowledgeMessage(message.messageId);
-
-          setTimeout(() => this.#doWork(), this._options.interval);
+          this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -391,9 +403,7 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
           });
 
-          await marqs?.acknowledgeMessage(message.messageId);
-
-          setTimeout(() => this.#doWork(), this._options.interval);
+          this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -407,8 +417,7 @@ export class SharedQueueConsumer {
         });
 
         if (!queue) {
-          await marqs?.nackMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.nextTickInterval);
+          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
           return;
         }
 
@@ -431,24 +440,31 @@ export class SharedQueueConsumer {
           },
         });
 
-        try {
-          const latestCheckpoint = lockedTaskRun.checkpoints[0];
+        const isRetry = taskRunAttempt.number > 1;
 
-          if (lockedTaskRun.status === "RETRYING_AFTER_FAILURE" && latestCheckpoint) {
-            if (latestCheckpoint.reason !== "RETRYING_AFTER_FAILURE") {
-              logger.error("Latest checkpoint is invalid", {
+        try {
+          if (messageBody.data.checkpointEventId) {
+            const restoreService = new RestoreCheckpointService();
+
+            const checkpoint = await restoreService.call({
+              eventId: messageBody.data.checkpointEventId,
+              isRetry,
+            });
+
+            if (!checkpoint) {
+              logger.error("Failed to restore checkpoint", {
                 queueMessage: message.data,
                 messageId: message.messageId,
-                resumableAttemptId: taskRunAttempt.id,
-                latestCheckpointId: latestCheckpoint.id,
               });
-              await marqs?.acknowledgeMessage(message.messageId);
-              setTimeout(() => this.#doWork(), this._options.interval);
+
+              await this.#ackAndDoMoreWork(message.messageId);
               return;
             }
-
-            const restoreService = new RestoreCheckpointService();
-            await restoreService.call({ checkpointId: latestCheckpoint.id });
+          } else if (isRetry) {
+            socketIo.coordinatorNamespace.emit("READY_FOR_RETRY", {
+              version: "v1",
+              runId: taskRunAttempt.taskRunId,
+            });
           } else {
             await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
               backgroundWorkerId: deployment.worker.friendlyId,
@@ -458,6 +474,7 @@ export class SharedQueueConsumer {
                 image: deployment.imageReference,
                 envId: environment.id,
                 runId: taskRunAttempt.taskRunId,
+                version: deployment.version,
               },
             });
           }
@@ -490,22 +507,55 @@ export class SharedQueueConsumer {
             }),
           ]);
 
-          // Finally we need to nack the message so it can be retried
-          await marqs?.nackMessage(message.messageId);
-        } finally {
-          setTimeout(() => this.#doWork(), this._options.interval);
+          await this.#nackAndDoMoreWork(message.messageId);
+          return;
         }
+
         break;
       }
       // Resume after dependency completed with no remaining retries
       case "RESUME": {
+        if (messageBody.data.checkpointEventId) {
+          try {
+            const restoreService = new RestoreCheckpointService();
+
+            const checkpoint = await restoreService.call({
+              eventId: messageBody.data.checkpointEventId,
+            });
+
+            if (!checkpoint) {
+              logger.error("Failed to restore checkpoint", {
+                queueMessage: message.data,
+                messageId: message.messageId,
+              });
+
+              await this.#ackAndDoMoreWork(message.messageId);
+              return;
+            }
+          } catch (e) {
+            if (e instanceof Error) {
+              this._currentSpan?.recordException(e);
+            } else {
+              this._currentSpan?.recordException(new Error(String(e)));
+            }
+
+            this._endSpanInNextIteration = true;
+
+            await this.#nackAndDoMoreWork(message.messageId);
+            return;
+          }
+
+          this.#doMoreWork();
+          return;
+        }
+
         if (messageBody.data.completedAttemptIds.length < 1) {
           logger.error("No attempt IDs provided", {
             queueMessage: message.data,
             messageId: message.messageId,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -520,8 +570,8 @@ export class SharedQueueConsumer {
             queueMessage: message.data,
             messageId: message.messageId,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -544,8 +594,8 @@ export class SharedQueueConsumer {
             queueMessage: message.data,
             messageId: message.messageId,
           });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
+
+          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -559,35 +609,12 @@ export class SharedQueueConsumer {
         });
 
         if (!queue) {
-          await marqs?.nackMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.nextTickInterval);
+          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
           return;
         }
 
         if (!this._enabled) {
           await marqs?.nackMessage(message.messageId);
-          return;
-        }
-
-        if (resumableAttempt.status === "PAUSED") {
-          // We need to restore the attempt from the latest checkpoint before we can resume
-          const latestCheckpoint = resumableAttempt.checkpoints[0];
-
-          if (!latestCheckpoint) {
-            logger.error("No checkpoint found", {
-              queueMessage: message.data,
-              messageId: message.messageId,
-              resumableAttemptId: resumableAttempt.id,
-            });
-            await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), this._options.interval);
-            return;
-          }
-
-          const restoreService = new RestoreCheckpointService();
-          await restoreService.call({ checkpointId: latestCheckpoint.id });
-
-          setTimeout(() => this.#doWork(), this._options.interval);
           return;
         }
 
@@ -614,16 +641,15 @@ export class SharedQueueConsumer {
               queueMessage: message.data,
               messageId: message.messageId,
             });
-            await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), this._options.interval);
+
+            await this.#ackAndDoMoreWork(message.messageId);
             return;
           }
 
           const completion = await this._tasks.getCompletionPayloadFromAttempt(completedAttempt.id);
 
           if (!completion) {
-            await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), this._options.interval);
+            await this.#ackAndDoMoreWork(message.messageId);
             return;
           }
 
@@ -634,8 +660,7 @@ export class SharedQueueConsumer {
           );
 
           if (!executionPayload) {
-            await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), this._options.interval);
+            await this.#ackAndDoMoreWork(message.messageId);
             return;
           }
 
@@ -644,9 +669,11 @@ export class SharedQueueConsumer {
 
         try {
           // The attempt should still be running so we can broadcast to all coordinators to resume immediately
-          socketIo.coordinatorNamespace.emit("RESUME", {
+          socketIo.coordinatorNamespace.emit("RESUME_AFTER_DEPENDENCY", {
             version: "v1",
+            runId: resumableAttempt.taskRunId,
             attemptId: resumableAttempt.id,
+            attemptFriendlyId: resumableAttempt.friendlyId,
             completions,
             executions,
           });
@@ -659,68 +686,30 @@ export class SharedQueueConsumer {
 
           this._endSpanInNextIteration = true;
 
-          // Finally we need to nack the message so it can be retried
-          await marqs?.nackMessage(message.messageId);
-        } finally {
-          setTimeout(() => this.#doWork(), this._options.interval);
+          await this.#nackAndDoMoreWork(message.messageId);
+          return;
         }
+
         break;
       }
       // Resume after duration-based wait
       case "RESUME_AFTER_DURATION": {
-        const resumableAttempt = await prisma.taskRunAttempt.findUnique({
-          where: {
-            id: messageBody.data.resumableAttemptId,
-          },
-          include: {
-            checkpoints: {
-              take: 1,
-              orderBy: {
-                createdAt: "desc",
-              },
-            },
-            taskRun: true,
-          },
-        });
-
-        if (!resumableAttempt) {
-          logger.error("Resumable attempt not found", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-          });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
-          return;
-        }
-
-        if (resumableAttempt.status !== "PAUSED") {
-          logger.error("Attempt not paused", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-          });
-          await marqs?.acknowledgeMessage(message.messageId);
-          setTimeout(() => this.#doWork(), this._options.interval);
-          return;
-        }
-
         try {
-          // We need to restore the attempt from the latest checkpoint before we can resume
-          const latestCheckpoint = resumableAttempt.checkpoints[0];
+          const restoreService = new RestoreCheckpointService();
 
-          if (!latestCheckpoint) {
-            logger.error("No checkpoint found", {
+          const checkpoint = await restoreService.call({
+            eventId: messageBody.data.checkpointEventId,
+          });
+
+          if (!checkpoint) {
+            logger.error("Failed to restore checkpoint", {
               queueMessage: message.data,
               messageId: message.messageId,
-              resumableAttemptId: resumableAttempt.id,
             });
-            await marqs?.acknowledgeMessage(message.messageId);
-            setTimeout(() => this.#doWork(), this._options.interval);
+
+            await this.#ackAndDoMoreWork(message.messageId);
             return;
           }
-
-          // The attempt will resume automatically after restore
-          const restoreService = new RestoreCheckpointService();
-          await restoreService.call({ checkpointId: latestCheckpoint.id });
         } catch (e) {
           if (e instanceof Error) {
             this._currentSpan?.recordException(e);
@@ -730,18 +719,34 @@ export class SharedQueueConsumer {
 
           this._endSpanInNextIteration = true;
 
-          // Finally we need to nack the message so it can be retried
-          await marqs?.nackMessage(message.messageId);
-        } finally {
-          setTimeout(() => this.#doWork(), this._options.interval);
+          await this.#nackAndDoMoreWork(message.messageId);
+          return;
         }
+
         break;
       }
     }
+
+    this.#doMoreWork();
+    return;
   }
 
   #envIdFromQueue(queueName: string) {
     return queueName.split(":")[1];
+  }
+
+  #doMoreWork(intervalInMs = this._options.interval) {
+    setTimeout(() => this.#doWork(), intervalInMs);
+  }
+
+  async #ackAndDoMoreWork(messageId: string, intervalInMs?: number) {
+    await marqs?.acknowledgeMessage(messageId);
+    this.#doMoreWork(intervalInMs);
+  }
+
+  async #nackAndDoMoreWork(messageId: string, intervalInMs?: number) {
+    await marqs?.nackMessage(messageId);
+    this.#doMoreWork(intervalInMs);
   }
 }
 
@@ -799,7 +804,8 @@ class SharedQueueTasks {
 
   async getExecutionPayloadFromAttempt(
     id: string,
-    setToExecuting?: boolean
+    setToExecuting?: boolean,
+    isRetrying?: boolean
   ): Promise<ProdTaskRunExecutionPayload | undefined> {
     const attempt = await prisma.taskRunAttempt.findUnique({
       where: {
@@ -858,26 +864,42 @@ class SharedQueueTasks {
     }
 
     if (setToExecuting) {
+      const FINAL_RUN_STATUSES: TaskRunStatus[] = [
+        "CANCELED",
+        "COMPLETED_SUCCESSFULLY",
+        "COMPLETED_WITH_ERRORS",
+        "INTERRUPTED",
+        "SYSTEM_FAILURE",
+      ];
+      const FINAL_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["CANCELED", "COMPLETED", "FAILED"];
+
+      if (
+        FINAL_ATTEMPT_STATUSES.includes(attempt.status) ||
+        FINAL_RUN_STATUSES.includes(attempt.taskRun.status)
+      ) {
+        logger.error("Status already in final state", {
+          attempt: {
+            id: attempt.id,
+            status: attempt.status,
+          },
+          run: {
+            id: attempt.taskRunId,
+            status: attempt.taskRun.status,
+          },
+        });
+        return;
+      }
+
       await prisma.taskRunAttempt.update({
         where: {
           id,
-          taskRun: {
-            status: {
-              notIn: [
-                "CANCELED",
-                "COMPLETED_SUCCESSFULLY",
-                "COMPLETED_WITH_ERRORS",
-                "SYSTEM_FAILURE",
-              ],
-            },
-          },
         },
         data: {
           status: "EXECUTING",
           taskRun: {
             update: {
               data: {
-                status: "EXECUTING",
+                status: isRetrying ? "RETRYING_AFTER_FAILURE" : "EXECUTING",
               },
             },
           },
@@ -960,7 +982,8 @@ class SharedQueueTasks {
 
   async getLatestExecutionPayloadFromRun(
     id: string,
-    setToExecuting?: boolean
+    setToExecuting?: boolean,
+    isRetrying?: boolean
   ): Promise<ProdTaskRunExecutionPayload | undefined> {
     const run = await prisma.taskRun.findUnique({
       where: {
@@ -983,7 +1006,7 @@ class SharedQueueTasks {
       return;
     }
 
-    return this.getExecutionPayloadFromAttempt(latestAttempt.id, setToExecuting);
+    return this.getExecutionPayloadFromAttempt(latestAttempt.id, setToExecuting, isRetrying);
   }
 
   async taskHeartbeat(attemptFriendlyId: string, seconds: number = 60) {

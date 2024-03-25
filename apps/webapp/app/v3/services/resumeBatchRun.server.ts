@@ -2,6 +2,7 @@ import { PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import { marqs } from "../marqs.server";
 import { BaseService } from "./baseService.server";
+import { logger } from "~/services/logger.server";
 
 export class ResumeBatchRunService extends BaseService {
   public async call(batchRunId: string, sourceTaskAttemptId: string) {
@@ -40,6 +41,7 @@ export class ResumeBatchRunService extends BaseService {
       return;
     }
 
+    // We need to update the batchRun status so we don't resume it again
     await this._prisma.batchTaskRun.update({
       where: {
         id: batchRun.id,
@@ -48,8 +50,6 @@ export class ResumeBatchRunService extends BaseService {
         status: "COMPLETED",
       },
     });
-
-    // We need to update the batchRun status so we don't resume it again
 
     // This batch has a dependent attempt and just finalized, we should resume that attempt
     const environment = batchRun.dependentTaskAttempt.runtimeEnvironment;
@@ -62,6 +62,15 @@ export class ResumeBatchRunService extends BaseService {
     const dependentRun = batchRun.dependentTaskAttempt.taskRun;
 
     if (batchRun.dependentTaskAttempt.status === "PAUSED") {
+      if (!batchRun.checkpointEventId) {
+        logger.error("Can't resume paused attempt without checkpoint event", {
+          batchRunId: batchRun.id,
+        });
+
+        await marqs?.acknowledgeMessage(dependentRun.id);
+        return;
+      }
+
       await marqs?.enqueueMessage(
         environment,
         dependentRun.queue,
@@ -70,6 +79,7 @@ export class ResumeBatchRunService extends BaseService {
           type: "RESUME",
           completedAttemptIds: [sourceTaskAttemptId],
           resumableAttemptId: batchRun.dependentTaskAttempt.id,
+          checkpointEventId: batchRun.checkpointEventId,
         },
         dependentRun.concurrencyKey ?? undefined
       );

@@ -1,6 +1,7 @@
 import { io, Socket } from "socket.io-client";
 import { z } from "zod";
 import { EventEmitterLike, ZodMessageValueSchema } from "./zodMessageHandler";
+import { LogLevel, SimpleStructuredLogger, StructuredLogger } from "./zodNamespace";
 
 export interface ZodSocketMessageCatalogSchema {
   [key: string]:
@@ -137,27 +138,35 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
     };
   }
 
-  public registerHandlers(emitter: EventEmitterLike, logger?: (...args: any[]) => void) {
-    const log = logger ?? console.log;
+  public registerHandlers(emitter: EventEmitterLike, logger?: StructuredLogger) {
+    const log = logger ?? console;
 
     if (!this.#handlers) {
-      log("No handlers provided");
+      log.info("No handlers provided");
       return;
     }
 
     for (const eventName of Object.keys(this.#handlers)) {
       emitter.on(eventName, async (message: any, callback?: any): Promise<void> => {
-        log(`handling ${eventName}`, message);
+        log.info(`handling ${eventName}`, {
+          payload: message,
+          hasCallback: !!callback,
+        });
 
         let ack;
 
-        // FIXME: this only works if the message doesn't have genuine payload prop
-        if ("payload" in message) {
-          ack = await this.handleMessage({ type: eventName, ...message });
-        } else {
-          // Handle messages not sent by ZodMessageSender
-          const { version, ...payload } = message;
-          ack = await this.handleMessage({ type: eventName, version, payload });
+        try {
+          // FIXME: this only works if the message doesn't have genuine payload prop
+          if ("payload" in message) {
+            ack = await this.handleMessage({ type: eventName, ...message });
+          } else {
+            // Handle messages not sent by ZodMessageSender
+            const { version, ...payload } = message;
+            ack = await this.handleMessage({ type: eventName, version, payload });
+          }
+        } catch (error) {
+          log.error("Error while handling message", { error });
+          return;
         }
 
         if (callback && typeof callback === "function") {
@@ -267,18 +276,18 @@ interface ZodSocketConnectionOptions<
     socket: ZodSocket<TServerMessages, TClientMessages>,
     handler: ZodSocketMessageHandler<TServerMessages>,
     sender: ZodSocketMessageSender<TClientMessages>,
-    logger: (...args: any[]) => void
+    logger: StructuredLogger
   ) => Promise<void>;
   onDisconnect?: (
     socket: ZodSocket<TServerMessages, TClientMessages>,
     reason: Socket.DisconnectReason,
     description: any,
-    logger: (...args: any[]) => void
+    logger: StructuredLogger
   ) => Promise<void>;
   onError?: (
     socket: ZodSocket<TServerMessages, TClientMessages>,
     err: Error,
-    logger: (...args: any[]) => void
+    logger: StructuredLogger
   ) => Promise<void>;
 }
 
@@ -290,7 +299,7 @@ export class ZodSocketConnection<
   socket: ZodSocket<TServerMessages, TClientMessages>;
 
   #handler: ZodSocketMessageHandler<TServerMessages>;
-  #logger: (...args: any[]) => void;
+  #logger: StructuredLogger;
 
   constructor(opts: ZodSocketConnectionOptions<TClientMessages, TServerMessages>) {
     this.socket = io(`ws://${opts.host}:${opts.port}/${opts.namespace}`, {
@@ -301,7 +310,9 @@ export class ZodSocketConnection<
       extraHeaders: opts.extraHeaders,
     });
 
-    this.#logger = createLogger(`[${opts.namespace}][${this.socket.id}]`);
+    this.#logger = new SimpleStructuredLogger(opts.namespace, LogLevel.info, {
+      socketId: this.socket.id,
+    });
 
     this.#handler = new ZodSocketMessageHandler({
       schema: opts.serverMessages,
@@ -315,7 +326,7 @@ export class ZodSocketConnection<
     });
 
     this.socket.on("connect_error", async (error) => {
-      this.#logger(`connect_error: ${error}`);
+      this.#logger.error(`connect_error: ${error}`);
 
       if (opts.onError) {
         await opts.onError(this.socket, error, this.#logger);
@@ -323,7 +334,7 @@ export class ZodSocketConnection<
     });
 
     this.socket.on("connect", async () => {
-      this.#logger("connect");
+      this.#logger.info("connect");
 
       if (opts.onConnection) {
         await opts.onConnection(this.socket, this.#handler, this.#sender, this.#logger);
@@ -331,7 +342,7 @@ export class ZodSocketConnection<
     });
 
     this.socket.on("disconnect", async (reason, description) => {
-      this.#logger("disconnect");
+      this.#logger.info("disconnect", { reason, description });
 
       if (opts.onDisconnect) {
         await opts.onDisconnect(this.socket, reason, description, this.#logger);

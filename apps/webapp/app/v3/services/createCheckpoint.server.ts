@@ -1,33 +1,79 @@
 import { CoordinatorToPlatformMessages, InferSocketMessageSchema } from "@trigger.dev/core/v3";
-import type { Checkpoint } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
+import type {
+  CheckpointRestoreEvent,
+  TaskRunAttemptStatus,
+  TaskRunStatus,
+} from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "../marqs.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
+import { BaseService } from "./baseService.server";
 
-export class CreateCheckpointService {
-  #prismaClient: PrismaClient;
+const FREEZABLE_RUN_STATUSES: TaskRunStatus[] = ["EXECUTING", "RETRYING_AFTER_FAILURE"];
+const FREEZABLE_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["EXECUTING", "FAILED"];
 
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
+export class CreateCheckpointService extends BaseService {
   public async call(
-    params: InferSocketMessageSchema<typeof CoordinatorToPlatformMessages, "CHECKPOINT_CREATED">
-  ): Promise<Checkpoint> {
+    params: Omit<
+      InferSocketMessageSchema<typeof CoordinatorToPlatformMessages, "CHECKPOINT_CREATED">,
+      "version"
+    >
+  ) {
     logger.debug(`Creating checkpoint`, params);
 
-    const attempt = await this.#prismaClient.taskRunAttempt.findUniqueOrThrow({
+    const attempt = await this._prisma.taskRunAttempt.findUnique({
       where: {
-        id: params.attemptId,
+        friendlyId: params.attemptFriendlyId,
       },
       include: {
         taskRun: true,
+        backgroundWorker: {
+          select: {
+            id: true,
+            deployment: {
+              select: {
+                imageReference: true,
+              },
+            },
+          },
+        },
       },
     });
 
-    const checkpoint = await this.#prismaClient.checkpoint.create({
+    if (!attempt) {
+      logger.error("Attempt not found", { attemptFriendlyId: params.attemptFriendlyId });
+      return;
+    }
+
+    if (
+      !FREEZABLE_ATTEMPT_STATUSES.includes(attempt.status) ||
+      !FREEZABLE_RUN_STATUSES.includes(attempt.taskRun.status)
+    ) {
+      logger.error("Unfreezable state", {
+        attempt: {
+          id: attempt.id,
+          status: attempt.status,
+        },
+        run: {
+          id: attempt.taskRunId,
+          status: attempt.taskRun.status,
+        },
+      });
+      return;
+    }
+
+    const imageRef = attempt.backgroundWorker.deployment?.imageReference;
+
+    if (!imageRef) {
+      logger.error("Missing deployment or image ref", {
+        attemptId: attempt.id,
+        workerId: attempt.backgroundWorker.id,
+      });
+      return;
+    }
+
+    const checkpoint = await this._prisma.checkpoint.create({
       data: {
         friendlyId: generateFriendlyId("checkpoint"),
         runtimeEnvironmentId: attempt.taskRun.runtimeEnvironmentId,
@@ -38,44 +84,60 @@ export class CreateCheckpointService {
         type: params.docker ? "DOCKER" : "KUBERNETES",
         reason: params.reason.type,
         metadata: JSON.stringify(params.reason),
+        imageRef,
       },
     });
 
-    const eventService = new CreateCheckpointRestoreEventService(this.#prismaClient);
-    await eventService.call({ checkpointId: checkpoint.id, type: "CHECKPOINT" });
+    const eventService = new CreateCheckpointRestoreEventService(this._prisma);
 
-    await this.#prismaClient.taskRunAttempt.update({
+    await this._prisma.taskRunAttempt.update({
       where: {
-        id: params.attemptId,
+        id: attempt.id,
       },
       data: {
-        status: "PAUSED",
+        status: params.reason.type === "RETRYING_AFTER_FAILURE" ? undefined : "PAUSED",
         taskRun: {
           update: {
-            status:
-              params.reason.type === "RETRYING_AFTER_FAILURE"
-                ? "RETRYING_AFTER_FAILURE"
-                : "WAITING_TO_RESUME",
+            status: "WAITING_TO_RESUME",
           },
         },
       },
     });
 
-    switch (params.reason.type) {
+    const { reason } = params;
+    let checkpointEvent: CheckpointRestoreEvent | undefined;
+
+    switch (reason.type) {
       case "WAIT_FOR_DURATION": {
-        await marqs?.replaceMessage(
-          attempt.taskRunId,
-          { type: "RESUME_AFTER_DURATION", resumableAttemptId: attempt.id },
-          Date.now() + params.reason.ms
-        );
+        checkpointEvent = await eventService.checkpoint({
+          checkpointId: checkpoint.id,
+        });
+
         break;
       }
-      case "WAIT_FOR_TASK":
+      case "WAIT_FOR_TASK": {
+        checkpointEvent = await eventService.checkpoint({
+          checkpointId: checkpoint.id,
+          dependencyFriendlyRunId: reason.friendlyId,
+        });
+
+        await marqs?.acknowledgeMessage(attempt.taskRunId);
+        break;
+      }
       case "WAIT_FOR_BATCH": {
+        checkpointEvent = await eventService.checkpoint({
+          checkpointId: checkpoint.id,
+          batchDependencyFriendlyId: reason.batchFriendlyId,
+        });
+
         await marqs?.acknowledgeMessage(attempt.taskRunId);
         break;
       }
       case "RETRYING_AFTER_FAILURE": {
+        checkpointEvent = await eventService.checkpoint({
+          checkpointId: checkpoint.id,
+        });
+
         // ACK is already handled by attempt completion
         break;
       }
@@ -84,6 +146,30 @@ export class CreateCheckpointService {
       }
     }
 
-    return checkpoint;
+    if (!checkpointEvent) {
+      logger.error("No checkpoint event", {
+        attemptId: attempt.id,
+        checkpointId: checkpoint.id,
+      });
+      await marqs?.acknowledgeMessage(attempt.taskRunId);
+      return;
+    }
+
+    if (reason.type === "WAIT_FOR_DURATION") {
+      await marqs?.replaceMessage(
+        attempt.taskRunId,
+        {
+          type: "RESUME_AFTER_DURATION",
+          resumableAttemptId: attempt.id,
+          checkpointEventId: checkpointEvent.id,
+        },
+        reason.now + reason.ms
+      );
+    }
+
+    return {
+      checkpoint,
+      event: checkpointEvent,
+    };
   }
 }

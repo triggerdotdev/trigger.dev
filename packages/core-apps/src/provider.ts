@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import {
   ClientToSharedQueueMessages,
   clientWebsocketMessages,
+  Machine,
   PlatformToProviderMessages,
   ProviderToPlatformMessages,
   SharedQueueToClientMessages,
@@ -20,12 +21,36 @@ const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "provider-secret";
 
 const logger = new SimpleLogger(`[${MACHINE_NAME}]`);
 
+export interface TaskOperationsIndexOptions {
+  shortCode: string;
+  imageRef: string;
+  envId: string;
+  apiKey: string;
+  apiUrl: string;
+}
+
+export interface TaskOperationsCreateOptions {
+  runId: string;
+  image: string;
+  machine: Machine;
+  envId: string;
+  version: string;
+}
+
+export interface TaskOperationsRestoreOptions {
+  runId: string;
+  imageRef: string;
+  checkpointRef: string;
+  machine: Machine;
+}
+
 export interface TaskOperations {
-  create: (...args: any[]) => Promise<any>;
-  restore: (...args: any[]) => Promise<any>;
+  index: (opts: TaskOperationsIndexOptions) => Promise<any>;
+  create: (opts: TaskOperationsCreateOptions) => Promise<any>;
+  restore: (opts: TaskOperationsRestoreOptions) => Promise<any>;
+
   delete: (...args: any[]) => Promise<any>;
   get: (...args: any[]) => Promise<any>;
-  index: (...args: any[]) => Promise<any>;
 }
 
 type ProviderShellOptions = {
@@ -74,13 +99,17 @@ export class ProviderShell implements Provider {
         },
         BACKGROUND_WORKER_MESSAGE: async (message) => {
           if (message.data.type === "SCHEDULE_ATTEMPT") {
-            this.tasks.create({
-              envId: message.data.envId,
-              runId: message.data.runId,
-              attemptId: message.data.id,
-              image: message.data.image,
-              machine: {},
-            });
+            try {
+              this.tasks.create({
+                envId: message.data.envId,
+                runId: message.data.runId,
+                image: message.data.image,
+                machine: {},
+                version: message.version,
+              });
+            } catch (error) {
+              logger.error("create failed", error);
+            }
           }
         },
       },
@@ -134,8 +163,8 @@ export class ProviderShell implements Provider {
         INDEX: async (message) => {
           try {
             await this.tasks.index({
-              contentHash: message.contentHash,
-              imageTag: message.imageTag,
+              shortCode: message.shortCode,
+              imageRef: message.imageTag,
               envId: message.envId,
               apiKey: message.apiKey,
               apiUrl: message.apiUrl,
@@ -178,10 +207,12 @@ export class ProviderShell implements Provider {
           try {
             await this.tasks.restore({
               runId: message.runId,
-              attemptId: message.attemptId,
               checkpointRef: message.location,
-              // TODO
-              // machine: message.machine,
+              machine: {
+                cpu: "1",
+                memory: "100Mi",
+              },
+              imageRef: message.imageRef,
             });
           } catch (error) {
             logger.error("restore failed", error);
@@ -221,13 +252,14 @@ export class ProviderShell implements Provider {
           const body = await getTextBody(req);
 
           await this.tasks.create({
-            attemptId: body,
             envId: "placeholder",
             image: body,
             machine: {
               cpu: "1",
               memory: "100Mi",
             },
+            runId: "<missing>",
+            version: "<missing>",
           });
 
           return reply.text(`sent restore request: ${body}`);

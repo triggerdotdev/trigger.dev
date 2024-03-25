@@ -49,6 +49,8 @@ export class ProdRuntimeManager implements RuntimeManager {
   async waitForDuration(ms: number): Promise<void> {
     let timeout: NodeJS.Timeout | undefined;
 
+    const now = Date.now();
+
     const resolveAfterDuration = new Promise((resolve) => {
       timeout = setTimeout(resolve, ms);
     });
@@ -58,21 +60,28 @@ export class ProdRuntimeManager implements RuntimeManager {
       return;
     }
 
-    const waitForRestore = new Promise<TaskRunExecutionResult>((resolve, reject) => {
+    const waitForRestore = new Promise((resolve, reject) => {
       this._waitForRestore = { resolve, reject };
     });
 
-    // There is a slight delay before actually checkpointing, so this has a chance to return
-    const { willCheckpointAndRestore } = await this.ipc.sendWithAck("WAIT_FOR_DURATION", { ms });
+    const { willCheckpointAndRestore } = await this.ipc.sendWithAck("WAIT_FOR_DURATION", {
+      ms,
+      now,
+    });
 
     if (!willCheckpointAndRestore) {
       await resolveAfterDuration;
       return;
     }
 
-    // Checkpointing should happen after this line
+    this.ipc.send("READY_FOR_CHECKPOINT", {});
 
-    await waitForRestore;
+    // Don't wait for checkpoint beyond the requested wait duration
+    await Promise.race([waitForRestore, resolveAfterDuration]);
+
+    // The coordinator can then cancel any in-progress checkpoints
+    this.ipc.send("CANCEL_CHECKPOINT", {});
+
     clearTimeout(timeout);
   }
 
@@ -95,7 +104,7 @@ export class ProdRuntimeManager implements RuntimeManager {
     });
 
     await this.ipc.send("WAIT_FOR_TASK", {
-      id: params.id,
+      friendlyId: params.id,
     });
 
     return await promise;
@@ -119,8 +128,8 @@ export class ProdRuntimeManager implements RuntimeManager {
     );
 
     await this.ipc.send("WAIT_FOR_BATCH", {
-      id: params.id,
-      runs: params.runs,
+      batchFriendlyId: params.id,
+      runFriendlyIds: params.runs,
     });
 
     const results = await promise;

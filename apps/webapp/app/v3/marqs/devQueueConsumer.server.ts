@@ -125,7 +125,7 @@ export class DevQueueConsumer {
     logger.debug("Task run completed", { taskRunCompletion: completion, execution });
 
     const service = new CompleteAttemptService();
-    const result = await service.call(completion, execution, this.env);
+    const result = await service.call({ completion, execution, env: this.env });
 
     if (result === "COMPLETED") {
       this._inProgressRuns.delete(execution.run.id);

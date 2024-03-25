@@ -37,6 +37,10 @@ export const Machine = z.object({
 
 export type Machine = z.infer<typeof Machine>;
 
+export const WaitReason = z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]);
+
+export type WaitReason = z.infer<typeof WaitReason>;
+
 export const ProviderToPlatformMessages = {
   LOG: {
     message: z.object({
@@ -68,7 +72,7 @@ export const PlatformToProviderMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       imageTag: z.string(),
-      contentHash: z.string(),
+      shortCode: z.string(),
       envId: z.string(),
       apiKey: z.string(),
       apiUrl: z.string(),
@@ -99,10 +103,10 @@ export const PlatformToProviderMessages = {
       version: z.literal("v1").default("v1"),
       checkpointId: z.string(),
       runId: z.string(),
-      attemptId: z.string(),
       type: z.enum(["DOCKER", "KUBERNETES"]),
       location: z.string(),
       reason: z.string().optional(),
+      imageRef: z.string(),
     }),
   },
   DELETE: {
@@ -155,8 +159,8 @@ export const CoordinatorToPlatformMessages = {
   READY_FOR_EXECUTION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      attemptId: z.string(),
       runId: z.string(),
+      totalCompletions: z.number(),
     }),
     callback: z.discriminatedUnion("success", [
       z.object({
@@ -171,8 +175,8 @@ export const CoordinatorToPlatformMessages = {
   READY_FOR_RESUME: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      attemptId: z.string(),
-      type: z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]),
+      attemptFriendlyId: z.string(),
+      type: WaitReason,
     }),
   },
   TASK_RUN_COMPLETED: {
@@ -180,6 +184,12 @@ export const CoordinatorToPlatformMessages = {
       version: z.literal("v1").default("v1"),
       execution: ProdTaskRunExecution,
       completion: TaskRunExecutionResult,
+      checkpoint: z
+        .object({
+          docker: z.boolean(),
+          location: z.string(),
+        })
+        .optional(),
     }),
   },
   TASK_HEARTBEAT: {
@@ -191,21 +201,23 @@ export const CoordinatorToPlatformMessages = {
   CHECKPOINT_CREATED: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      attemptId: z.string(),
+      attemptFriendlyId: z.string(),
       docker: z.boolean(),
       location: z.string(),
       reason: z.discriminatedUnion("type", [
         z.object({
           type: z.literal("WAIT_FOR_DURATION"),
           ms: z.number(),
+          now: z.number(),
         }),
         z.object({
           type: z.literal("WAIT_FOR_BATCH"),
-          id: z.string(),
+          batchFriendlyId: z.string(),
+          runFriendlyIds: z.string().array(),
         }),
         z.object({
           type: z.literal("WAIT_FOR_TASK"),
-          id: z.string(),
+          friendlyId: z.string(),
         }),
         z.object({
           type: z.literal("RETRYING_AFTER_FAILURE"),
@@ -228,10 +240,12 @@ export const CoordinatorToPlatformMessages = {
 };
 
 export const PlatformToCoordinatorMessages = {
-  RESUME: {
+  RESUME_AFTER_DEPENDENCY: {
     message: z.object({
       version: z.literal("v1").default("v1"),
+      runId: z.string(),
       attemptId: z.string(),
+      attemptFriendlyId: z.string(),
       completions: TaskRunExecutionResult.array(),
       executions: TaskRunExecution.array(),
     }),
@@ -240,12 +254,20 @@ export const PlatformToCoordinatorMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),
+      attemptFriendlyId: z.string(),
     }),
   },
   REQUEST_ATTEMPT_CANCELLATION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),
+      attemptFriendlyId: z.string(),
+    }),
+  },
+  READY_FOR_RETRY: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
     }),
   },
 };
@@ -315,15 +337,25 @@ export const ProdWorkerToCoordinatorMessages = {
   READY_FOR_EXECUTION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      attemptId: z.string(),
       runId: z.string(),
+      totalCompletions: z.number(),
     }),
   },
   READY_FOR_RESUME: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      attemptId: z.string(),
-      type: z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]),
+      attemptFriendlyId: z.string(),
+      type: WaitReason,
+    }),
+  },
+  READY_FOR_CHECKPOINT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+    }),
+  },
+  CANCEL_CHECKPOINT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
     }),
   },
   TASK_HEARTBEAT: {
@@ -339,7 +371,7 @@ export const ProdWorkerToCoordinatorMessages = {
       completion: TaskRunExecutionResult,
     }),
     callback: z.object({
-      didCheckpoint: z.boolean(),
+      willCheckpointAndRestore: z.boolean(),
       shouldExit: z.boolean(),
     }),
   },
@@ -347,6 +379,8 @@ export const ProdWorkerToCoordinatorMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       ms: z.number(),
+      now: z.number(),
+      attemptFriendlyId: z.string(),
     }),
     callback: z.object({
       willCheckpointAndRestore: z.boolean(),
@@ -355,7 +389,9 @@ export const ProdWorkerToCoordinatorMessages = {
   WAIT_FOR_TASK: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      id: z.string(),
+      friendlyId: z.string(),
+      // This is the attempt that is waiting
+      attemptFriendlyId: z.string(),
     }),
     callback: z.object({
       willCheckpointAndRestore: z.boolean(),
@@ -364,8 +400,10 @@ export const ProdWorkerToCoordinatorMessages = {
   WAIT_FOR_BATCH: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      id: z.string(),
-      runs: z.string().array(),
+      batchFriendlyId: z.string(),
+      runFriendlyIds: z.string().array(),
+      // This is the attempt that is waiting
+      attemptFriendlyId: z.string(),
     }),
     callback: z.object({
       willCheckpointAndRestore: z.boolean(),
@@ -385,7 +423,7 @@ export const ProdWorkerToCoordinatorMessages = {
 };
 
 export const CoordinatorToProdWorkerMessages = {
-  RESUME: {
+  RESUME_AFTER_DEPENDENCY: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),
@@ -416,6 +454,12 @@ export const CoordinatorToProdWorkerMessages = {
       version: z.literal("v1").default("v1"),
     }),
   },
+  READY_FOR_RETRY: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+    }),
+  },
 };
 
 export const ProdWorkerSocketData = z.object({
@@ -423,7 +467,8 @@ export const ProdWorkerSocketData = z.object({
   projectRef: z.string(),
   envId: z.string(),
   runId: z.string(),
-  attemptId: z.string(),
+  attemptFriendlyId: z.string().optional(),
   podName: z.string(),
   deploymentId: z.string(),
+  deploymentVersion: z.string(),
 });

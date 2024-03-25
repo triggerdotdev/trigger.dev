@@ -47,7 +47,7 @@ export class IndexDeploymentService extends BaseService {
     try {
       const responses = await socketIo.providerNamespace.timeout(30_000).emitWithAck("INDEX", {
         version: "v1",
-        contentHash: deployment.contentHash,
+        shortCode: deployment.shortCode,
         imageTag: deployment.imageReference,
         envId: deployment.environmentId,
         apiKey: deployment.environment.apiKey,

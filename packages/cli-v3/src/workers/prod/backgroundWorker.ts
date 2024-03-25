@@ -2,6 +2,7 @@ import {
   BackgroundWorkerProperties,
   Config,
   CreateBackgroundWorkerResponse,
+  InferSocketMessageSchema,
   ProdChildToWorkerMessages,
   ProdTaskRunExecutionPayload,
   ProdWorkerToChildMessages,
@@ -17,7 +18,6 @@ import {
 } from "@trigger.dev/core/v3";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { safeDeleteFileSync } from "../../utilities/fileSystem";
 import { UncaughtExceptionError } from "../common/errors";
 
 class UnexpectedExitError extends Error {
@@ -56,11 +56,19 @@ export class ProdBackgroundWorker {
 
   public onTaskHeartbeat: Evt<string> = new Evt();
 
-  public onWaitForDuration: Evt<{ version?: "v1"; ms: number }> = new Evt();
-  public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
-  public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
+  public onWaitForBatch: Evt<
+    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_BATCH">
+  > = new Evt();
+  public onWaitForDuration: Evt<
+    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_DURATION">
+  > = new Evt();
+  public onWaitForTask: Evt<
+    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_TASK">
+  > = new Evt();
 
   public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
+  public onReadyForCheckpoint = Evt.create<{ version?: "v1" }>();
+  public onCancelCheckpoint = Evt.create<{ version?: "v1" }>();
 
   private _onClose: Evt<void> = new Evt();
 
@@ -221,6 +229,15 @@ export class ProdBackgroundWorker {
         this.onWaitForTask.post(message);
       });
 
+      taskRunProcess.onReadyForCheckpoint.attach((message) => {
+        this.onReadyForCheckpoint.post(message);
+      });
+
+      taskRunProcess.onCancelCheckpoint.attach((message) => {
+        this.onCancelCheckpoint.post(message);
+      });
+
+      // Notify down the chain
       this.preCheckpointNotification.attach((message) => {
         taskRunProcess.preCheckpointNotification.post(message);
       });
@@ -342,11 +359,19 @@ class TaskRunProcess {
   public onTaskHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<number> = new Evt();
 
-  public onWaitForBatch: Evt<{ version?: "v1"; id: string; runs: string[] }> = new Evt();
-  public onWaitForDuration: Evt<{ version?: "v1"; ms: number }> = new Evt();
-  public onWaitForTask: Evt<{ version?: "v1"; id: string }> = new Evt();
+  public onWaitForBatch: Evt<
+    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_BATCH">
+  > = new Evt();
+  public onWaitForDuration: Evt<
+    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_DURATION">
+  > = new Evt();
+  public onWaitForTask: Evt<
+    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_TASK">
+  > = new Evt();
 
   public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
+  public onReadyForCheckpoint = Evt.create<{ version?: "v1" }>();
+  public onCancelCheckpoint = Evt.create<{ version?: "v1" }>();
 
   constructor(
     private path: string,
@@ -414,6 +439,12 @@ class TaskRunProcess {
         },
         WAIT_FOR_TASK: async (message) => {
           this.onWaitForTask.post(message);
+        },
+        READY_FOR_CHECKPOINT: async (message) => {
+          this.onReadyForCheckpoint.post(message);
+        },
+        CANCEL_CHECKPOINT: async (message) => {
+          this.onCancelCheckpoint.post(message);
         },
       },
     });

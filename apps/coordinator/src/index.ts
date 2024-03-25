@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { $ } from "execa";
+import { nanoid } from "nanoid";
 import { Server } from "socket.io";
 import {
   CoordinatorToPlatformMessages,
@@ -18,8 +18,7 @@ collectDefaultMetrics();
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8020);
 const NODE_NAME = process.env.NODE_NAME || "coordinator";
-const REGISTRY_FQDN = process.env.REGISTRY_FQDN || "localhost:5000";
-const REPO_NAME = process.env.REPO_NAME || "checkpoints";
+const REGISTRY_HOST = process.env.REGISTRY_HOST || "localhost:5000";
 const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
 const REGISTRY_TLS_VERIFY = process.env.REGISTRY_TLS_VERIFY === "false" ? "false" : "true";
 
@@ -35,12 +34,25 @@ type CheckpointerInitializeReturn = {
   willSimulate: boolean;
 };
 
+type CheckpointAndPushOptions = {
+  runId: string;
+  leaveRunning?: boolean;
+  projectRef: string;
+  deploymentVersion: string;
+};
+
+type CheckpointData = {
+  location: string;
+  docker: boolean;
+};
+
 class Checkpointer {
   #initialized = false;
   #canCheckpoint = false;
   #dockerMode = !process.env.KUBERNETES_PORT;
 
   #logger = new SimpleLogger("[checkptr]");
+  #abortControllers = new Map<string, AbortController>();
 
   constructor(private opts = { forceSimulate: false }) {}
 
@@ -51,26 +63,18 @@ class Checkpointer {
 
     this.#logger.log(`${this.#dockerMode ? "Docker" : "Kubernetes"} mode`);
 
-    if (this.opts.forceSimulate) {
-      this.#logger.log(
-        "Forced simulation enabled. Will simulate regardless of checkpoint support."
-      );
-    }
-
-    try {
-      await $`criu --version`;
-    } catch (error) {
-      this.#logger.error("No checkpoint support: Missing CRIU binary");
-      if (this.#dockerMode) {
-        this.#logger.error("Will simulate instead");
-      }
-      this.#canCheckpoint = false;
-      this.#initialized = true;
-
-      return this.#getInitializeReturn();
-    }
-
     if (this.#dockerMode) {
+      try {
+        await $`criu --version`;
+      } catch (error) {
+        this.#logger.error("No checkpoint support: Missing CRIU binary");
+        this.#logger.error("Will simulate instead");
+        this.#canCheckpoint = false;
+        this.#initialized = true;
+
+        return this.#getInitializeReturn();
+      }
+
       try {
         await $`docker checkpoint`;
       } catch (error) {
@@ -83,10 +87,22 @@ class Checkpointer {
 
         return this.#getInitializeReturn();
       }
+    } else {
+      try {
+        await $`buildah login --get-login ${REGISTRY_HOST}`;
+      } catch (error) {
+        this.#logger.error(`No checkpoint support: Not logged in to registry ${REGISTRY_HOST}`);
+        this.#canCheckpoint = false;
+        this.#initialized = true;
+
+        return this.#getInitializeReturn();
+      }
     }
 
     this.#logger.log(
-      `Full checkpoint support in ${this.#dockerMode ? "docker" : "kubernetes"} mode`
+      `Full checkpoint support${
+        this.#dockerMode && this.opts.forceSimulate ? " with forced simulation enabled." : "!"
+      }`
     );
 
     this.#initialized = true;
@@ -102,7 +118,60 @@ class Checkpointer {
     };
   }
 
-  async checkpointAndPush(podName: string, leaveRunning = false) {
+  #getImageRef(projectRef: string, deploymentVersion: string, shortCode: string) {
+    return `${REGISTRY_HOST}/trigger/${projectRef}:${deploymentVersion}.prod-${shortCode}`;
+  }
+
+  #getExportLocation(projectRef: string, deploymentVersion: string, shortCode: string) {
+    const basename = `${projectRef}-${deploymentVersion}-${shortCode}`;
+
+    if (this.#dockerMode) {
+      return basename;
+    } else {
+      return `${CHECKPOINT_PATH}/${basename}.tar`;
+    }
+  }
+
+  async checkpointAndPush(opts: CheckpointAndPushOptions): Promise<CheckpointData | undefined> {
+    const start = performance.now();
+    logger.log(`checkpointAndPush() start`, { start, opts });
+
+    const result = await this.#checkpointAndPush(opts);
+
+    const end = performance.now();
+    logger.log(`checkpointAndPush() end`, {
+      start,
+      end,
+      diff: end - start,
+      opts,
+      success: !!result,
+    });
+
+    return result;
+  }
+
+  isCheckpointing(runId: string) {
+    return this.#abortControllers.has(runId);
+  }
+
+  cancelCheckpoint(runId: string) {
+    const controller = this.#abortControllers.get(runId);
+
+    if (!controller) {
+      logger.debug("Nothing to cancel", { runId });
+      return;
+    }
+
+    controller.abort("cancelCheckpointing()");
+    this.#abortControllers.delete(runId);
+  }
+
+  async #checkpointAndPush({
+    runId,
+    leaveRunning = true, // This mirrors kubernetes behaviour more accurately
+    projectRef,
+    deploymentVersion,
+  }: CheckpointAndPushOptions): Promise<CheckpointData | undefined> {
     await this.initialize();
 
     if (!this.#dockerMode && !this.#canCheckpoint) {
@@ -110,124 +179,138 @@ class Checkpointer {
       return;
     }
 
-    try {
-      const { path } = await this.#checkpointContainer(podName, leaveRunning);
-      const { tag } = await this.#buildImage(path, podName);
-      const { destination } = await this.#pushImage(tag);
+    if (this.#abortControllers.has(runId)) {
+      logger.error("Checkpoint procedure already in progress", {
+        options: {
+          runId,
+          leaveRunning,
+          projectRef,
+          deploymentVersion,
+        },
+      });
+      return;
+    }
 
+    const controller = new AbortController();
+    this.#abortControllers.set(runId, controller);
+
+    const $$ = $({ signal: controller.signal });
+
+    try {
+      const shortCode = nanoid(8);
+      const imageRef = this.#getImageRef(projectRef, deploymentVersion, shortCode);
+      const exportLocation = this.#getExportLocation(projectRef, deploymentVersion, shortCode);
+
+      this.#logger.log("Checkpointing:", {
+        options: {
+          runId,
+          leaveRunning,
+          projectRef,
+          deploymentVersion,
+        },
+      });
+
+      const containterName = this.#getRunContainerName(runId);
+
+      // Create checkpoint (docker)
       if (this.#dockerMode) {
-        this.#logger.log("checkpoint created:", { podName, path });
-      } else {
-        this.#logger.log("checkpointed and pushed image to:", destination);
+        try {
+          if (this.opts.forceSimulate || !this.#canCheckpoint) {
+            this.#logger.log("Simulating checkpoint");
+            this.#logger.debug(await $$`docker pause ${containterName}`);
+          } else {
+            if (leaveRunning) {
+              this.#logger.debug(
+                await $$`docker checkpoint create --leave-running ${containterName} ${exportLocation}`
+              );
+            } else {
+              this.#logger.debug(
+                await $$`docker checkpoint create ${containterName} ${exportLocation}`
+              );
+            }
+          }
+        } catch (error: any) {
+          this.#logger.error(error.stderr);
+          return;
+        }
+
+        this.#logger.log("checkpoint created:", {
+          runId,
+          location: exportLocation,
+        });
+
+        return {
+          location: exportLocation,
+          docker: true,
+        };
+      }
+
+      // Create checkpoint (CRI)
+      if (!this.#canCheckpoint) {
+        throw new Error("No checkpoint support in kubernetes mode.");
+      }
+
+      const containerId = this.#logger.debug(
+        // @ts-expect-error
+        await $$`crictl ps`
+          .pipeStdout($$({ stdin: "pipe" })`grep ${containterName}`)
+          .pipeStdout($$({ stdin: "pipe" })`cut -f1 ${"-d "}`)
+      );
+
+      if (!containerId.stdout) {
+        throw new Error("could not find container id");
+      }
+
+      this.#logger.debug(await $$`crictl checkpoint --export=${exportLocation} ${containerId}`);
+
+      // Create image from checkpoint
+      const container = this.#logger.debug(await $$`buildah from scratch`);
+      this.#logger.debug(await $$`buildah add ${container} ${exportLocation} /`);
+      this.#logger.debug(
+        await $$`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
+      );
+      this.#logger.debug(await $$`buildah commit ${container} ${imageRef}`);
+      this.#logger.debug(await $$`buildah rm ${container}`);
+
+      // Push checkpoint image
+      this.#logger.debug(await $$`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${imageRef}`);
+
+      this.#logger.log("Checkpointed and pushed image to:", { location: imageRef });
+
+      try {
+        await $$`rm ${exportLocation}`;
+        this.#logger.log("Deleted checkpoint archive", { exportLocation });
+
+        // Disabled for now as this will increase restore time by having to pull the image again
+        // await $`buildah rmi ${imageRef}`;
+        // this.#logger.log("Deleted checkpoint image", { imageRef });
+      } catch (error) {
+        this.#logger.error("Failed during checkpoint cleanup", { exportLocation });
+        this.#logger.debug(error);
       }
 
       return {
-        path,
-        tag,
-        destination: this.#dockerMode ? path : destination,
-        docker: this.#dockerMode,
+        location: imageRef,
+        docker: false,
       };
     } catch (error) {
-      this.#logger.error("checkpoint failed", error);
+      this.#logger.error("checkpoint failed", {
+        options: {
+          runId,
+          leaveRunning,
+          projectRef,
+          deploymentVersion,
+        },
+        error,
+      });
       return;
+    } finally {
+      this.#abortControllers.delete(runId);
     }
   }
 
-  async #checkpointContainer(podName: string, leaveRunning = false) {
-    await this.initialize();
-
-    if (this.#dockerMode) {
-      this.#logger.log("Checkpointing:", podName);
-
-      const path = randomUUID();
-
-      try {
-        if (this.opts.forceSimulate || !this.#canCheckpoint) {
-          this.#logger.log("Simulating checkpoint");
-          this.#logger.debug(await $`docker pause ${podName}`);
-        } else {
-          if (leaveRunning) {
-            this.#logger.debug(
-              await $`docker checkpoint create --leave-running ${podName} ${path}`
-            );
-          } else {
-            this.#logger.debug(await $`docker checkpoint create ${podName} ${path}`);
-          }
-        }
-      } catch (error: any) {
-        this.#logger.error(error.stderr);
-      }
-
-      return { path };
-    }
-
-    if (!this.#canCheckpoint) {
-      throw new Error("No checkpoint support. Simulation requires docker.");
-    }
-
-    const containerId = this.#logger.debug(
-      // @ts-expect-error
-      await $`crictl ps`
-        .pipeStdout($({ stdin: "pipe" })`grep ${podName}`)
-        .pipeStdout($({ stdin: "pipe" })`cut -f1 ${"-d "}`)
-    );
-
-    if (!containerId.stdout) {
-      throw new Error("could not find container id");
-    }
-
-    const exportPath = `${CHECKPOINT_PATH}/${podName}.tar`;
-
-    this.#logger.debug(await $`crictl checkpoint --export=${exportPath} ${containerId}`);
-
-    return {
-      path: exportPath,
-    };
-  }
-
-  async #buildImage(checkpointPath: string, tag: string) {
-    await this.initialize();
-
-    if (this.#dockerMode) {
-      // Nothing to do here
-      return { tag };
-    }
-
-    if (!this.#canCheckpoint) {
-      throw new Error("No checkpoint support. Simulation requires docker.");
-    }
-
-    const container = this.#logger.debug(await $`buildah from scratch`);
-    this.#logger.debug(await $`buildah add ${container} ${checkpointPath} /`);
-    this.#logger.debug(
-      await $`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
-    );
-    this.#logger.debug(await $`buildah commit ${container} ${REGISTRY_FQDN}/${REPO_NAME}:${tag}`);
-    this.#logger.debug(await $`buildah rm ${container}`);
-
-    return {
-      tag,
-    };
-  }
-
-  async #pushImage(tag: string) {
-    await this.initialize();
-
-    if (this.#dockerMode) {
-      // Nothing to do here
-      return { destination: "" };
-    }
-
-    if (!this.#canCheckpoint) {
-      throw new Error("No checkpoint support. Simulation requires docker.");
-    }
-
-    const destination = `${REGISTRY_FQDN}/${REPO_NAME}:${tag}`;
-    this.#logger.debug(await $`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${destination}`);
-
-    return {
-      destination,
-    };
+  #getRunContainerName(suffix: string) {
+    return `task-run-${suffix}`;
   }
 }
 
@@ -244,6 +327,11 @@ class TaskCoordinator {
     typeof CoordinatorToPlatformMessages,
     typeof PlatformToCoordinatorMessages
   >;
+
+  #checkpointableTasks = new Map<
+    string,
+    { resolve: (value: void) => void; reject: (err?: any) => void }
+  >();
 
   constructor(
     private port: number,
@@ -281,35 +369,56 @@ class TaskCoordinator {
       serverMessages: PlatformToCoordinatorMessages,
       authToken: PLATFORM_SECRET,
       handlers: {
-        RESUME: async (message) => {
-          const taskSocket = await this.#getAttemptSocket(message.attemptId);
+        RESUME_AFTER_DEPENDENCY: async (message) => {
+          const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
           if (!taskSocket) {
-            logger.log("Socket for attempt not found", { attemptId: message.attemptId });
+            logger.log("Socket for attempt not found", {
+              attemptFriendlyId: message.attemptFriendlyId,
+            });
             return;
           }
 
-          taskSocket.emit("RESUME", message);
+          // In case the task resumed faster than we could checkpoint
+          this.#cancelCheckpoint(message.runId);
+
+          taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
         },
         RESUME_AFTER_DURATION: async (message) => {
-          const taskSocket = await this.#getAttemptSocket(message.attemptId);
+          const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
           if (!taskSocket) {
-            logger.log("Socket for attempt not found", { attemptId: message.attemptId });
+            logger.log("Socket for attempt not found", {
+              attemptFriendlyId: message.attemptFriendlyId,
+            });
             return;
           }
 
           taskSocket.emit("RESUME_AFTER_DURATION", message);
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
-          const taskSocket = await this.#getAttemptSocket(message.attemptId);
+          const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
           if (!taskSocket) {
-            logger.log("Socket for attempt not found", { attemptId: message.attemptId });
+            logger.log("Socket for attempt not found", {
+              attemptFriendlyId: message.attemptFriendlyId,
+            });
             return;
           }
 
           taskSocket.emit("REQUEST_ATTEMPT_CANCELLATION", message);
+        },
+        READY_FOR_RETRY: async (message) => {
+          const taskSocket = await this.#getRunSocket(message.runId);
+
+          if (!taskSocket) {
+            logger.log("Socket for attempt not found", {
+              runId: message.runId,
+            });
+            return;
+          }
+
+          taskSocket.emit("READY_FOR_RETRY", message);
         },
       },
     });
@@ -317,11 +426,21 @@ class TaskCoordinator {
     return platformConnection;
   }
 
-  async #getAttemptSocket(attemptId: string) {
+  async #getRunSocket(runId: string) {
     const sockets = await this.#prodWorkerNamespace.fetchSockets();
 
     for (const socket of sockets) {
-      if (socket.data.attemptId === attemptId) {
+      if (socket.data.runId === runId) {
+        return socket;
+      }
+    }
+  }
+
+  async #getAttemptSocket(attemptFriendlyId: string) {
+    const sockets = await this.#prodWorkerNamespace.fetchSockets();
+
+    for (const socket of sockets) {
+      if (socket.data.attemptFriendlyId === attemptFriendlyId) {
         return socket;
       }
     }
@@ -335,14 +454,22 @@ class TaskCoordinator {
       serverMessages: CoordinatorToProdWorkerMessages,
       socketData: ProdWorkerSocketData,
       postAuth: async (socket, next, logger) => {
-        function setSocketDataFromHeader(dataKey: keyof typeof socket.data, headerName: string) {
+        function setSocketDataFromHeader(
+          dataKey: keyof typeof socket.data,
+          headerName: string,
+          required: boolean = true
+        ) {
           const value = socket.handshake.headers[headerName];
-          if (!value) {
-            logger(`missing required header: ${headerName}`);
+
+          if (value) {
+            socket.data[dataKey] = Array.isArray(value) ? value[0] : value;
+            return;
+          }
+
+          if (required) {
+            logger.error("missing required header", { headerName });
             throw new Error("missing header");
           }
-          0;
-          socket.data[dataKey] = Array.isArray(value) ? value[0] : value;
         }
 
         try {
@@ -350,27 +477,64 @@ class TaskCoordinator {
           setSocketDataFromHeader("contentHash", "x-trigger-content-hash");
           setSocketDataFromHeader("projectRef", "x-trigger-project-ref");
           setSocketDataFromHeader("runId", "x-trigger-run-id");
-          setSocketDataFromHeader("attemptId", "x-trigger-attempt-id");
+          setSocketDataFromHeader("attemptFriendlyId", "x-trigger-attempt-friendly-id", false);
           setSocketDataFromHeader("envId", "x-trigger-env-id");
           setSocketDataFromHeader("deploymentId", "x-trigger-deployment-id");
+          setSocketDataFromHeader("deploymentVersion", "x-trigger-deployment-version");
         } catch (error) {
-          logger(error);
+          logger.error("setSocketDataFromHeader error", { error });
           socket.disconnect(true);
           return;
         }
 
-        logger("success", socket.data);
+        logger.debug("success", socket.data);
 
         next();
       },
       onConnection: async (socket, handler, sender) => {
         const logger = new SimpleLogger(`[prod-worker][${socket.id}]`);
 
+        const checkpointInProgress = () => {
+          return this.#checkpointableTasks.has(socket.data.runId);
+        };
+
+        const readyToCheckpoint = async (): Promise<
+          { success: true } | { success: false; reason?: string }
+        > => {
+          if (checkpointInProgress()) {
+            return {
+              success: false,
+              reason: "checkpoint in progress",
+            };
+          }
+
+          const isCheckpointable = new Promise((resolve, reject) => {
+            // We set a reasonable timeout to prevent waiting forever
+            // TODO: We may also want to cancel the task as it's unlikely to recover
+            setTimeout(() => reject("timeout"), 10_000);
+
+            this.#checkpointableTasks.set(socket.data.runId, { resolve, reject });
+          });
+
+          try {
+            await isCheckpointable;
+            this.#checkpointableTasks.delete(socket.data.runId);
+
+            return {
+              success: true,
+            };
+          } catch (error) {
+            logger.error("Error while waiting for checkpointable state", { error });
+
+            return {
+              success: false,
+              reason: typeof error === "string" ? error : "unknown",
+            };
+          }
+        };
+
         this.#platformSocket?.send("LOG", {
-          metadata: {
-            projectRef: socket.data.projectRef,
-            attemptId: socket.data.attemptId,
-          },
+          metadata: socket.data,
           text: "connected",
         });
 
@@ -381,7 +545,7 @@ class TaskCoordinator {
 
           this.#platformSocket?.send("LOG", {
             version: "v1",
-            metadata: { attemptId: socket.data.attemptId },
+            metadata: socket.data,
             text: message.text,
           });
         });
@@ -389,67 +553,64 @@ class TaskCoordinator {
         socket.on("READY_FOR_EXECUTION", async (message) => {
           logger.log("[READY_FOR_EXECUTION]", message);
 
-          const executionAck = await this.#platformSocket?.sendWithAck("READY_FOR_EXECUTION", {
-            version: "v1",
-            attemptId: message.attemptId,
-            runId: message.runId,
-          });
+          try {
+            const executionAck = await this.#platformSocket?.sendWithAck(
+              "READY_FOR_EXECUTION",
+              message
+            );
 
-          if (!executionAck) {
-            logger.error("no execution ack", { attemptId: socket.data.attemptId });
+            if (!executionAck) {
+              logger.error("no execution ack", { runId: socket.data.runId });
 
-            socket.emit("REQUEST_EXIT", {
+              socket.emit("REQUEST_EXIT", {
+                version: "v1",
+              });
+
+              return;
+            }
+
+            if (!executionAck.success) {
+              logger.error("failed to get execution payload", { runId: socket.data.runId });
+
+              socket.emit("REQUEST_EXIT", {
+                version: "v1",
+              });
+
+              return;
+            }
+
+            socket.emit("EXECUTE_TASK_RUN", {
               version: "v1",
+              executionPayload: executionAck.payload,
             });
 
-            return;
+            socket.data.attemptFriendlyId = executionAck.payload.execution.attempt.id;
+          } catch (error) {
+            logger.error("Error", { error });
           }
-
-          if (!executionAck.success) {
-            logger.error("failed to get execution payload", { attemptId: socket.data.attemptId });
-
-            socket.emit("REQUEST_EXIT", {
-              version: "v1",
-            });
-
-            return;
-          }
-
-          socket.emit("EXECUTE_TASK_RUN", {
-            version: "v1",
-            executionPayload: executionAck.payload,
-          });
         });
 
         socket.on("READY_FOR_RESUME", async (message) => {
           logger.log("[READY_FOR_RESUME]", message);
+
+          socket.data.attemptFriendlyId = message.attemptFriendlyId;
           this.#platformSocket?.send("READY_FOR_RESUME", message);
         });
 
         socket.on("TASK_RUN_COMPLETED", async ({ completion, execution }, callback) => {
           logger.log("completed task", { completionId: completion.id });
 
-          const sendCompletionToPlatform = () => {
+          const completeWithoutCheckpoint = (shouldExit: boolean) => {
             this.#platformSocket?.send("TASK_RUN_COMPLETED", {
               version: "v1",
               execution,
               completion,
             });
-          };
-
-          const confirmCompletion = ({
-            didCheckpoint,
-            shouldExit,
-          }: {
-            didCheckpoint: boolean;
-            shouldExit: boolean;
-          }) => {
-            sendCompletionToPlatform();
-            callback({ didCheckpoint, shouldExit });
+            callback({ willCheckpointAndRestore: false, shouldExit });
           };
 
           if (completion.ok) {
-            confirmCompletion({ didCheckpoint: false, shouldExit: true });
+            completeWithoutCheckpoint(true);
             return;
           }
 
@@ -457,12 +618,17 @@ class TaskCoordinator {
             completion.error.type === "INTERNAL_ERROR" &&
             completion.error.code === "TASK_RUN_CANCELLED"
           ) {
-            confirmCompletion({ didCheckpoint: false, shouldExit: true });
+            completeWithoutCheckpoint(true);
             return;
           }
 
           if (completion.retry === undefined) {
-            confirmCompletion({ didCheckpoint: false, shouldExit: true });
+            completeWithoutCheckpoint(true);
+            return;
+          }
+
+          if (completion.retry.delay < 10_000) {
+            completeWithoutCheckpoint(false);
             return;
           }
 
@@ -471,34 +637,76 @@ class TaskCoordinator {
           const willCheckpointAndRestore = canCheckpoint || willSimulate;
 
           if (!willCheckpointAndRestore) {
-            confirmCompletion({ didCheckpoint: false, shouldExit: false });
+            completeWithoutCheckpoint(false);
             return;
           }
 
-          const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
+          // The worker will then put itself in a checkpointable state
+          callback({ willCheckpointAndRestore: true, shouldExit: false });
 
-          if (!checkpoint) {
-            logger.error("Failed to checkpoint", { podName: socket.data.podName });
-            confirmCompletion({ didCheckpoint: false, shouldExit: false });
+          const ready = await readyToCheckpoint();
+
+          if (!ready.success) {
+            logger.error("Failed to become checkpointable", {
+              runId: socket.data.runId,
+              reason: ready.reason,
+            });
             return;
           }
 
-          this.#platformSocket?.send("CHECKPOINT_CREATED", {
-            version: "v1",
-            attemptId: socket.data.attemptId,
-            docker: checkpoint.docker,
-            location: checkpoint.destination,
-            reason: {
-              type: "RETRYING_AFTER_FAILURE",
-              attemptNumber: execution.attempt.number,
-            },
+          const checkpoint = await this.#checkpointer.checkpointAndPush({
+            runId: socket.data.runId,
+            projectRef: socket.data.projectRef,
+            deploymentVersion: socket.data.deploymentVersion,
           });
 
-          confirmCompletion({ didCheckpoint: true, shouldExit: false });
+          if (!checkpoint) {
+            logger.error("Failed to checkpoint", { runId: socket.data.runId });
+            completeWithoutCheckpoint(false);
+            return;
+          }
+
+          this.#platformSocket?.send("TASK_RUN_COMPLETED", {
+            version: "v1",
+            execution,
+            completion,
+            checkpoint,
+          });
+
+          if (!checkpoint.docker || !willSimulate) {
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+          }
+        });
+
+        socket.on("READY_FOR_CHECKPOINT", async (message) => {
+          logger.log("[READY_FOR_CHECKPOINT]", message);
+
+          const checkpointable = this.#checkpointableTasks.get(socket.data.runId);
+
+          if (!checkpointable) {
+            logger.error("No checkpoint scheduled", { runId: socket.data.runId });
+            return;
+          }
+
+          checkpointable.resolve();
+        });
+
+        socket.on("CANCEL_CHECKPOINT", async (message) => {
+          logger.log("[CANCEL_CHECKPOINT]", message);
+
+          this.#cancelCheckpoint(socket.data.runId);
         });
 
         socket.on("WAIT_FOR_DURATION", async (message, callback) => {
           logger.log("[WAIT_FOR_DURATION]", message);
+
+          if (checkpointInProgress()) {
+            logger.error("Checkpoint already in progress", { runId: socket.data.runId });
+            callback({ willCheckpointAndRestore: false });
+            return;
+          }
 
           const { canCheckpoint, willSimulate } = await this.#checkpointer.initialize();
 
@@ -510,26 +718,43 @@ class TaskCoordinator {
             return;
           }
 
-          // Wait for attempt to reach checkpointable state
-          // TODO: The worker should let us know when to checkpoint so we don't have to guess
-          await new Promise((resolve) => setTimeout(resolve, 2_000));
+          const ready = await readyToCheckpoint();
 
-          const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
+          if (!ready.success) {
+            logger.error("Failed to become checkpointable", {
+              runId: socket.data.runId,
+              reason: ready.reason,
+            });
+            return;
+          }
+
+          const checkpoint = await this.#checkpointer.checkpointAndPush({
+            runId: socket.data.runId,
+            projectRef: socket.data.projectRef,
+            deploymentVersion: socket.data.deploymentVersion,
+          });
 
           if (!checkpoint) {
-            logger.error("Failed to checkpoint", { podName: socket.data.podName });
-            // TODO: We have to let the worker know about failures so it can use its own timer
+            // The task container will keep running until the wait duration has elapsed
+            logger.error("Failed to checkpoint", { runId: socket.data.runId });
             return;
+          }
+
+          if (!checkpoint.docker || !willSimulate) {
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
           }
 
           this.#platformSocket?.send("CHECKPOINT_CREATED", {
             version: "v1",
-            attemptId: socket.data.attemptId,
+            attemptFriendlyId: message.attemptFriendlyId,
             docker: checkpoint.docker,
-            location: checkpoint.destination,
+            location: checkpoint.location,
             reason: {
               type: "WAIT_FOR_DURATION",
               ms: message.ms,
+              now: message.now,
             },
           });
         });
@@ -547,21 +772,31 @@ class TaskCoordinator {
             return;
           }
 
-          const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
+          const checkpoint = await this.#checkpointer.checkpointAndPush({
+            runId: socket.data.runId,
+            projectRef: socket.data.projectRef,
+            deploymentVersion: socket.data.deploymentVersion,
+          });
 
           if (!checkpoint) {
-            logger.error("Failed to checkpoint", { podName: socket.data.podName });
+            logger.error("Failed to checkpoint", { runId: socket.data.runId });
             return;
+          }
+
+          if (!checkpoint.docker || !willSimulate) {
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
           }
 
           this.#platformSocket?.send("CHECKPOINT_CREATED", {
             version: "v1",
-            attemptId: socket.data.attemptId,
+            attemptFriendlyId: message.attemptFriendlyId,
             docker: checkpoint.docker,
-            location: checkpoint.destination,
+            location: checkpoint.location,
             reason: {
               type: "WAIT_FOR_TASK",
-              id: message.id,
+              friendlyId: message.friendlyId,
             },
           });
         });
@@ -579,21 +814,32 @@ class TaskCoordinator {
             return;
           }
 
-          const checkpoint = await this.#checkpointer.checkpointAndPush(socket.data.podName);
+          const checkpoint = await this.#checkpointer.checkpointAndPush({
+            runId: socket.data.runId,
+            projectRef: socket.data.projectRef,
+            deploymentVersion: socket.data.deploymentVersion,
+          });
 
           if (!checkpoint) {
-            logger.error("Failed to checkpoint", { podName: socket.data.podName });
+            logger.error("Failed to checkpoint", { runId: socket.data.runId });
             return;
+          }
+
+          if (!checkpoint.docker || !willSimulate) {
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
           }
 
           this.#platformSocket?.send("CHECKPOINT_CREATED", {
             version: "v1",
-            attemptId: socket.data.attemptId,
+            attemptFriendlyId: message.attemptFriendlyId,
             docker: checkpoint.docker,
-            location: checkpoint.destination,
+            location: checkpoint.location,
             reason: {
               type: "WAIT_FOR_BATCH",
-              id: message.id,
+              batchFriendlyId: message.batchFriendlyId,
+              runFriendlyIds: message.runFriendlyIds,
             },
           });
         });
@@ -632,10 +878,7 @@ class TaskCoordinator {
       },
       onDisconnect: async (socket, handler, sender, logger) => {
         this.#platformSocket?.send("LOG", {
-          metadata: {
-            projectRef: socket.data.projectRef,
-            attemptId: socket.data.attemptId,
-          },
+          metadata: socket.data,
           text: "disconnect",
         });
       },
@@ -647,6 +890,18 @@ class TaskCoordinator {
     });
 
     return provider;
+  }
+
+  #cancelCheckpoint(runId: string) {
+    const checkpointWait = this.#checkpointableTasks.get(runId);
+
+    if (checkpointWait) {
+      // Stop waiting for task to reach checkpointable state
+      checkpointWait.reject("Checkpoint cancelled");
+    }
+
+    // Cancel checkpointing procedure
+    this.#checkpointer.cancelCheckpoint(runId);
   }
 
   #createHttpServer() {
@@ -667,7 +922,7 @@ class TaskCoordinator {
         }
         case "/checkpoint": {
           const body = await getTextBody(req);
-          await this.#checkpointer.checkpointAndPush(body);
+          // await this.#checkpointer.checkpointAndPush(body);
           return reply.text(`sent restore request: ${body}`);
         }
         default: {

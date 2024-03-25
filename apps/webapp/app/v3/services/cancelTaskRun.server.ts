@@ -106,6 +106,7 @@ export class CancelTaskRunService extends BaseService {
               socketIo.coordinatorNamespace.emit("REQUEST_ATTEMPT_CANCELLATION", {
                 version: "v1",
                 attemptId: attempt.id,
+                attemptFriendlyId: attempt.friendlyId,
               });
 
               break;

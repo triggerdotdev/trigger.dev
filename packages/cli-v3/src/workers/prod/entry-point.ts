@@ -3,12 +3,16 @@ import {
   CoordinatorToProdWorkerMessages,
   ProdWorkerToCoordinatorMessages,
   TaskResource,
+  WaitReason,
   ZodSocketConnection,
 } from "@trigger.dev/core/v3";
-import { HttpReply, getTextBody, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
+import { HttpReply, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { z } from "zod";
 import { ProdBackgroundWorker } from "./backgroundWorker";
 import { UncaughtExceptionError } from "../common/errors";
+import { setTimeout } from "node:timers/promises";
 
 declare const __PROJECT_CONFIG__: Config;
 
@@ -28,14 +32,17 @@ class ProdWorker {
   private projectRef = process.env.TRIGGER_PROJECT_REF!;
   private envId = process.env.TRIGGER_ENV_ID!;
   private runId = process.env.TRIGGER_RUN_ID || "index-only";
-  private attemptId = process.env.TRIGGER_ATTEMPT_ID || "index-only";
   private deploymentId = process.env.TRIGGER_DEPLOYMENT_ID!;
+  private deploymentVersion = process.env.TRIGGER_DEPLOYMENT_VERSION!;
+  private runningInKubernetes = !!process.env.KUBERNETES_PORT;
 
   private executing = false;
   private completed = new Set<string>();
   private paused = false;
+  private attemptFriendlyId?: string;
 
-  private nextResumeAfter: "WAIT_FOR_DURATION" | "WAIT_FOR_TASK" | "WAIT_FOR_BATCH" | undefined;
+  private nextResumeAfter?: WaitReason;
+  private waitForPostStart = false;
 
   #httpPort: number;
   #backgroundWorker: ProdBackgroundWorker;
@@ -49,7 +56,7 @@ class ProdWorker {
     port: number,
     private host = "0.0.0.0"
   ) {
-    this.#coordinatorSocket = this.#createCoordinatorSocket();
+    this.#coordinatorSocket = this.#createCoordinatorSocket(COORDINATOR_HOST);
 
     this.#backgroundWorker = new ProdBackgroundWorker("worker.js", {
       projectConfig: __PROJECT_CONFIG__,
@@ -68,74 +75,152 @@ class ProdWorker {
       this.#coordinatorSocket.socket.emit("TASK_HEARTBEAT", { version: "v1", attemptFriendlyId });
     });
 
+    this.#backgroundWorker.onReadyForCheckpoint.attach(async (message) => {
+      this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
+    });
+
+    this.#backgroundWorker.onCancelCheckpoint.attach(async (message) => {
+      logger.log("onCancelCheckpoint() clearing paused state, don't wait for post start hook", {
+        paused: this.paused,
+        nextResumeAfter: this.nextResumeAfter,
+        waitForPostStart: this.waitForPostStart,
+      });
+
+      this.paused = false;
+      this.nextResumeAfter = undefined;
+      this.waitForPostStart = false;
+
+      this.#coordinatorSocket.socket.emit("CANCEL_CHECKPOINT", { version: "v1" });
+    });
+
     this.#backgroundWorker.onWaitForDuration.attach(async (message) => {
-      // TODO: Switch to .send() once coordinator uses zod handler for all messages
+      if (!this.attemptFriendlyId) {
+        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+        return;
+      }
+
       const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
         "WAIT_FOR_DURATION",
-        { version: "v1", ...message }
+        {
+          ...message,
+          attemptFriendlyId: this.attemptFriendlyId,
+        }
       );
 
-      logger.log("WAIT_FOR_DURATION", { willCheckpointAndRestore });
-
-      this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
-
-      setTimeout(() => {
-        if (willCheckpointAndRestore) {
-          this.paused = true;
-          this.nextResumeAfter = "WAIT_FOR_DURATION";
-        }
-        // Forcing a reconnect will ensure the connection handler runs to trigger automatic resume
-        this.#coordinatorSocket.close();
-        this.#coordinatorSocket.connect();
-      }, 3_000);
+      this.#prepareForWait("WAIT_FOR_DURATION", willCheckpointAndRestore);
     });
 
     this.#backgroundWorker.onWaitForTask.attach(async (message) => {
-      // TODO: Switch to .send() once coordinator uses zod handler for all messages
+      if (!this.attemptFriendlyId) {
+        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+        return;
+      }
+
       const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
         "WAIT_FOR_TASK",
-        { version: "v1", ...message }
+        {
+          ...message,
+          attemptFriendlyId: this.attemptFriendlyId,
+        }
       );
 
-      logger.log("WAIT_FOR_TASK", { willCheckpointAndRestore });
-
-      this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
-
-      setTimeout(() => {
-        if (willCheckpointAndRestore) {
-          this.paused = true;
-          this.nextResumeAfter = "WAIT_FOR_TASK";
-        }
-        // Forcing a reconnect will ensure the connection handler runs to trigger automatic resume
-        this.#coordinatorSocket.close();
-        this.#coordinatorSocket.connect();
-      }, 3_000);
+      this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
     });
 
     this.#backgroundWorker.onWaitForBatch.attach(async (message) => {
-      // TODO: Switch to .send() once coordinator uses zod handler for all messages
+      if (!this.attemptFriendlyId) {
+        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+        return;
+      }
+
       const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
         "WAIT_FOR_BATCH",
-        { version: "v1", ...message }
+        {
+          ...message,
+          attemptFriendlyId: this.attemptFriendlyId,
+        }
       );
 
-      logger.log("WAIT_FOR_BATCH", { willCheckpointAndRestore });
-
-      this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
-
-      setTimeout(() => {
-        if (willCheckpointAndRestore) {
-          this.paused = true;
-          this.nextResumeAfter = "WAIT_FOR_BATCH";
-        }
-        // Forcing a reconnect will ensure the connection handler runs to trigger automatic resume
-        this.#coordinatorSocket.close();
-        this.#coordinatorSocket.connect();
-      }, 3_000);
+      this.#prepareForWait("WAIT_FOR_BATCH", willCheckpointAndRestore);
     });
 
     this.#httpPort = port;
     this.#httpServer = this.#createHttpServer();
+  }
+
+  async #reconnect(isPostStart = false) {
+    if (isPostStart) {
+      this.waitForPostStart = false;
+    }
+
+    this.#coordinatorSocket.close();
+
+    if (!this.runningInKubernetes) {
+      this.#coordinatorSocket.connect();
+      return;
+    }
+
+    try {
+      const coordinatorHost = (await readFile("/etc/taskinfo/coordinator-host", "utf-8")).replace(
+        "\n",
+        ""
+      );
+
+      logger.log("reconnecting", {
+        coordinatorHost: {
+          fromEnv: COORDINATOR_HOST,
+          fromVolume: coordinatorHost,
+          current: this.#coordinatorSocket.socket.io.opts.hostname,
+        },
+      });
+
+      this.#coordinatorSocket = this.#createCoordinatorSocket(coordinatorHost);
+    } catch (error) {
+      logger.error("taskinfo read error during reconnect", { error });
+      this.#coordinatorSocket.connect();
+    }
+  }
+
+  #prepareForWait(reason: WaitReason, willCheckpointAndRestore: boolean) {
+    logger.log(`prepare for ${reason}`, { willCheckpointAndRestore });
+
+    this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
+
+    if (willCheckpointAndRestore) {
+      this.paused = true;
+      this.nextResumeAfter = reason;
+      this.waitForPostStart = true;
+    }
+  }
+
+  async #prepareForRetry(willCheckpointAndRestore: boolean, shouldExit: boolean) {
+    logger.log("prepare for retry", { willCheckpointAndRestore, shouldExit });
+
+    // Graceful shutdown on final attempt
+    if (shouldExit) {
+      if (willCheckpointAndRestore) {
+        logger.log("WARNING: Will checkpoint but also requested exit. This won't end well.");
+      }
+
+      await this.#backgroundWorker.close();
+      process.exit(0);
+    }
+
+    this.executing = false;
+    this.attemptFriendlyId = undefined;
+
+    if (willCheckpointAndRestore) {
+      this.waitForPostStart = true;
+      this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
+      return;
+    }
+  }
+
+  #resumeAfterDuration() {
+    this.paused = false;
+    this.nextResumeAfter = undefined;
+
+    this.#backgroundWorker.waitCompletedNotification();
   }
 
   #returnValidatedExtraHeaders(headers: Record<string, string>) {
@@ -148,33 +233,82 @@ class ProdWorker {
     return headers;
   }
 
-  #createCoordinatorSocket() {
+  #createCoordinatorSocket(host: string) {
     const extraHeaders = this.#returnValidatedExtraHeaders({
       "x-machine-name": MACHINE_NAME,
       "x-pod-name": POD_NAME,
       "x-trigger-content-hash": this.contentHash,
       "x-trigger-project-ref": this.projectRef,
-      "x-trigger-attempt-id": this.attemptId,
       "x-trigger-env-id": this.envId,
       "x-trigger-deployment-id": this.deploymentId,
       "x-trigger-run-id": this.runId,
+      "x-trigger-deployment-version": this.deploymentVersion,
     });
 
+    if (this.attemptFriendlyId) {
+      extraHeaders["x-trigger-attempt-friendly-id"] = this.attemptFriendlyId;
+    }
+
     logger.log("connecting to coordinator", {
-      host: COORDINATOR_HOST,
+      host,
       port: COORDINATOR_PORT,
       extraHeaders,
     });
 
     const coordinatorConnection = new ZodSocketConnection({
       namespace: "prod-worker",
-      host: COORDINATOR_HOST,
+      host,
       port: COORDINATOR_PORT,
       clientMessages: ProdWorkerToCoordinatorMessages,
       serverMessages: CoordinatorToProdWorkerMessages,
       extraHeaders,
       handlers: {
-        RESUME: async (message) => {
+        RESUME_AFTER_DEPENDENCY: async (message) => {
+          if (!this.paused) {
+            logger.error("worker not paused", {
+              completions: message.completions,
+              executions: message.executions,
+            });
+            return;
+          }
+
+          if (message.completions.length !== message.executions.length) {
+            logger.error("did not receive the same number of completions and executions", {
+              completions: message.completions,
+              executions: message.executions,
+            });
+            return;
+          }
+
+          if (message.completions.length === 0 || message.executions.length === 0) {
+            logger.error("no completions or executions", {
+              completions: message.completions,
+              executions: message.executions,
+            });
+            return;
+          }
+
+          if (
+            this.nextResumeAfter !== "WAIT_FOR_TASK" &&
+            this.nextResumeAfter !== "WAIT_FOR_BATCH"
+          ) {
+            logger.error("not waiting to resume after dependency", {
+              nextResumeAfter: this.nextResumeAfter,
+            });
+            return;
+          }
+
+          if (this.nextResumeAfter === "WAIT_FOR_TASK" && message.completions.length > 1) {
+            logger.error("waiting for single task but got multiple completions", {
+              completions: message.completions,
+              executions: message.executions,
+            });
+            return;
+          }
+
+          this.paused = false;
+          this.nextResumeAfter = undefined;
+
           for (let i = 0; i < message.completions.length; i++) {
             const completion = message.completions[i];
             const execution = message.executions[i];
@@ -185,7 +319,21 @@ class ProdWorker {
           }
         },
         RESUME_AFTER_DURATION: async (message) => {
-          this.#backgroundWorker.waitCompletedNotification();
+          if (!this.paused) {
+            logger.error("worker not paused", {
+              attemptId: message.attemptId,
+            });
+            return;
+          }
+
+          if (this.nextResumeAfter !== "WAIT_FOR_DURATION") {
+            logger.error("not waiting to resume after duration", {
+              nextResumeAfter: this.nextResumeAfter,
+            });
+            return;
+          }
+
+          this.#resumeAfterDuration();
         },
         EXECUTE_TASK_RUN: async ({ executionPayload }) => {
           if (this.executing) {
@@ -199,34 +347,25 @@ class ProdWorker {
           }
 
           this.executing = true;
+          this.attemptFriendlyId = executionPayload.execution.attempt.id;
           const completion = await this.#backgroundWorker.executeTaskRun(executionPayload);
 
           logger.log("completed", completion);
 
           this.completed.add(executionPayload.execution.attempt.id);
-          this.executing = false;
 
           await this.#backgroundWorker.flushTelemetry();
 
-          const { didCheckpoint, shouldExit } = await this.#coordinatorSocket.socket.emitWithAck(
-            "TASK_RUN_COMPLETED",
-            {
+          const { willCheckpointAndRestore, shouldExit } =
+            await this.#coordinatorSocket.socket.emitWithAck("TASK_RUN_COMPLETED", {
               version: "v1",
               execution: executionPayload.execution,
               completion,
-            }
-          );
+            });
 
-          logger.log("completion acknowledged", { didCheckpoint, shouldExit });
+          logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
 
-          if (shouldExit) {
-            await this.#backgroundWorker.close();
-            process.exit(0);
-          }
-
-          // Forcing a reconnect will ensure the connection handler runs and signals we are ready for another execution
-          this.#coordinatorSocket.close();
-          this.#coordinatorSocket.connect();
+          this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
           if (!this.executing) {
@@ -236,10 +375,27 @@ class ProdWorker {
           await this.#backgroundWorker.cancelAttempt(message.attemptId);
         },
         REQUEST_EXIT: async () => {
+          this.#coordinatorSocket.close();
           process.exit(0);
+        },
+        READY_FOR_RETRY: async (message) => {
+          if (this.completed.size < 1) {
+            return;
+          }
+
+          this.#coordinatorSocket.socket.emit("READY_FOR_EXECUTION", {
+            version: "v1",
+            runId: this.runId,
+            totalCompletions: this.completed.size,
+          });
         },
       },
       onConnection: async (socket, handler, sender, logger) => {
+        if (this.waitForPostStart) {
+          logger.log("skip connection handler, waiting for post start hook");
+          return;
+        }
+
         if (process.env.INDEX_TASKS === "true") {
           try {
             const taskResources = await this.#initializeWorker();
@@ -251,15 +407,15 @@ class ProdWorker {
             });
 
             if (success) {
-              logger("indexing done, shutting down..");
+              logger.info("indexing done, shutting down..");
               process.exit(0);
             } else {
-              logger("indexing failure, shutting down..");
+              logger.info("indexing failure, shutting down..");
               process.exit(1);
             }
           } catch (e) {
             if (e instanceof UncaughtExceptionError) {
-              logger("uncaught exception", e.originalError.message);
+              logger.error("uncaught exception", { message: e.originalError.message });
 
               socket.emit("INDEXING_FAILED", {
                 version: "v1",
@@ -271,7 +427,7 @@ class ProdWorker {
                 },
               });
             } else if (e instanceof Error) {
-              logger("error", e.message);
+              logger.error("error", { message: e.message });
 
               socket.emit("INDEXING_FAILED", {
                 version: "v1",
@@ -283,7 +439,7 @@ class ProdWorker {
                 },
               });
             } else if (typeof e === "string") {
-              logger("string error", e);
+              logger.error("string error", { message: e });
 
               socket.emit("INDEXING_FAILED", {
                 version: "v1",
@@ -294,7 +450,7 @@ class ProdWorker {
                 },
               });
             } else {
-              logger("unknown error", e);
+              logger.error("unknown error", { error: e });
 
               socket.emit("INDEXING_FAILED", {
                 version: "v1",
@@ -306,9 +462,8 @@ class ProdWorker {
               });
             }
 
-            setTimeout(() => {
-              process.exit(1);
-            }, 200);
+            await setTimeout(200);
+            process.exit(1);
           }
         }
 
@@ -317,14 +472,21 @@ class ProdWorker {
             return;
           }
 
+          if (!this.attemptFriendlyId) {
+            logger.error("Missing friendly ID");
+            return;
+          }
+
+          if (this.nextResumeAfter === "WAIT_FOR_DURATION") {
+            this.#resumeAfterDuration();
+            return;
+          }
+
           socket.emit("READY_FOR_RESUME", {
             version: "v1",
-            attemptId: this.attemptId,
+            attemptFriendlyId: this.attemptFriendlyId,
             type: this.nextResumeAfter,
           });
-
-          this.#backgroundWorker.waitCompletedNotification();
-          this.paused = false;
 
           return;
         }
@@ -335,9 +497,22 @@ class ProdWorker {
 
         socket.emit("READY_FOR_EXECUTION", {
           version: "v1",
-          attemptId: this.attemptId,
           runId: this.runId,
+          totalCompletions: this.completed.size,
         });
+      },
+      onError: async (socket, err, logger) => {
+        logger.error("onError", {
+          error: {
+            name: err.name,
+            message: err.message,
+          },
+        });
+
+        await this.#reconnect();
+      },
+      onDisconnect: async (socket, reason, description, logger) => {
+        // this.#reconnect();
       },
     });
 
@@ -347,84 +522,117 @@ class ProdWorker {
   #createHttpServer() {
     const httpServer = createServer(async (req, res) => {
       logger.log(`[${req.method}]`, req.url);
-
       const reply = new HttpReply(res);
 
-      switch (req.url) {
-        case "/complete":
-          setTimeout(() => process.exit(0), 1000);
-          return reply.text("ok");
+      try {
+        const url = new URL(req.url ?? "", `http://${req.headers.host}`);
 
-        case "/date":
-          const date = new Date();
-          return reply.text(date.toString());
+        switch (url.pathname) {
+          case "/health": {
+            return reply.text("ok");
+          }
 
-        case "/fail":
-          setTimeout(() => process.exit(1), 1000);
-          return reply.text("ok");
+          case "/status": {
+            return reply.json({
+              executing: this.executing,
+              pause: this.paused,
+              nextResumeAfter: this.nextResumeAfter,
+            });
+          }
 
-        case "/health":
-          return reply.text("ok");
+          case "/connect": {
+            this.#coordinatorSocket.connect();
 
-        case "/whoami":
-          return reply.text(this.contentHash);
+            return reply.text("Connected to coordinator");
+          }
 
-        case "/wait":
-          const { willCheckpointAndRestore } = await this.#coordinatorSocket.sendWithAck(
-            "WAIT_FOR_DURATION",
-            {
+          case "/close": {
+            await this.#coordinatorSocket.sendWithAck("LOG", {
               version: "v1",
-              ms: 60_000,
-            }
-          );
-          logger.log("WAIT_FOR_DURATION", { willCheckpointAndRestore });
-          // this is required when C/Ring established connections
-          this.#coordinatorSocket.close();
-          return reply.text("sent WAIT");
+              text: `[${req.method}] ${req.url}`,
+            });
 
-        case "/connect":
-          this.#coordinatorSocket.connect();
-          return reply.empty();
-
-        case "/close":
-          this.#coordinatorSocket.sendWithAck("LOG", {
-            version: "v1",
-            text: "close without delay",
-          });
-          this.#coordinatorSocket.close();
-          return reply.empty();
-
-        case "/close-delay":
-          this.#coordinatorSocket.sendWithAck("LOG", {
-            version: "v1",
-            text: "close with delay",
-          });
-          setTimeout(() => {
             this.#coordinatorSocket.close();
-          }, 200);
-          return reply.empty();
 
-        case "/log":
-          this.#coordinatorSocket.sendWithAck("LOG", {
-            version: "v1",
-            text: await getTextBody(req),
-          });
-          return reply.empty();
+            return reply.text("Disconnected from coordinator");
+          }
 
-        case "/preStop":
-          logger.log("should do preStop stuff, e.g. checkpoint and graceful shutdown");
-          return reply.text("got preStop request");
+          case "/test": {
+            await this.#coordinatorSocket.sendWithAck("LOG", {
+              version: "v1",
+              text: `[${req.method}] ${req.url}`,
+            });
 
-        case "/ready":
-          this.#coordinatorSocket.send("READY_FOR_EXECUTION", {
-            version: "v1",
-            attemptId: this.attemptId,
-            runId: this.runId,
-          });
-          return reply.empty();
+            return reply.text("Received ACK from coordinator");
+          }
 
-        default:
-          return reply.empty(404);
+          case "/preStop": {
+            const schema = z.enum(["index", "create", "restore"]);
+
+            const cause = schema.safeParse(url.searchParams.get("cause"));
+
+            if (!cause.success) {
+              logger.error("Failed to parse cause", { cause });
+              return;
+            }
+
+            switch (cause.data) {
+              case "index": {
+                break;
+              }
+              case "create": {
+                break;
+              }
+              case "restore": {
+                break;
+              }
+              default: {
+                logger.error("Unhandled cause", { cause: cause.data });
+                break;
+              }
+            }
+            logger.log("preStop", { url: req.url });
+
+            return reply.text("preStop ok");
+          }
+
+          case "/postStart": {
+            const schema = z.enum(["index", "create", "restore"]);
+
+            const cause = schema.safeParse(url.searchParams.get("cause"));
+
+            if (!cause.success) {
+              logger.error("Failed to parse cause", { cause });
+              return;
+            }
+
+            switch (cause.data) {
+              case "index": {
+                break;
+              }
+              case "create": {
+                break;
+              }
+              case "restore": {
+                await this.#reconnect(true);
+                break;
+              }
+              default: {
+                logger.error("Unhandled cause", { cause: cause.data });
+                break;
+              }
+            }
+
+            return reply.text("postStart ok");
+          }
+
+          default: {
+            return reply.empty(404);
+          }
+        }
+      } catch (error) {
+        logger.error("HTTP server error", { error });
+        reply.empty(500);
       }
     });
 
@@ -436,7 +644,7 @@ class ProdWorker {
       logger.log("http server listening on port", this.#httpPort);
     });
 
-    httpServer.on("error", (error) => {
+    httpServer.on("error", async (error) => {
       // @ts-expect-error
       if (error.code != "EADDRINUSE") {
         return;
@@ -446,9 +654,8 @@ class ProdWorker {
 
       this.#httpPort = getRandomPortNumber();
 
-      setTimeout(() => {
-        this.start();
-      }, 100);
+      await setTimeout(100);
+      this.start();
     });
 
     return httpServer;

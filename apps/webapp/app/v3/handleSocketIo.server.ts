@@ -52,7 +52,8 @@ function createCoordinatorNamespace(io: Server) {
       READY_FOR_EXECUTION: async (message) => {
         const payload = await sharedQueueTasks.getLatestExecutionPayloadFromRun(
           message.runId,
-          true
+          true,
+          !!message.totalCompletions
         );
 
         if (!payload) {
@@ -67,7 +68,11 @@ function createCoordinatorNamespace(io: Server) {
       },
       TASK_RUN_COMPLETED: async (message) => {
         const completeAttempt = new CompleteAttemptService();
-        await completeAttempt.call(message.completion, message.execution);
+        await completeAttempt.call({
+          completion: message.completion,
+          execution: message.execution,
+          checkpoint: message.checkpoint,
+        });
       },
       TASK_HEARTBEAT: async (message) => {
         await sharedQueueTasks.taskHeartbeat(message.attemptFriendlyId);
@@ -132,14 +137,14 @@ function createSharedQueueConsumerNamespace(io: Server) {
     clientMessages: ClientToSharedQueueMessages,
     serverMessages: SharedQueueToClientMessages,
     onConnection: async (socket, handler, sender, logger) => {
-      const sharedSocketConnection = new SharedSocketConnection(
-        sharedQueue.namespace,
+      const sharedSocketConnection = new SharedSocketConnection({
+        namespace: sharedQueue.namespace,
         socket,
-        logger
-      );
+        logger,
+      });
 
       sharedSocketConnection.onClose.attach((closeEvent) => {
-        logger("Socket closed", { closeEvent });
+        logger.info("Socket closed", { closeEvent });
       });
 
       await sharedSocketConnection.initialize();

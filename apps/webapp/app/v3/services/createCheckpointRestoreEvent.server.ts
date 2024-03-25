@@ -2,19 +2,69 @@ import type { CheckpointRestoreEvent, CheckpointRestoreEventType } from "@trigge
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 
-export class CreateCheckpointRestoreEventService extends BaseService {
+interface CheckpointRestoreEventCallParams {
+  checkpointId: string;
+  type: CheckpointRestoreEventType;
+  dependencyFriendlyRunId?: string;
+  batchDependencyFriendlyId?: string;
+}
 
-  public async call(params: {
-    checkpointId: string;
-    type: CheckpointRestoreEventType;
-  }): Promise<CheckpointRestoreEvent | undefined> {
-    const checkpoint = await this._prisma.checkpoint.findUniqueOrThrow({
+type CheckpointRestoreEventParams = Omit<CheckpointRestoreEventCallParams, "type">;
+
+export class CreateCheckpointRestoreEventService extends BaseService {
+  async checkpoint(params: CheckpointRestoreEventParams) {
+    return this.#call({ ...params, type: "CHECKPOINT" });
+  }
+
+  async restore(params: CheckpointRestoreEventParams) {
+    return this.#call({ ...params, type: "RESTORE" });
+  }
+
+  async #call(
+    params: CheckpointRestoreEventCallParams
+  ): Promise<CheckpointRestoreEvent | undefined> {
+    if (params.dependencyFriendlyRunId && params.batchDependencyFriendlyId) {
+      logger.error("Only one dependency can be set", { params });
+      return;
+    }
+
+    const checkpoint = await this._prisma.checkpoint.findUnique({
       where: {
         id: params.checkpointId,
       },
     });
 
-    logger.debug(`Creating checkpoint/restore event`, params);
+    if (!checkpoint) {
+      logger.error("Checkpoint not found", { id: params.checkpointId });
+      return;
+    }
+
+    logger.debug(`Creating checkpoint/restore event`, { params });
+
+    let taskRunDependencyId: string | undefined;
+
+    if (params.dependencyFriendlyRunId) {
+      const run = await this._prisma.taskRun.findUnique({
+        where: {
+          friendlyId: params.dependencyFriendlyRunId,
+        },
+        select: {
+          id: true,
+          dependency: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
+
+      taskRunDependencyId = run?.dependency?.id;
+
+      if (!taskRunDependencyId) {
+        logger.error("Dependency or run not found", { runId: params.dependencyFriendlyRunId });
+        return;
+      }
+    }
 
     const checkpointEvent = await this._prisma.checkpointRestoreEvent.create({
       data: {
@@ -26,6 +76,24 @@ export class CreateCheckpointRestoreEventService extends BaseService {
         type: params.type,
         reason: checkpoint.reason,
         metadata: checkpoint.metadata,
+        ...(taskRunDependencyId
+          ? {
+              taskRunDependency: {
+                connect: {
+                  id: taskRunDependencyId,
+                },
+              },
+            }
+          : undefined),
+        ...(params.batchDependencyFriendlyId
+          ? {
+              batchTaskRunDependency: {
+                connect: {
+                  friendlyId: params.batchDependencyFriendlyId,
+                },
+              },
+            }
+          : undefined),
       },
     });
 

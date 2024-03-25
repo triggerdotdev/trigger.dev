@@ -29,9 +29,12 @@ export const wait = {
     return tracer.startActiveSpan(
       `wait.for()`,
       async (span) => {
+        const start = Date.now();
         const durationInMs = calculateDurationInMs(options);
 
         await runtime.waitForDuration(durationInMs);
+
+        span.end(start + durationInMs);
       },
       {
         attributes: {
@@ -53,13 +56,17 @@ export const wait = {
     return tracer.startActiveSpan(
       `wait.until()`,
       async (span) => {
+        const start = Date.now();
+
         if (options.throwIfInThePast && options.date < new Date()) {
           throw new Error("Date is in the past");
         }
 
-        const durationInMs = options.date.getTime() - new Date().getTime();
+        const durationInMs = options.date.getTime() - start;
 
         await runtime.waitForDuration(durationInMs);
+
+        span.end(start + durationInMs);
       },
       {
         attributes: {

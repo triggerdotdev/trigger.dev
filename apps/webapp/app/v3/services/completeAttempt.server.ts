@@ -17,15 +17,28 @@ import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
+import { CreateCheckpointService } from "./createCheckpoint.server";
+import { TaskRun } from "@trigger.dev/database";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
+type CheckpointData = {
+  docker: boolean;
+  location: string;
+};
+
 export class CompleteAttemptService extends BaseService {
-  public async call(
-    completion: TaskRunExecutionResult,
-    execution: TaskRunExecution,
-    env?: AuthenticatedEnvironment
-  ): Promise<"COMPLETED" | "RETRIED"> {
+  public async call({
+    completion,
+    execution,
+    env,
+    checkpoint,
+  }: {
+    completion: TaskRunExecutionResult;
+    execution: TaskRunExecution;
+    env?: AuthenticatedEnvironment;
+    checkpoint?: CheckpointData;
+  }): Promise<"COMPLETED" | "RETRIED"> {
     const taskRunAttempt = await findAttempt(this._prisma, completion.id);
 
     if (!taskRunAttempt) {
@@ -47,7 +60,13 @@ export class CompleteAttemptService extends BaseService {
     if (completion.ok) {
       return await this.#completeAttemptSuccessfully(completion, taskRunAttempt, env);
     } else {
-      return await this.#completeAttemptFailed(completion, execution, taskRunAttempt, env);
+      return await this.#completeAttemptFailed(
+        completion,
+        execution,
+        taskRunAttempt,
+        env,
+        checkpoint
+      );
     }
   }
 
@@ -55,7 +74,7 @@ export class CompleteAttemptService extends BaseService {
     completion: TaskRunSuccessfulExecutionResult,
     taskRunAttempt: NonNullable<FoundAttempt>,
     env?: AuthenticatedEnvironment
-  ): Promise<"COMPLETED" | "RETRIED"> {
+  ): Promise<"COMPLETED"> {
     await this._prisma.taskRunAttempt.update({
       where: { friendlyId: completion.id },
       data: {
@@ -97,8 +116,9 @@ export class CompleteAttemptService extends BaseService {
     completion: TaskRunFailedExecutionResult,
     execution: TaskRunExecution,
     taskRunAttempt: NonNullable<FoundAttempt>,
-    env?: AuthenticatedEnvironment
-  ) {
+    env?: AuthenticatedEnvironment,
+    checkpoint?: CheckpointData
+  ): Promise<"COMPLETED" | "RETRIED"> {
     if (
       completion.error.type === "INTERNAL_ERROR" &&
       completion.error.code === "TASK_RUN_CANCELLED"
@@ -166,17 +186,46 @@ export class CompleteAttemptService extends BaseService {
       if (environment.type === "DEVELOPMENT") {
         // This is already an EXECUTE message so we can just NACK
         await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
-      } else {
-        // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
-        await marqs?.replaceMessage(
-          taskRunAttempt.taskRunId,
-          {
-            type: "EXECUTE",
-            taskIdentifier: taskRunAttempt.taskRun.taskIdentifier,
-          },
-          completion.retry.timestamp
-        );
+        return "RETRIED";
       }
+
+      if (!checkpoint) {
+        await this.#enqueueRetry(taskRunAttempt.taskRun, completion.retry.timestamp);
+        return "RETRIED";
+      }
+
+      const createCheckpoint = new CreateCheckpointService(this._prisma);
+      const checkpointCreateResult = await createCheckpoint.call({
+        attemptFriendlyId: execution.attempt.id,
+        docker: checkpoint.docker,
+        location: checkpoint.location,
+        reason: {
+          type: "RETRYING_AFTER_FAILURE",
+          attemptNumber: execution.attempt.number,
+        },
+      });
+
+      if (!checkpointCreateResult) {
+        logger.error("Failed to create checkpoint", { checkpoint, execution: execution.run.id });
+
+        // Update the task run to be failed
+        await this._prisma.taskRun.update({
+          where: {
+            friendlyId: execution.run.id,
+          },
+          data: {
+            status: "SYSTEM_FAILURE",
+          },
+        });
+
+        return "COMPLETED";
+      }
+
+      await this.#enqueueRetry(
+        taskRunAttempt.taskRun,
+        completion.retry.timestamp,
+        checkpointCreateResult.event.id
+      );
 
       return "RETRIED";
     } else {
@@ -208,6 +257,19 @@ export class CompleteAttemptService extends BaseService {
 
       return "COMPLETED";
     }
+  }
+
+  async #enqueueRetry(run: TaskRun, retryTimestamp: number, checkpointEventId?: string) {
+    // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
+    return await marqs?.replaceMessage(
+      run.id,
+      {
+        type: "EXECUTE",
+        taskIdentifier: run.taskIdentifier,
+        checkpointEventId: checkpointEventId,
+      },
+      retryTimestamp
+    );
   }
 
   #generateMetadataAttributesForNextAttempt(execution: TaskRunExecution) {

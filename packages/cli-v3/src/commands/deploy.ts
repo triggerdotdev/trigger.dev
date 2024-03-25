@@ -38,6 +38,7 @@ import { detectPackageNameFromImportPath, parsePackageName } from "../utilities/
 import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
+import { SetOptional } from "type-fest";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -47,7 +48,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
   selfHosted: z.boolean().default(false),
   registry: z.string().optional(),
-  pushImage: z.boolean().default(false),
+  push: z.boolean().default(false),
   config: z.string().optional(),
   projectRef: z.string().optional(),
   outputMetafile: z.string().optional(),
@@ -82,14 +83,14 @@ export function configureDeployCommand(program: Command) {
     )
     .addOption(
       new CommandOption(
-        "--push-image",
-        "(Coming soon) When using the --self-hosted flag, push the image to the default registry. (defaults to false when not using --registry)"
+        "--push",
+        "When using the --self-hosted flag, push the image to the default registry. (defaults to false when not using --registry)"
       ).hideHelp()
     )
     .addOption(
       new CommandOption(
         "--registry <registry>",
-        "(Coming soon) The registry to push the image to when using --self-hosted"
+        "The registry to push the image to when using --self-hosted"
       ).hideHelp()
     )
     .addOption(
@@ -233,12 +234,13 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const deploymentSpinner = spinner();
 
   deploymentSpinner.start(`Deploying version ${version}`);
-  const registryHost =
-    deploymentResponse.data.registryHost ?? options.registry ?? "registry.trigger.dev";
+  const selfHostedRegistryHost = deploymentResponse.data.registryHost ?? options.registry;
+  const registryHost = selfHostedRegistryHost ?? "registry.trigger.dev";
 
   const buildImage = async () => {
     if (options.selfHosted) {
       return buildAndPushSelfHostedImage({
+        registryHost: selfHostedRegistryHost,
         imageTag: deploymentResponse.data.imageTag,
         cwd: compilation.path,
         projectId: resolvedConfig.config.project,
@@ -247,6 +249,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         contentHash: deploymentResponse.data.contentHash,
         projectRef: resolvedConfig.config.project,
         buildPlatform: options.buildPlatform,
+        pushImage: options.push,
+        selfHostedRegistry: !!options.registry,
       });
     }
 
@@ -283,7 +287,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   const imageReference = options.selfHosted
-    ? `${image.image}${image.digest ? `@${image.digest}` : ""}`
+    ? `${selfHostedRegistryHost ? `${selfHostedRegistryHost}/` : ""}${image.image}${
+        image.digest ? `@${image.digest}` : ""
+      }`
     : `${registryHost}/${image.image}${image.digest ? `@${image.digest}` : ""}`;
 
   span?.setAttributes({
@@ -637,10 +643,16 @@ async function buildAndPushImage(
   });
 }
 
-type BuildAndPushSelfHostedImageOptions = Omit<
-  BuildAndPushImageOptions,
-  "registryHost" | "buildId" | "buildToken" | "buildProjectId" | "auth" | "loadImage"
->;
+type BuildAndPushSelfHostedImageOptions = SetOptional<
+  Omit<
+    BuildAndPushImageOptions,
+    "buildId" | "buildToken" | "buildProjectId" | "auth" | "loadImage"
+  >,
+  "registryHost"
+> & {
+  pushImage: boolean;
+  selfHostedRegistry: boolean;
+};
 
 async function buildAndPushSelfHostedImage(
   options: BuildAndPushSelfHostedImageOptions
@@ -656,7 +668,9 @@ async function buildAndPushSelfHostedImage(
       "options.projectRef": options.projectRef,
     });
 
-    const args = [
+    const imageRef = `${options.registryHost ? `${options.registryHost}/` : ""}${options.imageTag}`;
+
+    const buildArgs = [
       "build",
       "-f",
       "Containerfile",
@@ -673,48 +687,41 @@ async function buildAndPushSelfHostedImage(
       "--build-arg",
       `TRIGGER_PROJECT_REF=${options.projectRef}`,
       "-t",
-      `${options.imageTag}`,
+      imageRef,
       ".", // The build context
     ].filter(Boolean) as string[];
 
-    logger.debug(`docker ${args.join(" ")}`);
+    logger.debug(`docker ${buildArgs.join(" ")}`);
 
-    span.setAttribute("docker.command", `docker ${args.join(" ")}`);
+    span.setAttribute("docker.command.build", `docker ${buildArgs.join(" ")}`);
 
-    // Step 4: Build and push the image
-    const childProcess = execa("docker", args, {
+    // Build the image
+    const buildProcess = execa("docker", buildArgs, {
       cwd: options.cwd,
     });
 
     const errors: string[] = [];
+    let digest: string | undefined;
 
     try {
       await new Promise<void>((res, rej) => {
         // For some reason everything is output on stderr, not stdout
-        childProcess.stderr?.on("data", (data: Buffer) => {
+        buildProcess.stderr?.on("data", (data: Buffer) => {
           const text = data.toString();
 
           errors.push(text);
           logger.debug(text);
         });
 
-        childProcess.on("error", (e) => rej(e));
-        childProcess.on("close", () => res());
+        buildProcess.on("error", (e) => rej(e));
+        buildProcess.on("close", () => res());
       });
 
-      const digest = extractImageDigest(errors);
+      digest = extractImageDigest(errors);
 
       span.setAttributes({
         "image.digest": digest,
       });
-
-      span.end();
-
-      return {
-        ok: true as const,
-        image: options.imageTag,
-        digest,
-      };
     } catch (e) {
       recordSpanException(span, e);
 
@@ -725,6 +732,57 @@ async function buildAndPushSelfHostedImage(
         error: e instanceof Error ? e.message : JSON.stringify(e),
       };
     }
+
+    const pushArgs = ["push", imageRef].filter(Boolean) as string[];
+
+    logger.debug(`docker ${pushArgs.join(" ")}`);
+
+    span.setAttribute("docker.command.push", `docker ${pushArgs.join(" ")}`);
+
+    if (options.selfHostedRegistry || options.pushImage) {
+      // Push the image
+      const pushProcess = execa("docker", pushArgs, {
+        cwd: options.cwd,
+      });
+
+      try {
+        await new Promise<void>((res, rej) => {
+          pushProcess.stdout?.on("data", (data: Buffer) => {
+            const text = data.toString();
+
+            logger.debug(text);
+          });
+
+          pushProcess.stderr?.on("data", (data: Buffer) => {
+            const text = data.toString();
+
+            logger.debug(text);
+          });
+
+          pushProcess.on("error", (e) => rej(e));
+          pushProcess.on("close", () => res());
+        });
+
+        span.end();
+      } catch (e) {
+        recordSpanException(span, e);
+
+        span.end();
+
+        return {
+          ok: false as const,
+          error: e instanceof Error ? e.message : JSON.stringify(e),
+        };
+      }
+    }
+
+    span.end();
+
+    return {
+      ok: true as const,
+      image: options.imageTag,
+      digest,
+    };
   });
 }
 
