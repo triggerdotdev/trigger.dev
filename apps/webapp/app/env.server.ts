@@ -69,6 +69,18 @@ const EnvironmentSchema = z.object({
   TUNNEL_HOST: z.string().optional(),
   TUNNEL_SECRET_KEY: z.string().optional(),
 
+  //API Rate limiting
+  /**
+   * @example "60s"
+   * @example "1m"
+   * @example "1h"
+   * @example "1d"
+   * @example "1000ms"
+   * @example "1000s"
+   */
+  API_RATE_LIMIT_WINDOW: z.string().default("60s"),
+  API_RATE_LIMIT_MAX: z.coerce.number().int().default(600),
+
   //v3
   V3_ENABLED: z.string().default("false"),
   OTLP_EXPORTER_TRACES_URL: z.string().optional(),

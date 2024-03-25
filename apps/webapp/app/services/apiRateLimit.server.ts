@@ -1,7 +1,11 @@
 import { ActionFunction, ActionFunctionArgs, LoaderFunction } from "@remix-run/server-runtime";
 import { Ratelimit } from "@upstash/ratelimit";
+import { NextFunction } from "express";
 import Redis, { RedisOptions } from "ioredis";
 import { env } from "~/env.server";
+import { Request as ExpressRequest, Response as ExpressResponse } from "express";
+import { logger } from "./logger.server";
+import { createHash } from "node:crypto";
 
 function createRedisRateLimitClient(
   redisOptions: RedisOptions
@@ -29,59 +33,121 @@ function createRedisRateLimitClient(
 }
 
 type Options = {
+  log?: {
+    requests?: boolean;
+    rejections?: boolean;
+  };
   redis: RedisOptions;
+  keyPrefix: string;
+  pathMatchers: (RegExp | string)[];
   limiter: ConstructorParameters<typeof Ratelimit>[0]["limiter"];
 };
 
-class RateLimitter {
-  #rateLimitter: Ratelimit;
+//returns an Express middleware that rate limits using the Bearer token in the Authorization header
+export function authorizationRateLimitMiddleware({
+  redis,
+  keyPrefix,
+  limiter,
+  pathMatchers,
+  log = {
+    rejections: true,
+    requests: true,
+  },
+}: Options) {
+  const rateLimiter = new Ratelimit({
+    redis: createRedisRateLimitClient(redis),
+    limiter: limiter,
+    ephemeralCache: new Map(),
+    analytics: false,
+    prefix: keyPrefix,
+  });
 
-  constructor({ redis, limiter }: Options) {
-    this.#rateLimitter = new Ratelimit({
-      redis: createRedisRateLimitClient(redis),
-      limiter: limiter,
-      ephemeralCache: new Map(),
-      analytics: true,
-    });
-  }
-
-  //todo Express middleware
-  //use the Authentication header with Bearer token
-
-  async loader(key: string, fn: LoaderFunction): Promise<ReturnType<LoaderFunction>> {
-    const { success, pending, limit, reset, remaining } = await this.#rateLimitter.limit(
-      `ratelimit:${key}`
-    );
-
-    if (success) {
-      return fn;
+  return async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
+    if (log.requests) {
+      logger.info(`RateLimitter (${keyPrefix}): request to ${req.path}`);
     }
 
-    const response = new Response("Rate limit exceeded", { status: 429 });
-    response.headers.set("X-RateLimit-Limit", limit.toString());
-    response.headers.set("X-RateLimit-Remaining", remaining.toString());
-    response.headers.set("X-RateLimit-Reset", reset.toString());
-    return response;
-  }
-
-  async action(key: string, fn: (args: ActionFunctionArgs) => Promise<ReturnType<ActionFunction>>) {
-    const { success, pending, limit, reset, remaining } = await this.#rateLimitter.limit(
-      `ratelimit:${key}`
-    );
-
-    if (success) {
-      return fn;
+    //first check if any of the pathMatchers match the request path
+    const path = req.path;
+    if (
+      !pathMatchers.some((matcher) =>
+        matcher instanceof RegExp ? matcher.test(path) : path === matcher
+      )
+    ) {
+      if (log.requests) {
+        logger.info(`RateLimitter (${keyPrefix}): didn't match ${req.path}`);
+      }
+      return next();
     }
 
-    const response = new Response("Rate limit exceeded", { status: 429 });
-    response.headers.set("X-RateLimit-Limit", limit.toString());
-    response.headers.set("X-RateLimit-Remaining", remaining.toString());
-    response.headers.set("X-RateLimit-Reset", reset.toString());
-    return response;
-  }
+    if (log.requests) {
+      logger.info(`RateLimitter (${keyPrefix}): matched ${req.path}`);
+    }
+
+    const authorizationValue = req.headers.authorization;
+    if (!authorizationValue) {
+      if (log.requests) {
+        logger.info(`RateLimitter (${keyPrefix}): no key`);
+      }
+      return res.status(401).send("Unauthorized");
+    }
+
+    const hash = createHash("sha256");
+    hash.update(authorizationValue);
+    const hashedAuthorizationValue = hash.digest("hex");
+
+    const { success, pending, limit, reset, remaining } = await rateLimiter.limit(
+      hashedAuthorizationValue
+    );
+
+    res.set("x-ratelimit-limit", limit.toString());
+    res.set("x-ratelimit-remaining", remaining.toString());
+    res.set("x-ratelimit-reset", reset.toString());
+
+    if (success) {
+      if (log.requests) {
+        logger.info(`RateLimitter (${keyPrefix}): under rate limit`, {
+          limit,
+          reset,
+          remaining,
+          hashedAuthorizationValue,
+        });
+      }
+      return next();
+    }
+
+    if (log.rejections) {
+      logger.warn(`RateLimitter (${keyPrefix}): rate limit exceeded`, {
+        limit,
+        reset,
+        remaining,
+        pending,
+        hashedAuthorizationValue,
+      });
+    }
+
+    res.setHeader("Content-Type", "application/problem+json");
+    return res.status(429).send(
+      JSON.stringify(
+        {
+          title: "Rate Limit Exceeded",
+          status: 429,
+          type: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429",
+          detail: `Rate limit exceeded ${remaining}/${limit} requests remaining. Retry after ${reset} seconds.`,
+          reset: reset,
+          limit: limit,
+        },
+        null,
+        2
+      )
+    );
+  };
 }
 
-export const standardRateLimitter = new RateLimitter({
+type Duration = Parameters<typeof Ratelimit.slidingWindow>[1];
+
+export const apiRateLimiter = authorizationRateLimitMiddleware({
+  keyPrefix: "ratelimit:api",
   redis: {
     port: env.REDIS_PORT,
     host: env.REDIS_HOST,
@@ -90,5 +156,12 @@ export const standardRateLimitter = new RateLimitter({
     enableAutoPipelining: true,
     ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
   },
-  limiter: Ratelimit.slidingWindow(1, "60 s"),
+  limiter: Ratelimit.slidingWindow(env.API_RATE_LIMIT_MAX, env.API_RATE_LIMIT_WINDOW as Duration),
+  pathMatchers: [/^\/api/],
+  log: {
+    rejections: true,
+    requests: false,
+  },
 });
+
+export type RateLimitMiddleware = ReturnType<typeof authorizationRateLimitMiddleware>;

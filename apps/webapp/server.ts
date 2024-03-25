@@ -8,6 +8,7 @@ import { broadcastDevReady, logDevReady } from "@remix-run/server-runtime";
 import type { Server as IoServer } from "socket.io";
 import type { Server as EngineServer } from "engine.io";
 import { RegistryProxy } from "~/v3/registryProxy.server";
+import { RateLimitMiddleware, apiRateLimiter } from "~/services/apiRateLimit.server";
 
 const app = express();
 
@@ -39,6 +40,7 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
   const socketIo: { io: IoServer } | undefined = build.entry.module.socketIo;
   const wss: WebSocketServer | undefined = build.entry.module.wss;
   const registryProxy: RegistryProxy | undefined = build.entry.module.registryProxy;
+  const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
 
   if (registryProxy && process.env.ENABLE_REGISTRY_PROXY === "true") {
     console.log(`🐳 Enabling container registry proxy to ${registryProxy.origin}`);
@@ -69,6 +71,8 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
   });
 
   if (process.env.DASHBOARD_AND_API_DISABLED !== "true") {
+    app.use(apiRateLimiter);
+
     app.all(
       "*",
       // @ts-ignore
@@ -83,8 +87,6 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
       res.status(200).send("OK");
     });
   }
-
-
 
   const server = app.listen(port, () => {
     console.log(`✅ server ready: http://localhost:${port} [NODE_ENV: ${MODE}]`);
