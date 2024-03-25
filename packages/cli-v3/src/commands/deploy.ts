@@ -50,6 +50,7 @@ import { Glob } from "glob";
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
   skipDeploy: z.boolean().default(false),
+  ignoreEnvVarCheck: z.boolean().default(false),
   env: z.enum(["prod", "staging"]),
   loadImage: z.boolean().default(false),
   buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
@@ -75,7 +76,11 @@ export function configureDeployCommand(program: Command) {
         "Deploy to a specific environment (currently only prod and staging are supported)",
         "prod"
       )
-      .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
+      .option("--skip-typecheck", "Whether to skip the pre-build typecheck")
+      .option(
+        "--ignore-env-var-check",
+        "Detected missing environment variables won't block deployment"
+      )
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
       .option(
         "-p, --project-ref <project ref>",
@@ -432,7 +437,11 @@ async function checkEnvVars(
           environmentVariablesSpinner.stop(
             `Found missing env vars in ${options.env}: ${arrayToSentence(
               missingEnvironmentVariables
-            )}. Aborting deployment. ${chalk.bgBlueBright(
+            )}. ${
+              options.ignoreEnvVarCheck
+                ? "Continuing deployment because of --ignore-env-var-check. "
+                : "Aborting deployment. "
+            }${chalk.bgBlueBright(
               terminalLink(
                 "Manage env vars",
                 `${apiUrl}/projects/v3/${config.project}/environment-variables`
@@ -444,7 +453,12 @@ async function checkEnvVars(
             "envVars.missing": missingEnvironmentVariables,
           });
 
-          throw new SkipLoggingError("Found missing environment variables");
+          if (!options.ignoreEnvVarCheck) {
+            throw new SkipLoggingError("Found missing environment variables");
+          } else {
+            span.end();
+            return;
+          }
         }
 
         environmentVariablesSpinner.stop(`Environment variable check passed`);
@@ -1368,6 +1382,8 @@ async function findAllEnvironmentVariableReferencesInFile(filePath: string) {
   return findAllEnvironmentVariableReferences(fileContents);
 }
 
+const IGNORED_ENV_VARS = ["NODE_ENV", "SHELL", "HOME", "PWD", "LOGNAME", "USER", "PATH"];
+
 function findAllEnvironmentVariableReferences(code: string): string[] {
   const regex = /\bprocess\.env\.([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
 
@@ -1375,8 +1391,10 @@ function findAllEnvironmentVariableReferences(code: string): string[] {
 
   const matchesArray = Array.from(matches, (match) => match[1]).filter(Boolean) as string[];
 
+  const filteredMatches = matchesArray.filter((match) => !IGNORED_ENV_VARS.includes(match));
+
   // Make sure and remove duplicates
-  return Array.from(new Set(matchesArray));
+  return Array.from(new Set(filteredMatches));
 }
 
 function arrayToSentence(items: string[]): string {
