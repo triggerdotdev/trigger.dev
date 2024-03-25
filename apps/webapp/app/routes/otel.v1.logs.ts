@@ -3,23 +3,34 @@ import { ExportLogsServiceRequest, ExportLogsServiceResponse } from "@trigger.de
 import { otlpExporter } from "~/v3/otlpExporter.server";
 
 export async function action({ request }: ActionFunctionArgs) {
-  const contentType = request.headers.get("content-type");
+  try {
+    const contentType = request.headers.get("content-type");
 
-  if (contentType === "application/json") {
-    const body = await request.json();
+    if (contentType === "application/json") {
+      const body = await request.json();
 
-    const exportResponse = await otlpExporter.exportLogs(body as ExportLogsServiceRequest, true);
+      const exportResponse = await otlpExporter.exportLogs(body as ExportLogsServiceRequest, true);
 
-    return json(exportResponse, { status: 200 })
-  } else if (contentType === "application/x-protobuf") {
-    const buffer = await request.arrayBuffer();
+      return json(exportResponse, { status: 200 });
+    } else if (contentType === "application/x-protobuf") {
+      const buffer = await request.arrayBuffer();
 
-    const exportRequest = ExportLogsServiceRequest.decode(new Uint8Array(buffer));
+      const exportRequest = ExportLogsServiceRequest.decode(new Uint8Array(buffer));
 
-    const exportResponse = await otlpExporter.exportLogs(exportRequest);
+      const exportResponse = await otlpExporter.exportLogs(exportRequest);
 
-    return new Response(ExportLogsServiceResponse.encode(exportResponse).finish(), { status: 200 });
-  } else {
-    return new Response("Unsupported content type. Must be either application/x-protobuf or application/json", { status: 400 });
+      return new Response(ExportLogsServiceResponse.encode(exportResponse).finish(), {
+        status: 200,
+      });
+    } else {
+      return new Response(
+        "Unsupported content type. Must be either application/x-protobuf or application/json",
+        { status: 400 }
+      );
+    }
+  } catch (error) {
+    console.error(error);
+
+    return new Response("Internal Server Error", { status: 500 });
   }
 }

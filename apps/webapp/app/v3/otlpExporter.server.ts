@@ -35,9 +35,12 @@ class OTLPExporter {
   constructor(
     private readonly _eventRepository: EventRepository,
     private readonly _verbose: boolean
-  ) { }
+  ) {}
 
-  async exportTraces(request: ExportTraceServiceRequest, immediate: boolean = false): Promise<ExportTraceServiceResponse> {
+  async exportTraces(
+    request: ExportTraceServiceRequest,
+    immediate: boolean = false
+  ): Promise<ExportTraceServiceResponse> {
     this.#logExportTracesVerbose(request);
 
     const events = this.#filterResourceSpans(request.resourceSpans).flatMap((resourceSpan) => {
@@ -55,7 +58,10 @@ class OTLPExporter {
     return ExportTraceServiceResponse.create();
   }
 
-  async exportLogs(request: ExportLogsServiceRequest, immediate: boolean = false): Promise<ExportLogsServiceResponse> {
+  async exportLogs(
+    request: ExportLogsServiceRequest,
+    immediate: boolean = false
+  ): Promise<ExportLogsServiceResponse> {
     this.#logExportLogsVerbose(request);
 
     const events = this.#filterResourceLogs(request.resourceLogs).flatMap((resourceLog) => {
@@ -142,57 +148,63 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
   const resourceProperties = extractResourceProperties(resourceAttributes);
 
   return resourceLog.scopeLogs.flatMap((scopeLog) => {
-    return scopeLog.logRecords.map((log) => {
-      const logLevel = logLevelToEventLevel(log.severityNumber);
+    return scopeLog.logRecords
+      .map((log) => {
+        const logLevel = logLevelToEventLevel(log.severityNumber);
 
-      return {
-        traceId: binaryToHex(log.traceId),
-        spanId: eventRepository.generateSpanId(),
-        parentId: binaryToHex(log.spanId),
-        message: isStringValue(log.body) ? log.body.stringValue : `${log.severityText} log`,
-        isPartial: false,
-        kind: "INTERNAL",
-        level: logLevelToEventLevel(log.severityNumber),
-        isError: logLevel === "ERROR",
-        status: logLevelToEventStatus(log.severityNumber),
-        startTime: log.timeUnixNano,
-        properties: {
-          ...convertKeyValueItemsToMap(log.attributes ?? [], [
-            SemanticInternalAttributes.SPAN_ID,
-            SemanticInternalAttributes.SPAN_PARTIAL,
-          ]),
-          ...convertKeyValueItemsToMap(
-            resourceAttributes,
-            [SemanticInternalAttributes.TRIGGER],
-            SemanticInternalAttributes.METADATA
-          ),
-        },
-        style: convertKeyValueItemsToMap(
-          pickAttributes(log.attributes ?? [], SemanticInternalAttributes.STYLE),
-          []
-        ),
-        output: detectPrimitiveValue(
-          convertKeyValueItemsToMap(
-            pickAttributes(log.attributes ?? [], SemanticInternalAttributes.OUTPUT),
+        if (!log.traceId || !log.spanId) {
+          return;
+        }
+
+        return {
+          traceId: binaryToHex(log.traceId),
+          spanId: eventRepository.generateSpanId(),
+          parentId: binaryToHex(log.spanId),
+          message: isStringValue(log.body) ? log.body.stringValue : `${log.severityText} log`,
+          isPartial: false,
+          kind: "INTERNAL" as const,
+          level: logLevelToEventLevel(log.severityNumber),
+          isError: logLevel === "ERROR",
+          status: logLevelToEventStatus(log.severityNumber),
+          startTime: log.timeUnixNano,
+          properties: {
+            ...convertKeyValueItemsToMap(log.attributes ?? [], [
+              SemanticInternalAttributes.SPAN_ID,
+              SemanticInternalAttributes.SPAN_PARTIAL,
+            ]),
+            ...convertKeyValueItemsToMap(
+              resourceAttributes,
+              [SemanticInternalAttributes.TRIGGER],
+              SemanticInternalAttributes.METADATA
+            ),
+          },
+          style: convertKeyValueItemsToMap(
+            pickAttributes(log.attributes ?? [], SemanticInternalAttributes.STYLE),
             []
           ),
-          SemanticInternalAttributes.OUTPUT
-        ),
-        ...resourceProperties,
-        attemptId:
-          extractStringAttribute(
-            log.attributes ?? [],
-            [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_ID].join(".")
-          ) ?? resourceProperties.attemptId,
-        attemptNumber:
-          extractNumberAttribute(
-            log.attributes ?? [],
-            [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_NUMBER].join(
-              "."
-            )
-          ) ?? resourceProperties.attemptNumber,
-      };
-    });
+          output: detectPrimitiveValue(
+            convertKeyValueItemsToMap(
+              pickAttributes(log.attributes ?? [], SemanticInternalAttributes.OUTPUT),
+              []
+            ),
+            SemanticInternalAttributes.OUTPUT
+          ),
+          ...resourceProperties,
+          attemptId:
+            extractStringAttribute(
+              log.attributes ?? [],
+              [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_ID].join(".")
+            ) ?? resourceProperties.attemptId,
+          attemptNumber:
+            extractNumberAttribute(
+              log.attributes ?? [],
+              [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_NUMBER].join(
+                "."
+              )
+            ) ?? resourceProperties.attemptNumber,
+        };
+      })
+      .filter(Boolean);
   });
 }
 
@@ -202,66 +214,72 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
   const resourceProperties = extractResourceProperties(resourceAttributes);
 
   return resourceSpan.scopeSpans.flatMap((scopeSpan) => {
-    return scopeSpan.spans.map((span) => {
-      const isPartial = isPartialSpan(span);
+    return scopeSpan.spans
+      .map((span) => {
+        const isPartial = isPartialSpan(span);
 
-      return {
-        traceId: binaryToHex(span.traceId),
-        spanId: isPartial
-          ? extractStringAttribute(
-            span?.attributes ?? [],
-            SemanticInternalAttributes.SPAN_ID,
-            binaryToHex(span.spanId)
-          )
-          : binaryToHex(span.spanId),
-        parentId: binaryToHex(span.parentSpanId),
-        message: span.name,
-        isPartial,
-        isError: span.status?.code === Status_StatusCode.ERROR,
-        kind: spanKindToEventKind(span.kind),
-        level: "TRACE",
-        status: spanStatusToEventStatus(span.status),
-        startTime: span.startTimeUnixNano,
-        links: spanLinksToEventLinks(span.links ?? []),
-        events: spanEventsToEventEvents(span.events ?? []),
-        duration: span.endTimeUnixNano - span.startTimeUnixNano,
-        properties: {
-          ...convertKeyValueItemsToMap(span.attributes ?? [], [
-            SemanticInternalAttributes.SPAN_ID,
-            SemanticInternalAttributes.SPAN_PARTIAL,
-          ]),
-          ...convertKeyValueItemsToMap(
-            resourceAttributes,
-            [SemanticInternalAttributes.TRIGGER],
-            SemanticInternalAttributes.METADATA
-          ),
-        },
-        style: convertKeyValueItemsToMap(
-          pickAttributes(span.attributes ?? [], SemanticInternalAttributes.STYLE),
-          []
-        ),
-        output: detectPrimitiveValue(
-          convertKeyValueItemsToMap(
-            pickAttributes(span.attributes ?? [], SemanticInternalAttributes.OUTPUT),
+        if (!span.traceId || !span.spanId) {
+          return;
+        }
+
+        return {
+          traceId: binaryToHex(span.traceId),
+          spanId: isPartial
+            ? extractStringAttribute(
+                span?.attributes ?? [],
+                SemanticInternalAttributes.SPAN_ID,
+                binaryToHex(span.spanId)
+              )
+            : binaryToHex(span.spanId),
+          parentId: binaryToHex(span.parentSpanId),
+          message: span.name,
+          isPartial,
+          isError: span.status?.code === Status_StatusCode.ERROR,
+          kind: spanKindToEventKind(span.kind),
+          level: "TRACE" as const,
+          status: spanStatusToEventStatus(span.status),
+          startTime: span.startTimeUnixNano,
+          links: spanLinksToEventLinks(span.links ?? []),
+          events: spanEventsToEventEvents(span.events ?? []),
+          duration: span.endTimeUnixNano - span.startTimeUnixNano,
+          properties: {
+            ...convertKeyValueItemsToMap(span.attributes ?? [], [
+              SemanticInternalAttributes.SPAN_ID,
+              SemanticInternalAttributes.SPAN_PARTIAL,
+            ]),
+            ...convertKeyValueItemsToMap(
+              resourceAttributes,
+              [SemanticInternalAttributes.TRIGGER],
+              SemanticInternalAttributes.METADATA
+            ),
+          },
+          style: convertKeyValueItemsToMap(
+            pickAttributes(span.attributes ?? [], SemanticInternalAttributes.STYLE),
             []
           ),
-          SemanticInternalAttributes.OUTPUT
-        ),
-        ...resourceProperties,
-        attemptId:
-          extractStringAttribute(
-            span.attributes ?? [],
-            [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_ID].join(".")
-          ) ?? resourceProperties.attemptId,
-        attemptNumber:
-          extractNumberAttribute(
-            span.attributes ?? [],
-            [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_NUMBER].join(
-              "."
-            )
-          ) ?? resourceProperties.attemptNumber,
-      };
-    });
+          output: detectPrimitiveValue(
+            convertKeyValueItemsToMap(
+              pickAttributes(span.attributes ?? [], SemanticInternalAttributes.OUTPUT),
+              []
+            ),
+            SemanticInternalAttributes.OUTPUT
+          ),
+          ...resourceProperties,
+          attemptId:
+            extractStringAttribute(
+              span.attributes ?? [],
+              [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_ID].join(".")
+            ) ?? resourceProperties.attemptId,
+          attemptNumber:
+            extractNumberAttribute(
+              span.attributes ?? [],
+              [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_NUMBER].join(
+                "."
+              )
+            ) ?? resourceProperties.attemptNumber,
+        };
+      })
+      .filter(Boolean);
   });
 }
 
@@ -337,14 +355,14 @@ function convertKeyValueItemsToMap(
       map[`${prefix ? `${prefix}.` : ""}${attribute.key}`] = isStringValue(attribute.value)
         ? attribute.value.stringValue
         : isIntValue(attribute.value)
-          ? Number(attribute.value.intValue)
-          : isDoubleValue(attribute.value)
-            ? attribute.value.doubleValue
-            : isBoolValue(attribute.value)
-              ? attribute.value.boolValue
-              : isBytesValue(attribute.value)
-                ? binaryToHex(attribute.value.bytesValue)
-                : undefined;
+        ? Number(attribute.value.intValue)
+        : isDoubleValue(attribute.value)
+        ? attribute.value.doubleValue
+        : isBoolValue(attribute.value)
+        ? attribute.value.boolValue
+        : isBytesValue(attribute.value)
+        ? binaryToHex(attribute.value.bytesValue)
+        : undefined;
 
       return map;
     },
@@ -571,41 +589,31 @@ function isPartialSpan(span: Span): boolean {
   return isBoolValue(attribute.value) ? attribute.value.boolValue : false;
 }
 
-function isBoolValue(
-  value: AnyValue | undefined
-): value is { boolValue: boolean } {
+function isBoolValue(value: AnyValue | undefined): value is { boolValue: boolean } {
   if (!value) return false;
 
   return typeof value.boolValue === "boolean";
 }
 
-function isStringValue(
-  value: AnyValue | undefined
-): value is { stringValue: string } {
+function isStringValue(value: AnyValue | undefined): value is { stringValue: string } {
   if (!value) return false;
 
   return typeof value.stringValue === "string";
 }
 
-function isIntValue(
-  value: AnyValue | undefined
-): value is { intValue: bigint } {
+function isIntValue(value: AnyValue | undefined): value is { intValue: bigint } {
   if (!value) return false;
 
   return typeof value.intValue === "number";
 }
 
-function isDoubleValue(
-  value: AnyValue | undefined
-): value is { doubleValue: number } {
+function isDoubleValue(value: AnyValue | undefined): value is { doubleValue: number } {
   if (!value) return false;
 
   return typeof value.doubleValue === "number";
 }
 
-function isBytesValue(
-  value: AnyValue | undefined
-): value is { bytesValue: Buffer } {
+function isBytesValue(value: AnyValue | undefined): value is { bytesValue: Buffer } {
   if (!value) return false;
 
   return Buffer.isBuffer(value.bytesValue);
