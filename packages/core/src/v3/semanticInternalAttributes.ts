@@ -21,6 +21,7 @@ export const SemanticInternalAttributes = {
   SPAN_PARTIAL: "$span.partial",
   SPAN_ID: "$span.span_id",
   OUTPUT: "$output",
+  OUTPUT_TYPE: "$mime_type_output",
   STYLE: "$style",
   STYLE_ICON: "$style.icon",
   STYLE_VARIANT: "$style.variant",

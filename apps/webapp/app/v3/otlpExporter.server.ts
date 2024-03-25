@@ -264,6 +264,10 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
             ),
             SemanticInternalAttributes.OUTPUT
           ),
+          outputType: pickAttributeStringValue(
+            span.attributes ?? [],
+            SemanticInternalAttributes.OUTPUT_TYPE
+          ),
           ...resourceProperties,
           attemptId:
             extractStringAttribute(
@@ -341,6 +345,14 @@ function pickAttributes(attributes: KeyValue[], prefix: string): KeyValue[] {
         value: attribute.value,
       };
     });
+}
+
+function pickAttributeStringValue(attributes: KeyValue[], key: string): string | undefined {
+  const attribute = attributes.find((attribute) => attribute.key === key);
+
+  if (!attribute) return undefined;
+
+  return isStringValue(attribute.value) ? attribute.value.stringValue : undefined;
 }
 
 function convertKeyValueItemsToMap(

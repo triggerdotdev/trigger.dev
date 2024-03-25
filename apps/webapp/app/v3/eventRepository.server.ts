@@ -49,6 +49,7 @@ export type TraceAttributes = Partial<
     | "runId"
     | "runIsTest"
     | "output"
+    | "outputType"
     | "metadata"
     | "properties"
     | "style"
@@ -199,6 +200,7 @@ export class EventRepository {
       output: options?.attributes.output
         ? primitiveValueOrflattenedAttributes(options.attributes.output, undefined)
         : undefined,
+      outputType: options?.attributes.outputType,
     });
   }
 
@@ -229,6 +231,7 @@ export class EventRepository {
       metadata: event.metadata as Attributes,
       style: event.style as Attributes,
       output: event.output as Attributes,
+      outputType: event.outputType,
     });
   }
 
@@ -497,6 +500,7 @@ export class EventRepository {
       metadata: metadata,
       style: stripAttributePrefix(style, SemanticInternalAttributes.STYLE),
       output: undefined,
+      outputType: undefined,
     };
 
     if (options.immediate) {
@@ -630,6 +634,7 @@ export class EventRepository {
       metadata: metadata,
       style: stripAttributePrefix(style, SemanticInternalAttributes.STYLE),
       output: undefined,
+      outputType: undefined,
       links: links as unknown as Prisma.InputJsonValue,
     };
 

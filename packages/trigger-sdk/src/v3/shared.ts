@@ -17,6 +17,7 @@ import {
   createErrorTaskError,
   defaultRetryOptions,
   flattenAttributes,
+  parseOutput,
   runtime,
   taskContextManager,
 } from "@trigger.dev/core/v3";
@@ -372,7 +373,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             throw createErrorTaskError(result.error);
           }
 
-          return typeof result.output === "string" ? JSON.parse(result.output) : result.output;
+          return parseOutput(result);
         },
         {
           kind: SpanKind.PRODUCER,
@@ -447,7 +448,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
               return {
                 ok: true,
                 id: item.id,
-                output: typeof item.output === "string" ? JSON.parse(item.output) : item.output,
+                output: parseOutput(item),
               } satisfies TaskRunResult<TOutput>;
             } else {
               return {

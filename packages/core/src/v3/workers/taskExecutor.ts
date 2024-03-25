@@ -1,4 +1,6 @@
 import { SpanKind } from "@opentelemetry/api";
+import { ConsoleInterceptor } from "../consoleInterceptor";
+import { parseError } from "../errors";
 import { TracingSDK, recordSpanException } from "../otel";
 import {
   BackgroundWorkerProperties,
@@ -10,14 +12,13 @@ import {
   TaskRunExecutionRetry,
 } from "../schemas";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
-import { HandleErrorFunction, ProjectConfig, TaskMetadataWithFunctions } from "../types";
-import { flattenAttributes } from "../utils/flattenAttributes";
-import { accessoryAttributes } from "../utils/styleAttributes";
-import { calculateNextRetryDelay } from "../utils/retries";
 import { taskContextManager } from "../tasks/taskContextManager";
 import { TriggerTracer } from "../tracer";
-import { ConsoleInterceptor } from "../consoleInterceptor";
-import { parseError } from "../errors";
+import { HandleErrorFunction, ProjectConfig, TaskMetadataWithFunctions } from "../types";
+import { flattenAttributes } from "../utils/flattenAttributes";
+import { createOutputAttributes, stringifyOutput } from "../utils/ioSerialization";
+import { calculateNextRetryDelay } from "../utils/retries";
+import { accessoryAttributes } from "../utils/styleAttributes";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -80,15 +81,14 @@ export class TaskExecutor {
                 const output = await this.#callRun(parsedPayload, ctx, init);
 
                 try {
-                  span.setAttributes(flattenAttributes(output, SemanticInternalAttributes.OUTPUT));
+                  const stringifiedOutput = stringifyOutput(output);
 
-                  const serializedOutput = JSON.stringify(output);
+                  span.setAttributes(createOutputAttributes(stringifiedOutput));
 
                   return {
                     ok: true,
                     id: execution.attempt.id,
-                    output: serializedOutput,
-                    outputType: "application/json",
+                    ...stringifiedOutput,
                   } satisfies TaskRunExecutionResult;
                 } catch (stringifyError) {
                   recordSpanException(span, stringifyError);

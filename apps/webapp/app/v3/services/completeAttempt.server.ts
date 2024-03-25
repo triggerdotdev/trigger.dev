@@ -102,6 +102,7 @@ export class CompleteAttemptService extends BaseService {
       attributes: {
         isError: false,
         output: completion.output ? (safeJsonParse(completion.output) as Attributes) : undefined,
+        outputType: completion.outputType,
       },
     });
 

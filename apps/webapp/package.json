@@ -145,6 +145,7 @@
     "socket.io": "^4.7.4",
     "sonner": "^1.0.3",
     "sqs-consumer": "^7.4.0",
+    "superjson": "^2.2.1",
     "tailwind-merge": "^1.12.0",
     "tailwind-scrollbar-hide": "^1.1.7",
     "tailwindcss-animate": "^1.0.5",
