@@ -32,9 +32,9 @@ export function flattenAttributes(
       for (let i = 0; i < value.length; i++) {
         if (typeof value[i] === "object" && value[i] !== null) {
           // update null check here as well
-          Object.assign(result, flattenAttributes(value[i], `${newPrefix}.${i}`));
+          Object.assign(result, flattenAttributes(value[i], `${newPrefix}.[${i}]`));
         } else {
-          result[`${newPrefix}.${i}`] = value[i];
+          result[`${newPrefix}.[${i}]`] = value[i];
         }
       }
     } else if (isRecord(value)) {
@@ -55,44 +55,52 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function unflattenAttributes(obj: Attributes): Record<string, unknown> {
-  if (
-    obj === null ||
-    obj === undefined ||
-    typeof obj === "string" ||
-    typeof obj === "number" ||
-    typeof obj === "boolean" ||
-    Array.isArray(obj)
-  ) {
+  if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
     return obj;
   }
 
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
-    const parts = key.split(".");
-    let current = result;
+    const parts = key.split(".").reduce((acc, part) => {
+      // Splitting array indices as separate parts
+      if (detectIsArrayIndex(part)) {
+        acc.push(part);
+      } else {
+        acc.push(...part.split(/\.\[(.*?)\]/).filter(Boolean));
+      }
+      return acc;
+    }, [] as string[]);
+
+    let current: Record<string, unknown> = result;
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
-
-      // Check if part is not undefined and it's a string.
-      if (typeof part === "string") {
-        const nextPart = parts[i + 1];
-        const isArray = nextPart ? parseInt(nextPart, 10).toString() === nextPart : false;
-        if (current[part] == null) {
-          current[part] = isArray ? [] : {};
-        }
-
-        current = current[part] as Record<string, unknown>;
+      const isArray = detectIsArrayIndex(part);
+      const cleanPart = isArray ? part.substring(1, part.length - 1) : part;
+      const nextIsArray = detectIsArrayIndex(parts[i + 1]);
+      if (!current[cleanPart]) {
+        current[cleanPart] = nextIsArray ? [] : {};
       }
+      current = current[cleanPart] as Record<string, unknown>;
     }
-    // For the last element, we must ensure we also check if it is not undefined and it's a string.
     const lastPart = parts[parts.length - 1];
-    if (typeof lastPart === "string") {
-      current[lastPart] = value;
-    }
+    const cleanLastPart = detectIsArrayIndex(lastPart)
+      ? parseInt(lastPart.substring(1, lastPart.length - 1), 10)
+      : lastPart;
+    current[cleanLastPart] = value;
   }
 
   return result;
+}
+
+function detectIsArrayIndex(key: string): boolean {
+  const match = key.match(/^\[(\d+)\]$/);
+
+  if (match) {
+    return true;
+  }
+
+  return false;
 }
 
 export function primitiveValueOrflattenedAttributes(

@@ -1,21 +1,30 @@
+import { Attributes, Span, SpanStatusCode, context, trace } from "@opentelemetry/api";
 import {
+  SEMATTRS_HTTP_HOST,
+  SEMATTRS_HTTP_METHOD,
+  SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH,
+  SEMATTRS_HTTP_SCHEME,
+  SEMATTRS_HTTP_STATUS_CODE,
+  SEMATTRS_HTTP_URL,
+} from "@opentelemetry/semantic-conventions";
+import {
+  FetchRetryByStatusOptions,
   FetchRetryOptions,
   FetchRetryStrategy,
   RetryOptions,
   SemanticInternalAttributes,
   accessoryAttributes,
   calculateNextRetryDelay,
-  defaultRetryOptions,
-  runtime,
-  eventFilterMatches,
   calculateResetAt,
-  FetchTimeoutOptions,
+  defaultRetryOptions,
+  eventFilterMatches,
+  flattenAttributes,
+  runtime,
 } from "@trigger.dev/core/v3";
-import { tracer } from "./tracer";
-import { SemanticAttributes } from "@opentelemetry/semantic-conventions";
-import { AsyncLocalStorage } from "node:async_hooks";
-import { Attributes, Span, SpanStatusCode, context, trace } from "@opentelemetry/api";
+import { defaultFetchRetryOptions } from "@trigger.dev/core/v3";
 import type { HttpHandler } from "msw";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { tracer } from "./tracer";
 
 export type { RetryOptions };
 
@@ -102,7 +111,7 @@ function onThrow<T>(
 
 export interface RetryFetchRequestInit extends RequestInit {
   retry?: FetchRetryOptions;
-  timeout?: FetchTimeoutOptions;
+  timeoutInMs?: number;
 }
 
 const normalizeUrlFromInput = (input: RequestInfo | URL | string): URL => {
@@ -162,75 +171,6 @@ class FetchErrorWithSpan extends Error {
   }
 }
 
-const doFetchRequest = async (
-  input: RequestInfo | URL | string,
-  init?: RequestInit,
-  attemptCount: number = 0
-): Promise<[Response, Span]> => {
-  const url = normalizeUrlFromInput(input);
-  const httpMethod = normalizeHttpMethod(input, init);
-
-  const span = tracer.startSpan(`HTTP ${httpMethod}`, {
-    attributes: {
-      [SemanticAttributes.HTTP_METHOD]: httpMethod,
-      [SemanticAttributes.HTTP_URL]: url.href,
-      [SemanticAttributes.HTTP_HOST]: url.hostname,
-      ["server.host"]: url.hostname,
-      ["server.port"]: url.port,
-      [SemanticAttributes.HTTP_SCHEME]: url.protocol.replace(":", ""),
-      [SemanticInternalAttributes.STYLE_ICON]: "world",
-      ...accessoryAttributes({
-        items: [
-          {
-            text: `${url.hostname}${url.pathname}`,
-            variant: "normal",
-          },
-        ],
-        style: "codepath",
-      }),
-      ...(attemptCount > 1 ? { ["http.request.resend_count"]: attemptCount - 1 } : {}),
-    },
-  });
-
-  try {
-    const response = await fetchWithInterceptors(input, {
-      ...init,
-      headers: {
-        ...init?.headers,
-        "x-retry-count": attemptCount.toString(),
-      },
-    });
-
-    span.setAttribute(SemanticAttributes.HTTP_STATUS_CODE, response.status);
-    span.setAttribute("http.status_text", response.statusText);
-    span.setAttribute(
-      SemanticAttributes.HTTP_RESPONSE_CONTENT_LENGTH,
-      response.headers.get("content-length") || "0"
-    );
-    span.setAttributes(createAttributesFromHeaders(response.headers));
-
-    if (!response.ok) {
-      span.recordException(`${response.status}: ${response.statusText}`);
-      span.setStatus({
-        code: SpanStatusCode.ERROR,
-        message: `${response.status}: ${response.statusText}`,
-      });
-    }
-
-    return [response, span];
-  } catch (e) {
-    if (typeof e === "string" || e instanceof Error) {
-      span.recordException(e);
-    }
-
-    span.setStatus({ code: SpanStatusCode.ERROR });
-    span.setAttribute(SemanticAttributes.HTTP_STATUS_CODE, 0);
-    span.setAttribute("http.status_text", "This operation was aborted.");
-
-    throw new FetchErrorWithSpan(e, span);
-  }
-};
-
 const MAX_ATTEMPTS = 10;
 
 async function retryFetch(
@@ -246,12 +186,12 @@ async function retryFetch(
         try {
           const abortController = new AbortController();
 
-          const timeoutId = init?.timeout?.durationInMs
+          const timeoutId = init?.timeoutInMs
             ? setTimeout(
                 () => {
                   abortController.abort();
                 },
-                init?.timeout?.durationInMs
+                init?.timeoutInMs
               )
             : undefined;
 
@@ -270,20 +210,30 @@ async function retryFetch(
           }
 
           if (response.ok) {
+            span.setAttributes(createFetchResponseAttributes(response));
+
             span.end();
 
             return response;
           }
 
-          const nextRetry = await calculateRetryDelayForResponse(init?.retry, response, attempt);
+          const nextRetry = await calculateRetryDelayForResponse(
+            resolveDefaults(init?.retry, "byStatus", defaultFetchRetryOptions.byStatus),
+            response,
+            attempt
+          );
 
           if (!nextRetry) {
+            span.setAttributes(createFetchResponseAttributes(response));
+
             span.end();
 
             return response;
           }
 
           if (attempt >= MAX_ATTEMPTS) {
+            span.setAttributes(createFetchResponseAttributes(response));
+
             span.end();
 
             return response;
@@ -323,38 +273,72 @@ async function retryFetch(
             await runtime.waitUntil(new Date(nextRetry.value));
           }
         } catch (e) {
-          if (
-            e instanceof FetchErrorWithSpan &&
-            e.originalError instanceof Error &&
-            e.originalError.name === "AbortError"
-          ) {
-            const nextRetryDelay = calculateNextRetryDelay(
-              { ...defaultRetryOptions, ...(init?.timeout?.retry ?? {}) },
-              attempt
-            );
+          if (e instanceof FetchErrorWithSpan && e.originalError instanceof Error) {
+            if (e.originalError.name === "AbortError") {
+              const nextRetryDelay = calculateNextRetryDelay(
+                resolveDefaults(init?.retry, "timeout", defaultFetchRetryOptions.timeout),
+                attempt
+              );
 
-            if (!nextRetryDelay) {
+              if (!nextRetryDelay) {
+                e.span.end();
+                throw e;
+              }
+
+              if (attempt >= MAX_ATTEMPTS) {
+                e.span.end();
+                throw e;
+              }
+
+              e.span.setAttribute(
+                SemanticInternalAttributes.RETRY_AT,
+                new Date(Date.now() + nextRetryDelay).toISOString()
+              );
+              e.span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
+              e.span.setAttribute(SemanticInternalAttributes.RETRY_DELAY, `${nextRetryDelay}ms`);
+
               e.span.end();
-              throw e;
-            }
 
-            if (attempt >= MAX_ATTEMPTS) {
+              await runtime.waitForDuration(nextRetryDelay);
+
+              continue; // Move to the next attempt
+            } else if (
+              e.originalError.name === "TypeError" &&
+              "cause" in e.originalError &&
+              e.originalError.cause instanceof Error
+            ) {
+              const nextRetryDelay = calculateNextRetryDelay(
+                resolveDefaults(
+                  init?.retry,
+                  "connectionError",
+                  defaultFetchRetryOptions.connectionError
+                ),
+                attempt
+              );
+
+              if (!nextRetryDelay) {
+                e.span.end();
+                throw e;
+              }
+
+              if (attempt >= MAX_ATTEMPTS) {
+                e.span.end();
+                throw e;
+              }
+
+              e.span.setAttribute(
+                SemanticInternalAttributes.RETRY_AT,
+                new Date(Date.now() + nextRetryDelay).toISOString()
+              );
+              e.span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
+              e.span.setAttribute(SemanticInternalAttributes.RETRY_DELAY, `${nextRetryDelay}ms`);
+
               e.span.end();
-              throw e;
+
+              await runtime.waitForDuration(nextRetryDelay);
+
+              continue; // Move to the next attempt
             }
-
-            e.span.setAttribute(
-              SemanticInternalAttributes.RETRY_AT,
-              new Date(Date.now() + nextRetryDelay).toISOString()
-            );
-            e.span.setAttribute(SemanticInternalAttributes.RETRY_COUNT, attempt);
-            e.span.setAttribute(SemanticInternalAttributes.RETRY_DELAY, `${nextRetryDelay}ms`);
-
-            e.span.end();
-
-            await runtime.waitForDuration(nextRetryDelay);
-
-            continue; // Move to the next attempt
           }
 
           if (e instanceof FetchErrorWithSpan) {
@@ -370,13 +354,63 @@ async function retryFetch(
     {
       attributes: {
         [SemanticInternalAttributes.STYLE_ICON]: "arrow-capsule",
+        ...createFetchAttributes(input, init),
+        ...createFetchRetryOptionsAttributes(init?.retry),
       },
     }
   );
 }
 
+const doFetchRequest = async (
+  input: RequestInfo | URL | string,
+  init?: RequestInit,
+  attemptCount: number = 0
+): Promise<[Response, Span]> => {
+  const httpMethod = normalizeHttpMethod(input, init);
+
+  const span = tracer.startSpan(`HTTP ${httpMethod}`, {
+    attributes: {
+      [SemanticInternalAttributes.STYLE_ICON]: "world",
+      ...(attemptCount > 1 ? { ["http.request.resend_count"]: attemptCount - 1 } : {}),
+      ...createFetchAttributes(input, init),
+    },
+  });
+
+  try {
+    const response = await fetchWithInterceptors(input, {
+      ...init,
+      headers: {
+        ...init?.headers,
+        "x-retry-count": attemptCount.toString(),
+      },
+    });
+
+    span.setAttributes(createFetchResponseAttributes(response));
+
+    if (!response.ok) {
+      span.recordException(`${response.status}: ${response.statusText}`);
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: `${response.status}: ${response.statusText}`,
+      });
+    }
+
+    return [response, span];
+  } catch (e) {
+    if (typeof e === "string" || e instanceof Error) {
+      span.recordException(e);
+    }
+
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    span.setAttribute(SEMATTRS_HTTP_STATUS_CODE, 0);
+    span.setAttribute("http.status_text", "This operation was aborted.");
+
+    throw new FetchErrorWithSpan(e, span);
+  }
+};
+
 const calculateRetryDelayForResponse = async (
-  retry: FetchRetryOptions | undefined,
+  retry: FetchRetryByStatusOptions | undefined,
   response: Response,
   attemptCount: number
 ): Promise<{ type: "delay"; value: number } | { type: "timestamp"; value: number } | undefined> => {
@@ -421,7 +455,7 @@ const calculateRetryDelayForResponse = async (
 
 const getRetryStrategyForResponse = async (
   response: Response,
-  retry: FetchRetryOptions
+  retry: FetchRetryByStatusOptions
 ): Promise<FetchRetryStrategy | undefined> => {
   const statusCodes = Object.keys(retry);
   const clonedResponse = response.clone();
@@ -455,7 +489,7 @@ const getRetryStrategyForResponse = async (
  * The range can be a single status code (e.g. "200"),
  * a range of status codes (e.g. "500-599"),
  * a range of status codes with a wildcard (e.g. "4xx" for any 4xx status code),
- * or a list of status codes separated by commas (e.g. "401,403,404").
+ * or a list of status codes separated by commas (e.g. "401,403,404,409-412,5xx").
  * Returns `true` if the status code falls within the range, and `false` otherwise.
  */
 const isStatusCodeInRange = (statusCode: number, statusRange: string): boolean => {
@@ -465,7 +499,8 @@ const isStatusCodeInRange = (statusCode: number, statusRange: string): boolean =
 
   if (statusRange.includes(",")) {
     const statusCodes = statusRange.split(",").map((s) => s.trim());
-    return statusCodes.includes(statusCode.toString());
+
+    return statusCodes.some((s) => isStatusCodeInRange(statusCode, s));
   }
 
   const [start, end] = statusRange.split("-");
@@ -524,6 +559,80 @@ const interceptFetch = (...handlers: Array<HttpHandler>) => {
         return fetchHttpHandlerStorage.run(handlers, fn);
       }
     },
+  };
+};
+
+// This function will resolve the defaults of a property within an options object.
+// If the options object is undefined, it will return the defaults for that property (passed in as the 3rd arg).
+// if the options object is defined, and the property exists, then it will return the defaults if the value of the property is undefined or null
+const resolveDefaults = <
+  TObject extends Record<string, unknown>,
+  K extends keyof TObject,
+  TValue extends TObject[K],
+>(
+  obj: TObject | undefined,
+  key: K,
+  defaults: TValue
+): TValue => {
+  if (!obj) {
+    return defaults;
+  }
+
+  if (obj[key] === undefined || obj[key] === null) {
+    return defaults;
+  }
+
+  return obj[key] as TValue;
+};
+
+const createFetchAttributes = (
+  input: RequestInfo | URL,
+  init?: RetryFetchRequestInit | undefined
+): Attributes => {
+  const url = normalizeUrlFromInput(input);
+  const httpMethod = normalizeHttpMethod(input, init);
+
+  return {
+    [SEMATTRS_HTTP_METHOD]: httpMethod,
+    [SEMATTRS_HTTP_URL]: url.href,
+    [SEMATTRS_HTTP_HOST]: url.hostname,
+    ["server.host"]: url.hostname,
+    ["server.port"]: url.port,
+    [SEMATTRS_HTTP_SCHEME]: url.protocol.replace(":", ""),
+    ...accessoryAttributes({
+      items: [
+        {
+          text: url.hostname,
+          variant: "normal",
+        },
+      ],
+      style: "codepath",
+    }),
+  };
+};
+
+const createFetchResponseAttributes = (response: Response): Attributes => {
+  return {
+    [SEMATTRS_HTTP_STATUS_CODE]: response.status,
+    "http.status_text": response.statusText,
+    [SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH]: response.headers.get("content-length") || "0",
+    ...createAttributesFromHeaders(response.headers),
+  };
+};
+
+const createFetchRetryOptionsAttributes = (retry?: FetchRetryOptions): Attributes => {
+  const byStatus = resolveDefaults(retry, "byStatus", defaultFetchRetryOptions.byStatus);
+  const connectionError = resolveDefaults(
+    retry,
+    "connectionError",
+    defaultFetchRetryOptions.connectionError
+  );
+  const timeout = resolveDefaults(retry, "timeout", defaultFetchRetryOptions.timeout);
+
+  return {
+    ...flattenAttributes(byStatus, "retry.byStatus"),
+    ...flattenAttributes(connectionError, "retry.connectionError"),
+    ...flattenAttributes(timeout, "retry.timeout"),
   };
 };
 

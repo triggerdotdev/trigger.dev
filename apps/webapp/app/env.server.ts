@@ -50,7 +50,8 @@ const EnvironmentSchema = z.object({
   AWS_SQS_SECRET_ACCESS_KEY: z.string().optional(),
   /** Optional. Only used if you use the apps/proxy */
   AWS_SQS_QUEUE_URL: z.string().optional(),
-  AWS_SQS_BATCH_SIZE: z.coerce.number().int().optional().default(10),
+  AWS_SQS_BATCH_SIZE: z.coerce.number().int().optional().default(1),
+  AWS_SQS_WAIT_TIME_MS: z.coerce.number().int().optional().default(100),
   DISABLE_SSE: z.string().optional(),
 
   // Redis options
@@ -67,6 +68,18 @@ const EnvironmentSchema = z.object({
 
   TUNNEL_HOST: z.string().optional(),
   TUNNEL_SECRET_KEY: z.string().optional(),
+
+  //API Rate limiting
+  /**
+   * @example "60s"
+   * @example "1m"
+   * @example "1h"
+   * @example "1d"
+   * @example "1000ms"
+   * @example "1000s"
+   */
+  API_RATE_LIMIT_WINDOW: z.string().default("60s"),
+  API_RATE_LIMIT_MAX: z.coerce.number().int().default(600),
 
   //v3
   V3_ENABLED: z.string().default("false"),

@@ -1,4 +1,3 @@
-import { H } from "@highlight-run/node";
 import {
   createReadableStreamFromReadable,
   type DataFunctionArgs,
@@ -165,10 +164,6 @@ function handleBrowserRequest(
   });
 }
 
-if (env.HIGHLIGHT_PROJECT_ID) {
-  H.init({ projectID: env.HIGHLIGHT_PROJECT_ID });
-}
-
 export function handleError(error: unknown, { request, params, context }: DataFunctionArgs) {
   logError(error, request);
 }
@@ -178,18 +173,6 @@ Worker.init().catch((error) => {
 });
 
 function logError(error: unknown, request?: Request) {
-  if (env.HIGHLIGHT_PROJECT_ID) {
-    const parsed = request ? H.parseHeaders(Object.fromEntries(request.headers)) : undefined;
-    if (error instanceof Error) {
-      H.consumeError(error, parsed?.secureSessionId, parsed?.requestId);
-    } else {
-      H.consumeError(
-        new Error(`Unknown error: ${JSON.stringify(error)}`),
-        parsed?.secureSessionId,
-        parsed?.requestId
-      );
-    }
-  }
   console.error(error);
 }
 
@@ -198,3 +181,4 @@ const sqsEventConsumer = singleton("sqsEventConsumer", getSharedSqsEventConsumer
 export { wss } from "./v3/handleWebsockets.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { registryProxy } from "./v3/registryProxy.server";
+export { apiRateLimiter } from "./services/apiRateLimit.server";

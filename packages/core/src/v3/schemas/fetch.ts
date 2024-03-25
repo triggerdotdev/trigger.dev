@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { RetryOptions } from "./messages";
 import { EventFilter } from "./eventFilter";
+import { Prettify } from "../types";
 
 export const FetchRetryHeadersStrategy = z.object({
   /** The `headers` strategy retries the request using info from the response headers. */
@@ -45,14 +46,14 @@ export const FetchRetryStrategy = z.discriminatedUnion("strategy", [
 
 export type FetchRetryStrategy = z.infer<typeof FetchRetryStrategy>;
 
-export const FetchRetryOptions = z.record(FetchRetryStrategy);
+export const FetchRetryByStatusOptions = z.record(z.string(), FetchRetryStrategy);
 
 /** An object where the key is a status code pattern and the value is a retrying strategy. Supported patterns are:
   - Specific status codes: 429
   - Ranges: 500-599
   - Wildcards: 2xx, 3xx, 4xx, 5xx 
   */
-export type FetchRetryOptions = z.infer<typeof FetchRetryOptions>;
+export type FetchRetryByStatusOptions = Prettify<z.infer<typeof FetchRetryByStatusOptions>>;
 
 export const FetchTimeoutOptions = z.object({
   /** The maximum time to wait for the request to complete. */
@@ -61,3 +62,16 @@ export const FetchTimeoutOptions = z.object({
 });
 
 export type FetchTimeoutOptions = z.infer<typeof FetchTimeoutOptions>;
+
+export const FetchRetryOptions = z.object({
+  /** The retrying strategy for specific status codes. */
+  byStatus: FetchRetryByStatusOptions.optional(),
+  /** The timeout options for the request. */
+  timeout: RetryOptions.optional(),
+  /**
+   * The retrying strategy for connection errors.
+   */
+  connectionError: RetryOptions.optional(),
+});
+
+export type FetchRetryOptions = Prettify<z.infer<typeof FetchRetryOptions>>;

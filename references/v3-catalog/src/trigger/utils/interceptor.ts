@@ -28,5 +28,14 @@ export const interceptor = retry.interceptFetch(
     return new HttpResponse(null, {
       status: 500,
     });
+  }),
+  http.get("http://my.host/test-connection-errors", ({ request }) => {
+    const retryCount = request.headers.get("x-retry-count");
+
+    if (retryCount === "2") {
+      return HttpResponse.json({ test: "connection-errors" });
+    }
+
+    return HttpResponse.error();
   })
 );

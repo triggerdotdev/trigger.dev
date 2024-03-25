@@ -362,7 +362,11 @@ function TasksTreeView({
 
                   <div className="flex w-full items-center justify-between gap-2 pl-1">
                     <div className="flex items-center gap-2 overflow-x-hidden">
-                      <RunIcon name={node.data.style?.icon} className="h-4 min-h-4 w-4 min-w-4" />
+                      <RunIcon
+                        name={node.data.style?.icon}
+                        spanName={node.data.message}
+                        className="h-4 min-h-4 w-4 min-w-4"
+                      />
                       <NodeText node={node} />
                       {node.data.isRoot && <Badge variant="outline-rounded">Root</Badge>}
                     </div>
@@ -754,7 +758,7 @@ function SpanWithDuration({
       >
         {node.data.isPartial && (
           <div
-            className="absolute left-0 top-0 h-full w-full animate-tile-scroll rounded-sm opacity-50"
+            className="absolute left-0 top-0 h-full w-full animate-tile-scroll rounded-sm opacity-30"
             style={{ backgroundImage: `url(${tileBgPath})`, backgroundSize: "8px 8px" }}
           />
         )}

@@ -53,10 +53,6 @@ export function configureInitCommand(program: Command) {
         "The project ref to use when initializing the project"
       )
       .option(
-        "-p, --project-ref <project ref>",
-        "The project ref to use when initializing the project"
-      )
-      .option(
         "-t, --tag <package tag>",
         "The version of the @trigger.dev/sdk package to install",
         "latest"
@@ -145,11 +141,11 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
     log.info("Skipping package installation");
   }
 
-  // Create the config file
-  await writeConfigFile(dir, selectedProject, options);
-
   // Create the trigger dir
-  await createTriggerDir(dir, options);
+  const triggerDir = await createTriggerDir(dir, options);
+
+  // Create the config file
+  await writeConfigFile(dir, selectedProject, options, triggerDir);
 
   // Add trigger.config.ts to tsconfig.json
   await addConfigFileToTsConfig(dir, options);
@@ -166,7 +162,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   log.info("Next steps:");
   log.info(
     `   1. To start developing, run ${chalk.green(
-      "npx trigger.dev@latest dev"
+      `npx trigger.dev@${options.tag} dev`
     )} in your project directory`
   );
   log.info(`   2. Visit your ${projectDashboard} to view your newly created tasks.`);
@@ -189,10 +185,12 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 async function createTriggerDir(dir: string, options: InitCommandOptions) {
   return await tracer.startActiveSpan("createTriggerDir", async (span) => {
     try {
+      const defaultValue = `${dir}/src/trigger`;
+
       const location = await text({
         message: "Where would you like to create the Trigger.dev directory?",
-        defaultValue: `${dir}/src/trigger`,
-        placeholder: `${dir}/src/trigger`,
+        defaultValue: defaultValue,
+        placeholder: defaultValue,
       });
 
       if (isCancel(location)) {
@@ -238,10 +236,10 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
         log.step(`Created directory at ${location}`);
 
         span.end();
-        return;
+        return { location, isCustomValue: location !== defaultValue };
       }
 
-      const exampleFile = resolveInternalFilePath(`./templates/examples/${example}.js`);
+      const exampleFile = resolveInternalFilePath(`./templates/examples/${example}.ts.template`);
       const outputPath = join(triggerDir, "example.ts");
 
       await createFileFromTemplate({
@@ -255,6 +253,8 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
       log.step(`Created example file at ${relativeOutputPath}`);
 
       span.end();
+
+      return { location, isCustomValue: location !== defaultValue };
     } catch (e) {
       if (!(e instanceof SkipCommandError)) {
         recordSpanException(span, e);
@@ -431,7 +431,8 @@ async function installPackages(dir: string, options: InitCommandOptions) {
 async function writeConfigFile(
   dir: string,
   project: GetProjectResponseBody,
-  options: InitCommandOptions
+  options: InitCommandOptions,
+  triggerDir: { location: string; isCustomValue: boolean }
 ) {
   return await tracer.startActiveSpan("writeConfigFile", async (span) => {
     try {
@@ -439,7 +440,7 @@ async function writeConfigFile(
       spnnr.start("Creating config file");
 
       const projectDir = resolve(process.cwd(), dir);
-      const templatePath = resolveInternalFilePath("./templates/trigger.config.ts");
+      const templatePath = resolveInternalFilePath("./templates/trigger.config.ts.template");
       const outputPath = join(projectDir, "trigger.config.ts");
 
       span.setAttributes({
@@ -452,6 +453,9 @@ async function writeConfigFile(
         templatePath,
         replacements: {
           projectRef: project.externalRef,
+          triggerDirectoriesOption: triggerDir.isCustomValue
+            ? `\n  triggerDirectories: ["${triggerDir.location}"],`
+            : "",
         },
         outputPath,
         override: options.overrideConfig,

@@ -364,6 +364,7 @@ export class BackgroundWorker {
 
     if (!this._taskRunProcesses.has(payload.execution.run.id)) {
       const taskRunProcess = new TaskRunProcess(
+        payload.execution.run.id,
         this.path,
         {
           ...this.params.env,
@@ -520,6 +521,7 @@ class TaskRunProcess {
   public onExit: Evt<number> = new Evt();
 
   constructor(
+    private runId: string,
     private path: string,
     private env: NodeJS.ProcessEnv,
     private metadata: BackgroundWorkerProperties,
@@ -529,7 +531,7 @@ class TaskRunProcess {
       schema: workerToChildMessages,
       sender: async (message) => {
         if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
-          this._child?.send?.(message);
+          this._child.send(message);
         }
       },
     });
@@ -542,10 +544,9 @@ class TaskRunProcess {
   }
 
   async initialize() {
-    logger.debug("initializing task run process", {
+    logger.debug(`[${this.runId}] initializing task run process`, {
       env: this.env,
       path: this.path,
-      processEnv: process.env,
     });
 
     this._child = fork(this.path, {
@@ -574,6 +575,8 @@ class TaskRunProcess {
     if (kill && this._isBeingKilled) {
       return;
     }
+
+    logger.debug(`[${this.runId}] cleaning up task run process`, { kill });
 
     await this._sender.send("CLEANUP", {
       flush: true,
@@ -618,6 +621,13 @@ class TaskRunProcess {
     if (!completion.ok && typeof completion.retry !== "undefined") {
       return;
     }
+
+    if (execution.run.id === this.runId) {
+      // We don't need to notify the task run process if it's the same as the one we're running
+      return;
+    }
+
+    logger.debug(`[${this.runId}] task run completed notification`, { completion, execution });
 
     this._sender.send("TASK_RUN_COMPLETED_NOTIFICATION", {
       completion,
@@ -669,6 +679,8 @@ class TaskRunProcess {
   }
 
   async #handleExit(code: number) {
+    logger.debug(`[${this.runId}] task run process exiting`, { code });
+
     // Go through all the attempts currently pending and reject them
     for (const [id, status] of this._attemptStatuses.entries()) {
       if (status === "PENDING") {

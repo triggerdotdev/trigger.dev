@@ -1,7 +1,6 @@
 import { Span, SpanStatusCode } from "@opentelemetry/api";
 
 export { TracingSDK, type TracingSDKConfig, type TracingDiagnosticLogLevel } from "./tracingSDK";
-export { HttpInstrumentation, FetchInstrumentation } from "./instrumentations";
 
 export function recordSpanException(span: Span, error: unknown) {
   if (error instanceof Error) {

@@ -59,15 +59,19 @@ export const taskWithFetchRetries = task({
     return interceptor.run(next);
   },
   run: async (payload: any, { ctx }) => {
+    logger.info("Fetching data", { foo: [1, 2, 3], bar: [{ hello: "world" }] });
+
     //if the fetch fails, it will retry
     const headersResponse = await retry.fetch("http://my.host/test-headers", {
       retry: {
-        "429": {
-          strategy: "headers",
-          limitHeader: "x-ratelimit-limit",
-          remainingHeader: "x-ratelimit-remaining",
-          resetHeader: "x-ratelimit-reset",
-          resetFormat: "unix_timestamp_in_ms",
+        byStatus: {
+          "429": {
+            strategy: "headers",
+            limitHeader: "x-ratelimit-limit",
+            remainingHeader: "x-ratelimit-remaining",
+            resetHeader: "x-ratelimit-reset",
+            resetFormat: "unix_timestamp_in_ms",
+          },
         },
       },
     });
@@ -76,26 +80,32 @@ export const taskWithFetchRetries = task({
     logger.info("Fetched headers response", { json });
 
     const backoffResponse = await retry.fetch("http://my.host/test-backoff", {
+      timeoutInMs: 1000,
       retry: {
-        "500-599": {
-          strategy: "backoff",
-          maxAttempts: 10,
-          factor: 2,
-          minTimeoutInMs: 1_000,
-          maxTimeoutInMs: 30_000,
-          randomize: false,
+        byStatus: {
+          "500-599": {
+            strategy: "backoff",
+            maxAttempts: 5,
+            factor: 2,
+            minTimeoutInMs: 1_000,
+            maxTimeoutInMs: 30_000,
+            randomize: false,
+          },
         },
       },
     });
 
     const json2 = await backoffResponse.json();
 
+    // This should use the defaults.
+    await retry.fetch("http://my.host/test-connection-errors");
+
     logger.info("Fetched backoff response", { json2 });
 
     const timeoutResponse = await retry.fetch("https://httpbin.org/delay/2", {
-      timeout: {
-        durationInMs: 1000,
-        retry: {
+      timeoutInMs: 1000,
+      retry: {
+        timeout: {
           maxAttempts: 5,
           factor: 1.8,
           minTimeoutInMs: 500,
@@ -105,16 +115,11 @@ export const taskWithFetchRetries = task({
       },
     });
 
-    const json3 = await timeoutResponse.json();
-
-    logger.info("Fetched timeout response", { json3 });
-
     return {
       result: "successss",
       payload,
       json,
       json2,
-      json3,
     };
   },
 });
