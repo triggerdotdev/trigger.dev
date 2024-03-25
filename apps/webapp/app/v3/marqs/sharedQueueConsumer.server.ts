@@ -669,8 +669,9 @@ export class SharedQueueConsumer {
 
         try {
           // The attempt should still be running so we can broadcast to all coordinators to resume immediately
-          socketIo.coordinatorNamespace.emit("RESUME", {
+          socketIo.coordinatorNamespace.emit("RESUME_AFTER_DEPENDENCY", {
             version: "v1",
+            runId: resumableAttempt.taskRunId,
             attemptId: resumableAttempt.id,
             attemptFriendlyId: resumableAttempt.friendlyId,
             completions,

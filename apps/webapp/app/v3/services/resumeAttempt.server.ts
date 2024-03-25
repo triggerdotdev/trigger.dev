@@ -80,7 +80,17 @@ export class ResumeAttemptService extends BaseService {
 
       switch (params.type) {
         case "WAIT_FOR_DURATION": {
-          // Nothing to do, but thanks for checking in!
+          logger.error(
+            "Attempt requested resume after duration wait, this is unexpected and likely a bug",
+            { attemptId: attempt.id }
+          );
+
+          // Attempts should not request resume for duration waits, this is just here as a backup
+          socketIo.coordinatorNamespace.emit("RESUME_AFTER_DURATION", {
+            version: "v1",
+            attemptId: attempt.id,
+            attemptFriendlyId: attempt.friendlyId,
+          });
           break;
         }
         case "WAIT_FOR_TASK":
@@ -211,8 +221,9 @@ export class ResumeAttemptService extends BaseService {
             },
           });
 
-          socketIo.coordinatorNamespace.emit("RESUME", {
+          socketIo.coordinatorNamespace.emit("RESUME_AFTER_DEPENDENCY", {
             version: "v1",
+            runId: attempt.taskRunId,
             attemptId: attempt.id,
             attemptFriendlyId: attempt.friendlyId,
             completions,

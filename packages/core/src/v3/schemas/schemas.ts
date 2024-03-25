@@ -37,9 +37,9 @@ export const Machine = z.object({
 
 export type Machine = z.infer<typeof Machine>;
 
-export const WaitReason = z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"])
+export const WaitReason = z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]);
 
-export type WaitReason = z.infer<typeof WaitReason>
+export type WaitReason = z.infer<typeof WaitReason>;
 
 export const ProviderToPlatformMessages = {
   LOG: {
@@ -240,9 +240,10 @@ export const CoordinatorToPlatformMessages = {
 };
 
 export const PlatformToCoordinatorMessages = {
-  RESUME: {
+  RESUME_AFTER_DEPENDENCY: {
     message: z.object({
       version: z.literal("v1").default("v1"),
+      runId: z.string(),
       attemptId: z.string(),
       attemptFriendlyId: z.string(),
       completions: TaskRunExecutionResult.array(),
@@ -422,7 +423,7 @@ export const ProdWorkerToCoordinatorMessages = {
 };
 
 export const CoordinatorToProdWorkerMessages = {
-  RESUME: {
+  RESUME_AFTER_DEPENDENCY: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),

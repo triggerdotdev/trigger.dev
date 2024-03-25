@@ -166,7 +166,12 @@ class Checkpointer {
     this.#abortControllers.delete(runId);
   }
 
-  async #checkpointAndPush(opts: CheckpointAndPushOptions): Promise<CheckpointData | undefined> {
+  async #checkpointAndPush({
+    runId,
+    leaveRunning = true, // This mirrors kubernetes behaviour more accurately
+    projectRef,
+    deploymentVersion,
+  }: CheckpointAndPushOptions): Promise<CheckpointData | undefined> {
     await this.initialize();
 
     if (!this.#dockerMode && !this.#canCheckpoint) {
@@ -174,28 +179,38 @@ class Checkpointer {
       return;
     }
 
-    if (this.#abortControllers.has(opts.runId)) {
-      logger.error("Checkpoint procedure already in progress", { opts });
+    if (this.#abortControllers.has(runId)) {
+      logger.error("Checkpoint procedure already in progress", {
+        options: {
+          runId,
+          leaveRunning,
+          projectRef,
+          deploymentVersion,
+        },
+      });
       return;
     }
 
     const controller = new AbortController();
-    this.#abortControllers.set(opts.runId, controller);
+    this.#abortControllers.set(runId, controller);
 
     const $$ = $({ signal: controller.signal });
 
     try {
       const shortCode = nanoid(8);
-      const imageRef = this.#getImageRef(opts.projectRef, opts.deploymentVersion, shortCode);
-      const exportLocation = this.#getExportLocation(
-        opts.projectRef,
-        opts.deploymentVersion,
-        shortCode
-      );
+      const imageRef = this.#getImageRef(projectRef, deploymentVersion, shortCode);
+      const exportLocation = this.#getExportLocation(projectRef, deploymentVersion, shortCode);
 
-      this.#logger.log("Checkpointing:", { opts });
+      this.#logger.log("Checkpointing:", {
+        options: {
+          runId,
+          leaveRunning,
+          projectRef,
+          deploymentVersion,
+        },
+      });
 
-      const containterName = this.#getRunContainerName(opts.runId);
+      const containterName = this.#getRunContainerName(runId);
 
       // Create checkpoint (docker)
       if (this.#dockerMode) {
@@ -204,7 +219,7 @@ class Checkpointer {
             this.#logger.log("Simulating checkpoint");
             this.#logger.debug(await $$`docker pause ${containterName}`);
           } else {
-            if (opts.leaveRunning) {
+            if (leaveRunning) {
               this.#logger.debug(
                 await $$`docker checkpoint create --leave-running ${containterName} ${exportLocation}`
               );
@@ -220,7 +235,7 @@ class Checkpointer {
         }
 
         this.#logger.log("checkpoint created:", {
-          runId: opts.runId,
+          runId,
           location: exportLocation,
         });
 
@@ -279,10 +294,18 @@ class Checkpointer {
         docker: false,
       };
     } catch (error) {
-      this.#logger.error("checkpoint failed", { options: opts, error });
+      this.#logger.error("checkpoint failed", {
+        options: {
+          runId,
+          leaveRunning,
+          projectRef,
+          deploymentVersion,
+        },
+        error,
+      });
       return;
     } finally {
-      this.#abortControllers.delete(opts.runId);
+      this.#abortControllers.delete(runId);
     }
   }
 
@@ -346,7 +369,7 @@ class TaskCoordinator {
       serverMessages: PlatformToCoordinatorMessages,
       authToken: PLATFORM_SECRET,
       handlers: {
-        RESUME: async (message) => {
+        RESUME_AFTER_DEPENDENCY: async (message) => {
           const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
           if (!taskSocket) {
@@ -356,7 +379,10 @@ class TaskCoordinator {
             return;
           }
 
-          taskSocket.emit("RESUME", message);
+          // In case the task resumed faster than we could checkpoint
+          this.#cancelCheckpoint(message.runId);
+
+          taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
         },
         RESUME_AFTER_DURATION: async (message) => {
           const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
@@ -647,7 +673,7 @@ class TaskCoordinator {
             checkpoint,
           });
 
-          if (!checkpoint.docker) {
+          if (!checkpoint.docker || !willSimulate) {
             socket.emit("REQUEST_EXIT", {
               version: "v1",
             });
@@ -670,15 +696,7 @@ class TaskCoordinator {
         socket.on("CANCEL_CHECKPOINT", async (message) => {
           logger.log("[CANCEL_CHECKPOINT]", message);
 
-          const checkpointWait = this.#checkpointableTasks.get(socket.data.runId);
-
-          if (checkpointWait) {
-            // Stop waiting for task to reach checkpointable state
-            checkpointWait.reject("Checkpoint cancelled");
-          }
-
-          // Cancel checkpointing procedure
-          this.#checkpointer.cancelCheckpoint(socket.data.runId);
+          this.#cancelCheckpoint(socket.data.runId);
         });
 
         socket.on("WAIT_FOR_DURATION", async (message, callback) => {
@@ -722,7 +740,7 @@ class TaskCoordinator {
             return;
           }
 
-          if (!checkpoint.docker) {
+          if (!checkpoint.docker || !willSimulate) {
             socket.emit("REQUEST_EXIT", {
               version: "v1",
             });
@@ -765,7 +783,7 @@ class TaskCoordinator {
             return;
           }
 
-          if (!checkpoint.docker) {
+          if (!checkpoint.docker || !willSimulate) {
             socket.emit("REQUEST_EXIT", {
               version: "v1",
             });
@@ -807,7 +825,7 @@ class TaskCoordinator {
             return;
           }
 
-          if (!checkpoint.docker) {
+          if (!checkpoint.docker || !willSimulate) {
             socket.emit("REQUEST_EXIT", {
               version: "v1",
             });
@@ -872,6 +890,18 @@ class TaskCoordinator {
     });
 
     return provider;
+  }
+
+  #cancelCheckpoint(runId: string) {
+    const checkpointWait = this.#checkpointableTasks.get(runId);
+
+    if (checkpointWait) {
+      // Stop waiting for task to reach checkpointable state
+      checkpointWait.reject("Checkpoint cancelled");
+    }
+
+    // Cancel checkpointing procedure
+    this.#checkpointer.cancelCheckpoint(runId);
   }
 
   #createHttpServer() {

@@ -203,6 +203,13 @@ class ProdWorker {
     }
   }
 
+  #resumeAfterDuration() {
+    this.paused = false;
+    this.nextResumeAfter = undefined;
+
+    this.#backgroundWorker.waitCompletedNotification();
+  }
+
   #returnValidatedExtraHeaders(headers: Record<string, string>) {
     for (const [key, value] of Object.entries(headers)) {
       if (value === undefined) {
@@ -243,7 +250,52 @@ class ProdWorker {
       serverMessages: CoordinatorToProdWorkerMessages,
       extraHeaders,
       handlers: {
-        RESUME: async (message) => {
+        RESUME_AFTER_DEPENDENCY: async (message) => {
+          if (!this.paused) {
+            logger.error("worker not paused", {
+              completions: message.completions,
+              executions: message.executions,
+            });
+            return;
+          }
+
+          if (message.completions.length !== message.executions.length) {
+            logger.error("did not receive the same number of completions and executions", {
+              completions: message.completions,
+              executions: message.executions,
+            });
+            return;
+          }
+
+          if (message.completions.length === 0 || message.executions.length === 0) {
+            logger.error("no completions or executions", {
+              completions: message.completions,
+              executions: message.executions,
+            });
+            return;
+          }
+
+          if (
+            this.nextResumeAfter !== "WAIT_FOR_TASK" &&
+            this.nextResumeAfter !== "WAIT_FOR_BATCH"
+          ) {
+            logger.error("not waiting to resume after dependency", {
+              nextResumeAfter: this.nextResumeAfter,
+            });
+            return;
+          }
+
+          if (this.nextResumeAfter === "WAIT_FOR_TASK" && message.completions.length > 1) {
+            logger.error("waiting for single task but got multiple completions", {
+              completions: message.completions,
+              executions: message.executions,
+            });
+            return;
+          }
+
+          this.paused = false;
+          this.nextResumeAfter = undefined;
+
           for (let i = 0; i < message.completions.length; i++) {
             const completion = message.completions[i];
             const execution = message.executions[i];
@@ -254,7 +306,21 @@ class ProdWorker {
           }
         },
         RESUME_AFTER_DURATION: async (message) => {
-          this.#backgroundWorker.waitCompletedNotification();
+          if (!this.paused) {
+            logger.error("worker not paused", {
+              attemptId: message.attemptId,
+            });
+            return;
+          }
+
+          if (this.nextResumeAfter !== "WAIT_FOR_DURATION") {
+            logger.error("not waiting to resume after duration", {
+              nextResumeAfter: this.nextResumeAfter,
+            });
+            return;
+          }
+
+          this.#resumeAfterDuration();
         },
         EXECUTE_TASK_RUN: async ({ executionPayload }) => {
           if (this.executing) {
@@ -296,6 +362,7 @@ class ProdWorker {
           await this.#backgroundWorker.cancelAttempt(message.attemptId);
         },
         REQUEST_EXIT: async () => {
+          this.#coordinatorSocket.close();
           process.exit(0);
         },
         READY_FOR_RETRY: async (message) => {
@@ -311,8 +378,6 @@ class ProdWorker {
         },
       },
       onConnection: async (socket, handler, sender, logger) => {
-        if (process.env.DEBUG === "true") return;
-
         if (process.env.INDEX_TASKS === "true") {
           try {
             const taskResources = await this.#initializeWorker();
@@ -394,16 +459,16 @@ class ProdWorker {
             return;
           }
 
+          if (this.nextResumeAfter === "WAIT_FOR_DURATION") {
+            this.#resumeAfterDuration();
+            return;
+          }
+
           socket.emit("READY_FOR_RESUME", {
             version: "v1",
             attemptFriendlyId: this.attemptFriendlyId,
             type: this.nextResumeAfter,
           });
-
-          this.#backgroundWorker.waitCompletedNotification();
-
-          this.paused = false;
-          this.nextResumeAfter = undefined;
 
           return;
         }

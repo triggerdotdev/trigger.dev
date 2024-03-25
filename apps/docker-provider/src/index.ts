@@ -172,24 +172,7 @@ class DockerTaskOperations implements TaskOperations {
         throw new Error("docker unpause command failed");
       }
 
-      // Emulate prod-like postStart command
-      // For this to work we need to first get the correct port, which is random during dev as we run with host networking and need to avoid clashes
-      const logs = logger.debug(await $`docker logs ${containerName}`);
-      const matches = logs.stdout.match(/http server listening on port (?<port>[0-9]+)/);
-
-      const port = Number(matches?.groups?.port);
-
-      if (!port) {
-        throw new Error("failed to extract port from logs");
-      }
-
-      try {
-        logger.debug(await this.#runLifecycleCommand(containerName, port, "postStart", "restore"));
-      } catch (error) {
-        logger.error("postStart error", { error });
-        throw new Error("postStart command failed");
-      }
-
+      await this.#sendPostStart(containerName);
       return;
     }
 
@@ -200,6 +183,8 @@ class DockerTaskOperations implements TaskOperations {
     if (exitCode !== 0) {
       throw new Error("docker start command failed");
     }
+
+    await this.#sendPostStart(containerName);
   }
 
   async delete(opts: { runId: string }) {
@@ -220,6 +205,26 @@ class DockerTaskOperations implements TaskOperations {
 
   #getRunContainerName(suffix: string) {
     return `task-run-${suffix}`;
+  }
+
+  async #sendPostStart(containerName: string): Promise<void> {
+    // We first get the correct port, which is random during dev as we run with host networking and need to avoid clashes
+    // FIXME: Skip this in prod
+    const logs = logger.debug(await $`docker logs ${containerName}`);
+    const matches = logs.stdout.match(/http server listening on port (?<port>[0-9]+)/);
+
+    const port = Number(matches?.groups?.port);
+
+    if (!port) {
+      throw new Error("failed to extract port from logs");
+    }
+
+    try {
+      logger.debug(await this.#runLifecycleCommand(containerName, port, "postStart", "restore"));
+    } catch (error) {
+      logger.error("postStart error", { error });
+      throw new Error("postStart command failed");
+    }
   }
 
   async #runLifecycleCommand(
