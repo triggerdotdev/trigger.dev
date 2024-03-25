@@ -1,6 +1,6 @@
 import { CreateBackgroundWorkerRequestBody, TaskResource } from "@trigger.dev/core/v3";
 import type { BackgroundWorker } from "@trigger.dev/database";
-import { PrismaClientOrTransaction } from "~/db.server";
+import { Prisma, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
@@ -89,46 +89,83 @@ export async function createBackgroundTasks(
   prisma: PrismaClientOrTransaction
 ) {
   for (const task of tasks) {
-    await prisma.backgroundWorkerTask.create({
-      data: {
-        friendlyId: generateFriendlyId("task"),
-        projectId: worker.projectId,
-        runtimeEnvironmentId: worker.runtimeEnvironmentId,
-        workerId: worker.id,
-        slug: task.id,
-        filePath: task.filePath,
-        exportName: task.exportName,
-        retryConfig: task.retry,
-        queueConfig: task.queue,
-      },
-    });
-
-    const queueName = task.queue?.name ?? `task/${task.id}`;
-
-    const taskQueue = await prisma.taskQueue.upsert({
-      where: {
-        runtimeEnvironmentId_name: {
+    try {
+      await prisma.backgroundWorkerTask.create({
+        data: {
+          friendlyId: generateFriendlyId("task"),
+          projectId: worker.projectId,
           runtimeEnvironmentId: worker.runtimeEnvironmentId,
-          name: queueName,
+          workerId: worker.id,
+          slug: task.id,
+          filePath: task.filePath,
+          exportName: task.exportName,
+          retryConfig: task.retry,
+          queueConfig: task.queue,
         },
-      },
-      update: {
-        concurrencyLimit: task.queue?.concurrencyLimit,
-        rateLimit: task.queue?.rateLimit,
-      },
-      create: {
-        friendlyId: generateFriendlyId("queue"),
-        name: queueName,
-        concurrencyLimit: task.queue?.concurrencyLimit,
-        runtimeEnvironmentId: worker.runtimeEnvironmentId,
-        projectId: worker.projectId,
-        rateLimit: task.queue?.rateLimit,
-        type: task.queue?.name ? "NAMED" : "VIRTUAL",
-      },
-    });
+      });
 
-    if (taskQueue.concurrencyLimit) {
-      await marqs?.updateQueueConcurrency(env, taskQueue.name, taskQueue.concurrencyLimit);
+      const queueName = task.queue?.name ?? `task/${task.id}`;
+
+      const taskQueue = await prisma.taskQueue.upsert({
+        where: {
+          runtimeEnvironmentId_name: {
+            runtimeEnvironmentId: worker.runtimeEnvironmentId,
+            name: queueName,
+          },
+        },
+        update: {
+          concurrencyLimit: task.queue?.concurrencyLimit,
+          rateLimit: task.queue?.rateLimit,
+        },
+        create: {
+          friendlyId: generateFriendlyId("queue"),
+          name: queueName,
+          concurrencyLimit: task.queue?.concurrencyLimit,
+          runtimeEnvironmentId: worker.runtimeEnvironmentId,
+          projectId: worker.projectId,
+          rateLimit: task.queue?.rateLimit,
+          type: task.queue?.name ? "NAMED" : "VIRTUAL",
+        },
+      });
+
+      if (taskQueue.concurrencyLimit) {
+        await marqs?.updateQueueConcurrency(env, taskQueue.name, taskQueue.concurrencyLimit);
+      }
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        // The error code for unique constraint violation in Prisma is P2002
+        if (error.code === "P2002") {
+          logger.warn("Task already exists", {
+            task,
+            worker,
+          });
+        } else {
+          logger.error("Prisma Error creating background worker task", {
+            error: {
+              code: error.code,
+              message: error.message,
+            },
+            task,
+            worker,
+          });
+        }
+      } else if (error instanceof Error) {
+        logger.error("Error creating background worker task", {
+          error: {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+          },
+          task,
+          worker,
+        });
+      } else {
+        logger.error("Unknown error creating background worker task", {
+          error,
+          task,
+          worker,
+        });
+      }
     }
   }
 }

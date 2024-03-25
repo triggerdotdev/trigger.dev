@@ -30,7 +30,7 @@ export async function gatherTaskFiles(config: ResolvedConfig): Promise<Array<Tas
 
       const filePath = relative(config.projectDir, fullPath);
       const importPath = filePath.replace(/\.(js|ts)$/, "");
-      const importName = importPath.replace(/\//g, "_");
+      const importName = importPath.replace(/\//g, "_").replace(/\./g, "_").replace(/-/g, "_");
 
       taskFiles.push({ triggerDir, importPath, importName, filePath });
     }

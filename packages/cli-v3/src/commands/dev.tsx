@@ -13,7 +13,7 @@ import { watch } from "chokidar";
 import { Command } from "commander";
 import { BuildContext, Metafile, context } from "esbuild";
 import { resolve as importResolve } from "import-meta-resolve";
-import { Box, Text, render, useApp, useInput } from "ink";
+import { render, useInput } from "ink";
 import { createHash } from "node:crypto";
 import fs, { readFileSync } from "node:fs";
 import { ClientRequestArgs } from "node:http";
@@ -26,10 +26,16 @@ import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
+import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
+import { chalkPurple } from "../utilities/colors";
 import { readConfig } from "../utilities/configFiles";
 import { readJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
-import { detectPackageNameFromImportPath, parsePackageName } from "../utilities/installPackages";
+import {
+  detectPackageNameFromImportPath,
+  parsePackageName,
+  stripWorkspaceFromVersion,
+} from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
@@ -124,7 +130,17 @@ async function startDev(
       });
 
       if (!devEnv.success) {
-        throw new Error(devEnv.error);
+        if (devEnv.error === "Project not found") {
+          logger.error(
+            `Project not found: ${config.config.project}. Ensure you are using the correct project ref and CLI profile (use --profile). Currently using the "${options.profile}" profile, which points to ${authorization.apiUrl}`
+          );
+        } else {
+          logger.error(
+            `Failed to initialize dev environment: ${devEnv.error}. Using project ref ${config.config.project}`
+          );
+        }
+
+        process.exit(1);
       }
 
       const environmentClient = new CliApiClient(apiUrl, devEnv.data.apiKey);
@@ -283,7 +299,7 @@ function useDev({
 
     async function runBuild() {
       if (ctx) {
-        await ctx.cancel();
+        // This will stop the watching
         await ctx.dispose();
       }
 
@@ -336,7 +352,6 @@ function useDev({
         write: false,
         minify: false,
         sourcemap: "external", // does not set the //# sourceMappingURL= comment in the file, we handle it ourselves
-        packages: "external", // https://esbuild.github.io/api/#packages
         logLevel: "error",
         platform: "node",
         format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
@@ -347,6 +362,8 @@ function useDev({
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
         plugins: [
+          bundleDependenciesPlugin(config),
+          workerSetupImportConfigPlugin(configPath),
           {
             name: "trigger.dev v3",
             setup(build) {
@@ -458,6 +475,19 @@ function useDev({
                     throw new Error(`Background Worker started without package version`);
                   }
 
+                  // Check for any duplicate task ids
+                  const taskIds = taskResources.map((task) => task.id);
+                  const duplicateTaskIds = taskIds.filter(
+                    (id, index) => taskIds.indexOf(id) !== index
+                  );
+
+                  if (duplicateTaskIds.length > 0) {
+                    logger.error(
+                      createDuplicateTaskIdOutputErrorMessage(duplicateTaskIds, taskResources)
+                    );
+                    return;
+                  }
+
                   const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
                     localOnly: true,
                     metadata: {
@@ -526,8 +556,9 @@ function useDev({
     }
 
     const throttle = pThrottle({
-      limit: 2,
+      limit: 1,
       interval: 1000,
+      strict: true,
     });
 
     const throttledRebuild = throttle(runBuild);
@@ -539,7 +570,7 @@ function useDev({
       }
     );
 
-    taskFileWatcher.on("add", async (path) => {
+    taskFileWatcher.on("change", async (path) => {
       throttledRebuild().catch((error) => {
         logger.error(error);
       });
@@ -588,58 +619,13 @@ function DevUIImp(props: DevProps) {
 }
 
 function useHotkeys() {
-  const { exit } = useApp();
-
-  useInput(async (input, key) => {
-    if (key.return) {
-      console.log("");
-      return;
-    }
-    switch (input.toLowerCase()) {
-      // clear console
-      case "c":
-        console.clear();
-        // This console.log causes Ink to re-render the `DevSession` component.
-        // Couldn't find a better way to tell it to do so...
-        console.log();
-        break;
-      // open browser
-      case "b": {
-        break;
-      }
-      // toggle inspector
-      // case "d": {
-      // 	if (inspect) {
-      // 		await openInspector(inspectorPort, props.worker);
-      // 	}
-      // 	break;
-      // }
-
-      // shut down
-      case "q":
-      case "x":
-        exit();
-        break;
-      default:
-        // nothing?
-        break;
-    }
-  });
+  useInput(async (input, key) => {});
 }
 
 function HotKeys() {
   useHotkeys();
 
-  return (
-    <Box borderStyle="round" paddingLeft={1} paddingRight={1}>
-      <Text bold={true}>[b]</Text>
-      <Text> open a browser, </Text>
-      <Text bold={true}>[c]</Text>
-      <Text> clear console, </Text>
-      <Text bold={true}>[x]</Text>
-      <Text> to exit</Text>
-    </Box>
-  );
+  return <></>;
 }
 
 function WebsocketFactory(apiKey: string) {
@@ -674,7 +660,7 @@ async function gatherRequiredDependencies(
       detectDependencyVersion(packageName);
 
     if (internalDependencyVersion) {
-      dependencies[packageName] = internalDependencyVersion;
+      dependencies[packageName] = stripWorkspaceFromVersion(internalDependencyVersion);
     }
   }
 
@@ -710,6 +696,23 @@ async function gatherRequiredDependencies(
   }
 
   return dependencies;
+}
+
+function createDuplicateTaskIdOutputErrorMessage(
+  duplicateTaskIds: Array<string>,
+  taskResources: Array<TaskResource>
+) {
+  const duplicateTable = duplicateTaskIds
+    .map((id) => {
+      const tasks = taskResources.filter((task) => task.id === id);
+
+      return `id "${chalkPurple(id)}" was found in:\n${tasks
+        .map((task) => `${task.filePath} -> ${task.exportName}`)
+        .join("\n")}`;
+    })
+    .join("\n\n");
+
+  return `Duplicate task ids detected:\n\n${duplicateTable}\n\n`;
 }
 
 function gatherProcessEnv() {

@@ -62,6 +62,18 @@ export function detectPackageNameFromImportPath(path: string): string {
   }
 }
 
+/**
+ * Removes the workspace prefix from a version string.
+ * @param version - The version string to strip the workspace prefix from.
+ * @returns The version string without the workspace prefix.
+ * @example
+ * stripWorkspaceFromVersion("workspace:1.0.0") // "1.0.0"
+ * stripWorkspaceFromVersion("1.0.0") // "1.0.0"
+ */
+export function stripWorkspaceFromVersion(version: string) {
+  return version.replace(/^workspace:/, "");
+}
+
 export function parsePackageName(packageSpecifier: string): { name: string; version?: string } {
   const parts = packageSpecifier.split("@");
 

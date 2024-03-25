@@ -20,6 +20,8 @@ export class DevRuntimeManager implements RuntimeManager {
 
   _tasks: Map<string, TaskMetadataWithFilePath> = new Map();
 
+  _pendingCompletionNotifications: Map<string, TaskRunExecutionResult> = new Map();
+
   disable(): void {
     // do nothing
   }
@@ -47,6 +49,14 @@ export class DevRuntimeManager implements RuntimeManager {
   }
 
   async waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
+    const pendingCompletion = this._pendingCompletionNotifications.get(params.id);
+
+    if (pendingCompletion) {
+      this._pendingCompletionNotifications.delete(params.id);
+
+      return pendingCompletion;
+    }
+
     const promise = new Promise<TaskRunExecutionResult>((resolve, reject) => {
       this._taskWaits.set(params.id, { resolve, reject });
     });
@@ -66,6 +76,20 @@ export class DevRuntimeManager implements RuntimeManager {
     const promise = Promise.all(
       params.runs.map((runId) => {
         return new Promise<TaskRunExecutionResult>((resolve, reject) => {
+          const pendingCompletion = this._pendingCompletionNotifications.get(runId);
+
+          if (pendingCompletion) {
+            this._pendingCompletionNotifications.delete(runId);
+
+            if (pendingCompletion.ok) {
+              resolve(pendingCompletion);
+            } else {
+              reject(pendingCompletion);
+            }
+
+            return;
+          }
+
           this._taskWaits.set(runId, { resolve, reject });
         });
       })
@@ -83,6 +107,9 @@ export class DevRuntimeManager implements RuntimeManager {
     const wait = this._taskWaits.get(execution.run.id);
 
     if (!wait) {
+      // We need to store the completion in case the task is awaited later
+      this._pendingCompletionNotifications.set(execution.run.id, completion);
+
       return;
     }
 

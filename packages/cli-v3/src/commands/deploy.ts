@@ -15,7 +15,7 @@ import { resolve as importResolve } from "import-meta-resolve";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import terminalLink from "terminal-link";
 import invariant from "tiny-invariant";
@@ -34,15 +34,23 @@ import {
 import { readConfig } from "../utilities/configFiles.js";
 import { createTempDir, readJSONFile, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
-import { detectPackageNameFromImportPath, parsePackageName } from "../utilities/installPackages";
+import {
+  detectPackageNameFromImportPath,
+  parsePackageName,
+  stripWorkspaceFromVersion,
+} from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
-import { SetOptional } from "type-fest";
+
+import type { SetOptional } from "type-fest";
+import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
+import { Glob } from "glob";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
   skipDeploy: z.boolean().default(false),
+  ignoreEnvVarCheck: z.boolean().default(false),
   env: z.enum(["prod", "staging"]),
   loadImage: z.boolean().default(false),
   buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
@@ -68,7 +76,11 @@ export function configureDeployCommand(program: Command) {
         "Deploy to a specific environment (currently only prod and staging are supported)",
         "prod"
       )
-      .option("-T, --skip-typecheck", "Whether to skip the pre-build typecheck")
+      .option("--skip-typecheck", "Whether to skip the pre-build typecheck")
+      .option(
+        "--ignore-env-var-check",
+        "Detected missing environment variables won't block deployment"
+      )
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
       .option(
         "-p, --project-ref <project ref>",
@@ -425,7 +437,11 @@ async function checkEnvVars(
           environmentVariablesSpinner.stop(
             `Found missing env vars in ${options.env}: ${arrayToSentence(
               missingEnvironmentVariables
-            )}. Aborting deployment. ${chalk.bgBlueBright(
+            )}. ${
+              options.ignoreEnvVarCheck
+                ? "Continuing deployment because of --ignore-env-var-check. "
+                : "Aborting deployment. "
+            }${chalk.bgBlueBright(
               terminalLink(
                 "Manage env vars",
                 `${apiUrl}/projects/v3/${config.project}/environment-variables`
@@ -437,7 +453,12 @@ async function checkEnvVars(
             "envVars.missing": missingEnvironmentVariables,
           });
 
-          throw new SkipLoggingError("Found missing environment variables");
+          if (!options.ignoreEnvVarCheck) {
+            throw new SkipLoggingError("Found missing environment variables");
+          } else {
+            span.end();
+            return;
+          }
         }
 
         environmentVariablesSpinner.stop(`Environment variable check passed`);
@@ -859,7 +880,6 @@ async function compileProject(
         write: false,
         minify: false,
         sourcemap: "external", // does not set the //# sourceMappingURL= comment in the file, we handle it ourselves
-        packages: "external", // https://esbuild.github.io/api/#packages
         logLevel: "error",
         platform: "node",
         format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
@@ -869,6 +889,7 @@ async function compileProject(
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
+        plugins: [bundleDependenciesPlugin(config), workerSetupImportConfigPlugin(configPath)],
       });
 
       if (result.errors.length > 0) {
@@ -984,16 +1005,28 @@ async function compileProject(
 
       // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
       const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
-      const dependencies = await gatherRequiredDependencies(allImports, config);
+
+      const externalPackageJson = await readJSONFile(join(config.projectDir, "package.json"));
+
+      const dependencies = await gatherRequiredDependencies(
+        allImports,
+        config,
+        externalPackageJson
+      );
 
       const packageJsonContents = {
         name: "trigger-worker",
         version: "0.0.0",
         description: "",
         dependencies,
+        scripts: {
+          postinstall: externalPackageJson?.scripts?.postinstall,
+        },
       };
 
       await writeJSONFile(join(tempDir, "package.json"), packageJsonContents);
+
+      await copyAdditionalFiles(config, tempDir);
 
       compileSpinner.stop("Project built successfully");
 
@@ -1112,7 +1145,7 @@ async function resolveDependencies(
       logger.debug(`No cached package-lock.json found for ${digest}`);
 
       try {
-        await execa("npm", ["install", "--package-lock-only"], {
+        await execa("npm", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit"], {
           cwd: projectDir,
           stdio: logger.loggerLevel === "debug" ? "inherit" : "pipe",
         });
@@ -1207,10 +1240,9 @@ async function typecheckProject(config: ResolvedConfig, options: DeployCommandOp
 // Returns the dependency names and the version to use (taken from the CLI deps package.json)
 async function gatherRequiredDependencies(
   imports: Metafile["outputs"][string]["imports"],
-  config: ResolvedConfig
+  config: ResolvedConfig,
+  projectPackageJson: any
 ) {
-  const externalPackageJson = await readJSONFile(join(config.projectDir, "package.json"));
-
   const dependencies: Record<string, string> = {};
 
   for (const file of imports) {
@@ -1224,10 +1256,10 @@ async function gatherRequiredDependencies(
       continue;
     }
 
-    const externalDependencyVersion = (externalPackageJson?.dependencies ?? {})[packageName];
+    const externalDependencyVersion = (projectPackageJson?.dependencies ?? {})[packageName];
 
     if (externalDependencyVersion) {
-      dependencies[packageName] = externalDependencyVersion;
+      dependencies[packageName] = stripWorkspaceFromVersion(externalDependencyVersion);
       continue;
     }
 
@@ -1236,7 +1268,7 @@ async function gatherRequiredDependencies(
       detectDependencyVersion(packageName);
 
     if (internalDependencyVersion) {
-      dependencies[packageName] = internalDependencyVersion;
+      dependencies[packageName] = stripWorkspaceFromVersion(internalDependencyVersion);
     }
   }
 
@@ -1253,8 +1285,8 @@ async function gatherRequiredDependencies(
         continue;
       } else {
         const externalDependencyVersion = {
-          ...externalPackageJson?.devDependencies,
-          ...externalPackageJson?.dependencies,
+          ...projectPackageJson?.devDependencies,
+          ...projectPackageJson?.dependencies,
         }[packageName];
 
         if (externalDependencyVersion) {
@@ -1271,6 +1303,56 @@ async function gatherRequiredDependencies(
 
   // Make sure we sort the dependencies by key to ensure consistent hashing
   return Object.fromEntries(Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+async function copyAdditionalFiles(config: ResolvedConfig, tempDir: string) {
+  const additionalFiles = config.additionalFiles ?? [];
+
+  if (additionalFiles.length === 0) {
+    return;
+  }
+
+  return await tracer.startActiveSpan(
+    "copyAdditionalFiles",
+    {
+      attributes: {
+        "config.additionalFiles": additionalFiles,
+      },
+    },
+    async (span) => {
+      try {
+        logger.debug(`Copying files to ${tempDir}`, {
+          additionalFiles,
+        });
+
+        const glob = new Glob(additionalFiles, {
+          withFileTypes: true,
+          ignore: ["node_modules"],
+          cwd: config.projectDir,
+          nodir: true,
+        });
+
+        for await (const file of glob) {
+          const relativeDestinationPath = join(
+            tempDir,
+            relative(config.projectDir, file.fullpath())
+          );
+
+          logger.debug(`Copying file ${file.fullpath()} to ${relativeDestinationPath}`);
+          await mkdir(dirname(relativeDestinationPath), { recursive: true });
+          await copyFile(file.fullpath(), relativeDestinationPath);
+        }
+
+        span.end();
+      } catch (error) {
+        recordSpanException(span, error);
+
+        span.end();
+
+        throw error;
+      }
+    }
+  );
 }
 
 async function ensureLoggedIntoDockerRegistry(
@@ -1300,6 +1382,8 @@ async function findAllEnvironmentVariableReferencesInFile(filePath: string) {
   return findAllEnvironmentVariableReferences(fileContents);
 }
 
+const IGNORED_ENV_VARS = ["NODE_ENV", "SHELL", "HOME", "PWD", "LOGNAME", "USER", "PATH"];
+
 function findAllEnvironmentVariableReferences(code: string): string[] {
   const regex = /\bprocess\.env\.([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
 
@@ -1307,8 +1391,10 @@ function findAllEnvironmentVariableReferences(code: string): string[] {
 
   const matchesArray = Array.from(matches, (match) => match[1]).filter(Boolean) as string[];
 
+  const filteredMatches = matchesArray.filter((match) => !IGNORED_ENV_VARS.includes(match));
+
   // Make sure and remove duplicates
-  return Array.from(new Set(matchesArray));
+  return Array.from(new Set(filteredMatches));
 }
 
 function arrayToSentence(items: string[]): string {

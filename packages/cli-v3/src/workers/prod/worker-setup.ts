@@ -1,19 +1,21 @@
 import { Resource } from "@opentelemetry/resources";
-import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 import {
+  ProjectConfig,
   SemanticInternalAttributes,
   TracingDiagnosticLogLevel,
   TracingSDK,
-  ZodMessageSender,
-  childToWorkerMessages,
 } from "@trigger.dev/core/v3";
+
+__SETUP_IMPORTED_PROJECT_CONFIG__;
+declare const __SETUP_IMPORTED_PROJECT_CONFIG__: unknown;
+declare const setupImportedConfig: ProjectConfig | undefined;
 
 export const tracingSDK = new TracingSDK({
   url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
   resource: new Resource({
     [SemanticInternalAttributes.CLI_VERSION]: "3.0.0",
   }),
-  instrumentations: [new OpenAIInstrumentation()],
+  instrumentations: setupImportedConfig?.instrumentations ?? [],
   diagLogLevel: (process.env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
 });
 

@@ -4,15 +4,12 @@ RUN apk add --no-cache dumb-init
 
 WORKDIR /app
 
-# Install dependencies
-COPY --chown=node:node package.json package-lock.json ./
+# copy all the files just in case anything is needed in postinstall
+COPY --chown=node:node . .
 RUN npm ci --no-fund --no-audit && npm cache clean --force
 
 # Development or production stage builds upon the base stage
 FROM base AS final
-
-# Copy the rest of the application
-COPY --chown=node:node . .
 
 # Use ARG for build-time variables
 ARG TRIGGER_PROJECT_ID

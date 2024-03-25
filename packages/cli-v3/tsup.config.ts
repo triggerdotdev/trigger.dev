@@ -17,6 +17,6 @@ export default defineConfig({
   outDir: "dist",
   onSuccess: isDev ? `${copyTemplates} && node dist/index.js` : copyTemplates,
   banner: {
-    js: "import { createRequire } from 'module';const require = createRequire(import.meta.url);",
+    js: "import { createRequire as createRequireFromMetaUrl } from 'node:module';const require = createRequireFromMetaUrl(import.meta.url);",
   },
 });

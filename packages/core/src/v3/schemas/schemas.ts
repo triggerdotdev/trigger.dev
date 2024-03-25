@@ -10,11 +10,21 @@ import {
 } from "./messages";
 import { TaskResource } from "./resources";
 
+const RegexSchema = z.custom<RegExp>((val) => {
+  try {
+    // Check to see if val is a regex
+    return typeof (val as RegExp).test === "function";
+  } catch {
+    return false;
+  }
+});
+
 export const Config = z.object({
   project: z.string(),
   triggerDirectories: z.string().array().optional(),
   triggerUrl: z.string().optional(),
   projectDir: z.string().optional(),
+  tsconfigPath: z.string().optional(),
   retries: z
     .object({
       enabledInDev: z.boolean().default(true),
@@ -22,12 +32,14 @@ export const Config = z.object({
     })
     .optional(),
   additionalPackages: z.string().array().optional(),
+  additionalFiles: z.string().array().optional(),
+  dependenciesToBundle: z.array(z.union([z.string(), RegexSchema])).optional(),
 });
 
 export type Config = z.infer<typeof Config>;
 export type ResolvedConfig = RequireKeys<
   Config,
-  "triggerDirectories" | "triggerUrl" | "projectDir"
+  "triggerDirectories" | "triggerUrl" | "projectDir" | "tsconfigPath"
 >;
 
 export const Machine = z.object({

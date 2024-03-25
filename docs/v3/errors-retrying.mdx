@@ -106,12 +106,14 @@ export const taskWithFetchRetries = task({
     //if the Response is a 429 (too many requests), it will retry using the data from the response. A lot of good APIs send these headers.
     const headersResponse = await retry.fetch("http://my.host/test-headers", {
       retry: {
-        "429": {
-          strategy: "headers",
-          limitHeader: "x-ratelimit-limit",
-          remainingHeader: "x-ratelimit-remaining",
-          resetHeader: "x-ratelimit-reset",
-          resetFormat: "unix_timestamp_in_ms",
+        byStatus: {
+          "429": {
+            strategy: "headers",
+            limitHeader: "x-ratelimit-limit",
+            remainingHeader: "x-ratelimit-remaining",
+            resetHeader: "x-ratelimit-reset",
+            resetFormat: "unix_timestamp_in_ms",
+          },
         },
       },
     });
@@ -121,13 +123,15 @@ export const taskWithFetchRetries = task({
     //if the Response is a 500-599 (issue with the server you're calling), it will retry up to 10 times with exponential backoff
     const backoffResponse = await retry.fetch("http://my.host/test-backoff", {
       retry: {
-        "500-599": {
-          strategy: "backoff",
-          maxAttempts: 10,
-          factor: 2,
-          minTimeoutInMs: 1_000,
-          maxTimeoutInMs: 30_000,
-          randomize: false,
+        byStatus: {
+          "500-599": {
+            strategy: "backoff",
+            maxAttempts: 10,
+            factor: 2,
+            minTimeoutInMs: 1_000,
+            maxTimeoutInMs: 30_000,
+            randomize: false,
+          },
         },
       },
     });
@@ -136,9 +140,9 @@ export const taskWithFetchRetries = task({
 
     //You can additionally specify a timeout. In this case if the response takes longer than 1 second, it will retry up to 5 times with exponential backoff
     const timeoutResponse = await retry.fetch("https://httpbin.org/delay/2", {
-      timeout: {
-        durationInMs: 1000,
-        retry: {
+      timeoutInMs: 1000,
+      retry: {
+        timeout: {
           maxAttempts: 5,
           factor: 1.8,
           minTimeoutInMs: 500,

@@ -30,7 +30,7 @@
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "^18",
-    "@types/react": "18.2.17",
+    "@types/react": "18.2.69",
     "typescript": "^4.9.4"
   },
   "engines": {

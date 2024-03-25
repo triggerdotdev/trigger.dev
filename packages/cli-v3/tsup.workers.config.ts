@@ -18,4 +18,5 @@ export default defineConfig({
   sourcemap: false,
   target: "esnext",
   outDir: "dist/workers",
+  noExternal: ["@trigger.dev/core-apps"],
 });

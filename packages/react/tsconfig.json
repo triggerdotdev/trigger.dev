@@ -1,7 +1,7 @@
 {
   "include": ["./src/**/*.ts", "./src/**/*.tsx", "tsup.config.ts"],
   "compilerOptions": {
-    "jsx": "react",
+    "jsx": "react-jsx",
     "moduleResolution": "node",
     "esModuleInterop": true,
     "strict": true,
