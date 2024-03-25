@@ -50,7 +50,8 @@ const EnvironmentSchema = z.object({
   AWS_SQS_SECRET_ACCESS_KEY: z.string().optional(),
   /** Optional. Only used if you use the apps/proxy */
   AWS_SQS_QUEUE_URL: z.string().optional(),
-  AWS_SQS_BATCH_SIZE: z.coerce.number().int().optional().default(10),
+  AWS_SQS_BATCH_SIZE: z.coerce.number().int().optional().default(1),
+  AWS_SQS_WAIT_TIME_MS: z.coerce.number().int().optional().default(100),
   DISABLE_SSE: z.string().optional(),
 
   // Redis options
