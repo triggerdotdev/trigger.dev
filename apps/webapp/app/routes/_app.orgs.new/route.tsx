@@ -95,8 +95,11 @@ export const action: ActionFunction = async ({ request }) => {
 export default function NewOrganizationPage() {
   const { hasOrganizations } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
-  const { isManagedCloud, v3Enabled } = useFeatures();
+  const { isManagedCloud } = useFeatures();
   const navigation = useNavigation();
+
+  //this is temporary whilst v3 is invite-only. Switch to the useFeatures value when v3 is generally available.
+  const v3Enabled = false;
 
   const [form, { orgName, projectName, projectVersion }] = useForm({
     id: "create-organization",

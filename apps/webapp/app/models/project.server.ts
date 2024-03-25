@@ -3,6 +3,7 @@ import slug from "slug";
 import { prisma } from "~/db.server";
 import type { Project } from "@trigger.dev/database";
 import { Organization, createEnvironment } from "./organization.server";
+import { env } from "~/env.server";
 export type { Project } from "@trigger.dev/database";
 
 const externalRefGenerator = customAlphabet("abcdefghijklmnopqrstuvwxyz", 20);
@@ -28,6 +29,16 @@ export async function createProject(
     throw new Error(
       `User ${userId} does not have permission to create a project in organization ${organizationSlug}`
     );
+  }
+
+  if (version === "v3") {
+    if (!organization.v3Enabled) {
+      throw new Error(`Organization can't create v3 projects.`);
+    }
+
+    if (!env.V3_ENABLED) {
+      throw new Error(`v3 is not available yet.`);
+    }
   }
 
   //ensure the slug is globally unique
