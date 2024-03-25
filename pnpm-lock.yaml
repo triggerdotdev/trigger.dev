@@ -252,6 +252,7 @@ importers:
       '@typescript-eslint/eslint-plugin': ^5.59.6
       '@typescript-eslint/parser': ^5.59.6
       '@uiw/react-codemirror': ^4.19.5
+      '@upstash/ratelimit': ^1.0.1
       '@whatwg-node/fetch': ^0.9.14
       autoprefixer: ^10.4.13
       babel-loader: ^9.1.3
@@ -408,6 +409,7 @@ importers:
       '@trigger.dev/yalt': link:../../packages/yalt
       '@types/pg': 8.6.6
       '@uiw/react-codemirror': 4.19.5_th22fcplkuhrqjnlojwclcaim4
+      '@upstash/ratelimit': 1.0.1
       '@whatwg-node/fetch': 0.9.14
       class-variance-authority: 0.5.2_typescript@5.2.2
       clsx: 1.2.1
@@ -561,7 +563,7 @@ importers:
     devDependencies:
       eslint: 8.31.0
       eslint-config-prettier: 8.6.0_eslint@8.31.0
-      eslint-config-turbo: 1.12.5_eslint@8.31.0
+      eslint-config-turbo: 1.13.0_eslint@8.31.0
       eslint-plugin-react: 7.31.8_eslint@8.31.0
       typescript: 4.9.4
 
@@ -19462,6 +19464,25 @@ packages:
       - '@codemirror/search'
     dev: false
 
+  /@upstash/core-analytics/0.0.7:
+    resolution: {integrity: sha512-lC2j5efqb1haX/fpTGaPUx1rue1WUkOZBVHDzCB7eMIVsRdFFp4xiHtyH/G9omiR1zj39fU5SCTWFiKJH3KOpw==}
+    engines: {node: '>=16.0.0'}
+    dependencies:
+      '@upstash/redis': 1.29.0
+    dev: false
+
+  /@upstash/ratelimit/1.0.1:
+    resolution: {integrity: sha512-G9LZ7idhlkuYknbUngCB3qzd7QnkK1xDkFG5jRtEJZuOUS5UKJ0UTKbhalCtp39eX2wu2Ubv8W7HCeaJQOWM0A==}
+    dependencies:
+      '@upstash/core-analytics': 0.0.7
+    dev: false
+
+  /@upstash/redis/1.29.0:
+    resolution: {integrity: sha512-kbO5fgMAeUzErnA/SOtaSbAa0dguYhhBT4MZHJ1O8gVl4iK754aC9+rIYY5hsp4nlxeCGfnIDkWpof991c9jjA==}
+    dependencies:
+      crypto-js: 4.2.0
+    dev: false
+
   /@vanilla-extract/babel-plugin-debug-ids/1.0.2:
     resolution: {integrity: sha512-LjnbQWGeMwaydmovx8jWUR8BxLtLiPyq0xz5C8G5OvFhsuJxvavLdrBHNNizvr1dq7/3qZGlPv0znsvU4P44YA==}
     dependencies:
@@ -22306,6 +22327,10 @@ packages:
     resolution: {integrity: sha512-o2JlM7ydqd3Qk9CA0L4NL6mTzU2sdx96a+oOfPu8Mkl/PK51vSyoi8/rQ8NknZtk44vq15lmhAj9CIAGwgeWKw==}
     dev: false
 
+  /crypto-js/4.2.0:
+    resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
+    dev: false
+
   /crypto-random-string/2.0.0:
     resolution: {integrity: sha512-v1plID3y9r/lPhviJ1wrXpLeyUIGAZ2SHNYTEapm7/8A9nLPoyvVp3RK/EPFqn5kEznyWgYZNsRtYYIWbuG8KA==}
     engines: {node: '>=8'}
@@ -24057,13 +24082,13 @@ packages:
       eslint: 8.45.0
     dev: true
 
-  /eslint-config-turbo/1.12.5_eslint@8.31.0:
-    resolution: {integrity: sha512-wXytbX+vTzQ6rwgM6sIr447tjYJBlRj5V/eBFNGNXw5Xs1R715ppPYhbmxaFbkrWNQSGJsWRrYGAlyq0sT/OsQ==}
+  /eslint-config-turbo/1.13.0_eslint@8.31.0:
+    resolution: {integrity: sha512-xV13WrEjAJLeo6yqR1YEv5R5WPwNMyw8f4FlK2C4zWMr7e8ZiRg81jajltabEOZdeVboHIQ6gGn+FnSmgdVSSQ==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:
       eslint: 8.31.0
-      eslint-plugin-turbo: 1.12.5_eslint@8.31.0
+      eslint-plugin-turbo: 1.13.0_eslint@8.31.0
     dev: true
 
   /eslint-doc-generator/1.4.3_eslint@8.45.0:
@@ -24766,8 +24791,8 @@ packages:
       - typescript
     dev: true
 
-  /eslint-plugin-turbo/1.12.5_eslint@8.31.0:
-    resolution: {integrity: sha512-cXy7mCzAdngBTJIWH4DASXHy0vQpujWDBqRTu0YYqCN/QEGsi3HWM+STZEbPYELdjtm5EsN2HshOSSqWnjdRHg==}
+  /eslint-plugin-turbo/1.13.0_eslint@8.31.0:
+    resolution: {integrity: sha512-y9YRXMSOc43SijAFFkDnrFpstV2k/w6Qmbr5mO/w7tUGzDWkHc87btLa0e/L2PJxod5bzNwsmzeyj8c/AsMMCQ==}
     peerDependencies:
       eslint: '>6.6.0'
     dependencies:

@@ -1,14 +1,13 @@
-import { Consumer } from "sqs-consumer";
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
-import { logger, trace } from "../logger.server";
 import { Message, SQSClient } from "@aws-sdk/client-sqs";
-import { authenticateApiKey } from "../apiAuth.server";
 import { SendEventBodySchema } from "@trigger.dev/core";
+import { Consumer } from "sqs-consumer";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { IngestSendEvent } from "./ingestSendEvent.server";
+import { PrismaClientOrTransaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { singleton } from "~/utils/singleton";
+import { authenticateApiKey } from "../apiAuth.server";
+import { logger, trace } from "../logger.server";
+import { IngestSendEvent } from "./ingestSendEvent.server";
 
 type SqsEventConsumerOptions = {
   queueUrl: string;
@@ -17,6 +16,7 @@ type SqsEventConsumerOptions = {
   region: string;
   accessKeyId: string;
   secretAccessKey: string;
+  pollingWaitTimeMs: number;
 };
 
 const messageSchema = SendEventBodySchema.extend({
@@ -137,6 +137,7 @@ export function getSharedSqsEventConsumer() {
     const consumer = new SqsEventConsumer(undefined, {
       queueUrl: env.AWS_SQS_QUEUE_URL,
       batchSize: env.AWS_SQS_BATCH_SIZE,
+      pollingWaitTimeMs: env.AWS_SQS_WAIT_TIME_MS,
       region: env.AWS_SQS_REGION,
       accessKeyId: env.AWS_SQS_ACCESS_KEY_ID,
       secretAccessKey: env.AWS_SQS_SECRET_ACCESS_KEY,

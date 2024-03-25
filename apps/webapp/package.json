@@ -96,6 +96,7 @@
     "@trigger.dev/yalt": "workspace:*",
     "@types/pg": "8.6.6",
     "@uiw/react-codemirror": "^4.19.5",
+    "@upstash/ratelimit": "^1.0.1",
     "@whatwg-node/fetch": "^0.9.14",
     "class-variance-authority": "^0.5.2",
     "clsx": "^1.2.1",
