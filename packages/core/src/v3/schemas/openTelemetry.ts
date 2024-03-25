@@ -51,3 +51,13 @@ export function isExceptionSpanEvent(event: SpanEvent): event is ExceptionSpanEv
 export function isCancellationSpanEvent(event: SpanEvent): event is CancellationSpanEvent {
   return event.name === "cancellation";
 }
+
+export const SpanMessagingEvent = z.object({
+  system: z.string().optional(),
+  client_id: z.string().optional(),
+  operation: z.enum(["publish", "create", "receive", "deliver"]),
+  message: z.any(),
+  destination: z.string().optional(),
+});
+
+export type SpanMessagingEvent = z.infer<typeof SpanMessagingEvent>;

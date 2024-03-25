@@ -1,5 +1,5 @@
 import { QueueListIcon, StopCircleIcon } from "@heroicons/react/20/solid";
-import { useFetcher, useParams } from "@remix-run/react";
+import { useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -8,17 +8,11 @@ import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTrigger,
-} from "~/components/primitives/Dialog";
+import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import { TextLink } from "~/components/primitives/TextLink";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
@@ -31,7 +25,8 @@ import { useProject } from "~/hooks/useProject";
 import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3RunPath, v3RunSpanPath, v3SpanParamsSchema } from "~/utils/pathBuilder";
+import { v3RunPath, v3RunSpanPath, v3SpanParamsSchema, v3TraceSpanPath } from "~/utils/pathBuilder";
+import { SpanLink } from "~/v3/eventRepository.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -136,6 +131,17 @@ export default function Page() {
               </Property>
             )}
           </PropertyTable>
+
+          {event.links && event.links.length > 0 && (
+            <div>
+              <Header2 spacing>Links</Header2>
+              <div className="space-y-1">
+                {event.links.map((link, index) => (
+                  <SpanLinkElement key={index} link={link} />
+                ))}
+              </div>
+            </div>
+          )}
 
           {event.events !== undefined && <SpanEvents spanEvents={event.events} />}
           {event.payload !== undefined && (
@@ -283,4 +289,42 @@ function classNameForState(state: TimelineState) {
       return "bg-error";
     }
   }
+}
+
+function SpanLinkElement({ link }: { link: SpanLink }) {
+  const organization = useOrganization();
+  const project = useProject();
+
+  switch (link.type) {
+    case "run": {
+      return (
+        <LinkButton
+          to={v3RunPath(organization, project, { friendlyId: link.runId })}
+          variant="minimal/medium"
+          LeadingIcon={link.icon}
+          leadingIconClassName="text-text-dimmed"
+          fullWidth
+          textAlignLeft
+        >
+          {link.title}
+        </LinkButton>
+      );
+    }
+    case "span": {
+      return (
+        <LinkButton
+          to={v3TraceSpanPath(organization, project, link.traceId, link.spanId)}
+          variant="minimal/medium"
+          LeadingIcon={link.icon}
+          leadingIconClassName="text-text-dimmed"
+          fullWidth
+          textAlignLeft
+        >
+          {link.title}
+        </LinkButton>
+      );
+    }
+  }
+
+  return null;
 }
