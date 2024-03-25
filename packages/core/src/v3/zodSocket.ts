@@ -263,7 +263,8 @@ interface ZodSocketConnectionOptions<
   TServerMessages extends ZodSocketMessageCatalogSchema,
 > {
   host: string;
-  port: number;
+  port?: number;
+  secure?: boolean;
   namespace: string;
   clientMessages: TClientMessages;
   serverMessages: TServerMessages;
@@ -302,15 +303,24 @@ export class ZodSocketConnection<
   #logger: StructuredLogger;
 
   constructor(opts: ZodSocketConnectionOptions<TClientMessages, TServerMessages>) {
-    this.socket = io(`ws://${opts.host}:${opts.port}/${opts.namespace}`, {
+    const uri = `${opts.secure ? "wss" : "ws"}://${opts.host}:${
+      opts.port ?? (opts.secure ? "443" : "80")
+    }/${opts.namespace}`;
+
+    const logger = new SimpleStructuredLogger(opts.namespace, LogLevel.info);
+    logger.log("new zod socket", { uri });
+
+    this.socket = io(uri, {
       transports: ["websocket"],
       auth: {
         token: opts.authToken,
       },
       extraHeaders: opts.extraHeaders,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 1000,
     });
 
-    this.#logger = new SimpleStructuredLogger(opts.namespace, LogLevel.info, {
+    this.#logger = logger.child({
       socketId: this.socket.id,
     });
 
