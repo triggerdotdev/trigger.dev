@@ -137,7 +137,6 @@
     "react-stately": "^3.29.1",
     "react-use": "^17.4.0",
     "recharts": "^2.8.0",
-    "redis": "^4.6.13",
     "remix-auth": "^3.6.0",
     "remix-auth-email-link": "2.0.2",
     "remix-auth-github": "^1.6.0",

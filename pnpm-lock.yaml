@@ -308,7 +308,6 @@ importers:
       react-stately: ^3.29.1
       react-use: ^17.4.0
       recharts: ^2.8.0
-      redis: ^4.6.13
       remix-auth: ^3.6.0
       remix-auth-email-link: 2.0.2
       remix-auth-github: ^1.6.0
@@ -451,7 +450,6 @@ importers:
       react-stately: 3.29.1_react@18.2.0
       react-use: 17.4.0_biqbaboplfbrettd7655fr4n2y
       recharts: 2.8.0_v2m5e27vhdewzwhryxwfaorcca
-      redis: 4.6.13
       remix-auth: 3.6.0_ybjp5xbtg4zthziheradfmei64
       remix-auth-email-link: 2.0.2_esw6v6dv7ru6ju3hn3i62b7n2m
       remix-auth-github: 1.6.0_esw6v6dv7ru6ju3hn3i62b7n2m
@@ -14705,55 +14703,6 @@ packages:
       '@react-types/overlays': 3.8.4_react@18.2.0
       '@react-types/shared': 3.22.0_react@18.2.0
       react: 18.2.0
-    dev: false
-
-  /@redis/bloom/1.2.0_@redis+client@1.5.14:
-    resolution: {integrity: sha512-HG2DFjYKbpNmVXsa0keLHp/3leGJz1mjh09f2RLGGLQZzSHpkmZWuwJbAvo3QcRY8p80m5+ZdXZdYOSBLlp7Cg==}
-    peerDependencies:
-      '@redis/client': ^1.0.0
-    dependencies:
-      '@redis/client': 1.5.14
-    dev: false
-
-  /@redis/client/1.5.14:
-    resolution: {integrity: sha512-YGn0GqsRBFUQxklhY7v562VMOP0DcmlrHHs3IV1mFE3cbxe31IITUkqhBcIhVSI/2JqtWAJXg5mjV4aU+zD0HA==}
-    engines: {node: '>=14'}
-    dependencies:
-      cluster-key-slot: 1.1.2
-      generic-pool: 3.9.0
-      yallist: 4.0.0
-    dev: false
-
-  /@redis/graph/1.1.1_@redis+client@1.5.14:
-    resolution: {integrity: sha512-FEMTcTHZozZciLRl6GiiIB4zGm5z5F3F6a6FZCyrfxdKOhFlGkiAqlexWMBzCi4DcRoyiOsuLfW+cjlGWyExOw==}
-    peerDependencies:
-      '@redis/client': ^1.0.0
-    dependencies:
-      '@redis/client': 1.5.14
-    dev: false
-
-  /@redis/json/1.0.6_@redis+client@1.5.14:
-    resolution: {integrity: sha512-rcZO3bfQbm2zPRpqo82XbW8zg4G/w4W3tI7X8Mqleq9goQjAGLL7q/1n1ZX4dXEAmORVZ4s1+uKLaUOg7LrUhw==}
-    peerDependencies:
-      '@redis/client': ^1.0.0
-    dependencies:
-      '@redis/client': 1.5.14
-    dev: false
-
-  /@redis/search/1.1.6_@redis+client@1.5.14:
-    resolution: {integrity: sha512-mZXCxbTYKBQ3M2lZnEddwEAks0Kc7nauire8q20oA0oA/LoA+E/b5Y5KZn232ztPb1FkIGqo12vh3Lf+Vw5iTw==}
-    peerDependencies:
-      '@redis/client': ^1.0.0
-    dependencies:
-      '@redis/client': 1.5.14
-    dev: false
-
-  /@redis/time-series/1.0.5_@redis+client@1.5.14:
-    resolution: {integrity: sha512-IFjIgTusQym2B5IZJG3XKr5llka7ey84fw/NOYqESP5WUfQs9zz1ww/9+qoz4ka/S6KcGBodzlCeZ5UImKbscg==}
-    peerDependencies:
-      '@redis/client': ^1.0.0
-    dependencies:
-      '@redis/client': 1.5.14
     dev: false
 
   /@remix-run/changelog-github/0.0.5:
@@ -34286,17 +34235,6 @@ packages:
     engines: {node: '>=4'}
     dependencies:
       redis-errors: 1.2.0
-    dev: false
-
-  /redis/4.6.13:
-    resolution: {integrity: sha512-MHgkS4B+sPjCXpf+HfdetBwbRz6vCtsceTmw1pHNYJAsYxrfpOP6dz+piJWGos8wqG7qb3vj/Rrc5qOlmInUuA==}
-    dependencies:
-      '@redis/bloom': 1.2.0_@redis+client@1.5.14
-      '@redis/client': 1.5.14
-      '@redis/graph': 1.1.1_@redis+client@1.5.14
-      '@redis/json': 1.0.6_@redis+client@1.5.14
-      '@redis/search': 1.1.6_@redis+client@1.5.14
-      '@redis/time-series': 1.0.5_@redis+client@1.5.14
     dev: false
 
   /reduce-css-calc/2.1.8:
