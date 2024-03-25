@@ -754,7 +754,7 @@ function SpanWithDuration({
       >
         {node.data.isPartial && (
           <div
-            className="absolute left-0 top-0 h-full w-full animate-tile-scroll rounded-sm opacity-50"
+            className="absolute left-0 top-0 h-full w-full animate-tile-scroll rounded-sm opacity-30"
             style={{ backgroundImage: `url(${tileBgPath})`, backgroundSize: "8px 8px" }}
           />
         )}
