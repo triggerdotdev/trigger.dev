@@ -1,35 +1,35 @@
-import { RedisClientOptions, createClient } from "redis";
+import { ActionFunction, ActionFunctionArgs, LoaderFunction } from "@remix-run/server-runtime";
 import { Ratelimit } from "@upstash/ratelimit";
-import {
-  ActionFunction,
-  ActionFunctionArgs,
-  LoaderFunction,
-  LoaderFunctionArgs,
-} from "@remix-run/server-runtime";
+import Redis, { RedisOptions } from "ioredis";
 import { env } from "~/env.server";
 
 function createRedisRateLimitClient(
-  redisOptions: RedisClientOptions
+  redisOptions: RedisOptions
 ): ConstructorParameters<typeof Ratelimit>[0]["redis"] {
-  const redis = createClient(redisOptions);
+  const redis = new Redis(redisOptions);
 
   return {
     sadd: async <TData>(key: string, ...members: TData[]): Promise<number> => {
-      return redis.sAdd(key as string, members as any);
+      return redis.sadd(key, members as (string | number | Buffer)[]);
     },
     eval: <TArgs extends unknown[], TData = unknown>(
       ...args: [script: string, keys: string[], args: TArgs]
     ): Promise<TData> => {
-      return redis.eval(args[0], {
-        keys: args[1],
-        arguments: args[2] as string[],
-      }) as Promise<TData>;
+      const script = args[0];
+      const keys = args[1];
+      const argsArray = args[2];
+      return redis.eval(
+        script,
+        keys.length,
+        ...keys,
+        ...(argsArray as (string | Buffer | number)[])
+      ) as Promise<TData>;
     },
   };
 }
 
 type Options = {
-  redis: RedisClientOptions;
+  redis: RedisOptions;
   limiter: ConstructorParameters<typeof Ratelimit>[0]["limiter"];
 };
 
@@ -44,6 +44,9 @@ class RateLimitter {
       analytics: true,
     });
   }
+
+  //todo Express middleware
+  //use the Authentication header with Bearer token
 
   async loader(key: string, fn: LoaderFunction): Promise<ReturnType<LoaderFunction>> {
     const { success, pending, limit, reset, remaining } = await this.#rateLimitter.limit(
@@ -80,7 +83,12 @@ class RateLimitter {
 
 export const standardRateLimitter = new RateLimitter({
   redis: {
-    url: `redis://${env.REDIS_USERNAME}:${env.REDIS_PASSWORD}@${env.REDIS_HOST}:${env.REDIS_PORT}`,
+    port: env.REDIS_PORT,
+    host: env.REDIS_HOST,
+    username: env.REDIS_USERNAME,
+    password: env.REDIS_PASSWORD,
+    enableAutoPipelining: true,
+    ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
   },
   limiter: Ratelimit.slidingWindow(1, "60 s"),
 });
