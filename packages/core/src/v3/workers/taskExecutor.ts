@@ -16,9 +16,15 @@ import { taskContextManager } from "../tasks/taskContextManager";
 import { TriggerTracer } from "../tracer";
 import { HandleErrorFunction, ProjectConfig, TaskMetadataWithFunctions } from "../types";
 import { flattenAttributes } from "../utils/flattenAttributes";
-import { createOutputAttributes, stringifyOutput } from "../utils/ioSerialization";
+import {
+  createOutputAttributes,
+  offloadOuputIfNeeded,
+  stringifyOutput,
+} from "../utils/ioSerialization";
 import { calculateNextRetryDelay } from "../utils/retries";
 import { accessoryAttributes } from "../utils/styleAttributes";
+import { apiClientManager } from "../apiClient";
+import { OFFLOAD_OUTPUT_LENGTH_LIMIT } from "../limits";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -83,12 +89,18 @@ export class TaskExecutor {
                 try {
                   const stringifiedOutput = stringifyOutput(output);
 
-                  span.setAttributes(createOutputAttributes(stringifiedOutput));
+                  const finalOutput = await offloadOuputIfNeeded(
+                    stringifiedOutput,
+                    execution.attempt.id,
+                    this._tracer
+                  );
+
+                  span.setAttributes(createOutputAttributes(finalOutput));
 
                   return {
                     ok: true,
                     id: execution.attempt.id,
-                    ...stringifiedOutput,
+                    ...finalOutput,
                   } satisfies TaskRunExecutionResult;
                 } catch (stringifyError) {
                   recordSpanException(span, stringifyError);

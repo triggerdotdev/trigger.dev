@@ -39,11 +39,19 @@ export class SpanPresenter {
       throw new Error("Event not found");
     }
 
+    const output =
+      span.outputType === "application/store"
+        ? `/resources/payloads/${span.environmentId}/${span.output}`
+        : span.output
+        ? prettyPrintOutput(span.output, span.outputType ?? undefined)
+        : undefined;
+
     return {
       event: {
         ...span,
         events: span.events,
-        output: prettyPrintOutput(span.output, span.outputType ?? undefined),
+        output: output,
+        outputType: span.outputType ?? "application/json",
         payload: span.payload ? JSON.stringify(span.payload, null, 2) : undefined,
         properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
         showActionBar: span.show?.actions === true,

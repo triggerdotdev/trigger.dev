@@ -209,7 +209,10 @@ export class EventRepository {
       metadata: event.metadata as Attributes,
       style: event.style as Attributes,
       output: output,
-      outputType: "application/json",
+      outputType:
+        options?.attributes.outputType === "application/store"
+          ? "application/store"
+          : "application/json",
     });
   }
 

@@ -104,7 +104,12 @@ export class CompleteAttemptService extends BaseService {
       endTime: new Date(),
       attributes: {
         isError: false,
-        output: completion.output ? (safeJsonParse(completion.output) as Attributes) : undefined,
+        output:
+          completion.outputType === "application/store"
+            ? completion.output
+            : completion.output
+            ? (safeJsonParse(completion.output) as Attributes)
+            : undefined,
         outputType: completion.outputType,
       },
     });

@@ -242,6 +242,7 @@ importers:
       '@upstash/ratelimit': ^1.0.1
       '@whatwg-node/fetch': ^0.9.14
       autoprefixer: ^10.4.13
+      aws4fetch: ^1.0.18
       babel-loader: ^9.1.3
       babel-preset-react-app: ^10.0.1
       class-variance-authority: ^0.5.2
@@ -394,6 +395,7 @@ importers:
       '@uiw/react-codemirror': 4.19.5_th22fcplkuhrqjnlojwclcaim4
       '@upstash/ratelimit': 1.0.1
       '@whatwg-node/fetch': 0.9.14
+      aws4fetch: 1.0.18
       class-variance-authority: 0.5.2_typescript@5.2.2
       clsx: 1.2.1
       compression: 1.7.4
@@ -14785,6 +14787,10 @@ packages:
 
   /aws4/1.12.0:
     resolution: {integrity: sha512-NmWvPnx0F1SfrQbYwOi7OeaNGokp9XhzNioJ/CSBs8Qa4vxug81mhJEAVZwxXuBmYB5KDRfMq/F3RR0BIU7sWg==}
+    dev: false
+
+  /aws4fetch/1.0.18:
+    resolution: {integrity: sha512-3Cf+YaUl07p24MoQ46rFwulAmiyCwH2+1zw1ZyPAX5OtJ34Hh185DwB8y/qRLb6cYYYtSFJ9pthyLc0MD4e8sQ==}
     dev: false
 
   /axe-core/4.6.2:

@@ -1,4 +1,4 @@
-import { QueueListIcon, StopCircleIcon } from "@heroicons/react/20/solid";
+import { CloudArrowDownIcon, QueueListIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
@@ -12,7 +12,6 @@ import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
-import { TextLink } from "~/components/primitives/TextLink";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
@@ -152,7 +151,7 @@ export default function Page() {
             <CodeBlock rowTitle="Payload" code={event.payload} maxLines={20} />
           )}
           {event.output !== undefined && (
-            <CodeBlock rowTitle="Output" code={event.output} maxLines={20} />
+            <OutputDisplay output={event.output} outputType={event.outputType} />
           )}
           {event.properties !== undefined && (
             <CodeBlock rowTitle="Properties" code={event.properties} maxLines={20} />
@@ -202,6 +201,23 @@ export default function Page() {
       ) : null}
     </div>
   );
+}
+
+function OutputDisplay({ output, outputType }: { output: string; outputType: string }) {
+  if (outputType === "application/store") {
+    return (
+      <div className="flex flex-col">
+        <Paragraph variant="base/bright" className="w-full border-b border-grid-dimmed py-2.5">
+          Output
+        </Paragraph>
+        <LinkButton LeadingIcon={CloudArrowDownIcon} to={output} variant="tertiary/medium" download>
+          Download
+        </LinkButton>
+      </div>
+    );
+  } else {
+    return <CodeBlock rowTitle="Output" code={output} maxLines={20} />;
+  }
 }
 
 type TimelineProps = {

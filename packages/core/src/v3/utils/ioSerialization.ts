@@ -2,7 +2,9 @@ import { Attributes } from "@opentelemetry/api";
 import { deserialize, parse, stringify } from "superjson";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 import { flattenAttributes } from "./flattenAttributes";
-import { imposeAttributeLimits } from "../limits";
+import { OFFLOAD_OUTPUT_LENGTH_LIMIT, imposeAttributeLimits } from "../limits";
+import { apiClientManager } from "../apiClient";
+import { TriggerTracer } from "../tracer";
 
 export type OutputParseable = {
   output?: string | undefined;
@@ -38,6 +40,59 @@ export function stringifyOutput(value: any): OutputParseable {
   return { output: stringify(value), outputType: "application/super+json" };
 }
 
+export async function offloadOuputIfNeeded(
+  output: OutputParseable,
+  pathPrefix: string,
+  tracer: TriggerTracer
+): Promise<OutputParseable> {
+  if (apiClientManager.client && output.output) {
+    const byteSize = Buffer.byteLength(output.output, "utf8");
+
+    if (byteSize >= OFFLOAD_OUTPUT_LENGTH_LIMIT) {
+      const result = await tracer.startActiveSpan(
+        "io.uploadOutput",
+        async (span) => {
+          // Offload the output
+          const filename = `${pathPrefix}/output.${getOutputExtension(output.outputType)}`;
+
+          const presignedResponse = await apiClientManager.client!.createUploadPayloadUrl(filename);
+
+          if (presignedResponse.ok) {
+            const uploadResponse = await fetch(presignedResponse.data.presignedUrl, {
+              method: "PUT",
+              headers: {
+                "Content-Type": output.outputType,
+              },
+              body: output.output,
+            });
+
+            if (!uploadResponse.ok) {
+              throw new Error(
+                `Failed to upload output to ${presignedResponse.data.presignedUrl}: ${uploadResponse.statusText}`
+              );
+            }
+
+            return {
+              output: filename,
+              outputType: "application/store",
+            };
+          }
+        },
+        {
+          attributes: {
+            size: byteSize,
+            [SemanticInternalAttributes.STYLE_ICON]: "cloud-upload",
+          },
+        }
+      );
+
+      return result ?? output;
+    }
+  }
+
+  return output;
+}
+
 export function createOutputAttributes(output: OutputParseable): Attributes {
   if (!output.output) {
     return {};
@@ -56,6 +111,11 @@ export function createOutputAttributes(output: OutputParseable): Attributes {
       return {
         ...flattenAttributes(jsonified, SemanticInternalAttributes.OUTPUT),
         [SemanticInternalAttributes.OUTPUT_TYPE]: "application/json",
+      };
+    case "application/store":
+      return {
+        [SemanticInternalAttributes.OUTPUT]: output.output,
+        [SemanticInternalAttributes.OUTPUT_TYPE]: output.outputType,
       };
     case "text/plain":
       return {
@@ -86,6 +146,8 @@ export function createOutputAttributesAsJson(output: any, outputType: string): A
       const jsonify = JSON.parse(JSON.stringify(deserialized, safeReplacer));
 
       return imposeAttributeLimits(flattenAttributes(jsonify, undefined));
+    case "application/store":
+      return output;
     default:
       return {};
   }
@@ -137,4 +199,17 @@ function safeReplacer(key: string, value: any) {
   }
 
   return value; // Otherwise return the value as is
+}
+
+function getOutputExtension(outputType: string): string {
+  switch (outputType) {
+    case "application/json":
+      return "json";
+    case "application/super+json":
+      return "json";
+    case "text/plain":
+      return "txt";
+    default:
+      return "txt";
+  }
 }
