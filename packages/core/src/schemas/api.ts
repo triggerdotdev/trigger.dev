@@ -1059,6 +1059,7 @@ export const CreateExternalConnectionBodySchema = z.object({
 export type CreateExternalConnectionBody = z.infer<typeof CreateExternalConnectionBodySchema>;
 
 export const GetRunStatusesSchema = z.object({
+  job: z.object({ id: z.string() }),
   run: z.object({ id: z.string(), status: RunStatusSchema, output: z.any().optional() }),
   statuses: z.array(JobRunStatusRecordSchema),
 });

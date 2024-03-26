@@ -37,6 +37,11 @@ export class ApiRunPresenter {
         completedAt: true,
         environmentId: true,
         output: true,
+        job: {
+          select: {
+            slug: true,
+          },
+        },
         tasks: {
           select: {
             id: true,
