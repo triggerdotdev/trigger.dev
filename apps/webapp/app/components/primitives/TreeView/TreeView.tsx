@@ -4,6 +4,7 @@ import { UnmountClosed } from "react-collapse";
 import { cn } from "~/utils/cn";
 import { NodeState, NodesState, reducer } from "./reducer";
 import { applyFilterToState, concreteStateFromInput, selectedIdFromState } from "./utils";
+import { motion } from "framer-motion";
 
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
@@ -64,7 +65,7 @@ export function TreeView<TData>({
   }, [scrollRef?.current]);
 
   return (
-    <div
+    <motion.div
       ref={(element) => {
         parentRef.current = element;
         if (scrollRef) {
@@ -75,6 +76,7 @@ export function TreeView<TData>({
         "w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 focus-within:outline-none",
         parentClassName
       )}
+      layoutScroll
       {...getTreeProps()}
     >
       <div
@@ -122,7 +124,7 @@ export function TreeView<TData>({
           })}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
