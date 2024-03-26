@@ -2,6 +2,7 @@ import { Attributes } from "@opentelemetry/api";
 import { deserialize, parse, stringify } from "superjson";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 import { flattenAttributes } from "./flattenAttributes";
+import { imposeAttributeLimits } from "../limits";
 
 export type OutputParseable = {
   output?: string | undefined;
@@ -49,17 +50,42 @@ export function createOutputAttributes(output: OutputParseable): Attributes {
         [SemanticInternalAttributes.OUTPUT_TYPE]: output.outputType,
       };
     case "application/super+json":
-      const parsed = JSON.parse(output.output);
+      const parsed = parse(output.output) as any;
+      const jsonified = JSON.parse(JSON.stringify(parsed, safeReplacer));
 
       return {
-        ...flattenAttributes(parsed, SemanticInternalAttributes.OUTPUT),
-        [SemanticInternalAttributes.OUTPUT_TYPE]: output.outputType,
+        ...flattenAttributes(jsonified, SemanticInternalAttributes.OUTPUT),
+        [SemanticInternalAttributes.OUTPUT_TYPE]: "application/json",
       };
     case "text/plain":
       return {
         [SemanticInternalAttributes.OUTPUT]: output.output,
         [SemanticInternalAttributes.OUTPUT_TYPE]: output.outputType,
       };
+    default:
+      return {};
+  }
+}
+
+export function createOutputAttributesAsJson(output: any, outputType: string): Attributes {
+  if (
+    typeof output === "string" ||
+    typeof output === "number" ||
+    typeof output === "boolean" ||
+    output === null ||
+    output === undefined
+  ) {
+    return output;
+  }
+
+  switch (outputType) {
+    case "application/json":
+      return imposeAttributeLimits(flattenAttributes(output, undefined));
+    case "application/super+json":
+      const deserialized = deserialize(output) as any;
+      const jsonify = JSON.parse(JSON.stringify(deserialized, safeReplacer));
+
+      return imposeAttributeLimits(flattenAttributes(jsonify, undefined));
     default:
       return {};
   }

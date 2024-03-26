@@ -10,6 +10,7 @@ import {
   SpanMessagingEvent,
   TaskEventStyle,
   correctErrorStackTrace,
+  createOutputAttributesAsJson,
   flattenAttributes,
   isExceptionSpanEvent,
   omit,
@@ -183,7 +184,17 @@ export class EventRepository {
 
     const event = events[0];
 
-    logger.debug("Completing event", { spanId, eventId: event.id });
+    const output = options?.attributes.output
+      ? createOutputAttributesAsJson(
+          options?.attributes.output,
+          options?.attributes.outputType ?? "application/json"
+        )
+      : undefined;
+
+    logger.debug("Completing event", {
+      spanId,
+      eventId: event.id,
+    });
 
     await this.insert({
       ...omit(event, "id"),
@@ -197,10 +208,8 @@ export class EventRepository {
       properties: event.properties as Attributes,
       metadata: event.metadata as Attributes,
       style: event.style as Attributes,
-      output: options?.attributes.output
-        ? primitiveValueOrflattenedAttributes(options.attributes.output, undefined)
-        : undefined,
-      outputType: options?.attributes.outputType,
+      output: output,
+      outputType: "application/json",
     });
   }
 

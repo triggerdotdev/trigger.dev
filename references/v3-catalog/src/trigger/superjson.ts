@@ -28,10 +28,30 @@ export const superChildTask = task({
       date: new Date(),
       regex: /foo/,
       bigint: BigInt(123),
-      set: new Set([1, 2, 3]),
-      map: new Map([["foo", "bar"]]),
+      set: new Set([1, 2, 3, 4, 5]),
+      map: new Map([
+        ["foo", "bar"],
+        ["baz", "qux"],
+      ]),
       error: new Error("foo"),
       url: new URL("https://trigger.dev"),
     };
+  },
+});
+
+export const superHugeOutputTask = task({
+  id: "super-huge-output-task",
+  run: async () => {
+    // Returning an object that has 1000 keys, with each key having a value of 100 characters
+    return Array.from({ length: 1000 }, (_, i) => [
+      i.toString(),
+      i.toString().padStart(100, "0"),
+    ]).reduce(
+      (acc, [key, value]) => {
+        acc[key] = value;
+        return acc;
+      },
+      {} as Record<string, string>
+    );
   },
 });

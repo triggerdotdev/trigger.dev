@@ -1,0 +1,50 @@
+import { AttributeValue, Attributes } from "@opentelemetry/api";
+
+export const OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT = 100;
+export const OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT = 256;
+export const OTEL_SPAN_EVENT_COUNT_LIMIT = 10;
+export const OTEL_LINK_COUNT_LIMIT = 2;
+export const OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT = 10;
+export const OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT = 10;
+
+export function imposeAttributeLimits(attributes: Attributes): Attributes {
+  const newAttributes: Attributes = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (calculateAttributeValueLength(value) > OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT) {
+      continue;
+    }
+
+    if (Object.keys(newAttributes).length >= OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT) {
+      break;
+    }
+
+    newAttributes[key] = value;
+  }
+
+  return newAttributes;
+}
+
+function calculateAttributeValueLength(value: AttributeValue | undefined | null): number {
+  if (value === undefined || value === null) {
+    return 0;
+  }
+
+  if (typeof value === "string") {
+    return value.length;
+  }
+
+  if (typeof value === "number") {
+    return 8;
+  }
+
+  if (typeof value === "boolean") {
+    return 4;
+  }
+
+  if (Array.isArray(value)) {
+    return value.reduce((acc: number, v) => acc + calculateAttributeValueLength(v), 0);
+  }
+
+  return 0;
+}
