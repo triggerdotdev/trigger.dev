@@ -36,7 +36,7 @@ import { login } from "./login";
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   overrideConfig: z.boolean().default(false),
-  tag: z.string().default("latest"),
+  tag: z.string().default("v3"),
   skipPackageInstall: z.boolean().default(false),
 });
 
