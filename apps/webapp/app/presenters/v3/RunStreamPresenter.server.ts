@@ -1,16 +1,9 @@
-import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { TaskRun } from "@trigger.dev/database";
 import { eventStream } from "remix-utils/sse/server";
 import { PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
+import { throttle } from "~/utils/throttle";
 import { eventRepository } from "~/v3/eventRepository.server";
-
-type RunWithAttempts = {
-  updatedAt: Date;
-  attempts: {
-    status: TaskRunAttempt["status"];
-    updatedAt: Date;
-  }[];
-};
 
 const pingInterval = 1000;
 
@@ -77,8 +70,10 @@ export class RunStreamPresenter {
         }
       };
 
+      const throttledSend = throttle(safeSend, 1000);
+
       eventEmitter.addListener("message", (event) => {
-        safeSend({ data: event });
+        throttledSend({ data: event });
       });
 
       pinger = setInterval(() => {
