@@ -10,30 +10,31 @@ import {
   SpanMessagingEvent,
   TaskEventStyle,
   correctErrorStackTrace,
+  createPackageAttributesAsJson,
   flattenAttributes,
   isExceptionSpanEvent,
   omit,
-  primitiveValueOrflattenedAttributes,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
 import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
-import { createHash } from "node:crypto";
-import { PrismaClient, prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 import Redis, { RedisOptions } from "ioredis";
-import { env } from "~/env.server";
+import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
+import { PrismaClient, prisma } from "~/db.server";
+import { env } from "~/env.server";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 
 export type CreatableEvent = Omit<
   Prisma.TaskEventCreateInput,
-  "id" | "createdAt" | "properties" | "metadata" | "style" | "output"
+  "id" | "createdAt" | "properties" | "metadata" | "style" | "output" | "payload"
 > & {
   properties: Attributes;
   metadata: Attributes | undefined;
   style: Attributes | undefined;
   output: Attributes | string | boolean | number | undefined;
+  payload: Attributes | string | boolean | number | undefined;
 };
 
 export type CreatableEventKind = TaskEventKind;
@@ -49,12 +50,15 @@ export type TraceAttributes = Partial<
     | "runId"
     | "runIsTest"
     | "output"
+    | "outputType"
     | "metadata"
     | "properties"
     | "style"
     | "queueId"
     | "queueName"
     | "batchId"
+    | "payload"
+    | "payloadType"
   >
 >;
 
@@ -83,6 +87,7 @@ export type EventRepoConfig = {
   batchSize: number;
   batchInterval: number;
   redis: RedisOptions;
+  retentionInDays: number;
 };
 
 export type QueryOptions = Prisma.TaskEventWhereInput;
@@ -182,7 +187,17 @@ export class EventRepository {
 
     const event = events[0];
 
-    logger.debug("Completing event", { spanId, eventId: event.id });
+    const output = options?.attributes.output
+      ? createPackageAttributesAsJson(
+          options?.attributes.output,
+          options?.attributes.outputType ?? "application/json"
+        )
+      : undefined;
+
+    logger.debug("Completing event", {
+      spanId,
+      eventId: event.id,
+    });
 
     await this.insert({
       ...omit(event, "id"),
@@ -196,9 +211,13 @@ export class EventRepository {
       properties: event.properties as Attributes,
       metadata: event.metadata as Attributes,
       style: event.style as Attributes,
-      output: options?.attributes.output
-        ? primitiveValueOrflattenedAttributes(options.attributes.output, undefined)
-        : undefined,
+      output: output,
+      outputType:
+        options?.attributes.outputType === "application/store"
+          ? "application/store"
+          : "application/json",
+      payload: event.payload as Attributes,
+      payloadType: event.payloadType,
     });
   }
 
@@ -229,6 +248,9 @@ export class EventRepository {
       metadata: event.metadata as Attributes,
       style: event.style as Attributes,
       output: event.output as Attributes,
+      outputType: event.outputType,
+      payload: event.payload as Attributes,
+      payloadType: event.payloadType,
     });
   }
 
@@ -362,13 +384,13 @@ export class EventRepository {
       return;
     }
 
-    const payload = unflattenAttributes(
-      filteredAttributes(fullEvent.properties as Attributes, SemanticInternalAttributes.PAYLOAD)
-    )[SemanticInternalAttributes.PAYLOAD];
-
     const output = isEmptyJson(fullEvent.output)
       ? null
       : unflattenAttributes(fullEvent.output as Attributes);
+
+    const payload = isEmptyJson(fullEvent.payload)
+      ? null
+      : unflattenAttributes(fullEvent.payload as Attributes);
 
     const show = unflattenAttributes(
       filteredAttributes(fullEvent.properties as Attributes, SemanticInternalAttributes.SHOW)
@@ -497,6 +519,9 @@ export class EventRepository {
       metadata: metadata,
       style: stripAttributePrefix(style, SemanticInternalAttributes.STYLE),
       output: undefined,
+      outputType: undefined,
+      payload: undefined,
+      payloadType: undefined,
     };
 
     if (options.immediate) {
@@ -630,7 +655,10 @@ export class EventRepository {
       metadata: metadata,
       style: stripAttributePrefix(style, SemanticInternalAttributes.STYLE),
       output: undefined,
+      outputType: undefined,
       links: links as unknown as Prisma.InputJsonValue,
+      payload: options.attributes.payload,
+      payloadType: options.attributes.payloadType,
     };
 
     if (options.immediate) {
@@ -696,6 +724,16 @@ export class EventRepository {
     return this._randomIdGenerator.generateSpanId();
   }
 
+  public async truncateEvents() {
+    await this.db.taskEvent.deleteMany({
+      where: {
+        createdAt: {
+          lt: new Date(Date.now() - this._config.retentionInDays * 24 * 60 * 60 * 1000),
+        },
+      },
+    });
+  }
+
   /**
    * Returns a deterministically random 8-byte span ID formatted/encoded as a 16 lowercase hex
    * characters corresponding to 64 bits, based on the trace ID and seed.
@@ -716,8 +754,9 @@ export class EventRepository {
 }
 
 export const eventRepository = new EventRepository(prisma, {
-  batchSize: 100,
-  batchInterval: 5000,
+  batchSize: env.EVENTS_BATCH_SIZE,
+  batchInterval: env.EVENTS_BATCH_INTERVAL,
+  retentionInDays: env.EVENTS_DEFAULT_LOG_RETENTION,
   redis: {
     port: env.REDIS_PORT,
     host: env.REDIS_HOST,
@@ -918,9 +957,6 @@ function removeDuplicateEvents(events: PreparedEvent[]) {
 
 function isEmptyJson(json: Prisma.JsonValue) {
   if (json === null) {
-    return true;
-  }
-  if (Object.keys(json).length === 0) {
     return true;
   }
 

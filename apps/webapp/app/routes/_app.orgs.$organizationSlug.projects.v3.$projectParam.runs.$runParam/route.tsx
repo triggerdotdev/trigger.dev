@@ -17,8 +17,9 @@ import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
+import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { PageBody } from "~/components/layout/AppLayout";
+import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
@@ -85,28 +86,55 @@ function getSpanId(path: string): string | undefined {
 }
 
 export default function Page() {
-  const {
-    run,
-    events,
-    parentRunFriendlyId,
-    resizeSettings,
-    duration,
-    rootSpanStatus,
-    rootStartedAt,
-  } = useTypedLoaderData<typeof loader>();
+  const { run, trace, resizeSettings } = useTypedLoaderData<typeof loader>();
   const navigate = useNavigate();
   const organization = useOrganization();
   const pathName = usePathName();
   const project = useProject();
   const user = useUser();
 
+  const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
+
+  if (!trace) {
+    return (
+      <>
+        <NavBar>
+          <PageTitle
+            backButton={{
+              to: v3RunsPath(organization, project),
+              text: "Runs",
+            }}
+            title={`Run #${run.number}`}
+          />
+          <PageAccessories>
+            <EnvironmentLabel
+              size="large"
+              environment={run.environment}
+              userName={usernameForEnv}
+            />
+          </PageAccessories>
+        </NavBar>
+        <PageBody>
+          <MainCenteredContainer className="max-w-prose">
+            <BlankstateInstructions title="These logs have taken a walk">
+              <Paragraph spacing>
+                Looks like the logs from this run have wandered off after their 7-day stay. We tidy
+                up older logs to keep things running smoothly.
+              </Paragraph>
+            </BlankstateInstructions>
+          </MainCenteredContainer>
+        </PageBody>
+      </>
+    );
+  }
+
+  const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
+
   const selectedSpanId = getSpanId(pathName);
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
     navigate(v3RunSpanPath(organization, project, run, { spanId: selectedSpan }));
   }, 250);
-
-  const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
 
   const revalidator = useRevalidator();
   const streamedEvents = useEventSource(v3RunStreamingPath(organization, project, run), {
@@ -319,7 +347,7 @@ function TasksTreeView({
               renderNode={({ node, state }) => (
                 <div
                   className={cn(
-                    "flex h-8 cursor-pointer items-center rounded-l-sm pr-2",
+                    "delay-[25ms] flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2 transition-colors",
                     state.selected
                       ? "bg-grid-dimmed hover:bg-grid-bright"
                       : "bg-transparent hover:bg-grid-dimmed"
@@ -339,8 +367,7 @@ function TasksTreeView({
                     <div
                       className={cn(
                         "flex h-8 w-4 items-center",
-                        node.hasChildren &&
-                          (node.data.isError ? "hover:bg-rose-500/30" : "hover:bg-charcoal-800")
+                        node.hasChildren && "hover:bg-charcoal-600"
                       )}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -378,10 +405,7 @@ function TasksTreeView({
               )}
               onScroll={(scrollTop) => {
                 //sync the scroll to the tree
-                if (
-                  timelineScrollRef.current &&
-                  timelineScrollRef.current.scrollTop !== scrollTop
-                ) {
+                if (timelineScrollRef.current) {
                   timelineScrollRef.current.scrollTop = scrollTop;
                 }
               }}
@@ -572,7 +596,6 @@ function TimelineView({
               />
             )}
             <TreeView
-              parentRef={parentRef}
               scrollRef={timelineScrollRef}
               virtualizer={virtualizer}
               tree={events}
@@ -624,7 +647,7 @@ function TimelineView({
               }}
               onScroll={(scrollTop) => {
                 //sync the scroll to the tree
-                if (treeScrollRef.current && treeScrollRef.current.scrollTop !== scrollTop) {
+                if (treeScrollRef.current) {
                   treeScrollRef.current.scrollTop = scrollTop;
                 }
               }}
@@ -644,6 +667,7 @@ function NodeText({ node }: { node: RunEvent }) {
     </Paragraph>
   );
 }
+
 function NodeStatusIcon({ node }: { node: RunEvent }) {
   if (node.data.level !== "TRACE") return null;
   if (node.data.style.variant !== "primary") return null;

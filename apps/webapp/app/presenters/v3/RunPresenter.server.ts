@@ -6,7 +6,7 @@ import { eventRepository } from "~/v3/eventRepository.server";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
-export type RunEvent = Result["events"][0];
+export type RunEvent = NonNullable<Result["trace"]>["events"][0];
 
 export class RunPresenter {
   #prismaClient: PrismaClient;
@@ -64,7 +64,19 @@ export class RunPresenter {
     const traceSummary = await eventRepository.getTraceSummary(run.traceId);
 
     if (!traceSummary) {
-      throw new Error("Trace not found");
+      return {
+        run: {
+          number: run.number,
+          friendlyId: run.friendlyId,
+          environment: {
+            type: run.runtimeEnvironment.type,
+            slug: run.runtimeEnvironment.slug,
+            userId: run.runtimeEnvironment.orgMember?.user.id,
+            userName: getUsername(run.runtimeEnvironment.orgMember?.user),
+          },
+        },
+        trace: undefined,
+      };
     }
 
     //this tree starts at the passed in span (hides parent elements if there are any)
@@ -115,12 +127,14 @@ export class RunPresenter {
           userName: getUsername(run.runtimeEnvironment.orgMember?.user),
         },
       },
-      rootSpanStatus,
-      events: events,
-      parentRunFriendlyId:
-        tree?.id === traceSummary.rootSpan.id ? undefined : traceSummary.rootSpan.runId,
-      duration: totalDuration,
-      rootStartedAt: tree?.data.startTime,
+      trace: {
+        rootSpanStatus,
+        events: events,
+        parentRunFriendlyId:
+          tree?.id === traceSummary.rootSpan.id ? undefined : traceSummary.rootSpan.runId,
+        duration: totalDuration,
+        rootStartedAt: tree?.data.startTime,
+      },
     };
   }
 }

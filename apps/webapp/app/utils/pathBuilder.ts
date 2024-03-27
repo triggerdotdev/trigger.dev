@@ -82,7 +82,7 @@ export const v3RunParamsSchema = ProjectParamSchema.extend({
   runParam: z.string(),
 });
 
-export const v3SpanParamsSchema = ProjectParamSchema.extend({
+export const v3SpanParamsSchema = v3RunParamsSchema.extend({
   spanParam: z.string(),
 });
 

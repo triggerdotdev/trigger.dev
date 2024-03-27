@@ -74,6 +74,14 @@ export function bundleDependenciesPlugin(config: ResolvedConfig): Plugin {
           return undefined; // let esbuild bundle it
         }
 
+        if (args.path === "superjson" || args.path === "copy-anything" || args.path === "is-what") {
+          logger.debug(`Bundling ${args.path} because its superjson/copy-anything/is-what`, {
+            ...args,
+          });
+
+          return undefined; // let esbuild bundle it
+        }
+
         // Skip assets that are treated as files (.css, .svg, .png, etc.).
         // Otherwise, esbuild would emit code that would attempt to require()
         // or import these files --- which aren't JavaScript!

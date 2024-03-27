@@ -16,8 +16,9 @@ type SpanTitleProps = {
 
 export function SpanTitle(event: SpanTitleProps) {
   return (
-    <span className={cn("inline-flex items-center gap-2", eventTextClassName(event))}>
-      {event.message} <SpanAccessory accessory={event.style.accessory} size={event.size} />
+    <span className={cn("flex items-center gap-x-2 overflow-x-hidden", eventTextClassName(event))}>
+      <span className="truncate">{event.message}</span>{" "}
+      <SpanAccessory accessory={event.style.accessory} size={event.size} />
     </span>
   );
 }
@@ -38,7 +39,7 @@ function SpanAccessory({
       return (
         <SpanCodePathAccessory
           accessory={accessory}
-          className={cn(size === "large" ? "text-sm" : "text-xs")}
+          className={cn("overflow-x-hidden", size === "large" ? "text-sm" : "text-xs")}
         />
       );
     }
@@ -66,7 +67,7 @@ export function SpanCodePathAccessory({
   return (
     <code
       className={cn(
-        "inline-flex items-center gap-0.5 rounded border border-charcoal-700 bg-charcoal-800 px-1.5 py-0.5 font-mono text-text-dimmed",
+        "inline-flex items-center gap-0.5 truncate rounded border border-charcoal-700 bg-charcoal-800 px-1.5 py-0.5 font-mono text-text-dimmed",
         className
       )}
     >
@@ -74,7 +75,7 @@ export function SpanCodePathAccessory({
         <Fragment key={index}>
           <span
             className={cn(
-              "inline-flex items-center",
+              "truncate",
               index === accessory.items.length - 1 ? "text-sun-100" : "text-text-dimmed"
             )}
           >

@@ -2,6 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "paths": {}
+    "paths": {
+      "@trigger.dev/core-apps": ["../core-apps/src"],
+      "@trigger.dev/core-apps/*": ["../core-apps/src/*"]
+    }
   }
 }

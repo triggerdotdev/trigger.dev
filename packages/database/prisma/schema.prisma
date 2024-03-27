@@ -1812,6 +1812,12 @@ model TaskEvent {
   /// This represents all span attributes in the $output namespace, like $output
   output Json?
 
+  /// This represents the mimetype of the output, such as application/json or application/super+json
+  outputType String?
+
+  payload     Json?
+  payloadType String?
+
   createdAt DateTime @default(now())
 }
 

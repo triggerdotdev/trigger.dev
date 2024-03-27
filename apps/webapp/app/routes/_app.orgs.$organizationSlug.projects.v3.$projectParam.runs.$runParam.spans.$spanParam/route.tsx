@@ -1,4 +1,4 @@
-import { QueueListIcon, StopCircleIcon } from "@heroicons/react/20/solid";
+import { CloudArrowDownIcon, QueueListIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
@@ -12,7 +12,6 @@ import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
-import { TextLink } from "~/components/primitives/TextLink";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
@@ -22,6 +21,7 @@ import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -30,7 +30,7 @@ import { SpanLink } from "~/v3/eventRepository.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, organizationSlug, spanParam } = v3SpanParamsSchema.parse(params);
+  const { projectParam, organizationSlug, runParam, spanParam } = v3SpanParamsSchema.parse(params);
 
   const presenter = new SpanPresenter();
   const span = await presenter.call({
@@ -39,6 +39,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectSlug: projectParam,
     spanId: spanParam,
   });
+
+  if (!span) {
+    // We're going to redirect to the run page
+    return redirectWithErrorMessage(
+      v3RunPath({ slug: organizationSlug }, { slug: projectParam }, { friendlyId: runParam }),
+      request,
+      `Event not found.`
+    );
+  }
 
   return typedjson({ span });
 };
@@ -58,14 +67,14 @@ export default function Page() {
         event.showActionBar ? "grid-rows-[2.5rem_1fr_2.5rem]" : "grid-rows-[2.5rem_1fr]"
       )}
     >
-      <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
+      <div className="mx-3 flex items-center justify-between gap-2 overflow-x-hidden border-b border-grid-dimmed">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
             name={event.style?.icon}
             spanName={event.message}
             className="h-4 min-h-4 w-4 min-w-4"
           />
-          <Header2 className={cn("whitespace-nowrap")}>
+          <Header2 className={cn("overflow-x-hidden")}>
             <SpanTitle {...event} size="large" />
           </Header2>
         </div>
@@ -149,10 +158,10 @@ export default function Page() {
 
           {event.events !== undefined && <SpanEvents spanEvents={event.events} />}
           {event.payload !== undefined && (
-            <CodeBlock rowTitle="Payload" code={event.payload} maxLines={20} />
+            <PacketDisplay data={event.payload} dataType={event.payloadType} title="Payload" />
           )}
           {event.output !== undefined && (
-            <CodeBlock rowTitle="Output" code={event.output} maxLines={20} />
+            <PacketDisplay data={event.output} dataType={event.outputType} title="Output" />
           )}
           {event.properties !== undefined && (
             <CodeBlock rowTitle="Properties" code={event.properties} maxLines={20} />
@@ -202,6 +211,31 @@ export default function Page() {
       ) : null}
     </div>
   );
+}
+
+function PacketDisplay({
+  data,
+  dataType,
+  title,
+}: {
+  data: string;
+  dataType: string;
+  title: string;
+}) {
+  if (dataType === "application/store") {
+    return (
+      <div className="flex flex-col">
+        <Paragraph variant="base/bright" className="w-full border-b border-grid-dimmed py-2.5">
+          {title}
+        </Paragraph>
+        <LinkButton LeadingIcon={CloudArrowDownIcon} to={data} variant="tertiary/medium" download>
+          Download
+        </LinkButton>
+      </div>
+    );
+  } else {
+    return <CodeBlock rowTitle={title} code={data} maxLines={20} />;
+  }
 }
 
 type TimelineProps = {

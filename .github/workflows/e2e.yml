@@ -21,12 +21,12 @@ jobs:
       - name: ⎔ Setup pnpm
         uses: pnpm/action-setup@v2.2.4
         with:
-          version: 7.18
+          version: 8.15.5
 
       - name: ⎔ Setup node
         uses: buildjet/setup-node@v3
         with:
-          node-version: 18
+          node-version: 20.11.1
           cache: "pnpm"
 
       - name: Install Protoc

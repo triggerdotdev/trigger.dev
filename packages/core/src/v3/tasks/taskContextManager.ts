@@ -5,7 +5,6 @@ import { SafeAsyncLocalStorage } from "../utils/safeAsyncLocalStorage";
 
 type TaskContext = {
   ctx: TaskRunContext;
-  payload: any;
   worker: BackgroundWorkerProperties;
 };
 
@@ -21,11 +20,6 @@ export class TaskContextManager {
     return store?.ctx;
   }
 
-  get payload(): any | undefined {
-    const store = this.#getStore();
-    return store?.payload;
-  }
-
   get worker(): BackgroundWorkerProperties | undefined {
     const store = this.#getStore();
     return store?.worker;
@@ -36,17 +30,7 @@ export class TaskContextManager {
       return {
         ...this.contextAttributes,
         ...this.workerAttributes,
-        ...this.payloadAttributes,
-        [SemanticResourceAttributes.SERVICE_NAME]: this.ctx.task.id,
       };
-    }
-
-    return {};
-  }
-
-  get payloadAttributes(): Attributes {
-    if (this.payload) {
-      return flattenAttributes(this.payload, "payload");
     }
 
     return {};
@@ -104,10 +88,9 @@ export class TaskContextManager {
 
 export const taskContextManager = new TaskContextManager();
 
-import { Span, SpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
-import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 import { LogRecord, LogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { Span, SpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 
 export class TaskContextSpanProcessor implements SpanProcessor {
   private _innerProcessor: SpanProcessor;

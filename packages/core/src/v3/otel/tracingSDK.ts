@@ -25,6 +25,16 @@ import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions"
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 import { TaskContextLogProcessor, TaskContextSpanProcessor } from "../tasks/taskContextManager";
 import { getEnvVar } from "../utils/getEnv";
+import {
+  OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT,
+  OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT,
+  OTEL_LINK_COUNT_LIMIT,
+  OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
+  OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT,
+  OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
+  OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT,
+  OTEL_SPAN_EVENT_COUNT_LIMIT,
+} from "../limits";
 
 class AsyncResourceDetector implements DetectorSync {
   private _promise: Promise<ResourceAttributes>;
@@ -105,12 +115,12 @@ export class TracingSDK {
       forceFlushTimeoutMillis: config.forceFlushTimeoutMillis ?? 500,
       resource: commonResources,
       spanLimits: {
-        attributeCountLimit: 1000,
-        attributeValueLengthLimit: 1000,
-        eventCountLimit: 100,
-        attributePerEventCountLimit: 100,
-        linkCountLimit: 10,
-        attributePerLinkCountLimit: 100,
+        attributeCountLimit: OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
+        attributeValueLengthLimit: OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT,
+        eventCountLimit: OTEL_SPAN_EVENT_COUNT_LIMIT,
+        attributePerEventCountLimit: OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT,
+        linkCountLimit: OTEL_LINK_COUNT_LIMIT,
+        attributePerLinkCountLimit: OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT,
       },
     });
 
@@ -137,8 +147,8 @@ export class TracingSDK {
     const loggerProvider = new LoggerProvider({
       resource: commonResources,
       logRecordLimits: {
-        attributeCountLimit: 1000,
-        attributeValueLengthLimit: 1000,
+        attributeCountLimit: OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
+        attributeValueLengthLimit: OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT,
       },
     });
 

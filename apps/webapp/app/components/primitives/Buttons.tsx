@@ -285,7 +285,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
 
 type LinkPropsType = Pick<
   LinkProps,
-  "to" | "target" | "onClick" | "onMouseDown" | "onMouseEnter" | "onMouseLeave"
+  "to" | "target" | "onClick" | "onMouseDown" | "onMouseEnter" | "onMouseLeave" | "download"
 > &
   React.ComponentProps<typeof ButtonContent>;
 export const LinkButton = ({
@@ -294,6 +294,7 @@ export const LinkButton = ({
   onMouseDown,
   onMouseEnter,
   onMouseLeave,
+  download,
   ...props
 }: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
@@ -308,7 +309,7 @@ export const LinkButton = ({
     });
   }
 
-  if (to.toString().startsWith("http")) {
+  if (to.toString().startsWith("http") || to.toString().startsWith("/resources")) {
     return (
       <ExtLink
         href={to.toString()}
@@ -318,6 +319,7 @@ export const LinkButton = ({
         onMouseDown={onMouseDown}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
+        download={download}
       >
         <ButtonContent {...props} />
       </ExtLink>
@@ -332,6 +334,7 @@ export const LinkButton = ({
         onMouseDown={onMouseDown}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
+        download={download}
       >
         <ButtonContent {...props} />
       </Link>

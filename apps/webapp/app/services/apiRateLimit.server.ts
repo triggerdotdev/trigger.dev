@@ -99,7 +99,7 @@ export function authorizationRateLimitMiddleware({
     const authorizationValue = req.headers.authorization;
     if (!authorizationValue) {
       if (log.requests) {
-        logger.info(`RateLimiter (${keyPrefix}): no key`);
+        logger.info(`RateLimiter (${keyPrefix}): no key`, { headers: req.headers, url: req.url });
       }
       res.setHeader("Content-Type", "application/problem+json");
       return res.status(401).send(
@@ -184,8 +184,8 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
   pathMatchers: [/^\/api/],
   pathWhiteList: ["/api/v1/authorization-code", "/api/v1/token"],
   log: {
-    rejections: true,
-    requests: false,
+    rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",
+    requests: env.API_RATE_LIMIT_REQUEST_LOGS_ENABLED === "1",
   },
 });
 

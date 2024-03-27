@@ -4,7 +4,7 @@ import supportsColor from "supports-color";
 import type { Result } from "update-check";
 import checkForUpdate from "update-check";
 import pkg from "../../package.json";
-import { chalkGrey, green, logo } from "./colors.js";
+import { chalkGrey, chalkRun, chalkTask, chalkWorker, green, logo } from "./cliOutput.js";
 import { getVersion } from "./getVersion.js";
 import { logger } from "./logger.js";
 
@@ -52,9 +52,16 @@ export async function printStandloneInitialBanner(performUpdateCheck = true) {
     }
   }
 
+  logger.log(text + "\n" + (supportsColor.stdout ? chalkGrey("-".repeat(54)) : "-".repeat(54)));
+}
+
+export function printDevBanner() {
   logger.log(
-    text + "\n" + (supportsColor.stdout ? chalk.hex(green)("-".repeat(54)) : "-".repeat(54))
+    `${chalkGrey("Key:")} ${chalkWorker("Worker")} ${chalkGrey("|")} ${chalkTask(
+      "Task"
+    )} ${chalkGrey("|")} ${chalkRun("Run")}`
   );
+  logger.log(chalkGrey("-".repeat(54)));
 }
 
 async function doUpdateCheck(): Promise<string | undefined> {

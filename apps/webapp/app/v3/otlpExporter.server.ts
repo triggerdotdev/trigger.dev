@@ -189,6 +189,13 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
             ),
             SemanticInternalAttributes.OUTPUT
           ),
+          payload: detectPrimitiveValue(
+            convertKeyValueItemsToMap(
+              pickAttributes(log.attributes ?? [], SemanticInternalAttributes.PAYLOAD),
+              []
+            ),
+            SemanticInternalAttributes.PAYLOAD
+          ),
           ...resourceProperties,
           attemptId:
             extractStringAttribute(
@@ -264,6 +271,22 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
             ),
             SemanticInternalAttributes.OUTPUT
           ),
+          outputType: pickAttributeStringValue(
+            span.attributes ?? [],
+            SemanticInternalAttributes.OUTPUT_TYPE
+          ),
+          payload: detectPrimitiveValue(
+            convertKeyValueItemsToMap(
+              pickAttributes(span.attributes ?? [], SemanticInternalAttributes.PAYLOAD),
+              []
+            ),
+            SemanticInternalAttributes.PAYLOAD
+          ),
+          payloadType:
+            pickAttributeStringValue(
+              span.attributes ?? [],
+              SemanticInternalAttributes.PAYLOAD_TYPE
+            ) ?? "application/json",
           ...resourceProperties,
           attemptId:
             extractStringAttribute(
@@ -343,15 +366,30 @@ function pickAttributes(attributes: KeyValue[], prefix: string): KeyValue[] {
     });
 }
 
+function pickAttributeStringValue(attributes: KeyValue[], key: string): string | undefined {
+  const attribute = attributes.find((attribute) => attribute.key === key);
+
+  if (!attribute) return undefined;
+
+  return isStringValue(attribute.value) ? attribute.value.stringValue : undefined;
+}
+
 function convertKeyValueItemsToMap(
   attributes: KeyValue[],
   filteredKeys: string[] = [],
   prefix?: string
-): Record<string, string | number | boolean | undefined> {
-  const result = attributes.reduce(
-    (map: Record<string, string | number | boolean | undefined>, attribute) => {
-      if (filteredKeys.includes(attribute.key)) return map;
+): Record<string, string | number | boolean | undefined> | undefined {
+  if (!attributes) return;
+  if (!attributes.length) return;
 
+  const filteredAttributes = attributes.filter(
+    (attribute) => !filteredKeys.includes(attribute.key)
+  );
+
+  if (!filteredAttributes.length) return;
+
+  const result = filteredAttributes.reduce(
+    (map: Record<string, string | number | boolean | undefined>, attribute) => {
       map[`${prefix ? `${prefix}.` : ""}${attribute.key}`] = isStringValue(attribute.value)
         ? attribute.value.stringValue
         : isIntValue(attribute.value)
@@ -373,9 +411,11 @@ function convertKeyValueItemsToMap(
 }
 
 function detectPrimitiveValue(
-  attributes: Record<string, string | number | boolean | undefined>,
+  attributes: Record<string, string | number | boolean | undefined> | undefined,
   sentinel: string
 ): Record<string, string | number | boolean | undefined> | string | number | boolean | undefined {
+  if (!attributes) return undefined;
+
   if (typeof attributes[sentinel] !== "undefined") {
     return attributes[sentinel];
   }

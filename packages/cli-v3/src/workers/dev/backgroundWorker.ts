@@ -15,6 +15,7 @@ import {
   ZodMessageSender,
   childToWorkerMessages,
   correctErrorStackTrace,
+  formatDurationMilliseconds,
   workerToChildMessages,
 } from "@trigger.dev/core/v3";
 import chalk from "chalk";
@@ -27,6 +28,17 @@ import { safeDeleteFileSync } from "../../utilities/fileSystem.js";
 import { installPackages } from "../../utilities/installPackages.js";
 import { logger } from "../../utilities/logger.js";
 import { UncaughtExceptionError } from "../common/errors.js";
+import {
+  chalkError,
+  chalkGrey,
+  chalkLink,
+  chalkRun,
+  chalkSuccess,
+  chalkTask,
+  chalkWarning,
+  chalkWorker,
+  prettyPrintDate,
+} from "../../utilities/cliOutput.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -108,7 +120,7 @@ export class BackgroundWorkerCoordinator {
   }
 
   async handleMessage(id: string, message: BackgroundWorkerServerMessages) {
-    logger.debug(`Received message from worker ${id}`, { workerMessage: message });
+    logger.debug(`Received message from worker ${id}`, JSON.stringify({ workerMessage: message }));
 
     switch (message.type) {
       case "EXECUTE_RUNS": {
@@ -146,16 +158,23 @@ export class BackgroundWorkerCoordinator {
 
     const { execution } = payload;
 
+    // ○ Mar 27 09:17:25.653 -> View logs | 20240326.20 | create-avatar | run_slufhjdfiv8ejnrkw9dsj.1
+
     const logsUrl = `${this.baseURL}/runs/${execution.run.id}`;
 
-    const link = chalk.bgBlueBright(terminalLink("view logs", logsUrl));
-    let timestampPrefix = chalk.gray(new Date().toISOString());
-    const workerPrefix = chalk.green(`[worker:${record.version}]`);
-    const taskPrefix = chalk.yellow(`[task:${execution.task.id}]`);
-    const runId = chalk.blue(execution.run.id);
-    const attempt = chalk.blue(`.${execution.attempt.number}`);
+    const pipe = chalkGrey("|");
+    const bullet = chalkGrey("○");
+    const link = chalkLink(terminalLink("View logs", logsUrl));
+    let timestampPrefix = chalkGrey(prettyPrintDate(payload.execution.attempt.startedAt));
+    const workerPrefix = chalkWorker(record.version);
+    const taskPrefix = chalkTask(execution.task.id);
+    const runId = chalkRun(`${execution.run.id}.${execution.attempt.number}`);
 
-    logger.log(`${timestampPrefix} ${workerPrefix}${taskPrefix} ${runId}${attempt} ${link}`);
+    logger.log(
+      `${bullet} ${timestampPrefix} ${chalkGrey(
+        "->"
+      )} ${link} ${pipe} ${workerPrefix} ${pipe} ${taskPrefix} ${pipe} ${runId}`
+    );
 
     const now = performance.now();
 
@@ -163,20 +182,21 @@ export class BackgroundWorkerCoordinator {
 
     const elapsed = performance.now() - now;
 
-    const retryingText =
+    const retryingText = chalkGrey(
       !completion.ok && completion.skippedRetrying
         ? " (retrying skipped)"
         : !completion.ok && completion.retry !== undefined
         ? ` (retrying in ${completion.retry.delay}ms)`
-        : "";
+        : ""
+    );
 
     const resultText = !completion.ok
       ? completion.error.type === "INTERNAL_ERROR" &&
         (completion.error.code === TaskRunErrorCodes.TASK_EXECUTION_ABORTED ||
           completion.error.code === TaskRunErrorCodes.TASK_RUN_CANCELLED)
-        ? chalk.yellow("cancelled")
-        : chalk.red(`error${retryingText}`)
-      : chalk.green("success");
+        ? chalkWarning("Cancelled")
+        : `${chalkError("Error")}${retryingText}`
+      : chalkSuccess("Success");
 
     const errorText = !completion.ok
       ? this.#formatErrorLog(completion.error)
@@ -184,12 +204,14 @@ export class BackgroundWorkerCoordinator {
       ? `retry in ${completion.retry}ms`
       : "";
 
-    const elapsedText = chalk.dim(`(${elapsed.toFixed(2)}ms)`);
+    const elapsedText = chalkGrey(`(${formatDurationMilliseconds(elapsed, { style: "short" })})`);
 
-    timestampPrefix = chalk.gray(new Date().toISOString());
+    timestampPrefix = chalkGrey(prettyPrintDate());
 
     logger.log(
-      `${timestampPrefix} ${workerPrefix}${taskPrefix} ${runId}${attempt} ${resultText} ${elapsedText} ${link}${errorText}`
+      `${bullet} ${timestampPrefix} ${chalkGrey(
+        "->"
+      )} ${link} ${pipe} ${workerPrefix} ${pipe} ${taskPrefix} ${pipe} ${runId} ${pipe} ${resultText} ${elapsedText}${errorText}`
     );
 
     this.onTaskCompleted.post({ completion, execution, worker, backgroundWorkerId: id });
@@ -201,13 +223,13 @@ export class BackgroundWorkerCoordinator {
         return "";
       }
       case "STRING_ERROR": {
-        return `\n\n${error.raw}\n`;
+        return `\n\n${chalkError("X Error:")} ${error.raw}\n`;
       }
       case "CUSTOM_ERROR": {
-        return `\n\n${error.raw}\n`;
+        return `\n\n${chalkError("X Error:")} ${error.raw}\n`;
       }
       case "BUILT_IN_ERROR": {
-        return `\n\n${error.stackTrace}\n`;
+        return `\n\n${error.stackTrace.replace(/^Error: /, chalkError("X Error: "))}\n`;
       }
     }
   }

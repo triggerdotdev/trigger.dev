@@ -2,6 +2,7 @@ import {
   PRIMARY_VARIANT,
   SemanticInternalAttributes,
   TriggerTaskRequestBody,
+  packetRequiresOffloading,
 } from "@trigger.dev/core/v3";
 import { nanoid } from "nanoid";
 import { createHash } from "node:crypto";
@@ -11,6 +12,8 @@ import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "../marqs.server";
 import { BaseService } from "./baseService.server";
+import { uploadToObjectStore } from "../r2.server";
+import { logger } from "~/services/logger.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -56,7 +59,6 @@ export class TriggerTaskService extends BaseService {
           taskSlug: taskId,
           attributes: {
             properties: {
-              [SemanticInternalAttributes.PAYLOAD]: body.payload,
               [SemanticInternalAttributes.SHOW_ACTIONS]: true,
             },
             style: {
@@ -98,17 +100,25 @@ export class TriggerTaskService extends BaseService {
             event.setAttribute("queueName", queueName);
             span.setAttribute("queueName", queueName);
 
+            const runFriendlyId = generateFriendlyId("run");
+
+            const payloadPacket = await this.#handlePayloadPacket(
+              body.payload,
+              runFriendlyId,
+              environment
+            );
+
             const taskRun = await tx.taskRun.create({
               data: {
                 status: "PENDING",
                 number: counter.lastNumber,
-                friendlyId: generateFriendlyId("run"),
+                friendlyId: runFriendlyId,
                 runtimeEnvironmentId: environment.id,
                 projectId: environment.projectId,
                 idempotencyKey,
                 taskIdentifier: taskId,
-                payload: JSON.stringify(body.payload),
-                payloadType: "application/json",
+                payload: payloadPacket.data,
+                payloadType: payloadPacket.dataType,
                 context: body.context,
                 traceContext: traceContext,
                 traceId: event.traceId,
@@ -119,6 +129,16 @@ export class TriggerTaskService extends BaseService {
                 isTest: body.options?.test ?? false,
               },
             });
+
+            if (payloadPacket.data) {
+              if (payloadPacket.dataType === "application/json") {
+                event.setAttribute("payload", JSON.parse(payloadPacket.data) as any);
+              } else {
+                event.setAttribute("payload", payloadPacket.data);
+              }
+
+              event.setAttribute("payloadType", payloadPacket.dataType);
+            }
 
             event.setAttribute("runId", taskRun.friendlyId);
             span.setAttribute("runId", taskRun.friendlyId);
@@ -165,6 +185,32 @@ export class TriggerTaskService extends BaseService {
         }
       );
     });
+  }
+
+  async #handlePayloadPacket(
+    payload: any,
+    pathPrefix: string,
+    environment: AuthenticatedEnvironment
+  ) {
+    const packet = {
+      data: JSON.stringify(payload),
+      dataType: "application/json",
+    };
+
+    const { needsOffloading, size } = packetRequiresOffloading(packet);
+
+    if (!needsOffloading) {
+      return packet;
+    }
+
+    const filename = `${pathPrefix}/payload.json`;
+
+    await uploadToObjectStore(filename, packet.data, packet.dataType, environment);
+
+    return {
+      data: filename,
+      dataType: "application/store",
+    };
   }
 }
 

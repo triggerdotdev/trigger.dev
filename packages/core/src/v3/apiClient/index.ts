@@ -8,6 +8,7 @@ import {
   TriggerTaskResponse,
   BatchTriggerTaskRequestBody,
   BatchTriggerTaskResponse,
+  CreateUploadPayloadUrlResponseBody,
 } from "../schemas";
 
 export type TriggerOptions = {
@@ -43,6 +44,28 @@ export class ApiClient {
     });
   }
 
+  createUploadPayloadUrl(filename: string) {
+    return zodfetch(
+      CreateUploadPayloadUrlResponseBody,
+      `${this.baseUrl}/api/v1/packets/${filename}`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+      }
+    );
+  }
+
+  getPayloadUrl(filename: string) {
+    return zodfetch(
+      CreateUploadPayloadUrlResponseBody,
+      `${this.baseUrl}/api/v1/packets/${filename}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      }
+    );
+  }
+
   #getHeaders(spanParentAsLink: boolean) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -73,7 +96,7 @@ export class ApiClientManager {
 
   get baseURL(): string | undefined {
     const store = this.#getStore();
-    return store?.baseURL ?? getEnvVar("TRIGGER_API_URL");
+    return store?.baseURL ?? getEnvVar("TRIGGER_API_URL") ?? "https://api.trigger.dev";
   }
 
   get accessToken(): string | undefined {

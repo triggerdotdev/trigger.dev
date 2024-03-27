@@ -2,7 +2,7 @@ import { confirm, spinner } from "@clack/prompts";
 import { RunOptions, run } from "npm-check-updates";
 import path from "path";
 import { z } from "zod";
-import { chalkError, chalkSuccess } from "../utilities/colors.js";
+import { chalkError, chalkSuccess } from "../utilities/cliOutput.js";
 import { readJSONFileSync, writeJSONFile } from "../utilities/fileSystem.js";
 import { installDependencies } from "../utilities/installDependencies.js";
 

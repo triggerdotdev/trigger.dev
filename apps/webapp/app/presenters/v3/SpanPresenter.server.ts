@@ -1,18 +1,9 @@
-import { Attributes } from "@opentelemetry/api";
-import {
-  ExceptionEventProperties,
-  SemanticInternalAttributes,
-  SpanEvent,
-  SpanEvents,
-  correctErrorStackTrace,
-  isExceptionSpanEvent,
-} from "@trigger.dev/core/v3";
-import { z } from "zod";
+import { prettyPrintPacket } from "@trigger.dev/core/v3";
 import { PrismaClient, prisma } from "~/db.server";
 import { eventRepository } from "~/v3/eventRepository.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
-export type Span = Result["event"];
+export type Span = NonNullable<Result>["event"];
 
 export class SpanPresenter {
   #prismaClient: PrismaClient;
@@ -45,15 +36,31 @@ export class SpanPresenter {
     const span = await eventRepository.getSpan(spanId);
 
     if (!span) {
-      throw new Error("Event not found");
+      return;
     }
+
+    const output =
+      span.outputType === "application/store"
+        ? `/resources/packets/${span.environmentId}/${span.output}`
+        : typeof span.output !== "undefined" && span.output !== null
+        ? prettyPrintPacket(span.output, span.outputType ?? undefined)
+        : undefined;
+
+    const payload =
+      span.payloadType === "application/store"
+        ? `/resources/packets/${span.environmentId}/${span.payload}`
+        : typeof span.payload !== "undefined" && span.payload !== null
+        ? prettyPrintPacket(span.payload, span.payloadType ?? undefined)
+        : undefined;
 
     return {
       event: {
         ...span,
         events: span.events,
-        output: span.output ? JSON.stringify(span.output, null, 2) : undefined,
-        payload: span.payload ? JSON.stringify(span.payload, null, 2) : undefined,
+        output,
+        outputType: span.outputType ?? "application/json",
+        payload,
+        payloadType: span.payloadType ?? "application/json",
         properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
         showActionBar: span.show?.actions === true,
       },

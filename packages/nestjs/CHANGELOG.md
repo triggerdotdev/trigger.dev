@@ -1,5 +1,13 @@
 # @trigger.dev/nestjs
 
+## 3.0.0-beta.0
+
+### Patch Changes
+
+- cd8f6b9af: fix: [nestjs integration] fastify HTTP adapter detection now works correctly for response headers
+- Updated dependencies [395abe1b9]
+  - @trigger.dev/sdk@3.0.0-beta.0
+
 ## 2.3.18
 
 ### Patch Changes

@@ -19,7 +19,7 @@ export type TreeViewProps<TData> = {
   nodes: UseTreeStateOutput["nodes"];
   autoFocus?: boolean;
   virtualizer: Virtualizer<HTMLElement, Element>;
-  parentRef: MutableRefObject<HTMLElement | null>;
+  parentRef?: MutableRefObject<HTMLElement | null>;
   scrollRef?: MutableRefObject<HTMLElement | null>;
   onScroll?: (scrollTop: number) => void;
 } & Pick<UseTreeStateOutput, "getTreeProps" | "getNodeProps">;
@@ -42,9 +42,9 @@ export function TreeView<TData>({
 }: TreeViewProps<TData>) {
   useEffect(() => {
     if (autoFocus) {
-      parentRef.current?.focus();
+      parentRef?.current?.focus();
     }
-  }, [autoFocus, parentRef.current]);
+  }, [autoFocus, parentRef?.current]);
 
   const virtualItems = virtualizer.getVirtualItems();
 
@@ -58,7 +58,7 @@ export function TreeView<TData>({
   );
 
   useEffect(() => {
-    //subscribe to parentRef scroll event
+    //subscribe to scrollRef scroll event
     if (!scrollRef?.current || onScroll === undefined) return;
     scrollRef.current.addEventListener("scroll", scrollCallback);
     return () => scrollRef.current?.removeEventListener("scroll", scrollCallback);
@@ -67,7 +67,9 @@ export function TreeView<TData>({
   return (
     <motion.div
       ref={(element) => {
-        parentRef.current = element;
+        if (parentRef) {
+          parentRef.current = element;
+        }
         if (scrollRef) {
           scrollRef.current = element;
         }
