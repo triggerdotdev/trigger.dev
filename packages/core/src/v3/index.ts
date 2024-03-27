@@ -9,6 +9,7 @@ export * from "./zodIpc";
 export * from "./errors";
 export * from "./runtime-api";
 export * from "./logger-api";
+export * from "./clock-api";
 export * from "./types";
 export * from "./limits";
 export { SemanticInternalAttributes } from "./semanticInternalAttributes";
@@ -35,6 +36,7 @@ export { taskContextManager, TaskContextSpanProcessor } from "./tasks/taskContex
 export type { RuntimeManager } from "./runtime/manager";
 export { DevRuntimeManager } from "./runtime/devRuntimeManager";
 export { ProdRuntimeManager } from "./runtime/prodRuntimeManager";
+export { DurableClock } from "./clock/durableClock";
 export { TriggerTracer } from "./tracer";
 
 export type { TaskLogger } from "./logger/taskLogger";
@@ -57,11 +59,6 @@ export { omit } from "./utils/omit";
 export { TracingSDK, type TracingDiagnosticLogLevel, recordSpanException } from "./otel";
 export { TaskExecutor, type TaskExecutorOptions } from "./workers/taskExecutor";
 export { detectDependencyVersion } from "./utils/detectDependencyVersion";
-export {
-  type PreciseDateOrigin,
-  calculatePreciseDateHrTime,
-  preciseDateOriginNow,
-} from "./utils/preciseDate";
 export {
   parsePacket,
   stringifyIO,

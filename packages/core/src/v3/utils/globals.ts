@@ -1,3 +1,4 @@
+import { Clock } from "../clock/clock";
 import type { RuntimeManager } from "../runtime/manager";
 import { _globalThis } from "./platform";
 
@@ -44,4 +45,5 @@ type TriggerDotDevGlobal = {
 type TriggerDotDevGlobalAPI = {
   runtime?: RuntimeManager;
   logger?: any;
+  clock?: Clock;
 };

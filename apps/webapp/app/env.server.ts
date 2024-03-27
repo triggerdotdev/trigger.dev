@@ -97,13 +97,25 @@ const EnvironmentSchema = z.object({
   CONTAINER_REGISTRY_USERNAME: z.string().optional(),
   CONTAINER_REGISTRY_PASSWORD: z.string().optional(),
   DEPLOY_REGISTRY_HOST: z.string().optional(),
-  DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
   OBJECT_STORE_BASE_URL: z.string().optional(),
   OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
   OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
   EVENTS_BATCH_SIZE: z.coerce.number().int().default(100),
   EVENTS_BATCH_INTERVAL: z.coerce.number().int().default(1000),
   EVENTS_DEFAULT_LOG_RETENTION: z.coerce.number().int().default(7),
+
+  // Development OTEL environment variables
+  DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
+  // If this is set to 1, then the below variables are used to configure the batch processor for spans and logs
+  DEV_OTEL_BATCH_PROCESSING_ENABLED: z.string().default("0"),
+  DEV_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE: z.string().default("64"),
+  DEV_OTEL_SPAN_SCHEDULED_DELAY_MILLIS: z.string().default("200"),
+  DEV_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
+  DEV_OTEL_SPAN_MAX_QUEUE_SIZE: z.string().default("512"),
+  DEV_OTEL_LOG_MAX_EXPORT_BATCH_SIZE: z.string().default("64"),
+  DEV_OTEL_LOG_SCHEDULED_DELAY_MILLIS: z.string().default("200"),
+  DEV_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
+  DEV_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

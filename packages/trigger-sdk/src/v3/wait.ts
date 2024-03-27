@@ -33,8 +33,6 @@ export const wait = {
         const durationInMs = calculateDurationInMs(options);
 
         await runtime.waitForDuration(durationInMs);
-
-        span.end(start + durationInMs);
       },
       {
         attributes: {
@@ -65,8 +63,6 @@ export const wait = {
         const durationInMs = options.date.getTime() - start;
 
         await runtime.waitForDuration(durationInMs);
-
-        span.end(start + durationInMs);
       },
       {
         attributes: {

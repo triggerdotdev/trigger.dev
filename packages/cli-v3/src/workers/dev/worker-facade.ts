@@ -2,9 +2,10 @@ import {
   Config,
   ProjectConfig,
   TaskExecutor,
-  preciseDateOriginNow,
   type TracingSDK,
   type HandleErrorFunction,
+  DurableClock,
+  clock,
 } from "@trigger.dev/core/v3";
 
 __WORKER_SETUP__;
@@ -42,10 +43,11 @@ import { TaskMetadataWithFunctions } from "../../types.js";
 
 declare const sender: ZodMessageSender<typeof childToWorkerMessages>;
 
-const preciseDateOrigin = preciseDateOriginNow();
+const durableClock = new DurableClock();
+clock.setGlobalClock(durableClock);
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
-const consoleInterceptor = new ConsoleInterceptor(otelLogger, preciseDateOrigin);
+const consoleInterceptor = new ConsoleInterceptor(otelLogger);
 
 const devRuntimeManager = new DevRuntimeManager();
 
@@ -55,7 +57,6 @@ const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
   tracer: tracer,
   level: "info",
-  preciseDateOrigin,
 });
 
 logger.setGlobalTaskLogger(otelTaskLogger);

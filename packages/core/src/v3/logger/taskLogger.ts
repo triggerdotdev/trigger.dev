@@ -4,7 +4,8 @@ import { iconStringForSeverity } from "../icons";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 import { TriggerTracer } from "../tracer";
 import { flattenAttributes } from "../utils/flattenAttributes";
-import { PreciseDateOrigin, calculatePreciseDateHrTime } from "../utils/preciseDate";
+import { ClockTime } from "../clock/clock";
+import { clock } from "../clock-api";
 
 export type LogLevel = "log" | "error" | "warn" | "info" | "debug";
 
@@ -14,7 +15,6 @@ export type TaskLoggerConfig = {
   logger: Logger;
   tracer: TriggerTracer;
   level: LogLevel;
-  preciseDateOrigin: PreciseDateOrigin;
 };
 
 export interface TaskLogger {
@@ -36,41 +36,40 @@ export class OtelTaskLogger implements TaskLogger {
   debug(message: string, properties?: Record<string, unknown>) {
     if (this._level < 4) return;
 
-    this.#emitLog(message, "debug", SeverityNumber.DEBUG, properties);
+    this.#emitLog(message, this.#getTimestampInHrTime(), "debug", SeverityNumber.DEBUG, properties);
   }
 
   log(message: string, properties?: Record<string, unknown>) {
     if (this._level < 2) return;
 
-    this.#emitLog(message, "log", SeverityNumber.INFO, properties);
+    this.#emitLog(message, this.#getTimestampInHrTime(), "log", SeverityNumber.INFO, properties);
   }
 
   info(message: string, properties?: Record<string, unknown>) {
     if (this._level < 3) return;
 
-    this.#emitLog(message, "info", SeverityNumber.INFO, properties);
+    this.#emitLog(message, this.#getTimestampInHrTime(), "info", SeverityNumber.INFO, properties);
   }
 
   warn(message: string, properties?: Record<string, unknown>) {
     if (this._level < 1) return;
 
-    this.#emitLog(message, "warn", SeverityNumber.WARN, properties);
+    this.#emitLog(message, this.#getTimestampInHrTime(), "warn", SeverityNumber.WARN, properties);
   }
 
   error(message: string, properties?: Record<string, unknown>) {
     if (this._level < 0) return;
 
-    this.#emitLog(message, "error", SeverityNumber.ERROR, properties);
+    this.#emitLog(message, this.#getTimestampInHrTime(), "error", SeverityNumber.ERROR, properties);
   }
 
   #emitLog(
     message: string,
+    timestamp: ClockTime,
     severityText: string,
     severityNumber: SeverityNumber,
     properties?: Record<string, unknown>
   ) {
-    const timestamp = this.#getTimestampInHrTime();
-
     let attributes: Attributes = { ...flattenAttributes(properties) };
 
     const icon = iconStringForSeverity(severityNumber);
@@ -83,7 +82,7 @@ export class OtelTaskLogger implements TaskLogger {
       severityText,
       body: message,
       attributes,
-      timestamp
+      timestamp,
     });
   }
 
@@ -91,17 +90,17 @@ export class OtelTaskLogger implements TaskLogger {
     return this._config.tracer.startActiveSpan(name, fn, options);
   }
 
-  #getTimestampInHrTime(): [number, number] {
-    return calculatePreciseDateHrTime(this._config.preciseDateOrigin);
+  #getTimestampInHrTime(): ClockTime {
+    return clock.preciseNow();
   }
 }
 
 export class NoopTaskLogger implements TaskLogger {
-  debug() { }
-  log() { }
-  info() { }
-  warn() { }
-  error() { }
+  debug() {}
+  log() {}
+  info() {}
+  warn() {}
+  error() {}
   trace<T>(name: string, fn: (span: Span) => Promise<T>): Promise<T> {
     return fn({} as Span);
   }
