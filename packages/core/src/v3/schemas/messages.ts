@@ -1,6 +1,26 @@
 import { z } from "zod";
 import { TaskRunExecution, TaskRunExecutionResult } from "./common";
 
+export const MachineCpu = z
+  .union([z.literal(0.25), z.literal(0.5), z.literal(1), z.literal(2), z.literal(4)])
+  .default(0.5);
+
+export type MachineCpu = z.infer<typeof MachineCpu>;
+
+export const MachineMemory = z
+  .union([z.literal(0.25), z.literal(0.5), z.literal(1), z.literal(2), z.literal(4), z.literal(8)])
+  .default(1);
+
+export type MachineMemory = z.infer<typeof MachineMemory>;
+
+export const Machine = z.object({
+  version: z.literal("v1").default("v1"),
+  cpu: MachineCpu,
+  memory: MachineMemory,
+});
+
+export type Machine = z.infer<typeof Machine>;
+
 export const TaskRunExecutionPayload = z.object({
   execution: TaskRunExecution,
   traceContext: z.record(z.unknown()),
@@ -44,6 +64,7 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     envId: z.string(),
     runId: z.string(),
     version: z.string(),
+    machine: Machine,
   }),
 ]);
 
@@ -229,6 +250,7 @@ export const TaskMetadata = z.object({
   packageVersion: z.string(),
   queue: QueueOptions.optional(),
   retry: RetryOptions.optional(),
+  machine: Machine.partial().optional(),
 });
 
 export type TaskMetadata = z.infer<typeof TaskMetadata>;

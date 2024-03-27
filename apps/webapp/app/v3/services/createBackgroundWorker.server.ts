@@ -101,6 +101,7 @@ export async function createBackgroundTasks(
           exportName: task.exportName,
           retryConfig: task.retry,
           queueConfig: task.queue,
+          machineConfig: task.machine,
         },
       });
 

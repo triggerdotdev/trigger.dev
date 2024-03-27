@@ -5,6 +5,8 @@ import {
   HandleErrorResult,
   InitFnParams,
   InitOutput,
+  MachineCpu,
+  MachineMemory,
   MiddlewareFnParams,
   QueueOptions,
   RetryOptions,
@@ -108,8 +110,8 @@ export type TaskOptions<TPayload, TOutput = any, TInitOutput extends InitOutput 
      * - 2
      * - 4
      */
-    cpu?: 0.25 | 0.5 | 1 | 2 | 4;
-    /** In GBs of RAM. The default is 0.5.
+    cpu?: MachineCpu;
+    /** In GBs of RAM. The default is 1.
      *
      * Possible values:
      * - 0.25
@@ -119,7 +121,7 @@ export type TaskOptions<TPayload, TOutput = any, TInitOutput extends InitOutput 
      * - 4
      * - 8
      */
-    memory?: 0.25 | 0.5 | 1 | 2 | 4 | 8;
+    memory?: MachineMemory;
   };
   /** This gets called when a task is triggered. It's where you put the code you want to execute.
    *
@@ -498,6 +500,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
       packageVersion: packageJson.version,
       queue: params.queue,
       retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
+      machine: params.machine,
       fns: {
         run: params.run,
         init: params.init,

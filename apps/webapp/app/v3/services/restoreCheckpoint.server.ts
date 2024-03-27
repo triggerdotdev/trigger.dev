@@ -3,6 +3,7 @@ import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { BaseService } from "./baseService.server";
+import { Machine } from "@trigger.dev/core/v3";
 
 const RESTORABLE_RUN_STATUSES: TaskRunStatus[] = ["WAITING_TO_RESUME"];
 const RESTORABLE_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["PAUSED"];
@@ -30,6 +31,11 @@ export class RestoreCheckpointService extends BaseService {
             attempt: {
               select: {
                 status: true,
+                backgroundWorkerTask: {
+                  select: {
+                    machineConfig: true,
+                  },
+                },
               },
             },
           },
@@ -63,6 +69,17 @@ export class RestoreCheckpointService extends BaseService {
       return;
     }
 
+    const { machineConfig } = checkpoint.attempt.backgroundWorkerTask;
+    const machine = Machine.safeParse(machineConfig ?? {});
+
+    if (!machine.success) {
+      logger.error("Failed to parse machine config", {
+        attemptId: checkpoint.attemptId,
+        machineConfig: checkpoint.attempt.backgroundWorkerTask.machineConfig,
+      });
+      return;
+    }
+
     const eventService = new CreateCheckpointRestoreEventService(this._prisma);
     await eventService.restore({ checkpointId: checkpoint.id });
 
@@ -74,6 +91,7 @@ export class RestoreCheckpointService extends BaseService {
       location: checkpoint.location,
       reason: checkpoint.reason ?? undefined,
       imageRef: checkpoint.imageRef,
+      machine: machine.data,
     });
 
     return checkpoint;

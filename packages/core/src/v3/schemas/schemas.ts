@@ -7,6 +7,7 @@ import {
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   RetryOptions,
+  Machine
 } from "./messages";
 import { TaskResource } from "./resources";
 
@@ -41,13 +42,6 @@ export type ResolvedConfig = RequireKeys<
   Config,
   "triggerDirectories" | "triggerUrl" | "projectDir" | "tsconfigPath"
 >;
-
-export const Machine = z.object({
-  cpu: z.string().default("1").optional(),
-  memory: z.string().default("500Mi").optional(),
-});
-
-export type Machine = z.infer<typeof Machine>;
 
 export const WaitReason = z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]);
 
@@ -103,13 +97,7 @@ export const PlatformToProviderMessages = {
       }),
     ]),
   },
-  INVOKE: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      name: z.string(),
-      machine: Machine,
-    }),
-  },
+  // TODO: this should be a shared queue message instead
   RESTORE: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -119,6 +107,7 @@ export const PlatformToProviderMessages = {
       location: z.string(),
       reason: z.string().optional(),
       imageRef: z.string(),
+      machine: Machine,
     }),
   },
   DELETE: {

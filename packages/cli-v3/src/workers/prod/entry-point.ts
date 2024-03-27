@@ -678,11 +678,7 @@ class ProdWorker {
     }
 
     for (const task of this.#backgroundWorker.tasks) {
-      taskResources.push({
-        id: task.id,
-        filePath: task.filePath,
-        exportName: task.exportName,
-      });
+      taskResources.push(task);
 
       packageVersion = task.packageVersion;
     }

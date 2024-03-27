@@ -104,7 +104,7 @@ export class ProviderShell implements Provider {
                 envId: message.data.envId,
                 runId: message.data.runId,
                 image: message.data.image,
-                machine: {},
+                machine: message.data.machine,
                 version: message.version,
               });
             } catch (error) {
@@ -208,10 +208,7 @@ export class ProviderShell implements Provider {
             await this.tasks.restore({
               runId: message.runId,
               checkpointRef: message.location,
-              machine: {
-                cpu: "1",
-                memory: "100Mi",
-              },
+              machine: message.machine,
               imageRef: message.imageRef,
             });
           } catch (error) {
@@ -247,22 +244,6 @@ export class ProviderShell implements Provider {
           await this.tasks.delete({ runId: body });
 
           return reply.text(`sent delete request: ${body}`);
-        }
-        case "/invoke": {
-          const body = await getTextBody(req);
-
-          await this.tasks.create({
-            envId: "placeholder",
-            image: body,
-            machine: {
-              cpu: "1",
-              memory: "100Mi",
-            },
-            runId: "<missing>",
-            version: "<missing>",
-          });
-
-          return reply.text(`sent restore request: ${body}`);
         }
         case "/restore": {
           const body = await getTextBody(req);

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { QueueOptions, RetryOptions } from "./messages";
+import { Machine, QueueOptions, RetryOptions } from "./messages";
 
 export const TaskResource = z.object({
   id: z.string(),
@@ -7,6 +7,7 @@ export const TaskResource = z.object({
   exportName: z.string(),
   queue: QueueOptions.optional(),
   retry: RetryOptions.optional(),
+  machine: Machine.partial().optional(),
 });
 
 export type TaskResource = z.infer<typeof TaskResource>;

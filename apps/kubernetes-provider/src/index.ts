@@ -7,6 +7,7 @@ import {
   TaskOperationsIndexOptions,
   TaskOperationsRestoreOptions,
 } from "@trigger.dev/core-apps";
+import { Machine } from "@trigger.dev/core/v3";
 import { randomUUID } from "crypto";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
@@ -169,9 +170,9 @@ class KubernetesTaskOperations implements TaskOperations {
                   containerPort: 8000,
                 },
               ],
-              // resources: {
-              //   limits: opts.machine,
-              // },
+              resources: {
+                limits: this.#getResourcesFromMachineConfig(opts.machine),
+              },
               lifecycle: {
                 postStart: {
                   exec: {
@@ -309,9 +310,9 @@ class KubernetesTaskOperations implements TaskOperations {
                   containerPort: 8000,
                 },
               ],
-              // resources: {
-              //   limits: opts.machine,
-              // },
+              resources: {
+                limits: this.#getResourcesFromMachineConfig(opts.machine),
+              },
               lifecycle: {
                 postStart: {
                   exec: {
@@ -353,6 +354,13 @@ class KubernetesTaskOperations implements TaskOperations {
 
   async get(opts: { runId: string }) {
     await this.#getPod(opts.runId, this.#namespace);
+  }
+
+  #getResourcesFromMachineConfig(config: Machine) {
+    return {
+      cpu: `${config.cpu}`,
+      memory: `${config.memory}G`,
+    };
   }
 
   #getLifecycleCommand(type: "postStart" | "preStop", cause: "index" | "create" | "restore") {
