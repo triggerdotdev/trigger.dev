@@ -184,8 +184,8 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
   pathMatchers: [/^\/api/],
   pathWhiteList: ["/api/v1/authorization-code", "/api/v1/token"],
   log: {
-    rejections: true,
-    requests: false,
+    rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",
+    requests: env.API_RATE_LIMIT_REQUEST_LOGS_ENABLED === "1",
   },
 });
 

@@ -80,6 +80,8 @@ const EnvironmentSchema = z.object({
    */
   API_RATE_LIMIT_WINDOW: z.string().default("60s"),
   API_RATE_LIMIT_MAX: z.coerce.number().int().default(600),
+  API_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
+  API_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
 
   //v3
   V3_ENABLED: z.string().default("false"),
