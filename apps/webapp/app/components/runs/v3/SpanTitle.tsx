@@ -16,10 +16,10 @@ type SpanTitleProps = {
 
 export function SpanTitle(event: SpanTitleProps) {
   return (
-    <div className={cn("flex items-center gap-x-2 overflow-x-hidden", eventTextClassName(event))}>
+    <span className={cn("flex items-center gap-x-2 overflow-x-hidden", eventTextClassName(event))}>
       <span className="truncate">{event.message}</span>{" "}
       <SpanAccessory accessory={event.style.accessory} size={event.size} />
-    </div>
+    </span>
   );
 }
 
