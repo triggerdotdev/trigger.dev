@@ -38,7 +38,7 @@
     "env:pull": "turbo run env:pull",
     "changeset:add": "changeset",
     "changeset:version": "changeset version",
-    "changeset:release": "pnpm run build --filter \"@trigger.dev/*\" && changeset publish",
+    "changeset:release": "pnpm run build --filter \"@trigger.dev/*\" --filter \"trigger.dev\" && changeset publish",
     "changeset:beta": "changeset pre enter beta",
     "changeset:normal": "changeset pre exit",
     "clean:sourcemaps": "turbo run clean:sourcemaps",
