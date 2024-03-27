@@ -1,5 +1,9 @@
 import { SpanKind } from "@opentelemetry/api";
-import { SemanticAttributes } from "@opentelemetry/semantic-conventions";
+import {
+  SEMATTRS_MESSAGING_DESTINATION,
+  SEMATTRS_MESSAGING_OPERATION,
+  SEMATTRS_MESSAGING_SYSTEM,
+} from "@opentelemetry/semantic-conventions";
 import {
   HandleErrorFnParams,
   HandleErrorResult,
@@ -12,11 +16,13 @@ import {
   SemanticInternalAttributes,
   SuccessFnParams,
   TaskRunContext,
+  TaskRunExecutionResult,
   accessoryAttributes,
   apiClientManager,
+  conditionallyImportPacket,
   createErrorTaskError,
   defaultRetryOptions,
-  flattenAttributes,
+  parsePacket,
   runtime,
   taskContextManager,
 } from "@trigger.dev/core/v3";
@@ -240,13 +246,12 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
         {
           kind: SpanKind.PRODUCER,
           attributes: {
-            [SemanticAttributes.MESSAGING_OPERATION]: "publish",
+            [SEMATTRS_MESSAGING_OPERATION]: "publish",
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
             ["messaging.client_id"]: taskContextManager.worker?.id,
-            [SemanticAttributes.MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
+            [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             ["messaging.message.body.size"]: JSON.stringify(payload).length,
-            [SemanticAttributes.MESSAGING_SYSTEM]: "trigger.dev",
-            ...flattenAttributes(payload as any, SemanticInternalAttributes.PAYLOAD),
+            [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             ...(taskMetadata
               ? accessoryAttributes({
                   items: [
@@ -302,14 +307,14 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
         {
           kind: SpanKind.PRODUCER,
           attributes: {
-            [SemanticAttributes.MESSAGING_OPERATION]: "publish",
+            [SEMATTRS_MESSAGING_OPERATION]: "publish",
             ["messaging.batch.message_count"]: items.length,
             ["messaging.client_id"]: taskContextManager.worker?.id,
-            [SemanticAttributes.MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
+            [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             ["messaging.message.body.size"]: items
               .map((item) => JSON.stringify(item.payload))
               .join("").length,
-            [SemanticAttributes.MESSAGING_SYSTEM]: "trigger.dev",
+            [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
             ...(taskMetadata
               ? accessoryAttributes({
@@ -347,7 +352,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
         taskMetadata ? "Trigger" : `${params.id} triggerAndWait()`,
         async (span) => {
           const response = await apiClient.triggerTask(params.id, {
-            payload: payload,
+            payload,
             options: {
               dependentAttempt: ctx.attempt.id,
               lockToVersion: taskContextManager.worker?.version, // Lock to current version because we're waiting for it to finish
@@ -368,22 +373,22 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             ctx,
           });
 
-          if (!result.ok) {
-            throw createErrorTaskError(result.error);
+          const runResult = await handleTaskRunExecutionResult<TOutput>(result);
+
+          if (!runResult.ok) {
+            throw runResult.error;
           }
 
-          return typeof result.output === "string" ? JSON.parse(result.output) : result.output;
+          return runResult.output;
         },
         {
           kind: SpanKind.PRODUCER,
           attributes: {
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
-            [SemanticAttributes.MESSAGING_OPERATION]: "publish",
+            [SEMATTRS_MESSAGING_OPERATION]: "publish",
             ["messaging.client_id"]: taskContextManager.worker?.id,
-            [SemanticAttributes.MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
-            ["messaging.message.body.size"]: JSON.stringify(payload).length,
-            [SemanticAttributes.MESSAGING_SYSTEM]: "trigger.dev",
-            ...flattenAttributes(payload as any, SemanticInternalAttributes.PAYLOAD),
+            [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
+            [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             ...(taskMetadata
               ? accessoryAttributes({
                   items: [
@@ -442,21 +447,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             ctx,
           });
 
-          const runs = result.items.map((item) => {
-            if (item.ok) {
-              return {
-                ok: true,
-                id: item.id,
-                output: typeof item.output === "string" ? JSON.parse(item.output) : item.output,
-              } satisfies TaskRunResult<TOutput>;
-            } else {
-              return {
-                ok: false,
-                id: item.id,
-                error: createErrorTaskError(item.error),
-              } satisfies TaskRunResult<TOutput>;
-            }
-          });
+          const runs = await handleBatchTaskRunExecutionResult<TOutput>(result.items);
 
           return {
             id: result.id,
@@ -466,14 +457,14 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
         {
           kind: SpanKind.PRODUCER,
           attributes: {
-            [SemanticAttributes.MESSAGING_OPERATION]: "publish",
+            [SEMATTRS_MESSAGING_OPERATION]: "publish",
             ["messaging.batch.message_count"]: items.length,
             ["messaging.client_id"]: taskContextManager.worker?.id,
-            [SemanticAttributes.MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
+            [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             ["messaging.message.body.size"]: items
               .map((item) => JSON.stringify(item.payload))
               .join("").length,
-            [SemanticAttributes.MESSAGING_SYSTEM]: "trigger.dev",
+            [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
             ...(taskMetadata
               ? accessoryAttributes({
@@ -510,4 +501,60 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
   });
 
   return task;
+}
+
+async function handleBatchTaskRunExecutionResult<TOutput>(
+  items: Array<TaskRunExecutionResult>
+): Promise<Array<TaskRunResult<TOutput>>> {
+  const someObjectStoreOutputs = items.some(
+    (item) => item.ok && item.outputType === "application/store"
+  );
+
+  if (!someObjectStoreOutputs) {
+    const results = await Promise.all(
+      items.map(async (item) => {
+        return await handleTaskRunExecutionResult<TOutput>(item);
+      })
+    );
+
+    return results;
+  }
+
+  return await tracer.startActiveSpan(
+    "store.downloadPayloads",
+    async (span) => {
+      const results = await Promise.all(
+        items.map(async (item) => {
+          return await handleTaskRunExecutionResult<TOutput>(item);
+        })
+      );
+
+      return results;
+    },
+    {
+      kind: SpanKind.INTERNAL,
+      [SemanticInternalAttributes.STYLE_ICON]: "cloud-download",
+    }
+  );
+}
+
+async function handleTaskRunExecutionResult<TOutput>(
+  execution: TaskRunExecutionResult
+): Promise<TaskRunResult<TOutput>> {
+  if (execution.ok) {
+    const outputPacket = { data: execution.output, dataType: execution.outputType };
+    const importedPacket = await conditionallyImportPacket(outputPacket, tracer);
+
+    return {
+      ok: true,
+      id: execution.id,
+      output: parsePacket(importedPacket),
+    };
+  } else {
+    return {
+      ok: false,
+      id: execution.id,
+      error: createErrorTaskError(execution.error),
+    };
+  }
 }

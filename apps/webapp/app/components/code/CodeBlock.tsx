@@ -367,7 +367,7 @@ function Chrome({ title }: { title?: string }) {
   );
 }
 
-function TitleRow({ title }: { title: string }) {
+export function TitleRow({ title }: { title: string }) {
   return (
     <div className="flex items-center justify-between px-4">
       <Paragraph variant="base/bright" className="w-full border-b border-grid-dimmed py-2.5">

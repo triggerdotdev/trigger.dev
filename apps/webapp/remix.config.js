@@ -19,6 +19,7 @@ module.exports = {
     "emails",
     "highlight.run",
     "random-words",
+    "superjson",
   ],
   watchPaths: async () => {
     return [

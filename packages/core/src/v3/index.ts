@@ -10,6 +10,7 @@ export * from "./errors";
 export * from "./runtime-api";
 export * from "./logger-api";
 export * from "./types";
+export * from "./limits";
 export { SemanticInternalAttributes } from "./semanticInternalAttributes";
 export { iconStringForSeverity } from "./icons";
 export {
@@ -61,3 +62,14 @@ export {
   calculatePreciseDateHrTime,
   preciseDateOriginNow,
 } from "./utils/preciseDate";
+export {
+  parsePacket,
+  stringifyIO,
+  prettyPrintPacket,
+  createPacketAttributes,
+  createPackageAttributesAsJson,
+  conditionallyExportPacket,
+  conditionallyImportPacket,
+  packetRequiresOffloading,
+  type IOPacket,
+} from "./utils/ioSerialization";

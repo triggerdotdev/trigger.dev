@@ -86,6 +86,8 @@ export class TestTaskPresenter {
         taskr."runtimeEnvironmentId"
     FROM 
         taskruns AS taskr
+    WHERE
+        taskr."payloadType" = 'application/json'
     ORDER BY
         taskr."createdAt" DESC;`;
 

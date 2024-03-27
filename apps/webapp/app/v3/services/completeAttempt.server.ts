@@ -92,7 +92,10 @@ export class CompleteAttemptService extends BaseService {
       },
     });
 
-    logger.debug("Completed attempt successfully, ACKing message", taskRunAttempt);
+    logger.debug("Completed attempt successfully, ACKing message", {
+      serializedOutput: completion.output,
+      outputType: completion.outputType,
+    });
 
     await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
@@ -101,7 +104,13 @@ export class CompleteAttemptService extends BaseService {
       endTime: new Date(),
       attributes: {
         isError: false,
-        output: completion.output ? (safeJsonParse(completion.output) as Attributes) : undefined,
+        output:
+          completion.outputType === "application/store"
+            ? completion.output
+            : completion.output
+            ? (safeJsonParse(completion.output) as Attributes)
+            : undefined,
+        outputType: completion.outputType,
       },
     });
 

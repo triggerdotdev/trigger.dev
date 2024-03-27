@@ -8,6 +8,7 @@ import {
   TriggerTaskResponse,
   BatchTriggerTaskRequestBody,
   BatchTriggerTaskResponse,
+  CreateUploadPayloadUrlResponseBody,
 } from "../schemas";
 
 export type TriggerOptions = {
@@ -41,6 +42,28 @@ export class ApiClient {
       headers: this.#getHeaders(options?.spanParentAsLink ?? false),
       body: JSON.stringify(body),
     });
+  }
+
+  createUploadPayloadUrl(filename: string) {
+    return zodfetch(
+      CreateUploadPayloadUrlResponseBody,
+      `${this.baseUrl}/api/v1/packets/${filename}`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+      }
+    );
+  }
+
+  getPayloadUrl(filename: string) {
+    return zodfetch(
+      CreateUploadPayloadUrlResponseBody,
+      `${this.baseUrl}/api/v1/packets/${filename}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      }
+    );
   }
 
   #getHeaders(spanParentAsLink: boolean) {

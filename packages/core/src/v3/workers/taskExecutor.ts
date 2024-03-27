@@ -1,4 +1,6 @@
 import { SpanKind } from "@opentelemetry/api";
+import { ConsoleInterceptor } from "../consoleInterceptor";
+import { parseError } from "../errors";
 import { TracingSDK, recordSpanException } from "../otel";
 import {
   BackgroundWorkerProperties,
@@ -10,14 +12,18 @@ import {
   TaskRunExecutionRetry,
 } from "../schemas";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
-import { HandleErrorFunction, ProjectConfig, TaskMetadataWithFunctions } from "../types";
-import { flattenAttributes } from "../utils/flattenAttributes";
-import { accessoryAttributes } from "../utils/styleAttributes";
-import { calculateNextRetryDelay } from "../utils/retries";
 import { taskContextManager } from "../tasks/taskContextManager";
 import { TriggerTracer } from "../tracer";
-import { ConsoleInterceptor } from "../consoleInterceptor";
-import { parseError } from "../errors";
+import { HandleErrorFunction, ProjectConfig, TaskMetadataWithFunctions } from "../types";
+import {
+  conditionallyExportPacket,
+  conditionallyImportPacket,
+  createPacketAttributes,
+  parsePacket,
+  stringifyIO,
+} from "../utils/ioSerialization";
+import { calculateNextRetryDelay } from "../utils/retries";
+import { accessoryAttributes } from "../utils/styleAttributes";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -53,14 +59,17 @@ export class TaskExecutor {
     worker: BackgroundWorkerProperties,
     traceContext: Record<string, unknown>
   ): Promise<TaskRunExecutionResult> {
-    const parsedPayload = JSON.parse(execution.run.payload);
     const ctx = TaskRunContext.parse(execution);
     const attemptMessage = `Attempt ${execution.attempt.number}`;
+
+    const originalPacket = {
+      data: execution.run.payload,
+      dataType: execution.run.payloadType,
+    };
 
     const result = await taskContextManager.runWith(
       {
         ctx,
-        payload: parsedPayload,
         worker,
       },
       async () => {
@@ -74,21 +83,40 @@ export class TaskExecutor {
           attemptMessage,
           async (span) => {
             return await this._consoleInterceptor.intercept(console, async () => {
-              const init = await this.#callTaskInit(parsedPayload, ctx);
+              let parsedPayload: any;
+              let initOutput: any;
 
               try {
-                const output = await this.#callRun(parsedPayload, ctx, init);
+                const payloadPacket = await conditionallyImportPacket(originalPacket, this._tracer);
+
+                parsedPayload = parsePacket(payloadPacket);
+
+                initOutput = await this.#callTaskInit(parsedPayload, ctx);
+
+                const output = await this.#callRun(parsedPayload, ctx, initOutput);
 
                 try {
-                  span.setAttributes(flattenAttributes(output, SemanticInternalAttributes.OUTPUT));
+                  const stringifiedOutput = stringifyIO(output);
 
-                  const serializedOutput = JSON.stringify(output);
+                  const finalOutput = await conditionallyExportPacket(
+                    stringifiedOutput,
+                    `${execution.attempt.id}/output`,
+                    this._tracer
+                  );
+
+                  span.setAttributes(
+                    createPacketAttributes(
+                      finalOutput,
+                      SemanticInternalAttributes.OUTPUT,
+                      SemanticInternalAttributes.OUTPUT_TYPE
+                    )
+                  );
 
                   return {
                     ok: true,
                     id: execution.attempt.id,
-                    output: serializedOutput,
-                    outputType: "application/json",
+                    output: finalOutput.data,
+                    outputType: finalOutput.dataType,
                   } satisfies TaskRunExecutionResult;
                 } catch (stringifyError) {
                   recordSpanException(span, stringifyError);
@@ -148,7 +176,7 @@ export class TaskExecutor {
                   } satisfies TaskRunExecutionResult;
                 }
               } finally {
-                await this.#callTaskCleanup(parsedPayload, ctx, init);
+                await this.#callTaskCleanup(parsedPayload, ctx, initOutput);
               }
             });
           },
@@ -156,7 +184,6 @@ export class TaskExecutor {
             kind: SpanKind.CONSUMER,
             attributes: {
               [SemanticInternalAttributes.STYLE_ICON]: "attempt",
-              ...flattenAttributes(parsedPayload, SemanticInternalAttributes.PAYLOAD),
               ...accessoryAttributes({
                 items: [
                   {

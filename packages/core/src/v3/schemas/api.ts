@@ -155,7 +155,15 @@ export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymen
 
 export const GetDeploymentResponseBody = z.object({
   id: z.string(),
-  status: z.enum(["PENDING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED", "TIMED_OUT"]),
+  status: z.enum([
+    "PENDING",
+    "BUILDING",
+    "DEPLOYING",
+    "DEPLOYED",
+    "FAILED",
+    "CANCELED",
+    "TIMED_OUT",
+  ]),
   contentHash: z.string(),
   shortCode: z.string(),
   version: z.string(),
@@ -185,3 +193,9 @@ export const GetDeploymentResponseBody = z.object({
 });
 
 export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody>;
+
+export const CreateUploadPayloadUrlResponseBody = z.object({
+  presignedUrl: z.string(),
+});
+
+export type CreateUploadPayloadUrlResponseBody = z.infer<typeof CreateUploadPayloadUrlResponseBody>;
