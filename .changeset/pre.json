@@ -43,8 +43,5 @@
     "@trigger.dev/sdk": "2.3.18",
     "@trigger.dev/yalt": "2.3.18"
   },
-  "changesets": [
-    "lemon-jobs-repair",
-    "sweet-lizards-press"
-  ]
+  "changesets": []
 }
