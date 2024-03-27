@@ -319,7 +319,7 @@ function TasksTreeView({
               renderNode={({ node, state }) => (
                 <div
                   className={cn(
-                    "flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
+                    "delay-[25ms] flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2 transition-colors",
                     state.selected
                       ? "bg-grid-dimmed hover:bg-grid-bright"
                       : "bg-transparent hover:bg-grid-dimmed"
@@ -377,10 +377,7 @@ function TasksTreeView({
               )}
               onScroll={(scrollTop) => {
                 //sync the scroll to the tree
-                if (
-                  timelineScrollRef.current &&
-                  timelineScrollRef.current.scrollTop !== scrollTop
-                ) {
+                if (timelineScrollRef.current) {
                   timelineScrollRef.current.scrollTop = scrollTop;
                 }
               }}
@@ -571,7 +568,6 @@ function TimelineView({
               />
             )}
             <TreeView
-              parentRef={parentRef}
               scrollRef={timelineScrollRef}
               virtualizer={virtualizer}
               tree={events}
@@ -623,7 +619,7 @@ function TimelineView({
               }}
               onScroll={(scrollTop) => {
                 //sync the scroll to the tree
-                if (treeScrollRef.current && treeScrollRef.current.scrollTop !== scrollTop) {
+                if (treeScrollRef.current) {
                   treeScrollRef.current.scrollTop = scrollTop;
                 }
               }}
@@ -643,6 +639,7 @@ function NodeText({ node }: { node: RunEvent }) {
     </Paragraph>
   );
 }
+
 function NodeStatusIcon({ node }: { node: RunEvent }) {
   if (node.data.level !== "TRACE") return null;
   if (node.data.style.variant !== "primary") return null;
