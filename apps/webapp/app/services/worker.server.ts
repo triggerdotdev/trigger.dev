@@ -34,6 +34,7 @@ import { ResumeTaskRunDependenciesService } from "~/v3/services/resumeTaskRunDep
 import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.server";
 import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server";
+import { eventRepository } from "~/v3/eventRepository.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -250,6 +251,13 @@ function getWorkerQueue() {
           });
         },
       },
+      // Run this every hour at the 13 minute mark
+      purgeOldTaskEvents: {
+        pattern: "47 * * * *",
+        handler: async (payload, job) => {
+          await eventRepository.truncateEvents();
+        },
+      },
     },
     tasks: {
       "events.invokeDispatcher": {
@@ -301,8 +309,8 @@ function getWorkerQueue() {
                 graphileJob.id,
                 payload.orphanedEvents
                   ? {
-                    event: payload.orphanedEvents,
-                  }
+                      event: payload.orphanedEvents,
+                    }
                   : undefined
               );
               break;
