@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/yalt",
-  "version": "2.3.18",
+  "version": "3.0.0-beta.0",
   "description": "yalt.dev client library",
   "license": "MIT",
   "main": "./dist/index.js",

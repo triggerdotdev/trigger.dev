@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.0.0-beta.0
+
+### Major Changes
+
+- 395abe1b9: Updates to support Trigger.dev v3
+
 ## 2.3.18
 
 ## 2.3.17

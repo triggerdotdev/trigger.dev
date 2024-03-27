@@ -1,5 +1,17 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.0
+
+### Major Changes
+
+- 395abe1b9: Updates to support Trigger.dev v3
+
+### Patch Changes
+
+- Updated dependencies [395abe1b9]
+  - @trigger.dev/core@3.0.0-beta.0
+  - @trigger.dev/core-backend@3.0.0-beta.0
+
 ## 2.3.18
 
 ### Patch Changes

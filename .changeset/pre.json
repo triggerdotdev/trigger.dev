@@ -43,5 +43,9 @@
     "@trigger.dev/sdk": "2.3.18",
     "@trigger.dev/yalt": "2.3.18"
   },
-  "changesets": []
+  "changesets": [
+    "chilled-hornets-move",
+    "lemon-jobs-repair",
+    "sweet-lizards-press"
+  ]
 }
