@@ -36,7 +36,7 @@ import { login } from "./login";
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   overrideConfig: z.boolean().default(false),
-  tag: z.string().default("v3"),
+  tag: z.string().default("beta"),
   skipPackageInstall: z.boolean().default(false),
 });
 
@@ -55,7 +55,7 @@ export function configureInitCommand(program: Command) {
       .option(
         "-t, --tag <package tag>",
         "The version of the @trigger.dev/sdk package to install",
-        "latest"
+        "beta"
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")
       .option("--override-config", "Override the existing config file if it exists")
