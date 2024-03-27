@@ -88,8 +88,11 @@ export const superHugeOutputTask = task({
   },
 });
 
-function createLargeObject(i: number, length: number) {
-  return Array.from({ length }, (_, i) => [i.toString(), i.toString().padStart(i, "0")]).reduce(
+function createLargeObject(stringLength: number, length: number) {
+  return Array.from({ length }, (_, i) => [
+    i.toString(),
+    i.toString().padStart(stringLength, "0"),
+  ]).reduce(
     (acc, [key, value]) => {
       acc[key] = value;
       return acc;
