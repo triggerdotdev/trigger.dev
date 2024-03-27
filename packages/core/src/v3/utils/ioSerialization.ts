@@ -2,7 +2,6 @@ import { Attributes, Span } from "@opentelemetry/api";
 import { deserialize, parse, stringify } from "superjson";
 import { apiClientManager } from "../apiClient";
 import { OFFLOAD_IO_PACKET_LENGTH_LIMIT, imposeAttributeLimits } from "../limits";
-import { TaskRunExecutionResult } from "../schemas";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 import { TriggerTracer } from "../tracer";
 import { flattenAttributes } from "./flattenAttributes";
@@ -24,6 +23,10 @@ export function parsePacket(value: IOPacket): any {
       return parse(value.data);
     case "text/plain":
       return value.data;
+    case "application/store":
+      throw new Error(
+        `Cannot parse an application/store packet (${value.data}). Needs to be imported first.`
+      );
     default:
       return value.data;
   }

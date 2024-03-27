@@ -44,7 +44,7 @@ export const superChildTask = task({
 export const superHugePayloadTask = task({
   id: "super-huge-payload-task",
   run: async () => {
-    const largePayload = createLargeObject(1000, 100);
+    const largePayload = createLargeObject(1000, 128);
 
     const result = await superHugeOutputTask.triggerAndWait({
       payload: largePayload,
@@ -55,21 +55,53 @@ export const superHugePayloadTask = task({
     const batchResult = await superHugeOutputTask.batchTriggerAndWait({
       items: [
         { payload: largePayload },
+        {
+          payload: {
+            small: "object",
+          },
+        },
         { payload: largePayload },
+        {
+          payload: {
+            small: "object",
+          },
+        },
         { payload: largePayload },
+        {
+          payload: {
+            small: "object",
+          },
+        },
         { payload: largePayload },
+        {
+          payload: {
+            small: "object",
+          },
+        },
         { payload: largePayload },
+        {
+          payload: {
+            small: "object",
+          },
+        },
         { payload: largePayload },
+        {
+          payload: {
+            small: "object",
+          },
+        },
         { payload: largePayload },
+        {
+          payload: {
+            small: "object",
+          },
+        },
         { payload: largePayload },
-        { payload: largePayload },
-        { payload: largePayload },
-        { payload: largePayload },
-        { payload: largePayload },
-        { payload: largePayload },
-        { payload: largePayload },
-        { payload: largePayload },
-        { payload: largePayload },
+        {
+          payload: {
+            small: "object",
+          },
+        },
       ],
     });
 
@@ -83,16 +115,13 @@ export const superHugePayloadTask = task({
 
 export const superHugeOutputTask = task({
   id: "super-huge-output-task",
-  run: async () => {
-    return createLargeObject(1000, 100);
+  run: async (payload) => {
+    return payload;
   },
 });
 
-function createLargeObject(stringLength: number, length: number) {
-  return Array.from({ length }, (_, i) => [
-    i.toString(),
-    i.toString().padStart(stringLength, "0"),
-  ]).reduce(
+function createLargeObject(size: number, length: number) {
+  return Array.from({ length }, (_, i) => [i.toString(), i.toString().padStart(size, "0")]).reduce(
     (acc, [key, value]) => {
       acc[key] = value;
       return acc;
