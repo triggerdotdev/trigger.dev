@@ -9,6 +9,10 @@ on:
       - "build-*"
     paths:
       - ".github/workflows/publish.yml"
+      - ".github/workflows/typecheck.yml"
+      - ".github/workflows/unit-tests.yml"
+      - ".github/workflows/e2e.yml"
+      - ".github/workflows/publish-docker.yml"
       - "packages/**"
       - "!packages/**/*.md"
       - "!packages/**/*.eslintrc"
