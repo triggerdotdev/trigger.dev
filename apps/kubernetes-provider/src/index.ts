@@ -65,6 +65,9 @@ class KubernetesTaskOperations implements TaskOperations {
                   name: "registry-trigger",
                 },
               ],
+              nodeSelector: {
+                nodetype: "worker"
+              },
               containers: [
                 {
                   name: this.#getIndexContainerName(opts.shortCode),
@@ -161,6 +164,9 @@ class KubernetesTaskOperations implements TaskOperations {
               name: "registry-trigger",
             },
           ],
+          nodeSelector: {
+            nodetype: "worker"
+          },
           containers: [
             {
               name: this.#getRunContainerName(opts.runId),
@@ -272,6 +278,9 @@ class KubernetesTaskOperations implements TaskOperations {
               name: "registry-trigger",
             },
           ],
+          nodeSelector: {
+            nodetype: "worker"
+          },
           initContainers: [
             {
               name: "pull-base-image",
