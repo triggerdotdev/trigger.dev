@@ -58,14 +58,14 @@ export default function Page() {
         event.showActionBar ? "grid-rows-[2.5rem_1fr_2.5rem]" : "grid-rows-[2.5rem_1fr]"
       )}
     >
-      <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
+      <div className="mx-3 flex items-center justify-between gap-2 overflow-x-hidden border-b border-grid-dimmed">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
             name={event.style?.icon}
             spanName={event.message}
             className="h-4 min-h-4 w-4 min-w-4"
           />
-          <Header2 className={cn("whitespace-nowrap")}>
+          <Header2 className={cn("overflow-x-hidden")}>
             <SpanTitle {...event} size="large" />
           </Header2>
         </div>
