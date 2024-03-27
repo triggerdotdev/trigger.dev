@@ -108,7 +108,7 @@ export class BackgroundWorkerCoordinator {
   }
 
   async handleMessage(id: string, message: BackgroundWorkerServerMessages) {
-    logger.debug(`Received message from worker ${id}`, { workerMessage: message });
+    logger.debug(`Received message from worker ${id}`, JSON.stringify({ workerMessage: message }));
 
     switch (message.type) {
       case "EXECUTE_RUNS": {

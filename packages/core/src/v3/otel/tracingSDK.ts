@@ -29,6 +29,8 @@ import {
   OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT,
   OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT,
   OTEL_LINK_COUNT_LIMIT,
+  OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
+  OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT,
   OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
   OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT,
   OTEL_SPAN_EVENT_COUNT_LIMIT,
@@ -145,8 +147,8 @@ export class TracingSDK {
     const loggerProvider = new LoggerProvider({
       resource: commonResources,
       logRecordLimits: {
-        attributeCountLimit: 1000,
-        attributeValueLengthLimit: 1000,
+        attributeCountLimit: OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
+        attributeValueLengthLimit: OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT,
       },
     });
 

@@ -1,4 +1,4 @@
-import { prettyPrintOutput } from "@trigger.dev/core/v3";
+import { prettyPrintPacket } from "@trigger.dev/core/v3";
 import { PrismaClient, prisma } from "~/db.server";
 import { eventRepository } from "~/v3/eventRepository.server";
 
@@ -41,18 +41,26 @@ export class SpanPresenter {
 
     const output =
       span.outputType === "application/store"
-        ? `/resources/payloads/${span.environmentId}/${span.output}`
-        : span.output
-        ? prettyPrintOutput(span.output, span.outputType ?? undefined)
+        ? `/resources/packets/${span.environmentId}/${span.output}`
+        : typeof span.output !== "undefined" && span.output !== null
+        ? prettyPrintPacket(span.output, span.outputType ?? undefined)
+        : undefined;
+
+    const payload =
+      span.payloadType === "application/store"
+        ? `/resources/packets/${span.environmentId}/${span.payload}`
+        : typeof span.payload !== "undefined" && span.payload !== null
+        ? prettyPrintPacket(span.payload, span.payloadType ?? undefined)
         : undefined;
 
     return {
       event: {
         ...span,
         events: span.events,
-        output: output,
+        output,
         outputType: span.outputType ?? "application/json",
-        payload: span.payload ? JSON.stringify(span.payload, null, 2) : undefined,
+        payload,
+        payloadType: span.payloadType ?? "application/json",
         properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
         showActionBar: span.show?.actions === true,
       },

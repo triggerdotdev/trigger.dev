@@ -29,6 +29,7 @@ export const SemanticInternalAttributes = {
   METADATA: "$metadata",
   TRIGGER: "$trigger",
   PAYLOAD: "$payload",
+  PAYLOAD_TYPE: "$mime_type_payload",
   SHOW: "$show",
   SHOW_ACTIONS: "$show.actions",
   WORKER_ID: "worker.id",

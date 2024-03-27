@@ -1814,6 +1814,9 @@ model TaskEvent {
   /// This represents the mimetype of the output, such as application/json or application/super+json
   outputType String?
 
+  payload     Json?
+  payloadType String?
+
   createdAt DateTime @default(now())
 }
 

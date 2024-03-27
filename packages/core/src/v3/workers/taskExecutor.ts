@@ -15,16 +15,15 @@ import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 import { taskContextManager } from "../tasks/taskContextManager";
 import { TriggerTracer } from "../tracer";
 import { HandleErrorFunction, ProjectConfig, TaskMetadataWithFunctions } from "../types";
-import { flattenAttributes } from "../utils/flattenAttributes";
 import {
-  createOutputAttributes,
-  offloadOuputIfNeeded,
-  stringifyOutput,
+  conditionallyExportPacket,
+  conditionallyImportPacket,
+  createPacketAttributes,
+  parsePacket,
+  stringifyIO,
 } from "../utils/ioSerialization";
 import { calculateNextRetryDelay } from "../utils/retries";
 import { accessoryAttributes } from "../utils/styleAttributes";
-import { apiClientManager } from "../apiClient";
-import { OFFLOAD_OUTPUT_LENGTH_LIMIT } from "../limits";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -60,14 +59,17 @@ export class TaskExecutor {
     worker: BackgroundWorkerProperties,
     traceContext: Record<string, unknown>
   ): Promise<TaskRunExecutionResult> {
-    const parsedPayload = JSON.parse(execution.run.payload);
     const ctx = TaskRunContext.parse(execution);
     const attemptMessage = `Attempt ${execution.attempt.number}`;
+
+    const originalPacket = {
+      data: execution.run.payload,
+      dataType: execution.run.payloadType,
+    };
 
     const result = await taskContextManager.runWith(
       {
         ctx,
-        payload: parsedPayload,
         worker,
       },
       async () => {
@@ -81,26 +83,40 @@ export class TaskExecutor {
           attemptMessage,
           async (span) => {
             return await this._consoleInterceptor.intercept(console, async () => {
-              const init = await this.#callTaskInit(parsedPayload, ctx);
+              let parsedPayload: any;
+              let initOutput: any;
 
               try {
-                const output = await this.#callRun(parsedPayload, ctx, init);
+                const payloadPacket = await conditionallyImportPacket(originalPacket, this._tracer);
+
+                parsedPayload = parsePacket(payloadPacket);
+
+                initOutput = await this.#callTaskInit(parsedPayload, ctx);
+
+                const output = await this.#callRun(parsedPayload, ctx, initOutput);
 
                 try {
-                  const stringifiedOutput = stringifyOutput(output);
+                  const stringifiedOutput = stringifyIO(output);
 
-                  const finalOutput = await offloadOuputIfNeeded(
+                  const finalOutput = await conditionallyExportPacket(
                     stringifiedOutput,
-                    execution.attempt.id,
+                    `${execution.attempt.id}/output`,
                     this._tracer
                   );
 
-                  span.setAttributes(createOutputAttributes(finalOutput));
+                  span.setAttributes(
+                    createPacketAttributes(
+                      finalOutput,
+                      SemanticInternalAttributes.OUTPUT,
+                      SemanticInternalAttributes.OUTPUT_TYPE
+                    )
+                  );
 
                   return {
                     ok: true,
                     id: execution.attempt.id,
-                    ...finalOutput,
+                    output: finalOutput.data,
+                    outputType: finalOutput.dataType,
                   } satisfies TaskRunExecutionResult;
                 } catch (stringifyError) {
                   recordSpanException(span, stringifyError);
@@ -160,7 +176,7 @@ export class TaskExecutor {
                   } satisfies TaskRunExecutionResult;
                 }
               } finally {
-                await this.#callTaskCleanup(parsedPayload, ctx, init);
+                await this.#callTaskCleanup(parsedPayload, ctx, initOutput);
               }
             });
           },
@@ -168,7 +184,6 @@ export class TaskExecutor {
             kind: SpanKind.CONSUMER,
             attributes: {
               [SemanticInternalAttributes.STYLE_ICON]: "attempt",
-              ...flattenAttributes(parsedPayload, SemanticInternalAttributes.PAYLOAD),
               ...accessoryAttributes({
                 items: [
                   {

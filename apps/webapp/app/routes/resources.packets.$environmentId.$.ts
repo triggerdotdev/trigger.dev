@@ -44,7 +44,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   const url = new URL(env.OBJECT_STORE_BASE_URL);
-  url.pathname = `/payloads/${environment.project.externalRef}/${environment.slug}/${filename}`;
+  url.pathname = `/packets/${environment.project.externalRef}/${environment.slug}/${filename}`;
   url.searchParams.set("X-Amz-Expires", "30"); // 30 seconds
 
   const signed = await r2.sign(

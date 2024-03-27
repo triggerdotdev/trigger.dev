@@ -35,7 +35,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   const url = new URL(env.OBJECT_STORE_BASE_URL);
-  url.pathname = `/payloads/${authenticationResult.environment.project.externalRef}/${authenticationResult.environment.slug}/${filename}`;
+  url.pathname = `/packets/${authenticationResult.environment.project.externalRef}/${authenticationResult.environment.slug}/${filename}`;
   url.searchParams.set("X-Amz-Expires", "300"); // 5 minutes
 
   const signed = await r2.sign(
@@ -76,7 +76,7 @@ export async function loader({ request, params }: ActionFunctionArgs) {
   }
 
   const url = new URL(env.OBJECT_STORE_BASE_URL);
-  url.pathname = `/payloads/${authenticationResult.environment.project.externalRef}/${authenticationResult.environment.slug}/${filename}`;
+  url.pathname = `/packets/${authenticationResult.environment.project.externalRef}/${authenticationResult.environment.slug}/${filename}`;
   url.searchParams.set("X-Amz-Expires", "300"); // 5 minutes
 
   const signed = await r2.sign(

@@ -4,7 +4,9 @@ export const superParentTask = task({
   id: "super-parent-task",
   run: async () => {
     const result = await superChildTask.triggerAndWait({
-      payload: {},
+      payload: {
+        foo: "bar",
+      },
     });
 
     logger.log(`typeof result.date = ${typeof result.date}`);
@@ -28,7 +30,7 @@ export const superChildTask = task({
       date: new Date(),
       regex: /foo/,
       bigint: BigInt(123),
-      set: new Set([1, 2, 3, 4, 5, 6, 7, 8]),
+      set: new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]),
       map: new Map([
         ["foo", "bar"],
         ["baz", "qux"],
@@ -39,19 +41,59 @@ export const superChildTask = task({
   },
 });
 
+export const superHugePayloadTask = task({
+  id: "super-huge-payload-task",
+  run: async () => {
+    const largePayload = createLargeObject(1000, 100);
+
+    const result = await superHugeOutputTask.triggerAndWait({
+      payload: largePayload,
+    });
+
+    logger.log("Result from superHugeOutputTask: ", { result });
+
+    const batchResult = await superHugeOutputTask.batchTriggerAndWait({
+      items: [
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+        { payload: largePayload },
+      ],
+    });
+
+    logger.log("Result from superHugeOutputTask batchTriggerAndWait: ", { batchResult });
+
+    return {
+      result,
+    };
+  },
+});
+
 export const superHugeOutputTask = task({
   id: "super-huge-output-task",
   run: async () => {
-    // Returning an object that has 1000 keys, with each key having a value of 100 characters
-    return Array.from({ length: 1000 }, (_, i) => [
-      i.toString(),
-      i.toString().padStart(100, "0"),
-    ]).reduce(
-      (acc, [key, value]) => {
-        acc[key] = value;
-        return acc;
-      },
-      {} as Record<string, string>
-    );
+    return createLargeObject(1000, 100);
   },
 });
+
+function createLargeObject(i: number, length: number) {
+  return Array.from({ length }, (_, i) => [i.toString(), i.toString().padStart(i, "0")]).reduce(
+    (acc, [key, value]) => {
+      acc[key] = value;
+      return acc;
+    },
+    {} as Record<string, string>
+  );
+}

@@ -63,11 +63,13 @@ export {
   preciseDateOriginNow,
 } from "./utils/preciseDate";
 export {
-  parseOutput,
-  stringifyOutput,
-  prettyPrintOutput,
-  createOutputAttributes,
-  createOutputAttributesAsJson,
-  offloadOuputIfNeeded,
-  type OutputParseable,
+  parsePacket,
+  stringifyIO,
+  prettyPrintPacket,
+  createPacketAttributes,
+  createPackageAttributesAsJson,
+  conditionallyExportPacket,
+  conditionallyImportPacket,
+  packetRequiresOffloading,
+  type IOPacket,
 } from "./utils/ioSerialization";

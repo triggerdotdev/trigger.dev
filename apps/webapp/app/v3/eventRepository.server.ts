@@ -10,31 +10,31 @@ import {
   SpanMessagingEvent,
   TaskEventStyle,
   correctErrorStackTrace,
-  createOutputAttributesAsJson,
+  createPackageAttributesAsJson,
   flattenAttributes,
   isExceptionSpanEvent,
   omit,
-  primitiveValueOrflattenedAttributes,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
 import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
-import { createHash } from "node:crypto";
-import { PrismaClient, prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 import Redis, { RedisOptions } from "ioredis";
-import { env } from "~/env.server";
+import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
+import { PrismaClient, prisma } from "~/db.server";
+import { env } from "~/env.server";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 
 export type CreatableEvent = Omit<
   Prisma.TaskEventCreateInput,
-  "id" | "createdAt" | "properties" | "metadata" | "style" | "output"
+  "id" | "createdAt" | "properties" | "metadata" | "style" | "output" | "payload"
 > & {
   properties: Attributes;
   metadata: Attributes | undefined;
   style: Attributes | undefined;
   output: Attributes | string | boolean | number | undefined;
+  payload: Attributes | string | boolean | number | undefined;
 };
 
 export type CreatableEventKind = TaskEventKind;
@@ -57,6 +57,8 @@ export type TraceAttributes = Partial<
     | "queueId"
     | "queueName"
     | "batchId"
+    | "payload"
+    | "payloadType"
   >
 >;
 
@@ -185,7 +187,7 @@ export class EventRepository {
     const event = events[0];
 
     const output = options?.attributes.output
-      ? createOutputAttributesAsJson(
+      ? createPackageAttributesAsJson(
           options?.attributes.output,
           options?.attributes.outputType ?? "application/json"
         )
@@ -213,6 +215,8 @@ export class EventRepository {
         options?.attributes.outputType === "application/store"
           ? "application/store"
           : "application/json",
+      payload: event.payload as Attributes,
+      payloadType: event.payloadType,
     });
   }
 
@@ -244,6 +248,8 @@ export class EventRepository {
       style: event.style as Attributes,
       output: event.output as Attributes,
       outputType: event.outputType,
+      payload: event.payload as Attributes,
+      payloadType: event.payloadType,
     });
   }
 
@@ -377,13 +383,13 @@ export class EventRepository {
       return;
     }
 
-    const payload = unflattenAttributes(
-      filteredAttributes(fullEvent.properties as Attributes, SemanticInternalAttributes.PAYLOAD)
-    )[SemanticInternalAttributes.PAYLOAD];
-
     const output = isEmptyJson(fullEvent.output)
       ? null
       : unflattenAttributes(fullEvent.output as Attributes);
+
+    const payload = isEmptyJson(fullEvent.payload)
+      ? null
+      : unflattenAttributes(fullEvent.payload as Attributes);
 
     const show = unflattenAttributes(
       filteredAttributes(fullEvent.properties as Attributes, SemanticInternalAttributes.SHOW)
@@ -513,6 +519,8 @@ export class EventRepository {
       style: stripAttributePrefix(style, SemanticInternalAttributes.STYLE),
       output: undefined,
       outputType: undefined,
+      payload: undefined,
+      payloadType: undefined,
     };
 
     if (options.immediate) {
@@ -648,6 +656,8 @@ export class EventRepository {
       output: undefined,
       outputType: undefined,
       links: links as unknown as Prisma.InputJsonValue,
+      payload: options.attributes.payload,
+      payloadType: options.attributes.payloadType,
     };
 
     if (options.immediate) {
@@ -734,7 +744,7 @@ export class EventRepository {
 
 export const eventRepository = new EventRepository(prisma, {
   batchSize: 100,
-  batchInterval: 5000,
+  batchInterval: 1000,
   redis: {
     port: env.REDIS_PORT,
     host: env.REDIS_HOST,
@@ -935,9 +945,6 @@ function removeDuplicateEvents(events: PreparedEvent[]) {
 
 function isEmptyJson(json: Prisma.JsonValue) {
   if (json === null) {
-    return true;
-  }
-  if (Object.keys(json).length === 0) {
     return true;
   }
 

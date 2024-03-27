@@ -1,12 +1,14 @@
 import { AttributeValue, Attributes } from "@opentelemetry/api";
 
-export const OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT = 100;
-export const OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT = 256;
+export const OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT = 256;
+export const OTEL_LOG_ATTRIBUTE_COUNT_LIMIT = 256;
+export const OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT = 1028;
+export const OTEL_LOG_ATTRIBUTE_VALUE_LENGTH_LIMIT = 1028;
 export const OTEL_SPAN_EVENT_COUNT_LIMIT = 10;
 export const OTEL_LINK_COUNT_LIMIT = 2;
 export const OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT = 10;
 export const OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT = 10;
-export const OFFLOAD_OUTPUT_LENGTH_LIMIT = 128 * 1024;
+export const OFFLOAD_IO_PACKET_LENGTH_LIMIT = 128 * 1024;
 
 export function imposeAttributeLimits(attributes: Attributes): Attributes {
   const newAttributes: Attributes = {};

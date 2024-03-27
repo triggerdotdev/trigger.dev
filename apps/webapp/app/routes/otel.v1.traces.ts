@@ -11,7 +11,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
       const exportResponse = await otlpExporter.exportTraces(
         body as ExportTraceServiceRequest,
-        true
+        false
       );
 
       return json(exportResponse, { status: 200 });

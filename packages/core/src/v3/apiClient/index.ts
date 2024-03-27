@@ -47,7 +47,7 @@ export class ApiClient {
   createUploadPayloadUrl(filename: string) {
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
-      `${this.baseUrl}/api/v1/payloads/${filename}`,
+      `${this.baseUrl}/api/v1/packets/${filename}`,
       {
         method: "PUT",
         headers: this.#getHeaders(false),
@@ -58,7 +58,7 @@ export class ApiClient {
   getPayloadUrl(filename: string) {
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
-      `${this.baseUrl}/api/v1/payloads/${filename}`,
+      `${this.baseUrl}/api/v1/packets/${filename}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),

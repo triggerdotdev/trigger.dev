@@ -148,10 +148,10 @@ export default function Page() {
 
           {event.events !== undefined && <SpanEvents spanEvents={event.events} />}
           {event.payload !== undefined && (
-            <CodeBlock rowTitle="Payload" code={event.payload} maxLines={20} />
+            <PacketDisplay data={event.payload} dataType={event.payloadType} title="Payload" />
           )}
           {event.output !== undefined && (
-            <OutputDisplay output={event.output} outputType={event.outputType} />
+            <PacketDisplay data={event.output} dataType={event.outputType} title="Output" />
           )}
           {event.properties !== undefined && (
             <CodeBlock rowTitle="Properties" code={event.properties} maxLines={20} />
@@ -203,20 +203,28 @@ export default function Page() {
   );
 }
 
-function OutputDisplay({ output, outputType }: { output: string; outputType: string }) {
-  if (outputType === "application/store") {
+function PacketDisplay({
+  data,
+  dataType,
+  title,
+}: {
+  data: string;
+  dataType: string;
+  title: string;
+}) {
+  if (dataType === "application/store") {
     return (
       <div className="flex flex-col">
         <Paragraph variant="base/bright" className="w-full border-b border-grid-dimmed py-2.5">
-          Output
+          {title}
         </Paragraph>
-        <LinkButton LeadingIcon={CloudArrowDownIcon} to={output} variant="tertiary/medium" download>
+        <LinkButton LeadingIcon={CloudArrowDownIcon} to={data} variant="tertiary/medium" download>
           Download
         </LinkButton>
       </div>
     );
   } else {
-    return <CodeBlock rowTitle="Output" code={output} maxLines={20} />;
+    return <CodeBlock rowTitle={title} code={data} maxLines={20} />;
   }
 }
 
