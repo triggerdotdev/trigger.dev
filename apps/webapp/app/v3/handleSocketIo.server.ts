@@ -19,11 +19,13 @@ import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { CreateDeployedBackgroundWorkerService } from "./services/createDeployedBackgroundWorker.server";
 import { ResumeAttemptService } from "./services/resumeAttempt.server";
 import { DeploymentIndexFailed } from "./services/deploymentIndexFailed.server";
+import { Redis } from "ioredis";
+import { createAdapter } from "@socket.io/redis-adapter";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
 function initalizeIoServer() {
-  const io = new Server();
+  const io = initializeSocketIOServerInstance();
 
   io.on("connection", (socket) => {
     logger.log(`[socket.io][${socket.id}] connection at url: ${socket.request.url}`);
@@ -39,6 +41,31 @@ function initalizeIoServer() {
     providerNamespace,
     sharedQueueConsumerNamespace,
   };
+}
+
+function initializeSocketIOServerInstance() {
+  if (env.REDIS_HOST && env.REDIS_PORT) {
+    const pubClient = new Redis({
+      port: env.REDIS_PORT,
+      host: env.REDIS_HOST,
+      username: env.REDIS_USERNAME,
+      password: env.REDIS_PASSWORD,
+      enableAutoPipelining: true,
+      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+    });
+    const subClient = pubClient.duplicate();
+
+    const io = new Server({
+      adapter: createAdapter(pubClient, subClient, {
+        key: "tr:socket.io:",
+        publishOnSpecificResponseChannel: true,
+      }),
+    });
+
+    return io;
+  }
+
+  return new Server();
 }
 
 function createCoordinatorNamespace(io: Server) {

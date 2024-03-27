@@ -74,8 +74,8 @@ export function bundleDependenciesPlugin(config: ResolvedConfig): Plugin {
           return undefined; // let esbuild bundle it
         }
 
-        if (args.path === "superjson") {
-          logger.debug(`Bundling ${args.path} because its superjson`, {
+        if (args.path === "superjson" || args.path === "copy-anything" || args.path === "is-what") {
+          logger.debug(`Bundling ${args.path} because its superjson/copy-anything/is-what`, {
             ...args,
           });
 
