@@ -96,7 +96,7 @@ export class ApiClientManager {
 
   get baseURL(): string | undefined {
     const store = this.#getStore();
-    return store?.baseURL ?? getEnvVar("TRIGGER_API_URL");
+    return store?.baseURL ?? getEnvVar("TRIGGER_API_URL") ?? "https://api.trigger.dev";
   }
 
   get accessToken(): string | undefined {
