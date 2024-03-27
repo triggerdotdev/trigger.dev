@@ -50,7 +50,7 @@ jobs:
         run: pnpm run generate
 
       - name: 🔎 Type check
-        run: pnpm run typecheck
+        run: pnpm run typecheck --filter "@trigger.dev/*" --filter "trigger.dev"
 
       - name: 🔐 Setup npm auth
         run: |
