@@ -18,6 +18,7 @@ const MACHINE_NAME = process.env.MACHINE_NAME || "local";
 const PLATFORM_HOST = process.env.PLATFORM_HOST || "127.0.0.1";
 const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 3030;
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "provider-secret";
+const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?? "true");
 
 const logger = new SimpleLogger(`[${MACHINE_NAME}]`);
 
@@ -87,6 +88,7 @@ export class ProviderShell implements Provider {
       namespace: "shared-queue",
       host: PLATFORM_HOST,
       port: Number(PLATFORM_WS_PORT),
+      secure: SECURE_CONNECTION,
       clientMessages: ClientToSharedQueueMessages,
       serverMessages: SharedQueueToClientMessages,
       authToken: PLATFORM_SECRET,
@@ -138,6 +140,7 @@ export class ProviderShell implements Provider {
       namespace: "provider",
       host: PLATFORM_HOST,
       port: Number(PLATFORM_WS_PORT),
+      secure: SECURE_CONNECTION,
       clientMessages: ProviderToPlatformMessages,
       serverMessages: PlatformToProviderMessages,
       authToken: PLATFORM_SECRET,
