@@ -214,7 +214,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
       const apiClient = apiClientManager.client;
 
       if (!apiClient) {
-        throw new Error("API client is not initialized");
+        throw apiClientMissingError();
       }
 
       const taskMetadata = runtime.getTaskMetadata(params.id);
@@ -273,7 +273,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
       const apiClient = apiClientManager.client;
 
       if (!apiClient) {
-        throw new Error("API client is not initialized");
+        throw apiClientMissingError();
       }
 
       const taskMetadata = runtime.getTaskMetadata(params.id);
@@ -343,7 +343,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
       const apiClient = apiClientManager.client;
 
       if (!apiClient) {
-        throw new Error("API client is not initialized");
+        throw apiClientMissingError();
       }
 
       const taskMetadata = runtime.getTaskMetadata(params.id);
@@ -414,7 +414,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
       const apiClient = apiClientManager.client;
 
       if (!apiClient) {
-        throw new Error("API client is not initialized");
+        throw apiClientMissingError();
       }
 
       const taskMetadata = runtime.getTaskMetadata(params.id);
@@ -557,4 +557,18 @@ async function handleTaskRunExecutionResult<TOutput>(
       error: createErrorTaskError(execution.error),
     };
   }
+}
+
+function apiClientMissingError() {
+  const hasBaseUrl = !!apiClientManager.baseURL;
+  const hasAccessToken = !!apiClientManager.accessToken;
+  if (!hasBaseUrl && !hasAccessToken) {
+    return `You need to set the TRIGGER_API_URL and TRIGGER_SECRET_KEY environment variables.`;
+  } else if (!hasBaseUrl) {
+    return `You need to set the TRIGGER_API_URL environment variable.`;
+  } else if (!hasAccessToken) {
+    return `You need to set the TRIGGER_SECRET_KEY environment variable.`;
+  }
+
+  return `Unknown error`;
 }
