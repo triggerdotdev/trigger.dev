@@ -113,6 +113,7 @@
     "node-fetch": "^3.3.0",
     "npm-check-updates": "^16.12.2",
     "object-hash": "^3.0.0",
+    "p-debounce": "^4.0.0",
     "p-throttle": "^6.1.0",
     "partysocket": "^0.0.17",
     "proxy-agent": "^6.3.0",

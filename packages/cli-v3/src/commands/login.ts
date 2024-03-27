@@ -13,7 +13,7 @@ import {
   tracer,
   wrapCommandAction,
 } from "../cli/common.js";
-import { chalkLink } from "../utilities/colors.js";
+import { chalkLink } from "../utilities/cliOutput.js";
 import { readAuthConfigProfile, writeAuthConfigProfile } from "../utilities/configFiles.js";
 import { getVersion } from "../utilities/getVersion.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";
@@ -75,7 +75,14 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
       const authConfig = readAuthConfigProfile(options?.profile);
 
       if (authConfig && authConfig.accessToken) {
-        const whoAmIResult = await whoAmI({ profile: options?.profile ?? "default", skipTelemetry: !span.isRecording(), logLevel: logger.loggerLevel }, opts.embedded);
+        const whoAmIResult = await whoAmI(
+          {
+            profile: options?.profile ?? "default",
+            skipTelemetry: !span.isRecording(),
+            logLevel: logger.loggerLevel,
+          },
+          opts.embedded
+        );
 
         if (!whoAmIResult.success) {
           throw new Error(whoAmIResult.error);
@@ -175,9 +182,19 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
 
         getPersonalAccessTokenSpinner.stop(`Logged in with token ${indexResult.obfuscatedToken}`);
 
-        writeAuthConfigProfile({ accessToken: indexResult.token, apiUrl: opts.defaultApiUrl }, options?.profile);
+        writeAuthConfigProfile(
+          { accessToken: indexResult.token, apiUrl: opts.defaultApiUrl },
+          options?.profile
+        );
 
-        const whoAmIResult = await whoAmI({ profile: options?.profile ?? "default", skipTelemetry: !span.isRecording(), logLevel: logger.loggerLevel }, opts.embedded);
+        const whoAmIResult = await whoAmI(
+          {
+            profile: options?.profile ?? "default",
+            skipTelemetry: !span.isRecording(),
+            logLevel: logger.loggerLevel,
+          },
+          opts.embedded
+        );
 
         if (!whoAmIResult.success) {
           throw new Error(whoAmIResult.error);

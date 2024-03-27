@@ -8,7 +8,6 @@ import {
   detectDependencyVersion,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
-import chalk from "chalk";
 import { watch } from "chokidar";
 import { Command } from "commander";
 import { BuildContext, Metafile, context } from "esbuild";
@@ -18,7 +17,7 @@ import { createHash } from "node:crypto";
 import fs, { readFileSync } from "node:fs";
 import { ClientRequestArgs } from "node:http";
 import { basename, dirname, join } from "node:path";
-import pThrottle from "p-throttle";
+import pDebounce from "p-debounce";
 import { WebSocket } from "partysocket";
 import React, { Suspense, useEffect } from "react";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
@@ -27,10 +26,10 @@ import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
-import { chalkPurple } from "../utilities/colors";
+import { chalkGrey, chalkPurple, chalkWorker } from "../utilities/cliOutput";
 import { readConfig } from "../utilities/configFiles";
 import { readJSONFile } from "../utilities/fileSystem";
-import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import {
   detectPackageNameFromImportPath,
   parsePackageName,
@@ -104,6 +103,7 @@ async function startDev(
     }
 
     await printStandloneInitialBanner(true);
+    printDevBanner();
 
     logger.debug("Starting dev session", { dir, options, authorization });
 
@@ -339,7 +339,7 @@ function useDev({
 
       let firstBuild = true;
 
-      logger.log(chalk.dim("⎔ Building background worker..."));
+      logger.log(chalkGrey("○ Building background worker…"));
 
       ctx = await context({
         stdin: {
@@ -375,7 +375,7 @@ function useDev({
                 }
 
                 if (!firstBuild) {
-                  logger.log(chalk.dim("⎔ Rebuilding background worker..."));
+                  logger.log(chalkGrey("○ Building background worker…"));
                 }
 
                 const metaOutputKey = join("out", `stdin.js`);
@@ -406,9 +406,8 @@ function useDev({
                 const contentHash = md5Hasher.digest("hex");
 
                 if (latestWorkerContentHash === contentHash) {
-                  logger.log(chalk.dim("⎔ No changes detected, skipping build..."));
+                  logger.log(chalkGrey("○ No changes detected, skipping build…"));
 
-                  logger.debug(`No changes detected, skipping build`);
                   return;
                 }
 
@@ -509,19 +508,13 @@ function useDev({
 
                   backgroundWorker.metadata = backgroundWorkerRecord.data;
 
-                  if (firstBuild) {
-                    logger.log(
-                      chalk.green(
-                        `Background worker started (${backgroundWorkerRecord.data.version})`
-                      )
-                    );
-                  } else {
-                    logger.log(
-                      chalk.dim(
-                        `Background worker rebuilt (${backgroundWorkerRecord.data.version})`
-                      )
-                    );
-                  }
+                  logger.log(
+                    `${chalkGrey(
+                      `○ Background worker started -> ${chalkWorker(
+                        backgroundWorkerRecord.data.version
+                      )}`
+                    )}`
+                  );
 
                   firstBuild = false;
 
@@ -555,13 +548,7 @@ function useDev({
       await ctx.watch();
     }
 
-    const throttle = pThrottle({
-      limit: 1,
-      interval: 1000,
-      strict: true,
-    });
-
-    const throttledRebuild = throttle(runBuild);
+    const throttledRebuild = pDebounce(runBuild, 250, { before: true });
 
     const taskFileWatcher = watch(
       config.triggerDirectories.map((triggerDir) => `${triggerDir}/*.ts`),
@@ -570,7 +557,7 @@ function useDev({
       }
     );
 
-    taskFileWatcher.on("change", async (path) => {
+    taskFileWatcher.on("add", async (path) => {
       throttledRebuild().catch((error) => {
         logger.error(error);
       });
