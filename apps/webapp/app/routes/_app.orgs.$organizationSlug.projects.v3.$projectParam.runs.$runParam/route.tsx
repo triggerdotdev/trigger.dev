@@ -319,7 +319,7 @@ function TasksTreeView({
               renderNode={({ node, state }) => (
                 <div
                   className={cn(
-                    "flex h-8 cursor-pointer items-center rounded-l-sm pr-2",
+                    "flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
                     state.selected
                       ? "bg-grid-dimmed hover:bg-grid-bright"
                       : "bg-transparent hover:bg-grid-dimmed"
@@ -339,8 +339,7 @@ function TasksTreeView({
                     <div
                       className={cn(
                         "flex h-8 w-4 items-center",
-                        node.hasChildren &&
-                          (node.data.isError ? "hover:bg-rose-500/30" : "hover:bg-charcoal-800")
+                        node.hasChildren && "hover:bg-charcoal-600"
                       )}
                       onClick={(e) => {
                         e.stopPropagation();
