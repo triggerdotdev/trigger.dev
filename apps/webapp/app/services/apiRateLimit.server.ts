@@ -99,7 +99,7 @@ export function authorizationRateLimitMiddleware({
     const authorizationValue = req.headers.authorization;
     if (!authorizationValue) {
       if (log.requests) {
-        logger.info(`RateLimiter (${keyPrefix}): no key`);
+        logger.info(`RateLimiter (${keyPrefix}): no key`, { headers: req.headers, url: req.url });
       }
       res.setHeader("Content-Type", "application/problem+json");
       return res.status(401).send(
