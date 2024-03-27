@@ -131,7 +131,7 @@ export function TriggerDevStep({ extra }: { extra?: string }) {
 }
 
 // Trigger.dev version 3 setup commands
-const v3PackageTag = "v3";
+const v3PackageTag = "beta";
 
 export function InitCommandV3() {
   const project = useProject();
