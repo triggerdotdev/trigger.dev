@@ -87,6 +87,7 @@ export type EventRepoConfig = {
   batchSize: number;
   batchInterval: number;
   redis: RedisOptions;
+  retentionInDays: number;
 };
 
 export type QueryOptions = Prisma.TaskEventWhereInput;
@@ -723,6 +724,16 @@ export class EventRepository {
     return this._randomIdGenerator.generateSpanId();
   }
 
+  public async truncateEvents() {
+    await this.db.taskEvent.deleteMany({
+      where: {
+        createdAt: {
+          lt: new Date(Date.now() - this._config.retentionInDays * 24 * 60 * 60 * 1000),
+        },
+      },
+    });
+  }
+
   /**
    * Returns a deterministically random 8-byte span ID formatted/encoded as a 16 lowercase hex
    * characters corresponding to 64 bits, based on the trace ID and seed.
@@ -743,8 +754,9 @@ export class EventRepository {
 }
 
 export const eventRepository = new EventRepository(prisma, {
-  batchSize: 100,
-  batchInterval: 1000,
+  batchSize: env.EVENTS_BATCH_SIZE,
+  batchInterval: env.EVENTS_BATCH_INTERVAL,
+  retentionInDays: env.EVENTS_DEFAULT_LOG_RETENTION,
   redis: {
     port: env.REDIS_PORT,
     host: env.REDIS_HOST,

@@ -3,7 +3,7 @@ import { PrismaClient, prisma } from "~/db.server";
 import { eventRepository } from "~/v3/eventRepository.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
-export type Span = Result["event"];
+export type Span = NonNullable<Result>["event"];
 
 export class SpanPresenter {
   #prismaClient: PrismaClient;
@@ -36,7 +36,7 @@ export class SpanPresenter {
     const span = await eventRepository.getSpan(spanId);
 
     if (!span) {
-      throw new Error("Event not found");
+      return;
     }
 
     const output =

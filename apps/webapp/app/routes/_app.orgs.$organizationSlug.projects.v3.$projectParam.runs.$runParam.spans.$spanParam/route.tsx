@@ -21,6 +21,7 @@ import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -29,7 +30,7 @@ import { SpanLink } from "~/v3/eventRepository.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, organizationSlug, spanParam } = v3SpanParamsSchema.parse(params);
+  const { projectParam, organizationSlug, runParam, spanParam } = v3SpanParamsSchema.parse(params);
 
   const presenter = new SpanPresenter();
   const span = await presenter.call({
@@ -38,6 +39,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectSlug: projectParam,
     spanId: spanParam,
   });
+
+  if (!span) {
+    // We're going to redirect to the run page
+    return redirectWithErrorMessage(
+      v3RunPath({ slug: organizationSlug }, { slug: projectParam }, { friendlyId: runParam }),
+      request,
+      `Event not found.`
+    );
+  }
 
   return typedjson({ span });
 };
