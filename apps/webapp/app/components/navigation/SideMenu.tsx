@@ -264,7 +264,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             <SideMenuItem
               name="Documentation (v3)"
               icon="docs"
-              to="https://trigger.dev/docs"
+              to="https://trigger.dev/docs/v3"
               data-action="documentation"
               target="_blank"
             />
