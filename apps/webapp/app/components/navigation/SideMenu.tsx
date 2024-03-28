@@ -556,7 +556,7 @@ function V3ProjectSideMenu({
         data-action="test"
       />
       <SideMenuItem
-        name="API Keys"
+        name="API keys"
         icon={KeyIcon}
         iconColor="text-amber-500"
         to={v3ApiKeysPath(organization, project)}
