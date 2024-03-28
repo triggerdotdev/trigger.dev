@@ -19,6 +19,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { TextLink } from "~/components/primitives/TextLink";
 import { useProject } from "~/hooks/useProject";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -55,12 +56,12 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="API Keys" />
+        <PageTitle title="API keys" />
         <PageAccessories>
           <LinkButton
             variant={"minimal/small"}
             LeadingIcon={BookOpenIcon}
-            to={docsPath("/documentation/concepts/environments-endpoints#environments")}
+            to={docsPath("/v3/apikeys")}
           >
             API keys docs
           </LinkButton>
@@ -68,9 +69,10 @@ export default function Page() {
       </NavBar>
       <PageBody>
         <div className={cn("h-full")}>
-          <Header3 spacing>Server API keys</Header3>
+          <Header3 spacing>Secret keys</Header3>
           <Paragraph variant="small" spacing>
-            Server API keys should be used on your server – they give full API access.
+            Secret keys should be used on your server – they give full API access and allow you to{" "}
+            <TextLink to={docsPath("v3/triggering")}>trigger tasks</TextLink> from your backend.
           </Paragraph>
           <Header3 spacing>Public API keys</Header3>
           <Paragraph variant="small" spacing>
@@ -81,7 +83,7 @@ export default function Page() {
               <TableHeader>
                 <TableRow>
                   <TableHeaderCell>Environment</TableHeaderCell>
-                  <TableHeaderCell>Server API key</TableHeaderCell>
+                  <TableHeaderCell>Secret key</TableHeaderCell>
                   <TableHeaderCell>Public API key</TableHeaderCell>
                   <TableHeaderCell>Keys generated</TableHeaderCell>
                   <TableHeaderCell>Latest version</TableHeaderCell>

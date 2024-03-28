@@ -23,6 +23,10 @@ You can trigger any task from your backend code, using either `trigger()` or `ba
   Trigger.dev API key to the world.
 </Note>
 
+### Authentication
+
+When you trigger a task from your backend code, you need to set the `TRIGGER_SECRET_KEY` environment variable. You can find the value on the API keys page in the Trigger.dev dashboard. [More info on API keys](/v3/apikeys).
+
 ### trigger()
 
 Triggers a single run of a task with the payload you pass in, and any options you specify. It does NOT wait for the result, you cannot do that from outside a task.
