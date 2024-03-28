@@ -1,5 +1,13 @@
 # trigger.dev
 
+## 3.0.0-beta.3
+
+### Patch Changes
+
+- e3cf456c6: Handle string and non-stringifiable outputs like functions
+- Updated dependencies [e3cf456c6]
+  - @trigger.dev/core@3.0.0-beta.2
+
 ## 3.0.0-beta.2
 
 ### Patch Changes

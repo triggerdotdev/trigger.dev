@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.0.0-beta.2
+
+### Patch Changes
+
+- e3cf456c6: Handle string and non-stringifiable outputs like functions
+
 ## 3.0.0-beta.1
 
 ### Patch Changes
