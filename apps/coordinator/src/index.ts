@@ -26,7 +26,7 @@ const PLATFORM_ENABLED = ["1", "true"].includes(process.env.PLATFORM_ENABLED ?? 
 const PLATFORM_HOST = process.env.PLATFORM_HOST || "127.0.0.1";
 const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 3030;
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
-const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?? "true");
+const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?? "false");
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 
