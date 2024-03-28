@@ -452,6 +452,7 @@
         "v3/trigger-folder",
         "v3/tasks-overview",
         "v3/triggering",
+        "v3/apikeys",
         {
           "group": "Task types",
           "pages": ["v3/tasks-regular", "v3/tasks-scheduled", "v3/tasks-zod", "v3/tasks-webhooks"]
