@@ -10,7 +10,7 @@ import {
   SpanMessagingEvent,
   TaskEventStyle,
   correctErrorStackTrace,
-  createPackageAttributesAsJson,
+  createPacketAttributesAsJson,
   flattenAttributes,
   isExceptionSpanEvent,
   omit,
@@ -188,7 +188,7 @@ export class EventRepository {
     const event = events[0];
 
     const output = options?.attributes.output
-      ? await createPackageAttributesAsJson(
+      ? await createPacketAttributesAsJson(
           options?.attributes.output,
           options?.attributes.outputType ?? "application/json"
         )
@@ -213,8 +213,9 @@ export class EventRepository {
       style: event.style as Attributes,
       output: output,
       outputType:
-        options?.attributes.outputType === "application/store"
-          ? "application/store"
+        options?.attributes.outputType === "application/store" ||
+        options?.attributes.outputType === "text/plain"
+          ? options?.attributes.outputType
           : "application/json",
       payload: event.payload as Attributes,
       payloadType: event.payloadType,

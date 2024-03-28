@@ -229,7 +229,7 @@ export async function createPacketAttributes(
   }
 }
 
-export async function createPackageAttributesAsJson(
+export async function createPacketAttributesAsJson(
   data: any,
   dataType: string
 ): Promise<Attributes> {
