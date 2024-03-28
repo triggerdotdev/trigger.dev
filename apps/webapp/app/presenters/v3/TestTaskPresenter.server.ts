@@ -69,7 +69,8 @@ export class TestTaskPresenter {
       ON
           tr."taskIdentifier" = bwt.slug
       WHERE
-          bwt."friendlyId" = ${taskFriendlyId}
+          bwt."friendlyId" = ${taskFriendlyId} AND
+          tr."runtimeEnvironmentId" = ${task.runtimeEnvironment.id}
       ORDER BY 
           tr."createdAt" DESC
       LIMIT 5
