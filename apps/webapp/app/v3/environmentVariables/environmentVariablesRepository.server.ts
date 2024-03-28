@@ -473,6 +473,10 @@ export class EnvironmentVariablesRepository implements Repository {
         key: "TRIGGER_API_URL",
         value: env.APP_ORIGIN,
       },
+      {
+        key: "TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS",
+        value: String(env.RUNTIME_WAIT_THRESHOLD_IN_MS),
+      },
     ];
   }
 

@@ -1,3 +1,4 @@
+import { clock } from "../clock-api";
 import {
   BatchTaskRunExecutionResult,
   ProdChildToWorkerMessages,
@@ -9,6 +10,11 @@ import {
 } from "../schemas";
 import { ZodIpcConnection } from "../zodIpc";
 import { RuntimeManager } from "./manager";
+import { setTimeout } from "node:timers/promises";
+
+export type ProdRuntimeManagerOptions = {
+  waitThresholdInMs?: number;
+};
 
 export class ProdRuntimeManager implements RuntimeManager {
   _taskWaits: Map<
@@ -21,7 +27,7 @@ export class ProdRuntimeManager implements RuntimeManager {
     { resolve: (value: BatchTaskRunExecutionResult) => void; reject: (err?: any) => void }
   > = new Map();
 
-  _waitForRestore: { resolve: (value?: any) => void; reject: (err?: any) => void } | undefined;
+  _waitForRestore: { resolve: (value: "restore") => void; reject: (err?: any) => void } | undefined;
 
   _tasks: Map<string, TaskMetadataWithFilePath> = new Map();
 
@@ -29,7 +35,8 @@ export class ProdRuntimeManager implements RuntimeManager {
     private ipc: ZodIpcConnection<
       typeof ProdWorkerToChildMessages,
       typeof ProdChildToWorkerMessages
-    >
+    >,
+    private options: ProdRuntimeManagerOptions = {}
   ) {}
 
   disable(): void {
@@ -47,20 +54,16 @@ export class ProdRuntimeManager implements RuntimeManager {
   }
 
   async waitForDuration(ms: number): Promise<void> {
-    let timeout: NodeJS.Timeout | undefined;
-
     const now = Date.now();
 
-    const resolveAfterDuration = new Promise((resolve) => {
-      timeout = setTimeout(resolve, ms);
-    });
+    const resolveAfterDuration = setTimeout(ms, "duration" as const);
 
-    if (ms < 10_000) {
+    if (ms <= this.waitThresholdInMs) {
       await resolveAfterDuration;
       return;
     }
 
-    const waitForRestore = new Promise((resolve, reject) => {
+    const waitForRestore = new Promise<"restore">((resolve, reject) => {
       this._waitForRestore = { resolve, reject };
     });
 
@@ -81,8 +84,6 @@ export class ProdRuntimeManager implements RuntimeManager {
 
     // The coordinator can then cancel any in-progress checkpoints
     this.ipc.send("CANCEL_CHECKPOINT", {});
-
-    clearTimeout(timeout);
   }
 
   resumeAfterRestore(): void {
@@ -90,7 +91,10 @@ export class ProdRuntimeManager implements RuntimeManager {
       return;
     }
 
-    this._waitForRestore.resolve();
+    // Resets the clock to the current time
+    clock.reset();
+
+    this._waitForRestore.resolve("restore");
     this._waitForRestore = undefined;
   }
 
@@ -154,5 +158,9 @@ export class ProdRuntimeManager implements RuntimeManager {
     }
 
     this._taskWaits.delete(execution.run.id);
+  }
+
+  private get waitThresholdInMs(): number {
+    return this.options.waitThresholdInMs ?? 30_000;
   }
 }

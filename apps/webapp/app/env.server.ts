@@ -116,6 +116,7 @@ const EnvironmentSchema = z.object({
   DEV_OTEL_LOG_SCHEDULED_DELAY_MILLIS: z.string().default("200"),
   DEV_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
   DEV_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
+  RUNTIME_WAIT_THRESHOLD_IN_MS: z.coerce.number().int().default(30000),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

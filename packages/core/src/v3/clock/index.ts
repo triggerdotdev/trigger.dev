@@ -27,6 +27,10 @@ export class ClockAPI {
     return this.#getClock().preciseNow();
   }
 
+  public reset(): void {
+    this.#getClock().reset();
+  }
+
   #getClock(): Clock {
     return getGlobal(API_NAME) ?? SIMPLE_CLOCK;
   }

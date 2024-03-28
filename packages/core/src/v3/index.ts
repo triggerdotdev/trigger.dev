@@ -36,7 +36,7 @@ export { taskContextManager, TaskContextSpanProcessor } from "./tasks/taskContex
 export type { RuntimeManager } from "./runtime/manager";
 export { DevRuntimeManager } from "./runtime/devRuntimeManager";
 export { ProdRuntimeManager } from "./runtime/prodRuntimeManager";
-export { DurableClock } from "./clock/durableClock";
+export { PreciseWallClock as DurableClock } from "./clock/preciseWallClock";
 export { TriggerTracer } from "./tracer";
 
 export type { TaskLogger } from "./logger/taskLogger";

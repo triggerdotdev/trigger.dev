@@ -8,4 +8,8 @@ export class SimpleClock implements Clock {
 
     return [nowStruct.seconds, nowStruct.nanos];
   }
+
+  reset() {
+    // do nothing
+  }
 }

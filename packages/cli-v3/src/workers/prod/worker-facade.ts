@@ -201,7 +201,9 @@ const zodIpc = new ZodIpcConnection({
   },
 });
 
-const prodRuntimeManager = new ProdRuntimeManager(zodIpc);
+const prodRuntimeManager = new ProdRuntimeManager(zodIpc, {
+  waitThresholdInMs: parseInt(process.env.TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS ?? "30000", 10),
+});
 
 runtime.setGlobalRuntimeManager(prodRuntimeManager);
 
