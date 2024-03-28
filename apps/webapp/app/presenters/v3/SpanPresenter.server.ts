@@ -43,14 +43,14 @@ export class SpanPresenter {
       span.outputType === "application/store"
         ? `/resources/packets/${span.environmentId}/${span.output}`
         : typeof span.output !== "undefined" && span.output !== null
-        ? prettyPrintPacket(span.output, span.outputType ?? undefined)
+        ? await prettyPrintPacket(span.output, span.outputType ?? undefined)
         : undefined;
 
     const payload =
       span.payloadType === "application/store"
         ? `/resources/packets/${span.environmentId}/${span.payload}`
         : typeof span.payload !== "undefined" && span.payload !== null
-        ? prettyPrintPacket(span.payload, span.payloadType ?? undefined)
+        ? await prettyPrintPacket(span.payload, span.payloadType ?? undefined)
         : undefined;
 
     return {
