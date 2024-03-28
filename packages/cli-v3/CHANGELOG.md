@@ -1,5 +1,19 @@
 # trigger.dev
 
+## 3.0.0-beta.2
+
+### Patch Changes
+
+- b66d5525e: add machine config and secure zod connection
+- d9c9e80bc: Changed "Worker" to "Version" in the dev command key
+- 719c0a0b9: Fixed incorrect span timings around checkpoints by implementing a precise wall clock that resets after restores
+- 9bcb8cb42: Added DEBUG to the ignored env vars
+- f93eae300: Dynamically import superjson and fix some bundling issues
+- Updated dependencies [b66d5525e]
+- Updated dependencies [719c0a0b9]
+- Updated dependencies [f93eae300]
+  - @trigger.dev/core@3.0.0-beta.1
+
 ## 3.0.0-beta.1
 
 ### Patch Changes
