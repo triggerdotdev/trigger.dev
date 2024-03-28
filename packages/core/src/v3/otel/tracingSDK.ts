@@ -15,16 +15,18 @@ import {
   detectResourcesSync,
   processDetectorSync,
 } from "@opentelemetry/resources";
-import { LoggerProvider, SimpleLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import {
+  BatchLogRecordProcessor,
+  LoggerProvider,
+  SimpleLogRecordProcessor,
+} from "@opentelemetry/sdk-logs";
+import {
+  BatchSpanProcessor,
   NodeTracerProvider,
   SimpleSpanProcessor,
   SpanExporter,
 } from "@opentelemetry/sdk-trace-node";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
-import { SemanticInternalAttributes } from "../semanticInternalAttributes";
-import { TaskContextLogProcessor, TaskContextSpanProcessor } from "../tasks/taskContextManager";
-import { getEnvVar } from "../utils/getEnv";
 import {
   OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT,
   OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT,
@@ -35,6 +37,9 @@ import {
   OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT,
   OTEL_SPAN_EVENT_COUNT_LIMIT,
 } from "../limits";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes";
+import { TaskContextLogProcessor, TaskContextSpanProcessor } from "../tasks/taskContextManager";
+import { getEnvVar } from "../utils/getEnv";
 
 class AsyncResourceDetector implements DetectorSync {
   private _promise: Promise<ResourceAttributes>;
@@ -130,8 +135,22 @@ export class TracingSDK {
     });
 
     traceProvider.addSpanProcessor(
-      new TaskContextSpanProcessor(new SimpleSpanProcessor(spanExporter))
+      new TaskContextSpanProcessor(
+        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
+          ? new BatchSpanProcessor(spanExporter, {
+              maxExportBatchSize: parseInt(getEnvVar("OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"),
+              scheduledDelayMillis: parseInt(
+                getEnvVar("OTEL_SPAN_SCHEDULED_DELAY_MILLIS") ?? "200"
+              ),
+              exportTimeoutMillis: parseInt(
+                getEnvVar("OTEL_SPAN_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+              ),
+              maxQueueSize: parseInt(getEnvVar("OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
+            })
+          : new SimpleSpanProcessor(spanExporter)
+      )
     );
+
     traceProvider.register();
 
     registerInstrumentations({
@@ -153,7 +172,16 @@ export class TracingSDK {
     });
 
     loggerProvider.addLogRecordProcessor(
-      new TaskContextLogProcessor(new SimpleLogRecordProcessor(logExporter))
+      new TaskContextLogProcessor(
+        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
+          ? new BatchLogRecordProcessor(logExporter, {
+              maxExportBatchSize: parseInt(getEnvVar("OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"),
+              scheduledDelayMillis: parseInt(getEnvVar("OTEL_LOG_SCHEDULED_DELAY_MILLIS") ?? "200"),
+              exportTimeoutMillis: parseInt(getEnvVar("OTEL_LOG_EXPORT_TIMEOUT_MILLIS") ?? "30000"),
+              maxQueueSize: parseInt(getEnvVar("OTEL_LOG_MAX_QUEUE_SIZE") ?? "512"),
+            })
+          : new SimpleLogRecordProcessor(logExporter)
+      )
     );
 
     this._logProvider = loggerProvider;

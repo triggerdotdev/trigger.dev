@@ -10,6 +10,7 @@ import {
 } from "@opentelemetry/api";
 import { Logger, logs } from "@opentelemetry/api-logs";
 import { SemanticInternalAttributes } from "./semanticInternalAttributes";
+import { clock } from "./clock-api";
 
 export type TriggerTracerConfig =
   | {
@@ -65,6 +66,7 @@ export class TriggerTracer {
       {
         ...options,
         attributes,
+        startTime: clock.preciseNow(),
       },
       parentContext,
       async (span) => {
@@ -94,7 +96,7 @@ export class TriggerTracer {
 
           throw e;
         } finally {
-          span.end();
+          span.end(clock.preciseNow());
         }
       }
     );

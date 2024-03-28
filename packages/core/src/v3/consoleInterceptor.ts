@@ -4,11 +4,11 @@ import util from "node:util";
 import { iconStringForSeverity } from "./icons";
 import { SemanticInternalAttributes } from "./semanticInternalAttributes";
 import { flattenAttributes } from "./utils/flattenAttributes";
-import { type PreciseDateOrigin, calculatePreciseDateHrTime } from "./utils/preciseDate";
-
+import { ClockTime } from "./clock/clock";
+import { clock } from "./clock-api";
 
 export class ConsoleInterceptor {
-  constructor(private readonly logger: logsAPI.Logger, private readonly preciseDateOrigin: PreciseDateOrigin) { }
+  constructor(private readonly logger: logsAPI.Logger) {}
 
   // Intercept the console and send logs to the OpenTelemetry logger
   // during the execution of the callback
@@ -39,24 +39,28 @@ export class ConsoleInterceptor {
   }
 
   log(...args: unknown[]): void {
-    this.#handleLog(SeverityNumber.INFO, "Log", ...args);
+    this.#handleLog(SeverityNumber.INFO, this.#getTimestampInHrTime(), "Log", ...args);
   }
 
   info(...args: unknown[]): void {
-    this.#handleLog(SeverityNumber.INFO, "Info", ...args);
+    this.#handleLog(SeverityNumber.INFO, this.#getTimestampInHrTime(), "Info", ...args);
   }
 
   warn(...args: unknown[]): void {
-    this.#handleLog(SeverityNumber.WARN, "Warn", ...args);
+    this.#handleLog(SeverityNumber.WARN, this.#getTimestampInHrTime(), "Warn", ...args);
   }
 
   error(...args: unknown[]): void {
-    this.#handleLog(SeverityNumber.ERROR, "Error", ...args);
+    this.#handleLog(SeverityNumber.ERROR, this.#getTimestampInHrTime(), "Error", ...args);
   }
 
-  #handleLog(severityNumber: SeverityNumber, severityText: string, ...args: unknown[]): void {
+  #handleLog(
+    severityNumber: SeverityNumber,
+    timestamp: ClockTime,
+    severityText: string,
+    ...args: unknown[]
+  ): void {
     const body = util.format(...args);
-    const timestamp = this.#getTimestampInHrTime();
 
     const parsed = tryParseJSON(body);
 
@@ -81,8 +85,8 @@ export class ConsoleInterceptor {
     });
   }
 
-  #getTimestampInHrTime(): [number, number] {
-    return calculatePreciseDateHrTime(this.preciseDateOrigin);
+  #getTimestampInHrTime(): ClockTime {
+    return clock.preciseNow();
   }
 
   #getAttributes(severityNumber: SeverityNumber): logsAPI.LogAttributes {

@@ -6,8 +6,9 @@ import {
   TaskExecutor,
   ZodIpcConnection,
   type TracingSDK,
-  preciseDateOriginNow,
   HandleErrorFunction,
+  DurableClock,
+  clock,
 } from "@trigger.dev/core/v3";
 import "source-map-support/register.js";
 
@@ -40,16 +41,16 @@ import * as packageJson from "../../../package.json";
 
 import { TaskMetadataWithFunctions } from "../../types";
 
-const preciseDateOrigin = preciseDateOriginNow();
+const durableClock = new DurableClock();
+clock.setGlobalClock(durableClock);
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
-const consoleInterceptor = new ConsoleInterceptor(otelLogger, preciseDateOrigin);
+const consoleInterceptor = new ConsoleInterceptor(otelLogger);
 
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
   tracer: tracer,
   level: "info",
-  preciseDateOrigin,
 });
 
 logger.setGlobalTaskLogger(otelTaskLogger);
@@ -200,7 +201,9 @@ const zodIpc = new ZodIpcConnection({
   },
 });
 
-const prodRuntimeManager = new ProdRuntimeManager(zodIpc);
+const prodRuntimeManager = new ProdRuntimeManager(zodIpc, {
+  waitThresholdInMs: parseInt(process.env.TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS ?? "30000", 10),
+});
 
 runtime.setGlobalRuntimeManager(prodRuntimeManager);
 

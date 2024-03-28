@@ -30,7 +30,7 @@ function parseSecretKey(key: string) {
 const SecretValue = z.object({ secret: z.string() });
 
 export class EnvironmentVariablesRepository implements Repository {
-  constructor(private prismaClient: PrismaClient = prisma) { }
+  constructor(private prismaClient: PrismaClient = prisma) {}
 
   async create(
     projectId: string,
@@ -419,8 +419,49 @@ export class EnvironmentVariablesRepository implements Repository {
         {
           key: "OTEL_EXPORTER_OTLP_ENDPOINT",
           value: env.DEV_OTEL_EXPORTER_OTLP_ENDPOINT ?? env.APP_ORIGIN,
-        }
-      ];
+        },
+      ].concat(
+        env.DEV_OTEL_BATCH_PROCESSING_ENABLED === "1"
+          ? [
+              {
+                key: "OTEL_BATCH_PROCESSING_ENABLED",
+                value: "1",
+              },
+              {
+                key: "OTEL_SPAN_MAX_EXPORT_BATCH_SIZE",
+                value: env.DEV_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE,
+              },
+              {
+                key: "OTEL_SPAN_SCHEDULED_DELAY_MILLIS",
+                value: env.DEV_OTEL_SPAN_SCHEDULED_DELAY_MILLIS,
+              },
+              {
+                key: "OTEL_SPAN_EXPORT_TIMEOUT_MILLIS",
+                value: env.DEV_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS,
+              },
+              {
+                key: "OTEL_SPAN_MAX_QUEUE_SIZE",
+                value: env.DEV_OTEL_SPAN_MAX_QUEUE_SIZE,
+              },
+              {
+                key: "OTEL_LOG_MAX_EXPORT_BATCH_SIZE",
+                value: env.DEV_OTEL_LOG_MAX_EXPORT_BATCH_SIZE,
+              },
+              {
+                key: "OTEL_LOG_SCHEDULED_DELAY_MILLIS",
+                value: env.DEV_OTEL_LOG_SCHEDULED_DELAY_MILLIS,
+              },
+              {
+                key: "OTEL_LOG_EXPORT_TIMEOUT_MILLIS",
+                value: env.DEV_OTEL_LOG_EXPORT_TIMEOUT_MILLIS,
+              },
+              {
+                key: "OTEL_LOG_MAX_QUEUE_SIZE",
+                value: env.DEV_OTEL_LOG_MAX_QUEUE_SIZE,
+              },
+            ]
+          : []
+      );
     }
 
     return [
@@ -431,6 +472,10 @@ export class EnvironmentVariablesRepository implements Repository {
       {
         key: "TRIGGER_API_URL",
         value: env.APP_ORIGIN,
+      },
+      {
+        key: "TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS",
+        value: String(env.RUNTIME_WAIT_THRESHOLD_IN_MS),
       },
     ];
   }

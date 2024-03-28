@@ -73,7 +73,7 @@ export const parentTask = task({
 
     console.info("This is an info message");
     logger.info("This is an info message from logger.info");
-    console.log(JSON.stringify({ ctx, message: "This is the parent task context" }));
+    console.log(JSON.stringify({ ctx, message: "This is the parent task contexts" }));
     logger.log(JSON.stringify({ ctx, message: "This is the parent task context from logger.log" }));
     console.warn("You've been warned buddy");
     logger.warn("You've been warned buddy from logger.warn");
@@ -107,10 +107,21 @@ export const parentTask = task({
 
 export const childTask = task({
   id: "child-task",
-  run: async (payload: { message: string; forceError: boolean }, { ctx }) => {
+  run: async (
+    payload: { message: string; forceError: boolean; delayInSeconds?: number },
+    { ctx }
+  ) => {
     logger.info("Child task payload", { payload });
+    logger.info("Child task payload 2", { payload });
+    logger.info("Child task payload 3", { payload });
+    logger.info("Child task payload 4", { payload });
+    logger.info("Child task payload 5", { payload });
 
-    await wait.for({ seconds: 10 });
+    await wait.for({ seconds: payload.delayInSeconds ?? 5 });
+
+    logger.info("Child task payload 6", { payload });
+    logger.info("Child task payload 7", { payload });
+    logger.info("Child task payload 8", { payload });
 
     const response = await fetch("https://jsonhero.io/api/create.json", {
       method: "POST",

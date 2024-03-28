@@ -591,14 +591,6 @@ export class MarQS {
     concurrencyLimitKey: string;
     currentConcurrencyKey: string;
   }) {
-    logger.debug("Calling dequeueMessage", {
-      messageQueue,
-      parentQueue,
-      visibilityQueue,
-      concurrencyLimitKey,
-      currentConcurrencyKey,
-    });
-
     const result = await this.redis.dequeueMessage(
       messageQueue,
       parentQueue,
