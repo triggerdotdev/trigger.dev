@@ -3,15 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build:trigger": "trigger.dev build",
-    "dev:trigger": "trigger.dev dev",
-    "start": "ts-node -r tsconfig-paths/register -r dotenv/config src/index.ts",
-    "start:concurrency": "ts-node -r tsconfig-paths/register -r dotenv/config src/concurrencyUsage.ts",
-    "start:longRunning": "ts-node -r tsconfig-paths/register -r dotenv/config src/longRunningUsage.ts",
-    "start:openai": "ts-node -r tsconfig-paths/register -r dotenv/config src/openaiUsage.ts",
-    "start:retries": "ts-node -r tsconfig-paths/register -r dotenv/config src/retriesUsage.ts",
-    "start:batch": "ts-node -r tsconfig-paths/register -r dotenv/config src/batchUsage.ts",
-    "start:stripe": "ts-node -r tsconfig-paths/register -r dotenv/config src/stripeUsage.ts"
+    "dev:trigger": "trigger.dev dev"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.8.0",
@@ -25,12 +17,7 @@
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "20.4.2",
-    "concurrently": "^8.2.0",
-    "dotenv": "^16.3.1",
-    "nodemon": "^3.0.1",
     "trigger.dev": "workspace:*",
-    "ts-node": "^10.9.1",
-    "tsconfig-paths": "^3.14.1",
-    "typescript": "5.1.6"
+    "typescript": "^5.3.0"
   }
 }
