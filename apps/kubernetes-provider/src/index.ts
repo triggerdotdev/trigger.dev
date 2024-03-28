@@ -7,7 +7,7 @@ import {
   TaskOperationsIndexOptions,
   TaskOperationsRestoreOptions,
 } from "@trigger.dev/core-apps";
-import { Machine } from "@trigger.dev/core/v3";
+import { Machine, PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
 import { randomUUID } from "crypto";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
@@ -66,7 +66,7 @@ class KubernetesTaskOperations implements TaskOperations {
                 },
               ],
               nodeSelector: {
-                nodetype: "worker"
+                nodetype: "worker",
               },
               containers: [
                 {
@@ -83,6 +83,13 @@ class KubernetesTaskOperations implements TaskOperations {
                   //     memory: "50Mi",
                   //   },
                   // },
+                  lifecycle: {
+                    preStop: {
+                      exec: {
+                        command: this.#getLifecycleCommand("preStop", "terminate"),
+                      },
+                    },
+                  },
                   env: [
                     {
                       name: "DEBUG",
@@ -165,7 +172,7 @@ class KubernetesTaskOperations implements TaskOperations {
             },
           ],
           nodeSelector: {
-            nodetype: "worker"
+            nodetype: "worker",
           },
           containers: [
             {
@@ -187,7 +194,7 @@ class KubernetesTaskOperations implements TaskOperations {
                 },
                 preStop: {
                   exec: {
-                    command: this.#getLifecycleCommand("preStop", "create"),
+                    command: this.#getLifecycleCommand("preStop", "terminate"),
                   },
                 },
               },
@@ -279,7 +286,7 @@ class KubernetesTaskOperations implements TaskOperations {
             },
           ],
           nodeSelector: {
-            nodetype: "worker"
+            nodetype: "worker",
           },
           initContainers: [
             {
@@ -330,7 +337,7 @@ class KubernetesTaskOperations implements TaskOperations {
                 },
                 preStop: {
                   exec: {
-                    command: this.#getLifecycleCommand("preStop", "restore"),
+                    command: this.#getLifecycleCommand("preStop", "terminate"),
                   },
                 },
               },
@@ -372,7 +379,10 @@ class KubernetesTaskOperations implements TaskOperations {
     };
   }
 
-  #getLifecycleCommand(type: "postStart" | "preStop", cause: "index" | "create" | "restore") {
+  #getLifecycleCommand<THookType extends "postStart" | "preStop">(
+    type: THookType,
+    cause: THookType extends "postStart" ? PostStartCauses : PreStopCauses
+  ) {
     return ["/bin/sh", "-c", `sleep 1; wget -q -O- 127.0.0.1:8000/${type}?cause=${cause}`];
   }
 

@@ -11,6 +11,12 @@ import {
 } from "./messages";
 import { TaskResource } from "./resources";
 
+export const PostStartCauses = z.enum(["index", "create", "restore"]);
+export type PostStartCauses = z.infer<typeof PostStartCauses>
+
+export const PreStopCauses = z.enum(["terminate"]);
+export type PreStopCauses = z.infer<typeof PreStopCauses>
+
 const RegexSchema = z.custom<RegExp>((val) => {
   try {
     // Check to see if val is a regex

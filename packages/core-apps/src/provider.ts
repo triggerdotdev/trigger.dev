@@ -230,38 +230,34 @@ export class ProviderShell implements Provider {
 
       const reply = new HttpReply(res);
 
-      switch (req.url) {
-        case "/health": {
-          return reply.text("ok");
-        }
-        case "/whoami": {
-          return reply.text(`${MACHINE_NAME}`);
-        }
-        case "/close": {
-          this.#platformSocket.close();
-          return reply.text("platform socket closed");
-        }
-        case "/delete": {
-          const body = await getTextBody(req);
+      try {
+        const url = new URL(req.url ?? "", `http://${req.headers.host}`);
 
-          await this.tasks.delete({ runId: body });
+        switch (url.pathname) {
+          case "/health": {
+            return reply.text("ok");
+          }
+          case "/whoami": {
+            return reply.text(`${MACHINE_NAME}`);
+          }
+          case "/close": {
+            this.#platformSocket.close();
+            return reply.text("platform socket closed");
+          }
+          case "/delete": {
+            const body = await getTextBody(req);
 
-          return reply.text(`sent delete request: ${body}`);
+            await this.tasks.delete({ runId: body });
+
+            return reply.text(`sent delete request: ${body}`);
+          }
+          default: {
+            return reply.empty(404);
+          }
         }
-        case "/restore": {
-          const body = await getTextBody(req);
-
-          const items = body.split("&");
-          const image = items[0];
-          const baseImageTag = items[1] ?? image;
-
-          // await this.tasks.restore({});
-
-          return reply.text(`sent restore request: ${body}`);
-        }
-        default: {
-          return reply.empty(404);
-        }
+      } catch (error) {
+        logger.error("HTTP server error", { error });
+        reply.empty(500);
       }
     });
 
