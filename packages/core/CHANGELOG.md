@@ -1,5 +1,13 @@
 # internal-platform
 
+## 3.0.0-beta.1
+
+### Patch Changes
+
+- b66d5525e: add machine config and secure zod connection
+- 719c0a0b9: Fixed incorrect span timings around checkpoints by implementing a precise wall clock that resets after restores
+- f93eae300: Dynamically import superjson and fix some bundling issues
+
 ## 3.0.0-beta.0
 
 ### Major Changes
