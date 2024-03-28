@@ -78,6 +78,7 @@ function getTasks(): Array<TaskMetadataWithFunctions> {
           filePath: (taskFile as any).filePath,
           queue: (task as any).__trigger.queue,
           retry: (task as any).__trigger.retry,
+          machine: (task as any).__trigger.machine,
           fns: (task as any).__trigger.fns,
         });
       }

@@ -7,6 +7,7 @@ import {
   TaskOperationsIndexOptions,
   TaskOperationsRestoreOptions,
 } from "@trigger.dev/core-apps";
+import { Machine, PostStartCauses, PreStopCauses, EnvironmentType } from "@trigger.dev/core/v3";
 import { randomUUID } from "crypto";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
@@ -55,6 +56,12 @@ class KubernetesTaskOperations implements TaskOperations {
             metadata: {
               labels: {
                 app: "task-index",
+                "app.kubernetes.io/part-of": "trigger-worker",
+                "app.kubernetes.io/component": "index",
+                env: opts.envId,
+                envtype: this.#envTypeToLabelValue(opts.envType),
+                org: opts.orgId,
+                project: opts.projectId,
               },
             },
             spec: {
@@ -64,6 +71,9 @@ class KubernetesTaskOperations implements TaskOperations {
                   name: "registry-trigger",
                 },
               ],
+              nodeSelector: {
+                nodetype: "worker",
+              },
               containers: [
                 {
                   name: this.#getIndexContainerName(opts.shortCode),
@@ -79,6 +89,13 @@ class KubernetesTaskOperations implements TaskOperations {
                   //     memory: "50Mi",
                   //   },
                   // },
+                  lifecycle: {
+                    preStop: {
+                      exec: {
+                        command: this.#getLifecycleCommand("preStop", "terminate"),
+                      },
+                    },
+                  },
                   env: [
                     {
                       name: "DEBUG",
@@ -151,6 +168,13 @@ class KubernetesTaskOperations implements TaskOperations {
           namespace: this.#namespace.metadata.name,
           labels: {
             app: "task-run",
+            "app.kubernetes.io/part-of": "trigger-worker",
+            "app.kubernetes.io/component": "create",
+            env: opts.envId,
+            envtype: this.#envTypeToLabelValue(opts.envType),
+            org: opts.orgId,
+            project: opts.projectId,
+            run: opts.runId,
           },
         },
         spec: {
@@ -160,6 +184,9 @@ class KubernetesTaskOperations implements TaskOperations {
               name: "registry-trigger",
             },
           ],
+          nodeSelector: {
+            nodetype: "worker",
+          },
           containers: [
             {
               name: this.#getRunContainerName(opts.runId),
@@ -169,9 +196,9 @@ class KubernetesTaskOperations implements TaskOperations {
                   containerPort: 8000,
                 },
               ],
-              // resources: {
-              //   limits: opts.machine,
-              // },
+              resources: {
+                limits: this.#getResourcesFromMachineConfig(opts.machine),
+              },
               lifecycle: {
                 postStart: {
                   exec: {
@@ -180,7 +207,7 @@ class KubernetesTaskOperations implements TaskOperations {
                 },
                 preStop: {
                   exec: {
-                    command: this.#getLifecycleCommand("preStop", "create"),
+                    command: this.#getLifecycleCommand("preStop", "terminate"),
                   },
                 },
               },
@@ -262,6 +289,14 @@ class KubernetesTaskOperations implements TaskOperations {
           namespace: this.#namespace.metadata.name,
           labels: {
             app: "task-run",
+            "app.kubernetes.io/part-of": "trigger-worker",
+            "app.kubernetes.io/component": "restore",
+            env: opts.envId,
+            envtype: this.#envTypeToLabelValue(opts.envType),
+            org: opts.orgId,
+            project: opts.projectId,
+            run: opts.runId,
+            checkpoint: opts.checkpointId,
           },
         },
         spec: {
@@ -271,6 +306,9 @@ class KubernetesTaskOperations implements TaskOperations {
               name: "registry-trigger",
             },
           ],
+          nodeSelector: {
+            nodetype: "worker",
+          },
           initContainers: [
             {
               name: "pull-base-image",
@@ -309,9 +347,9 @@ class KubernetesTaskOperations implements TaskOperations {
                   containerPort: 8000,
                 },
               ],
-              // resources: {
-              //   limits: opts.machine,
-              // },
+              resources: {
+                limits: this.#getResourcesFromMachineConfig(opts.machine),
+              },
               lifecycle: {
                 postStart: {
                   exec: {
@@ -320,7 +358,7 @@ class KubernetesTaskOperations implements TaskOperations {
                 },
                 preStop: {
                   exec: {
-                    command: this.#getLifecycleCommand("preStop", "restore"),
+                    command: this.#getLifecycleCommand("preStop", "terminate"),
                   },
                 },
               },
@@ -355,7 +393,30 @@ class KubernetesTaskOperations implements TaskOperations {
     await this.#getPod(opts.runId, this.#namespace);
   }
 
-  #getLifecycleCommand(type: "postStart" | "preStop", cause: "index" | "create" | "restore") {
+  #envTypeToLabelValue(type: EnvironmentType) {
+    switch (type) {
+      case "PRODUCTION":
+        return "prod";
+      case "STAGING":
+        return "stg";
+      case "DEVELOPMENT":
+        return "dev";
+      case "PREVIEW":
+        return "preview";
+    }
+  }
+
+  #getResourcesFromMachineConfig(config: Machine) {
+    return {
+      cpu: `${config.cpu}`,
+      memory: `${config.memory}G`,
+    };
+  }
+
+  #getLifecycleCommand<THookType extends "postStart" | "preStop">(
+    type: THookType,
+    cause: THookType extends "postStart" ? PostStartCauses : PreStopCauses
+  ) {
     return ["/bin/sh", "-c", `sleep 1; wget -q -O- 127.0.0.1:8000/${type}?cause=${cause}`];
   }
 

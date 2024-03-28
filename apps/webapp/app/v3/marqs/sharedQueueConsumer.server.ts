@@ -1,5 +1,6 @@
 import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
 import {
+  Machine,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   TaskRunError,
@@ -438,10 +439,27 @@ export class SharedQueueConsumer {
             queueId: queue.id,
             runtimeEnvironmentId: environment.id,
           },
+          include: {
+            backgroundWorkerTask: true,
+          },
         });
 
         const isRetry = taskRunAttempt.number > 1;
 
+        const { machineConfig } = taskRunAttempt.backgroundWorkerTask;
+        const machine = Machine.safeParse(machineConfig ?? {});
+
+        if (!machine.success) {
+          logger.error("Failed to parse machine config", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+            attemptId: taskRunAttempt.id,
+            machineConfig,
+          });
+
+          await this.#ackAndDoMoreWork(message.messageId);
+          return;
+        }
         try {
           if (messageBody.data.checkpointEventId) {
             const restoreService = new RestoreCheckpointService();
@@ -470,11 +488,16 @@ export class SharedQueueConsumer {
               backgroundWorkerId: deployment.worker.friendlyId,
               data: {
                 type: "SCHEDULE_ATTEMPT",
-                id: taskRunAttempt.id,
                 image: deployment.imageReference,
-                envId: environment.id,
-                runId: taskRunAttempt.taskRunId,
                 version: deployment.version,
+                machine: machine.data,
+                // identifiers
+                id: taskRunAttempt.id,
+                envId: environment.id,
+                envType: environment.type,
+                orgId: environment.organizationId,
+                projectId: environment.projectId,
+                runId: taskRunAttempt.taskRunId,
               },
             });
           }

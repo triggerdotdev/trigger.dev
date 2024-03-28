@@ -1,6 +1,8 @@
 import {
   Config,
   CoordinatorToProdWorkerMessages,
+  PostStartCauses,
+  PreStopCauses,
   ProdWorkerToCoordinatorMessages,
   TaskResource,
   WaitReason,
@@ -567,23 +569,15 @@ class ProdWorker {
           }
 
           case "/preStop": {
-            const schema = z.enum(["index", "create", "restore"]);
-
-            const cause = schema.safeParse(url.searchParams.get("cause"));
+            const cause = PreStopCauses.safeParse(url.searchParams.get("cause"));
 
             if (!cause.success) {
               logger.error("Failed to parse cause", { cause });
-              return;
+              return reply.text("Failed to parse cause", 400);
             }
 
             switch (cause.data) {
-              case "index": {
-                break;
-              }
-              case "create": {
-                break;
-              }
-              case "restore": {
+              case "terminate": {
                 break;
               }
               default: {
@@ -597,13 +591,11 @@ class ProdWorker {
           }
 
           case "/postStart": {
-            const schema = z.enum(["index", "create", "restore"]);
-
-            const cause = schema.safeParse(url.searchParams.get("cause"));
+            const cause = PostStartCauses.safeParse(url.searchParams.get("cause"));
 
             if (!cause.success) {
               logger.error("Failed to parse cause", { cause });
-              return;
+              return reply.text("Failed to parse cause", 400);
             }
 
             switch (cause.data) {
@@ -678,11 +670,7 @@ class ProdWorker {
     }
 
     for (const task of this.#backgroundWorker.tasks) {
-      taskResources.push({
-        id: task.id,
-        filePath: task.filePath,
-        exportName: task.exportName,
-      });
+      taskResources.push(task);
 
       packageVersion = task.packageVersion;
     }

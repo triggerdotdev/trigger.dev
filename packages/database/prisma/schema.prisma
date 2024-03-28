@@ -1559,6 +1559,7 @@ model BackgroundWorkerTask {
 
   queueConfig Json?
   retryConfig Json?
+  machineConfig Json?
 
   @@unique([workerId, slug])
 }

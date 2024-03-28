@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import {
   ClientToSharedQueueMessages,
   clientWebsocketMessages,
+  EnvironmentType,
   Machine,
   PlatformToProviderMessages,
   ProviderToPlatformMessages,
@@ -18,30 +19,46 @@ const MACHINE_NAME = process.env.MACHINE_NAME || "local";
 const PLATFORM_HOST = process.env.PLATFORM_HOST || "127.0.0.1";
 const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 3030;
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "provider-secret";
+const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?? "false");
 
 const logger = new SimpleLogger(`[${MACHINE_NAME}]`);
 
 export interface TaskOperationsIndexOptions {
   shortCode: string;
   imageRef: string;
-  envId: string;
   apiKey: string;
   apiUrl: string;
+  // identifiers
+  envId: string;
+  envType: EnvironmentType;
+  orgId: string;
+  projectId: string;
 }
 
 export interface TaskOperationsCreateOptions {
-  runId: string;
   image: string;
   machine: Machine;
-  envId: string;
   version: string;
+  // identifiers
+  envId: string;
+  envType: EnvironmentType;
+  orgId: string;
+  projectId: string;
+  runId: string;
+  attemptId: string;
 }
 
 export interface TaskOperationsRestoreOptions {
-  runId: string;
   imageRef: string;
   checkpointRef: string;
   machine: Machine;
+  // identifiers
+  envId: string;
+  envType: EnvironmentType;
+  orgId: string;
+  projectId: string;
+  runId: string;
+  checkpointId: string;
 }
 
 export interface TaskOperations {
@@ -87,6 +104,7 @@ export class ProviderShell implements Provider {
       namespace: "shared-queue",
       host: PLATFORM_HOST,
       port: Number(PLATFORM_WS_PORT),
+      secure: SECURE_CONNECTION,
       clientMessages: ClientToSharedQueueMessages,
       serverMessages: SharedQueueToClientMessages,
       authToken: PLATFORM_SECRET,
@@ -101,11 +119,16 @@ export class ProviderShell implements Provider {
           if (message.data.type === "SCHEDULE_ATTEMPT") {
             try {
               this.tasks.create({
-                envId: message.data.envId,
-                runId: message.data.runId,
                 image: message.data.image,
-                machine: {},
-                version: message.version,
+                machine: message.data.machine,
+                version: message.data.version,
+                // identifiers
+                envId: message.data.envId,
+                envType: message.data.envType,
+                orgId: message.data.orgId,
+                projectId: message.data.projectId,
+                runId: message.data.runId,
+                attemptId: message.data.id,
               });
             } catch (error) {
               logger.error("create failed", error);
@@ -138,6 +161,7 @@ export class ProviderShell implements Provider {
       namespace: "provider",
       host: PLATFORM_HOST,
       port: Number(PLATFORM_WS_PORT),
+      secure: SECURE_CONNECTION,
       clientMessages: ProviderToPlatformMessages,
       serverMessages: PlatformToProviderMessages,
       authToken: PLATFORM_SECRET,
@@ -165,9 +189,13 @@ export class ProviderShell implements Provider {
             await this.tasks.index({
               shortCode: message.shortCode,
               imageRef: message.imageTag,
-              envId: message.envId,
               apiKey: message.apiKey,
               apiUrl: message.apiUrl,
+              // identifiers
+              envId: message.envId,
+              envType: message.envType,
+              orgId: message.orgId,
+              projectId: message.projectId,
             });
           } catch (error) {
             logger.error("index failed", error);
@@ -206,13 +234,16 @@ export class ProviderShell implements Provider {
 
           try {
             await this.tasks.restore({
-              runId: message.runId,
               checkpointRef: message.location,
-              machine: {
-                cpu: "1",
-                memory: "100Mi",
-              },
+              machine: message.machine,
               imageRef: message.imageRef,
+              // identifiers
+              envId: message.envId,
+              envType: message.envType,
+              orgId: message.orgId,
+              projectId: message.projectId,
+              runId: message.runId,
+              checkpointId: message.checkpointId,
             });
           } catch (error) {
             logger.error("restore failed", error);
@@ -230,54 +261,34 @@ export class ProviderShell implements Provider {
 
       const reply = new HttpReply(res);
 
-      switch (req.url) {
-        case "/health": {
-          return reply.text("ok");
-        }
-        case "/whoami": {
-          return reply.text(`${MACHINE_NAME}`);
-        }
-        case "/close": {
-          this.#platformSocket.close();
-          return reply.text("platform socket closed");
-        }
-        case "/delete": {
-          const body = await getTextBody(req);
+      try {
+        const url = new URL(req.url ?? "", `http://${req.headers.host}`);
 
-          await this.tasks.delete({ runId: body });
+        switch (url.pathname) {
+          case "/health": {
+            return reply.text("ok");
+          }
+          case "/whoami": {
+            return reply.text(`${MACHINE_NAME}`);
+          }
+          case "/close": {
+            this.#platformSocket.close();
+            return reply.text("platform socket closed");
+          }
+          case "/delete": {
+            const body = await getTextBody(req);
 
-          return reply.text(`sent delete request: ${body}`);
+            await this.tasks.delete({ runId: body });
+
+            return reply.text(`sent delete request: ${body}`);
+          }
+          default: {
+            return reply.empty(404);
+          }
         }
-        case "/invoke": {
-          const body = await getTextBody(req);
-
-          await this.tasks.create({
-            envId: "placeholder",
-            image: body,
-            machine: {
-              cpu: "1",
-              memory: "100Mi",
-            },
-            runId: "<missing>",
-            version: "<missing>",
-          });
-
-          return reply.text(`sent restore request: ${body}`);
-        }
-        case "/restore": {
-          const body = await getTextBody(req);
-
-          const items = body.split("&");
-          const image = items[0];
-          const baseImageTag = items[1] ?? image;
-
-          // await this.tasks.restore({});
-
-          return reply.text(`sent restore request: ${body}`);
-        }
-        default: {
-          return reply.empty(404);
-        }
+      } catch (error) {
+        logger.error("HTTP server error", { error });
+        reply.empty(500);
       }
     });
 

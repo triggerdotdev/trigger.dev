@@ -7,8 +7,16 @@ import {
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   RetryOptions,
+  Machine,
+  EnvironmentType,
 } from "./messages";
 import { TaskResource } from "./resources";
+
+export const PostStartCauses = z.enum(["index", "create", "restore"]);
+export type PostStartCauses = z.infer<typeof PostStartCauses>;
+
+export const PreStopCauses = z.enum(["terminate"]);
+export type PreStopCauses = z.infer<typeof PreStopCauses>;
 
 const RegexSchema = z.custom<RegExp>((val) => {
   try {
@@ -41,13 +49,6 @@ export type ResolvedConfig = RequireKeys<
   Config,
   "triggerDirectories" | "triggerUrl" | "projectDir" | "tsconfigPath"
 >;
-
-export const Machine = z.object({
-  cpu: z.string().default("1").optional(),
-  memory: z.string().default("500Mi").optional(),
-});
-
-export type Machine = z.infer<typeof Machine>;
 
 export const WaitReason = z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]);
 
@@ -85,9 +86,13 @@ export const PlatformToProviderMessages = {
       version: z.literal("v1").default("v1"),
       imageTag: z.string(),
       shortCode: z.string(),
-      envId: z.string(),
       apiKey: z.string(),
       apiUrl: z.string(),
+      // identifiers
+      envId: z.string(),
+      envType: EnvironmentType,
+      orgId: z.string(),
+      projectId: z.string(),
     }),
     callback: z.discriminatedUnion("success", [
       z.object({
@@ -103,22 +108,22 @@ export const PlatformToProviderMessages = {
       }),
     ]),
   },
-  INVOKE: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      name: z.string(),
-      machine: Machine,
-    }),
-  },
+  // TODO: this should be a shared queue message instead
   RESTORE: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      checkpointId: z.string(),
-      runId: z.string(),
       type: z.enum(["DOCKER", "KUBERNETES"]),
       location: z.string(),
       reason: z.string().optional(),
       imageRef: z.string(),
+      machine: Machine,
+      // identifiers
+      checkpointId: z.string(),
+      envId: z.string(),
+      envType: EnvironmentType,
+      orgId: z.string(),
+      projectId: z.string(),
+      runId: z.string(),
     }),
   },
   DELETE: {

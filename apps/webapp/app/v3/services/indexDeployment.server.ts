@@ -49,9 +49,13 @@ export class IndexDeploymentService extends BaseService {
         version: "v1",
         shortCode: deployment.shortCode,
         imageTag: deployment.imageReference,
-        envId: deployment.environmentId,
         apiKey: deployment.environment.apiKey,
         apiUrl: env.APP_ORIGIN,
+        // identifiers
+        envId: deployment.environmentId,
+        envType: deployment.environment.type,
+        projectId: deployment.projectId,
+        orgId: deployment.environment.organizationId,
       });
 
       logger.debug("Index ACK received", { responses });

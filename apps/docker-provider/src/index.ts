@@ -8,6 +8,7 @@ import {
   TaskOperationsIndexOptions,
 } from "@trigger.dev/core-apps";
 import { setTimeout } from "node:timers/promises";
+import { PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
 
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
 const COORDINATOR_PORT = process.env.COORDINATOR_PORT || 8020;
@@ -190,6 +191,9 @@ class DockerTaskOperations implements TaskOperations {
   async delete(opts: { runId: string }) {
     await this.#initialize();
 
+    const containerName = this.#getRunContainerName(opts.runId);
+    await this.#sendPreStop(containerName);
+
     logger.log("noop: delete");
   }
 
@@ -208,6 +212,26 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   async #sendPostStart(containerName: string): Promise<void> {
+    try {
+      const port = await this.#getHttpServerPort(containerName);
+      logger.debug(await this.#runLifecycleCommand(containerName, port, "postStart", "restore"));
+    } catch (error) {
+      logger.error("postStart error", { error });
+      throw new Error("postStart command failed");
+    }
+  }
+
+  async #sendPreStop(containerName: string): Promise<void> {
+    try {
+      const port = await this.#getHttpServerPort(containerName);
+      logger.debug(await this.#runLifecycleCommand(containerName, port, "preStop", "terminate"));
+    } catch (error) {
+      logger.error("preStop error", { error });
+      throw new Error("preStop command failed");
+    }
+  }
+
+  async #getHttpServerPort(containerName: string): Promise<number> {
     // We first get the correct port, which is random during dev as we run with host networking and need to avoid clashes
     // FIXME: Skip this in prod
     const logs = logger.debug(await $`docker logs ${containerName}`);
@@ -219,19 +243,14 @@ class DockerTaskOperations implements TaskOperations {
       throw new Error("failed to extract port from logs");
     }
 
-    try {
-      logger.debug(await this.#runLifecycleCommand(containerName, port, "postStart", "restore"));
-    } catch (error) {
-      logger.error("postStart error", { error });
-      throw new Error("postStart command failed");
-    }
+    return port;
   }
 
-  async #runLifecycleCommand(
+  async #runLifecycleCommand<THookType extends "postStart" | "preStop">(
     containerName: string,
     port: number,
-    type: "postStart" | "preStop",
-    cause: "index" | "create" | "restore",
+    type: THookType,
+    cause: THookType extends "postStart" ? PostStartCauses : PreStopCauses,
     retryCount = 0
   ): Promise<ExecaChildProcess> {
     try {
@@ -244,15 +263,15 @@ class DockerTaskOperations implements TaskOperations {
         `127.0.0.1:${port}/${type}?cause=${cause}`,
       ]);
     } catch (error: any) {
-      if (retryCount < 6) {
-        logger.debug("retriable postStart error", { retryCount, message: error?.message });
+      if (type === "postStart" && retryCount < 6) {
+        logger.debug(`retriable ${type} error`, { retryCount, message: error?.message });
         await setTimeout(exponentialBackoff(retryCount + 1, 2, 50, 1150, 50));
 
         return this.#runLifecycleCommand(containerName, port, type, cause, retryCount + 1);
       }
 
-      logger.error("final postStart error", { message: error?.message });
-      throw new Error(`postStart command failed after ${retryCount - 1} retries`);
+      logger.error(`final ${type} error`, { message: error?.message });
+      throw new Error(`${type} command failed after ${retryCount - 1} retries`);
     }
   }
 }
