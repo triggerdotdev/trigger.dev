@@ -138,6 +138,15 @@ export const superStringChildTask = task({
   },
 });
 
+export const superBadOutputTask = task({
+  id: "super-bad-output-task",
+  run: async () => {
+    // Returning something that cannot be serialized
+
+    return () => {};
+  },
+});
+
 function createLargeObject(size: number, length: number) {
   return Array.from({ length }, (_, i) => [i.toString(), i.toString().padStart(size, "0")]).reduce(
     (acc, [key, value]) => {

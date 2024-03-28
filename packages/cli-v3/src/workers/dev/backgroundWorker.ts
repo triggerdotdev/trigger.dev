@@ -18,16 +18,11 @@ import {
   formatDurationMilliseconds,
   workerToChildMessages,
 } from "@trigger.dev/core/v3";
-import chalk from "chalk";
 import dotenv from "dotenv";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import terminalLink from "terminal-link";
-import { safeDeleteFileSync } from "../../utilities/fileSystem.js";
-import { installPackages } from "../../utilities/installPackages.js";
-import { logger } from "../../utilities/logger.js";
-import { UncaughtExceptionError } from "../common/errors.js";
 import {
   chalkError,
   chalkGrey,
@@ -39,6 +34,10 @@ import {
   chalkWorker,
   prettyPrintDate,
 } from "../../utilities/cliOutput.js";
+import { safeDeleteFileSync } from "../../utilities/fileSystem.js";
+import { installPackages } from "../../utilities/installPackages.js";
+import { logger } from "../../utilities/logger.js";
+import { UncaughtExceptionError } from "../common/errors.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {

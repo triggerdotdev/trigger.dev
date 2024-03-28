@@ -42,9 +42,14 @@ export async function stringifyIO(value: any): Promise<IOPacket> {
     return { data: value, dataType: "text/plain" };
   }
 
-  const { stringify } = await loadSuperJSON();
+  try {
+    const { stringify } = await loadSuperJSON();
+    const data = stringify(value);
 
-  return { data: stringify(value), dataType: "application/super+json" };
+    return { data, dataType: "application/super+json" };
+  } catch {
+    return { dataType: "application/json" };
+  }
 }
 
 export async function conditionallyExportPacket(
@@ -193,9 +198,9 @@ export async function createPacketAttributes(
   packet: IOPacket,
   dataKey: string,
   dataTypeKey: string
-): Promise<Attributes> {
+): Promise<Attributes | undefined> {
   if (!packet.data) {
-    return {};
+    return;
   }
 
   switch (packet.dataType) {
@@ -207,13 +212,22 @@ export async function createPacketAttributes(
     case "application/super+json":
       const { parse } = await loadSuperJSON();
 
-      const parsed = parse(packet.data) as any;
-      const jsonified = JSON.parse(JSON.stringify(parsed, safeReplacer));
+      if (typeof packet.data === "undefined" || packet.data === null) {
+        return;
+      }
 
-      return {
-        ...flattenAttributes(jsonified, dataKey),
-        [dataTypeKey]: "application/json",
-      };
+      try {
+        const parsed = parse(packet.data) as any;
+        const jsonified = JSON.parse(JSON.stringify(parsed, safeReplacer));
+
+        return {
+          ...flattenAttributes(jsonified, dataKey),
+          [dataTypeKey]: "application/json",
+        };
+      } catch {
+        return;
+      }
+
     case "application/store":
       return {
         [dataKey]: packet.data,
@@ -221,11 +235,11 @@ export async function createPacketAttributes(
       };
     case "text/plain":
       return {
-        [SemanticInternalAttributes.OUTPUT]: packet.data,
-        [SemanticInternalAttributes.OUTPUT_TYPE]: packet.dataType,
+        [dataKey]: packet.data,
+        [dataTypeKey]: packet.dataType,
       };
     default:
-      return {};
+      return;
   }
 }
 
@@ -250,7 +264,7 @@ export async function createPacketAttributesAsJson(
       const { deserialize } = await loadSuperJSON();
 
       const deserialized = deserialize(data) as any;
-      const jsonify = JSON.parse(JSON.stringify(deserialized, safeReplacer));
+      const jsonify = safeJsonParse(JSON.stringify(deserialized, safeReplacer));
 
       return imposeAttributeLimits(flattenAttributes(jsonify, undefined));
     case "application/store":
@@ -325,4 +339,12 @@ function getPacketExtension(outputType: string): string {
 
 async function loadSuperJSON(): Promise<typeof import("superjson")> {
   return await import("superjson");
+}
+
+function safeJsonParse(value: string): any {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return;
+  }
 }

@@ -104,13 +104,15 @@ export class TaskExecutor {
                     this._tracer
                   );
 
-                  span.setAttributes(
-                    await createPacketAttributes(
-                      finalOutput,
-                      SemanticInternalAttributes.OUTPUT,
-                      SemanticInternalAttributes.OUTPUT_TYPE
-                    )
+                  const attributes = await createPacketAttributes(
+                    finalOutput,
+                    SemanticInternalAttributes.OUTPUT,
+                    SemanticInternalAttributes.OUTPUT_TYPE
                   );
+
+                  if (attributes) {
+                    span.setAttributes(attributes);
+                  }
 
                   return {
                     ok: true,

@@ -182,11 +182,3 @@ export { apiRateLimiter } from "./services/apiRateLimit.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
 export { registryProxy } from "./v3/registryProxy.server";
-
-process.on("uncaughtException", (error, origin) => {
-  logger.error("Uncaught Exception", { error, origin });
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-  logger.error("Unhandled Rejection", { reason });
-});
