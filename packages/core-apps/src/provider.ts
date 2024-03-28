@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import {
   ClientToSharedQueueMessages,
   clientWebsocketMessages,
+  EnvironmentType,
   Machine,
   PlatformToProviderMessages,
   ProviderToPlatformMessages,
@@ -25,24 +26,39 @@ const logger = new SimpleLogger(`[${MACHINE_NAME}]`);
 export interface TaskOperationsIndexOptions {
   shortCode: string;
   imageRef: string;
-  envId: string;
   apiKey: string;
   apiUrl: string;
+  // identifiers
+  envId: string;
+  envType: EnvironmentType;
+  orgId: string;
+  projectId: string;
 }
 
 export interface TaskOperationsCreateOptions {
-  runId: string;
   image: string;
   machine: Machine;
-  envId: string;
   version: string;
+  // identifiers
+  envId: string;
+  envType: EnvironmentType;
+  orgId: string;
+  projectId: string;
+  runId: string;
+  attemptId: string;
 }
 
 export interface TaskOperationsRestoreOptions {
-  runId: string;
   imageRef: string;
   checkpointRef: string;
   machine: Machine;
+  // identifiers
+  envId: string;
+  envType: EnvironmentType;
+  orgId: string;
+  projectId: string;
+  runId: string;
+  checkpointId: string;
 }
 
 export interface TaskOperations {
@@ -103,11 +119,16 @@ export class ProviderShell implements Provider {
           if (message.data.type === "SCHEDULE_ATTEMPT") {
             try {
               this.tasks.create({
-                envId: message.data.envId,
-                runId: message.data.runId,
                 image: message.data.image,
                 machine: message.data.machine,
-                version: message.version,
+                version: message.data.version,
+                // identifiers
+                envId: message.data.envId,
+                envType: message.data.envType,
+                orgId: message.data.orgId,
+                projectId: message.data.projectId,
+                runId: message.data.runId,
+                attemptId: message.data.id,
               });
             } catch (error) {
               logger.error("create failed", error);
@@ -168,9 +189,13 @@ export class ProviderShell implements Provider {
             await this.tasks.index({
               shortCode: message.shortCode,
               imageRef: message.imageTag,
-              envId: message.envId,
               apiKey: message.apiKey,
               apiUrl: message.apiUrl,
+              // identifiers
+              envId: message.envId,
+              envType: message.envType,
+              orgId: message.orgId,
+              projectId: message.projectId,
             });
           } catch (error) {
             logger.error("index failed", error);
@@ -209,10 +234,16 @@ export class ProviderShell implements Provider {
 
           try {
             await this.tasks.restore({
-              runId: message.runId,
               checkpointRef: message.location,
               machine: message.machine,
               imageRef: message.imageRef,
+              // identifiers
+              envId: message.envId,
+              envType: message.envType,
+              orgId: message.orgId,
+              projectId: message.projectId,
+              runId: message.runId,
+              checkpointId: message.checkpointId,
             });
           } catch (error) {
             logger.error("restore failed", error);

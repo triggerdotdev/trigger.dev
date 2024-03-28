@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { TaskRunExecution, TaskRunExecutionResult } from "./common";
 
+export const EnvironmentType = z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"])
+export type EnvironmentType = z.infer<typeof EnvironmentType>;
+
 export const MachineCpu = z
   .union([z.literal(0.25), z.literal(0.5), z.literal(1), z.literal(2), z.literal(4)])
   .default(0.5);
@@ -59,12 +62,16 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("SCHEDULE_ATTEMPT"),
-    id: z.string(),
     image: z.string(),
-    envId: z.string(),
-    runId: z.string(),
     version: z.string(),
     machine: Machine,
+    // identifiers
+    id: z.string(), // attempt
+    envId: z.string(),
+    envType: EnvironmentType,
+    orgId: z.string(),
+    projectId: z.string(),
+    runId: z.string(),
   }),
 ]);
 

@@ -449,7 +449,6 @@ export class SharedQueueConsumer {
         const { machineConfig } = taskRunAttempt.backgroundWorkerTask;
         const machine = Machine.safeParse(machineConfig ?? {});
 
-
         if (!machine.success) {
           logger.error("Failed to parse machine config", {
             queueMessage: message.data,
@@ -489,12 +488,16 @@ export class SharedQueueConsumer {
               backgroundWorkerId: deployment.worker.friendlyId,
               data: {
                 type: "SCHEDULE_ATTEMPT",
-                id: taskRunAttempt.id,
                 image: deployment.imageReference,
-                envId: environment.id,
-                runId: taskRunAttempt.taskRunId,
                 version: deployment.version,
                 machine: machine.data,
+                // identifiers
+                id: taskRunAttempt.id,
+                envId: environment.id,
+                envType: environment.type,
+                orgId: environment.organizationId,
+                projectId: environment.projectId,
+                runId: taskRunAttempt.taskRunId,
               },
             });
           }

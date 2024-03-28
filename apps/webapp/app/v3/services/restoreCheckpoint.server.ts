@@ -38,6 +38,7 @@ export class RestoreCheckpointService extends BaseService {
                 },
               },
             },
+            runtimeEnvironment: true,
           },
         },
       },
@@ -85,13 +86,18 @@ export class RestoreCheckpointService extends BaseService {
 
     socketIo.providerNamespace.emit("RESTORE", {
       version: "v1",
-      checkpointId: checkpoint.id,
-      runId: checkpoint.runId,
       type: checkpoint.type,
       location: checkpoint.location,
       reason: checkpoint.reason ?? undefined,
       imageRef: checkpoint.imageRef,
       machine: machine.data,
+      // identifiers
+      checkpointId: checkpoint.id,
+      envId: checkpoint.runtimeEnvironment.id,
+      envType: checkpoint.runtimeEnvironment.type,
+      orgId: checkpoint.runtimeEnvironment.organizationId,
+      projectId: checkpoint.runtimeEnvironment.projectId,
+      runId: checkpoint.runId,
     });
 
     return checkpoint;

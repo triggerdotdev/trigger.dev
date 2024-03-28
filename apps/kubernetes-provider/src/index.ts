@@ -7,7 +7,7 @@ import {
   TaskOperationsIndexOptions,
   TaskOperationsRestoreOptions,
 } from "@trigger.dev/core-apps";
-import { Machine, PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
+import { Machine, PostStartCauses, PreStopCauses, EnvironmentType } from "@trigger.dev/core/v3";
 import { randomUUID } from "crypto";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
@@ -56,6 +56,12 @@ class KubernetesTaskOperations implements TaskOperations {
             metadata: {
               labels: {
                 app: "task-index",
+                "app.kubernetes.io/part-of": "trigger-worker",
+                "app.kubernetes.io/component": "index",
+                env: opts.envId,
+                envtype: this.#envTypeToLabelValue(opts.envType),
+                org: opts.orgId,
+                project: opts.projectId,
               },
             },
             spec: {
@@ -162,6 +168,13 @@ class KubernetesTaskOperations implements TaskOperations {
           namespace: this.#namespace.metadata.name,
           labels: {
             app: "task-run",
+            "app.kubernetes.io/part-of": "trigger-worker",
+            "app.kubernetes.io/component": "create",
+            env: opts.envId,
+            envtype: this.#envTypeToLabelValue(opts.envType),
+            org: opts.orgId,
+            project: opts.projectId,
+            run: opts.runId,
           },
         },
         spec: {
@@ -276,6 +289,14 @@ class KubernetesTaskOperations implements TaskOperations {
           namespace: this.#namespace.metadata.name,
           labels: {
             app: "task-run",
+            "app.kubernetes.io/part-of": "trigger-worker",
+            "app.kubernetes.io/component": "restore",
+            env: opts.envId,
+            envtype: this.#envTypeToLabelValue(opts.envType),
+            org: opts.orgId,
+            project: opts.projectId,
+            run: opts.runId,
+            checkpoint: opts.checkpointId,
           },
         },
         spec: {
@@ -370,6 +391,19 @@ class KubernetesTaskOperations implements TaskOperations {
 
   async get(opts: { runId: string }) {
     await this.#getPod(opts.runId, this.#namespace);
+  }
+
+  #envTypeToLabelValue(type: EnvironmentType) {
+    switch (type) {
+      case "PRODUCTION":
+        return "prod";
+      case "STAGING":
+        return "stg";
+      case "DEVELOPMENT":
+        return "dev";
+      case "PREVIEW":
+        return "preview";
+    }
   }
 
   #getResourcesFromMachineConfig(config: Machine) {
