@@ -4,6 +4,7 @@ import {
   CreateBackgroundWorkerResponse,
   InferSocketMessageSchema,
   ProdChildToWorkerMessages,
+  ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   ProdWorkerToChildMessages,
   SemanticInternalAttributes,
@@ -200,6 +201,7 @@ export class ProdBackgroundWorker {
 
     if (!this._taskRunProcess) {
       const taskRunProcess = new TaskRunProcess(
+        payload.execution,
         this.path,
         {
           ...this.params.env,
@@ -374,6 +376,7 @@ class TaskRunProcess {
   public onCancelCheckpoint = Evt.create<{ version?: "v1" }>();
 
   constructor(
+    private execution: ProdTaskRunExecution,
     private path: string,
     private env: NodeJS.ProcessEnv,
     private metadata: BackgroundWorkerProperties,
@@ -384,6 +387,7 @@ class TaskRunProcess {
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
       env: {
+        ...(this.execution.run.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
         ...this.env,
         OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
           [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectConfig.projectDir,

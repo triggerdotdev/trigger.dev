@@ -4,9 +4,11 @@ import slugify from "@sindresorhus/slugify";
 export const loggingTask = task({
   id: "logging-task",
   run: async () => {
-    console.log(`Hello world 9 ${slugify("foo bar")}`);
-
-    return null;
+    logger.error("This is an error message");
+    logger.warn("This is a warning message");
+    logger.log("This is a log message");
+    logger.info("This is an info message");
+    logger.debug("This is a debug message");
   },
 });
 

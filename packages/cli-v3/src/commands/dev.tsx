@@ -40,6 +40,7 @@ import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { UncaughtExceptionError } from "../workers/common/errors";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
+import { runtimeCheck } from "../utilities/runtimeCheck";
 
 let apiClient: CliApiClient | undefined;
 
@@ -72,7 +73,18 @@ export function configureDevCommand(program: Command) {
   });
 }
 
+const MINIMUM_NODE_MAJOR = 18;
+const MINIMUM_NODE_MINOR = 16;
+
 export async function devCommand(dir: string, options: DevCommandOptions) {
+  try {
+    runtimeCheck(MINIMUM_NODE_MAJOR, MINIMUM_NODE_MINOR);
+  } catch (e) {
+    logger.log(`${chalkError("X Error:")} ${e}`);
+    process.exitCode = 1;
+    return;
+  }
+
   const authorization = await isLoggedIn(options.profile);
 
   if (!authorization.ok) {

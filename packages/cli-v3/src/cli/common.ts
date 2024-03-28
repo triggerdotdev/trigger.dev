@@ -21,15 +21,15 @@ export function commonOptions(command: Command) {
     .option("-a, --api-url <value>", "Override the API URL", "https://api.trigger.dev")
     .option(
       "-l, --log-level <level>",
-      "The log level to use (debug, info, log, warn, error, none)",
+      "The CLI log level to use (debug, info, log, warn, error, none). This does not effect the log level of your trigger.dev tasks.",
       "log"
     )
     .option("--skip-telemetry", "Opt-out of sending telemetry");
 }
 
-export class SkipLoggingError extends Error { }
-export class SkipCommandError extends Error { }
-export class OutroCommandError extends SkipCommandError { }
+export class SkipLoggingError extends Error {}
+export class SkipCommandError extends Error {}
+export class OutroCommandError extends SkipCommandError {}
 
 export async function handleTelemetry(action: () => Promise<void>) {
   try {
