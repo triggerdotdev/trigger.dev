@@ -1,5 +1,4 @@
 import { Attributes, Span } from "@opentelemetry/api";
-import { deserialize, parse, stringify } from "superjson";
 import { apiClientManager } from "../apiClient";
 import { OFFLOAD_IO_PACKET_LENGTH_LIMIT, imposeAttributeLimits } from "../limits";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
@@ -11,7 +10,7 @@ export type IOPacket = {
   dataType: string;
 };
 
-export function parsePacket(value: IOPacket): any {
+export async function parsePacket(value: IOPacket): Promise<any> {
   if (!value.data) {
     return undefined;
   }
@@ -20,6 +19,8 @@ export function parsePacket(value: IOPacket): any {
     case "application/json":
       return JSON.parse(value.data);
     case "application/super+json":
+      const { parse } = await loadSuperJSON();
+
       return parse(value.data);
     case "text/plain":
       return value.data;
@@ -32,7 +33,7 @@ export function parsePacket(value: IOPacket): any {
   }
 }
 
-export function stringifyIO(value: any): IOPacket {
+export async function stringifyIO(value: any): Promise<IOPacket> {
   if (value === undefined) {
     return { dataType: "application/json" };
   }
@@ -40,6 +41,8 @@ export function stringifyIO(value: any): IOPacket {
   if (typeof value === "string") {
     return { data: value, dataType: "text/plain" };
   }
+
+  const { stringify } = await loadSuperJSON();
 
   return { data: stringify(value), dataType: "application/super+json" };
 }
@@ -186,11 +189,11 @@ async function importPacket(packet: IOPacket, span?: Span): Promise<IOPacket> {
   return packet;
 }
 
-export function createPacketAttributes(
+export async function createPacketAttributes(
   packet: IOPacket,
   dataKey: string,
   dataTypeKey: string
-): Attributes {
+): Promise<Attributes> {
   if (!packet.data) {
     return {};
   }
@@ -202,6 +205,8 @@ export function createPacketAttributes(
         [dataTypeKey]: packet.dataType,
       };
     case "application/super+json":
+      const { parse } = await loadSuperJSON();
+
       const parsed = parse(packet.data) as any;
       const jsonified = JSON.parse(JSON.stringify(parsed, safeReplacer));
 
@@ -224,7 +229,10 @@ export function createPacketAttributes(
   }
 }
 
-export function createPackageAttributesAsJson(data: any, dataType: string): Attributes {
+export async function createPackageAttributesAsJson(
+  data: any,
+  dataType: string
+): Promise<Attributes> {
   if (
     typeof data === "string" ||
     typeof data === "number" ||
@@ -239,6 +247,8 @@ export function createPackageAttributesAsJson(data: any, dataType: string): Attr
     case "application/json":
       return imposeAttributeLimits(flattenAttributes(data, undefined));
     case "application/super+json":
+      const { deserialize } = await loadSuperJSON();
+
       const deserialized = deserialize(data) as any;
       const jsonify = JSON.parse(JSON.stringify(deserialized, safeReplacer));
 
@@ -250,13 +260,15 @@ export function createPackageAttributesAsJson(data: any, dataType: string): Attr
   }
 }
 
-export function prettyPrintPacket(rawData: any, dataType?: string): string {
+export async function prettyPrintPacket(rawData: any, dataType?: string): Promise<string> {
   if (rawData === undefined) {
     return "";
   }
 
   if (dataType === "application/super+json") {
-    return prettyPrintPacket(deserialize(rawData), "application/json");
+    const { deserialize } = await loadSuperJSON();
+
+    return await prettyPrintPacket(deserialize(rawData), "application/json");
   }
 
   if (dataType === "application/json") {
@@ -309,4 +321,8 @@ function getPacketExtension(outputType: string): string {
     default:
       return "txt";
   }
+}
+
+async function loadSuperJSON(): Promise<typeof import("superjson")> {
+  return await import("superjson");
 }

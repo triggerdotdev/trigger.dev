@@ -89,14 +89,14 @@ export class TaskExecutor {
               try {
                 const payloadPacket = await conditionallyImportPacket(originalPacket, this._tracer);
 
-                parsedPayload = parsePacket(payloadPacket);
+                parsedPayload = await parsePacket(payloadPacket);
 
                 initOutput = await this.#callTaskInit(parsedPayload, ctx);
 
                 const output = await this.#callRun(parsedPayload, ctx, initOutput);
 
                 try {
-                  const stringifiedOutput = stringifyIO(output);
+                  const stringifiedOutput = await stringifyIO(output);
 
                   const finalOutput = await conditionallyExportPacket(
                     stringifiedOutput,
@@ -105,7 +105,7 @@ export class TaskExecutor {
                   );
 
                   span.setAttributes(
-                    createPacketAttributes(
+                    await createPacketAttributes(
                       finalOutput,
                       SemanticInternalAttributes.OUTPUT,
                       SemanticInternalAttributes.OUTPUT_TYPE

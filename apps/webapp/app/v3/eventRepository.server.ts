@@ -188,7 +188,7 @@ export class EventRepository {
     const event = events[0];
 
     const output = options?.attributes.output
-      ? createPackageAttributesAsJson(
+      ? await createPackageAttributesAsJson(
           options?.attributes.output,
           options?.attributes.outputType ?? "application/json"
         )

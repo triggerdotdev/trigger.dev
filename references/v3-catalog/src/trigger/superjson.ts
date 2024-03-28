@@ -30,7 +30,7 @@ export const superChildTask = task({
       date: new Date(),
       regex: /foo/,
       bigint: BigInt(123),
-      set: new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+      set: new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
       map: new Map([
         ["foo", "bar"],
         ["baz", "qux"],

@@ -362,7 +362,11 @@ function useDev({
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
         plugins: [
-          bundleDependenciesPlugin(config),
+          bundleDependenciesPlugin(
+            "workerFacade",
+            (config.dependenciesToBundle ?? []).concat([/^@trigger.dev/]),
+            config.tsconfigPath
+          ),
           workerSetupImportConfigPlugin(configPath),
           {
             name: "trigger.dev v3",
@@ -631,8 +635,12 @@ async function gatherRequiredDependencies(
 ) {
   const dependencies: Record<string, string> = {};
 
+  logger.debug("Gathering required dependencies from imports", {
+    imports: outputMeta.imports,
+  });
+
   for (const file of outputMeta.imports) {
-    if (file.kind !== "require-call" || !file.external) {
+    if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
       continue;
     }
 
