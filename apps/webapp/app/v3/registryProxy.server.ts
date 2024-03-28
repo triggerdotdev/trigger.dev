@@ -259,6 +259,18 @@ export class RegistryProxy {
         proxyRes.pipe(response, { end: true });
       });
 
+      request.on("close", () => {
+        logger.debug("Client closed the connection");
+        proxyReq.destroy();
+        cleanupTempFile();
+      });
+
+      request.on("abort", () => {
+        logger.debug("Client aborted the connection");
+        proxyReq.destroy(); // Abort the proxied request
+        cleanupTempFile(); // Clean up the temporary file if necessary
+      });
+
       if (tempFilePath) {
         const readStream = createReadStream(tempFilePath);
 
@@ -427,14 +439,22 @@ function initializeProxy() {
   });
 }
 
-async function streamRequestBodyToTempFile(request: IncomingMessage): Promise<string> {
-  const tempDir = await mkdtemp(`${tmpdir()}/`);
-  const tempFilePath = `${tempDir}/requestBody.tmp`;
-  const writeStream = createWriteStream(tempFilePath);
+async function streamRequestBodyToTempFile(request: IncomingMessage): Promise<string | undefined> {
+  try {
+    const tempDir = await mkdtemp(`${tmpdir()}/`);
+    const tempFilePath = `${tempDir}/requestBody.tmp`;
+    const writeStream = createWriteStream(tempFilePath);
 
-  await pipeline(request, writeStream);
+    await pipeline(request, writeStream);
 
-  return tempFilePath;
+    return tempFilePath;
+  } catch (error) {
+    logger.error("Failed to stream request body to temp file", {
+      error: error instanceof Error ? error.message : error,
+    });
+
+    return;
+  }
 }
 
 type DockerImageParts = {

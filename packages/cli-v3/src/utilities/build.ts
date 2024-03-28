@@ -1,10 +1,9 @@
-import { ResolvedConfig } from "@trigger.dev/core/v3";
 import type * as esbuild from "esbuild";
 import type { Plugin } from "esbuild";
+import { readFileSync } from "node:fs";
 import { extname, isAbsolute } from "node:path";
 import tsConfigPaths from "tsconfig-paths";
 import { logger } from "./logger";
-import { readFileSync } from "node:fs";
 
 export function workerSetupImportConfigPlugin(configPath?: string): Plugin {
   return {
@@ -37,8 +36,12 @@ export function workerSetupImportConfigPlugin(configPath?: string): Plugin {
   };
 }
 
-export function bundleDependenciesPlugin(config: ResolvedConfig): Plugin {
-  const matchPath = config.tsconfigPath ? createMatchPath(config.tsconfigPath) : undefined;
+export function bundleDependenciesPlugin(
+  buildIdentifier: string,
+  dependenciesToBundle?: Array<string | RegExp>,
+  tsconfigPath?: string
+): Plugin {
+  const matchPath = tsconfigPath ? createMatchPath(tsconfigPath) : undefined;
 
   function resolvePath(id: string) {
     if (!matchPath) {
@@ -53,33 +56,8 @@ export function bundleDependenciesPlugin(config: ResolvedConfig): Plugin {
       build.onResolve({ filter: /.*/ }, (args) => {
         const resolvedPath = resolvePath(args.path);
 
-        logger.ignore(`Checking if ${args.path} should be bundled or external`, {
-          ...args,
-          resolvedPath,
-        });
-
         if (!isBareModuleId(resolvedPath)) {
-          logger.ignore(`Bundling ${args.path} because its not a bareModuleId`, {
-            ...args,
-          });
-
-          return undefined; // let esbuild bundle it
-        }
-
-        if (args.path.startsWith("@trigger.dev/")) {
-          logger.ignore(`Bundling ${args.path} because its a trigger.dev package`, {
-            ...args,
-          });
-
-          return undefined; // let esbuild bundle it
-        }
-
-        if (args.path === "superjson" || args.path === "copy-anything" || args.path === "is-what") {
-          logger.debug(`Bundling ${args.path} because its superjson/copy-anything/is-what`, {
-            ...args,
-          });
-
-          return undefined; // let esbuild bundle it
+          return undefined; // let esbuild handle it
         }
 
         // Skip assets that are treated as files (.css, .svg, .png, etc.).
@@ -97,13 +75,13 @@ export function bundleDependenciesPlugin(config: ResolvedConfig): Plugin {
           return undefined;
         }
 
-        for (let pattern of config.dependenciesToBundle ?? []) {
+        for (let pattern of dependenciesToBundle ?? []) {
           if (typeof pattern === "string" ? args.path === pattern : pattern.test(args.path)) {
             return undefined; // let esbuild bundle it
           }
         }
 
-        logger.ignore(`Externalizing ${args.path}`, {
+        logger.ignore(`[${buildIdentifier}] Externalizing ${args.path}`, {
           ...args,
         });
 

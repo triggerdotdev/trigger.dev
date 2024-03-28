@@ -551,7 +551,7 @@ async function handleTaskRunExecutionResult<TOutput>(
     return {
       ok: true,
       id: execution.id,
-      output: parsePacket(importedPacket),
+      output: await parsePacket(importedPacket),
     };
   } else {
     return {

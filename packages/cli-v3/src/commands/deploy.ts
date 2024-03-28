@@ -889,7 +889,14 @@ async function compileProject(
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
-        plugins: [bundleDependenciesPlugin(config), workerSetupImportConfigPlugin(configPath)],
+        plugins: [
+          bundleDependenciesPlugin(
+            "workerFacade",
+            config.dependenciesToBundle,
+            config.tsconfigPath
+          ),
+          workerSetupImportConfigPlugin(configPath),
+        ],
       });
 
       if (result.errors.length > 0) {
@@ -927,15 +934,22 @@ async function compileProject(
         write: false,
         minify: false,
         sourcemap: false,
-        packages: "external", // https://esbuild.github.io/api/#packages
         logLevel: "error",
         platform: "node",
+        packages: "external",
         format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
         target: ["node18", "es2020"],
         outdir: "out",
         define: {
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
+        plugins: [
+          bundleDependenciesPlugin(
+            "entryPoint.ts",
+            config.dependenciesToBundle,
+            config.tsconfigPath
+          ),
+        ],
       });
 
       if (entryPointResult.errors.length > 0) {
@@ -1002,6 +1016,11 @@ async function compileProject(
       await writeFile(join(tempDir, "worker.js.map"), workerSourcemapFile.text);
       // Save the entryPoint outputFile to /tmp/dir/index.js
       await writeFile(join(tempDir, "index.js"), entryPointOutputFile.text);
+
+      logger.debug("Getting the imports for the worker and entryPoint builds", {
+        workerImports: metaOutput.imports,
+        entryPointImports: entryPointMetaOutput.imports,
+      });
 
       // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
       const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
@@ -1246,7 +1265,7 @@ async function gatherRequiredDependencies(
   const dependencies: Record<string, string> = {};
 
   for (const file of imports) {
-    if (file.kind !== "require-call" || !file.external) {
+    if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
       continue;
     }
 

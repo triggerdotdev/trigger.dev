@@ -14,9 +14,9 @@ import {
   OperatingSystemContextProvider,
   OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
-import { env } from "./env.server";
 import { getSharedSqsEventConsumer } from "./services/events/sqsEventConsumer";
 import { singleton } from "./utils/singleton";
+import { logger } from "./services/logger.server";
 
 const ABORT_DELAY = 30000;
 
@@ -178,7 +178,15 @@ function logError(error: unknown, request?: Request) {
 
 const sqsEventConsumer = singleton("sqsEventConsumer", getSharedSqsEventConsumer);
 
-export { wss } from "./v3/handleWebsockets.server";
-export { socketIo } from "./v3/handleSocketIo.server";
-export { registryProxy } from "./v3/registryProxy.server";
 export { apiRateLimiter } from "./services/apiRateLimit.server";
+export { socketIo } from "./v3/handleSocketIo.server";
+export { wss } from "./v3/handleWebsockets.server";
+export { registryProxy } from "./v3/registryProxy.server";
+
+process.on("uncaughtException", (error, origin) => {
+  logger.error("Uncaught Exception", { error, origin });
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  logger.error("Unhandled Rejection", { reason });
+});
