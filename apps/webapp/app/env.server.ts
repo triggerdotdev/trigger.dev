@@ -85,8 +85,6 @@ const EnvironmentSchema = z.object({
 
   //v3
   V3_ENABLED: z.string().default("false"),
-  OTLP_EXPORTER_TRACES_URL: z.string().optional(),
-  LOG_TELEMETRY: z.string().default("true"),
   IMAGE_REGISTRY: z.string().default("docker.io"),
   IMAGE_REPO: z.string().default("task"),
   PROVIDER_SECRET: z.string().default("provider-secret"),
@@ -117,6 +115,15 @@ const EnvironmentSchema = z.object({
   DEV_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
   DEV_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
   RUNTIME_WAIT_THRESHOLD_IN_MS: z.coerce.number().int().default(30000),
+
+  // Internal OTEL environment variables
+  INTERNAL_OTEL_TRACE_EXPORTER_URL: z.string().optional(),
+  INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_NAME: z.string().optional(),
+  INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_VALUE: z.string().optional(),
+  INTERNAL_OTEL_TRACE_LOGGING_ENABLED: z.string().default("1"),
+  // this means 1/20 traces or 5% of traces will be sampled (sampled = recorded)
+  INTERNAL_OTEL_TRACE_SAMPING_RATE: z.string().default("20"),
+  INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED: z.string().default("0"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

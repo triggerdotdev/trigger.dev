@@ -9,7 +9,7 @@ import {
   trace,
 } from "@opentelemetry/api";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { registerInstrumentations } from "@opentelemetry/instrumentation";
+import { InstrumentationOption, registerInstrumentations } from "@opentelemetry/instrumentation";
 import { ExpressInstrumentation } from "@opentelemetry/instrumentation-express";
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
 import { Resource } from "@opentelemetry/resources";
@@ -23,12 +23,13 @@ import {
   TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace-base";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
-import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
+import { SEMRESATTRS_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { singleton } from "~/utils/singleton";
 import { LoggerSpanExporter } from "./telemetry/loggerExporter.server";
+
 class CustomWebappSampler implements Sampler {
   constructor(private readonly _baseSampler: Sampler) {}
 
@@ -44,10 +45,7 @@ class CustomWebappSampler implements Sampler {
     const parentContext = trace.getSpanContext(context);
 
     // Exclude Prisma spans (adjust this logic as needed for your use case)
-    if (
-      !parentContext &&
-      ((attributes && attributes["model"] && attributes["method"]) || name.includes("prisma"))
-    ) {
+    if (!parentContext && name.includes("prisma")) {
       return { decision: SamplingDecision.NOT_RECORD };
     }
 
@@ -65,29 +63,46 @@ export const tracer = singleton("tracer", getTracer);
 function getTracer() {
   diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.ERROR);
 
+  const samplingRate = 1.0 / Math.max(parseInt(env.INTERNAL_OTEL_TRACE_SAMPING_RATE, 10), 1);
+
   const provider = new NodeTracerProvider({
     forceFlushTimeoutMillis: 500,
     resource: new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: "trigger.dev",
+      [SEMRESATTRS_SERVICE_NAME]: "trigger.dev",
     }),
     sampler: new ParentBasedSampler({
-      root: new CustomWebappSampler(
-        new TraceIdRatioBasedSampler(env.APP_ENV === "development" ? 1.0 : 0.05)
-      ), // 5% sampling
+      root: new CustomWebappSampler(new TraceIdRatioBasedSampler(samplingRate)), // 5% sampling
     }), // 5% sampling
   });
 
-  if (env.OTLP_EXPORTER_TRACES_URL) {
+  if (env.INTERNAL_OTEL_TRACE_EXPORTER_URL) {
     const exporter = new OTLPTraceExporter({
-      url: env.OTLP_EXPORTER_TRACES_URL,
+      url: env.INTERNAL_OTEL_TRACE_EXPORTER_URL,
       timeoutMillis: 1000,
+      headers:
+        env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_NAME &&
+        env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_VALUE
+          ? {
+              [env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_NAME]:
+                env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_VALUE,
+            }
+          : undefined,
     });
 
-    provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+    provider.addSpanProcessor(
+      new BatchSpanProcessor(exporter, {
+        maxExportBatchSize: 512,
+        scheduledDelayMillis: 200,
+        exportTimeoutMillis: 30000,
+        maxQueueSize: 2048,
+      })
+    );
 
-    console.log(`⚡ Tracer: OTLP exporter enabled to ${env.OTLP_EXPORTER_TRACES_URL}`);
+    console.log(`🔦 Tracer: OTLP exporter enabled to ${env.INTERNAL_OTEL_TRACE_EXPORTER_URL}`);
   } else {
-    if (env.LOG_TELEMETRY === "true") {
+    if (env.INTERNAL_OTEL_TRACE_LOGGING_ENABLED === "1") {
+      console.log(`🔦 Tracer: Logger exporter enabled`);
+
       const loggerExporter = new LoggerSpanExporter();
 
       provider.addSpanProcessor(new SimpleSpanProcessor(loggerExporter));
@@ -96,13 +111,18 @@ function getTracer() {
 
   provider.register();
 
+  let instrumentations: InstrumentationOption[] = [
+    new HttpInstrumentation(),
+    new ExpressInstrumentation(),
+  ];
+
+  if (env.INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED === "1") {
+    instrumentations.push(new PrismaInstrumentation());
+  }
+
   registerInstrumentations({
     tracerProvider: provider,
-    instrumentations: [
-      new HttpInstrumentation(),
-      new ExpressInstrumentation(),
-      new PrismaInstrumentation(),
-    ],
+    instrumentations,
   });
 
   return provider.getTracer("trigger.dev", "3.0.0.dp.1");
