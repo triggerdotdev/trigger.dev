@@ -105,7 +105,7 @@ export class CompleteAttemptService extends BaseService {
       attributes: {
         isError: false,
         output:
-          completion.outputType === "application/store"
+          completion.outputType === "application/store" || completion.outputType === "text/plain"
             ? completion.output
             : completion.output
             ? (safeJsonParse(completion.output) as Attributes)

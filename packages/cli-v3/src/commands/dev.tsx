@@ -26,7 +26,7 @@ import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
-import { chalkGrey, chalkPurple, chalkWorker } from "../utilities/cliOutput";
+import { chalkError, chalkGrey, chalkPurple, chalkTask, chalkWorker } from "../utilities/cliOutput";
 import { readConfig } from "../utilities/configFiles";
 import { readJSONFile } from "../utilities/fileSystem";
 import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
@@ -77,9 +77,13 @@ export async function devCommand(dir: string, options: DevCommandOptions) {
 
   if (!authorization.ok) {
     if (authorization.error === "fetch failed") {
-      logger.error("Fetch failed. Platform down?");
+      logger.log(
+        `${chalkError(
+          "X Error:"
+        )} Connecting to the server failed. Please check your internet connection or contact eric@trigger.dev for help.`
+      );
     } else {
-      logger.error("You must login first. Use `trigger.dev login` to login.");
+      logger.log(`${chalkError("X Error:")} You must login first. Use the \`login\` CLI command.`);
     }
     process.exitCode = 1;
     return;
@@ -701,13 +705,13 @@ function createDuplicateTaskIdOutputErrorMessage(
     .map((id) => {
       const tasks = taskResources.filter((task) => task.id === id);
 
-      return `id "${chalkPurple(id)}" was found in:\n${tasks
-        .map((task) => `${task.filePath} -> ${task.exportName}`)
-        .join("\n")}`;
+      return `\n\n${chalkTask(id)} was found in:${tasks
+        .map((task) => `\n${task.filePath} -> ${task.exportName}`)
+        .join("")}`;
     })
-    .join("\n\n");
+    .join("");
 
-  return `Duplicate task ids detected:\n\n${duplicateTable}\n\n`;
+  return `Duplicate ${chalkTask("task id")} detected:${duplicateTable}`;
 }
 
 function gatherProcessEnv() {

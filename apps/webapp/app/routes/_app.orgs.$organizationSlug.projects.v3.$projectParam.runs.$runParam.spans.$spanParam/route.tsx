@@ -222,19 +222,25 @@ function PacketDisplay({
   dataType: string;
   title: string;
 }) {
-  if (dataType === "application/store") {
-    return (
-      <div className="flex flex-col">
-        <Paragraph variant="base/bright" className="w-full border-b border-grid-dimmed py-2.5">
-          {title}
-        </Paragraph>
-        <LinkButton LeadingIcon={CloudArrowDownIcon} to={data} variant="tertiary/medium" download>
-          Download
-        </LinkButton>
-      </div>
-    );
-  } else {
-    return <CodeBlock rowTitle={title} code={data} maxLines={20} />;
+  switch (dataType) {
+    case "application/store": {
+      return (
+        <div className="flex flex-col">
+          <Paragraph variant="base/bright" className="w-full border-b border-grid-dimmed py-2.5">
+            {title}
+          </Paragraph>
+          <LinkButton LeadingIcon={CloudArrowDownIcon} to={data} variant="tertiary/medium" download>
+            Download
+          </LinkButton>
+        </div>
+      );
+    }
+    case "text/plain": {
+      return <CodeBlock language="markdown" rowTitle={title} code={data} maxLines={20} />;
+    }
+    default: {
+      return <CodeBlock language="json" rowTitle={title} code={data} maxLines={20} />;
+    }
   }
 }
 

@@ -64,7 +64,7 @@ export {
   stringifyIO,
   prettyPrintPacket,
   createPacketAttributes,
-  createPackageAttributesAsJson,
+  createPacketAttributesAsJson,
   conditionallyExportPacket,
   conditionallyImportPacket,
   packetRequiresOffloading,

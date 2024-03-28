@@ -17,9 +17,7 @@ export const superParentTask = task({
     logger.log(`typeof result.error = ${typeof result.error}`);
     logger.log(`typeof result.url = ${typeof result.url}`);
 
-    return {
-      result,
-    };
+    return "## super-parent-task completed";
   },
 });
 
@@ -117,6 +115,35 @@ export const superHugeOutputTask = task({
   id: "super-huge-output-task",
   run: async (payload) => {
     return payload;
+  },
+});
+
+export const superStringTask = task({
+  id: "super-string-parent-task",
+  run: async () => {
+    const result = await superStringChildTask.triggerAndWait({
+      payload: {
+        foo: "bar",
+      },
+    });
+
+    return result;
+  },
+});
+
+export const superStringChildTask = task({
+  id: "super-string-child-task",
+  run: async () => {
+    return "## super-string-child-task completed";
+  },
+});
+
+export const superBadOutputTask = task({
+  id: "super-bad-output-task",
+  run: async () => {
+    // Returning something that cannot be serialized
+
+    return () => {};
   },
 });
 
