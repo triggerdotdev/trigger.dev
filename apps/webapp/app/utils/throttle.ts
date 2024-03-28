@@ -1,20 +1,20 @@
 //From: https://kettanaito.com/blog/debounce-vs-throttle
 
-/** A very simple throttle. Will execute the function every Xms and discard any other calls during that period. */
+/** A very simple throttle. Will execute the function at the end of each period and discard any other calls during that period. */
 export function throttle(
   func: (...args: any[]) => void,
-  duration: number
+  durationMs: number
 ): (...args: any[]) => void {
-  let shouldWait = false;
+  let isPrimedToFire = false;
 
   return (...args: any[]) => {
-    if (!shouldWait) {
-      func(...args);
-      shouldWait = true;
+    if (!isPrimedToFire) {
+      isPrimedToFire = true;
 
       setTimeout(() => {
-        shouldWait = false;
-      }, duration);
+        func(...args);
+        isPrimedToFire = false;
+      }, durationMs);
     }
   };
 }

@@ -57,7 +57,7 @@ export async function printStandloneInitialBanner(performUpdateCheck = true) {
 
 export function printDevBanner() {
   logger.log(
-    `${chalkGrey("Key:")} ${chalkWorker("Worker")} ${chalkGrey("|")} ${chalkTask(
+    `${chalkGrey("Key:")} ${chalkWorker("Version")} ${chalkGrey("|")} ${chalkTask(
       "Task"
     )} ${chalkGrey("|")} ${chalkRun("Run")}`
   );

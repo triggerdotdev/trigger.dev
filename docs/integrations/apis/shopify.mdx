@@ -63,7 +63,9 @@ You can use Personal Access Tokens to authenticate with Shopify and get started 
 
 To create the tokens on Shopify, login and [follow the instructions](https://help.shopify.com/en/manual/apps/app-types/custom-apps#create-and-install-a-custom-app).
 
-The [required scopes](https://shopify.dev/docs/api/usage/access-scopes#authenticated-access-scopes) depend on the tasks you wish to perform and which webhooks you intend to receive. Webhooks will generally need read access to the respective Shopify resource.
+The [required scopes](https://shopify.dev/docs/api/usage/access-scopes#authenticated-access-scopes) depend on the tasks you wish to perform and which webhooks you intend to receive.
+
+Webhooks will generally need read access to the respective Shopify resource at the very least. If the topic you subscribe to is triggered by an action that requires write access, e.g. `orders/create`, then write access is also required, e.g. `write_orders`.
 
 Additionally, you will also have to provide your shop domain.
 

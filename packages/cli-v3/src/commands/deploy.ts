@@ -1382,7 +1382,7 @@ async function findAllEnvironmentVariableReferencesInFile(filePath: string) {
   return findAllEnvironmentVariableReferences(fileContents);
 }
 
-const IGNORED_ENV_VARS = ["NODE_ENV", "SHELL", "HOME", "PWD", "LOGNAME", "USER", "PATH"];
+const IGNORED_ENV_VARS = ["NODE_ENV", "SHELL", "HOME", "PWD", "LOGNAME", "USER", "PATH", "DEBUG"];
 
 function findAllEnvironmentVariableReferences(code: string): string[] {
   const regex = /\bprocess\.env\.([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
