@@ -15,7 +15,7 @@ import { resolve as importResolve } from "import-meta-resolve";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, parse, relative } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import terminalLink from "terminal-link";
 import invariant from "tiny-invariant";
@@ -46,6 +46,8 @@ import { login } from "./login";
 import type { SetOptional } from "type-fest";
 import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
 import { Glob } from "glob";
+import { chalkError, chalkGreen, chalkGrey, chalkPurple } from "../utilities/cliOutput";
+import { parseDeployErrorStack } from "../utilities/deployErrors";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -379,10 +381,51 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
     case "FAILED": {
       if (finishedDeployment.errorData) {
-        deploymentSpinner.stop(
-          `Deployment encountered an error: ${finishedDeployment.errorData.name}. ${deploymentLink}`
-        );
-        logger.error(finishedDeployment.errorData.stack);
+        const parsedError = finishedDeployment.errorData.stack
+          ? parseDeployErrorStack(finishedDeployment.errorData.stack)
+          : finishedDeployment.errorData.message;
+
+        if (typeof parsedError === "string") {
+          deploymentSpinner.stop(`Deployment encountered an error. ${deploymentLink}`);
+
+          logger.log(`${chalkError("X Error:")} ${parsedError}`);
+        } else {
+          deploymentSpinner.stop(`Deployment encountered an error. ${deploymentLink}`);
+
+          logger.log(
+            `\n${chalkError("X Error:")} The ${chalkPurple(
+              parsedError.moduleName
+            )} module is being required even though it's ESM only, and builds only support CommonJS. There are two ways to fix this:`
+          );
+          logger.log(
+            `\n${chalkGrey("○")} Dynamically import the module in your code: ${chalkGrey(
+              `const myModule = await import("${parsedError.moduleName}");`
+            )}`
+          );
+
+          if (resolvedConfig.status === "file") {
+            const relativePath = relative(
+              resolvedConfig.config.projectDir,
+              resolvedConfig.path
+            ).replace(/\\/g, "/");
+
+            logger.log(
+              `${chalkGrey("○")} Add ${chalkPurple(parsedError.moduleName)} to the ${chalkGreen(
+                "dependenciesToBundle"
+              )} array in your config file ${chalkGrey(
+                `(${relativePath})`
+              )}. This will bundle the module with your code.\n`
+            );
+          } else {
+            logger.log(
+              `${chalkGrey("○")} Add ${chalkPurple(parsedError.moduleName)} to the ${chalkGreen(
+                "dependenciesToBundle"
+              )} array in your config file ${chalkGrey(
+                "(you'll need to create one)"
+              )}. This will bundle the module with your code.\n`
+            );
+          }
+        }
 
         throw new SkipLoggingError(
           `Deployment encountered an error: ${finishedDeployment.errorData.name}`
