@@ -110,6 +110,7 @@ model Organization {
   title String
 
   maximumExecutionTimePerRunInMs Int @default(900000) // 15 minutes
+  maximumConcurrencyLimit        Int @default(10)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -352,6 +353,8 @@ model RuntimeEnvironment {
 
   ///A memorable code for the environment
   shortcode String
+
+  maximumConcurrencyLimit Int @default(10)
 
   autoEnableInternalSources Boolean @default(true)
 
@@ -1557,8 +1560,8 @@ model BackgroundWorkerTask {
   attempts TaskRunAttempt[]
   runs     TaskRun[]
 
-  queueConfig Json?
-  retryConfig Json?
+  queueConfig   Json?
+  retryConfig   Json?
   machineConfig Json?
 
   @@unique([workerId, slug])

@@ -1,0 +1,119 @@
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { MarQSKeyProducer } from "./marqs.server";
+
+const constants = {
+  SHARED_QUEUE: "sharedQueue",
+  CURRENT_CONCURRENCY_PART: "currentConcurrency",
+  CONCURRENCY_LIMIT_PART: "concurrency",
+  ENV_PART: "env",
+  QUEUE_PART: "queue",
+  CONCURRENCY_KEY_PART: "ck",
+  MESSAGE_PART: "message",
+  ORG_PART: "org",
+} as const;
+
+export class MarQSShortKeyProducer implements MarQSKeyProducer {
+  constructor(private _prefix: string) {}
+
+  queueConcurrencyLimitKey(env: AuthenticatedEnvironment, queue: string) {
+    return [this.queueKey(env, queue), constants.CONCURRENCY_LIMIT_PART].join(":");
+  }
+
+  envConcurrencyLimitKey(env: AuthenticatedEnvironment) {
+    return [this.envKeySection(env.id), constants.CONCURRENCY_LIMIT_PART].join(":");
+  }
+
+  orgConcurrencyLimitKey(env: AuthenticatedEnvironment) {
+    return [this.orgKeySection(env.organizationId), constants.CONCURRENCY_LIMIT_PART].join(":");
+  }
+
+  queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string) {
+    return [
+      this.orgKeySection(env.organizationId),
+      this.envKeySection(env.id),
+      this.queueSection(queue),
+    ]
+      .concat(concurrencyKey ? this.concurrencyKeySection(concurrencyKey) : [])
+      .join(":");
+  }
+
+  envSharedQueueKey(env: AuthenticatedEnvironment) {
+    if (env.type === "DEVELOPMENT") {
+      return [
+        this.orgKeySection(env.organizationId),
+        this.envKeySection(env.id),
+        constants.SHARED_QUEUE,
+      ].join(":");
+    }
+
+    return constants.SHARED_QUEUE;
+  }
+
+  concurrencyLimitKeyFromQueue(queue: string) {
+    const concurrencyQueueName = queue.replace(/:ck:.+$/, "");
+
+    return `${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`;
+  }
+
+  currentConcurrencyKeyFromQueue(queue: string) {
+    return `${queue}:${constants.CURRENT_CONCURRENCY_PART}`;
+  }
+
+  orgConcurrencyLimitKeyFromQueue(queue: string) {
+    const orgId = this.normalizeQueue(queue).split(":")[1];
+
+    return `${constants.ORG_PART}:${orgId}:${constants.CONCURRENCY_LIMIT_PART}`;
+  }
+
+  orgCurrentConcurrencyKeyFromQueue(queue: string) {
+    const orgId = this.normalizeQueue(queue).split(":")[1];
+
+    return `${constants.ORG_PART}:${orgId}:${constants.CURRENT_CONCURRENCY_PART}`;
+  }
+
+  envConcurrencyLimitKeyFromQueue(queue: string) {
+    const envId = this.normalizeQueue(queue).split(":")[3];
+
+    return `${constants.ENV_PART}:${envId}:${constants.CONCURRENCY_LIMIT_PART}`;
+  }
+
+  envCurrentConcurrencyKeyFromQueue(queue: string) {
+    const envId = this.normalizeQueue(queue).split(":")[3];
+
+    return `${constants.ENV_PART}:${envId}:${constants.CURRENT_CONCURRENCY_PART}`;
+  }
+
+  messageKey(messageId: string) {
+    return `${constants.MESSAGE_PART}:${messageId}`;
+  }
+
+  private shortId(id: string) {
+    // Return the last 12 characters of the id
+    return id.slice(-12);
+  }
+
+  private envKeySection(envId: string) {
+    return `${constants.ENV_PART}:${this.shortId(envId)}`;
+  }
+
+  private orgKeySection(orgId: string) {
+    return `${constants.ORG_PART}:${this.shortId(orgId)}`;
+  }
+
+  private queueSection(queue: string) {
+    return `${constants.QUEUE_PART}:${queue}`;
+  }
+
+  private concurrencyKeySection(concurrencyKey: string) {
+    return `${constants.CONCURRENCY_KEY_PART}:${concurrencyKey}`;
+  }
+
+  // This removes the leading prefix from the queue name if it exists
+  private normalizeQueue(queue: string) {
+    if (queue.startsWith(this._prefix)) {
+      return queue.slice(this._prefix.length);
+    }
+
+    return queue;
+  }
+}
