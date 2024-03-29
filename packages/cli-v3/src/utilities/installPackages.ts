@@ -15,23 +15,14 @@ export async function installPackages(
 
   await setPackageJsonDeps(join(cwd, "package.json"), packages);
 
-  const childProcess = execa(
+  await execa(
     "npm",
     ["install", "--install-strategy", "nested", "--ignore-scripts", "--no-audit", "--no-fund"],
     {
       cwd,
-      stderr: "inherit",
+      stderr: "pipe",
     }
   );
-
-  await new Promise<void>((res, rej) => {
-    childProcess.on("error", (e) => rej(e));
-    childProcess.on("close", () => res());
-  });
-
-  await childProcess;
-
-  return;
 }
 
 async function getPackageVersion(path: string) {

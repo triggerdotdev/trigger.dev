@@ -43,9 +43,15 @@ import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
 
+import { Glob } from "glob";
 import type { SetOptional } from "type-fest";
 import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
-import { Glob } from "glob";
+import { chalkError, chalkPurple, chalkWarning } from "../utilities/cliOutput";
+import {
+  logESMRequireError,
+  parseBuildErrorStack,
+  parseNpmInstallError,
+} from "../utilities/deployErrors";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -272,28 +278,44 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       );
     }
 
-    return buildAndPushImage({
-      registryHost,
-      auth: authorization.auth.accessToken,
-      imageTag: deploymentResponse.data.imageTag,
-      buildId: deploymentResponse.data.externalBuildData.buildId,
-      buildToken: deploymentResponse.data.externalBuildData.buildToken,
-      buildProjectId: deploymentResponse.data.externalBuildData.projectId,
-      cwd: compilation.path,
-      projectId: resolvedConfig.config.project,
-      deploymentId: deploymentResponse.data.id,
-      deploymentVersion: deploymentResponse.data.version,
-      contentHash: deploymentResponse.data.contentHash,
-      projectRef: resolvedConfig.config.project,
-      loadImage: options.loadImage,
-      buildPlatform: options.buildPlatform,
-    });
+    return buildAndPushImage(
+      {
+        registryHost,
+        auth: authorization.auth.accessToken,
+        imageTag: deploymentResponse.data.imageTag,
+        buildId: deploymentResponse.data.externalBuildData.buildId,
+        buildToken: deploymentResponse.data.externalBuildData.buildToken,
+        buildProjectId: deploymentResponse.data.externalBuildData.projectId,
+        cwd: compilation.path,
+        projectId: resolvedConfig.config.project,
+        deploymentId: deploymentResponse.data.id,
+        deploymentVersion: deploymentResponse.data.version,
+        contentHash: deploymentResponse.data.contentHash,
+        projectRef: resolvedConfig.config.project,
+        loadImage: options.loadImage,
+        buildPlatform: options.buildPlatform,
+      },
+      deploymentSpinner
+    );
   };
 
   const image = await buildImage();
 
   if (!image.ok) {
-    deploymentSpinner.stop(`Failed to build project image: ${image.error}`);
+    deploymentSpinner.stop(`Failed to build project.`);
+
+    // If there are logs, let's write it out to a temporary file and include the path in the error message
+    if (image.logs.trim() !== "") {
+      const logPath = join(await createTempDir(), `build-${deploymentResponse.data.shortCode}.log`);
+
+      await writeFile(logPath, image.logs);
+
+      logger.log(
+        `${chalkError("X Error:")} ${image.error}. Full build logs have been saved to ${logPath})`
+      );
+    } else {
+      logger.log(`${chalkError("X Error:")} ${image.error}.`);
+    }
 
     throw new SkipLoggingError(`Failed to build project image: ${image.error}`);
   }
@@ -379,10 +401,19 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
     case "FAILED": {
       if (finishedDeployment.errorData) {
-        deploymentSpinner.stop(
-          `Deployment encountered an error: ${finishedDeployment.errorData.name}. ${deploymentLink}`
-        );
-        logger.error(finishedDeployment.errorData.stack);
+        const parsedError = finishedDeployment.errorData.stack
+          ? parseBuildErrorStack(finishedDeployment.errorData)
+          : finishedDeployment.errorData.message;
+
+        if (typeof parsedError === "string") {
+          deploymentSpinner.stop(`Deployment encountered an error. ${deploymentLink}`);
+
+          logger.log(`${chalkError("X Error:")} ${parsedError}`);
+        } else {
+          deploymentSpinner.stop(`Deployment encountered an error. ${deploymentLink}`);
+
+          logESMRequireError(parsedError, resolvedConfig);
+        }
 
         throw new SkipLoggingError(
           `Deployment encountered an error: ${finishedDeployment.errorData.name}`
@@ -551,15 +582,18 @@ type BuildAndPushImageResults =
   | {
       ok: true;
       image: string;
+      logs: string;
       digest?: string;
     }
   | {
       ok: false;
       error: string;
+      logs: string;
     };
 
 async function buildAndPushImage(
-  options: BuildAndPushImageOptions
+  options: BuildAndPushImageOptions,
+  updater: ReturnType<typeof spinner>
 ): Promise<BuildAndPushImageResults> {
   return tracer.startActiveSpan("buildAndPushImage", async (span) => {
     span.setAttributes({
@@ -626,7 +660,7 @@ async function buildAndPushImage(
     const errors: string[] = [];
 
     try {
-      await new Promise<void>((res, rej) => {
+      const processCode = await new Promise<number | null>((res, rej) => {
         // For some reason everything is output on stderr, not stdout
         childProcess.stderr?.on("data", (data: Buffer) => {
           const text = data.toString();
@@ -636,8 +670,18 @@ async function buildAndPushImage(
         });
 
         childProcess.on("error", (e) => rej(e));
-        childProcess.on("close", () => res());
+        childProcess.on("close", (code) => res(code));
       });
+
+      const logs = extractLogs(errors);
+
+      if (processCode !== 0) {
+        return {
+          ok: false as const,
+          error: `Error building image`,
+          logs,
+        };
+      }
 
       const digest = extractImageDigest(errors);
 
@@ -650,6 +694,7 @@ async function buildAndPushImage(
       return {
         ok: true as const,
         image: options.imageTag,
+        logs,
         digest,
       };
     } catch (e) {
@@ -659,6 +704,7 @@ async function buildAndPushImage(
       return {
         ok: false as const,
         error: e instanceof Error ? e.message : JSON.stringify(e),
+        logs: extractLogs(errors),
       };
     }
   });
@@ -751,6 +797,7 @@ async function buildAndPushSelfHostedImage(
       return {
         ok: false as const,
         error: e instanceof Error ? e.message : JSON.stringify(e),
+        logs: extractLogs(errors),
       };
     }
 
@@ -793,6 +840,7 @@ async function buildAndPushSelfHostedImage(
         return {
           ok: false as const,
           error: e instanceof Error ? e.message : JSON.stringify(e),
+          logs: extractLogs(errors),
         };
       }
     }
@@ -803,6 +851,7 @@ async function buildAndPushSelfHostedImage(
       ok: true as const,
       image: options.imageTag,
       digest,
+      logs: extractLogs(errors),
     };
   });
 }
@@ -818,6 +867,13 @@ function extractImageDigest(outputs: string[]) {
       }
     }
   }
+}
+
+function extractLogs(outputs: string[]) {
+  // Remove empty lines
+  const cleanedOutputs = outputs.map((line) => line.trim()).filter((line) => line !== "");
+
+  return cleanedOutputs.map((line) => line.trim()).join("\n");
 }
 
 async function compileProject(
@@ -1057,7 +1113,7 @@ async function compileProject(
       );
 
       if (!resolvingDependenciesResult) {
-        throw new Error("Failed to resolve dependencies");
+        throw new SkipLoggingError("Failed to resolve dependencies");
       }
 
       // Write the Containerfile to /tmp/dir/Containerfile
@@ -1188,15 +1244,39 @@ async function resolveDependencies(
 
         return true;
       } catch (installError) {
-        logger.debug(`Failed to resolve dependencies: ${JSON.stringify(installError)}`);
-
         recordSpanException(span, installError);
-
         span.end();
 
-        resolvingDepsSpinner.stop(
-          "Failed to resolve dependencies. Rerun with --log-level=debug for more information"
-        );
+        const parsedError = parseNpmInstallError(installError);
+
+        if (typeof parsedError === "string") {
+          resolvingDepsSpinner.stop(`Failed to resolve dependencies: ${parsedError}`);
+        } else {
+          switch (parsedError.type) {
+            case "package-not-found-error": {
+              resolvingDepsSpinner.stop(`Failed to resolve dependencies`);
+
+              logger.log(
+                `\n${chalkError("X Error:")} The package ${chalkPurple(
+                  parsedError.packageName
+                )} could not be found in the npm registry.`
+              );
+
+              break;
+            }
+            case "no-matching-version-error": {
+              resolvingDepsSpinner.stop(`Failed to resolve dependencies`);
+
+              logger.log(
+                `\n${chalkError("X Error:")} The package ${chalkPurple(
+                  parsedError.packageName
+                )} could not resolve because the version doesn't exist`
+              );
+
+              break;
+            }
+          }
+        }
 
         return false;
       }
@@ -1312,8 +1392,12 @@ async function gatherRequiredDependencies(
           dependencies[packageParts.name] = externalDependencyVersion;
           continue;
         } else {
-          logger.warn(
-            `Could not find version for package ${packageName}, add a version specifier to the package name (e.g. ${packageParts.name}@latest) or add it to your project's package.json`
+          logger.log(
+            `${chalkWarning("X Warning:")} Could not find version for package ${chalkPurple(
+              packageName
+            )}, add a version specifier to the package name (e.g. ${
+              packageParts.name
+            }@latest) or add it to your project's package.json`
           );
         }
       }
