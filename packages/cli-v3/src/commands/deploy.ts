@@ -278,28 +278,44 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       );
     }
 
-    return buildAndPushImage({
-      registryHost,
-      auth: authorization.auth.accessToken,
-      imageTag: deploymentResponse.data.imageTag,
-      buildId: deploymentResponse.data.externalBuildData.buildId,
-      buildToken: deploymentResponse.data.externalBuildData.buildToken,
-      buildProjectId: deploymentResponse.data.externalBuildData.projectId,
-      cwd: compilation.path,
-      projectId: resolvedConfig.config.project,
-      deploymentId: deploymentResponse.data.id,
-      deploymentVersion: deploymentResponse.data.version,
-      contentHash: deploymentResponse.data.contentHash,
-      projectRef: resolvedConfig.config.project,
-      loadImage: options.loadImage,
-      buildPlatform: options.buildPlatform,
-    });
+    return buildAndPushImage(
+      {
+        registryHost,
+        auth: authorization.auth.accessToken,
+        imageTag: deploymentResponse.data.imageTag,
+        buildId: deploymentResponse.data.externalBuildData.buildId,
+        buildToken: deploymentResponse.data.externalBuildData.buildToken,
+        buildProjectId: deploymentResponse.data.externalBuildData.projectId,
+        cwd: compilation.path,
+        projectId: resolvedConfig.config.project,
+        deploymentId: deploymentResponse.data.id,
+        deploymentVersion: deploymentResponse.data.version,
+        contentHash: deploymentResponse.data.contentHash,
+        projectRef: resolvedConfig.config.project,
+        loadImage: options.loadImage,
+        buildPlatform: options.buildPlatform,
+      },
+      deploymentSpinner
+    );
   };
 
   const image = await buildImage();
 
   if (!image.ok) {
-    deploymentSpinner.stop(`Failed to build project image: ${image.error}`);
+    deploymentSpinner.stop(`Failed to build project.`);
+
+    // If there are logs, let's write it out to a temporary file and include the path in the error message
+    if (image.logs.trim() !== "") {
+      const logPath = join(await createTempDir(), `build-${deploymentResponse.data.shortCode}.log`);
+
+      await writeFile(logPath, image.logs);
+
+      logger.log(
+        `${chalkError("X Error:")} ${image.error}. Full build logs have been saved to ${logPath})`
+      );
+    } else {
+      logger.log(`${chalkError("X Error:")} ${image.error}.`);
+    }
 
     throw new SkipLoggingError(`Failed to build project image: ${image.error}`);
   }
@@ -566,15 +582,18 @@ type BuildAndPushImageResults =
   | {
       ok: true;
       image: string;
+      logs: string;
       digest?: string;
     }
   | {
       ok: false;
       error: string;
+      logs: string;
     };
 
 async function buildAndPushImage(
-  options: BuildAndPushImageOptions
+  options: BuildAndPushImageOptions,
+  updater: ReturnType<typeof spinner>
 ): Promise<BuildAndPushImageResults> {
   return tracer.startActiveSpan("buildAndPushImage", async (span) => {
     span.setAttributes({
@@ -641,7 +660,7 @@ async function buildAndPushImage(
     const errors: string[] = [];
 
     try {
-      await new Promise<void>((res, rej) => {
+      const processCode = await new Promise<number | null>((res, rej) => {
         // For some reason everything is output on stderr, not stdout
         childProcess.stderr?.on("data", (data: Buffer) => {
           const text = data.toString();
@@ -651,8 +670,18 @@ async function buildAndPushImage(
         });
 
         childProcess.on("error", (e) => rej(e));
-        childProcess.on("close", () => res());
+        childProcess.on("close", (code) => res(code));
       });
+
+      const logs = extractLogs(errors);
+
+      if (processCode !== 0) {
+        return {
+          ok: false as const,
+          error: `Error building image`,
+          logs,
+        };
+      }
 
       const digest = extractImageDigest(errors);
 
@@ -665,6 +694,7 @@ async function buildAndPushImage(
       return {
         ok: true as const,
         image: options.imageTag,
+        logs,
         digest,
       };
     } catch (e) {
@@ -674,6 +704,7 @@ async function buildAndPushImage(
       return {
         ok: false as const,
         error: e instanceof Error ? e.message : JSON.stringify(e),
+        logs: extractLogs(errors),
       };
     }
   });
@@ -766,6 +797,7 @@ async function buildAndPushSelfHostedImage(
       return {
         ok: false as const,
         error: e instanceof Error ? e.message : JSON.stringify(e),
+        logs: extractLogs(errors),
       };
     }
 
@@ -808,6 +840,7 @@ async function buildAndPushSelfHostedImage(
         return {
           ok: false as const,
           error: e instanceof Error ? e.message : JSON.stringify(e),
+          logs: extractLogs(errors),
         };
       }
     }
@@ -818,6 +851,7 @@ async function buildAndPushSelfHostedImage(
       ok: true as const,
       image: options.imageTag,
       digest,
+      logs: extractLogs(errors),
     };
   });
 }
@@ -833,6 +867,13 @@ function extractImageDigest(outputs: string[]) {
       }
     }
   }
+}
+
+function extractLogs(outputs: string[]) {
+  // Remove empty lines
+  const cleanedOutputs = outputs.map((line) => line.trim()).filter((line) => line !== "");
+
+  return cleanedOutputs.map((line) => line.trim()).join("\n");
 }
 
 async function compileProject(

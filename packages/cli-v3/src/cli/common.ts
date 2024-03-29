@@ -5,6 +5,7 @@ import { getTracer, provider } from "../telemetry/tracing";
 import { fromZodError } from "zod-validation-error";
 import { logger } from "../utilities/logger";
 import { outro } from "@clack/prompts";
+import { chalkError } from "../utilities/cliOutput";
 
 export const CommonCommandOptions = z.object({
   apiUrl: z.string().optional(),
@@ -84,7 +85,8 @@ export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
         // do nothing
       } else {
         recordSpanException(span, e);
-        logger.error(e instanceof Error ? e.message : String(e));
+
+        logger.log(`${chalkError("X Error:")} ${e instanceof Error ? e.message : String(e)}`);
       }
 
       span.end();
