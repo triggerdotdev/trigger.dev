@@ -15,7 +15,7 @@ import { resolve as importResolve } from "import-meta-resolve";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, parse, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import terminalLink from "terminal-link";
 import invariant from "tiny-invariant";
@@ -43,11 +43,15 @@ import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
 
+import { Glob } from "glob";
 import type { SetOptional } from "type-fest";
 import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
-import { Glob } from "glob";
-import { chalkError, chalkGreen, chalkGrey, chalkPurple } from "../utilities/cliOutput";
-import { parseDeployErrorStack } from "../utilities/deployErrors";
+import { chalkError, chalkPurple, chalkWarning } from "../utilities/cliOutput";
+import {
+  logESMRequireError,
+  parseBuildErrorStack,
+  parseNpmInstallError,
+} from "../utilities/deployErrors";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -382,7 +386,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     case "FAILED": {
       if (finishedDeployment.errorData) {
         const parsedError = finishedDeployment.errorData.stack
-          ? parseDeployErrorStack(finishedDeployment.errorData.stack)
+          ? parseBuildErrorStack(finishedDeployment.errorData)
           : finishedDeployment.errorData.message;
 
         if (typeof parsedError === "string") {
@@ -392,39 +396,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         } else {
           deploymentSpinner.stop(`Deployment encountered an error. ${deploymentLink}`);
 
-          logger.log(
-            `\n${chalkError("X Error:")} The ${chalkPurple(
-              parsedError.moduleName
-            )} module is being required even though it's ESM only, and builds only support CommonJS. There are two ways to fix this:`
-          );
-          logger.log(
-            `\n${chalkGrey("○")} Dynamically import the module in your code: ${chalkGrey(
-              `const myModule = await import("${parsedError.moduleName}");`
-            )}`
-          );
-
-          if (resolvedConfig.status === "file") {
-            const relativePath = relative(
-              resolvedConfig.config.projectDir,
-              resolvedConfig.path
-            ).replace(/\\/g, "/");
-
-            logger.log(
-              `${chalkGrey("○")} Add ${chalkPurple(parsedError.moduleName)} to the ${chalkGreen(
-                "dependenciesToBundle"
-              )} array in your config file ${chalkGrey(
-                `(${relativePath})`
-              )}. This will bundle the module with your code.\n`
-            );
-          } else {
-            logger.log(
-              `${chalkGrey("○")} Add ${chalkPurple(parsedError.moduleName)} to the ${chalkGreen(
-                "dependenciesToBundle"
-              )} array in your config file ${chalkGrey(
-                "(you'll need to create one)"
-              )}. This will bundle the module with your code.\n`
-            );
-          }
+          logESMRequireError(parsedError, resolvedConfig);
         }
 
         throw new SkipLoggingError(
@@ -1100,7 +1072,7 @@ async function compileProject(
       );
 
       if (!resolvingDependenciesResult) {
-        throw new Error("Failed to resolve dependencies");
+        throw new SkipLoggingError("Failed to resolve dependencies");
       }
 
       // Write the Containerfile to /tmp/dir/Containerfile
@@ -1231,15 +1203,39 @@ async function resolveDependencies(
 
         return true;
       } catch (installError) {
-        logger.debug(`Failed to resolve dependencies: ${JSON.stringify(installError)}`);
-
         recordSpanException(span, installError);
-
         span.end();
 
-        resolvingDepsSpinner.stop(
-          "Failed to resolve dependencies. Rerun with --log-level=debug for more information"
-        );
+        const parsedError = parseNpmInstallError(installError);
+
+        if (typeof parsedError === "string") {
+          resolvingDepsSpinner.stop(`Failed to resolve dependencies: ${parsedError}`);
+        } else {
+          switch (parsedError.type) {
+            case "package-not-found-error": {
+              resolvingDepsSpinner.stop(`Failed to resolve dependencies`);
+
+              logger.log(
+                `\n${chalkError("X Error:")} The package ${chalkPurple(
+                  parsedError.packageName
+                )} could not be found in the npm registry.`
+              );
+
+              break;
+            }
+            case "no-matching-version-error": {
+              resolvingDepsSpinner.stop(`Failed to resolve dependencies`);
+
+              logger.log(
+                `\n${chalkError("X Error:")} The package ${chalkPurple(
+                  parsedError.packageName
+                )} could not resolve because the version doesn't exist`
+              );
+
+              break;
+            }
+          }
+        }
 
         return false;
       }
@@ -1355,8 +1351,12 @@ async function gatherRequiredDependencies(
           dependencies[packageParts.name] = externalDependencyVersion;
           continue;
         } else {
-          logger.warn(
-            `Could not find version for package ${packageName}, add a version specifier to the package name (e.g. ${packageParts.name}@latest) or add it to your project's package.json`
+          logger.log(
+            `${chalkWarning("X Warning:")} Could not find version for package ${chalkPurple(
+              packageName
+            )}, add a version specifier to the package name (e.g. ${
+              packageParts.name
+            }@latest) or add it to your project's package.json`
           );
         }
       }

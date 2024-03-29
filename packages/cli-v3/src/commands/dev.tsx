@@ -41,6 +41,11 @@ import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { UncaughtExceptionError } from "../workers/common/errors";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
 import { runtimeCheck } from "../utilities/runtimeCheck";
+import {
+  logESMRequireError,
+  parseBuildErrorStack,
+  parseNpmInstallError,
+} from "../utilities/deployErrors";
 
 let apiClient: CliApiClient | undefined;
 
@@ -544,20 +549,55 @@ function useDev({
                   );
                 } catch (e) {
                   if (e instanceof UncaughtExceptionError) {
+                    const parsedBuildError = parseBuildErrorStack(e.originalError);
+
+                    if (typeof parsedBuildError !== "string") {
+                      logESMRequireError(
+                        parsedBuildError,
+                        configPath
+                          ? { status: "file", path: configPath, config }
+                          : { status: "in-memory", config }
+                      );
+                      return;
+                    } else {
+                    }
+
                     if (e.originalError.stack) {
-                      logger.error("Background worker failed to start", e.originalError.stack);
+                      logger.log(
+                        `${chalkError("X Error:")} Worker failed to start`,
+                        e.originalError.stack
+                      );
                     }
 
                     return;
                   }
 
-                  if (e instanceof Error) {
-                    logger.error(`Background worker failed to start`, e.stack);
+                  const parsedError = parseNpmInstallError(e);
 
-                    return;
+                  if (typeof parsedError === "string") {
+                    logger.log(`${chalkError("X Error:")} ${parsedError}`);
+                  } else {
+                    switch (parsedError.type) {
+                      case "package-not-found-error": {
+                        logger.log(
+                          `\n${chalkError("X Error:")} The package ${chalkPurple(
+                            parsedError.packageName
+                          )} could not be found in the npm registry.`
+                        );
+
+                        break;
+                      }
+                      case "no-matching-version-error": {
+                        logger.log(
+                          `\n${chalkError("X Error:")} The package ${chalkPurple(
+                            parsedError.packageName
+                          )} could not resolve because the version doesn't exist`
+                        );
+
+                        break;
+                      }
+                    }
                   }
-
-                  logger.error(`Background worker failed to start: ${e}`);
                 }
               });
             },
