@@ -4,7 +4,7 @@ import { Prisma, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { marqs, sanitizeQueueName } from "../marqs.server";
+import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
 import { projectPubSub } from "./projectPubSub.server";
@@ -82,7 +82,7 @@ export class CreateBackgroundWorkerService extends BaseService {
           }
         );
 
-        await marqs?.updateGlobalConcurrencyLimits(environment);
+        await marqs?.updateEnvConcurrencyLimits(environment);
       } catch (err) {
         logger.error(
           "Error publishing WORKER_CREATED event or updating global concurrency limits",

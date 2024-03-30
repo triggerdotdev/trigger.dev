@@ -6,7 +6,7 @@ import type {
 } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { marqs } from "../marqs.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { BaseService } from "./baseService.server";
 

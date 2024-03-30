@@ -1,46 +1,29 @@
 import { Span, SpanKind, SpanOptions, trace } from "@opentelemetry/api";
+import { flattenAttributes } from "@trigger.dev/core/v3";
 import Redis, { type Callback, type RedisOptions, type Result } from "ioredis";
-import { z } from "zod";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { AsyncWorker } from "./marqs/asyncWorker.server";
+import { attributesFromAuthenticatedEnv } from "../tracer.server";
+import { AsyncWorker } from "./asyncWorker.server";
 import { MarQSShortKeyProducer } from "./marqsKeyProducer.server";
-import { attributesFromAuthenticatedEnv } from "./tracer.server";
+import { SimpleWeightedChoiceStrategy } from "./priorityStrategy.server";
+import {
+  MarQSKeyProducer,
+  MarQSQueuePriorityStrategy,
+  MessagePayload,
+  QueueCapacities,
+} from "./types";
 
 const tracer = trace.getTracer("marqs");
 
 const KEY_PREFIX = "marqs:";
 
-type MarQSOptions = {
-  redis: RedisOptions;
-  defaultQueueConcurrency: number;
-  defaultEnvConcurrency: number;
-  defaultOrgConcurrency: number;
-  parentQueueSelectionSize: number;
-  windowSize?: number;
-  visibilityTimeoutInMs?: number;
-  workers: number;
-  keysProducer: MarQSKeyProducer;
-};
-
 const constants = {
   SHARED_QUEUE: "sharedQueue",
   MESSAGE_VISIBILITY_TIMEOUT_QUEUE: "msgVisibilityTimeout",
 } as const;
-
-const MessagePayload = z.object({
-  version: z.literal("1"),
-  data: z.record(z.unknown()),
-  queue: z.string(),
-  messageId: z.string(),
-  timestamp: z.number(),
-  parentQueue: z.string(),
-  concurrencyKey: z.string().optional(),
-});
-
-type MessagePayload = z.infer<typeof MessagePayload>;
 
 const SemanticAttributes = {
   QUEUE: "marqs.queue",
@@ -49,20 +32,18 @@ const SemanticAttributes = {
   CONCURRENCY_KEY: "marqs.concurrencyKey",
 };
 
-export interface MarQSKeyProducer {
-  queueConcurrencyLimitKey(env: AuthenticatedEnvironment, queue: string): string;
-  envConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
-  orgConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
-  queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
-  envSharedQueueKey(env: AuthenticatedEnvironment): string;
-  concurrencyLimitKeyFromQueue(queue: string): string;
-  currentConcurrencyKeyFromQueue(queue: string): string;
-  orgConcurrencyLimitKeyFromQueue(queue: string): string;
-  orgCurrentConcurrencyKeyFromQueue(queue: string): string;
-  envConcurrencyLimitKeyFromQueue(queue: string): string;
-  envCurrentConcurrencyKeyFromQueue(queue: string): string;
-  messageKey(messageId: string): string;
-}
+export type MarQSOptions = {
+  redis: RedisOptions;
+  defaultQueueConcurrency: number;
+  defaultEnvConcurrency: number;
+  defaultOrgConcurrency: number;
+  windowSize?: number;
+  visibilityTimeoutInMs?: number;
+  workers: number;
+  keysProducer: MarQSKeyProducer;
+  queuePriorityStrategy: MarQSQueuePriorityStrategy;
+  envQueuePriorityStrategy: MarQSQueuePriorityStrategy;
+};
 
 /**
  * MarQS - Multitenant Asynchronous Reliable Queueing System (pronounced "markus")
@@ -70,6 +51,7 @@ export interface MarQSKeyProducer {
 export class MarQS {
   private redis: Redis;
   private keys: MarQSKeyProducer;
+  private queuePriorityStrategy: MarQSQueuePriorityStrategy;
   #requeueingWorkers: Array<AsyncWorker> = [];
 
   constructor(private readonly options: MarQSOptions) {
@@ -80,6 +62,7 @@ export class MarQS {
     this.#registerCommands();
 
     this.keys = options.keysProducer;
+    this.queuePriorityStrategy = options.queuePriorityStrategy;
   }
 
   public async updateQueueConcurrencyLimits(
@@ -90,7 +73,7 @@ export class MarQS {
     return this.redis.set(this.keys.queueConcurrencyLimitKey(env, queue), concurrency);
   }
 
-  public async updateGlobalConcurrencyLimits(env: AuthenticatedEnvironment) {
+  public async updateEnvConcurrencyLimits(env: AuthenticatedEnvironment) {
     await this.#callUpdateGlobalConcurrencyLimits({
       envConcurrencyLimitKey: this.keys.envConcurrencyLimitKey(env),
       orgConcurrencyLimitKey: this.keys.orgConcurrencyLimitKey(env),
@@ -147,7 +130,8 @@ export class MarQS {
         // Read the parent queue for matching queues
         const messageQueue = await this.#getRandomQueueFromParentQueue(
           parentQueue,
-          (queue, score, agesInMs) => this.#calculateMessageQueueWeight(queue, score, agesInMs)
+          this.options.envQueuePriorityStrategy,
+          (queue) => this.#calculateMessageQueueCapacities(queue)
         );
 
         if (!messageQueue) {
@@ -203,7 +187,8 @@ export class MarQS {
         // Read the parent queue for matching queues
         const messageQueue = await this.#getRandomQueueFromParentQueue(
           parentQueue,
-          (queue, age, ages) => this.#calculateMessageQueueWeight(queue, age, ages)
+          this.options.queuePriorityStrategy,
+          (queue) => this.#calculateMessageQueueCapacities(queue)
         );
 
         if (!messageQueue) {
@@ -432,82 +417,77 @@ export class MarQS {
 
   async #getRandomQueueFromParentQueue(
     parentQueue: string,
-    calculateWeight: (queue: string, age: number, agesInMs: number[]) => Promise<number>
+    queuePriorityStrategy: MarQSQueuePriorityStrategy,
+    calculateCapacities: (queue: string) => Promise<QueueCapacities>
   ) {
     return this.#trace(
       "getRandomQueueFromParentQueue",
       async (span, abort) => {
-        const queues = await this.#zrangeWithScores(
-          parentQueue,
-          0,
-          this.options.parentQueueSelectionSize - 1
+        const { range, selectionId } = await queuePriorityStrategy.nextCandidateSelection(
+          parentQueue
         );
 
-        if (queues.length === 0) {
+        const queues = await this.#zrangeWithScores(parentQueue, range[0], range[1]);
+
+        const queuesWithScores = await this.#calculateQueueScores(queues, calculateCapacities);
+
+        // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
+        const choice = this.queuePriorityStrategy.chooseQueue(
+          queuesWithScores,
+          parentQueue,
+          selectionId
+        );
+
+        if (typeof choice !== "string") {
           abort();
           return;
         }
 
+        span.setAttributes({
+          ...flattenAttributes(queues, "marqs.queues"),
+        });
+        span.setAttributes({
+          ...flattenAttributes(queuesWithScores, "marqs.queuesWithScores"),
+        });
+        span.setAttribute("marqs.nextRange", range);
         span.setAttribute("marqs.queueCount", queues.length);
+        span.setAttribute("marqs.queueChoice", choice);
 
-        const queuesWithWeights = await this.#calculateQueueWeights(queues, calculateWeight);
-
-        // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
-        return await this.#weightedRandomChoice(queuesWithWeights);
+        return choice;
       },
       { kind: SpanKind.CONSUMER, attributes: { [SemanticAttributes.PARENT_QUEUE]: parentQueue } }
     );
   }
 
   // Calculate the weights of the queues based on the age and the capacity
-  async #calculateQueueWeights(
+  async #calculateQueueScores(
     queues: Array<{ value: string; score: number }>,
-    calculateWeight: (queue: string, age: number, queueAges: number[]) => Promise<number>
+    calculateCapacities: (queue: string) => Promise<QueueCapacities>
   ) {
     const now = Date.now();
-    // Sorted by age, oldest first
-    const queueAgesInMs = queues.map((queue) => now - queue.score).sort((a, b) => a - b);
 
-    const queueWeights = await Promise.all(
+    const queueScores = await Promise.all(
       queues.map(async (queue) => {
         return {
           queue: queue.value,
-          weight: await calculateWeight(queue.value, now - queue.score, queueAgesInMs),
+          capacities: await calculateCapacities(queue.value),
+          age: now - queue.score,
         };
       })
     );
 
-    return queueWeights;
+    return queueScores;
   }
 
-  async #calculateMessageQueueWeight(queue: string, age: number, agesInMs: number[]) {
-    const rank = agesInMs.indexOf(age) + 1;
-    const percentile = rank / agesInMs.length;
-
-    return await this.#callCalculateMessageWeight({
+  async #calculateMessageQueueCapacities(queue: string) {
+    return await this.#callCalculateMessageCapacities({
       currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(queue),
       currentEnvConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(queue),
       currentOrgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(queue),
       concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(queue),
       envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(queue),
       orgConcurrencyLimitKey: this.keys.orgConcurrencyLimitKeyFromQueue(queue),
-      ageWeight: percentile,
     });
-  }
-
-  async #weightedRandomChoice(queues: Array<{ queue: string; weight: number }>) {
-    const totalWeight = queues.reduce((acc, queue) => acc + queue.weight, 0);
-    const randomNum = Math.random() * totalWeight;
-    let weightSum = 0;
-
-    for (const queue of queues) {
-      weightSum += queue.weight;
-      if (randomNum <= weightSum) {
-        return queue.queue;
-      }
-    }
-
-    return queues[queues.length - 1].queue;
   }
 
   async #zrangeWithScores(
@@ -762,14 +742,13 @@ export class MarQS {
     );
   }
 
-  #callCalculateMessageWeight({
+  async #callCalculateMessageCapacities({
     currentConcurrencyKey,
     currentEnvConcurrencyKey,
     currentOrgConcurrencyKey,
     concurrencyLimitKey,
     envConcurrencyLimitKey,
     orgConcurrencyLimitKey,
-    ageWeight,
   }: {
     currentConcurrencyKey: string;
     currentEnvConcurrencyKey: string;
@@ -777,9 +756,8 @@ export class MarQS {
     concurrencyLimitKey: string;
     envConcurrencyLimitKey: string;
     orgConcurrencyLimitKey: string;
-    ageWeight: number;
-  }) {
-    return this.redis.calculateMessageQueueWeight(
+  }): Promise<QueueCapacities> {
+    const capacities = await this.redis.calculateMessageQueueCapacities(
       currentConcurrencyKey,
       currentEnvConcurrencyKey,
       currentOrgConcurrencyKey,
@@ -788,9 +766,15 @@ export class MarQS {
       orgConcurrencyLimitKey,
       String(this.options.defaultQueueConcurrency),
       String(this.options.defaultEnvConcurrency),
-      String(this.options.defaultOrgConcurrency),
-      String(ageWeight)
+      String(this.options.defaultOrgConcurrency)
     );
+
+    // [queue current, queue limit, env current, env limit, org current, org limit]
+    return {
+      queue: { current: Number(capacities[0]), limit: Number(capacities[1]) },
+      env: { current: Number(capacities[2]), limit: Number(capacities[3]) },
+      org: { current: Number(capacities[4]), limit: Number(capacities[5]) },
+    };
   }
 
   #callUpdateGlobalConcurrencyLimits({
@@ -926,6 +910,7 @@ local visibilityQueue = KEYS[2]
 local concurrencyKey = KEYS[3]
 local envCurrentConcurrencyKey = KEYS[4]
 local orgCurrentConcurrencyKey = KEYS[5]
+local globalCurrentConcurrencyKey = KEYS[6]
 
 -- Args: messageId
 local messageId = ARGV[1]
@@ -1015,7 +1000,7 @@ redis.call('ZADD', visibilityQueue, newVisibilityTimeout, messageId)
       `,
     });
 
-    this.redis.defineCommand("calculateMessageQueueWeight", {
+    this.redis.defineCommand("calculateMessageQueueCapacities", {
       numberOfKeys: 6,
       lua: `
 -- Keys: currentConcurrencyKey, currentEnvConcurrencyKey, currentOrgConcurrencyKey, concurrencyLimitKey, envConcurrencyLimitKey, orgConcurrencyLimitKey
@@ -1026,16 +1011,10 @@ local concurrencyLimitKey = KEYS[4]
 local envConcurrencyLimitKey = KEYS[5]
 local orgConcurrencyLimitKey = KEYS[6]
 
--- Args defaultConcurrencyLimit, defaultEnvConcurrencyLimit, defaultOrgConcurrencyLimit, ageWeight (Date.now() - score)
+-- Args defaultConcurrencyLimit, defaultEnvConcurrencyLimit, defaultOrgConcurrencyLimit
 local defaultConcurrencyLimit = tonumber(ARGV[1])
 local defaultEnvConcurrencyLimit = tonumber(ARGV[2])
 local defaultOrgConcurrencyLimit = tonumber(ARGV[3])
-local ageWeight = tonumber(ARGV[4])
-
--- Initialize weights
-local orgCapacityWeight = 0
-local envCapacityWeight = 0
-local queueCapacityWeight = 0
 
 local currentOrgConcurrency = tonumber(redis.call('SCARD', currentOrgConcurrencyKey) or '0')
 local orgConcurrencyLimit = tonumber(redis.call('GET', orgConcurrencyLimitKey) or defaultOrgConcurrencyLimit)
@@ -1046,31 +1025,8 @@ local envConcurrencyLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) o
 local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) or '0')
 local concurrencyLimit = tonumber(redis.call('GET', concurrencyLimitKey) or defaultConcurrencyLimit)
 
--- Calculate Organization Capacity Weight
-if orgConcurrencyLimit > 0 then
-    orgCapacityWeight = math.max(orgConcurrencyLimit - currentOrgConcurrency, 0) / orgConcurrencyLimit
-else
-    -- If orgConcurrencyLimit is 0, check if there's any current concurrency
-    -- If there is, set weight to 0 to indicate no capacity
-    -- If there isn't, you might set this to a small value to indicate it's fully utilized or use an alternative logic
-    orgCapacityWeight = currentOrgConcurrency == 0 and 1 or 0
-end
-
--- Calculate Environment Capacity Weight
-if envConcurrencyLimit > 0 then
-    envCapacityWeight = math.max(envConcurrencyLimit - currentEnvConcurrency, 0) / envConcurrencyLimit
-else
-    envCapacityWeight = currentEnvConcurrency == 0 and 1 or 0
-end
-
--- Calculate Queue Capacity Weight
-if concurrencyLimit > 0 then
-    queueCapacityWeight = math.max(concurrencyLimit - currentConcurrency, 0) / concurrencyLimit
-else
-    queueCapacityWeight = currentConcurrency == 0 and 1 or 0
-end
-
-return ageWeight * 0.5 + orgCapacityWeight * 0.2 + envCapacityWeight * 0.2 + queueCapacityWeight * 0.1
+-- Return current capacity and concurrency limits for the queue, env, org
+return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, currentOrgConcurrency, orgConcurrencyLimit } 
       `,
     });
 
@@ -1157,7 +1113,7 @@ declare module "ioredis" {
       callback?: Callback<void>
     ): Result<void, Context>;
 
-    calculateMessageQueueWeight(
+    calculateMessageQueueCapacities(
       currentConcurrencyKey: string,
       currentEnvConcurrencyKey: string,
       currentOrgConcurrencyKey: string,
@@ -1167,9 +1123,8 @@ declare module "ioredis" {
       defaultConcurrencyLimit: string,
       defaultEnvConcurrencyLimit: string,
       defaultOrgConcurrencyLimit: string,
-      ageWeight: string,
-      callback?: Callback<number>
-    ): Result<number, Context>;
+      callback?: Callback<number[]>
+    ): Result<number[], Context>;
 
     updateGlobalConcurrencyLimits(
       envConcurrencyLimitKey: string,
@@ -1186,23 +1141,26 @@ export const marqs = singleton("marqs", getMarQSClient);
 function getMarQSClient() {
   if (env.V3_ENABLED) {
     if (env.REDIS_HOST && env.REDIS_PORT) {
+      const redisOptions = {
+        keyPrefix: KEY_PREFIX,
+        port: env.REDIS_PORT,
+        host: env.REDIS_HOST,
+        username: env.REDIS_USERNAME,
+        password: env.REDIS_PASSWORD,
+        enableAutoPipelining: true,
+        ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      };
+
       return new MarQS({
         keysProducer: new MarQSShortKeyProducer(KEY_PREFIX),
+        queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
+        envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
         workers: 1,
-        redis: {
-          keyPrefix: KEY_PREFIX,
-          port: env.REDIS_PORT,
-          host: env.REDIS_HOST,
-          username: env.REDIS_USERNAME,
-          password: env.REDIS_PASSWORD,
-          enableAutoPipelining: true,
-          ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-        },
+        redis: redisOptions,
         defaultQueueConcurrency: env.DEFAULT_QUEUE_EXECUTION_CONCURRENCY_LIMIT,
         defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
         defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
-        parentQueueSelectionSize: 12, // This effects the number of queues that are considered for dequeueing at a time
-        visibilityTimeoutInMs: 120 * 1000, // 2 minutes
+        visibilityTimeoutInMs: 120 * 1000, // 2 minutes,
       });
     } else {
       console.warn(

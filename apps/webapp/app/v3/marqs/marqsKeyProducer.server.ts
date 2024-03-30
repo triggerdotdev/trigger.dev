@@ -1,15 +1,15 @@
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { MarQSKeyProducer } from "./marqs.server";
+import { MarQSKeyProducer } from "./types";
 
 const constants = {
   SHARED_QUEUE: "sharedQueue",
   CURRENT_CONCURRENCY_PART: "currentConcurrency",
   CONCURRENCY_LIMIT_PART: "concurrency",
   ENV_PART: "env",
+  ORG_PART: "org",
   QUEUE_PART: "queue",
   CONCURRENCY_KEY_PART: "ck",
   MESSAGE_PART: "message",
-  ORG_PART: "org",
 } as const;
 
 export class MarQSShortKeyProducer implements MarQSKeyProducer {

@@ -1,6 +1,6 @@
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { eventRepository } from "../eventRepository.server";
-import { marqs } from "../marqs.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 

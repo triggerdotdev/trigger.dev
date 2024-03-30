@@ -21,7 +21,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { marqs } from "../marqs.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 import { CancelAttemptService } from "../services/cancelAttempt.server";
 import { socketIo } from "../handleSocketIo.server";
