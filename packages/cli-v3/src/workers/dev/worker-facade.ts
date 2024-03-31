@@ -9,6 +9,7 @@ import {
   logLevels,
   LogLevel,
   getEnvVar,
+  ZodSchemaParsedError,
 } from "@trigger.dev/core/v3";
 
 __WORKER_SETUP__;
@@ -219,8 +220,14 @@ process.on("message", async (msg: any) => {
   await handler.handleMessage(msg);
 });
 
-sender.send("TASKS_READY", { tasks: getTaskMetadata() }).catch((err) => {
-  console.error("Failed to send TASKS_READY message", err);
+const TASK_METADATA = getTaskMetadata();
+
+sender.send("TASKS_READY", { tasks: TASK_METADATA }).catch((err) => {
+  if (err instanceof ZodSchemaParsedError) {
+    sender.send("TASKS_FAILED_TO_PARSE", { zodIssues: err.error.issues, tasks: TASK_METADATA });
+  } else {
+    console.error("Failed to send TASKS_READY message", err);
+  }
 });
 
 process.title = "trigger-dev-worker";

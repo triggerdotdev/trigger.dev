@@ -19,7 +19,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { UncaughtExceptionError } from "../common/errors";
+import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors";
 
 class UnexpectedExitError extends Error {
   constructor(public code: number) {
@@ -146,6 +146,14 @@ export class ProdBackgroundWorker {
               clearTimeout(timeout);
               resolved = true;
               reject(new UncaughtExceptionError(message.error, message.origin));
+              child.kill();
+            }
+          },
+          TASKS_FAILED_TO_PARSE: async (message) => {
+            if (!resolved) {
+              clearTimeout(timeout);
+              resolved = true;
+              reject(new TaskMetadataParseError(message.zodIssues, message.tasks));
               child.kill();
             }
           },

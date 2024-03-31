@@ -1,8 +1,11 @@
 import chalk from "chalk";
 import { relative } from "node:path";
-import { chalkError, chalkPurple, chalkGrey, chalkGreen } from "./cliOutput";
+import { chalkError, chalkPurple, chalkGrey, chalkGreen, chalkWarning } from "./cliOutput";
 import { logger } from "./logger";
 import { ReadConfigResult } from "./configFiles";
+import { TaskMetadataParseError } from "../workers/common/errors";
+import { z } from "zod";
+import { groupTaskMetadataIssuesByTask } from "@trigger.dev/core/v3";
 
 export type ESMRequireError = {
   type: "esm-require-error";
@@ -143,4 +146,36 @@ export function parseNpmInstallError(error: unknown): NpmInstallError {
   }
 
   return "Unknown error";
+}
+
+export function logTaskMetadataParseError(zodIssues: z.ZodIssue[], tasks: any) {
+  logger.log(
+    `\n${chalkError("X Error:")} Failed to start. The following ${
+      zodIssues.length === 1 ? "task issue was" : "task issues were"
+    } found:`
+  );
+
+  const groupedIssues = groupTaskMetadataIssuesByTask(tasks, zodIssues);
+
+  for (const key in groupedIssues) {
+    const taskWithIssues = groupedIssues[key];
+
+    if (!taskWithIssues) {
+      continue;
+    }
+
+    logger.log(
+      `\n  ${chalkWarning("❯")} ${taskWithIssues.exportName} ${chalkGrey("in")} ${
+        taskWithIssues.filePath
+      }`
+    );
+
+    for (const issue of taskWithIssues.issues) {
+      if (issue.path) {
+        logger.log(`    ${chalkError("x")} ${issue.path} ${chalkGrey(issue.message)}`);
+      } else {
+        logger.log(`    ${chalkError("x")} ${chalkGrey(issue.message)}`);
+      }
+    }
+  }
 }

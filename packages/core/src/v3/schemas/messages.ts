@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TaskRunExecution, TaskRunExecutionResult } from "./common";
 
-export const EnvironmentType = z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"])
+export const EnvironmentType = z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"]);
 export type EnvironmentType = z.infer<typeof EnvironmentType>;
 
 export const MachineCpu = z
@@ -244,7 +244,7 @@ export const QueueOptions = z.object({
   /** An optional property that specifies the maximum number of concurrent run executions.
    *
    * If this property is omitted, the task can potentially use up the full concurrency of an environment. */
-  concurrencyLimit: z.number().int().min(1).max(1000).optional(),
+  concurrencyLimit: z.number().int().min(0).max(1000).optional(),
   /** @deprecated This feature is coming soon */
   rateLimit: RateLimitOptions.optional(),
 });
@@ -278,6 +278,14 @@ export const UncaughtExceptionMessage = z.object({
   origin: z.enum(["uncaughtException", "unhandledRejection"]),
 });
 
+export const TaskMetadataFailedToParseData = z.object({
+  version: z.literal("v1").default("v1"),
+  tasks: z.unknown(),
+  zodIssues: z.custom<z.ZodIssue[]>((v) => {
+    return Array.isArray(v) && v.every((issue) => typeof issue === "object" && "message" in issue);
+  }),
+});
+
 export const childToWorkerMessages = {
   TASK_RUN_COMPLETED: z.object({
     version: z.literal("v1").default("v1"),
@@ -288,6 +296,7 @@ export const childToWorkerMessages = {
     version: z.literal("v1").default("v1"),
     tasks: TaskMetadataWithFilePath.array(),
   }),
+  TASKS_FAILED_TO_PARSE: TaskMetadataFailedToParseData,
   TASK_HEARTBEAT: z.object({
     version: z.literal("v1").default("v1"),
     id: z.string(),
@@ -322,6 +331,9 @@ export const ProdChildToWorkerMessages = {
       version: z.literal("v1").default("v1"),
       tasks: TaskMetadataWithFilePath.array(),
     }),
+  },
+  TASKS_FAILED_TO_PARSE: {
+    message: TaskMetadataFailedToParseData,
   },
   TASK_HEARTBEAT: {
     message: z.object({

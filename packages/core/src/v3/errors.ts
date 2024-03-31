@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { TaskRunError } from "./schemas/common";
 import nodePath from "node:path";
 
@@ -94,4 +95,60 @@ function correctStackTraceLine(line: string, projectDir?: string) {
   }
 
   return line;
+}
+
+export function groupTaskMetadataIssuesByTask(tasks: any, issues: z.ZodIssue[]) {
+  return issues.reduce(
+    (acc, issue) => {
+      if (issue.path.length === 0) {
+        return acc;
+      }
+
+      const taskIndex = issue.path[1];
+
+      if (typeof taskIndex !== "number") {
+        return acc;
+      }
+
+      const task = tasks[taskIndex];
+
+      if (!task) {
+        return acc;
+      }
+
+      const restOfPath = issue.path.slice(2);
+
+      const taskId = task.id;
+      const taskName = task.exportName;
+      const filePath = task.filePath;
+
+      const key = taskIndex;
+
+      const existing = acc[key] ?? {
+        id: taskId,
+        exportName: taskName,
+        filePath,
+        issues: [] as Array<{ message: string; path?: string }>,
+      };
+
+      existing.issues.push({
+        message: issue.message,
+        path: restOfPath.length === 0 ? undefined : restOfPath.join("."),
+      });
+
+      return {
+        ...acc,
+        [key]: existing,
+      };
+    },
+    {} as Record<
+      number,
+      {
+        id: any;
+        exportName: string;
+        filePath: string;
+        issues: Array<{ message: string; path?: string }>;
+      }
+    >
+  );
 }
