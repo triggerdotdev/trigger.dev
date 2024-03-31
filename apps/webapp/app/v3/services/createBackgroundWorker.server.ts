@@ -4,7 +4,7 @@ import { Prisma, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { marqs } from "../marqs.server";
+import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
 import { projectPubSub } from "./projectPubSub.server";
@@ -68,14 +68,39 @@ export class CreateBackgroundWorkerService extends BaseService {
 
       await createBackgroundTasks(body.metadata.tasks, backgroundWorker, environment, this._prisma);
 
-      //send a notification that a new worker has been created
-      await projectPubSub.publish(`project:${project.id}:env:${environment.id}`, "WORKER_CREATED", {
-        environmentId: environment.id,
-        environmentType: environment.type,
-        createdAt: backgroundWorker.createdAt,
-        taskCount: body.metadata.tasks.length,
-        type: "local",
-      });
+      try {
+        //send a notification that a new worker has been created
+        await projectPubSub.publish(
+          `project:${project.id}:env:${environment.id}`,
+          "WORKER_CREATED",
+          {
+            environmentId: environment.id,
+            environmentType: environment.type,
+            createdAt: backgroundWorker.createdAt,
+            taskCount: body.metadata.tasks.length,
+            type: "local",
+          }
+        );
+
+        await marqs?.updateEnvConcurrencyLimits(environment);
+      } catch (err) {
+        logger.error(
+          "Error publishing WORKER_CREATED event or updating global concurrency limits",
+          {
+            error:
+              err instanceof Error
+                ? {
+                    name: err.name,
+                    message: err.message,
+                    stack: err.stack,
+                  }
+                : err,
+            project,
+            environment,
+            backgroundWorker,
+          }
+        );
+      }
 
       return backgroundWorker;
     });
@@ -105,7 +130,12 @@ export async function createBackgroundTasks(
         },
       });
 
-      const queueName = task.queue?.name ?? `task/${task.id}`;
+      let queueName = sanitizeQueueName(task.queue?.name ?? `task/${task.id}`);
+
+      // Check that the queuename is not an empty string
+      if (!queueName) {
+        queueName = sanitizeQueueName(`task/${task.id}`);
+      }
 
       const taskQueue = await prisma.taskQueue.upsert({
         where: {
@@ -130,7 +160,7 @@ export async function createBackgroundTasks(
       });
 
       if (taskQueue.concurrencyLimit) {
-        await marqs?.updateQueueConcurrency(env, taskQueue.name, taskQueue.concurrencyLimit);
+        await marqs?.updateQueueConcurrencyLimits(env, taskQueue.name, taskQueue.concurrencyLimit);
       }
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {

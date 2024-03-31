@@ -6,7 +6,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { $transaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { marqs } from "../marqs.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { socketIo } from "../handleSocketIo.server";
 import { sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
 import { BaseService } from "./baseService.server";
