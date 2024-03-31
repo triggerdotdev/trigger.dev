@@ -8,6 +8,7 @@ import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
 import { projectPubSub } from "./projectPubSub.server";
+import { env } from "~/env.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -110,7 +111,7 @@ export class CreateBackgroundWorkerService extends BaseService {
 export async function createBackgroundTasks(
   tasks: TaskResource[],
   worker: BackgroundWorker,
-  env: AuthenticatedEnvironment,
+  environment: AuthenticatedEnvironment,
   prisma: PrismaClientOrTransaction
 ) {
   for (const task of tasks) {
@@ -137,6 +138,18 @@ export async function createBackgroundTasks(
         queueName = sanitizeQueueName(`task/${task.id}`);
       }
 
+      const concurrencyLimit =
+        typeof task.queue?.concurrencyLimit === "number"
+          ? Math.max(
+              Math.min(
+                task.queue.concurrencyLimit,
+                environment.maximumConcurrencyLimit,
+                environment.organization.maximumConcurrencyLimit
+              ),
+              0
+            )
+          : null;
+
       const taskQueue = await prisma.taskQueue.upsert({
         where: {
           runtimeEnvironmentId_name: {
@@ -145,13 +158,13 @@ export async function createBackgroundTasks(
           },
         },
         update: {
-          concurrencyLimit: task.queue?.concurrencyLimit,
+          concurrencyLimit,
           rateLimit: task.queue?.rateLimit,
         },
         create: {
           friendlyId: generateFriendlyId("queue"),
           name: queueName,
-          concurrencyLimit: task.queue?.concurrencyLimit,
+          concurrencyLimit,
           runtimeEnvironmentId: worker.runtimeEnvironmentId,
           projectId: worker.projectId,
           rateLimit: task.queue?.rateLimit,
@@ -160,7 +173,11 @@ export async function createBackgroundTasks(
       });
 
       if (taskQueue.concurrencyLimit) {
-        await marqs?.updateQueueConcurrencyLimits(env, taskQueue.name, taskQueue.concurrencyLimit);
+        await marqs?.updateQueueConcurrencyLimits(
+          environment,
+          taskQueue.name,
+          taskQueue.concurrencyLimit
+        );
       }
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {

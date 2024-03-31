@@ -38,11 +38,12 @@ import {
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
-import { UncaughtExceptionError } from "../workers/common/errors";
+import { TaskMetadataParseError, UncaughtExceptionError } from "../workers/common/errors";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
 import { runtimeCheck } from "../utilities/runtimeCheck";
 import {
   logESMRequireError,
+  logTaskMetadataParseError,
   parseBuildErrorStack,
   parseNpmInstallError,
 } from "../utilities/deployErrors";
@@ -548,7 +549,10 @@ function useDev({
                     backgroundWorker
                   );
                 } catch (e) {
-                  if (e instanceof UncaughtExceptionError) {
+                  if (e instanceof TaskMetadataParseError) {
+                    logTaskMetadataParseError(e.zodIssues, e.tasks);
+                    return;
+                  } else if (e instanceof UncaughtExceptionError) {
                     const parsedBuildError = parseBuildErrorStack(e.originalError);
 
                     if (typeof parsedBuildError !== "string") {

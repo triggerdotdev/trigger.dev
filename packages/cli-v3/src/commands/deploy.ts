@@ -3,6 +3,7 @@ import { depot } from "@depot/cli";
 import { context, trace } from "@opentelemetry/api";
 import {
   ResolvedConfig,
+  TaskMetadataFailedToParseData,
   detectDependencyVersion,
   flattenAttributes,
   recordSpanException,
@@ -49,9 +50,11 @@ import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../util
 import { chalkError, chalkPurple, chalkWarning } from "../utilities/cliOutput";
 import {
   logESMRequireError,
+  logTaskMetadataParseError,
   parseBuildErrorStack,
   parseNpmInstallError,
 } from "../utilities/deployErrors";
+import { safeJsonParse } from "../utilities/safeJsonParse";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -401,6 +404,24 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
     case "FAILED": {
       if (finishedDeployment.errorData) {
+        if (finishedDeployment.errorData.name === "TaskMetadataParseError") {
+          const errorJson = safeJsonParse(finishedDeployment.errorData.stack);
+
+          if (errorJson) {
+            const parsedError = TaskMetadataFailedToParseData.safeParse(errorJson);
+
+            if (parsedError.success) {
+              deploymentSpinner.stop(`Deployment encountered an error. ${deploymentLink}`);
+
+              logTaskMetadataParseError(parsedError.data.zodIssues, parsedError.data.tasks);
+
+              throw new SkipLoggingError(
+                `Deployment encountered an error: ${finishedDeployment.errorData.name}`
+              );
+            }
+          }
+        }
+
         const parsedError = finishedDeployment.errorData.stack
           ? parseBuildErrorStack(finishedDeployment.errorData)
           : finishedDeployment.errorData.message;

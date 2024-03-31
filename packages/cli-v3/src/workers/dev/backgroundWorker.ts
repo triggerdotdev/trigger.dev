@@ -37,7 +37,7 @@ import {
 import { safeDeleteFileSync } from "../../utilities/fileSystem.js";
 import { installPackages } from "../../utilities/installPackages.js";
 import { logger } from "../../utilities/logger.js";
-import { UncaughtExceptionError } from "../common/errors.js";
+import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -351,6 +351,11 @@ export class BackgroundWorker {
           clearTimeout(timeout);
           resolved = true;
           reject(new UncaughtExceptionError(message.payload.error, message.payload.origin));
+          child.kill();
+        } else if (message.type === "TASKS_FAILED_TO_PARSE") {
+          clearTimeout(timeout);
+          resolved = true;
+          reject(new TaskMetadataParseError(message.payload.zodIssues, message.payload.tasks));
           child.kill();
         }
       });

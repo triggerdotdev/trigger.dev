@@ -12,6 +12,7 @@ import {
   getEnvVar,
   logLevels,
   LogLevel,
+  ZodSchemaParsedError,
 } from "@trigger.dev/core/v3";
 import "source-map-support/register.js";
 
@@ -219,8 +220,14 @@ const prodRuntimeManager = new ProdRuntimeManager(zodIpc, {
 
 runtime.setGlobalRuntimeManager(prodRuntimeManager);
 
-zodIpc.send("TASKS_READY", { tasks: getTaskMetadata() }).catch((err) => {
-  console.error("Failed to send TASKS_READY message", err);
+const TASK_METADATA = getTaskMetadata();
+
+zodIpc.send("TASKS_READY", { tasks: TASK_METADATA }).catch((err) => {
+  if (err instanceof ZodSchemaParsedError) {
+    zodIpc.send("TASKS_FAILED_TO_PARSE", { zodIssues: err.error.issues, tasks: TASK_METADATA });
+  } else {
+    console.error("Failed to send TASKS_READY message", err);
+  }
 });
 
 process.title = "trigger-prod-worker";
