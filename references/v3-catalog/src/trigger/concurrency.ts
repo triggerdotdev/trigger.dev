@@ -21,6 +21,8 @@ export const testConcurrency = task({
   run: async ({ count = 10, delay = 5000 }: { count: number; delay: number }) => {
     logger.info(`Running ${count} tasks`);
 
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
     await testConcurrencyChild.batchTrigger({
       items: Array.from({ length: count }).map((_, index) => ({
         payload: {
