@@ -13,7 +13,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { z } from "zod";
 import { ProdBackgroundWorker } from "./backgroundWorker";
-import { UncaughtExceptionError } from "../common/errors";
+import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors";
 import { setTimeout } from "node:timers/promises";
 
 declare const __PROJECT_CONFIG__: Config;
@@ -416,7 +416,19 @@ class ProdWorker {
               process.exit(1);
             }
           } catch (e) {
-            if (e instanceof UncaughtExceptionError) {
+            if (e instanceof TaskMetadataParseError) {
+              logger.error("tasks metadata parse error", { message: e.zodIssues, tasks: e.tasks });
+
+              socket.emit("INDEXING_FAILED", {
+                version: "v1",
+                deploymentId: this.deploymentId,
+                error: {
+                  name: "TaskMetadataParseError",
+                  message: "There was an error parsing the task metadata",
+                  stack: JSON.stringify({ zodIssues: e.zodIssues, tasks: e.tasks }),
+                },
+              });
+            } else if (e instanceof UncaughtExceptionError) {
               logger.error("uncaught exception", { message: e.originalError.message });
 
               socket.emit("INDEXING_FAILED", {

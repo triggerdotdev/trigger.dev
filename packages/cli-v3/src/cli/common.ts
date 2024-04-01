@@ -5,6 +5,7 @@ import { getTracer, provider } from "../telemetry/tracing";
 import { fromZodError } from "zod-validation-error";
 import { logger } from "../utilities/logger";
 import { outro } from "@clack/prompts";
+import { chalkError } from "../utilities/cliOutput";
 
 export const CommonCommandOptions = z.object({
   apiUrl: z.string().optional(),
@@ -21,15 +22,15 @@ export function commonOptions(command: Command) {
     .option("-a, --api-url <value>", "Override the API URL", "https://api.trigger.dev")
     .option(
       "-l, --log-level <level>",
-      "The log level to use (debug, info, log, warn, error, none)",
+      "The CLI log level to use (debug, info, log, warn, error, none). This does not effect the log level of your trigger.dev tasks.",
       "log"
     )
     .option("--skip-telemetry", "Opt-out of sending telemetry");
 }
 
-export class SkipLoggingError extends Error { }
-export class SkipCommandError extends Error { }
-export class OutroCommandError extends SkipCommandError { }
+export class SkipLoggingError extends Error {}
+export class SkipCommandError extends Error {}
+export class OutroCommandError extends SkipCommandError {}
 
 export async function handleTelemetry(action: () => Promise<void>) {
   try {
@@ -84,7 +85,8 @@ export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
         // do nothing
       } else {
         recordSpanException(span, e);
-        logger.error(e instanceof Error ? e.message : String(e));
+
+        logger.log(`${chalkError("X Error:")} ${e instanceof Error ? e.message : String(e)}`);
       }
 
       span.end();

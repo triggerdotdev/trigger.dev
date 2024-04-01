@@ -39,8 +39,8 @@ export { ProdRuntimeManager } from "./runtime/prodRuntimeManager";
 export { PreciseWallClock as DurableClock } from "./clock/preciseWallClock";
 export { TriggerTracer } from "./tracer";
 
-export type { TaskLogger } from "./logger/taskLogger";
-export { OtelTaskLogger } from "./logger/taskLogger";
+export type { TaskLogger, LogLevel } from "./logger/taskLogger";
+export { OtelTaskLogger, logLevels } from "./logger/taskLogger";
 export { ConsoleInterceptor } from "./consoleInterceptor";
 export {
   flattenAttributes,
@@ -64,7 +64,7 @@ export {
   stringifyIO,
   prettyPrintPacket,
   createPacketAttributes,
-  createPackageAttributesAsJson,
+  createPacketAttributesAsJson,
   conditionallyExportPacket,
   conditionallyImportPacket,
   packetRequiresOffloading,

@@ -26,7 +26,7 @@ import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
-import { chalkGrey, chalkPurple, chalkWorker } from "../utilities/cliOutput";
+import { chalkError, chalkGrey, chalkPurple, chalkTask, chalkWorker } from "../utilities/cliOutput";
 import { readConfig } from "../utilities/configFiles";
 import { readJSONFile } from "../utilities/fileSystem";
 import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
@@ -38,8 +38,15 @@ import {
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
-import { UncaughtExceptionError } from "../workers/common/errors";
+import { TaskMetadataParseError, UncaughtExceptionError } from "../workers/common/errors";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
+import { runtimeCheck } from "../utilities/runtimeCheck";
+import {
+  logESMRequireError,
+  logTaskMetadataParseError,
+  parseBuildErrorStack,
+  parseNpmInstallError,
+} from "../utilities/deployErrors";
 
 let apiClient: CliApiClient | undefined;
 
@@ -72,14 +79,29 @@ export function configureDevCommand(program: Command) {
   });
 }
 
+const MINIMUM_NODE_MAJOR = 18;
+const MINIMUM_NODE_MINOR = 16;
+
 export async function devCommand(dir: string, options: DevCommandOptions) {
+  try {
+    runtimeCheck(MINIMUM_NODE_MAJOR, MINIMUM_NODE_MINOR);
+  } catch (e) {
+    logger.log(`${chalkError("X Error:")} ${e}`);
+    process.exitCode = 1;
+    return;
+  }
+
   const authorization = await isLoggedIn(options.profile);
 
   if (!authorization.ok) {
     if (authorization.error === "fetch failed") {
-      logger.error("Fetch failed. Platform down?");
+      logger.log(
+        `${chalkError(
+          "X Error:"
+        )} Connecting to the server failed. Please check your internet connection or contact eric@trigger.dev for help.`
+      );
     } else {
-      logger.error("You must login first. Use `trigger.dev login` to login.");
+      logger.log(`${chalkError("X Error:")} You must login first. Use the \`login\` CLI command.`);
     }
     process.exitCode = 1;
     return;
@@ -527,21 +549,59 @@ function useDev({
                     backgroundWorker
                   );
                 } catch (e) {
-                  if (e instanceof UncaughtExceptionError) {
+                  if (e instanceof TaskMetadataParseError) {
+                    logTaskMetadataParseError(e.zodIssues, e.tasks);
+                    return;
+                  } else if (e instanceof UncaughtExceptionError) {
+                    const parsedBuildError = parseBuildErrorStack(e.originalError);
+
+                    if (typeof parsedBuildError !== "string") {
+                      logESMRequireError(
+                        parsedBuildError,
+                        configPath
+                          ? { status: "file", path: configPath, config }
+                          : { status: "in-memory", config }
+                      );
+                      return;
+                    } else {
+                    }
+
                     if (e.originalError.stack) {
-                      logger.error("Background worker failed to start", e.originalError.stack);
+                      logger.log(
+                        `${chalkError("X Error:")} Worker failed to start`,
+                        e.originalError.stack
+                      );
                     }
 
                     return;
                   }
 
-                  if (e instanceof Error) {
-                    logger.error(`Background worker failed to start`, e.stack);
+                  const parsedError = parseNpmInstallError(e);
 
-                    return;
+                  if (typeof parsedError === "string") {
+                    logger.log(`${chalkError("X Error:")} ${parsedError}`);
+                  } else {
+                    switch (parsedError.type) {
+                      case "package-not-found-error": {
+                        logger.log(
+                          `\n${chalkError("X Error:")} The package ${chalkPurple(
+                            parsedError.packageName
+                          )} could not be found in the npm registry.`
+                        );
+
+                        break;
+                      }
+                      case "no-matching-version-error": {
+                        logger.log(
+                          `\n${chalkError("X Error:")} The package ${chalkPurple(
+                            parsedError.packageName
+                          )} could not resolve because the version doesn't exist`
+                        );
+
+                        break;
+                      }
+                    }
                   }
-
-                  logger.error(`Background worker failed to start: ${e}`);
                 }
               });
             },
@@ -701,13 +761,13 @@ function createDuplicateTaskIdOutputErrorMessage(
     .map((id) => {
       const tasks = taskResources.filter((task) => task.id === id);
 
-      return `id "${chalkPurple(id)}" was found in:\n${tasks
-        .map((task) => `${task.filePath} -> ${task.exportName}`)
-        .join("\n")}`;
+      return `\n\n${chalkTask(id)} was found in:${tasks
+        .map((task) => `\n${task.filePath} -> ${task.exportName}`)
+        .join("")}`;
     })
-    .join("\n\n");
+    .join("");
 
-  return `Duplicate task ids detected:\n\n${duplicateTable}\n\n`;
+  return `Duplicate ${chalkTask("task id")} detected:${duplicateTable}`;
 }
 
 function gatherProcessEnv() {

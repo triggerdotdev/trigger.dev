@@ -1,5 +1,4 @@
 import {
-  PRIMARY_VARIANT,
   SemanticInternalAttributes,
   TriggerTaskRequestBody,
   packetRequiresOffloading,
@@ -10,10 +9,9 @@ import { $transaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { marqs } from "../marqs.server";
-import { BaseService } from "./baseService.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { uploadToObjectStore } from "../r2.server";
-import { logger } from "~/services/logger.server";
+import { BaseService } from "./baseService.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;

@@ -1,5 +1,20 @@
 # @trigger.dev/linear
 
+## 3.0.0-beta.3
+
+### Patch Changes
+
+- Updated dependencies [b271742dc]
+  - @trigger.dev/sdk@3.0.0-beta.3
+  - @trigger.dev/integration-kit@3.0.0-beta.3
+
+## 3.0.0-beta.2
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.2
+- @trigger.dev/sdk@3.0.0-beta.2
+
 ## 3.0.0-beta.1
 
 ### Patch Changes

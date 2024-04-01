@@ -1,6 +1,15 @@
 import { z } from "zod";
 import { StructuredLogger } from "./zodNamespace";
 
+export class ZodSchemaParsedError extends Error {
+  constructor(
+    public error: z.ZodError,
+    public payload: unknown
+  ) {
+    super(error.message);
+  }
+}
+
 export type ZodMessageValueSchema<TDiscriminatedUnion extends z.ZodDiscriminatedUnion<any, any>> =
   | z.ZodFirstPartySchemaTypes
   | TDiscriminatedUnion;
@@ -160,7 +169,7 @@ export class ZodMessageSender<TMessageCatalog extends ZodMessageCatalogSchema> {
     const parsedPayload = schema.safeParse(payload);
 
     if (!parsedPayload.success) {
-      throw new Error(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
+      throw new ZodSchemaParsedError(parsedPayload.error, payload);
     }
 
     await this.#sender({ type, payload, version: "v1" });

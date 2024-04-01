@@ -19,4 +19,5 @@ export const config: TriggerConfig = {
   additionalFiles: ["./wrangler/wrangler.toml"],
   dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp"],
   instrumentations: [new OpenAIInstrumentation()],
+  logLevel: "log",
 };

@@ -1,5 +1,5 @@
 import { context, propagation } from "@opentelemetry/api";
-import { zodfetch } from "../../zodfetch";
+import { ZodFetchOptions, zodfetch } from "../../zodfetch";
 import { taskContextManager } from "../tasks/taskContextManager";
 import { SafeAsyncLocalStorage } from "../utils/safeAsyncLocalStorage";
 import { getEnvVar } from "../utils/getEnv";
@@ -13,6 +13,16 @@ import {
 
 export type TriggerOptions = {
   spanParentAsLink?: boolean;
+};
+
+const zodFetchOptions: ZodFetchOptions = {
+  retry: {
+    maxAttempts: 5,
+    minTimeoutInMs: 1000,
+    maxTimeoutInMs: 30_000,
+    factor: 2,
+    randomize: false,
+  },
 };
 
 /**
@@ -29,19 +39,29 @@ export class ApiClient {
   }
 
   triggerTask(taskId: string, body: TriggerTaskRequestBody, options?: TriggerOptions) {
-    return zodfetch(TriggerTaskResponse, `${this.baseUrl}/api/v1/tasks/${taskId}/trigger`, {
-      method: "POST",
-      headers: this.#getHeaders(options?.spanParentAsLink ?? false),
-      body: JSON.stringify(body),
-    });
+    return zodfetch(
+      TriggerTaskResponse,
+      `${this.baseUrl}/api/v1/tasks/${taskId}/trigger`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(options?.spanParentAsLink ?? false),
+        body: JSON.stringify(body),
+      },
+      zodFetchOptions
+    );
   }
 
   batchTriggerTask(taskId: string, body: BatchTriggerTaskRequestBody, options?: TriggerOptions) {
-    return zodfetch(BatchTriggerTaskResponse, `${this.baseUrl}/api/v1/tasks/${taskId}/batch`, {
-      method: "POST",
-      headers: this.#getHeaders(options?.spanParentAsLink ?? false),
-      body: JSON.stringify(body),
-    });
+    return zodfetch(
+      BatchTriggerTaskResponse,
+      `${this.baseUrl}/api/v1/tasks/${taskId}/batch`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(options?.spanParentAsLink ?? false),
+        body: JSON.stringify(body),
+      },
+      zodFetchOptions
+    );
   }
 
   createUploadPayloadUrl(filename: string) {
@@ -51,7 +71,8 @@ export class ApiClient {
       {
         method: "PUT",
         headers: this.#getHeaders(false),
-      }
+      },
+      zodFetchOptions
     );
   }
 
@@ -62,7 +83,8 @@ export class ApiClient {
       {
         method: "GET",
         headers: this.#getHeaders(false),
-      }
+      },
+      zodFetchOptions
     );
   }
 

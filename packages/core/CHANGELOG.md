@@ -1,5 +1,19 @@
 # internal-platform
 
+## 3.0.0-beta.3
+
+### Patch Changes
+
+- c702d6a9c: better handle task metadata parse errors, and display nicely formatted errors
+- b271742dc: Configurable log levels in the config file and via env var
+- 9af2570da: Retry 429, 500, and connection error API requests to the trigger.dev server
+
+## 3.0.0-beta.2
+
+### Patch Changes
+
+- e3cf456c6: Handle string and non-stringifiable outputs like functions
+
 ## 3.0.0-beta.1
 
 ### Patch Changes

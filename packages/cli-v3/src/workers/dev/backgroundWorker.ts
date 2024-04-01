@@ -18,16 +18,11 @@ import {
   formatDurationMilliseconds,
   workerToChildMessages,
 } from "@trigger.dev/core/v3";
-import chalk from "chalk";
 import dotenv from "dotenv";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import terminalLink from "terminal-link";
-import { safeDeleteFileSync } from "../../utilities/fileSystem.js";
-import { installPackages } from "../../utilities/installPackages.js";
-import { logger } from "../../utilities/logger.js";
-import { UncaughtExceptionError } from "../common/errors.js";
 import {
   chalkError,
   chalkGrey,
@@ -39,6 +34,10 @@ import {
   chalkWorker,
   prettyPrintDate,
 } from "../../utilities/cliOutput.js";
+import { safeDeleteFileSync } from "../../utilities/fileSystem.js";
+import { installPackages } from "../../utilities/installPackages.js";
+import { logger } from "../../utilities/logger.js";
+import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -353,6 +352,11 @@ export class BackgroundWorker {
           resolved = true;
           reject(new UncaughtExceptionError(message.payload.error, message.payload.origin));
           child.kill();
+        } else if (message.type === "TASKS_FAILED_TO_PARSE") {
+          clearTimeout(timeout);
+          resolved = true;
+          reject(new TaskMetadataParseError(message.payload.zodIssues, message.payload.tasks));
+          child.kill();
         }
       });
 
@@ -386,7 +390,7 @@ export class BackgroundWorker {
 
     if (!this._taskRunProcesses.has(payload.execution.run.id)) {
       const taskRunProcess = new TaskRunProcess(
-        payload.execution.run.id,
+        payload.execution,
         this.path,
         {
           ...this.params.env,
@@ -543,7 +547,7 @@ class TaskRunProcess {
   public onExit: Evt<number> = new Evt();
 
   constructor(
-    private runId: string,
+    private execution: TaskRunExecution,
     private path: string,
     private env: NodeJS.ProcessEnv,
     private metadata: BackgroundWorkerProperties,
@@ -566,22 +570,25 @@ class TaskRunProcess {
   }
 
   async initialize() {
-    logger.debug(`[${this.runId}] initializing task run process`, {
-      env: this.env,
+    const fullEnv = {
+      ...(this.execution.run.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
+      ...this.env,
+      OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
+        [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectConfig.projectDir,
+      }),
+      OTEL_EXPORTER_OTLP_COMPRESSION: "none",
+      ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
+    };
+
+    logger.debug(`[${this.execution.run.id}] initializing task run process`, {
+      env: fullEnv,
       path: this.path,
     });
 
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
       cwd: dirname(this.path),
-      env: {
-        ...this.env,
-        OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
-          [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectConfig.projectDir,
-        }),
-        OTEL_EXPORTER_OTLP_COMPRESSION: "none",
-        ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
-      },
+      env: fullEnv,
       execArgv: this.worker.debuggerOn
         ? ["--inspect-brk", "--trace-uncaught", "--no-warnings=ExperimentalWarning"]
         : ["--trace-uncaught", "--no-warnings=ExperimentalWarning"],
@@ -598,7 +605,7 @@ class TaskRunProcess {
       return;
     }
 
-    logger.debug(`[${this.runId}] cleaning up task run process`, { kill });
+    logger.debug(`[${this.execution.run.id}] cleaning up task run process`, { kill });
 
     await this._sender.send("CLEANUP", {
       flush: true,
@@ -644,12 +651,15 @@ class TaskRunProcess {
       return;
     }
 
-    if (execution.run.id === this.runId) {
+    if (execution.run.id === this.execution.run.id) {
       // We don't need to notify the task run process if it's the same as the one we're running
       return;
     }
 
-    logger.debug(`[${this.runId}] task run completed notification`, { completion, execution });
+    logger.debug(`[${this.execution.run.id}] task run completed notification`, {
+      completion,
+      execution,
+    });
 
     this._sender.send("TASK_RUN_COMPLETED_NOTIFICATION", {
       completion,
@@ -701,7 +711,7 @@ class TaskRunProcess {
   }
 
   async #handleExit(code: number) {
-    logger.debug(`[${this.runId}] task run process exiting`, { code });
+    logger.debug(`[${this.execution.run.id}] task run process exiting`, { code });
 
     // Go through all the attempts currently pending and reject them
     for (const [id, status] of this._attemptStatuses.entries()) {

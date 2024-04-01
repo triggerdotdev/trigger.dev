@@ -1,5 +1,24 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.3
+
+### Patch Changes
+
+- b271742dc: Configurable log levels in the config file and via env var
+- Updated dependencies [c702d6a9c]
+- Updated dependencies [b271742dc]
+- Updated dependencies [9af2570da]
+  - @trigger.dev/core@3.0.0-beta.3
+  - @trigger.dev/core-backend@3.0.0-beta.3
+
+## 3.0.0-beta.2
+
+### Patch Changes
+
+- Updated dependencies [e3cf456c6]
+  - @trigger.dev/core@3.0.0-beta.2
+  - @trigger.dev/core-backend@3.0.0-beta.2
+
 ## 3.0.0-beta.1
 
 ### Patch Changes

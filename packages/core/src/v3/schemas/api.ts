@@ -153,6 +153,12 @@ export const InitializeDeploymentRequestBody = z.object({
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
 
+export const DeploymentErrorData = z.object({
+  name: z.string(),
+  message: z.string(),
+  stack: z.string().optional(),
+});
+
 export const GetDeploymentResponseBody = z.object({
   id: z.string(),
   status: z.enum([
@@ -168,14 +174,7 @@ export const GetDeploymentResponseBody = z.object({
   shortCode: z.string(),
   version: z.string(),
   imageReference: z.string().optional(),
-  errorData: z
-    .object({
-      name: z.string(),
-      message: z.string(),
-      stack: z.string().optional(),
-    })
-    .optional()
-    .nullable(),
+  errorData: DeploymentErrorData.optional().nullable(),
   worker: z
     .object({
       id: z.string(),

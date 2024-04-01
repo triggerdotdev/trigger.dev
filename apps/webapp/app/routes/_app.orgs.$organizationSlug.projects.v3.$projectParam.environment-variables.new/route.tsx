@@ -185,7 +185,11 @@ export default function Page() {
                       >
                         <EnvironmentLabel environment={environment} className="h-5 px-2" />
                       </label>
-                      <Input name={`values[${index}].value`} placeholder="Not set" />
+                      <Input
+                        type="password"
+                        name={`values[${index}].value`}
+                        placeholder="Not set"
+                      />
                     </Fragment>
                   );
                 })}
