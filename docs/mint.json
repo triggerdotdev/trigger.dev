@@ -2,6 +2,7 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
   "openapi": ["/openapi.yml"],
+  "versions": ["v2", "v3"],
   "logo": {
     "dark": "/logo/dark.png",
     "light": "/logo/light.png",
@@ -37,22 +38,34 @@
       "url": "https://discord.gg/kA47vcd8P6"
     }
   ],
+  "primaryTab": {
+    "name": "Home"
+  },
   "tabs": [
     {
       "name": "Integrations",
-      "url": "integrations"
+      "url": "integrations",
+      "version": "v2"
     },
     {
       "name": "Reference",
-      "url": "sdk"
+      "url": "sdk",
+      "version": "v2"
     },
     {
       "name": "Examples",
-      "url": "https://trigger.dev/apis"
+      "url": "https://trigger.dev/apis",
+      "version": "v2"
     },
     {
       "name": "v3 Developer Preview",
-      "url": "v3"
+      "url": "v2-v3",
+      "version": "v2"
+    },
+    {
+      "name": "v2",
+      "url": "https://trigger.dev/docs",
+      "version": "v3"
     }
   ],
   "redirects": [
@@ -71,11 +84,21 @@
     {
       "source": "/documentation/guides/create-a-job",
       "destination": "/documentation/guides/writing-jobs-step-by-step"
+    },
+    {
+      "source": "/v2-v3/redirect",
+      "destination": "/v3/introduction"
     }
   ],
   "navigation": [
     {
+      "group": "",
+      "pages": ["v2-v3/redirect"],
+      "version": "v2"
+    },
+    {
       "group": "Getting Started",
+      "version": "v2",
       "pages": [
         "documentation/introduction",
         {
@@ -107,6 +130,7 @@
     },
     {
       "group": "Concepts",
+      "version": "v2",
       "pages": [
         "documentation/concepts/what-is-triggerdotdev",
         "documentation/concepts/limits",
@@ -142,6 +166,7 @@
     },
     {
       "group": "Guides",
+      "version": "v2",
       "pages": [
         {
           "group": "Frameworks",
@@ -226,6 +251,7 @@
     },
     {
       "group": "Community & Support",
+      "version": "v2",
       "pages": [
         "documentation/get-help",
         "documentation/faq",
@@ -430,14 +456,17 @@
     },
     {
       "group": "Overview",
+      "version": "v2",
       "pages": ["examples/introduction"]
     },
     {
       "group": "",
+      "version": "v3",
       "pages": ["v3/introduction"]
     },
     {
       "group": "Getting Started",
+      "version": "v3",
       "pages": [
         "v3/quick-start",
         "v3/upgrading-from-v2",
@@ -448,6 +477,7 @@
     },
     {
       "group": "Fundamentals",
+      "version": "v3",
       "pages": [
         "v3/trigger-folder",
         "v3/tasks-overview",
@@ -461,10 +491,12 @@
     },
     {
       "group": "Development",
+      "version": "v3",
       "pages": ["v3/cli-dev", "v3/run-tests"]
     },
     {
       "group": "Deployment",
+      "version": "v3",
       "pages": [
         "v3/deploy-environment-variables",
         "v3/cli-deploy",
@@ -477,6 +509,7 @@
     },
     {
       "group": "Writing tasks",
+      "version": "v3",
       "pages": [
         "v3/writing-tasks-introduction",
         "v3/logging",
@@ -506,6 +539,7 @@
     },
     {
       "group": "Dashboard",
+      "version": "v3",
       "pages": [
         "v3/dashboard-overview",
         "v3/dashboard-runs",
@@ -515,6 +549,7 @@
     },
     {
       "group": "API reference",
+      "version": "v3",
       "pages": [
         {
           "group": "Functions",
@@ -564,6 +599,7 @@
     },
     {
       "group": "Architecture",
+      "version": "v3",
       "pages": [
         "v3/architecture-how-it-works",
         "v3/architecture-multi-tenant-queue",
@@ -572,10 +608,12 @@
     },
     {
       "group": "Open source",
+      "version": "v3",
       "pages": ["v3/github-repo", "v3/open-source-self-hosting", "v3/open-source-contributing"]
     },
     {
       "group": "Help",
+      "version": "v3",
       "pages": [
         "v3/help-faqs",
         "v3/community",
