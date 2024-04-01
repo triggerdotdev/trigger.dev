@@ -19,6 +19,7 @@ const EnvironmentSchema = z.object({
   LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ENV: z.string().default(process.env.NODE_ENV),
+  SERVICE_NAME: z.string().default("trigger.dev webapp"),
   SECRET_STORE: SecretStoreOptionsSchema.default("DATABASE"),
   POSTHOG_PROJECT_KEY: z.string().optional(),
   TELEMETRY_TRIGGER_API_KEY: z.string().optional(),
@@ -87,8 +88,6 @@ const EnvironmentSchema = z.object({
 
   //v3
   V3_ENABLED: z.string().default("false"),
-  IMAGE_REGISTRY: z.string().default("docker.io"),
-  IMAGE_REPO: z.string().default("task"),
   PROVIDER_SECRET: z.string().default("provider-secret"),
   COORDINATOR_SECRET: z.string().default("coordinator-secret"),
   DEPOT_TOKEN: z.string().optional(),
