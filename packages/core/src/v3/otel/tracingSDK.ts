@@ -91,7 +91,7 @@ export class TracingSDK {
   public readonly asyncResourceDetector = new AsyncResourceDetector();
   private readonly _logProvider: LoggerProvider;
   private readonly _spanExporter: SpanExporter;
-  private readonly _traceProvider: TracerProvider;
+  private readonly _traceProvider: NodeTracerProvider;
 
   public readonly getLogger: LoggerProvider["getLogger"];
   public readonly getTracer: TracerProvider["getTracer"];
@@ -195,12 +195,12 @@ export class TracingSDK {
   }
 
   public async flush() {
-    await this._spanExporter.forceFlush?.();
+    await this._traceProvider.forceFlush();
     await this._logProvider.forceFlush();
   }
 
   public async shutdown() {
-    await this._spanExporter.shutdown();
+    await this._traceProvider.shutdown();
     await this._logProvider.shutdown();
   }
 }

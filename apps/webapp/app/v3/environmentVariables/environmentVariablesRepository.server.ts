@@ -477,6 +477,46 @@ export class EnvironmentVariablesRepository implements Repository {
         key: "TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS",
         value: String(env.RUNTIME_WAIT_THRESHOLD_IN_MS),
       },
+      ...(env.PROD_OTEL_BATCH_PROCESSING_ENABLED === "1"
+        ? [
+            {
+              key: "OTEL_BATCH_PROCESSING_ENABLED",
+              value: "1",
+            },
+            {
+              key: "OTEL_SPAN_MAX_EXPORT_BATCH_SIZE",
+              value: env.PROD_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE,
+            },
+            {
+              key: "OTEL_SPAN_SCHEDULED_DELAY_MILLIS",
+              value: env.PROD_OTEL_SPAN_SCHEDULED_DELAY_MILLIS,
+            },
+            {
+              key: "OTEL_SPAN_EXPORT_TIMEOUT_MILLIS",
+              value: env.PROD_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS,
+            },
+            {
+              key: "OTEL_SPAN_MAX_QUEUE_SIZE",
+              value: env.PROD_OTEL_SPAN_MAX_QUEUE_SIZE,
+            },
+            {
+              key: "OTEL_LOG_MAX_EXPORT_BATCH_SIZE",
+              value: env.PROD_OTEL_LOG_MAX_EXPORT_BATCH_SIZE,
+            },
+            {
+              key: "OTEL_LOG_SCHEDULED_DELAY_MILLIS",
+              value: env.PROD_OTEL_LOG_SCHEDULED_DELAY_MILLIS,
+            },
+            {
+              key: "OTEL_LOG_EXPORT_TIMEOUT_MILLIS",
+              value: env.PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS,
+            },
+            {
+              key: "OTEL_LOG_MAX_QUEUE_SIZE",
+              value: env.PROD_OTEL_LOG_MAX_QUEUE_SIZE,
+            },
+          ]
+        : []),
     ];
   }
 
