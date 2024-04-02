@@ -67,6 +67,11 @@ export function authorizationRateLimitMiddleware({
       logger.info(`RateLimiter (${keyPrefix}): request to ${req.path}`);
     }
 
+    // allow OPTIONS requests
+    if (req.method.toUpperCase() === "OPTIONS") {
+      return next();
+    }
+
     //first check if any of the pathMatchers match the request path
     const path = req.path;
     if (
