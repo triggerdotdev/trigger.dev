@@ -114,6 +114,7 @@ export function authorizationRateLimitMiddleware({
             status: 401,
             type: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
             detail: "No authorization header provided",
+            error: "No authorization header provided",
           },
           null,
           2
@@ -165,6 +166,7 @@ export function authorizationRateLimitMiddleware({
           detail: `Rate limit exceeded ${remaining}/${limit} requests remaining. Retry after ${reset} seconds.`,
           reset: reset,
           limit: limit,
+          error: `Rate limit exceeded ${remaining}/${limit} requests remaining. Retry after ${reset} seconds.`,
         },
         null,
         2
