@@ -6,6 +6,7 @@ import {
   ChartBarIcon,
   CursorArrowRaysIcon,
   IdentificationIcon,
+  InformationCircleIcon,
   KeyIcon,
   ServerStackIcon,
   ShieldCheckIcon,
@@ -72,6 +73,7 @@ import {
 import { StepNumber } from "../primitives/StepNumber";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
+import { Callout } from "../primitives/Callout";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -186,6 +188,11 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               data-action="organization-settings"
             />
           </div>
+        </div>
+        <div className="m-2">
+          <Callout variant={"info"}>
+            {`This is a ${project.version === "V2" ? "v2" : "v3"} project`}
+          </Callout>
         </div>
         <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
           {currentPlan?.subscription?.isPaying === true && (
