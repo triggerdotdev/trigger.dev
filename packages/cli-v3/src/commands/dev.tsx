@@ -65,7 +65,7 @@ export function configureDevCommand(program: Command) {
       .command("dev")
       .description("Run your Trigger.dev tasks locally")
       .argument("[path]", "The path to the project", ".")
-      .option("-c, --config <config file>", "The name of the config file, found at [path]")
+      .option("-c, --config <config file>", "The name of the config file, found at [path].")
       .option(
         "-p, --project-ref <project ref>",
         "The project ref. Required if there is no config file."
