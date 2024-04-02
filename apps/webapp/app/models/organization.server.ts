@@ -11,6 +11,7 @@ import { prisma, PrismaClientOrTransaction } from "~/db.server";
 import { createProject } from "./project.server";
 import { generate } from "random-words";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
+import { env } from "~/env.server";
 
 export type { Organization };
 
@@ -62,6 +63,7 @@ export async function createOrganization(
       title,
       slug: uniqueOrgSlug,
       companySize,
+      maximumConcurrencyLimit: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
       members: {
         create: {
           userId: userId,
@@ -103,6 +105,7 @@ export async function createEnvironment(
       pkApiKey,
       shortcode,
       autoEnableInternalSources: type !== "DEVELOPMENT",
+      maximumConcurrencyLimit: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
       organization: {
         connect: {
           id: organization.id,

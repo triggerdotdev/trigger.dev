@@ -354,7 +354,7 @@ model RuntimeEnvironment {
   ///A memorable code for the environment
   shortcode String
 
-  maximumConcurrencyLimit Int @default(10)
+  maximumConcurrencyLimit Int @default(5)
 
   autoEnableInternalSources Boolean @default(true)
 
