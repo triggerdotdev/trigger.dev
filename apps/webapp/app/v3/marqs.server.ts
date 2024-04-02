@@ -7,6 +7,11 @@ import { AsyncWorker } from "./marqs/asyncWorker.server";
 import { logger } from "~/services/logger.server";
 import { attributesFromAuthenticatedEnv } from "./tracer.server";
 import { Span, SpanKind, SpanOptions, trace } from "@opentelemetry/api";
+import {
+  SEMATTRS_MESSAGE_ID,
+  SEMATTRS_MESSAGING_OPERATION,
+  SEMATTRS_MESSAGING_SYSTEM,
+} from "@opentelemetry/semantic-conventions";
 
 const tracer = trace.getTracer("marqs");
 
@@ -117,7 +122,15 @@ export class MarQS {
 
         await this.#callEnqueueMessage(messagePayload);
       },
-      { kind: SpanKind.PRODUCER, attributes: { ...attributesFromAuthenticatedEnv(env) } }
+      {
+        kind: SpanKind.PRODUCER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "publish",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+          ...attributesFromAuthenticatedEnv(env),
+        },
+      }
     );
   }
 
@@ -161,6 +174,7 @@ export class MarQS {
 
         if (message) {
           span.setAttributes({
+            [SEMATTRS_MESSAGE_ID]: message.messageId,
             [SemanticAttributes.QUEUE]: message.queue,
             [SemanticAttributes.MESSAGE_ID]: message.messageId,
             [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
@@ -172,7 +186,14 @@ export class MarQS {
 
         return message;
       },
-      { kind: SpanKind.CONSUMER, attributes: { ...attributesFromAuthenticatedEnv(env) } }
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "receive",
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+          ...attributesFromAuthenticatedEnv(env),
+        },
+      }
     );
   }
 
@@ -216,6 +237,7 @@ export class MarQS {
 
         if (message) {
           span.setAttributes({
+            [SEMATTRS_MESSAGE_ID]: message.messageId,
             [SemanticAttributes.QUEUE]: message.queue,
             [SemanticAttributes.MESSAGE_ID]: message.messageId,
             [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
@@ -227,7 +249,13 @@ export class MarQS {
 
         return message;
       },
-      { kind: SpanKind.CONSUMER }
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "receive",
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+        },
+      }
     );
   }
 
@@ -255,7 +283,14 @@ export class MarQS {
           messageId,
         });
       },
-      { kind: SpanKind.CONSUMER }
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "ack",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+        },
+      }
     );
   }
 
@@ -299,7 +334,14 @@ export class MarQS {
 
         await this.#callEnqueueMessage(newMessage);
       },
-      { kind: SpanKind.CONSUMER }
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "replace",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+        },
+      }
     );
   }
 
@@ -362,7 +404,14 @@ export class MarQS {
           messageScore: retryAt,
         });
       },
-      { kind: SpanKind.CONSUMER }
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "nack",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+        },
+      }
     );
   }
 
@@ -403,7 +452,14 @@ export class MarQS {
 
         return message.data;
       },
-      { attributes: { [SemanticAttributes.MESSAGE_ID]: messageId } }
+      {
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "receive",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+          [SemanticAttributes.MESSAGE_ID]: messageId,
+        },
+      }
     );
   }
 
@@ -428,7 +484,14 @@ export class MarQS {
         // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
         return await this.#weightedRandomChoice(queuesWithWeights);
       },
-      { kind: SpanKind.CONSUMER, attributes: { [SemanticAttributes.PARENT_QUEUE]: parentQueue } }
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "receive",
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+          [SemanticAttributes.PARENT_QUEUE]: parentQueue,
+        },
+      }
     );
   }
 
