@@ -18,6 +18,8 @@ collectDefaultMetrics();
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8020);
 const NODE_NAME = process.env.NODE_NAME || "coordinator";
+const DEFAULT_RETRY_DELAY_THRESHOLD_IN_MS = 30_000;
+
 const REGISTRY_HOST = process.env.REGISTRY_HOST || "localhost:5000";
 const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
 const REGISTRY_TLS_VERIFY = process.env.REGISTRY_TLS_VERIFY === "false" ? "false" : "true";
@@ -334,12 +336,19 @@ class TaskCoordinator {
     { resolve: (value: void) => void; reject: (err?: any) => void }
   >();
 
+  #delayThresholdInMs: number;
+
   constructor(
     private port: number,
     private host = "0.0.0.0"
   ) {
     this.#httpServer = this.#createHttpServer();
     this.#checkpointer.initialize();
+    this.#delayThresholdInMs = this.#getDelayThreshold();
+
+    if (process.env.DELAY_THRESHOLD_IN_MS) {
+      this.#delayThresholdInMs = this.#getDelayThreshold();
+    }
 
     const io = new Server(this.#httpServer);
     this.#prodWorkerNamespace = this.#createProdWorkerNamespace(io);
@@ -354,6 +363,27 @@ class TaskCoordinator {
       },
     });
     register.registerMetric(connectedTasksTotal);
+  }
+
+  #getDelayThreshold() {
+    if (!process.env.RETRY_DELAY_THRESHOLD_IN_MS) {
+      return DEFAULT_RETRY_DELAY_THRESHOLD_IN_MS;
+    }
+
+    const threshold = parseInt(process.env.RETRY_DELAY_THRESHOLD_IN_MS);
+
+    if (isNaN(threshold)) {
+      logger.log(
+        "RETRY_DELAY_THRESHOLD_IN_MS parses as NaN, must supply integer. Will use default instead.",
+        {
+          RETRY_DELAY_THRESHOLD_IN_MS: process.env.RETRY_DELAY_THRESHOLD_IN_MS,
+          DEFAULT_DELAY_THRESHOLD_IN_MS: DEFAULT_RETRY_DELAY_THRESHOLD_IN_MS,
+        }
+      );
+      return DEFAULT_RETRY_DELAY_THRESHOLD_IN_MS;
+    }
+
+    return threshold;
   }
 
   #createPlatformSocket() {
@@ -629,7 +659,7 @@ class TaskCoordinator {
             return;
           }
 
-          if (completion.retry.delay < 10_000) {
+          if (completion.retry.delay < this.#delayThresholdInMs) {
             completeWithoutCheckpoint(false);
             return;
           }

@@ -1,4 +1,12 @@
-import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
+import {
+  Context,
+  ROOT_CONTEXT,
+  Span,
+  SpanKind,
+  context,
+  propagation,
+  trace,
+} from "@opentelemetry/api";
 import {
   Machine,
   ProdTaskRunExecution,
@@ -31,19 +39,24 @@ import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
 
 const tracer = trace.getTracer("sharedQueueConsumer");
 
+const WithTraceContext = z.object({
+  traceparent: z.string().optional(),
+  tracestate: z.string().optional(),
+});
+
 const MessageBody = z.discriminatedUnion("type", [
-  z.object({
+  WithTraceContext.extend({
     type: z.literal("EXECUTE"),
     taskIdentifier: z.string(),
     checkpointEventId: z.string().optional(),
   }),
-  z.object({
+  WithTraceContext.extend({
     type: z.literal("RESUME"),
     completedAttemptIds: z.string().array(),
     resumableAttemptId: z.string(),
     checkpointEventId: z.string().optional(),
   }),
-  z.object({
+  WithTraceContext.extend({
     type: z.literal("RESUME_AFTER_DURATION"),
     resumableAttemptId: z.string(),
     checkpointEventId: z.string(),
@@ -57,6 +70,7 @@ export type SharedQueueConsumerOptions = {
   traceTimeoutSeconds?: number;
   nextTickInterval?: number;
   interval?: number;
+  parentContext?: Context;
 };
 
 export class SharedQueueConsumer {
@@ -83,6 +97,7 @@ export class SharedQueueConsumer {
       traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
       nextTickInterval: options.nextTickInterval ?? 1000, // 1 second
       interval: options.interval ?? 100, // 100ms
+      parentContext: options.parentContext ?? ROOT_CONTEXT,
     };
   }
 
@@ -187,8 +202,17 @@ export class SharedQueueConsumer {
     this.#doWork().finally(() => {});
   }
 
+  #endCurrentSpan() {
+    if (this._currentSpan) {
+      this._currentSpan.setAttribute("tasks.period.failures", this._taskFailures);
+      this._currentSpan.setAttribute("tasks.period.successes", this._taskSuccesses);
+      this._currentSpan.end();
+    }
+  }
+
   async #doWork() {
     if (!this._enabled) {
+      this.#endCurrentSpan();
       return;
     }
 
@@ -199,12 +223,9 @@ export class SharedQueueConsumer {
       this._currentSpanContext === undefined ||
       this._endSpanInNextIteration
     ) {
-      if (this._currentSpan) {
-        this._currentSpan.setAttribute("tasks.period.failures", this._taskFailures);
-        this._currentSpan.setAttribute("tasks.period.successes", this._taskSuccesses);
+      this.#endCurrentSpan();
 
-        this._currentSpan.end();
-      }
+      const parentContext = this._options.parentContext ?? ROOT_CONTEXT;
 
       // Create a new trace
       this._currentSpan = tracer.startSpan(
@@ -212,11 +233,11 @@ export class SharedQueueConsumer {
         {
           kind: SpanKind.CONSUMER,
         },
-        ROOT_CONTEXT
+        parentContext
       );
 
       // Get the span trace context
-      this._currentSpanContext = trace.setSpan(ROOT_CONTEXT, this._currentSpan);
+      this._currentSpanContext = trace.setSpan(parentContext, this._currentSpan);
 
       this._perTraceCountdown = this._options.maximumItemsPerTrace;
       this._lastNewTrace = new Date();

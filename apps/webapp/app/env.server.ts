@@ -102,6 +102,9 @@ const EnvironmentSchema = z.object({
   EVENTS_BATCH_SIZE: z.coerce.number().int().default(100),
   EVENTS_BATCH_INTERVAL: z.coerce.number().int().default(1000),
   EVENTS_DEFAULT_LOG_RETENTION: z.coerce.number().int().default(7),
+  SHARED_QUEUE_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),
+  SHARED_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(100),
+  SHARED_QUEUE_CONSUMER_NEXT_TICK_INTERVAL_MS: z.coerce.number().int().default(100),
 
   // Development OTEL environment variables
   DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),

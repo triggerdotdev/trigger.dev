@@ -10,7 +10,56 @@ import { Evt } from "evt";
 import { randomUUID } from "node:crypto";
 import { logger } from "~/services/logger.server";
 import { SharedQueueConsumer } from "./marqs/sharedQueueConsumer.server";
-import { DisconnectReason, Namespace, Socket } from "socket.io";
+import type { DisconnectReason, Namespace, Socket } from "socket.io";
+import { ROOT_CONTEXT, Span, SpanKind, trace } from "@opentelemetry/api";
+import { env } from "~/env.server";
+
+const tracer = trace.getTracer("sharedQueueConsumerPool");
+
+interface SharedQueueConsumerPoolOptions {
+  sender: ZodMessageSender<typeof serverWebsocketMessages>;
+  poolSize: number;
+}
+
+class SharedQueueConsumerPool {
+  #consumers: SharedQueueConsumer[];
+  #span: Span;
+
+  constructor(opts: SharedQueueConsumerPoolOptions) {
+    this.#span = tracer.startSpan(
+      "SharedQueueConsumerPool()",
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          "pool.size": opts.poolSize,
+        },
+      },
+      ROOT_CONTEXT
+    );
+
+    const spanContext = trace.setSpan(ROOT_CONTEXT, this.#span);
+
+    this.#consumers = Array(opts.poolSize)
+      .fill(null)
+      .map(
+        () =>
+          new SharedQueueConsumer(opts.sender, {
+            interval: env.SHARED_QUEUE_CONSUMER_INTERVAL_MS,
+            nextTickInterval: env.SHARED_QUEUE_CONSUMER_NEXT_TICK_INTERVAL_MS,
+            parentContext: spanContext,
+          })
+      );
+  }
+
+  async start() {
+    await Promise.allSettled(this.#consumers.map((consumer) => consumer.start()));
+  }
+
+  async stop() {
+    await Promise.allSettled(this.#consumers.map((consumer) => consumer.stop()));
+    this.#span.end();
+  }
+}
 
 interface SharedSocketConnectionOptions {
   namespace: Namespace<
@@ -22,6 +71,7 @@ interface SharedSocketConnectionOptions {
     MessageCatalogToSocketIoEvents<typeof serverWebsocketMessages>
   >;
   logger?: StructuredLogger;
+  poolSize?: number;
 }
 
 export class SharedSocketConnection {
@@ -29,8 +79,9 @@ export class SharedSocketConnection {
   public onClose: Evt<DisconnectReason> = new Evt();
 
   private _sender: ZodMessageSender<typeof serverWebsocketMessages>;
-  private _sharedConsumer: SharedQueueConsumer;
+  private _sharedQueueConsumerPool: SharedQueueConsumerPool;
   private _messageHandler: ZodMessageHandler<typeof clientWebsocketMessages>;
+  private _defaultPoolSize = 10;
 
   constructor(opts: SharedSocketConnectionOptions) {
     this.id = randomUUID();
@@ -50,9 +101,13 @@ export class SharedSocketConnection {
       },
     });
 
-    this._sharedConsumer = new SharedQueueConsumer(this._sender, {
-      interval: 100,
-      nextTickInterval: 1000,
+    logger.log("Starting SharedQueueConsumer pool", {
+      poolSize: opts.poolSize ?? this._defaultPoolSize,
+    });
+
+    this._sharedQueueConsumerPool = new SharedQueueConsumerPool({
+      poolSize: opts.poolSize ?? this._defaultPoolSize,
+      sender: this._sender,
     });
 
     opts.socket.on("disconnect", this.#handleClose.bind(this));
@@ -62,7 +117,7 @@ export class SharedSocketConnection {
       schema: clientWebsocketMessages,
       messages: {
         READY_FOR_TASKS: async (payload) => {
-          this._sharedConsumer.start();
+          this._sharedQueueConsumerPool.start();
         },
         BACKGROUND_WORKER_DEPRECATED: async (payload) => {
           // await this._sharedConsumer.deprecateBackgroundWorker(payload.backgroundWorkerId);
@@ -89,7 +144,7 @@ export class SharedSocketConnection {
   }
 
   async #handleClose(ev: DisconnectReason) {
-    await this._sharedConsumer.stop();
+    await this._sharedQueueConsumerPool.stop();
 
     this.onClose.post(ev);
   }
