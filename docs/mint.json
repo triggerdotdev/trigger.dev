@@ -471,6 +471,7 @@
       "version": "v3 (Developer Preview)",
       "pages": [
         "v3/trigger-folder",
+        "v3/trigger-config",
         "v3/tasks-overview",
         "v3/triggering",
         "v3/apikeys",
@@ -584,8 +585,7 @@
             "v3/reference-cli-build",
             "v3/reference-cli-who-am-i"
           ]
-        },
-        "v3/reference-trigger-config"
+        }
       ]
     },
     {

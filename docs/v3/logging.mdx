@@ -38,18 +38,20 @@ Tracing is a way to follow the flow of your code. It's very useful for debugging
 
 Trigger.dev uses OpenTelemetry tracing under the hood. With automatic tracing for many things like task triggering, task attempts, HTTP requests, and more.
 
-### Automatic instrumentation
-
 | Name          | Description                      |
 | ------------- | -------------------------------- |
 | Task triggers | Task triggers.                   |
 | Task attempts | Task attempts.                   |
 | HTTP requests | HTTP requests made by your code. |
-| OpenAI        | OpenAI SDK calls.                |
 
-We want to provide automatic instrumentation for as many things as possible. Please do [request any automatic instrumentation](https://github.com/triggerdotdev/trigger.dev/issues/new?template=instrumentation_request.yml) you would like to see.
+### Adding instrumentations
 
-## Add custom traces
+![The run log
+  ](/images/v3/auto-instrumentation.png)
+
+You can [add instrumentations](/v3/trigger-config#instrumentations). The Prisma one above will automatically trace all Prisma queries.
+
+### Add custom traces
 
 If you want to add custom traces to your code, you can use the `logger.trace` function. It will create a new OTEL trace and you can set attributes on it.
 
