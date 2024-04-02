@@ -168,6 +168,7 @@ function createSharedQueueConsumerNamespace(io: Server) {
         namespace: sharedQueue.namespace,
         socket,
         logger,
+        poolSize: env.SHARED_QUEUE_CONSUMER_POOL_SIZE,
       });
 
       sharedSocketConnection.onClose.attach((closeEvent) => {

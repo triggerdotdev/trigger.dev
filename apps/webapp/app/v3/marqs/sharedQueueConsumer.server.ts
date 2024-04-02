@@ -57,6 +57,7 @@ export type SharedQueueConsumerOptions = {
   traceTimeoutSeconds?: number;
   nextTickInterval?: number;
   interval?: number;
+  parentContext?: Context;
 };
 
 export class SharedQueueConsumer {
@@ -83,6 +84,7 @@ export class SharedQueueConsumer {
       traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
       nextTickInterval: options.nextTickInterval ?? 1000, // 1 second
       interval: options.interval ?? 100, // 100ms
+      parentContext: options.parentContext ?? ROOT_CONTEXT,
     };
   }
 
@@ -187,8 +189,17 @@ export class SharedQueueConsumer {
     this.#doWork().finally(() => {});
   }
 
+  #endCurrentSpan() {
+    if (this._currentSpan) {
+      this._currentSpan.setAttribute("tasks.period.failures", this._taskFailures);
+      this._currentSpan.setAttribute("tasks.period.successes", this._taskSuccesses);
+      this._currentSpan.end();
+    }
+  }
+
   async #doWork() {
     if (!this._enabled) {
+      this.#endCurrentSpan();
       return;
     }
 
@@ -199,12 +210,9 @@ export class SharedQueueConsumer {
       this._currentSpanContext === undefined ||
       this._endSpanInNextIteration
     ) {
-      if (this._currentSpan) {
-        this._currentSpan.setAttribute("tasks.period.failures", this._taskFailures);
-        this._currentSpan.setAttribute("tasks.period.successes", this._taskSuccesses);
+      this.#endCurrentSpan();
 
-        this._currentSpan.end();
-      }
+      const parentContext = this._options.parentContext ?? ROOT_CONTEXT;
 
       // Create a new trace
       this._currentSpan = tracer.startSpan(
@@ -212,11 +220,11 @@ export class SharedQueueConsumer {
         {
           kind: SpanKind.CONSUMER,
         },
-        ROOT_CONTEXT
+        parentContext
       );
 
       // Get the span trace context
-      this._currentSpanContext = trace.setSpan(ROOT_CONTEXT, this._currentSpan);
+      this._currentSpanContext = trace.setSpan(parentContext, this._currentSpan);
 
       this._perTraceCountdown = this._options.maximumItemsPerTrace;
       this._lastNewTrace = new Date();
