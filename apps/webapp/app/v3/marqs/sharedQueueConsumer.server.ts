@@ -1,4 +1,12 @@
-import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
+import {
+  Context,
+  ROOT_CONTEXT,
+  Span,
+  SpanKind,
+  context,
+  propagation,
+  trace,
+} from "@opentelemetry/api";
 import {
   Machine,
   ProdTaskRunExecution,
@@ -31,19 +39,24 @@ import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
 
 const tracer = trace.getTracer("sharedQueueConsumer");
 
+const WithTraceContext = z.object({
+  traceparent: z.string().optional(),
+  tracestate: z.string().optional(),
+});
+
 const MessageBody = z.discriminatedUnion("type", [
-  z.object({
+  WithTraceContext.extend({
     type: z.literal("EXECUTE"),
     taskIdentifier: z.string(),
     checkpointEventId: z.string().optional(),
   }),
-  z.object({
+  WithTraceContext.extend({
     type: z.literal("RESUME"),
     completedAttemptIds: z.string().array(),
     resumableAttemptId: z.string(),
     checkpointEventId: z.string().optional(),
   }),
-  z.object({
+  WithTraceContext.extend({
     type: z.literal("RESUME_AFTER_DURATION"),
     resumableAttemptId: z.string(),
     checkpointEventId: z.string(),

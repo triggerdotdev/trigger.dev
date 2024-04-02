@@ -6,7 +6,7 @@ import { singleton } from "~/utils/singleton";
 import { AsyncWorker } from "./marqs/asyncWorker.server";
 import { logger } from "~/services/logger.server";
 import { attributesFromAuthenticatedEnv } from "./tracer.server";
-import { Span, SpanKind, SpanOptions, trace } from "@opentelemetry/api";
+import { Span, SpanKind, SpanOptions, context, propagation, trace } from "@opentelemetry/api";
 import {
   SEMATTRS_MESSAGE_ID,
   SEMATTRS_MESSAGING_OPERATION,
@@ -102,6 +102,8 @@ export class MarQS {
           env.type === "DEVELOPMENT"
             ? `${constants.ENV_PART}:${env.id}:${constants.SHARED_QUEUE}`
             : constants.SHARED_QUEUE;
+
+        propagation.inject(context.active(), messageData);
 
         const messagePayload: MessagePayload = {
           version: "1",
