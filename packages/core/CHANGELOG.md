@@ -1,5 +1,13 @@
 # internal-platform
 
+## 3.0.0-beta.5
+
+### Patch Changes
+
+- eb6012628: Fixed batch otel flushing
+
+## 3.0.0-beta.4
+
 ## 3.0.0-beta.3
 
 ### Patch Changes

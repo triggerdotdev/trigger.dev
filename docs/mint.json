@@ -2,6 +2,7 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
   "openapi": ["/openapi.yml"],
+  "versions": ["v3 (Developer Preview)", "v2"],
   "logo": {
     "dark": "/logo/dark.png",
     "light": "/logo/light.png",
@@ -37,22 +38,34 @@
       "url": "https://discord.gg/kA47vcd8P6"
     }
   ],
+  "primaryTab": {
+    "name": "Home"
+  },
   "tabs": [
     {
       "name": "Integrations",
-      "url": "integrations"
+      "url": "integrations",
+      "version": "v2"
     },
     {
       "name": "Reference",
-      "url": "sdk"
+      "url": "sdk",
+      "version": "v2"
     },
     {
       "name": "Examples",
-      "url": "https://trigger.dev/apis"
+      "url": "https://trigger.dev/apis",
+      "version": "v2"
     },
     {
       "name": "v3 Developer Preview",
-      "url": "v3"
+      "url": "https://trigger.dev/docs/v3",
+      "version": "v2"
+    },
+    {
+      "name": "v2",
+      "url": "https://trigger.dev/docs",
+      "version": "v3 (Developer Preview)"
     }
   ],
   "redirects": [
@@ -76,6 +89,7 @@
   "navigation": [
     {
       "group": "Getting Started",
+      "version": "v2",
       "pages": [
         "documentation/introduction",
         {
@@ -107,6 +121,7 @@
     },
     {
       "group": "Concepts",
+      "version": "v2",
       "pages": [
         "documentation/concepts/what-is-triggerdotdev",
         "documentation/concepts/limits",
@@ -142,6 +157,7 @@
     },
     {
       "group": "Guides",
+      "version": "v2",
       "pages": [
         {
           "group": "Frameworks",
@@ -226,6 +242,7 @@
     },
     {
       "group": "Community & Support",
+      "version": "v2",
       "pages": [
         "documentation/get-help",
         "documentation/faq",
@@ -430,14 +447,17 @@
     },
     {
       "group": "Overview",
+      "version": "v2",
       "pages": ["examples/introduction"]
     },
     {
       "group": "",
+      "version": "v3 (Developer Preview)",
       "pages": ["v3/introduction"]
     },
     {
       "group": "Getting Started",
+      "version": "v3 (Developer Preview)",
       "pages": [
         "v3/quick-start",
         "v3/upgrading-from-v2",
@@ -448,6 +468,7 @@
     },
     {
       "group": "Fundamentals",
+      "version": "v3 (Developer Preview)",
       "pages": [
         "v3/trigger-folder",
         "v3/tasks-overview",
@@ -456,15 +477,18 @@
         {
           "group": "Task types",
           "pages": ["v3/tasks-regular", "v3/tasks-scheduled", "v3/tasks-zod", "v3/tasks-webhooks"]
-        }
+        },
+        "v3/trigger-config"
       ]
     },
     {
       "group": "Development",
+      "version": "v3 (Developer Preview)",
       "pages": ["v3/cli-dev", "v3/run-tests"]
     },
     {
       "group": "Deployment",
+      "version": "v3 (Developer Preview)",
       "pages": [
         "v3/deploy-environment-variables",
         "v3/cli-deploy",
@@ -477,6 +501,7 @@
     },
     {
       "group": "Writing tasks",
+      "version": "v3 (Developer Preview)",
       "pages": [
         "v3/writing-tasks-introduction",
         "v3/logging",
@@ -506,6 +531,7 @@
     },
     {
       "group": "Dashboard",
+      "version": "v3 (Developer Preview)",
       "pages": [
         "v3/dashboard-overview",
         "v3/dashboard-runs",
@@ -515,6 +541,7 @@
     },
     {
       "group": "API reference",
+      "version": "v3 (Developer Preview)",
       "pages": [
         {
           "group": "Functions",
@@ -558,12 +585,12 @@
             "v3/reference-cli-build",
             "v3/reference-cli-who-am-i"
           ]
-        },
-        "v3/reference-trigger-config"
+        }
       ]
     },
     {
       "group": "Architecture",
+      "version": "v3 (Developer Preview)",
       "pages": [
         "v3/architecture-how-it-works",
         "v3/architecture-multi-tenant-queue",
@@ -572,10 +599,12 @@
     },
     {
       "group": "Open source",
+      "version": "v3 (Developer Preview)",
       "pages": ["v3/github-repo", "v3/open-source-self-hosting", "v3/open-source-contributing"]
     },
     {
       "group": "Help",
+      "version": "v3 (Developer Preview)",
       "pages": [
         "v3/help-faqs",
         "v3/community",

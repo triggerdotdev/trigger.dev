@@ -91,10 +91,10 @@ export class CreateBackgroundWorkerService extends BaseService {
             error:
               err instanceof Error
                 ? {
-                    name: err.name,
-                    message: err.message,
-                    stack: err.stack,
-                  }
+                  name: err.name,
+                  message: err.message,
+                  stack: err.stack,
+                }
                 : err,
             project,
             environment,
@@ -141,13 +141,13 @@ export async function createBackgroundTasks(
       const concurrencyLimit =
         typeof task.queue?.concurrencyLimit === "number"
           ? Math.max(
-              Math.min(
-                task.queue.concurrencyLimit,
-                environment.maximumConcurrencyLimit,
-                environment.organization.maximumConcurrencyLimit
-              ),
-              0
-            )
+            Math.min(
+              task.queue.concurrencyLimit,
+              environment.maximumConcurrencyLimit,
+              environment.organization.maximumConcurrencyLimit
+            ),
+            0
+          )
           : null;
 
       const taskQueue = await prisma.taskQueue.upsert({

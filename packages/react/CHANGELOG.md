@@ -1,5 +1,19 @@
 # @trigger.dev/react
 
+## 3.0.0-beta.5
+
+### Patch Changes
+
+- Updated dependencies [eb6012628]
+  - @trigger.dev/core@3.0.0-beta.5
+
+## 3.0.0-beta.4
+
+### Patch Changes
+
+- 545f85b44: Fix for shared queryKey between useRunDetails and useRunStatuses
+  - @trigger.dev/core@3.0.0-beta.4
+
 ## 3.0.0-beta.3
 
 ### Patch Changes

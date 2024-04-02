@@ -118,6 +118,17 @@ const EnvironmentSchema = z.object({
   DEV_OTEL_LOG_SCHEDULED_DELAY_MILLIS: z.string().default("200"),
   DEV_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
   DEV_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
+
+  PROD_OTEL_BATCH_PROCESSING_ENABLED: z.string().default("0"),
+  PROD_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE: z.string().default("64"),
+  PROD_OTEL_SPAN_SCHEDULED_DELAY_MILLIS: z.string().default("200"),
+  PROD_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
+  PROD_OTEL_SPAN_MAX_QUEUE_SIZE: z.string().default("512"),
+  PROD_OTEL_LOG_MAX_EXPORT_BATCH_SIZE: z.string().default("64"),
+  PROD_OTEL_LOG_SCHEDULED_DELAY_MILLIS: z.string().default("200"),
+  PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
+  PROD_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
+
   RUNTIME_WAIT_THRESHOLD_IN_MS: z.coerce.number().int().default(30000),
 
   // Internal OTEL environment variables

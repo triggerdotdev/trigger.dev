@@ -92,10 +92,7 @@ export class CompleteAttemptService extends BaseService {
       },
     });
 
-    logger.debug("Completed attempt successfully, ACKing message", {
-      serializedOutput: completion.output,
-      outputType: completion.outputType,
-    });
+    logger.debug("Completed attempt successfully, ACKing message");
 
     await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
 

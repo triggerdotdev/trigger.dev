@@ -120,6 +120,10 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
       )}`
     );
 
+    socket.on("error", (err) => {
+      console.error("Connection upgrade error:", err);
+    });
+
     const url = new URL(req.url ?? "", "http://localhost");
 
     // Upgrade socket.io connection
@@ -133,6 +137,7 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
 
     // Only upgrade the connecting if the path is `/ws`
     if (url.pathname !== "/ws") {
+      // Setting the socket.destroy() error param causes an error event to be emitted which needs to be handled with socket.on("error") to prevent uncaught exceptions.
       socket.destroy(
         new Error(
           "Cannot connect because of invalid path: Please include `/ws` in the path of your upgrade request."

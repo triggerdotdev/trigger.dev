@@ -1,5 +1,17 @@
 # @trigger.dev/sveltekit
 
+## 3.0.0-beta.5
+
+### Patch Changes
+
+- @trigger.dev/sdk@3.0.0-beta.5
+
+## 3.0.0-beta.4
+
+### Patch Changes
+
+- @trigger.dev/sdk@3.0.0-beta.4
+
 ## 3.0.0-beta.3
 
 ### Patch Changes
