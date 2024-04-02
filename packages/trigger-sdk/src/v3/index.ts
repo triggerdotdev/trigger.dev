@@ -7,4 +7,4 @@ export { retry, type RetryOptions } from "./retry";
 import type { Context } from "./shared";
 export type { Context };
 
-export { logger } from "@trigger.dev/core/v3";
+export { logger, type LogLevel } from "@trigger.dev/core/v3";

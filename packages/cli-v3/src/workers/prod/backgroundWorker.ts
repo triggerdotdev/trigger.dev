@@ -4,6 +4,7 @@ import {
   CreateBackgroundWorkerResponse,
   InferSocketMessageSchema,
   ProdChildToWorkerMessages,
+  ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   ProdWorkerToChildMessages,
   SemanticInternalAttributes,
@@ -18,7 +19,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { UncaughtExceptionError } from "../common/errors";
+import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors";
 
 class UnexpectedExitError extends Error {
   constructor(public code: number) {
@@ -148,6 +149,14 @@ export class ProdBackgroundWorker {
               child.kill();
             }
           },
+          TASKS_FAILED_TO_PARSE: async (message) => {
+            if (!resolved) {
+              clearTimeout(timeout);
+              resolved = true;
+              reject(new TaskMetadataParseError(message.zodIssues, message.tasks));
+              child.kill();
+            }
+          },
         },
       });
 
@@ -200,6 +209,7 @@ export class ProdBackgroundWorker {
 
     if (!this._taskRunProcess) {
       const taskRunProcess = new TaskRunProcess(
+        payload.execution,
         this.path,
         {
           ...this.params.env,
@@ -374,6 +384,7 @@ class TaskRunProcess {
   public onCancelCheckpoint = Evt.create<{ version?: "v1" }>();
 
   constructor(
+    private execution: ProdTaskRunExecution,
     private path: string,
     private env: NodeJS.ProcessEnv,
     private metadata: BackgroundWorkerProperties,
@@ -384,6 +395,7 @@ class TaskRunProcess {
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
       env: {
+        ...(this.execution.run.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
         ...this.env,
         OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
           [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectConfig.projectDir,

@@ -38,8 +38,15 @@ import {
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
-import { UncaughtExceptionError } from "../workers/common/errors";
+import { TaskMetadataParseError, UncaughtExceptionError } from "../workers/common/errors";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "../workers/dev/backgroundWorker.js";
+import { runtimeCheck } from "../utilities/runtimeCheck";
+import {
+  logESMRequireError,
+  logTaskMetadataParseError,
+  parseBuildErrorStack,
+  parseNpmInstallError,
+} from "../utilities/deployErrors";
 
 let apiClient: CliApiClient | undefined;
 
@@ -72,7 +79,18 @@ export function configureDevCommand(program: Command) {
   });
 }
 
+const MINIMUM_NODE_MAJOR = 18;
+const MINIMUM_NODE_MINOR = 16;
+
 export async function devCommand(dir: string, options: DevCommandOptions) {
+  try {
+    runtimeCheck(MINIMUM_NODE_MAJOR, MINIMUM_NODE_MINOR);
+  } catch (e) {
+    logger.log(`${chalkError("X Error:")} ${e}`);
+    process.exitCode = 1;
+    return;
+  }
+
   const authorization = await isLoggedIn(options.profile);
 
   if (!authorization.ok) {
@@ -531,21 +549,59 @@ function useDev({
                     backgroundWorker
                   );
                 } catch (e) {
-                  if (e instanceof UncaughtExceptionError) {
+                  if (e instanceof TaskMetadataParseError) {
+                    logTaskMetadataParseError(e.zodIssues, e.tasks);
+                    return;
+                  } else if (e instanceof UncaughtExceptionError) {
+                    const parsedBuildError = parseBuildErrorStack(e.originalError);
+
+                    if (typeof parsedBuildError !== "string") {
+                      logESMRequireError(
+                        parsedBuildError,
+                        configPath
+                          ? { status: "file", path: configPath, config }
+                          : { status: "in-memory", config }
+                      );
+                      return;
+                    } else {
+                    }
+
                     if (e.originalError.stack) {
-                      logger.error("Background worker failed to start", e.originalError.stack);
+                      logger.log(
+                        `${chalkError("X Error:")} Worker failed to start`,
+                        e.originalError.stack
+                      );
                     }
 
                     return;
                   }
 
-                  if (e instanceof Error) {
-                    logger.error(`Background worker failed to start`, e.stack);
+                  const parsedError = parseNpmInstallError(e);
 
-                    return;
+                  if (typeof parsedError === "string") {
+                    logger.log(`${chalkError("X Error:")} ${parsedError}`);
+                  } else {
+                    switch (parsedError.type) {
+                      case "package-not-found-error": {
+                        logger.log(
+                          `\n${chalkError("X Error:")} The package ${chalkPurple(
+                            parsedError.packageName
+                          )} could not be found in the npm registry.`
+                        );
+
+                        break;
+                      }
+                      case "no-matching-version-error": {
+                        logger.log(
+                          `\n${chalkError("X Error:")} The package ${chalkPurple(
+                            parsedError.packageName
+                          )} could not resolve because the version doesn't exist`
+                        );
+
+                        break;
+                      }
+                    }
                   }
-
-                  logger.error(`Background worker failed to start: ${e}`);
                 }
               });
             },

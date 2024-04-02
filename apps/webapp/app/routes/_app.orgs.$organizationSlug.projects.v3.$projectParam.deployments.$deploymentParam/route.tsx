@@ -3,6 +3,7 @@ import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { UserAvatar } from "~/components/UserProfilePhoto";
+import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -155,6 +156,26 @@ export default function Page() {
                   })}
                 </TableBody>
               </Table>
+            </div>
+          ) : deployment.errorData ? (
+            <div className="flex flex-col">
+              {deployment.errorData.stack ? (
+                <CodeBlock
+                  language="markdown"
+                  rowTitle={deployment.errorData.message}
+                  code={deployment.errorData.stack}
+                  maxLines={20}
+                />
+              ) : (
+                <div className="flex flex-col">
+                  <Paragraph
+                    variant="base/bright"
+                    className="w-full border-b border-grid-dimmed py-2.5"
+                  >
+                    {deployment.errorData.message}
+                  </Paragraph>
+                </div>
+              )}
             </div>
           ) : null}
         </div>

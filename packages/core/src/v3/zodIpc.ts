@@ -9,6 +9,7 @@ import {
   ZodSocketMessageCatalogSchema,
 } from "./zodSocket";
 import { z } from "zod";
+import { ZodSchemaParsedError } from "./zodMessageHandler";
 
 interface ZodIpcMessageSender<TEmitCatalog extends ZodSocketMessageCatalogSchema> {
   send<K extends GetSocketMessagesWithoutCallback<TEmitCatalog>>(
@@ -272,7 +273,7 @@ export class ZodIpcConnection<
     const parsedPayload = schema.safeParse(payload);
 
     if (!parsedPayload.success) {
-      throw new Error(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
+      throw new ZodSchemaParsedError(parsedPayload.error, payload);
     }
 
     await this.#sendPacket({

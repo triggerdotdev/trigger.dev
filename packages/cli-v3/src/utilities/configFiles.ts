@@ -56,7 +56,15 @@ export function readAuthConfigProfile(profile: string = "default"): UserAuthConf
   }
 }
 
-function readAuthConfigFile(): UserAuthConfigFile | undefined {
+export function deleteAuthConfigProfile(profile: string = "default") {
+  const existingConfig = readAuthConfigFile() || {};
+
+  delete existingConfig[profile];
+
+  writeAuthConfigFile(existingConfig);
+}
+
+export function readAuthConfigFile(): UserAuthConfigFile | undefined {
   try {
     const authConfigFilePath = getAuthConfigFilePath();
 
@@ -71,7 +79,7 @@ function readAuthConfigFile(): UserAuthConfigFile | undefined {
   }
 }
 
-function writeAuthConfigFile(config: UserAuthConfigFile) {
+export function writeAuthConfigFile(config: UserAuthConfigFile) {
   const authConfigFilePath = getAuthConfigFilePath();
   mkdirSync(path.dirname(authConfigFilePath), {
     recursive: true,

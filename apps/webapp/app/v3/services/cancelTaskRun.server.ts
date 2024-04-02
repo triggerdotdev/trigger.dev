@@ -1,6 +1,6 @@
 import { TaskRun, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import { eventRepository } from "../eventRepository.server";
-import { marqs } from "../marqs.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { devPubSub } from "../marqs/devPubSub.server";
 import { BaseService } from "./baseService.server";
 import { socketIo } from "../handleSocketIo.server";

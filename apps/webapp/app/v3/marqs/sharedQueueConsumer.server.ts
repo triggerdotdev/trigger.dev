@@ -29,7 +29,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { marqs } from "../marqs.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 import { CancelAttemptService } from "../services/cancelAttempt.server";
 import { socketIo } from "../handleSocketIo.server";
@@ -272,35 +272,12 @@ export class SharedQueueConsumer {
 
     logger.log("dequeueMessageInSharedQueue()", { queueMessage: message });
 
-    const envId = this.#envIdFromQueue(message.queue);
-
-    const environment = await prisma.runtimeEnvironment.findUnique({
-      include: {
-        organization: true,
-        project: true,
-      },
-      where: {
-        id: envId,
-      },
-    });
-
-    if (!environment) {
-      logger.error("Environment not found", {
-        queueMessage: message.data,
-        envId,
-      });
-
-      this.#ackAndDoMoreWork(message.messageId);
-      return;
-    }
-
     const messageBody = MessageBody.safeParse(message.data);
 
     if (!messageBody.success) {
       logger.error("Failed to parse message", {
         queueMessage: message.data,
         error: messageBody.error,
-        env: environment,
       });
 
       this.#ackAndDoMoreWork(message.messageId);
@@ -402,6 +379,7 @@ export class SharedQueueConsumer {
             lockedById: backgroundTask.id,
           },
           include: {
+            runtimeEnvironment: true,
             attempts: {
               take: 1,
               orderBy: { number: "desc" },
@@ -432,7 +410,7 @@ export class SharedQueueConsumer {
         const queue = await prisma.taskQueue.findUnique({
           where: {
             runtimeEnvironmentId_name: {
-              runtimeEnvironmentId: environment.id,
+              runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
               name: lockedTaskRun.queue,
             },
           },
@@ -458,7 +436,7 @@ export class SharedQueueConsumer {
             backgroundWorkerTaskId: backgroundTask.id,
             status: "PENDING" as const,
             queueId: queue.id,
-            runtimeEnvironmentId: environment.id,
+            runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
           },
           include: {
             backgroundWorkerTask: true,
@@ -514,10 +492,10 @@ export class SharedQueueConsumer {
                 machine: machine.data,
                 // identifiers
                 id: taskRunAttempt.id,
-                envId: environment.id,
-                envType: environment.type,
-                orgId: environment.organizationId,
-                projectId: environment.projectId,
+                envId: lockedTaskRun.runtimeEnvironment.id,
+                envType: lockedTaskRun.runtimeEnvironment.type,
+                orgId: lockedTaskRun.runtimeEnvironment.organizationId,
+                projectId: lockedTaskRun.runtimeEnvironment.projectId,
                 runId: taskRunAttempt.taskRunId,
               },
             });
@@ -646,7 +624,7 @@ export class SharedQueueConsumer {
         const queue = await prisma.taskQueue.findUnique({
           where: {
             runtimeEnvironmentId_name: {
-              runtimeEnvironmentId: environment.id,
+              runtimeEnvironmentId: resumableAttempt.runtimeEnvironmentId,
               name: resumableRun.queue,
             },
           },
@@ -773,10 +751,6 @@ export class SharedQueueConsumer {
 
     this.#doMoreWork();
     return;
-  }
-
-  #envIdFromQueue(queueName: string) {
-    return queueName.split(":")[1];
   }
 
   #doMoreWork(intervalInMs = this._options.interval) {

@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-export function safeJsonParse(json: string): unknown {
+export function safeJsonParse(json?: string): unknown {
+  if (!json) {
+    return;
+  }
+
   try {
     return JSON.parse(json);
   } catch (e) {

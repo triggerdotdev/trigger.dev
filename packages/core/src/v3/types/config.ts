@@ -1,3 +1,4 @@
+import { LogLevel } from "../logger/taskLogger";
 import { RetryOptions } from "../schemas";
 import type { InstrumentationOption } from "@opentelemetry/instrumentation";
 
@@ -31,4 +32,13 @@ export interface ProjectConfig {
    * The OpenTelemetry instrumentations to enable
    */
   instrumentations?: InstrumentationOption[];
+
+  /**
+   * Set the log level for the logger. Defaults to "log", so you will see "log", "warn", and "error" messages, but not "info", or "debug" messages.
+   *
+   * We automatically set the logLevel to "debug" during test runs
+   *
+   * @default "log"
+   */
+  logLevel?: LogLevel;
 }

@@ -68,7 +68,7 @@ function getTracer() {
   const provider = new NodeTracerProvider({
     forceFlushTimeoutMillis: 500,
     resource: new Resource({
-      [SEMRESATTRS_SERVICE_NAME]: "trigger.dev",
+      [SEMRESATTRS_SERVICE_NAME]: env.SERVICE_NAME,
     }),
     sampler: new ParentBasedSampler({
       root: new CustomWebappSampler(new TraceIdRatioBasedSampler(samplingRate)), // 5% sampling

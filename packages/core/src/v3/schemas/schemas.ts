@@ -42,6 +42,7 @@ export const Config = z.object({
   additionalPackages: z.string().array().optional(),
   additionalFiles: z.string().array().optional(),
   dependenciesToBundle: z.array(z.union([z.string(), RegexSchema])).optional(),
+  logLevel: z.string().optional(),
 });
 
 export type Config = z.infer<typeof Config>;

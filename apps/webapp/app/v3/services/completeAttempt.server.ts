@@ -12,7 +12,7 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
 import { eventRepository } from "../eventRepository.server";
-import { marqs } from "../marqs.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";

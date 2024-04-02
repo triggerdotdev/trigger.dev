@@ -6,6 +6,10 @@ import {
   type HandleErrorFunction,
   DurableClock,
   clock,
+  logLevels,
+  LogLevel,
+  getEnvVar,
+  ZodSchemaParsedError,
 } from "@trigger.dev/core/v3";
 
 __WORKER_SETUP__;
@@ -53,10 +57,18 @@ const devRuntimeManager = new DevRuntimeManager();
 
 runtime.setGlobalRuntimeManager(devRuntimeManager);
 
+const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
+
+const configLogLevel = triggerLogLevel
+  ? triggerLogLevel
+  : importedConfig
+  ? importedConfig.logLevel
+  : __PROJECT_CONFIG__.logLevel;
+
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
   tracer: tracer,
-  level: "info",
+  level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "log",
 });
 
 logger.setGlobalTaskLogger(otelTaskLogger);
@@ -208,8 +220,14 @@ process.on("message", async (msg: any) => {
   await handler.handleMessage(msg);
 });
 
-sender.send("TASKS_READY", { tasks: getTaskMetadata() }).catch((err) => {
-  console.error("Failed to send TASKS_READY message", err);
+const TASK_METADATA = getTaskMetadata();
+
+sender.send("TASKS_READY", { tasks: TASK_METADATA }).catch((err) => {
+  if (err instanceof ZodSchemaParsedError) {
+    sender.send("TASKS_FAILED_TO_PARSE", { zodIssues: err.error.issues, tasks: TASK_METADATA });
+  } else {
+    console.error("Failed to send TASKS_READY message", err);
+  }
 });
 
 process.title = "trigger-dev-worker";

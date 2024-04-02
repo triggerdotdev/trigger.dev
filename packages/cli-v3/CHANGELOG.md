@@ -1,5 +1,19 @@
 # trigger.dev
 
+## 3.0.0-beta.4
+
+### Patch Changes
+
+- c702d6a9c: better handle task metadata parse errors, and display nicely formatted errors
+- b271742dc: Configurable log levels in the config file and via env var
+- 8c4df326c: Improve error messages during dev/deploy and handle deploy image build issues
+- b271742dc: Added a Node.js runtime check for the CLI
+- 8694e573f: Fix CLI logout and add list-profiles command
+- Updated dependencies [c702d6a9c]
+- Updated dependencies [b271742dc]
+- Updated dependencies [9af2570da]
+  - @trigger.dev/core@3.0.0-beta.3
+
 ## 3.0.0-beta.3
 
 ### Patch Changes

@@ -7,6 +7,7 @@ import { configureLogoutCommand } from "../commands/logout.js";
 import { configureWhoamiCommand } from "../commands/whoami.js";
 import { COMMAND_NAME } from "../consts.js";
 import { getVersion } from "../utilities/getVersion.js";
+import { configureListProfilesCommand } from "../commands/list-profiles.js";
 
 export const program = new Command();
 
@@ -21,3 +22,4 @@ configureDevCommand(program);
 configureDeployCommand(program);
 configureWhoamiCommand(program);
 configureLogoutCommand(program);
+configureListProfilesCommand(program);
