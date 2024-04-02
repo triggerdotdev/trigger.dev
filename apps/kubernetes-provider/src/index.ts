@@ -83,12 +83,12 @@ class KubernetesTaskOperations implements TaskOperations {
                       containerPort: 8000,
                     },
                   ],
-                  // resources: {
-                  //   limits: {
-                  //     cpu: "100m",
-                  //     memory: "50Mi",
-                  //   },
-                  // },
+                  resources: {
+                    limits: {
+                      cpu: "250m",
+                      memory: "0.5G",
+                    },
+                  },
                   lifecycle: {
                     preStop: {
                       exec: {
