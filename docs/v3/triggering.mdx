@@ -23,6 +23,8 @@ You can trigger any task from your backend code, using either `trigger()` or `ba
   Trigger.dev API key to the world.
 </Note>
 
+You can use Next.js Server Actions but [you need to be careful with bundling](#next-js-server-actions).
+
 ### Authentication
 
 When you trigger a task from your backend code, you need to set the `TRIGGER_SECRET_KEY` environment variable. You can find the value on the API keys page in the Trigger.dev dashboard. [More info on API keys](/v3/apikeys).
@@ -188,3 +190,71 @@ export const batchParentTask = task({
   },
 });
 ```
+
+## Next.js Server Actions
+
+Server Actions allow you to call your backend code without creating API routes. This is very useful for triggering tasks but you need to be careful you don't accidentally bundle the Trigger.dev SDK into your frontend code.
+
+If you see an error like this then you've bundled `@trigger.dev/sdk` into your frontend code:
+
+```bash
+Module build failed: UnhandledSchemeError: Reading from "node:crypto" is not handled by plugins (Unhandled scheme).
+Module build failed: UnhandledSchemeError: Reading from "node:process" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs.
+```
+
+When you use server actions that use `@trigger.dev/sdk`:
+
+- The file can't have any React components in it.
+- The file should have `"use server"` on the first line.
+
+Here's an example of how to do it with a component that calls the server action and the actions file:
+
+<CodeGroup>
+
+```tsx app/page.tsx
+"use client";
+
+import { create } from "@/app/actions";
+
+export default function Home() {
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-between p-24">
+      <button
+        onClick={async () => {
+          const handle = await create();
+          console.log(handle);
+        }}
+      >
+        Create a thing
+      </button>
+    </main>
+  );
+}
+```
+
+```tsx app/actions.ts
+"use server";
+
+import { createAvatar } from "@/trigger/create-avatar";
+
+export async function create() {
+  try {
+    const handle = await createAvatar.trigger({
+      payload: {
+        userImage: "http://...",
+      },
+    });
+
+    return { handle };
+  } catch (error) {
+    console.error(error);
+    return {
+      error: "something went wrong",
+    };
+  }
+}
+```
+
+</CodeGroup>
