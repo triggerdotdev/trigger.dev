@@ -44,7 +44,7 @@ export default function Integrations() {
 
   return (
     <>
-      <Paragraph variant="small" spacing>
+      <Paragraph variant="small" spacing className="pt-2">
         A Scheduled Trigger runs a Job on a repeated schedule. The schedule can use a CRON
         expression or an interval.
       </Paragraph>

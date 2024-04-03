@@ -44,7 +44,7 @@ export default function Integrations() {
 
   return (
     <>
-      <Paragraph variant="small" spacing>
+      <Paragraph variant="small" spacing className="pt-2">
         A Webhook Trigger runs a Job when it receives a matching payload at a registered HTTP
         Endpoint.
       </Paragraph>
