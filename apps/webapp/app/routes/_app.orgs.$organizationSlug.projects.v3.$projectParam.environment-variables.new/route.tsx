@@ -16,6 +16,7 @@ import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { Switch } from "~/components/primitives/Switch";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -134,6 +135,8 @@ export default function Page() {
     shouldRevalidate: "onSubmit",
   });
 
+  const [revealAll, setRevealAll] = useState(false);
+
   useEffect(() => {
     setIsOpen(true);
   }, []);
@@ -169,7 +172,15 @@ export default function Page() {
               />
             </InputGroup>
             <InputGroup fullWidth>
-              <Label>Values</Label>
+              <div className="flex items-center justify-between">
+                <Label>Values</Label>
+                <Switch
+                  variant="small"
+                  label="Reveal values"
+                  checked={revealAll}
+                  onCheckedChange={(e) => setRevealAll(e.valueOf())}
+                />
+              </div>
               <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2">
                 {environments.map((environment, index) => {
                   return (
@@ -186,7 +197,7 @@ export default function Page() {
                         <EnvironmentLabel environment={environment} className="h-5 px-2" />
                       </label>
                       <Input
-                        type="password"
+                        type={revealAll ? "text" : "password"}
                         name={`values[${index}].value`}
                         placeholder="Not set"
                       />
