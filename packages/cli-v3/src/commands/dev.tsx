@@ -25,7 +25,11 @@ import { z } from "zod";
 import * as packageJson from "../../package.json";
 import { CliApiClient } from "../apiClient";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
-import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
+import {
+  bundleDependenciesPlugin,
+  bundleTriggerDevCore,
+  workerSetupImportConfigPlugin,
+} from "../utilities/build";
 import { chalkError, chalkGrey, chalkPurple, chalkTask, chalkWorker } from "../utilities/cliOutput";
 import { readConfig } from "../utilities/configFiles";
 import { readJSONFile } from "../utilities/fileSystem";
@@ -384,6 +388,7 @@ function useDev({
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
         plugins: [
+          bundleTriggerDevCore("workerFacade", config.tsconfigPath),
           bundleDependenciesPlugin(
             "workerFacade",
             (config.dependenciesToBundle ?? []).concat([/^@trigger.dev/]),

@@ -5,6 +5,44 @@ import { extname, isAbsolute } from "node:path";
 import tsConfigPaths from "tsconfig-paths";
 import { logger } from "./logger";
 
+export function bundleTriggerDevCore(buildIdentifier: string, tsconfigPath?: string): Plugin {
+  return {
+    name: "trigger-bundle-core",
+    setup(build) {
+      build.onResolve({ filter: /.*/ }, (args) => {
+        if (args.path !== "@trigger.dev/core/v3") {
+          return undefined;
+        }
+
+        const triggerSdkPath = require.resolve("@trigger.dev/sdk/v3", { paths: [process.cwd()] });
+
+        logger.debug(`[${buildIdentifier}][trigger-bundle-core] Resolved @trigger.dev/sdk/v3`, {
+          ...args,
+          triggerSdkPath,
+        });
+
+        const resolvedPath = require.resolve("@trigger.dev/core/v3", {
+          paths: [triggerSdkPath],
+        });
+
+        logger.debug(
+          `[${buildIdentifier}][trigger-bundle-core] Externalizing @trigger.dev/core/v3`,
+          {
+            ...args,
+            triggerSdkPath,
+            resolvedPath,
+          }
+        );
+
+        return {
+          path: resolvedPath,
+          external: false,
+        };
+      });
+    },
+  };
+}
+
 export function workerSetupImportConfigPlugin(configPath?: string): Plugin {
   return {
     name: "trigger-worker-setup",
