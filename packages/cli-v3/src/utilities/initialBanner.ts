@@ -1,6 +1,5 @@
 import { spinner } from "@clack/prompts";
 import chalk from "chalk";
-import supportsColor from "supports-color";
 import type { Result } from "update-check";
 import checkForUpdate from "update-check";
 import pkg from "../../package.json";
@@ -52,7 +51,7 @@ export async function printStandloneInitialBanner(performUpdateCheck = true) {
     }
   }
 
-  logger.log(text + "\n" + (supportsColor.stdout ? chalkGrey("-".repeat(54)) : "-".repeat(54)));
+  logger.log(text + "\n" + chalkGrey("-".repeat(54)));
 }
 
 export function printDevBanner() {
