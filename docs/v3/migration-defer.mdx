@@ -118,9 +118,9 @@ There will be a nice way to do this soon when you call `trigger()` but for now y
 ```ts
 export const helloWorld = task({
   id: "hello-world",
-  run: async (payload: { delayUntil?: Date; delayForSeconds?: number }) => {
+  run: async (payload: { delayUntil?: string; delayForSeconds?: number }) => {
     if (payload.delayUntil) {
-      await wait.until({ date: payload.delayUntil });
+      await wait.until({ date: new Date(payload.delayUntil) });
     }
 
     if (payload.delayForSeconds) {
