@@ -24,6 +24,10 @@ type Namespace = {
   };
 };
 
+type ComputeResources = {
+  [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
+};
+
 class KubernetesTaskOperations implements TaskOperations {
   #namespace: Namespace;
   #k8sApi: {
@@ -55,25 +59,15 @@ class KubernetesTaskOperations implements TaskOperations {
           template: {
             metadata: {
               labels: {
+                ...this.#getSharedLabels(opts),
                 app: "task-index",
                 "app.kubernetes.io/part-of": "trigger-worker",
                 "app.kubernetes.io/component": "index",
-                env: opts.envId,
-                envtype: this.#envTypeToLabelValue(opts.envType),
-                org: opts.orgId,
-                project: opts.projectId,
+                deployment: opts.deploymentId,
               },
             },
             spec: {
-              restartPolicy: "Never",
-              imagePullSecrets: [
-                {
-                  name: "registry-trigger",
-                },
-              ],
-              nodeSelector: {
-                nodetype: "worker",
-              },
+              ...this.#defaultPodSpec,
               containers: [
                 {
                   name: this.#getIndexContainerName(opts.shortCode),
@@ -87,6 +81,7 @@ class KubernetesTaskOperations implements TaskOperations {
                     limits: {
                       cpu: "250m",
                       memory: "0.5G",
+                      "ephemeral-storage": "2Gi",
                     },
                   },
                   lifecycle: {
@@ -97,10 +92,7 @@ class KubernetesTaskOperations implements TaskOperations {
                     },
                   },
                   env: [
-                    {
-                      name: "DEBUG",
-                      value: "true",
-                    },
+                    ...this.#getSharedEnv(opts.envId),
                     {
                       name: "INDEX_TASKS",
                       value: "true",
@@ -112,42 +104,6 @@ class KubernetesTaskOperations implements TaskOperations {
                     {
                       name: "TRIGGER_API_URL",
                       value: opts.apiUrl,
-                    },
-                    {
-                      name: "TRIGGER_ENV_ID",
-                      value: opts.envId,
-                    },
-                    {
-                      name: "OTEL_EXPORTER_OTLP_ENDPOINT",
-                      value: OTEL_EXPORTER_OTLP_ENDPOINT,
-                    },
-                    {
-                      name: "HTTP_SERVER_PORT",
-                      value: "8000",
-                    },
-                    {
-                      name: "POD_NAME",
-                      valueFrom: {
-                        fieldRef: {
-                          fieldPath: "metadata.name",
-                        },
-                      },
-                    },
-                    {
-                      name: "COORDINATOR_HOST",
-                      valueFrom: {
-                        fieldRef: {
-                          fieldPath: "status.hostIP",
-                        },
-                      },
-                    },
-                    {
-                      name: "MACHINE_NAME",
-                      valueFrom: {
-                        fieldRef: {
-                          fieldPath: "spec.nodeName",
-                        },
-                      },
                     },
                   ],
                 },
@@ -167,26 +123,15 @@ class KubernetesTaskOperations implements TaskOperations {
           name: this.#getRunContainerName(opts.runId),
           namespace: this.#namespace.metadata.name,
           labels: {
+            ...this.#getSharedLabels(opts),
             app: "task-run",
             "app.kubernetes.io/part-of": "trigger-worker",
             "app.kubernetes.io/component": "create",
-            env: opts.envId,
-            envtype: this.#envTypeToLabelValue(opts.envType),
-            org: opts.orgId,
-            project: opts.projectId,
             run: opts.runId,
           },
         },
         spec: {
-          restartPolicy: "Never",
-          imagePullSecrets: [
-            {
-              name: "registry-trigger",
-            },
-          ],
-          nodeSelector: {
-            nodetype: "worker",
-          },
+          ...this.#defaultPodSpec,
           containers: [
             {
               name: this.#getRunContainerName(opts.runId),
@@ -197,7 +142,13 @@ class KubernetesTaskOperations implements TaskOperations {
                 },
               ],
               resources: {
-                limits: this.#getResourcesFromMachineConfig(opts.machine),
+                requests: {
+                  ...this.#defaultResourceRequests,
+                },
+                limits: {
+                  ...this.#defaultResourceLimits,
+                  ...this.#getResourcesFromMachineConfig(opts.machine),
+                },
               },
               lifecycle: {
                 postStart: {
@@ -212,53 +163,10 @@ class KubernetesTaskOperations implements TaskOperations {
                 },
               },
               env: [
-                {
-                  name: "DEBUG",
-                  value: "true",
-                },
-                {
-                  name: "HTTP_SERVER_PORT",
-                  value: "8000",
-                },
-                {
-                  name: "TRIGGER_ENV_ID",
-                  value: opts.envId,
-                },
+                ...this.#getSharedEnv(opts.envId),
                 {
                   name: "TRIGGER_RUN_ID",
                   value: opts.runId,
-                },
-                {
-                  name: "TRIGGER_WORKER_VERSION",
-                  value: opts.version,
-                },
-                {
-                  name: "OTEL_EXPORTER_OTLP_ENDPOINT",
-                  value: OTEL_EXPORTER_OTLP_ENDPOINT,
-                },
-                {
-                  name: "POD_NAME",
-                  valueFrom: {
-                    fieldRef: {
-                      fieldPath: "metadata.name",
-                    },
-                  },
-                },
-                {
-                  name: "COORDINATOR_HOST",
-                  valueFrom: {
-                    fieldRef: {
-                      fieldPath: "status.hostIP",
-                    },
-                  },
-                },
-                {
-                  name: "NODE_NAME",
-                  valueFrom: {
-                    fieldRef: {
-                      fieldPath: "spec.nodeName",
-                    },
-                  },
                 },
               ],
               volumeMounts: [
@@ -288,27 +196,16 @@ class KubernetesTaskOperations implements TaskOperations {
           name: `${this.#getRunContainerName(opts.runId)}-${randomUUID().slice(0, 8)}`,
           namespace: this.#namespace.metadata.name,
           labels: {
+            ...this.#getSharedLabels(opts),
             app: "task-run",
             "app.kubernetes.io/part-of": "trigger-worker",
             "app.kubernetes.io/component": "restore",
-            env: opts.envId,
-            envtype: this.#envTypeToLabelValue(opts.envType),
-            org: opts.orgId,
-            project: opts.projectId,
             run: opts.runId,
             checkpoint: opts.checkpointId,
           },
         },
         spec: {
-          restartPolicy: "Never",
-          imagePullSecrets: [
-            {
-              name: "registry-trigger",
-            },
-          ],
-          nodeSelector: {
-            nodetype: "worker",
-          },
+          ...this.#defaultPodSpec,
           initContainers: [
             {
               name: "pull-base-image",
@@ -348,7 +245,13 @@ class KubernetesTaskOperations implements TaskOperations {
                 },
               ],
               resources: {
-                limits: this.#getResourcesFromMachineConfig(opts.machine),
+                requests: {
+                  ...this.#defaultResourceRequests,
+                },
+                limits: {
+                  ...this.#defaultResourceLimits,
+                  ...this.#getResourcesFromMachineConfig(opts.machine),
+                },
               },
               lifecycle: {
                 postStart: {
@@ -406,7 +309,90 @@ class KubernetesTaskOperations implements TaskOperations {
     }
   }
 
-  #getResourcesFromMachineConfig(config: Machine) {
+  get #defaultPodSpec(): Omit<k8s.V1PodSpec, "containers"> {
+    return {
+      restartPolicy: "Never",
+      automountServiceAccountToken: false,
+      imagePullSecrets: [
+        {
+          name: "registry-trigger",
+        },
+      ],
+      nodeSelector: {
+        nodetype: "worker",
+      },
+    };
+  }
+
+  get #defaultResourceRequests(): ComputeResources {
+    return {
+      "ephemeral-storage": "2Gi",
+    };
+  }
+
+  get #defaultResourceLimits(): ComputeResources {
+    return {
+      "ephemeral-storage": "10Gi",
+    };
+  }
+
+  #getSharedEnv(envId: string): k8s.V1EnvVar[] {
+    return [
+      {
+        name: "TRIGGER_ENV_ID",
+        value: envId,
+      },
+      {
+        name: "DEBUG",
+        value: process.env.DEBUG ? "1" : "0",
+      },
+      {
+        name: "HTTP_SERVER_PORT",
+        value: "8000",
+      },
+      {
+        name: "OTEL_EXPORTER_OTLP_ENDPOINT",
+        value: OTEL_EXPORTER_OTLP_ENDPOINT,
+      },
+      {
+        name: "POD_NAME",
+        valueFrom: {
+          fieldRef: {
+            fieldPath: "metadata.name",
+          },
+        },
+      },
+      {
+        name: "COORDINATOR_HOST",
+        valueFrom: {
+          fieldRef: {
+            fieldPath: "status.hostIP",
+          },
+        },
+      },
+      {
+        name: "MACHINE_NAME",
+        valueFrom: {
+          fieldRef: {
+            fieldPath: "spec.nodeName",
+          },
+        },
+      },
+    ];
+  }
+
+  #getSharedLabels(
+    opts: TaskOperationsIndexOptions | TaskOperationsCreateOptions | TaskOperationsRestoreOptions
+  ): Record<string, string> {
+    return {
+      env: opts.envId,
+      envtype: this.#envTypeToLabelValue(opts.envType),
+      org: opts.orgId,
+      project: opts.projectId,
+    };
+  }
+
+  #getResourcesFromMachineConfig(config: Machine): ComputeResources {
     return {
       cpu: `${config.cpu}`,
       memory: `${config.memory}G`,
