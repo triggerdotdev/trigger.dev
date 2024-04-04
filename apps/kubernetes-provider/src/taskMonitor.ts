@@ -153,15 +153,15 @@ export class TaskMonitor {
 
     switch (rawReason) {
       case "Error":
-        reason = "Unknown error";
+        reason = "Unknown error.";
         break;
       case "Evicted":
         if (message.startsWith("Pod ephemeral local storage usage")) {
-          reason = "Storage limit exceeded";
+          reason = "Storage limit exceeded.";
         } else if (message) {
-          reason = message;
+          reason = `Evicted: ${message}`;
         } else {
-          reason = "Evicted for unknown reason";
+          reason = "Evicted for unknown reason.";
         }
 
         if (logs.startsWith("failed to try resolving symlinks")) {
@@ -169,7 +169,7 @@ export class TaskMonitor {
         }
         break;
       case "OOMKilled":
-        reason = "Out of memory";
+        reason = "Out of memory! Try increasing the memory on this task.";
         break;
       default:
         break;
