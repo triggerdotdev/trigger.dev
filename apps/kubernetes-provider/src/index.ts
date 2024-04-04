@@ -9,6 +9,7 @@ import {
 } from "@trigger.dev/core-apps";
 import { Machine, PostStartCauses, PreStopCauses, EnvironmentType } from "@trigger.dev/core/v3";
 import { randomUUID } from "crypto";
+import { TaskMonitor } from "./taskMonitor";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 const NODE_NAME = process.env.NODE_NAME || "local";
@@ -502,3 +503,34 @@ const provider = new ProviderShell({
 });
 
 provider.listen();
+
+const taskMonitor = new TaskMonitor({
+  runtimeEnv: RUNTIME_ENV,
+  onIndexFailure: async (deploymentId, failureInfo) => {
+    logger.log("Indexing failed", { deploymentId, failureInfo });
+
+    try {
+      provider.platformSocket.send("INDEXING_FAILED", {
+        deploymentId,
+        error: {
+          name: `Crashed with exit code ${failureInfo.exitCode}`,
+          message: failureInfo.reason,
+          stack: failureInfo.logs,
+        },
+      });
+    } catch (error) {
+      logger.error(error);
+    }
+  },
+  onRunFailure: async (runId, failureInfo) => {
+    logger.log("Run failed:", { runId, failureInfo });
+
+    try {
+      provider.platformSocket.send("WORKER_CRASHED", { runId, ...failureInfo });
+    } catch (error) {
+      logger.error(error);
+    }
+  },
+});
+
+taskMonitor.start();

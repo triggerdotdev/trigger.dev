@@ -71,6 +71,26 @@ export const ProviderToPlatformMessages = {
       status: z.literal("ok"),
     }),
   },
+  WORKER_CRASHED: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+      reason: z.string().optional(),
+      exitCode: z.number().optional(),
+      message: z.string().optional(),
+    }),
+  },
+  INDEXING_FAILED: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      deploymentId: z.string(),
+      error: z.object({
+        name: z.string(),
+        message: z.string(),
+        stack: z.string().optional(),
+      }),
+    }),
+  },
 };
 
 export const PlatformToProviderMessages = {
@@ -94,6 +114,7 @@ export const PlatformToProviderMessages = {
       envType: EnvironmentType,
       orgId: z.string(),
       projectId: z.string(),
+      deploymentId: z.string(),
     }),
     callback: z.discriminatedUnion("success", [
       z.object({

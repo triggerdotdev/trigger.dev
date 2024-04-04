@@ -56,6 +56,7 @@ export class IndexDeploymentService extends BaseService {
         envType: deployment.environment.type,
         projectId: deployment.projectId,
         orgId: deployment.environment.organizationId,
+        deploymentId: deployment.id,
       });
 
       logger.debug("Index ACK received", { responses });
