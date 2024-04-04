@@ -44,7 +44,7 @@ export default function Integrations() {
 
   return (
     <>
-      <Paragraph variant="small" spacing>
+      <Paragraph variant="small" spacing className="pt-2">
         External Triggers get registered with external APIs, for example a webhook.
       </Paragraph>
       <Table containerClassName="mt-4">

@@ -67,6 +67,11 @@ export function authorizationRateLimitMiddleware({
       logger.info(`RateLimiter (${keyPrefix}): request to ${req.path}`);
     }
 
+    // allow OPTIONS requests
+    if (req.method.toUpperCase() === "OPTIONS") {
+      return next();
+    }
+
     //first check if any of the pathMatchers match the request path
     const path = req.path;
     if (
@@ -109,6 +114,7 @@ export function authorizationRateLimitMiddleware({
             status: 401,
             type: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401",
             detail: "No authorization header provided",
+            error: "No authorization header provided",
           },
           null,
           2
@@ -160,6 +166,7 @@ export function authorizationRateLimitMiddleware({
           detail: `Rate limit exceeded ${remaining}/${limit} requests remaining. Retry after ${reset} seconds.`,
           reset: reset,
           limit: limit,
+          error: `Rate limit exceeded ${remaining}/${limit} requests remaining. Retry after ${reset} seconds.`,
         },
         null,
         2
@@ -182,7 +189,16 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
   },
   limiter: Ratelimit.slidingWindow(env.API_RATE_LIMIT_MAX, env.API_RATE_LIMIT_WINDOW as Duration),
   pathMatchers: [/^\/api/],
-  pathWhiteList: ["/api/v1/authorization-code", "/api/v1/token"],
+  // Allow /api/v1/tasks/:id/callback/:secret
+  pathWhiteList: [
+    "/api/v1/authorization-code",
+    "/api/v1/token",
+    /^\/api\/v1\/tasks\/[^\/]+\/callback\/[^\/]+$/, // /api/v1/tasks/$id/callback/$secret
+    /^\/api\/v1\/runs\/[^\/]+\/tasks\/[^\/]+\/callback\/[^\/]+$/, // /api/v1/runs/$runId/tasks/$id/callback/$secret
+    /^\/api\/v1\/http-endpoints\/[^\/]+\/env\/[^\/]+\/[^\/]+$/, // /api/v1/http-endpoints/$httpEndpointId/env/$envType/$shortcode
+    /^\/api\/v1\/sources\/http\/[^\/]+$/, // /api/v1/sources/http/$id
+    /^\/api\/v1\/endpoints\/[^\/]+\/[^\/]+\/index\/[^\/]+$/, // /api/v1/endpoints/$environmentId/$endpointSlug/index/$indexHookIdentifier
+  ],
   log: {
     rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",
     requests: env.API_RATE_LIMIT_REQUEST_LOGS_ENABLED === "1",

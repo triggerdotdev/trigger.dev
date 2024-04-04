@@ -15,6 +15,7 @@ import { Tabs, TabsProps } from "./Tabs";
 
 type WithChildren = {
   children: React.ReactNode;
+  className?: string;
 };
 
 export function NavBar({ children }: WithChildren) {
@@ -72,8 +73,8 @@ export function PageAccessories({ children }: WithChildren) {
   return <div className="flex items-center gap-3">{children}</div>;
 }
 
-export function PageInfoRow({ children }: WithChildren) {
-  return <div className="flex w-full items-center gap-2">{children}</div>;
+export function PageInfoRow({ children, className }: WithChildren) {
+  return <div className={cn("flex w-full items-center gap-2", className)}>{children}</div>;
 }
 
 export function PageInfoGroup({

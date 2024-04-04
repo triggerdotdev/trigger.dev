@@ -463,7 +463,8 @@
         "v3/upgrading-from-v2",
         "v3/changelog",
         "v3/feature-matrix",
-        "v3/limits"
+        "v3/known-issues",
+        "v3/limits-performance"
       ]
     },
     {
@@ -618,10 +619,5 @@
     "twitter": "https://twitter.com/triggerdotdev",
     "github": "https://github.com/triggerdotdev",
     "linkedin": "https://www.linkedin.com/company/triggerdotdev"
-  },
-  "analytics": {
-    "posthog": {
-      "apiKey": "phc_9aSDbJCaDUMdZdHxxMPTvcj7A9fsl3mCgM1RBPmPsl7"
-    }
   }
 }

@@ -124,9 +124,9 @@ export function RunOverview({ run, trigger, showRerun, paths, currentUser }: Run
           {!run.isFinished && <CancelRun runId={run.id} />}
         </PageAccessories>
       </NavBar>
-      <PageBody scrollable={false}>
-        <div className="px-4 pt-4">
-          <PageInfoRow>
+      <PageBody scrollable={false} className="grid grid-rows-[auto_1fr] overflow-hidden">
+        <div className="border-b border-grid-dimmed px-4 py-4">
+          <PageInfoRow className="overflow-hidden">
             <PageInfoGroup>
               <PageInfoProperty
                 icon={<RunStatusIcon status={run.status} className="h-4 w-4" />}
@@ -166,7 +166,7 @@ export function RunOverview({ run, trigger, showRerun, paths, currentUser }: Run
             </PageInfoGroup>
           </PageInfoRow>
         </div>
-        <div className="grid h-full grid-cols-2 gap-2">
+        <div className="grid h-full grid-cols-2 gap-2 overflow-hidden">
           <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <div>
               {run.status === "SUCCESS" &&
