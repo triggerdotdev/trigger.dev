@@ -123,7 +123,6 @@
     "simple-git": "^3.19.0",
     "socket.io-client": "^4.7.4",
     "source-map-support": "^0.5.21",
-    "supports-color": "^9.4.0",
     "terminal-link": "^3.0.0",
     "tiny-invariant": "^1.2.0",
     "tsconfig-paths": "^4.2.0",

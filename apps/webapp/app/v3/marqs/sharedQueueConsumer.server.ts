@@ -1,12 +1,4 @@
-import {
-  Context,
-  ROOT_CONTEXT,
-  Span,
-  SpanKind,
-  context,
-  propagation,
-  trace,
-} from "@opentelemetry/api";
+import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
 import {
   Machine,
   ProdTaskRunExecution,
@@ -28,16 +20,15 @@ import {
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
+import { singleton } from "~/utils/singleton";
 import { marqs } from "~/v3/marqs/index.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
-import { CancelAttemptService } from "../services/cancelAttempt.server";
+import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
-import { singleton } from "~/utils/singleton";
-import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
 import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
-
-const tracer = trace.getTracer("sharedQueueConsumer");
+import { CancelAttemptService } from "../services/cancelAttempt.server";
+import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
+import { tracer } from "../tracer.server";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -154,6 +145,10 @@ export class SharedQueueConsumer {
 
     logger.debug("Stopping shared queue consumer");
     this._enabled = false;
+
+    if (this._currentSpan) {
+      this._currentSpan.end();
+    }
   }
 
   async #cancelInProgressAttempts(reason: string) {

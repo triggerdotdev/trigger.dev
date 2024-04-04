@@ -319,13 +319,20 @@ export class BackgroundWorker {
 
     let resolved = false;
 
+    const cwd = dirname(this.path);
+
+    const fullEnv = {
+      ...this.params.env,
+      ...this.#readEnvVars(),
+    };
+
+    logger.debug("Initializing worker", { path: this.path, cwd, fullEnv });
+
     this.tasks = await new Promise<Array<TaskMetadataWithFilePath>>((resolve, reject) => {
       const child = fork(this.path, {
         stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
-        env: {
-          ...this.params.env,
-          ...this.#readEnvVars(),
-        },
+        cwd,
+        env: fullEnv,
       });
 
       // Set a timeout to kill the child process if it doesn't respond
@@ -580,14 +587,17 @@ class TaskRunProcess {
       ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
     };
 
+    const cwd = dirname(this.path);
+
     logger.debug(`[${this.execution.run.id}] initializing task run process`, {
       env: fullEnv,
       path: this.path,
+      cwd,
     });
 
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
-      cwd: dirname(this.path),
+      cwd,
       env: fullEnv,
       execArgv: this.worker.debuggerOn
         ? ["--inspect-brk", "--trace-uncaught", "--no-warnings=ExperimentalWarning"]

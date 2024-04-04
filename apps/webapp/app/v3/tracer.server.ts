@@ -30,6 +30,8 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { singleton } from "~/utils/singleton";
 import { LoggerSpanExporter } from "./telemetry/loggerExporter.server";
 
+export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
+
 class CustomWebappSampler implements Sampler {
   constructor(private readonly _baseSampler: Sampler) {}
 
@@ -49,8 +51,22 @@ class CustomWebappSampler implements Sampler {
       return { decision: SamplingDecision.NOT_RECORD };
     }
 
+    // If the span has the forceRecording attribute, always record it
+    if (attributes[SEMINTATTRS_FORCE_RECORDING]) {
+      return { decision: SamplingDecision.RECORD_AND_SAMPLED };
+    }
+
     // For all other spans, defer to the base sampler
-    return this._baseSampler.shouldSample(context, traceId, name, spanKind, attributes, links);
+    const result = this._baseSampler.shouldSample(
+      context,
+      traceId,
+      name,
+      spanKind,
+      attributes,
+      links
+    );
+
+    return result;
   }
 
   toString(): string {
@@ -63,7 +79,7 @@ export const tracer = singleton("tracer", getTracer);
 function getTracer() {
   diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.ERROR);
 
-  const samplingRate = 1.0 / Math.max(parseInt(env.INTERNAL_OTEL_TRACE_SAMPING_RATE, 10), 1);
+  const samplingRate = 1.0 / Math.max(parseInt(env.INTERNAL_OTEL_TRACE_SAMPLING_RATE, 10), 1);
 
   const provider = new NodeTracerProvider({
     forceFlushTimeoutMillis: 500,
@@ -71,8 +87,8 @@ function getTracer() {
       [SEMRESATTRS_SERVICE_NAME]: env.SERVICE_NAME,
     }),
     sampler: new ParentBasedSampler({
-      root: new CustomWebappSampler(new TraceIdRatioBasedSampler(samplingRate)), // 5% sampling
-    }), // 5% sampling
+      root: new CustomWebappSampler(new TraceIdRatioBasedSampler(samplingRate)),
+    }),
   });
 
   if (env.INTERNAL_OTEL_TRACE_EXPORTER_URL) {
@@ -92,13 +108,15 @@ function getTracer() {
     provider.addSpanProcessor(
       new BatchSpanProcessor(exporter, {
         maxExportBatchSize: 512,
-        scheduledDelayMillis: 200,
+        scheduledDelayMillis: 1000,
         exportTimeoutMillis: 30000,
         maxQueueSize: 2048,
       })
     );
 
-    console.log(`🔦 Tracer: OTLP exporter enabled to ${env.INTERNAL_OTEL_TRACE_EXPORTER_URL}`);
+    console.log(
+      `🔦 Tracer: OTLP exporter enabled to ${env.INTERNAL_OTEL_TRACE_EXPORTER_URL} (sampling = ${samplingRate})`
+    );
   } else {
     if (env.INTERNAL_OTEL_TRACE_LOGGING_ENABLED === "1") {
       console.log(`🔦 Tracer: Logger exporter enabled`);

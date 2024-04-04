@@ -139,7 +139,7 @@ export class MarQS {
   public async dequeueMessageInEnv(env: AuthenticatedEnvironment) {
     return this.#trace(
       "dequeueMessageInEnv",
-      async (span, abort) => {
+      async (span) => {
         const parentQueue = this.keys.envSharedQueueKey(env);
 
         // Read the parent queue for matching queues
@@ -150,7 +150,6 @@ export class MarQS {
         );
 
         if (!messageQueue) {
-          abort();
           return;
         }
 
@@ -167,7 +166,6 @@ export class MarQS {
         });
 
         if (!messageData) {
-          abort();
           return;
         }
 
@@ -181,8 +179,6 @@ export class MarQS {
             [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
             [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
           });
-        } else {
-          abort();
         }
 
         return message;
@@ -204,7 +200,7 @@ export class MarQS {
   public async dequeueMessageInSharedQueue() {
     return this.#trace(
       "dequeueMessageInSharedQueue",
-      async (span, abort) => {
+      async (span) => {
         const parentQueue = constants.SHARED_QUEUE;
 
         // Read the parent queue for matching queues
@@ -215,7 +211,6 @@ export class MarQS {
         );
 
         if (!messageQueue) {
-          abort();
           return;
         }
 
@@ -233,7 +228,6 @@ export class MarQS {
         });
 
         if (!messageData) {
-          abort();
           return;
         }
 
@@ -247,8 +241,6 @@ export class MarQS {
             [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
             [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
           });
-        } else {
-          abort();
         }
 
         return message;
@@ -355,17 +347,12 @@ export class MarQS {
 
   async #trace<T>(
     name: string,
-    fn: (span: Span, abort: () => void) => Promise<T>,
-    options?: SpanOptions
+    fn: (span: Span) => Promise<T>,
+    options?: SpanOptions & { sampleRate?: number }
   ): Promise<T> {
     return tracer.startActiveSpan(name, options ?? {}, async (span) => {
-      let _abort = false;
-      let aborter = () => {
-        _abort = true;
-      };
-
       try {
-        return await fn(span, aborter);
+        return await fn(span);
       } catch (e) {
         if (e instanceof Error) {
           span.recordException(e);
@@ -375,9 +362,7 @@ export class MarQS {
 
         throw e;
       } finally {
-        if (!_abort) {
-          span.end();
-        }
+        span.end();
       }
     });
   }
@@ -480,7 +465,7 @@ export class MarQS {
   ) {
     return this.#trace(
       "getRandomQueueFromParentQueue",
-      async (span, abort) => {
+      async (span) => {
         const { range, selectionId } = await queuePriorityStrategy.nextCandidateSelection(
           parentQueue
         );
@@ -497,7 +482,6 @@ export class MarQS {
         );
 
         if (typeof choice !== "string") {
-          abort();
           return;
         }
 
