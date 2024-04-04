@@ -321,16 +321,18 @@ export class BackgroundWorker {
 
     const cwd = dirname(this.path);
 
-    logger.debug("Initializing worker", { path: this.path, cwd });
+    const fullEnv = {
+      ...this.params.env,
+      ...this.#readEnvVars(),
+    };
+
+    logger.debug("Initializing worker", { path: this.path, cwd, fullEnv });
 
     this.tasks = await new Promise<Array<TaskMetadataWithFilePath>>((resolve, reject) => {
       const child = fork(this.path, {
         stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
         cwd,
-        env: {
-          ...this.params.env,
-          ...this.#readEnvVars(),
-        },
+        env: fullEnv,
       });
 
       // Set a timeout to kill the child process if it doesn't respond
