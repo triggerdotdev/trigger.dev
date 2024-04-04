@@ -32,7 +32,7 @@ export default function Page() {
       </NavBar>
 
       <PageBody scrollable={false}>
-        <div className="grid grid-rows-[auto_1fr] gap-y-4 px-4">
+        <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden px-4">
           <PageTabs
             layoutId="triggers"
             tabs={[
