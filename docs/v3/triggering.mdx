@@ -8,7 +8,7 @@ There are currently four ways you can trigger any task from your own code:
 | Function                         | Where does this work? | What it does                                                                                                                       |
 | -------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `yourTask.trigger()`             | Anywhere              | Triggers a task and gets a handle you can use to monitor and manage the run. It does not wait for the result.                      |
-| `yourTask.batchTriggerAndWait()` | Anywhere              | Triggers a task multiple times and gets a handle you can use to monitor and manage the runs. It does not wait for the results.     |
+| `yourTask.batchTrigger()`        | Anywhere              | Triggers a task multiple times and gets a handle you can use to monitor and manage the runs. It does not wait for the results.     |
 | `yourTask.triggerAndWait()`      | Inside a task         | Triggers a task and then waits until it's complete. You get the result data to continue with.                                      |
 | `yourTask.batchTriggerAndWait()` | Inside a task         | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. |
 
