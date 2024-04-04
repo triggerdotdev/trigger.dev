@@ -78,6 +78,7 @@ export const ProviderToPlatformMessages = {
       reason: z.string().optional(),
       exitCode: z.number().optional(),
       message: z.string().optional(),
+      logs: z.string().optional(),
     }),
   },
   INDEXING_FAILED: {

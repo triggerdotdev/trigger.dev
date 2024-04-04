@@ -33,7 +33,6 @@ type ExtendedTaskRunAttempt = Prisma.TaskRunAttemptGetPayload<{
 export type CancelTaskRunServiceOptions = {
   reason?: string;
   cancelAttempts?: boolean;
-  hasCrashed?: boolean;
   cancelledAt?: Date;
 };
 
@@ -42,7 +41,6 @@ export class CancelTaskRunService extends BaseService {
     const opts = {
       reason: "Task run was cancelled by user",
       cancelAttempts: true,
-      hasCrashed: false,
       cancelledAt: new Date(),
       ...options,
     };
@@ -96,18 +94,7 @@ export class CancelTaskRunService extends BaseService {
 
     // Cancel any in progress attempts
     if (opts.cancelAttempts) {
-      if (opts.hasCrashed) {
-        await this.#cancelCrashedAttempts(cancelledTaskRun, cancelledTaskRun.attempts, opts.reason);
-      } else {
-        await this.#cancelPotentiallyRunningAttempts(cancelledTaskRun, cancelledTaskRun.attempts);
-      }
-    }
-  }
-
-  async #cancelCrashedAttempts(run: TaskRun, attempts: ExtendedTaskRunAttempt[], reason: string) {
-    for (const attempt of attempts) {
-      const service = new CancelAttemptService();
-      await service.call(attempt.friendlyId, run.id, new Date(), reason);
+      await this.#cancelPotentiallyRunningAttempts(cancelledTaskRun, cancelledTaskRun.attempts);
     }
   }
 

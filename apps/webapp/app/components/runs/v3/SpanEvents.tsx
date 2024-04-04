@@ -66,7 +66,11 @@ function SpanEventError({
 }) {
   return (
     <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 p-3">
-      <SpanEventHeader title={"Error"} time={spanEvent.time} titleClassName="text-rose-500" />
+      <SpanEventHeader
+        title={exception.type ?? "Error"}
+        time={spanEvent.time}
+        titleClassName="text-rose-500"
+      />
       {exception.message && <Callout variant="error">{exception.message}</Callout>}
       {exception.stacktrace && (
         <CodeBlock

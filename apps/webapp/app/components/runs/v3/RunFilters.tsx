@@ -35,6 +35,7 @@ export const allTaskRunStatuses = [
   "COMPLETED_WITH_ERRORS",
   "INTERRUPTED",
   "SYSTEM_FAILURE",
+  "CRASHED",
 ] as TaskRunStatusType[];
 
 export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);

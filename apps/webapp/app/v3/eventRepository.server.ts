@@ -3,6 +3,7 @@ import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import {
   ExceptionEventProperties,
+  ExceptionSpanEvent,
   PRIMARY_VARIANT,
   SemanticInternalAttributes,
   SpanEvent,
@@ -245,6 +246,47 @@ export class EventRepository {
         ...((event.events as any[]) ?? []),
       ],
       duration: calculateDurationFromStart(event.startTime, cancelledAt),
+      properties: event.properties as Attributes,
+      metadata: event.metadata as Attributes,
+      style: event.style as Attributes,
+      output: event.output as Attributes,
+      outputType: event.outputType,
+      payload: event.payload as Attributes,
+      payloadType: event.payloadType,
+    });
+  }
+
+  async crashEvent({
+    event,
+    crashedAt,
+    exception,
+  }: {
+    event: TaskEventRecord;
+    crashedAt: Date;
+    exception: ExceptionEventProperties;
+  }) {
+    if (!event.isPartial) {
+      return;
+    }
+
+    await this.insertImmediate({
+      ...omit(event, "id"),
+      isPartial: false,
+      isError: true,
+      isCancelled: false,
+      status: "ERROR",
+      links: event.links ?? [],
+      events: [
+        {
+          name: "exception",
+          time: crashedAt,
+          properties: {
+            exception,
+          },
+        } satisfies ExceptionSpanEvent,
+        ...((event.events as any[]) ?? []),
+      ],
+      duration: calculateDurationFromStart(event.startTime, crashedAt),
       properties: event.properties as Attributes,
       metadata: event.metadata as Attributes,
       style: event.style as Attributes,

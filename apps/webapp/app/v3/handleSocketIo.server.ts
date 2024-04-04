@@ -21,7 +21,7 @@ import { ResumeAttemptService } from "./services/resumeAttempt.server";
 import { DeploymentIndexFailed } from "./services/deploymentIndexFailed.server";
 import { Redis } from "ioredis";
 import { createAdapter } from "@socket.io/redis-adapter";
-import { HandleWorkerCrashService } from "./services/handleWorkerCrash.server";
+import { CrashTaskRunService } from "./services/crashTaskRun.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -155,10 +155,10 @@ function createProviderNamespace(io: Server) {
     handlers: {
       WORKER_CRASHED: async (message) => {
         try {
-          const service = new HandleWorkerCrashService();
+          const service = new CrashTaskRunService();
 
           await service.call(message.runId, {
-            reason: message.reason ?? "Worker crashed for unknown reason",
+            ...message,
           });
         } catch (error) {
           logger.error("Error while handling crashed worker", { error });
