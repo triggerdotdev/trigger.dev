@@ -16,7 +16,7 @@ The main difference is that things in v3 are far simpler. That's because in v3 y
 3. Just use official SDKs, not integrations.
 4. `task`s are the new primitive, not `job`s.
 
-## OpenAI example
+## OpenAI example comparison
 
 This is a (very contrived) example that does a long OpenAI API call (>10s), stores the result in a database, waits for 5 mins, and then returns the result.
 
@@ -135,7 +135,7 @@ export const openaiTask = task({
 });
 ```
 
-## Triggering tasks
+## Triggering tasks comparison
 
 ### v2
 
@@ -170,6 +170,28 @@ async function yourBackendFunction() {
   });
 }
 ```
+
+## Upgrading your project
+
+<Steps>
+
+<Step title="Upgrade the v2 Trigger.dev packages">
+
+You can run this command to upgrade all the packages to the beta:
+
+```bash
+npx @trigger.dev/cli@beta update --to beta
+```
+
+</Step>
+
+<Step title="Follow the v3 quick start">
+
+Follow the [v3 quick start](/v3/quick-start) to get started with v3.
+
+</Step>
+
+</Steps>
 
 ## Using v2 together with v3
 
