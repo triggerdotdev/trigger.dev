@@ -137,7 +137,7 @@ const EnvironmentSchema = z.object({
   INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_VALUE: z.string().optional(),
   INTERNAL_OTEL_TRACE_LOGGING_ENABLED: z.string().default("1"),
   // this means 1/20 traces or 5% of traces will be sampled (sampled = recorded)
-  INTERNAL_OTEL_TRACE_SAMPING_RATE: z.string().default("20"),
+  INTERNAL_OTEL_TRACE_SAMPLING_RATE: z.string().default("20"),
   INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED: z.string().default("0"),
 });
 

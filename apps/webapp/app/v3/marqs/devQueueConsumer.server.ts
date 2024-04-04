@@ -16,11 +16,13 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "~/v3/marqs/index.server";
 import { CancelAttemptService } from "../services/cancelAttempt.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
-import { attributesFromAuthenticatedEnv } from "../tracer.server";
+import {
+  SEMINTATTRS_FORCE_RECORDING,
+  attributesFromAuthenticatedEnv,
+  tracer,
+} from "../tracer.server";
 import { DevSubscriber, devPubSub } from "./devPubSub.server";
 import { CancelTaskRunService } from "../services/cancelTaskRun.server";
-
-const tracer = trace.getTracer("devQueueConsumer");
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
@@ -165,6 +167,11 @@ export class DevQueueConsumer {
 
       logger.debug("Unsubscribed from background worker channel", { id });
     }
+
+    // We need to end the current span
+    if (this._currentSpan) {
+      this._currentSpan.end();
+    }
   }
 
   async #cancelInProgressRunsAndAttempts(reason: string) {
@@ -284,6 +291,10 @@ export class DevQueueConsumer {
         this._currentSpan.setAttribute("tasks.period.failures", this._taskFailures);
         this._currentSpan.setAttribute("tasks.period.successes", this._taskSuccesses);
 
+        logger.debug("Ending DevQueueConsumer.doWork() trace", {
+          isRecording: this._currentSpan.isRecording(),
+        });
+
         this._currentSpan.end();
       }
 
@@ -294,6 +305,7 @@ export class DevQueueConsumer {
           kind: SpanKind.CONSUMER,
           attributes: {
             ...attributesFromAuthenticatedEnv(this.env),
+            [SEMINTATTRS_FORCE_RECORDING]: true,
           },
         },
         ROOT_CONTEXT
