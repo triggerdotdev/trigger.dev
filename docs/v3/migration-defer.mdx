@@ -9,10 +9,12 @@ This guide highlights the differences and should help you migrate your project.
 
 ## Features coming very soon
 
-You can view the full [feature matrix](/v3/feature-matrix). Here are some features you might be using in Defer that are coming this month to Trigger.dev:
+Here are some features you might be using in Defer that are coming this month to v3:
 
 - [Scheduled tasks (including CRON)](/v3/tasks-scheduled) will be available in mid-April.
 - Triggering a task with a delay (like `assignOptions` delay in Defer) will be available soon – there is [an alternative](#delay) you can use for now.
+
+You can view the full feature matrix [here](/v3/feature-matrix).
 
 ## Differences
 
@@ -147,9 +149,7 @@ We will grant you v3 access.
 
 </Step>
 
-<Step>
-
-You need to create a v3 project.
+<Step title="Create a v3 project">
 
 1. Go to the Projects page
 
@@ -183,7 +183,7 @@ You need to create a v3 project.
 
 In Defer you might have a function like this.
 
-<CodeBlock>
+<CodeGroup>
 
 ```ts /defer/longRunningTask.ts
 import { performLongRunningTask } from "@/utils/performLongRunningTask";
@@ -210,11 +210,11 @@ export async function runLongRunningTask() {
 }
 ```
 
-</CodeBlock>
+</CodeGroup>
 
 In Trigger.dev it looks like this:
 
-<CodeBlock>
+<CodeGroup>
 
 ```ts /trigger/someTasks.ts
 import { performLongRunningTask } from "@/utils/performLongRunningTask";
@@ -240,14 +240,14 @@ export const longRunningTask = task({
 ```ts /app/actions/actions.ts
 "use server";
 
-import longRunningTask from "@/defer/longRunningTask";
+import { longRunningTask } from "@/trigger/longRunningTask";
 
 export async function runLongRunningTask() {
-  return await longRunningTask();
+  return await longRunningTask.trigger({ payload: { foo: "bar" } });
 }
 ```
 
-</CodeBlock>
+</CodeGroup>
 
 <Warning>
   You need to set your `TRIGGER_SECRET_KEY` environment variable in your `.env` or `.env.local` file

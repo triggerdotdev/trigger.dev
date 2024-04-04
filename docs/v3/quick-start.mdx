@@ -34,76 +34,10 @@ Once you've created an account, follow the steps in the app to:
 
 </Step>
 
-<Step title="Run the CLI `init` command">
-
-The easiest way to get started it to use the CLI. It will add Trigger.dev to your existing project, create a `/trigger` folder and give you an example task.
-
-Run this command in the root of your project to get started:
-
-<CodeGroup>
-
-```bash npm
-npx trigger.dev@beta init
-```
-
-```bash pnpm
-pnpm dlx trigger.dev@beta init
-```
-
-```bash yarn
-yarn dlx trigger.dev@beta init
-```
-
-</CodeGroup>
-
-It will do a few things:
-
-1. Log you into the CLI if you're not already logged in.
-2. Create a `trigger.config.ts` file in the root of your project.
-3. Ask where you'd like to create the `/trigger` directory.
-4. Create the `/trigger` directory with an example task, `/trigger/example.[ts/js]`.
-
-</Step>
-
-<Step title="Run the CLI `dev` command">
-
-The CLI `dev` command runs a server for your tasks. It will watches for changes in your `/trigger` directory and communicates with the Trigger.dev platform to register your tasks, perform runs, and send data back and forth.
-
-<CodeGroup>
-
-```bash npm
-npx trigger.dev@beta dev
-```
-
-```bash pnpm
-pnpm dlx trigger.dev@beta dev
-```
-
-```bash yarn
-yarn dlx trigger.dev@beta dev
-```
-
-</CodeGroup>
-
-</Step>
-
-<Step title="Perform a run test using the dashboard">
-
-The CLI `dev` command spits out various useful URLs. Right now we want to visit the Test page it provided.
-
-You should see our Example task in the list, select it. Most tasks have a "payload" which you enter in the JSON editor, but our example task doesn't need any input.
-
-Press the "Run test" button.
-
-</Step>
-
-<Step title="View your run">
-
-Congratulations, you should see the run page which will live reload showing you the current state of the run.
-
-If you go back to your terminal you'll see that the dev command also shows tasks that are running and links to the run log.
-
-</Step>
+<Snippet file="v3/step-cli-init.mdx" />
+<Snippet file="v3/step-cli-dev.mdx" />
+<Snippet file="v3/step-run-test.mdx" />
+<Snippet file="v3/step-view-run.mdx" />
 
 </Steps>
 
