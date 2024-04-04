@@ -51,6 +51,7 @@ import {
   parseBuildErrorStack,
   parseNpmInstallError,
 } from "../utilities/deployErrors";
+import { findUp, pathExists } from "find-up";
 
 let apiClient: CliApiClient | undefined;
 
@@ -465,7 +466,7 @@ function useDev({
                 const environmentVariablesResponse =
                   await environmentClient.getEnvironmentVariables(config.project);
 
-                const processEnv = gatherProcessEnv();
+                const processEnv = await gatherProcessEnv();
 
                 const backgroundWorker = new BackgroundWorker(fullPath, {
                   projectConfig: config,
@@ -775,7 +776,7 @@ function createDuplicateTaskIdOutputErrorMessage(
   return `Duplicate ${chalkTask("task id")} detected:${duplicateTable}`;
 }
 
-function gatherProcessEnv() {
+async function gatherProcessEnv() {
   const env = {
     NODE_ENV: process.env.NODE_ENV ?? "development",
     PATH: process.env.PATH,
@@ -786,11 +787,44 @@ function gatherProcessEnv() {
     NVM_BIN: process.env.NVM_BIN,
     LANG: process.env.LANG,
     TERM: process.env.TERM,
-    NODE_PATH: process.env.NODE_PATH,
+    NODE_PATH: await amendNodePathWithPnpmNodeModules(process.env.NODE_PATH),
     HOME: process.env.HOME,
     BUN_INSTALL: process.env.BUN_INSTALL,
   };
 
   // Filter out undefined values
   return Object.fromEntries(Object.entries(env).filter(([key, value]) => value !== undefined));
+}
+
+async function amendNodePathWithPnpmNodeModules(nodePath?: string): Promise<string | undefined> {
+  const pnpmModulesPath = await findPnpmNodeModulesPath();
+
+  if (!pnpmModulesPath) {
+    return nodePath;
+  }
+
+  if (nodePath) {
+    if (nodePath.includes(pnpmModulesPath)) {
+      return nodePath;
+    }
+
+    return `${nodePath}:${pnpmModulesPath}`;
+  }
+
+  return pnpmModulesPath;
+}
+
+async function findPnpmNodeModulesPath(): Promise<string | undefined> {
+  return await findUp(
+    async (directory) => {
+      const pnpmModules = join(directory, "node_modules", ".pnpm", "node_modules");
+
+      const hasPnpmNodeModules = await pathExists(pnpmModules);
+
+      if (hasPnpmNodeModules) {
+        return pnpmModules;
+      }
+    },
+    { type: "directory" }
+  );
 }
