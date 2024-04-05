@@ -1,5 +1,17 @@
 # trigger.dev
 
+## 3.0.0-beta.6
+
+### Patch Changes
+
+- 7ea8532cc: Display errors for runs and deployments
+- 1207efbba: Correctly handle self-hosted deploy command errors
+- e35f29764: Default to retrying enabled in dev when running init
+- f2894c177: Fix post start hooks
+- 6dcfeadac: Fixing an issue with bundling @trigger.dev/core/v3 in dev when using pnpm
+- Updated dependencies [7ea8532cc]
+  - @trigger.dev/core@3.0.0-beta.6
+
 ## 3.0.0-beta.5
 
 ### Patch Changes

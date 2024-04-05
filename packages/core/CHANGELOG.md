@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.0.0-beta.6
+
+### Patch Changes
+
+- 7ea8532cc: Display errors for runs and deployments
+
 ## 3.0.0-beta.5
 
 ### Patch Changes
