@@ -21,6 +21,7 @@ import { ResumeAttemptService } from "./services/resumeAttempt.server";
 import { DeploymentIndexFailed } from "./services/deploymentIndexFailed.server";
 import { Redis } from "ioredis";
 import { createAdapter } from "@socket.io/redis-adapter";
+import { CrashTaskRunService } from "./services/crashTaskRun.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -135,7 +136,7 @@ function createCoordinatorNamespace(io: Server) {
 
           await service.call(message.deploymentId, message.error);
         } catch (e) {
-          logger.error("Error while indexing failed", { error: e });
+          logger.error("Error while indexing", { error: e });
         }
       },
     },
@@ -151,6 +152,28 @@ function createProviderNamespace(io: Server) {
     authToken: env.PROVIDER_SECRET,
     clientMessages: ProviderToPlatformMessages,
     serverMessages: PlatformToProviderMessages,
+    handlers: {
+      WORKER_CRASHED: async (message) => {
+        try {
+          const service = new CrashTaskRunService();
+
+          await service.call(message.runId, {
+            ...message,
+          });
+        } catch (error) {
+          logger.error("Error while handling crashed worker", { error });
+        }
+      },
+      INDEXING_FAILED: async (message) => {
+        try {
+          const service = new DeploymentIndexFailed();
+
+          await service.call(message.deploymentId, message.error);
+        } catch (e) {
+          logger.error("Error while indexing", { error: e });
+        }
+      },
+    },
   });
 
   return provider.namespace;

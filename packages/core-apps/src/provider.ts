@@ -33,6 +33,7 @@ export interface TaskOperationsIndexOptions {
   envType: EnvironmentType;
   orgId: string;
   projectId: string;
+  deploymentId: string;
 }
 
 export interface TaskOperationsCreateOptions {
@@ -86,7 +87,7 @@ export class ProviderShell implements Provider {
 
   #httpPort: number;
   #httpServer: ReturnType<typeof createServer>;
-  #platformSocket: ZodSocketConnection<
+  platformSocket: ZodSocketConnection<
     typeof ProviderToPlatformMessages,
     typeof PlatformToProviderMessages
   >;
@@ -95,7 +96,7 @@ export class ProviderShell implements Provider {
     this.tasks = options.tasks;
     this.#httpPort = options.port ?? HTTP_SERVER_PORT;
     this.#httpServer = this.#createHttpServer();
-    this.#platformSocket = this.#createPlatformSocket();
+    this.platformSocket = this.#createPlatformSocket();
     this.#createSharedQueueSocket();
   }
 
@@ -196,6 +197,7 @@ export class ProviderShell implements Provider {
               envType: message.envType,
               orgId: message.orgId,
               projectId: message.projectId,
+              deploymentId: message.deploymentId,
             });
           } catch (error) {
             logger.error("index failed", error);
@@ -272,7 +274,7 @@ export class ProviderShell implements Provider {
             return reply.text(`${MACHINE_NAME}`);
           }
           case "/close": {
-            this.#platformSocket.close();
+            this.platformSocket.close();
             return reply.text("platform socket closed");
           }
           case "/delete": {

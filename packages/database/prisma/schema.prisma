@@ -1649,6 +1649,9 @@ enum TaskRunStatus {
 
   /// Task has failed to complete, due to an error in the system
   SYSTEM_FAILURE
+
+  /// Task has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage
+  CRASHED
 }
 
 model TaskRunDependency {

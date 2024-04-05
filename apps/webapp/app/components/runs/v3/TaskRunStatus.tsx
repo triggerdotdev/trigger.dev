@@ -3,7 +3,7 @@ import {
   BoltSlashIcon,
   BugAntIcon,
   CheckCircleIcon,
-  ClockIcon,
+  FireIcon,
   NoSymbolIcon,
   PauseCircleIcon,
   RectangleStackIcon,
@@ -25,6 +25,7 @@ const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   INTERRUPTED: "Task has failed because it was interrupted",
   SYSTEM_FAILURE: "Task has failed due to a system failure",
   PAUSED: "Task has been paused by the user",
+  CRASHED: "Task has crashed and won't be retried",
 };
 
 export function descriptionForTaskRunStatus(status: TaskRunStatus): string {
@@ -80,6 +81,8 @@ export function TaskRunStatusIcon({
       return <XCircleIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "SYSTEM_FAILURE":
       return <BugAntIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "CRASHED":
+      return <FireIcon className={cn(runStatusClassNameColor(status), className)} />;
 
     default: {
       const _exhaustiveCheck: never = status;
@@ -108,6 +111,8 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
     case "COMPLETED_WITH_ERRORS":
       return "text-error";
     case "SYSTEM_FAILURE":
+      return "text-error";
+    case "CRASHED":
       return "text-error";
     default: {
       const _exhaustiveCheck: never = status;
@@ -138,6 +143,8 @@ export function runStatusTitle(status: TaskRunStatus): string {
       return "Failed";
     case "SYSTEM_FAILURE":
       return "System failure";
+    case "CRASHED":
+      return "Crashed";
     default: {
       const _exhaustiveCheck: never = status;
       throw new Error(`Non-exhaustive match for value: ${status}`);

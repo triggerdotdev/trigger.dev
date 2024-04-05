@@ -1,4 +1,4 @@
-import { TaskRun, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
+import { Prisma, TaskRun, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import { eventRepository } from "../eventRepository.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { devPubSub } from "../marqs/devPubSub.server";
@@ -22,6 +22,13 @@ const CANCELLABLE_ATTEMPT_STATUSES: Array<TaskRunAttemptStatus> = [
   "PAUSED",
   "PENDING",
 ];
+
+type ExtendedTaskRunAttempt = Prisma.TaskRunAttemptGetPayload<{
+  include: {
+    runtimeEnvironment: true;
+    backgroundWorker: true;
+  };
+}>;
 
 export type CancelTaskRunServiceOptions = {
   reason?: string;
@@ -87,56 +94,60 @@ export class CancelTaskRunService extends BaseService {
 
     // Cancel any in progress attempts
     if (opts.cancelAttempts) {
-      for (const attempt of cancelledTaskRun.attempts) {
-        if (attempt.runtimeEnvironment.type === "DEVELOPMENT") {
-          // Signal the task run attempt to stop
-          await devPubSub.publish(
-            `backgroundWorker:${attempt.backgroundWorkerId}:${attempt.id}`,
-            "CANCEL_ATTEMPT",
-            {
-              attemptId: attempt.friendlyId,
-              backgroundWorkerId: attempt.backgroundWorker.friendlyId,
-              taskRunId: cancelledTaskRun.friendlyId,
-            }
-          );
-        } else {
-          switch (attempt.status) {
-            case "EXECUTING": {
-              // We need to send a cancel message to the coordinator
-              socketIo.coordinatorNamespace.emit("REQUEST_ATTEMPT_CANCELLATION", {
-                version: "v1",
-                attemptId: attempt.id,
-                attemptFriendlyId: attempt.friendlyId,
-              });
+      await this.#cancelPotentiallyRunningAttempts(cancelledTaskRun, cancelledTaskRun.attempts);
+    }
+  }
 
-              break;
-            }
-            case "PENDING":
-            case "PAUSED": {
-              logger.debug("Cancelling pending or paused attempt", {
-                attempt,
-              });
+  async #cancelPotentiallyRunningAttempts(run: TaskRun, attempts: ExtendedTaskRunAttempt[]) {
+    for (const attempt of attempts) {
+      if (attempt.runtimeEnvironment.type === "DEVELOPMENT") {
+        // Signal the task run attempt to stop
+        await devPubSub.publish(
+          `backgroundWorker:${attempt.backgroundWorkerId}:${attempt.id}`,
+          "CANCEL_ATTEMPT",
+          {
+            attemptId: attempt.friendlyId,
+            backgroundWorkerId: attempt.backgroundWorker.friendlyId,
+            taskRunId: run.friendlyId,
+          }
+        );
+      } else {
+        switch (attempt.status) {
+          case "EXECUTING": {
+            // We need to send a cancel message to the coordinator
+            socketIo.coordinatorNamespace.emit("REQUEST_ATTEMPT_CANCELLATION", {
+              version: "v1",
+              attemptId: attempt.id,
+              attemptFriendlyId: attempt.friendlyId,
+            });
 
-              const service = new CancelAttemptService();
+            break;
+          }
+          case "PENDING":
+          case "PAUSED": {
+            logger.debug("Cancelling pending or paused attempt", {
+              attempt,
+            });
 
-              await service.call(
-                attempt.friendlyId,
-                taskRun.id,
-                new Date(),
-                "Task run was cancelled by user"
-              );
+            const service = new CancelAttemptService();
 
-              break;
-            }
-            case "CANCELED":
-            case "COMPLETED":
-            case "FAILED": {
-              // Do nothing
-              break;
-            }
-            default: {
-              assertUnreachable(attempt.status);
-            }
+            await service.call(
+              attempt.friendlyId,
+              run.id,
+              new Date(),
+              "Task run was cancelled by user"
+            );
+
+            break;
+          }
+          case "CANCELED":
+          case "COMPLETED":
+          case "FAILED": {
+            // Do nothing
+            break;
+          }
+          default: {
+            assertUnreachable(attempt.status);
           }
         }
       }

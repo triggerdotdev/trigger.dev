@@ -150,36 +150,38 @@ class ProdWorker {
     this.#httpServer = this.#createHttpServer();
   }
 
-  async #reconnect(isPostStart = false) {
+  async #reconnect(isPostStart = false, reconnectImmediately = false) {
     if (isPostStart) {
       this.waitForPostStart = false;
     }
 
     this.#coordinatorSocket.close();
 
-    if (!this.runningInKubernetes) {
-      this.#coordinatorSocket.connect();
-      return;
+    if (!reconnectImmediately) {
+      await setTimeout(1000);
     }
 
+    let coordinatorHost = COORDINATOR_HOST;
+
     try {
-      const coordinatorHost = (await readFile("/etc/taskinfo/coordinator-host", "utf-8")).replace(
-        "\n",
-        ""
-      );
+      if (this.runningInKubernetes) {
+        coordinatorHost = (await readFile("/etc/taskinfo/coordinator-host", "utf-8")).replace(
+          "\n",
+          ""
+        );
 
-      logger.log("reconnecting", {
-        coordinatorHost: {
-          fromEnv: COORDINATOR_HOST,
-          fromVolume: coordinatorHost,
-          current: this.#coordinatorSocket.socket.io.opts.hostname,
-        },
-      });
-
-      this.#coordinatorSocket = this.#createCoordinatorSocket(coordinatorHost);
+        logger.log("reconnecting", {
+          coordinatorHost: {
+            fromEnv: COORDINATOR_HOST,
+            fromVolume: coordinatorHost,
+            current: this.#coordinatorSocket.socket.io.opts.hostname,
+          },
+        });
+      }
     } catch (error) {
       logger.error("taskinfo read error during reconnect", { error });
-      this.#coordinatorSocket.connect();
+    } finally {
+      this.#coordinatorSocket = this.#createCoordinatorSocket(coordinatorHost);
     }
   }
 
@@ -618,7 +620,7 @@ class ProdWorker {
                 break;
               }
               case "restore": {
-                await this.#reconnect(true);
+                await this.#reconnect(true, true);
                 break;
               }
               default: {

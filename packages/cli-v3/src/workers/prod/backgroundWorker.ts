@@ -431,7 +431,7 @@ class TaskRunProcess {
           resolver(result);
         },
         READY_TO_DISPOSE: async (message) => {
-          // noop
+          process.exit(0);
         },
         TASK_HEARTBEAT: async (message) => {
           this.onTaskHeartbeat.post(message.id);
