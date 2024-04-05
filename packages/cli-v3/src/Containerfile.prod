@@ -1,7 +1,10 @@
-FROM node:20-alpine@sha256:bf77dc26e48ea95fca9d1aceb5acfa69d2e546b765ec2abfb502975f1a2d4def AS base
+FROM node:20-bookworm-slim@sha256:d4cdfc305abe5ea78da7167bf78263c22596dc332f2654b662890777ea166224 AS base
 
-RUN apk add --no-cache dumb-init
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends dumb-init && rm -rf /var/lib/apt/lists/*
 
+# Create and set workdir with appropriate permissions
+RUN mkdir /app && chown node:node /app
 WORKDIR /app
 
 # copy all the files just in case anything is needed in postinstall

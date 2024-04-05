@@ -267,9 +267,6 @@ export class ProdBackgroundWorker {
 
       const result = await taskRunProcess.executeTaskRun(payload);
 
-      // Kill the worker if the task was successful or if it's not going to be retried);
-      await taskRunProcess.cleanup(result.ok || result.retry === undefined);
-
       if (result.ok) {
         return result;
       }

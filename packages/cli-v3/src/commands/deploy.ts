@@ -792,7 +792,7 @@ async function buildAndPushSelfHostedImage(
     let digest: string | undefined;
 
     try {
-      await new Promise<void>((res, rej) => {
+      const processCode = await new Promise<number | null>((res, rej) => {
         // For some reason everything is output on stderr, not stdout
         buildProcess.stderr?.on("data", (data: Buffer) => {
           const text = data.toString();
@@ -802,8 +802,16 @@ async function buildAndPushSelfHostedImage(
         });
 
         buildProcess.on("error", (e) => rej(e));
-        buildProcess.on("close", () => res());
+        buildProcess.on("close", (code) => res(code));
       });
+
+      if (processCode !== 0) {
+        return {
+          ok: false as const,
+          error: "Error building image",
+          logs: extractLogs(errors),
+        };
+      }
 
       digest = extractImageDigest(errors);
 
@@ -835,7 +843,7 @@ async function buildAndPushSelfHostedImage(
       });
 
       try {
-        await new Promise<void>((res, rej) => {
+        const processCode = await new Promise<number | null>((res, rej) => {
           pushProcess.stdout?.on("data", (data: Buffer) => {
             const text = data.toString();
 
@@ -849,8 +857,16 @@ async function buildAndPushSelfHostedImage(
           });
 
           pushProcess.on("error", (e) => rej(e));
-          pushProcess.on("close", () => res());
+          pushProcess.on("close", (code) => res(code));
         });
+
+        if (processCode !== 0) {
+          return {
+            ok: false as const,
+            error: "Error pushing image",
+            logs: extractLogs(errors),
+          };
+        }
 
         span.end();
       } catch (e) {
