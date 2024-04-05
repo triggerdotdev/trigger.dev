@@ -152,11 +152,6 @@ class KubernetesTaskOperations implements TaskOperations {
                 },
               },
               lifecycle: {
-                postStart: {
-                  exec: {
-                    command: this.#getLifecycleCommand("postStart", "create"),
-                  },
-                },
                 preStop: {
                   exec: {
                     command: this.#getLifecycleCommand("preStop", "terminate"),
@@ -404,11 +399,19 @@ class KubernetesTaskOperations implements TaskOperations {
     type: THookType,
     cause: THookType extends "postStart" ? PostStartCauses : PreStopCauses
   ) {
-    const retries = 5
+    const retries = 5;
 
     // This will retry sending the lifecycle hook up to `retries` times
     // The sleep is required as this may start running before the HTTP server is up
-    return ["/bin/sh", "-c", `for i in $(seq ${retries}); do sleep 1; wget -q -O- 127.0.0.1:8000/${type}?cause=${cause} && break; done`];
+    const exec = [
+      "/bin/sh",
+      "-c",
+      `for i in $(seq ${retries}); do sleep 1; busybox wget -q -O- 127.0.0.1:8000/${type}?cause=${cause} && break; done`,
+    ];
+
+    logger.log("getLifecycleCommand()", { exec });
+
+    return exec;
   }
 
   #getIndexContainerName(suffix: string) {
