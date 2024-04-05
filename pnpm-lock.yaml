@@ -3071,6 +3071,9 @@ importers:
       stripe:
         specifier: ^12.14.0
         version: 12.14.0
+      yt-dlp-wrap:
+        specifier: ^2.3.12
+        version: 2.3.12
     devDependencies:
       '@trigger.dev/tsconfig':
         specifier: workspace:*
@@ -33546,6 +33549,10 @@ packages:
       mustache: 4.2.0
       stacktracey: 2.1.8
     dev: true
+
+  /yt-dlp-wrap@2.3.12:
+    resolution: {integrity: sha512-P8fJ+6M1YjukyJENCTviNLiZ8mokxprR54ho3DsSKPWDcac489OjRiStGEARJr6un6ETS6goTn4CWl/b/rM3aA==}
+    dev: false
 
   /zod-error@1.5.0:
     resolution: {integrity: sha512-zzopKZ/skI9iXpqCEPj+iLCKl9b88E43ehcU+sbRoHuwGd9F1IDVGQ70TyO6kmfiRL1g4IXkjsXK+g1gLYl4WQ==}
