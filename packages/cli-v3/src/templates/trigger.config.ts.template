@@ -4,7 +4,7 @@ export const config: TriggerConfig = {
   project: "${projectRef}",
   logLevel: "log",
   retries: {
-    enabledInDev: false,
+    enabledInDev: true,
     default: {
       maxAttempts: 3,
       minTimeoutInMs: 1000,
