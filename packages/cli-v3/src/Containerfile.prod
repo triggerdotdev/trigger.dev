@@ -2,6 +2,9 @@ FROM node:20-alpine@sha256:bf77dc26e48ea95fca9d1aceb5acfa69d2e546b765ec2abfb5029
 
 RUN apk add --no-cache dumb-init
 
+# Create workdir and set appropriate permissions
+RUN mkdir /app && chown node:node /app
+
 WORKDIR /app
 
 # copy all the files just in case anything is needed in postinstall
