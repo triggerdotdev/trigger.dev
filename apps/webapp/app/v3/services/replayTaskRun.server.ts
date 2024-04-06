@@ -39,22 +39,15 @@ export class ReplayTaskRunService extends BaseService {
     });
 
     const triggerTaskService = new TriggerTaskService();
-    return await triggerTaskService.call(
-      existingTaskRun.taskIdentifier,
-      authenticatedEnvironment,
-      {
-        payload: parsedPayload,
-        options: {
-          queue: {
-            name: existingTaskRun.queue,
-          },
-          concurrencyKey: existingTaskRun.concurrencyKey ?? undefined,
-          test: existingTaskRun.isTest,
+    return await triggerTaskService.call(existingTaskRun.taskIdentifier, authenticatedEnvironment, {
+      payload: parsedPayload,
+      options: {
+        queue: {
+          name: existingTaskRun.queue,
         },
+        concurrencyKey: existingTaskRun.concurrencyKey ?? undefined,
+        test: existingTaskRun.isTest,
       },
-      {
-        idempotencyKey: existingTaskRun.idempotencyKey,
-      }
-    );
+    });
   }
 }
