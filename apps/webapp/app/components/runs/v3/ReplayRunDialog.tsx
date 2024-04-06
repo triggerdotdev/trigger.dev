@@ -1,5 +1,5 @@
 import { ArrowPathIcon } from "@heroicons/react/20/solid";
-import { useFetcher } from "@remix-run/react";
+import { Form, useFetcher, useNavigation } from "@remix-run/react";
 import { Button } from "~/components/primitives/Buttons";
 import {
   DialogContent,
@@ -14,27 +14,30 @@ type ReplayRunDialogProps = {
 };
 
 export function ReplayRunDialog({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) {
-  const replayFetcher = useFetcher();
+  const navigation = useNavigation();
+
+  const formAction = `/resources/taskruns/${runFriendlyId}/replay`;
+  const isLoading = navigation.formAction === formAction;
 
   return (
-    <DialogContent>
+    <DialogContent key="replay">
       <DialogHeader>Replay this run?</DialogHeader>
       <DialogDescription>
         Replaying a run will create a new run with the same payload and environment as the original.
       </DialogDescription>
       <DialogFooter>
-        <replayFetcher.Form action={`/resources/taskruns/${runFriendlyId}/replay`} method="post">
+        <Form action={formAction} method="post">
           <input type="hidden" name="failedRedirect" value={failedRedirect} />
           <Button
             type="submit"
             variant="primary/small"
-            LeadingIcon={replayFetcher.state === "idle" ? ArrowPathIcon : "spinner-white"}
-            disabled={replayFetcher.state !== "idle"}
+            LeadingIcon={isLoading ? "spinner-white" : ArrowPathIcon}
+            disabled={isLoading}
             shortcut={{ modifiers: ["meta"], key: "enter" }}
           >
-            {replayFetcher.state === "idle" ? "Replay run" : "Replaying..."}
+            {isLoading ? "Replaying..." : "Replay run"}
           </Button>
-        </replayFetcher.Form>
+        </Form>
       </DialogFooter>
     </DialogContent>
   );
