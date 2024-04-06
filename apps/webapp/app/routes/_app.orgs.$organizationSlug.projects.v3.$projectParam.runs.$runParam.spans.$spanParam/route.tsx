@@ -1,4 +1,9 @@
-import { CloudArrowDownIcon, QueueListIcon, StopCircleIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowPathIcon,
+  CloudArrowDownIcon,
+  QueueListIcon,
+  StopCircleIcon,
+} from "@heroicons/react/20/solid";
 import { useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
@@ -14,6 +19,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
+import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
@@ -22,7 +28,7 @@ import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptSt
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
+import { Span, SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3RunPath, v3RunSpanPath, v3SpanParamsSchema, v3TraceSpanPath } from "~/utils/pathBuilder";
@@ -188,28 +194,59 @@ export default function Page() {
             )}
           </div>
           <div className="flex items-center gap-4">
-            {event.isPartial && runParam && (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="danger/small" LeadingIcon={StopCircleIcon}>
-                    Cancel run
-                  </Button>
-                </DialogTrigger>
-                <CancelRunDialog
-                  runFriendlyId={event.runId}
-                  redirectPath={v3RunSpanPath(
-                    organization,
-                    project,
-                    { friendlyId: runParam },
-                    { spanId: event.spanId }
-                  )}
-                />
-              </Dialog>
-            )}
+            <RunActionButtons span={event} />
           </div>
         </div>
       ) : null}
     </div>
+  );
+}
+
+function RunActionButtons({ span }: { span: Span }) {
+  const organization = useOrganization();
+  const project = useProject();
+  const { runParam } = useParams();
+
+  if (!runParam) return null;
+
+  if (span.isPartial) {
+    return (
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="danger/small" LeadingIcon={StopCircleIcon}>
+            Cancel run
+          </Button>
+        </DialogTrigger>
+        <CancelRunDialog
+          runFriendlyId={span.runId}
+          redirectPath={v3RunSpanPath(
+            organization,
+            project,
+            { friendlyId: runParam },
+            { spanId: span.spanId }
+          )}
+        />
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="tertiary/small" LeadingIcon={ArrowPathIcon}>
+          Replay run
+        </Button>
+      </DialogTrigger>
+      <ReplayRunDialog
+        runFriendlyId={span.runId}
+        failedRedirect={v3RunSpanPath(
+          organization,
+          project,
+          { friendlyId: runParam },
+          { spanId: span.spanId }
+        )}
+      />
+    </Dialog>
   );
 }
 
