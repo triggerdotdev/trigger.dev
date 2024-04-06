@@ -222,6 +222,7 @@ export class RunListPresenter {
           version: run.version,
           taskIdentifier: run.taskIdentifier,
           attempts: Number(run.attempts),
+          isReplayable: true,
           isCancellable: CANCELLABLE_STATUSES.includes(run.status),
           environment: {
             type: environment.type,
