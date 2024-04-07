@@ -1,0 +1,121 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Trigger.dev v3 REST API",
+    "description": "The REST API lets you trigger and manage runs on Trigger.dev. You can trigger a run, get the status of a run, and get the results of a run. ",
+    "version": "2024-04"
+  },
+  "servers": [
+    {
+      "url": "https://api.trigger.dev",
+      "description": "Trigger.dev API"
+    }
+  ],
+  "paths": {
+    "/api/v1/runs/{run_id}/replay": {
+      "post": {
+        "description": "Creates a new run with the same payload and options as the original run.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ID of an existing run. When you trigger a run you will get an id in the response."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "The ID of the new run."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["Invalid or missing run ID", "Failed to create new run"]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["Invalid or Missing API key"]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["Run not found"]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": ["run"],
+        "security": [{ "bearerAuth": [] }],
+        "operationId": "replay_run_v1",
+        "x-codeSamples": [
+          {
+            "lang": "typescript",
+            "source": "const handle = await replayRun(existingRun.id);"
+          },
+          {
+            "lang": "sh",
+            "source": "curl --request POST \\\n\t--url https://api.trigger.dev/api/v1/runs/{run_id}/replay \\\n\t--header 'Authorization: Bearer <token>'"
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Use your Secret API key in the form 'Bearer <SECRET KEY>' (without the quotation marks)"
+      }
+    }
+  },
+  "security": [{ "bearerAuth": [] }]
+}
