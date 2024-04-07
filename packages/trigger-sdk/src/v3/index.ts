@@ -9,4 +9,4 @@ export type { Context };
 
 export { logger, type LogLevel } from "@trigger.dev/core/v3";
 
-export { replayRun } from "./management";
+export { replayRun, cancelRun } from "./management";

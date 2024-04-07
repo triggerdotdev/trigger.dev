@@ -10,7 +10,9 @@ import {
   BatchTriggerTaskResponse,
   CreateUploadPayloadUrlResponseBody,
   ReplayRunResponse,
+  CanceledRunResponse,
 } from "../schemas";
+import { z } from "zod";
 
 export type TriggerOptions = {
   spanParentAsLink?: boolean;
@@ -93,6 +95,18 @@ export class ApiClient {
     return zodfetch(
       ReplayRunResponse,
       `${this.baseUrl}/api/v1/runs/${runId}/replay`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+      },
+      zodFetchOptions
+    );
+  }
+
+  cancelRun(runId: string) {
+    return zodfetch(
+      CanceledRunResponse,
+      `${this.baseUrl}/api/v2/runs/${runId}/cancel`,
       {
         method: "POST",
         headers: this.#getHeaders(false),

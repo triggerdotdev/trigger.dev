@@ -204,3 +204,9 @@ export const ReplayRunResponse = z.object({
 });
 
 export type ReplayRunResponse = z.infer<typeof ReplayRunResponse>;
+
+export const CanceledRunResponse = z.object({
+  message: z.string(),
+});
+
+export type CanceledRunResponse = z.infer<typeof CanceledRunResponse>;

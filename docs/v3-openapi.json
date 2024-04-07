@@ -106,6 +106,101 @@
           }
         ]
       }
+    },
+    "/api/v1/runs/{run_id}/cancel": {
+      "post": {
+        "description": "Cancels a run.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ID of an existing run. When you trigger a run you will get an id in the response."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "description": "Confirmation message that the run was canceled."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["Invalid or missing run ID", "Failed to create new run"]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["Invalid or Missing API key"]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": ["Run not found"]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": ["run"],
+        "security": [{ "bearerAuth": [] }],
+        "operationId": "replay_run_v1",
+        "x-codeSamples": [
+          {
+            "lang": "typescript",
+            "source": "await cancelRun(existingRun.id);"
+          },
+          {
+            "lang": "sh",
+            "source": "curl --request POST \\\n\t--url https://api.trigger.dev/api/v1/runs/{run_id}/cancel \\\n\t--header 'Authorization: Bearer <token>'"
+          }
+        ]
+      }
     }
   },
   "components": {
