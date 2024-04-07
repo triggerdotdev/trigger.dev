@@ -9,6 +9,7 @@ import {
   BatchTriggerTaskRequestBody,
   BatchTriggerTaskResponse,
   CreateUploadPayloadUrlResponseBody,
+  ReplayRunResponse,
 } from "../schemas";
 
 export type TriggerOptions = {
@@ -82,6 +83,18 @@ export class ApiClient {
       `${this.baseUrl}/api/v1/packets/${filename}`,
       {
         method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      zodFetchOptions
+    );
+  }
+
+  replayRun(runId: string) {
+    return zodfetch(
+      ReplayRunResponse,
+      `${this.baseUrl}/api/v1/runs/${runId}/replay`,
+      {
+        method: "POST",
         headers: this.#getHeaders(false),
       },
       zodFetchOptions

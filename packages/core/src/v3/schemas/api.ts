@@ -198,3 +198,9 @@ export const CreateUploadPayloadUrlResponseBody = z.object({
 });
 
 export type CreateUploadPayloadUrlResponseBody = z.infer<typeof CreateUploadPayloadUrlResponseBody>;
+
+export const ReplayRunResponse = z.object({
+  id: z.string(),
+});
+
+export type ReplayRunResponse = z.infer<typeof ReplayRunResponse>;
