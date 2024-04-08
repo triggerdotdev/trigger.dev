@@ -4,6 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     busybox \
     dumb-init \
+    openssl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and set workdir with appropriate permissions
