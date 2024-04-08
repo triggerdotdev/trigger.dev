@@ -11,8 +11,6 @@ export async function run() {
 
   const replayed = await runs.replay(run.id);
   console.log("replayed run", replayed);
-
-  //todo runs.cancel();
 }
 
 run();
