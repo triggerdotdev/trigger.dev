@@ -562,7 +562,7 @@ async function handleTaskRunExecutionResult<TOutput>(
   }
 }
 
-function apiClientMissingError() {
+export function apiClientMissingError() {
   const hasBaseUrl = !!apiClientManager.baseURL;
   const hasAccessToken = !!apiClientManager.accessToken;
   if (!hasBaseUrl && !hasAccessToken) {

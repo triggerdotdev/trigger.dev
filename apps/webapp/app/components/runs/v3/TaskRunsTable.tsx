@@ -24,10 +24,11 @@ import { formatDuration } from "@trigger.dev/core/v3";
 import { TaskRunStatusCombo } from "./TaskRunStatus";
 import { useEnvironments } from "~/hooks/useEnvironments";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { StopCircleIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { CancelRunDialog } from "./CancelRunDialog";
 import { useLocation } from "@remix-run/react";
+import { ReplayRunDialog } from "./ReplayRunDialog";
 
 type RunsTableProps = {
   total: number;
@@ -49,7 +50,6 @@ export function TaskRunsTable({
 }: RunsTableProps) {
   const organization = useOrganization();
   const project = useProject();
-  const location = useLocation();
 
   return (
     <Table>
@@ -110,23 +110,7 @@ export function TaskRunsTable({
                 <TableCell to={path}>
                   {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
                 </TableCell>
-                {run.isCancellable ? (
-                  <TableCellMenu isSticky>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button variant="small-menu-item" LeadingIcon={StopCircleIcon}>
-                          Cancel run
-                        </Button>
-                      </DialogTrigger>
-                      <CancelRunDialog
-                        runFriendlyId={run.friendlyId}
-                        redirectPath={`${location.pathname}${location.search}`}
-                      />
-                    </Dialog>
-                  </TableCellMenu>
-                ) : (
-                  <TableCell to={path}>{""}</TableCell>
-                )}
+                <RunActionsCell run={run} path={path} />
               </TableRow>
             );
           })
@@ -141,6 +125,43 @@ export function TaskRunsTable({
         )}
       </TableBody>
     </Table>
+  );
+}
+
+function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
+  const location = useLocation();
+
+  if (!run.isCancellable && !run.isReplayable) return <TableCell to={path}>{""}</TableCell>;
+
+  return (
+    <TableCellMenu isSticky>
+      {run.isCancellable && (
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="small-menu-item" LeadingIcon={StopCircleIcon}>
+              Cancel run
+            </Button>
+          </DialogTrigger>
+          <CancelRunDialog
+            runFriendlyId={run.friendlyId}
+            redirectPath={`${location.pathname}${location.search}`}
+          />
+        </Dialog>
+      )}
+      {run.isReplayable && (
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
+              Replay run
+            </Button>
+          </DialogTrigger>
+          <ReplayRunDialog
+            runFriendlyId={run.friendlyId}
+            failedRedirect={`${location.pathname}${location.search}`}
+          />
+        </Dialog>
+      )}
+    </TableCellMenu>
   );
 }
 

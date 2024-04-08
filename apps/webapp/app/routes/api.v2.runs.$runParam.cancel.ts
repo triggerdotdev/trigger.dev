@@ -25,7 +25,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const parsed = ParamsSchema.safeParse(params);
 
   if (!parsed.success) {
-    return json({ error: "Invalid or Missing runId" }, { status: 400 });
+    return json({ error: "Invalid or Missing run id" }, { status: 400 });
   }
 
   const { runParam } = parsed.data;
