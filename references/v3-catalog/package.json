@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev:trigger": "trigger.dev dev"
+    "dev:trigger": "triggerdev dev"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.8.0",
