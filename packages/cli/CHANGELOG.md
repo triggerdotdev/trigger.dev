@@ -1,5 +1,14 @@
 # create-trigger
 
+## 3.0.0-beta.7
+
+### Patch Changes
+
+- Updated dependencies [f854cb90e]
+- Updated dependencies [f854cb90e]
+  - @trigger.dev/core@3.0.0-beta.7
+  - @trigger.dev/yalt@3.0.0-beta.7
+
 ## 3.0.0-beta.6
 
 ### Patch Changes

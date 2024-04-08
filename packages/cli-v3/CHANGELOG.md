@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 3.0.0-beta.8
+
+### Patch Changes
+
+- 1c24348f7: Add openssl to prod worker image and allow passing auth token via env var for deploy
+- Updated dependencies [f854cb90e]
+- Updated dependencies [f854cb90e]
+  - @trigger.dev/core@3.0.0-beta.7
+
 ## 3.0.0-beta.7
 
 ### Patch Changes
