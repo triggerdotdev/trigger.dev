@@ -72,6 +72,33 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         intro("Logging in to Trigger.dev");
       }
 
+      const accessTokenFromEnv = process.env.TRIGGER_ACCESS_TOKEN;
+
+      if (accessTokenFromEnv) {
+        const auth = {
+          accessToken: accessTokenFromEnv,
+          apiUrl: process.env.TRIGGER_API_URL ?? "https://api.trigger.dev",
+        };
+        const apiClient = new CliApiClient(auth.apiUrl, auth.accessToken);
+        const userData = await apiClient.whoAmI();
+
+        if (!userData.success) {
+          throw new Error(userData.error);
+        }
+
+        return {
+          ok: true as const,
+          profile: options?.profile ?? "default",
+          userId: userData.data.userId,
+          email: userData.data.email,
+          dashboardUrl: userData.data.dashboardUrl,
+          auth: {
+            accessToken: auth.accessToken,
+            apiUrl: auth.apiUrl,
+          },
+        };
+      }
+
       const authConfig = readAuthConfigProfile(options?.profile);
 
       if (authConfig && authConfig.accessToken) {
