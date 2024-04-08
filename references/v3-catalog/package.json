@@ -3,16 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev:trigger": "trigger.dev dev",
+    "dev:trigger": "triggerdev dev",
     "management": "ts-node ./src/management.ts"
   },
   "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "@opentelemetry/api": "^1.8.0",
     "@sindresorhus/slugify": "^2.2.1",
     "@traceloop/instrumentation-openai": "^0.3.9",
     "@trigger.dev/core": "workspace:^3.0.0-beta.0",
     "@trigger.dev/sdk": "workspace:^3.0.0-beta.0",
     "dotenv": "^16.4.5",
+    "execa": "^8.0.1",
     "msw": "^2.2.1",
     "openai": "^4.28.0",
     "stripe": "^12.14.0",

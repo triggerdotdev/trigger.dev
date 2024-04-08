@@ -1,5 +1,12 @@
 # trigger.dev
 
+## 3.0.0-beta.7
+
+### Patch Changes
+
+- 624ddce32: Fix permissions inside node_modules
+- 9be1557bb: Changed the binary name from trigger.dev to triggerdev to fix a Windows issue
+
 ## 3.0.0-beta.6
 
 ### Patch Changes

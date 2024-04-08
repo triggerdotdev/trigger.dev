@@ -12,6 +12,8 @@ WORKDIR /app
 
 # copy all the files just in case anything is needed in postinstall
 COPY --chown=node:node . .
+
+USER node
 RUN npm ci --no-fund --no-audit && npm cache clean --force
 
 # Development or production stage builds upon the base stage
