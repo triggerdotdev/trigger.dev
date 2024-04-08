@@ -1,7 +1,12 @@
 import { CanceledRunResponse, ReplayRunResponse, apiClientManager } from "@trigger.dev/core/v3";
 import { apiClientMissingError } from "./shared";
 
-export async function replayRun(runId: string): Promise<ReplayRunResponse> {
+export const runs = {
+  replay: replayRun,
+  cancel: cancelRun,
+};
+
+async function replayRun(runId: string): Promise<ReplayRunResponse> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -17,7 +22,7 @@ export async function replayRun(runId: string): Promise<ReplayRunResponse> {
   return response.data;
 }
 
-export async function cancelRun(runId: string): Promise<CanceledRunResponse> {
+async function cancelRun(runId: string): Promise<CanceledRunResponse> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {

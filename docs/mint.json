@@ -588,13 +588,13 @@
           ]
         },
         {
-          "group": "REST API",
+          "group": "Management API",
           "pages": [
-            "v3/rest-start-run",
-            "v3/rest-get-run",
-            "v3/rest-get-runs",
-            "v3/rest-replay-run",
-            "v3/rest-cancel-run"
+            "v3/management-start-run",
+            "v3/management-get-run",
+            "v3/management-get-runs",
+            "v3/management-replay-run",
+            "v3/management-cancel-run"
           ]
         }
       ]

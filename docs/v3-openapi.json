@@ -98,7 +98,7 @@
         "x-codeSamples": [
           {
             "lang": "typescript",
-            "source": "const handle = await replayRun(existingRun.id);"
+            "source": "const handle = await runs.replay(existingRun.id);"
           },
           {
             "lang": "sh",
@@ -193,7 +193,7 @@
         "x-codeSamples": [
           {
             "lang": "typescript",
-            "source": "await cancelRun(existingRun.id);"
+            "source": "await runs.cancel(existingRun.id);"
           },
           {
             "lang": "sh",
