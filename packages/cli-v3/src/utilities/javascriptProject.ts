@@ -1,8 +1,7 @@
 import { $ } from "execa";
-import { keyValueBy } from "./keyValueBy";
-import { logger } from "./logger";
-import { readJSONFileSync } from "./fileSystem";
 import { join } from "node:path";
+import { readJSONFileSync } from "./fileSystem";
+import { logger } from "./logger";
 
 export type ResolveOptions = { allowDev: boolean };
 
@@ -79,18 +78,6 @@ type PnpmList = {
   >;
 }[];
 
-type NpmDependency = {
-  version: string;
-  resolved: string;
-  overridden: boolean;
-  required?: { version: string };
-  dependencies?: Record<string, NpmDependency>;
-};
-
-type NpmList = {
-  dependencies: Record<string, NpmDependency>;
-};
-
 type PackageManagerOptions = {
   cwd?: string;
 };
@@ -128,6 +115,18 @@ class PNPMCommands implements PackageManagerCommands {
   }
 }
 
+type NpmDependency = {
+  version: string;
+  resolved: string;
+  overridden: boolean;
+  required?: { version: string };
+  dependencies?: Record<string, NpmDependency>;
+};
+
+type NpmListOutput = {
+  dependencies: Record<string, NpmDependency>;
+};
+
 class NPMCommands implements PackageManagerCommands {
   get name() {
     return "npm";
@@ -138,11 +137,31 @@ class NPMCommands implements PackageManagerCommands {
     options: PackageManagerOptions
   ): Promise<string | undefined> {
     const cmd = process.platform === "win32" ? "npm.cmd" : "npm";
-    const { stdout } = await $({ cwd: options.cwd })`${cmd} show ${packageName} version`;
+    const { stdout } = await $({ cwd: options.cwd })`${cmd} list ${packageName} --json`;
+    const output = JSON.parse(stdout) as NpmListOutput;
 
-    logger.debug(`Resolving ${packageName} version using npm`, { version: stdout.trim() });
+    logger.debug(`Resolving ${packageName} version using npm`, { output });
 
-    return stdout.trim();
+    return this.#recursivelySearchDependencies(output.dependencies, packageName);
+  }
+
+  #recursivelySearchDependencies(
+    dependencies: Record<string, NpmDependency>,
+    packageName: string
+  ): string | undefined {
+    for (const [name, dependency] of Object.entries(dependencies)) {
+      if (name === packageName) {
+        return dependency.version;
+      }
+
+      if (dependency.dependencies) {
+        const result = this.#recursivelySearchDependencies(dependency.dependencies, packageName);
+
+        if (result) {
+          return result;
+        }
+      }
+    }
   }
 }
 
