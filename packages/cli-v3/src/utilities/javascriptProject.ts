@@ -2,11 +2,55 @@ import { $ } from "execa";
 import { join } from "node:path";
 import { readJSONFileSync } from "./fileSystem";
 import { logger } from "./logger";
+import { PackageManager, getUserPackageManager } from "./getUserPackageManager";
 
 export type ResolveOptions = { allowDev: boolean };
 
+const BuiltInModules = new Set([
+  "assert",
+  "async_hooks",
+  "buffer",
+  "child_process",
+  "cluster",
+  "console",
+  "constants",
+  "crypto",
+  "dgram",
+  "dns",
+  "domain",
+  "events",
+  "fs",
+  "http",
+  "http2",
+  "https",
+  "inspector",
+  "module",
+  "net",
+  "os",
+  "path",
+  "perf_hooks",
+  "process",
+  "punycode",
+  "querystring",
+  "readline",
+  "repl",
+  "stream",
+  "string_decoder",
+  "timers",
+  "tls",
+  "trace_events",
+  "tty",
+  "url",
+  "util",
+  "v8",
+  "vm",
+  "worker_threads",
+  "zlib",
+]);
+
 export class JavascriptProject {
   private _packageJson?: any;
+  private _packageManager?: PackageManager;
 
   constructor(private projectPath: string) {}
 
@@ -25,6 +69,16 @@ export class JavascriptProject {
   }
 
   async resolve(packageName: string, options?: ResolveOptions): Promise<string | undefined> {
+    if (BuiltInModules.has(packageName)) {
+      return undefined;
+    }
+
+    if (!this._packageManager) {
+      this._packageManager = await getUserPackageManager(this.projectPath);
+    }
+
+    const packageManager = this._packageManager;
+
     const opts = { allowDev: false, ...options };
 
     const packageJsonVersion = this.packageJson.dependencies?.[packageName];
@@ -41,23 +95,26 @@ export class JavascriptProject {
       }
     }
 
-    const commands = [new NPMCommands(), new PNPMCommands(), new YarnCommands()];
+    const command =
+      packageManager === "npm"
+        ? new NPMCommands()
+        : packageManager === "pnpm"
+        ? new PNPMCommands()
+        : new YarnCommands();
 
-    for (const command of commands) {
-      try {
-        const version = await command.resolveDependencyVersion(packageName, {
-          cwd: this.projectPath,
-        });
+    try {
+      const version = await command.resolveDependencyVersion(packageName, {
+        cwd: this.projectPath,
+      });
 
-        if (version) {
-          return version;
-        }
-      } catch (error) {
-        logger.debug(`Failed to resolve dependency version using ${command.name}`, {
-          packageName,
-          error,
-        });
+      if (version) {
+        return version;
       }
+    } catch (error) {
+      logger.debug(`Failed to resolve dependency version using ${command.name}`, {
+        packageName,
+        error,
+      });
     }
   }
 }
