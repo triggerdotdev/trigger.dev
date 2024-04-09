@@ -136,6 +136,13 @@ export class TaskMonitor {
 
     const podStatus = this.#getPodStatusSummary(pod.status);
     const containerState = this.#getContainerStateSummary(containerStatus.state);
+    const exitCode = containerState.exitCode ?? -1;
+
+    // We use this special exit code to signal any errors were already handled elsewhere
+    if (exitCode === 111) {
+      return;
+    }
+
     const rawLogs = await this.#getLogTail(podName);
 
     this.#logger.log(`${podName} failed with:`, {
@@ -144,7 +151,6 @@ export class TaskMonitor {
       rawLogs,
     });
 
-    const exitCode = containerState.exitCode ?? -1;
     const rawReason = podStatus.reason ?? containerState.reason ?? "";
     const message = podStatus.message ?? containerState.message ?? "";
 
