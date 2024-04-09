@@ -112,7 +112,7 @@ export async function devCommand(dir: string, options: DevCommandOptions) {
     return;
   }
 
-  const devInstance = await startDev(dir, options, authorization.auth);
+  const devInstance = await startDev(dir, options, authorization.auth, authorization.dashboardUrl);
   const { waitUntilExit } = devInstance.devReactElement;
   await waitUntilExit();
 }
@@ -120,7 +120,8 @@ export async function devCommand(dir: string, options: DevCommandOptions) {
 async function startDev(
   dir: string,
   options: DevCommandOptions,
-  authorization: { apiUrl: string; accessToken: string }
+  authorization: { apiUrl: string; accessToken: string },
+  dashboardUrl: string
 ) {
   let rerender: (node: React.ReactNode) => void | undefined;
 
@@ -174,6 +175,7 @@ async function startDev(
 
       return (
         <DevUI
+          dashboardUrl={dashboardUrl}
           config={configParam}
           apiUrl={apiUrl}
           apiKey={devEnv.data.apiKey}
@@ -209,6 +211,7 @@ async function startDev(
 
 type DevProps = {
   config: ResolvedConfig;
+  dashboardUrl: string;
   apiUrl: string;
   apiKey: string;
   environmentClient: CliApiClient;
@@ -220,6 +223,7 @@ type DevProps = {
 
 function useDev({
   config,
+  dashboardUrl,
   apiUrl,
   apiKey,
   environmentClient,
@@ -251,7 +255,7 @@ function useDev({
     });
 
     const backgroundWorkerCoordinator = new BackgroundWorkerCoordinator(
-      `${apiUrl}/projects/v3/${config.project}`
+      `${dashboardUrl}/projects/v3/${config.project}`
     );
 
     websocket.addEventListener("open", async (event) => {});
@@ -561,7 +565,7 @@ function useDev({
                   } else if (e instanceof UncaughtExceptionError) {
                     const parsedBuildError = parseBuildErrorStack(e.originalError);
 
-                    if (typeof parsedBuildError !== "string") {
+                    if (parsedBuildError && typeof parsedBuildError !== "string") {
                       logESMRequireError(
                         parsedBuildError,
                         configPath

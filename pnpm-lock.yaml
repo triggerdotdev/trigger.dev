@@ -1537,9 +1537,6 @@ importers:
       jsonc-parser:
         specifier: ^3.2.1
         version: 3.2.1
-      jsonlines:
-        specifier: ^0.1.1
-        version: 0.1.1
       liquidjs:
         specifier: ^10.9.2
         version: 10.9.3
@@ -1622,9 +1619,6 @@ importers:
       '@types/gradient-string':
         specifier: ^1.1.2
         version: 1.1.2
-      '@types/jsonlines':
-        specifier: ^0.1.5
-        version: 0.1.5
       '@types/mock-fs':
         specifier: ^4.13.1
         version: 4.13.1
@@ -13953,12 +13947,6 @@ packages:
 
   /@types/json5@0.0.30:
     resolution: {integrity: sha512-sqm9g7mHlPY/43fcSNrCYfOeX9zkTTK+euO5E6+CVijSMm5tTjkVdwdqRkY3ljjIAf8679vps5jKUoJBCLsMDA==}
-
-  /@types/jsonlines@0.1.5:
-    resolution: {integrity: sha512-/zOl7I350g4/G6fEW9dktpTrkcKqZDMRkr2SuDla0utgwkUXrm7OFXq2WZT0W9Jl7BYoisGbn1EZsV/Z2F9LGg==}
-    dependencies:
-      '@types/node': 20.11.22
-    dev: true
 
   /@types/jsonwebtoken@9.0.1:
     resolution: {integrity: sha512-c5ltxazpWabia/4UzhIoaDcIza4KViOQhdbjRlfcIGVnsE3c3brkz9Z+F/EeJIECOQP7W7US2hNE930cWWkPiw==}

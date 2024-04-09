@@ -1,5 +1,4 @@
-import pathModule from "path";
-import { pathExists } from "./fileSystem.js";
+import { findUp } from "find-up";
 
 export type PackageManager = "npm" | "pnpm" | "yarn";
 
@@ -38,8 +37,8 @@ async function detectPackageManagerFromArtifacts(path: string): Promise<PackageM
   ];
 
   for (const { name, pm } of packageFiles) {
-    const exists = await pathExists(pathModule.join(path, name));
-    if (exists) {
+    const foundPath = await findUp(name, { cwd: path });
+    if (typeof foundPath === "string") {
       return pm;
     }
   }

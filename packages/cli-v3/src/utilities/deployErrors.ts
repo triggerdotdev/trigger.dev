@@ -20,7 +20,7 @@ function errorIsErrorLike(error: unknown): error is Error {
   );
 }
 
-export function parseBuildErrorStack(error: unknown): BuildError {
+export function parseBuildErrorStack(error: unknown): BuildError | undefined {
   if (typeof error === "string") {
     return error;
   }
@@ -48,8 +48,6 @@ export function parseBuildErrorStack(error: unknown): BuildError {
       return error.message;
     }
   }
-
-  return "Unknown error";
 }
 
 export function logESMRequireError(parsedError: ESMRequireError, resolvedConfig: ReadConfigResult) {
