@@ -423,7 +423,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         }
 
         const parsedError = finishedDeployment.errorData.stack
-          ? parseBuildErrorStack(finishedDeployment.errorData)
+          ? parseBuildErrorStack(finishedDeployment.errorData) ??
+            finishedDeployment.errorData.message
           : finishedDeployment.errorData.message;
 
         if (typeof parsedError === "string") {
