@@ -1623,6 +1623,9 @@ enum TaskRunStatus {
   /// Task is waiting to be executed by a worker
   PENDING
 
+  /// Task hasn't been deployed yet but is waiting to be executed
+  WAITING_FOR_DEPLOY
+
   /// Task is currently being executed by a worker
   EXECUTING
 

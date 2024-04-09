@@ -27,6 +27,7 @@ import { TaskRunStatusCombo, descriptionForTaskRunStatus } from "./TaskRunStatus
 
 export const allTaskRunStatuses = [
   "PENDING",
+  "WAITING_FOR_DEPLOY",
   "EXECUTING",
   "RETRYING_AFTER_FAILURE",
   "WAITING_TO_RESUME",

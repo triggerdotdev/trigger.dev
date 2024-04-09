@@ -16,6 +16,7 @@ import { cn } from "~/utils/cn";
 
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   PENDING: "Task is waiting to be executed",
+  WAITING_FOR_DEPLOY: "Task needs to be deployed first to start executing",
   EXECUTING: "Task is currently being executed",
   RETRYING_AFTER_FAILURE: "Task is being reattempted after a failure",
   WAITING_TO_RESUME: "Task has been frozen and is waiting to be resumed",
@@ -63,6 +64,8 @@ export function TaskRunStatusIcon({
   switch (status) {
     case "PENDING":
       return <RectangleStackIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "WAITING_FOR_DEPLOY":
+      return <RectangleStackIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "EXECUTING":
       return <Spinner className={cn(runStatusClassNameColor(status), className)} />;
     case "WAITING_TO_RESUME":
@@ -95,6 +98,8 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
   switch (status) {
     case "PENDING":
       return "text-charcoal-500";
+    case "WAITING_FOR_DEPLOY":
+      return "text-amber-500";
     case "EXECUTING":
     case "RETRYING_AFTER_FAILURE":
       return "text-pending";
@@ -125,6 +130,8 @@ export function runStatusTitle(status: TaskRunStatus): string {
   switch (status) {
     case "PENDING":
       return "Queued";
+    case "WAITING_FOR_DEPLOY":
+      return "Waiting for deploy";
     case "EXECUTING":
       return "Executing";
     case "WAITING_TO_RESUME":
