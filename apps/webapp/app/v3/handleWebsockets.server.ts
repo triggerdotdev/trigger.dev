@@ -4,6 +4,8 @@ import { authenticateApiKey } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "../utils/singleton";
 import { AuthenticatedSocketConnection } from "./authenticatedSocketConnection.server";
+import { Gauge } from "prom-client";
+import { metricsRegister } from "~/metrics.server";
 
 export const wss = singleton("wss", initalizeWebSocketServer);
 
@@ -15,6 +17,15 @@ function initalizeWebSocketServer() {
   server.on("connection", handleWebSocketConnection);
 
   authenticatedConnections = new Map();
+
+  new Gauge({
+    name: "dev_authenticated_connections",
+    help: "Number of authenticated dev connections",
+    collect() {
+      this.set(authenticatedConnections.size);
+    },
+    registers: [metricsRegister],
+  });
 
   return server;
 }
@@ -47,8 +58,11 @@ async function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage) {
 
   authenticatedConnections.set(authenticatedConnection.id, authenticatedConnection);
 
-  authenticatedConnection.onClose.attach((closeEvent) => {
-    logger.debug("Websocket closed", { closeEvent });
+  authenticatedConnection.onClose.attachOnce((closeEvent) => {
+    logger.debug("Websocket closed", {
+      closeEvent,
+      authenticatedConnectionId: authenticatedConnection.id,
+    });
 
     authenticatedConnections.delete(authenticatedConnection.id);
   });

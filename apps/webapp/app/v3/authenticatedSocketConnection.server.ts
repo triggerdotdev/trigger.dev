@@ -6,11 +6,10 @@ import {
 } from "@trigger.dev/core/v3";
 import { Evt } from "evt";
 import { randomUUID } from "node:crypto";
+import type { CloseEvent, ErrorEvent, MessageEvent, WebSocket } from "ws";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { DevQueueConsumer } from "./marqs/devQueueConsumer.server";
-import type { WebSocket, MessageEvent, CloseEvent, ErrorEvent } from "ws";
-import { env } from "~/env.server";
 
 export class AuthenticatedSocketConnection {
   public id: string;
@@ -93,7 +92,11 @@ export class AuthenticatedSocketConnection {
 
     await this._consumer.stop();
 
-    this.onClose.post(ev);
+    const result = this.onClose.post(ev);
+
+    logger.debug("[AuthenticatedSocketConnection] Called onClose", {
+      result,
+    });
   }
 
   async #handleError(ev: ErrorEvent) {
