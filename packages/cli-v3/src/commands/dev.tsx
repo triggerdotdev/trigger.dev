@@ -408,7 +408,7 @@ function useDev({
                   logger.log(chalkGrey("○ Building background worker…"));
                 }
 
-                const metaOutputKey = join("out", `stdin.js`);
+                const metaOutputKey = join("out", `stdin.js`).replace(/\\/g, "/");
 
                 const metaOutput = result.metafile!.outputs[metaOutputKey];
 
