@@ -477,7 +477,8 @@ class ProdWorker {
             }
 
             await setTimeout(200);
-            process.exit(1);
+            // Use exit code 111 so we can ignore those failures in the task monitor
+            process.exit(111);
           }
         }
 
