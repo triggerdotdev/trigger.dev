@@ -40,18 +40,18 @@ After installation, run Trigger.dev with \`npx trigger.dev\`.`
 export async function printStandloneInitialBanner(performUpdateCheck = true) {
   const packageVersion = getVersion();
 
-  let text = `\n${logo()} ${chalkGrey("(v3 Developer Preview)")}`;
+  logger.log(`\n${logo()} ${chalkGrey("(v3 Developer Preview)")}`);
 
   if (performUpdateCheck) {
     const maybeNewVersion = await updateCheck();
 
     // Log a slightly more noticeable message if this is a major bump
     if (maybeNewVersion !== undefined) {
-      text = `${text} (update available ${chalk.green(maybeNewVersion)})`;
+      logger.log(`\nUpdate available ${chalk.green(maybeNewVersion)})`);
     }
   }
 
-  logger.log(text + "\n" + chalkGrey("-".repeat(54)));
+  logger.log(`${chalkGrey("-".repeat(54))}`);
 }
 
 export function printDevBanner() {
