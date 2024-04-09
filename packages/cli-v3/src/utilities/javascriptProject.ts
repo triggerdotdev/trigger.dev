@@ -115,6 +115,8 @@ class PNPMCommands implements PackageManagerCommands {
     const { stdout } = await $({ cwd: options.cwd })`${cmd} list ${packageName} -r --json`;
     const result = JSON.parse(stdout) as PnpmList;
 
+    logger.debug(`Resolving ${packageName} version using pnpm`, { result });
+
     // Return the first dependency version that matches the package name
     for (const dep of result) {
       const dependency = dep.dependencies?.[packageName];
@@ -131,25 +133,14 @@ class NPMCommands implements PackageManagerCommands {
     return "npm";
   }
 
-  async list(options: PackageManagerOptions): Promise<Record<string, string | undefined>> {
-    const cmd = process.platform === "win32" ? "npm.cmd" : "npm";
-
-    const { stdout } = await $({ cwd: options.cwd })`${cmd} ls --depth=0 --json`;
-
-    const dependencies = (JSON.parse(stdout) as NpmList).dependencies;
-
-    return keyValueBy(dependencies, (name, info) => ({
-      // unmet peer dependencies have a different structure
-      [name]: info.version || info.required?.version,
-    }));
-  }
-
   async resolveDependencyVersion(
     packageName: string,
     options: PackageManagerOptions
   ): Promise<string | undefined> {
     const cmd = process.platform === "win32" ? "npm.cmd" : "npm";
     const { stdout } = await $({ cwd: options.cwd })`${cmd} show ${packageName} version`;
+
+    logger.debug(`Resolving ${packageName} version using npm`, { version: stdout.trim() });
 
     return stdout.trim();
   }
@@ -169,6 +160,8 @@ class YarnCommands implements PackageManagerCommands {
     const { stdout } = await $({ cwd: options.cwd })`${cmd} info ${packageName} --json`;
 
     const lines = stdout.split("\n");
+
+    logger.debug(`Resolving ${packageName} version using yarn`, { lines });
 
     for (const line of lines) {
       const json = JSON.parse(line);
