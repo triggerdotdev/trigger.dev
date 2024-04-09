@@ -52,6 +52,7 @@ import {
   parseNpmInstallError,
 } from "../utilities/deployErrors";
 import { findUp, pathExists } from "find-up";
+import { cliRootPath } from "../utilities/resolveInternalFilePath";
 
 let apiClient: CliApiClient | undefined;
 
@@ -338,17 +339,10 @@ function useDev({
 
       const taskFiles = await gatherTaskFiles(config);
 
-      const workerFacade = readFileSync(
-        new URL(importResolve("./workers/dev/worker-facade.js", import.meta.url)).href.replace(
-          "file://",
-          ""
-        ),
-        "utf-8"
-      );
+      const workerFacadePath = join(cliRootPath(), "workers", "dev", "worker-facade.js");
+      const workerFacade = readFileSync(workerFacadePath, "utf-8");
 
-      const workerSetupPath = new URL(
-        importResolve("./workers/dev/worker-setup.js", import.meta.url)
-      ).href.replace("file://", "");
+      const workerSetupPath = join(cliRootPath(), "workers", "dev", "worker-setup.js");
 
       let entryPointContents = workerFacade
         .replace("__TASKS__", createTaskFileImports(taskFiles))
