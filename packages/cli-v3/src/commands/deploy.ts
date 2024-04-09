@@ -55,6 +55,7 @@ import {
   parseNpmInstallError,
 } from "../utilities/deployErrors";
 import { safeJsonParse } from "../utilities/safeJsonParse";
+import { JavascriptProject } from "../utilities/javascriptProject";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -423,7 +424,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         }
 
         const parsedError = finishedDeployment.errorData.stack
-          ? parseBuildErrorStack(finishedDeployment.errorData)
+          ? parseBuildErrorStack(finishedDeployment.errorData) ??
+            finishedDeployment.errorData.message
           : finishedDeployment.errorData.message;
 
         if (typeof parsedError === "string") {
@@ -1118,13 +1120,9 @@ async function compileProject(
       // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
       const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
 
-      const externalPackageJson = await readJSONFile(join(config.projectDir, "package.json"));
+      const javascriptProject = new JavascriptProject(config.projectDir);
 
-      const dependencies = await gatherRequiredDependencies(
-        allImports,
-        config,
-        externalPackageJson
-      );
+      const dependencies = await gatherRequiredDependencies(allImports, config, javascriptProject);
 
       const packageJsonContents = {
         name: "trigger-worker",
@@ -1132,7 +1130,7 @@ async function compileProject(
         description: "",
         dependencies,
         scripts: {
-          postinstall: externalPackageJson?.scripts?.postinstall,
+          ...javascriptProject.scripts,
         },
       };
 
@@ -1377,7 +1375,7 @@ async function typecheckProject(config: ResolvedConfig, options: DeployCommandOp
 async function gatherRequiredDependencies(
   imports: Metafile["outputs"][string]["imports"],
   config: ResolvedConfig,
-  projectPackageJson: any
+  project: JavascriptProject
 ) {
   const dependencies: Record<string, string> = {};
 
@@ -1392,7 +1390,7 @@ async function gatherRequiredDependencies(
       continue;
     }
 
-    const externalDependencyVersion = (projectPackageJson?.dependencies ?? {})[packageName];
+    const externalDependencyVersion = await project.resolve(packageName);
 
     if (externalDependencyVersion) {
       dependencies[packageName] = stripWorkspaceFromVersion(externalDependencyVersion);
@@ -1420,10 +1418,9 @@ async function gatherRequiredDependencies(
         dependencies[packageParts.name] = packageParts.version;
         continue;
       } else {
-        const externalDependencyVersion = {
-          ...projectPackageJson?.devDependencies,
-          ...projectPackageJson?.dependencies,
-        }[packageName];
+        const externalDependencyVersion = await project.resolve(packageParts.name, {
+          allowDev: true,
+        });
 
         if (externalDependencyVersion) {
           dependencies[packageParts.name] = externalDependencyVersion;

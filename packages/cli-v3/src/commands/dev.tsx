@@ -561,7 +561,7 @@ function useDev({
                   } else if (e instanceof UncaughtExceptionError) {
                     const parsedBuildError = parseBuildErrorStack(e.originalError);
 
-                    if (typeof parsedBuildError !== "string") {
+                    if (parsedBuildError && typeof parsedBuildError !== "string") {
                       logESMRequireError(
                         parsedBuildError,
                         configPath
