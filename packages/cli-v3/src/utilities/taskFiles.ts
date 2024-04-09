@@ -29,8 +29,14 @@ export async function gatherTaskFiles(config: ResolvedConfig): Promise<Array<Tas
       const fullPath = join(triggerDir, file.name);
 
       const filePath = relative(config.projectDir, fullPath);
-      const importPath = filePath.replace(/\.(js|ts)$/, "");
-      const importName = importPath.replace(/\//g, "_").replace(/\./g, "_").replace(/-/g, "_");
+      //remove the file extension and replace backslashes with forward slashes
+      const importPath = filePath.replace(/\.(js|ts)$/, "").replace(/\\/g, "/");
+      //change all slashes, dots, dashes to underscores
+      const importName = importPath
+        .replace(/\//g, "_")
+        .replace(/\\/g, "_")
+        .replace(/\./g, "_")
+        .replace(/-/g, "_");
 
       taskFiles.push({ triggerDir, importPath, importName, filePath });
     }
