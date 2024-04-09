@@ -1,5 +1,13 @@
 # @trigger.dev/nestjs
 
+## 3.0.0-beta.7
+
+### Patch Changes
+
+- Updated dependencies [f854cb90e]
+- Updated dependencies [f854cb90e]
+  - @trigger.dev/sdk@3.0.0-beta.7
+
 ## 3.0.0-beta.6
 
 ### Patch Changes

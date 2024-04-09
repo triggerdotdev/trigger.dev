@@ -1,5 +1,16 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.7
+
+### Patch Changes
+
+- f854cb90e: Added replayRun function to the SDK
+- f854cb90e: Added cancelRun to the SDK
+- Updated dependencies [f854cb90e]
+- Updated dependencies [f854cb90e]
+  - @trigger.dev/core@3.0.0-beta.7
+  - @trigger.dev/core-backend@3.0.0-beta.7
+
 ## 3.0.0-beta.6
 
 ### Patch Changes

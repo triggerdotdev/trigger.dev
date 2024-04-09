@@ -1,5 +1,12 @@
 # internal-platform
 
+## 3.0.0-beta.7
+
+### Patch Changes
+
+- f854cb90e: Added replayRun function to the SDK
+- f854cb90e: Added cancelRun to the SDK
+
 ## 3.0.0-beta.6
 
 ### Patch Changes
