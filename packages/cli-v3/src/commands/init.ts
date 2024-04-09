@@ -30,7 +30,7 @@ import { createFile, pathExists, readFile } from "../utilities/fileSystem";
 import { getUserPackageManager } from "../utilities/getUserPackageManager";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger";
-import { resolveInternalFilePath } from "../utilities/resolveInternalFilePath";
+import { cliRootPath, resolveInternalFilePath } from "../utilities/resolveInternalFilePath";
 import { login } from "./login";
 
 const InitCommandOptions = CommonCommandOptions.extend({
@@ -239,11 +239,11 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
         return { location, isCustomValue: location !== defaultValue };
       }
 
-      const exampleFile = resolveInternalFilePath(`./templates/examples/${example}.ts.template`);
+      const templatePath = join(cliRootPath(), "templates", "examples", `${example}.ts.template`);
       const outputPath = join(triggerDir, "example.ts");
 
       await createFileFromTemplate({
-        templatePath: exampleFile,
+        templatePath,
         outputPath,
         replacements: {},
       });
@@ -440,7 +440,7 @@ async function writeConfigFile(
       spnnr.start("Creating config file");
 
       const projectDir = resolve(process.cwd(), dir);
-      const templatePath = resolveInternalFilePath("./templates/trigger.config.ts.template");
+      const templatePath = join(cliRootPath(), "templates", "trigger.config.ts.template");
       const outputPath = join(projectDir, "trigger.config.ts");
 
       span.setAttributes({
