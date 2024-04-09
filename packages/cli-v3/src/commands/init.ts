@@ -30,7 +30,7 @@ import { createFile, pathExists, readFile } from "../utilities/fileSystem";
 import { getUserPackageManager } from "../utilities/getUserPackageManager";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger";
-import { cliRootPath, resolveInternalFilePath } from "../utilities/resolveInternalFilePath";
+import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { login } from "./login";
 
 const InitCommandOptions = CommonCommandOptions.extend({
