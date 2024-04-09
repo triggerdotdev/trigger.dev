@@ -96,20 +96,20 @@ export class Logger {
     // Get the current context from trace if it exists
     const currentSpan = trace.getSpan(context.active());
 
-    if (!currentSpan || currentSpan.isRecording()) {
-      const structuredLog = {
-        ...structureArgs(safeJsonClone(args) as Record<string, unknown>[], this.#filteredKeys),
-        ...this.#additionalFields(),
-        timestamp: new Date(),
-        name: this.#name,
-        message,
-        level,
-        traceId: currentSpan?.spanContext().traceId,
-        parentSpanId: currentSpan?.spanContext().spanId,
-      };
+    const structuredLog = {
+      ...structureArgs(safeJsonClone(args) as Record<string, unknown>[], this.#filteredKeys),
+      ...this.#additionalFields(),
+      timestamp: new Date(),
+      name: this.#name,
+      message,
+      level,
+      traceId:
+        currentSpan && currentSpan.isRecording() ? currentSpan?.spanContext().traceId : undefined,
+      parentSpanId:
+        currentSpan && currentSpan.isRecording() ? currentSpan?.spanContext().spanId : undefined,
+    };
 
-      loggerFunction(JSON.stringify(structuredLog, this.#jsonReplacer));
-    }
+    loggerFunction(JSON.stringify(structuredLog, this.#jsonReplacer));
   }
 }
 
