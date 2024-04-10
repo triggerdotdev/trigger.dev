@@ -367,6 +367,8 @@ function useDev({
 
       logger.log(chalkGrey("○ Building background worker…"));
 
+      logger.debug("entryPointContents before esbuild", { entryPointContents });
+
       ctx = await context({
         stdin: {
           contents: entryPointContents,
