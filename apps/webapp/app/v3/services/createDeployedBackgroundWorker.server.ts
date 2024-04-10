@@ -8,6 +8,7 @@ import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
 import { projectPubSub } from "./projectPubSub.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { logger } from "~/services/logger.server";
+import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 
 export class CreateDeployedBackgroundWorkerService extends BaseService {
   public async call(
@@ -95,6 +96,8 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
       } catch (err) {
         logger.error("Failed to publish WORKER_CREATED event", { err });
       }
+
+      await ExecuteTasksWaitingForDeployService.enqueue(backgroundWorker.id, this._prisma);
 
       return backgroundWorker;
     });
