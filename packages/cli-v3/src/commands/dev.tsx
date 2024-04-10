@@ -411,6 +411,8 @@ function useDev({
 
                 const metaOutputKey = join("out", `stdin.js`).replace(/\\/g, "/");
 
+                logger.debug("Metafile", { metafileOutputs: result.metafile?.outputs });
+
                 const metaOutput = result.metafile!.outputs[metaOutputKey];
 
                 if (!metaOutput) {
