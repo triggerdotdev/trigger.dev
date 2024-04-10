@@ -417,7 +417,10 @@ class ProdWorker {
             }
           } catch (e) {
             if (e instanceof TaskMetadataParseError) {
-              logger.error("tasks metadata parse error", { message: e.zodIssues, tasks: e.tasks });
+              logger.error("tasks metadata parse error", {
+                zodIssues: e.zodIssues,
+                tasks: e.tasks,
+              });
 
               socket.emit("INDEXING_FAILED", {
                 version: "v1",
@@ -429,31 +432,35 @@ class ProdWorker {
                 },
               });
             } else if (e instanceof UncaughtExceptionError) {
-              logger.error("uncaught exception", { message: e.originalError.message });
+              const error = {
+                name: e.originalError.name,
+                message: e.originalError.message,
+                stack: e.originalError.stack,
+              };
+
+              logger.error("uncaught exception", { originalError: error });
 
               socket.emit("INDEXING_FAILED", {
                 version: "v1",
                 deploymentId: this.deploymentId,
-                error: {
-                  name: e.originalError.name,
-                  message: e.originalError.message,
-                  stack: e.originalError.stack,
-                },
+                error,
               });
             } else if (e instanceof Error) {
-              logger.error("error", { message: e.message });
+              const error = {
+                name: e.name,
+                message: e.message,
+                stack: e.stack,
+              };
+
+              logger.error("error", { error });
 
               socket.emit("INDEXING_FAILED", {
                 version: "v1",
                 deploymentId: this.deploymentId,
-                error: {
-                  name: e.name,
-                  message: e.message,
-                  stack: e.stack,
-                },
+                error,
               });
             } else if (typeof e === "string") {
-              logger.error("string error", { message: e });
+              logger.error("string error", { error: { message: e } });
 
               socket.emit("INDEXING_FAILED", {
                 version: "v1",
@@ -477,7 +484,8 @@ class ProdWorker {
             }
 
             await setTimeout(200);
-            process.exit(1);
+            // Use exit code 111 so we can ignore those failures in the task monitor
+            process.exit(111);
           }
         }
 
