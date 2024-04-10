@@ -23,7 +23,7 @@
     {
       "type": "node-terminal",
       "request": "launch",
-      "name": "Debug BYO Auth",
+      "name": "Debug v2 job catalog",
       "command": "pnpm run byo-auth",
       "envFile": "${workspaceFolder}/references/job-catalog/.env",
       "cwd": "${workspaceFolder}/references/job-catalog",

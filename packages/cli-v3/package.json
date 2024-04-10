@@ -1,6 +1,6 @@
 {
   "name": "trigger.dev",
-  "version": "3.0.0-beta.8",
+  "version": "3.0.0-beta.9",
   "description": "A Command-Line Interface for Trigger.dev (v3) projects",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -38,7 +38,6 @@
     "@trigger.dev/core-apps": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/gradient-string": "^1.1.2",
-    "@types/jsonlines": "^0.1.5",
     "@types/mock-fs": "^4.13.1",
     "@types/node": "18",
     "@types/object-hash": "^3.0.6",
@@ -106,7 +105,6 @@
     "import-meta-resolve": "^4.0.0",
     "ink": "^4.4.1",
     "jsonc-parser": "^3.2.1",
-    "jsonlines": "^0.1.1",
     "liquidjs": "^10.9.2",
     "mock-fs": "^5.2.0",
     "nanoid": "^4.0.2",

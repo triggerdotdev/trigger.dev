@@ -492,6 +492,9 @@ importers:
       prismjs:
         specifier: ^1.29.0
         version: 1.29.0
+      prom-client:
+        specifier: ^15.1.0
+        version: 15.1.0
       random-words:
         specifier: ^2.0.0
         version: 2.0.0
@@ -1537,9 +1540,6 @@ importers:
       jsonc-parser:
         specifier: ^3.2.1
         version: 3.2.1
-      jsonlines:
-        specifier: ^0.1.1
-        version: 0.1.1
       liquidjs:
         specifier: ^10.9.2
         version: 10.9.3
@@ -1622,9 +1622,6 @@ importers:
       '@types/gradient-string':
         specifier: ^1.1.2
         version: 1.1.2
-      '@types/jsonlines':
-        specifier: ^0.1.5
-        version: 0.1.5
       '@types/mock-fs':
         specifier: ^4.13.1
         version: 4.13.1
@@ -9032,11 +9029,6 @@ packages:
       '@opentelemetry/api': 1.8.0
     dev: false
 
-  /@opentelemetry/api@1.7.0:
-    resolution: {integrity: sha512-AdY5wvN0P2vXBi3b29hxZgSFvdhdxPB9+f0B6s//P9Q8nibRWeA3cHm8UmLpio9ABigkVHJ5NMPk+Mz8VCCyrw==}
-    engines: {node: '>=8.0.0'}
-    dev: false
-
   /@opentelemetry/api@1.8.0:
     resolution: {integrity: sha512-I/s6F7yKUDdtMsoBWXJe8Qz40Tui5vsuKCWJEWVL+5q9sSWRzzx6v2KeNsOBEwd94j0eWkpWCH4yB6rZg9Mf0w==}
     engines: {node: '>=8.0.0'}
@@ -13953,12 +13945,6 @@ packages:
 
   /@types/json5@0.0.30:
     resolution: {integrity: sha512-sqm9g7mHlPY/43fcSNrCYfOeX9zkTTK+euO5E6+CVijSMm5tTjkVdwdqRkY3ljjIAf8679vps5jKUoJBCLsMDA==}
-
-  /@types/jsonlines@0.1.5:
-    resolution: {integrity: sha512-/zOl7I350g4/G6fEW9dktpTrkcKqZDMRkr2SuDla0utgwkUXrm7OFXq2WZT0W9Jl7BYoisGbn1EZsV/Z2F9LGg==}
-    dependencies:
-      '@types/node': 20.11.22
-    dev: true
 
   /@types/jsonwebtoken@9.0.1:
     resolution: {integrity: sha512-c5ltxazpWabia/4UzhIoaDcIza4KViOQhdbjRlfcIGVnsE3c3brkz9Z+F/EeJIECOQP7W7US2hNE930cWWkPiw==}
@@ -27769,7 +27755,7 @@ packages:
     resolution: {integrity: sha512-cCD7jLTqyPdjEPBo/Xk4Iu8jxjuZgZJ3e/oET3L+ZwOuap/7Cw3dH/TJSsZKs1TQLZ2IHpIlRAKw82ef06kmMw==}
     engines: {node: ^16 || ^18 || >=20}
     dependencies:
-      '@opentelemetry/api': 1.7.0
+      '@opentelemetry/api': 1.8.0
       tdigest: 0.1.2
     dev: false
 
