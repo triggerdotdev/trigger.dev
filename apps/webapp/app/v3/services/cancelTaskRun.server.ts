@@ -10,6 +10,7 @@ import { logger } from "~/services/logger.server";
 
 export const CANCELLABLE_STATUSES: Array<TaskRunStatus> = [
   "PENDING",
+  "WAITING_FOR_DEPLOY",
   "EXECUTING",
   "PAUSED",
   "WAITING_TO_RESUME",
