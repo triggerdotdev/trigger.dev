@@ -92,14 +92,13 @@ export class MarQS {
     queue: string,
     messageId: string,
     messageData: Record<string, unknown>,
-    concurrencyKey?: string
+    concurrencyKey?: string,
+    timestamp?: number
   ) {
     return await this.#trace(
       "enqueueMessage",
       async (span) => {
         const messageQueue = this.keys.queueKey(env, queue, concurrencyKey);
-
-        const timestamp = Date.now();
 
         const parentQueue = this.keys.envSharedQueueKey(env);
 
@@ -110,7 +109,7 @@ export class MarQS {
           data: messageData,
           queue: messageQueue,
           concurrencyKey,
-          timestamp,
+          timestamp: timestamp ?? Date.now(),
           messageId,
           parentQueue,
         };
