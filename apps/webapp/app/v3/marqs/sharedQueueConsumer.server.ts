@@ -295,6 +295,9 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
           });
 
+          // INFO: There used to be a race condition where tasks could be triggered, but execute messages could be dequeued before the run finished being created in the DB
+          //       This should not be happening anymore. In case it does, consider reqeueuing here with a brief delay while limiting total retries.
+
           await this.#ackAndDoMoreWork(message.messageId);
           return;
         }

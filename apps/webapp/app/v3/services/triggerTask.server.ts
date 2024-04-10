@@ -71,7 +71,7 @@ export class TriggerTaskService extends BaseService {
         async (event, traceContext) => {
           const lockId = taskIdentifierToLockId(taskId);
 
-          return await $transaction(this._prisma, async (tx) => {
+          const run = await $transaction(this._prisma, async (tx) => {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockId})`;
 
             const lockedToBackgroundWorker = body.options?.lockToVersion
@@ -169,17 +169,23 @@ export class TriggerTaskService extends BaseService {
               }
             }
 
-            // We need to enqueue the task run into the appropriate queue
-            await marqs?.enqueueMessage(
-              environment,
-              queueName,
-              taskRun.id,
-              { type: "EXECUTE", taskIdentifier: taskId },
-              body.options?.concurrencyKey
-            );
-
             return taskRun;
           });
+
+          if (!run) {
+            return;
+          }
+
+          // We need to enqueue the task run into the appropriate queue. This is done after the tx completes to prevent a race condition where the task run hasn't been created yet by the time we dequeue.
+          await marqs?.enqueueMessage(
+            environment,
+            run.queue,
+            run.id,
+            { type: "EXECUTE", taskIdentifier: taskId },
+            body.options?.concurrencyKey
+          );
+
+          return run;
         }
       );
     });
