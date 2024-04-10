@@ -35,6 +35,9 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
           in: backgroundWorker.tasks.map((task) => task.slug),
         },
       },
+      orderBy: {
+        number: "asc",
+      },
     });
 
     if (!runsWaitingForDeploy.length) {
@@ -64,7 +67,8 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
       return;
     }
 
-    const enqueues: (Promise<any> | undefined)[] = [];
+    const enqueues: Promise<any>[] = [];
+    let i = 0;
 
     for (const run of runsWaitingForDeploy) {
       enqueues.push(
@@ -76,9 +80,12 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
             type: "EXECUTE",
             taskIdentifier: run.taskIdentifier,
           },
-          run.concurrencyKey ?? undefined
+          run.concurrencyKey ?? undefined,
+          Date.now() + i * 5 // slight delay to help preserve order
         )
       );
+
+      i++;
     }
 
     const settled = await Promise.allSettled(enqueues);
