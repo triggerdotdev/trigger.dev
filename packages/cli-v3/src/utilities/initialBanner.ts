@@ -47,7 +47,7 @@ export async function printStandloneInitialBanner(performUpdateCheck = true) {
 
     // Log a slightly more noticeable message if this is a major bump
     if (maybeNewVersion !== undefined) {
-      logger.log(`\nUpdate available ${chalk.green(maybeNewVersion)})`);
+      logger.log(`Update available ${chalk.green(maybeNewVersion)}`);
     }
   }
 
