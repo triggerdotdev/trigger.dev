@@ -1,10 +1,10 @@
+import { PersonalAccessToken } from "@trigger.dev/database";
 import { customAlphabet, nanoid } from "nanoid";
 import nodeCrypto from "node:crypto";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "./logger.server";
-import { PersonalAccessToken } from "@trigger.dev/database";
 
 const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion
@@ -54,7 +54,6 @@ export async function getPersonalAccessTokenFromAuthorizationCode(authorizationC
     },
     where: {
       code: authorizationCode,
-
       createdAt: {
         gte: tenMinutesAgo,
       },
@@ -199,13 +198,25 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
     },
   });
 
-  //we only allow you to have one CLI PAT at a time
+  //we only allow you to have one CLI PAT at a time, so return this
   if (existingCliPersonalAccessToken) {
-    await prisma.personalAccessToken.delete({
+    //associate this authorization code with the existing personal access token
+    await prisma.authorizationCode.update({
       where: {
-        id: existingCliPersonalAccessToken.id,
+        code: authorizationCode,
+      },
+      data: {
+        personalAccessTokenId: existingCliPersonalAccessToken.id,
       },
     });
+
+    //we don't return the decrypted token
+    return {
+      id: existingCliPersonalAccessToken.id,
+      name: existingCliPersonalAccessToken.name,
+      userId: existingCliPersonalAccessToken.userId,
+      obfuscateToken: existingCliPersonalAccessToken.obfuscatedToken,
+    };
   }
 
   const token = await createPersonalAccessToken({
