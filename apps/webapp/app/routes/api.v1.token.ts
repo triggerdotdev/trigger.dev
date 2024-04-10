@@ -23,7 +23,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const anyBody = await request.json();
   const body = GetPersonalAccessTokenRequestSchema.safeParse(anyBody);
   if (!body.success) {
-    return json({ message: generateErrorMessage(body.error.issues) }, { status: 422 });
+    return json({ error: generateErrorMessage(body.error.issues) }, { status: 422 });
   }
 
   try {
@@ -45,6 +45,6 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ error: error.message }, { status: 400 });
     }
 
-    return json({ error: "Something went wrong" }, { status: 500 });
+    return json({ error: "Something went wrong" }, { status: 400 });
   }
 }
