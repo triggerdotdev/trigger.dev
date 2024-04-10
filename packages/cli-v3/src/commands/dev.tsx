@@ -16,7 +16,7 @@ import { render, useInput } from "ink";
 import { createHash } from "node:crypto";
 import fs, { readFileSync } from "node:fs";
 import { ClientRequestArgs } from "node:http";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, normalize } from "node:path";
 import pDebounce from "p-debounce";
 import { WebSocket } from "partysocket";
 import React, { Suspense, useEffect } from "react";
@@ -349,6 +349,7 @@ function useDev({
         .replace("__WORKER_SETUP__", `import { tracingSDK, sender } from "${workerSetupPath}";`);
 
       if (configPath) {
+        configPath = normalize(configPath);
         logger.debug("Importing project config from", { configPath });
 
         entryPointContents = entryPointContents.replace(
