@@ -1,5 +1,12 @@
 # trigger.dev
 
+## 3.0.0-beta.9
+
+### Patch Changes
+
+- 279717b09: Don’t swallow some error messages when deploying
+- 328947dbf: Use the dashboard url instead of the API url for the View logs link
+
 ## 3.0.0-beta.8
 
 ### Patch Changes

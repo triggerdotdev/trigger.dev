@@ -1,5 +1,6 @@
 import { Logger } from "@trigger.dev/core-backend";
 import { ZodMessageCatalogSchema, ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3";
+import { Evt } from "evt";
 import Redis, { RedisOptions } from "ioredis";
 import { z } from "zod";
 import { logger } from "~/services/logger.server";
@@ -26,6 +27,10 @@ class RedisZodSubscriber<TMessageCatalog extends ZodMessageCatalogSchema>
   private _listeners: Map<string, (payload: unknown) => Promise<void>> = new Map();
   private _messageHandler: ZodMessageHandler<TMessageCatalog>;
 
+  public onUnsubscribed: Evt<{
+    pattern: string;
+  }> = new Evt();
+
   constructor(
     private readonly _pattern: string,
     private readonly _options: ZodPubSubOptions<TMessageCatalog>,
@@ -51,7 +56,9 @@ class RedisZodSubscriber<TMessageCatalog extends ZodMessageCatalogSchema>
 
   public async stopListening(): Promise<void> {
     this._listeners.clear();
-    await this._subscriber.unsubscribe();
+    await this._subscriber.punsubscribe();
+
+    this.onUnsubscribed.post({ pattern: this._pattern });
   }
 
   async #onMessage(pattern: string, channel: string, serializedMessage: string) {
@@ -90,6 +97,11 @@ class RedisZodSubscriber<TMessageCatalog extends ZodMessageCatalogSchema>
 export class ZodPubSub<TMessageCatalog extends ZodMessageCatalogSchema> {
   private _publisher: Redis;
   private _logger = logger.child({ module: "ZodPubSub" });
+  private _subscriberCount = 0;
+
+  get subscriberCount() {
+    return this._subscriberCount;
+  }
 
   constructor(private _options: ZodPubSubOptions<TMessageCatalog>) {
     this._publisher = new Redis(_options.redis);
@@ -111,6 +123,14 @@ export class ZodPubSub<TMessageCatalog extends ZodMessageCatalogSchema> {
     const subscriber = new RedisZodSubscriber(channel, this._options, this._logger);
 
     await subscriber.initialize();
+
+    this._subscriberCount++;
+
+    subscriber.onUnsubscribed.attachOnce(({ pattern }) => {
+      logger.debug("Subscriber unsubscribed", { pattern });
+
+      this._subscriberCount--;
+    });
 
     return subscriber;
   }

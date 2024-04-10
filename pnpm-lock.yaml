@@ -492,6 +492,9 @@ importers:
       prismjs:
         specifier: ^1.29.0
         version: 1.29.0
+      prom-client:
+        specifier: ^15.1.0
+        version: 15.1.0
       random-words:
         specifier: ^2.0.0
         version: 2.0.0
@@ -9024,11 +9027,6 @@ packages:
     engines: {node: '>=14'}
     dependencies:
       '@opentelemetry/api': 1.8.0
-    dev: false
-
-  /@opentelemetry/api@1.7.0:
-    resolution: {integrity: sha512-AdY5wvN0P2vXBi3b29hxZgSFvdhdxPB9+f0B6s//P9Q8nibRWeA3cHm8UmLpio9ABigkVHJ5NMPk+Mz8VCCyrw==}
-    engines: {node: '>=8.0.0'}
     dev: false
 
   /@opentelemetry/api@1.8.0:
@@ -27757,7 +27755,7 @@ packages:
     resolution: {integrity: sha512-cCD7jLTqyPdjEPBo/Xk4Iu8jxjuZgZJ3e/oET3L+ZwOuap/7Cw3dH/TJSsZKs1TQLZ2IHpIlRAKw82ef06kmMw==}
     engines: {node: ^16 || ^18 || >=20}
     dependencies:
-      '@opentelemetry/api': 1.7.0
+      '@opentelemetry/api': 1.8.0
       tdigest: 0.1.2
     dev: false
 
