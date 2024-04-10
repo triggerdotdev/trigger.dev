@@ -24,7 +24,14 @@ export async function gatherTaskFiles(config: ResolvedConfig): Promise<Array<Tas
     const files = await fs.promises.readdir(triggerDir, { withFileTypes: true });
     for (const file of files) {
       if (!file.isFile()) continue;
-      if (!file.name.endsWith(".js") && !file.name.endsWith(".ts")) continue;
+      if (
+        !file.name.endsWith(".js") &&
+        !file.name.endsWith(".ts") &&
+        !file.name.endsWith(".jsx") &&
+        !file.name.endsWith(".tsx")
+      ) {
+        continue;
+      }
 
       const fullPath = join(triggerDir, file.name);
 
