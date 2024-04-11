@@ -59,6 +59,8 @@ class RedisZodSubscriber<TMessageCatalog extends ZodMessageCatalogSchema>
     await this._subscriber.punsubscribe();
 
     this.onUnsubscribed.post({ pattern: this._pattern });
+
+    this._subscriber.quit();
   }
 
   async #onMessage(pattern: string, channel: string, serializedMessage: string) {

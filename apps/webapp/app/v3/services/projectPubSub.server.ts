@@ -2,6 +2,8 @@ import { z } from "zod";
 import { singleton } from "~/utils/singleton";
 import { ZodPubSub, ZodSubscriber } from "../utils/zodPubSub.server";
 import { env } from "~/env.server";
+import { Gauge } from "prom-client";
+import { metricsRegister } from "~/metrics.server";
 
 const messageCatalog = {
   WORKER_CREATED: z.object({
@@ -18,7 +20,7 @@ export type ProjectSubscriber = ZodSubscriber<typeof messageCatalog>;
 export const projectPubSub = singleton("projectPubSub", initializeProjectPubSub);
 
 function initializeProjectPubSub() {
-  return new ZodPubSub({
+  const pubSub = new ZodPubSub({
     redis: {
       port: env.REDIS_PORT,
       host: env.REDIS_HOST,
@@ -29,4 +31,15 @@ function initializeProjectPubSub() {
     },
     schema: messageCatalog,
   });
+
+  new Gauge({
+    name: "project_pub_sub_subscribers",
+    help: "Number of project pub sub subscribers",
+    collect() {
+      this.set(pubSub.subscriberCount);
+    },
+    registers: [metricsRegister],
+  });
+
+  return pubSub;
 }
