@@ -7,6 +7,7 @@ import { json, type DataFunctionArgs } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { requireUser } from "~/services/session.server";
+import { runInNewContext } from "node:vm";
 
 // Format date as yyyy-MM-dd HH_mm_ss_SSS
 function formatDate(date: Date) {
@@ -31,6 +32,14 @@ export async function loader({ request }: DataFunctionArgs) {
   if (!user.admin) {
     throw new Response("You must be an admin to perform this action", { status: 403 });
   }
+
+  v8.setFlagsFromString("--expose-gc");
+  const gc = global.gc ?? runInNewContext("gc");
+
+  gc();
+
+  // disable expose-gc
+  v8.setFlagsFromString("--noexpose-gc");
 
   const tempDir = os.tmpdir();
   const filepath = path.join(
