@@ -1566,7 +1566,14 @@ model BackgroundWorkerTask {
   retryConfig   Json?
   machineConfig Json?
 
+  triggerSource TaskTriggerSource @default(STANDARD)
+
   @@unique([workerId, slug])
+}
+
+enum TaskTriggerSource {
+  STANDARD
+  SCHEDULED
 }
 
 model TaskRun {
