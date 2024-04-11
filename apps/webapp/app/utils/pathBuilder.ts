@@ -14,6 +14,8 @@ import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import { objectToSearchParams } from "./searchParams";
+import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
+import { useLocation } from "@remix-run/react";
 
 export type OrgForPath = Pick<Organization, "slug">;
 export type ProjectForPath = Pick<Project, "slug">;
@@ -380,6 +382,24 @@ export function v3RunStreamingPath(
   run: v3RunForPath
 ) {
   return `${v3RunPath(organization, project, run)}/stream`;
+}
+
+export function v3SchedulesPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  filters?: ScheduleListFilters
+) {
+  const searchParams = objectToSearchParams(filters);
+  const query = searchParams ? `?${searchParams.toString()}` : "";
+  return `${v3ProjectPath(organization, project)}/schedules${query}`;
+}
+
+export function v3NewSchedulePath(organization: OrgForPath, project: ProjectForPath) {
+  const location = useLocation();
+  const search = new URLSearchParams(location.search);
+  const searchString = search.toString();
+  const query = searchString ? `?${searchString}` : "";
+  return `${v3ProjectPath(organization, project)}/schedules/new${query}`;
 }
 
 export function v3ProjectSettingsPath(organization: OrgForPath, project: ProjectForPath) {
