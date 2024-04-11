@@ -77,6 +77,12 @@ class CustomWebappSampler implements Sampler {
 export const tracer = singleton("tracer", getTracer);
 
 function getTracer() {
+  if (env.INTERNAL_OTEL_TRACE_DISABLED === "1") {
+    console.log(`🔦 Tracer disabled, returning a noop tracer`);
+
+    return trace.getTracer("trigger.dev", "3.0.0.dp.1");
+  }
+
   diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.ERROR);
 
   const samplingRate = 1.0 / Math.max(parseInt(env.INTERNAL_OTEL_TRACE_SAMPLING_RATE, 10), 1);

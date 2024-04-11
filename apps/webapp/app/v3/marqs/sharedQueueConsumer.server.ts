@@ -77,7 +77,6 @@ export class SharedQueueConsumer {
   private _currentSpan: Span | undefined;
   private _endSpanInNextIteration = false;
   private _tasks = sharedQueueTasks;
-  private _inProgressAttempts: Map<string, string> = new Map(); // Keys are task attempt friendly IDs, values are TaskRun ids/queue message ids
 
   constructor(
     private _sender: ZodMessageSender<typeof serverWebsocketMessages>,
@@ -148,38 +147,6 @@ export class SharedQueueConsumer {
 
     if (this._currentSpan) {
       this._currentSpan.end();
-    }
-  }
-
-  async #cancelInProgressAttempts(reason: string) {
-    const service = new CancelAttemptService();
-
-    const cancelledAt = new Date();
-
-    const inProgressAttempts = new Map(this._inProgressAttempts);
-
-    this._inProgressAttempts.clear();
-
-    for (const [attemptId, messageId] of inProgressAttempts) {
-      await this.#cancelInProgressAttempt(attemptId, messageId, service, cancelledAt, reason);
-    }
-  }
-
-  async #cancelInProgressAttempt(
-    attemptId: string,
-    messageId: string,
-    cancelAttemptService: CancelAttemptService,
-    cancelledAt: Date,
-    reason: string
-  ) {
-    try {
-      await cancelAttemptService.call(attemptId, messageId, cancelledAt, reason);
-    } catch (e) {
-      logger.error("Failed to cancel in progress attempt", {
-        attemptId,
-        messageId,
-        error: e,
-      });
     }
   }
 
@@ -495,8 +462,6 @@ export class SharedQueueConsumer {
               },
             });
           }
-
-          this._inProgressAttempts.set(taskRunAttempt.friendlyId, message.messageId);
         } catch (e) {
           if (e instanceof Error) {
             this._currentSpan?.recordException(e);
