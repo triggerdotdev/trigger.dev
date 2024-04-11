@@ -189,9 +189,11 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
           </div>
         </div>
         <div className="m-2">
-          <Callout variant={"info"}>
-            {`This is a ${project.version === "V2" ? "v2" : "v3"} project`}
-          </Callout>
+          {project.version === "V2" ? (
+            <Callout variant={"info"}>This is a v2 project</Callout>
+          ) : (
+            <Callout variant={"idea"}>This is a v3 project in Developer Preview</Callout>
+          )}
         </div>
         <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
           {project.version === "V2" && (
