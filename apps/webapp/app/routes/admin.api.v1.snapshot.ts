@@ -32,10 +32,11 @@ export async function loader({ request }: DataFunctionArgs) {
     throw new Response("You must be an admin to perform this action", { status: 403 });
   }
 
-  const host = request.headers.get("X-Forwarded-Host") ?? request.headers.get("host");
-
   const tempDir = os.tmpdir();
-  const filepath = path.join(tempDir, `${host}-${formatDate(new Date())}.heapsnapshot`);
+  const filepath = path.join(
+    tempDir,
+    `${getTaskIdentifier()}-${formatDate(new Date())}.heapsnapshot`
+  );
 
   const snapshotPath = v8.writeHeapSnapshot(filepath);
   if (!snapshotPath) {
@@ -56,4 +57,14 @@ export async function loader({ request }: DataFunctionArgs) {
       "Content-Length": (await fs.promises.stat(snapshotPath)).size.toString(),
     },
   });
+}
+
+function getTaskIdentifier() {
+  if (!process.env.ECS_CONTAINER_METADATA_URI) {
+    return "local";
+  }
+
+  const url = new URL(process.env.ECS_CONTAINER_METADATA_URI);
+
+  return url.pathname.split("/")[2].split("-")[0];
 }
