@@ -400,6 +400,7 @@ model RuntimeEnvironment {
   workerDeploymentPromotions WorkerDeploymentPromotion[]
   taskRunAttempts            TaskRunAttempt[]
   CheckpointRestoreEvent     CheckpointRestoreEvent[]
+  taskScheduleInstances      TaskScheduleInstance[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -446,6 +447,7 @@ model Project {
   checkpoints            Checkpoint[]
   WorkerDeployment       WorkerDeployment[]
   CheckpointRestoreEvent CheckpointRestoreEvent[]
+  taskSchedules          TaskSchedule[]
 }
 
 enum ProjectVersion {
@@ -2110,4 +2112,51 @@ model WorkerDeploymentPromotion {
 
   // Only one promotion per environment can be active at a time
   @@unique([environmentId, label])
+}
+
+///Schedules can be attached to tasks to trigger them on a schedule
+model TaskSchedule {
+  id String @id @default(cuid())
+
+  ///users see this as `id`. They start with schedule_
+  friendlyId     String @unique
+  ///a reference to a task (not a foreign key because it's across versions)
+  taskIdentifier String
+
+  ///can be provided and we won't create another with the same key
+  deduplicationKey             String  @default(cuid())
+  userProvidedDeduplicationKey Boolean @default(false)
+
+  ///the CRON pattern
+  cron       String
+  ///Can be provided by the user then accessed inside a run
+  externalId String?
+
+  ///Instances of the schedule that are active
+  instances TaskScheduleInstance[]
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, deduplicationKey])
+}
+
+///An instance links a schedule with an environment
+model TaskScheduleInstance {
+  id String @id @default(cuid())
+
+  taskSchedule   TaskSchedule @relation(fields: [taskScheduleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskScheduleId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  //you can only have a schedule attached to each environment once
+  @@unique([taskScheduleId, environmentId])
 }
