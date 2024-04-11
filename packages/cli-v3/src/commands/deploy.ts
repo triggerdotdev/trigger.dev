@@ -94,7 +94,7 @@ export function configureDeployCommand(program: Command) {
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
       .option(
         "-p, --project-ref <project ref>",
-        "The project ref. Required if there is no config file."
+        "The project ref. Required if there is no config file. This will override the project specified in the config file."
       )
   )
     .addOption(

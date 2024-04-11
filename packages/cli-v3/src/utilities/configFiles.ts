@@ -164,9 +164,13 @@ export async function readConfig(
 
   // import the config file
   const userConfigModule = await import(builtConfigFileHref);
+
+  // The --project-ref CLI arg will always override the project specified in the config file
   const rawConfig = await normalizeConfig(
-    userConfigModule ? userConfigModule.config : { project: options?.projectRef }
+    userConfigModule?.config,
+    options?.projectRef ? { project: options?.projectRef } : undefined
   );
+
   const config = Config.parse(rawConfig);
 
   return {
@@ -198,10 +202,14 @@ export async function resolveConfig(path: string, config: Config): Promise<Resol
   return config as ResolvedConfig;
 }
 
-export async function normalizeConfig(config: any): Promise<any> {
+export async function normalizeConfig(config: any, overrides?: Record<string, any>): Promise<any> {
+  let normalized = config;
+
   if (typeof config === "function") {
-    config = config();
+    normalized = await config();
   }
 
-  return await config;
+  normalized = { ...normalized, ...overrides };
+
+  return normalized;
 }
