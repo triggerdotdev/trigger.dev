@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/primitives/Select";
+import { TextLink } from "~/components/primitives/TextLink";
 import { ScheduleFilters, ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { useEnvironments } from "~/hooks/useEnvironments";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -128,7 +129,7 @@ export default function Page() {
                       </span>
                     }
                     value={environment.id}
-                    variant="button"
+                    variant="button/small"
                   />
                 ))}
               </RadioGroup>
@@ -137,12 +138,25 @@ export default function Page() {
             <InputGroup>
               <Label required={false}>External ID</Label>
               <Input
-                name="cron"
-                placeholder="? ? ? ? ?"
+                name="externalId"
+                placeholder="Optionally specify your own ID, e.g. user id"
                 required={true}
                 defaultValue={schedule?.cron}
               />
-              <Hint>Enter a CRON pattern or use natural language above.</Hint>
+              <Hint>
+                Optionally, you can specify your own IDs (like a user ID) and then use it inside the
+                run function of your task. This allows you to have per-user CRON tasks.{" "}
+                <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
+              </Hint>
+            </InputGroup>
+            <InputGroup>
+              <Label required={false}>Deduplication key</Label>
+              <Input name="deduplicationKey" required={true} defaultValue={schedule?.cron} />
+              <Hint>
+                Optionally specify a key, you can only create one schedule with this key. This is
+                very useful when using the SDK and you don't want to create duplicate schedules for
+                a user.
+              </Hint>
             </InputGroup>
           </Fieldset>
         </div>
