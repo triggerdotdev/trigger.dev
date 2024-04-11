@@ -132,6 +132,16 @@ export default function Page() {
                   />
                 ))}
               </RadioGroup>
+              <Hint>Select all the environments where you want this schedule to run.</Hint>
+            </InputGroup>
+            <InputGroup>
+              <Label required={false}>External ID</Label>
+              <Input
+                name="cron"
+                placeholder="? ? ? ? ?"
+                required={true}
+                defaultValue={schedule?.cron}
+              />
               <Hint>Enter a CRON pattern or use natural language above.</Hint>
             </InputGroup>
           </Fieldset>
