@@ -5,7 +5,11 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import {
+  EnvironmentLabel,
+  environmentTextClassName,
+  environmentTitle,
+} from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -117,7 +121,11 @@ export default function Page() {
                   <RadioGroupItem
                     id={environment.id}
                     label={
-                      <EnvironmentLabel environment={environment} userName={environment.userName} />
+                      <span
+                        className={cn("text-sm uppercase", environmentTextClassName(environment))}
+                      >
+                        {environmentTitle(environment, environment.userName)}
+                      </span>
                     }
                     value={environment.id}
                     variant="button"

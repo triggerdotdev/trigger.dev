@@ -58,11 +58,23 @@ export class EditSchedulePresenter {
 
     return {
       possibleTasks: possibleTasks.map((task) => task.slug),
-      possibleEnvironments: project.environments.map((environment) => ({
-        id: environment.id,
-        type: environment.type,
-        userName: environment.orgMember?.user.displayName ?? undefined,
-      })),
+      possibleEnvironments: project.environments.map((environment) => {
+        let userName: undefined | string;
+        if (environment.orgMember) {
+          if (environment.orgMember.user.id !== userId) {
+            userName =
+              environment.orgMember.user.displayName ??
+              environment.orgMember.user.name ??
+              undefined;
+          }
+        }
+
+        return {
+          id: environment.id,
+          type: environment.type,
+          userName,
+        };
+      }),
       schedule: await this.#getExistingSchedule(friendlyId),
     };
   }
