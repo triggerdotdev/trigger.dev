@@ -57,7 +57,7 @@ export type CheckboxProps = Omit<
   name?: string;
   value?: string;
   variant?: keyof typeof variants;
-  label?: string;
+  label?: React.ReactNode;
   description?: string;
   badges?: string[];
   className?: string;
