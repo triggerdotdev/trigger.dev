@@ -1,5 +1,12 @@
 # trigger.dev
 
+## 3.0.0-beta.11
+
+### Patch Changes
+
+- 63a643b7c: v3: fix digest extraction
+  - @trigger.dev/core@3.0.0-beta.11
+
 ## 3.0.0-beta.10
 
 ### Patch Changes
