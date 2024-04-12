@@ -32,7 +32,10 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { PlusIcon } from "@heroicons/react/20/solid";
 import { ScheduleFilters, ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { PaginationControls } from "~/components/primitives/Pagination";
-import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
+import {
+  ScheduleListItem,
+  ScheduleListPresenter,
+} from "~/presenters/v3/ScheduleListPresenter.server";
 import { InlineCode } from "~/components/code/InlineCode";
 import { Callout } from "~/components/primitives/Callout";
 import {
@@ -41,6 +44,17 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { usePathName } from "~/hooks/usePathName";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { DateTime } from "~/components/primitives/DateTime";
+import { envDetector } from "@opentelemetry/resources";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -108,15 +122,7 @@ export default function Page() {
                     />
                   </div>
                 </div>
-
-                {/* <TaskRunsTable
-                  total={list.runs.length}
-                  hasFilters={list.hasFilters}
-                  filters={list.filters}
-                  runs={list.runs}
-                  isLoading={isLoading}
-                  currentUser={user}
-                /> */}
+                <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
                 <div className="mt-2 justify-end">
                   <PaginationControls currentPage={currentPage} totalPages={totalPages} />
                 </div>
@@ -155,5 +161,56 @@ function CreateScheduledTaskInstructions() {
         </LinkButton>
       </BlankstateInstructions>
     </MainCenteredContainer>
+  );
+}
+
+function SchedulesTable({
+  schedules,
+  hasFilters,
+}: {
+  schedules: ScheduleListItem[];
+  hasFilters: boolean;
+}) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell>ID</TableHeaderCell>
+          <TableHeaderCell>Task ID</TableHeaderCell>
+          <TableHeaderCell>CRON</TableHeaderCell>
+          <TableHeaderCell hiddenLabel>CRON description</TableHeaderCell>
+          <TableHeaderCell>External ID</TableHeaderCell>
+          <TableHeaderCell>Deduplication key</TableHeaderCell>
+          <TableHeaderCell>Next run (UTC)</TableHeaderCell>
+          <TableHeaderCell>Last run (UTC)</TableHeaderCell>
+          <TableHeaderCell>Environments</TableHeaderCell>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {schedules.map((schedule) => (
+          <TableRow key={schedule.id}>
+            <TableCell>{schedule.friendlyId}</TableCell>
+            <TableCell>{schedule.taskIdentifier}</TableCell>
+            <TableCell>{schedule.cron}</TableCell>
+            <TableCell>{schedule.cronDescription}</TableCell>
+            <TableCell>{schedule.externalId}</TableCell>
+            <TableCell>{schedule.deduplicationKey}</TableCell>
+            <TableCell>
+              <DateTime date={schedule.nextRun} />
+            </TableCell>
+            <TableCell>Implement</TableCell>
+            <TableCell>
+              {schedule.environments.map((environment) => (
+                <EnvironmentLabel
+                  key={environment.id}
+                  environment={environment}
+                  userName={environment.userName}
+                />
+              ))}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }

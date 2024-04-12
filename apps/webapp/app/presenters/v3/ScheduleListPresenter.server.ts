@@ -1,8 +1,10 @@
-import { Prisma, TaskRunStatus } from "@trigger.dev/database";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { parseExpression } from "cron-parser";
 import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
-import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
+import cronstrue from "cronstrue";
+import { logger } from "~/services/logger.server";
 
 type ScheduleListOptions = {
   userId: string;
@@ -12,8 +14,23 @@ type ScheduleListOptions = {
 
 const DEFAULT_PAGE_SIZE = 20;
 
+export type ScheduleListItem = {
+  id: string;
+  friendlyId: string;
+  taskIdentifier: string;
+  deduplicationKey: string | null;
+  userProvidedDeduplicationKey: boolean;
+  cron: string;
+  cronDescription: string;
+  externalId: string | null;
+  nextRun: Date;
+  environments: {
+    id: string;
+    type: RuntimeEnvironmentType;
+    userName?: string;
+  }[];
+};
 export type ScheduleList = Awaited<ReturnType<ScheduleListPresenter["call"]>>;
-export type ScheduleListItem = ScheduleList["schedules"][0];
 export type ScheduleListAppliedFilters = ScheduleList["filters"];
 
 export class ScheduleListPresenter {
@@ -81,10 +98,69 @@ export class ScheduleListPresenter {
       },
     });
 
+    //get the schedules
+    const rawSchedules = await this.#prismaClient.$queryRaw<
+      {
+        id: string;
+        friendlyId: string;
+        taskIdentifier: string;
+        deduplicationKey: string | null;
+        userProvidedDeduplicationKey: boolean;
+        cron: string;
+        externalId: string | null;
+        environmentId: string;
+      }[]
+    >`SELECT ts.id, ts."friendlyId", ts."taskIdentifier", ts."deduplicationKey", ts."userProvidedDeduplicationKey", ts.cron, ts."externalId", ti."environmentId"
+    FROM "TaskSchedule" ts
+    JOIN "TaskScheduleInstance" ti ON ts.id = ti."taskScheduleId"
+    WHERE ts."projectId" = ${project.id};`;
+
+    logger.log("Schedules", { rawSchedules });
+
+    //rawSchedules have environmentId, we want to use the project.environments to collapse the schedules to have an environments array with the environment data
+    const schedules = rawSchedules.reduce((acc, schedule) => {
+      const existingSchedule = acc.find((s) => s.id === schedule.id);
+      const environment = project.environments.find((env) => env.id === schedule.environmentId);
+      if (!environment) {
+        return acc;
+      }
+
+      if (existingSchedule) {
+        existingSchedule.environments.push({
+          id: schedule.environmentId,
+          type: environment.type,
+          userName: getUsername(environment.orgMember?.user),
+        });
+      } else {
+        const nextRun = parseExpression(schedule.cron).next().toISOString();
+        const cronDescription = cronstrue.toString(schedule.cron);
+
+        acc.push({
+          id: schedule.id,
+          friendlyId: schedule.friendlyId,
+          taskIdentifier: schedule.taskIdentifier,
+          deduplicationKey: schedule.deduplicationKey,
+          userProvidedDeduplicationKey: schedule.userProvidedDeduplicationKey,
+          cron: schedule.cron,
+          cronDescription,
+          externalId: schedule.externalId,
+          nextRun: new Date(nextRun),
+          environments: [
+            {
+              id: schedule.environmentId,
+              type: environment.type,
+              userName: getUsername(environment.orgMember?.user),
+            },
+          ],
+        });
+      }
+      return acc;
+    }, [] as ScheduleListItem[]);
+
     return {
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
-      schedules: [],
+      schedules,
       possibleTasks: possibleTasks.map((task) => task.slug),
       hasFilters,
       filters: {

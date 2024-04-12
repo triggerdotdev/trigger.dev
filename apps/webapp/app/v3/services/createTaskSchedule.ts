@@ -91,7 +91,7 @@ export class UpsertTaskScheduleService extends BaseService {
     const taskSchedule = await this._prisma.taskSchedule.create({
       data: {
         projectId,
-        friendlyId: generateFriendlyId("schedule_"),
+        friendlyId: generateFriendlyId("sched"),
         taskIdentifier: schedule.taskIdentifier,
         deduplicationKey: schedule.deduplicationKey ? schedule.deduplicationKey : undefined,
         userProvidedDeduplicationKey: schedule.deduplicationKey !== undefined,
