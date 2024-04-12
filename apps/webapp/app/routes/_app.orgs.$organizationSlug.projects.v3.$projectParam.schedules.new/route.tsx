@@ -213,7 +213,7 @@ export default function Page() {
               <FormError id={taskIdentifier.errorId}>{taskIdentifier.error}</FormError>
             </InputGroup>
             <InputGroup>
-              <Label htmlFor={cron.id}>CRON pattern</Label>
+              <Label htmlFor={cron.id}>CRON pattern (UTC)</Label>
               <Input
                 {...conform.input(cron, { type: "text" })}
                 placeholder="? ? ? ? ?"

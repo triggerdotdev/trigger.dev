@@ -56,7 +56,9 @@ export class UpsertTaskScheduleService extends BaseService {
     try {
       parseExpression(schedule.cron);
     } catch (e) {
-      throw new Error(`Invalid cron expression: ${e.message}`);
+      throw new Error(
+        `Invalid cron expression: ${e instanceof Error ? e.message : JSON.stringify(e)}`
+      );
     }
 
     //get the existing schedule if there is one
