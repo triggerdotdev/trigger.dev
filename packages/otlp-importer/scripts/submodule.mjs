@@ -5,7 +5,7 @@ try {
   await execPromise("git --version");
 } catch (error) {
   console.error("Git not installed or missing from PATH.");
-  process.exit(1);
+  process.exit(0);
 }
 
 // submodule sync
