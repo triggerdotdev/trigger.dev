@@ -24,13 +24,23 @@ export async function gatherTaskFiles(config: ResolvedConfig): Promise<Array<Tas
     const files = await fs.promises.readdir(triggerDir, { withFileTypes: true });
     for (const file of files) {
       if (!file.isFile()) continue;
-      if (!file.name.endsWith(".js") && !file.name.endsWith(".ts")) continue;
+      if (
+        !file.name.endsWith(".js") &&
+        !file.name.endsWith(".ts") &&
+        !file.name.endsWith(".jsx") &&
+        !file.name.endsWith(".tsx")
+      ) {
+        continue;
+      }
 
       const fullPath = join(triggerDir, file.name);
-
       const filePath = relative(config.projectDir, fullPath);
-      const importPath = filePath.replace(/\.(js|ts)$/, "");
-      const importName = importPath.replace(/\//g, "_").replace(/\./g, "_").replace(/-/g, "_");
+
+      //remove the file extension and replace any invalid characters with underscores
+      const importName = filePath.replace(/\..+$/, "").replace(/[^a-zA-Z0-9_$]/g, "_");
+
+      //change backslashes to forward slashes
+      const importPath = filePath.replace(/\\/g, "/");
 
       taskFiles.push({ triggerDir, importPath, importName, filePath });
     }

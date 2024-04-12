@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { extname, isAbsolute } from "node:path";
 import tsConfigPaths from "tsconfig-paths";
 import { logger } from "./logger";
+import { escapeImportPath } from "./windows";
 
 export function bundleTriggerDevCore(buildIdentifier: string, tsconfigPath?: string): Plugin {
   return {
@@ -56,7 +57,9 @@ export function workerSetupImportConfigPlugin(configPath?: string): Plugin {
 
         workerSetupContents = workerSetupContents.replace(
           "__SETUP_IMPORTED_PROJECT_CONFIG__",
-          `import * as setupImportedConfigExports from "${configPath}"; const setupImportedConfig = setupImportedConfigExports.config;`
+          `import * as setupImportedConfigExports from "${escapeImportPath(
+            configPath
+          )}"; const setupImportedConfig = setupImportedConfigExports.config;`
         );
 
         logger.debug("Loading worker setup", {

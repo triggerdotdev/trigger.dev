@@ -14,6 +14,8 @@ apt install -y protobuf-compiler
 
 Alternatively, follow the [manual install instructions](https://github.com/protocolbuffers/protobuf?tab=readme-ov-file#protobuf-compiler-installation) for the protobuf compiler.
 
+On Windows, download the correct binary from the [latest release](https://github.com/protocolbuffers/protobuf/releases) and extract the `protoc` binary to this directory, or add it to your `PATH`.
+
 ## Submodules
 
 **Submodule is always pointing to certain revision number. So updating the submodule repo will not have impact on your code.

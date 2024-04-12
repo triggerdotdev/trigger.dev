@@ -1,4 +1,3 @@
-import { spinner } from "@clack/prompts";
 import chalk from "chalk";
 import type { Result } from "update-check";
 import checkForUpdate from "update-check";
@@ -6,6 +5,7 @@ import pkg from "../../package.json";
 import { chalkGrey, chalkRun, chalkTask, chalkWorker, green, logo } from "./cliOutput.js";
 import { getVersion } from "./getVersion.js";
 import { logger } from "./logger.js";
+import { spinner } from "./windows";
 
 export async function printInitialBanner(performUpdateCheck = true) {
   const packageVersion = getVersion();
@@ -40,18 +40,18 @@ After installation, run Trigger.dev with \`npx trigger.dev\`.`
 export async function printStandloneInitialBanner(performUpdateCheck = true) {
   const packageVersion = getVersion();
 
-  let text = `\n${logo()} ${chalkGrey("(v3 Developer Preview)")}`;
+  logger.log(`\n${logo()} ${chalkGrey("(v3 Developer Preview)")}`);
 
   if (performUpdateCheck) {
     const maybeNewVersion = await updateCheck();
 
     // Log a slightly more noticeable message if this is a major bump
     if (maybeNewVersion !== undefined) {
-      text = `${text} (update available ${chalk.green(maybeNewVersion)})`;
+      logger.log(`Update available ${chalk.green(maybeNewVersion)}`);
     }
   }
 
-  logger.log(text + "\n" + chalkGrey("-".repeat(54)));
+  logger.log(`${chalkGrey("-".repeat(54))}`);
 }
 
 export function printDevBanner() {

@@ -1,4 +1,4 @@
-import { intro, note, spinner } from "@clack/prompts";
+import { intro, note } from "@clack/prompts";
 import { chalkLink } from "../utilities/cliOutput.js";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
@@ -12,6 +12,7 @@ import {
 } from "../cli/common.js";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
+import { spinner } from "../utilities/windows.js";
 
 type WhoAmIResult =
   | {
