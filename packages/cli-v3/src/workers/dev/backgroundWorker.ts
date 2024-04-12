@@ -374,6 +374,10 @@ export class BackgroundWorker {
           reject(new Error(`Worker exited with code ${code}`));
         }
       });
+
+      child.stdout?.on("data", (data) => {
+        logger.log(data.toString());
+      });
     });
 
     this._initialized = true;

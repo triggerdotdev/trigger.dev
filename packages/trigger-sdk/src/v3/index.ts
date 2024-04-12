@@ -10,3 +10,4 @@ export type { Context };
 export { logger, type LogLevel } from "@trigger.dev/core/v3";
 
 export { runs } from "./management";
+export * as schedules from "./schedules";

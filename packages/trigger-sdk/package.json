@@ -29,6 +29,14 @@
       "require": "./dist/v3/index.js",
       "types": "./dist/v3/index.d.ts"
     },
+    "./v3/schedules": {
+      "import": {
+        "types": "./dist/v3/schedules.d.mts",
+        "default": "./dist/v3/schedules.mjs"
+      },
+      "require": "./dist/v3/schedules.js",
+      "types": "./dist/v3/schedules.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "typesVersions": {
