@@ -8,6 +8,7 @@ import { CreateSchedule } from "~/routes/_app.orgs.$organizationSlug.projects.v3
 import { BaseService } from "./baseService.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { Prisma } from "@trigger.dev/database";
+import { parseExpression } from "cron-parser";
 
 export type UpsertTaskScheduleServiceOptions = {
   projectId: string;
@@ -51,7 +52,12 @@ export class UpsertTaskScheduleService extends BaseService {
       throw new Error("User does not have access to the project");
     }
 
-    //todo validate the cron pattern
+    //validate the cron expression
+    try {
+      parseExpression(schedule.cron);
+    } catch (e) {
+      throw new Error(`Invalid cron expression: ${e.message}`);
+    }
 
     //get the existing schedule if there is one
     //either from a passed in friendlyId or from the deduplicationKey
@@ -85,7 +91,7 @@ export class UpsertTaskScheduleService extends BaseService {
         projectId,
         friendlyId: generateFriendlyId("schedule_"),
         taskIdentifier: schedule.taskIdentifier,
-        deduplicationKey: schedule.deduplicationKey,
+        deduplicationKey: schedule.deduplicationKey ? schedule.deduplicationKey : undefined,
         userProvidedDeduplicationKey: schedule.deduplicationKey !== undefined,
         cron: schedule.cron,
         externalId: schedule.externalId,

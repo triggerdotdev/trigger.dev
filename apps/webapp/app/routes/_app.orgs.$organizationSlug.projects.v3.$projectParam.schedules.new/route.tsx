@@ -40,6 +40,7 @@ import { UpsertTaskScheduleService } from "~/v3/services/createTaskSchedule";
 import cronstrue from "cronstrue";
 import { useState } from "react";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { logger } from "~/services/logger.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -68,26 +69,18 @@ const CreateSchedule = z.object({
     (val) => {
       try {
         parseExpression(val);
-        return {};
+        return {
+          message: "Unknown problem",
+        };
       } catch (e) {
         return { message: e instanceof Error ? e.message : JSON.stringify(e) };
       }
     }
   ),
-  environments: z.preprocess((i) => {
-    console.log(i);
-    if (typeof i === "string") return [i];
-
-    if (Array.isArray(i)) {
-      const envs = i.filter((v) => typeof v === "string" && v !== "");
-      if (envs.length === 0) {
-        return [""];
-      }
-      return envs;
-    }
-
-    return [""];
-  }, z.string().email().array().nonempty("At least one email is required")),
+  environments: z.preprocess(
+    (data) => (typeof data === "string" ? [data] : data),
+    z.array(z.string()).min(1, "At least one environment is required")
+  ),
   externalId: z.string().optional(),
   deduplicationKey: z.string().optional(),
 });
@@ -101,7 +94,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const submission = parse(formData, { schema: CreateSchedule });
 
-  if (!submission.value || submission.intent !== "submit") {
+  logger.log("CreateSchedule", { submission });
+
+  if (!submission.value) {
     return json(submission);
   }
 
@@ -157,6 +152,7 @@ export default function Page() {
     id: "create-schedule",
     // TODO: type this
     lastSubmission: lastSubmission as any,
+    shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
       return parse(formData, { schema: CreateSchedule });
     },
@@ -180,9 +176,9 @@ export default function Page() {
 
   return (
     <Form
-      method="POST"
-      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden bg-background-bright"
+      method="post"
       {...form.props}
+      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden bg-background-bright"
     >
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Header2 className={cn("whitespace-nowrap")}>New schedule</Header2>
@@ -227,7 +223,9 @@ export default function Page() {
                   setCronPattern(e.target.value);
                 }}
               />
-              {cronPatternResult === undefined ? (
+              {cron.error ? (
+                <FormError id={cron.errorId}>{cron.error}</FormError>
+              ) : cronPatternResult === undefined ? (
                 <Hint>Enter a CRON pattern or use natural language above.</Hint>
               ) : cronPatternResult.isValid ? (
                 <ValidCronMessage isValid={true} message={`${cronPatternResult.description}.`} />
@@ -242,7 +240,9 @@ export default function Page() {
                   <Checkbox
                     key={environment.id}
                     id={environment.id}
-                    {...conform.input(environments, { type: "checkbox" })}
+                    value={environment.id}
+                    name="environments"
+                    type="radio"
                     label={
                       <span
                         className={cn("text-xs uppercase", environmentTextClassName(environment))}
@@ -250,7 +250,6 @@ export default function Page() {
                         {environmentTitle(environment, environment.userName)}
                       </span>
                     }
-                    value={environment.id}
                     defaultChecked={
                       schedule?.instances.find((i) => i.environmentId === environment.id) !==
                       undefined
@@ -295,6 +294,7 @@ export default function Page() {
               </Hint>
               <FormError id={deduplicationKey.errorId}>{deduplicationKey.error}</FormError>
             </InputGroup>
+            <FormError>{form.error}</FormError>
           </Fieldset>
         </div>
       </div>

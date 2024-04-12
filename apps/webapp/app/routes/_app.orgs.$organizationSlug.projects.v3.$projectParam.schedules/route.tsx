@@ -82,7 +82,7 @@ export default function Page() {
             to={v3NewSchedulePath(organization, project)}
             variant="primary/small"
             shortcut={{ key: "n" }}
-            disabled={possibleTasks.length === 0}
+            disabled={possibleTasks.length === 0 || isShowingNewPane}
           >
             New schedule
           </LinkButton>
