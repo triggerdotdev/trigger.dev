@@ -1,7 +1,8 @@
+import { cp } from "fs/promises";
+import { join } from "path";
 import { defineConfig } from "tsup";
 
-const isDev = process.env.npm_lifecycle_event === "dev";
-const copyTemplates = "cp -r src/templates dist";
+const isDev = process.env.npm_lifecycle_event === "dev:main"; // This must match the npm script name
 
 export default defineConfig({
   clean: false,
@@ -15,7 +16,14 @@ export default defineConfig({
   sourcemap: true,
   target: "esnext",
   outDir: "dist",
-  onSuccess: isDev ? `${copyTemplates} && node dist/index.js` : copyTemplates,
+  async onSuccess() {
+    if (isDev) {
+      console.debug("Running onSuccess() in dev");
+      // exec: node dist/index.js
+    }
+
+    await cp(join("src", "templates"), "dist/templates", { recursive: true });
+  },
   banner: {
     js: "import { createRequire as createRequireFromMetaUrl } from 'node:module';const require = createRequireFromMetaUrl(import.meta.url);",
   },

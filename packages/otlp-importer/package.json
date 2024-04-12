@@ -32,7 +32,7 @@
     "generate": "npm run protos",
     "protos": "npm run submodule && npm run protos:generate",
     "protos:generate": "node ./scripts/generate-protos.mjs",
-    "submodule": "node -e \"const { execSync } = require('child_process'); try { execSync('git --version', { stdio: 'ignore' }); execSync('git submodule sync --recursive', { stdio: 'inherit' }); execSync('git submodule update --init --recursive', { stdio: 'inherit' }); console.log('Submodules synchronized and initialized successfully.'); } catch (error) { console.error('Git not installed or submodule synchronization failed.'); process.exitCode = 1; }\"",
+    "submodule": "node ./scripts/submodule.mjs",
     "typecheck": "tsc --noEmit",
     "test": "jest"
   },

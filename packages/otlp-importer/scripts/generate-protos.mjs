@@ -1,20 +1,8 @@
-import { exec } from "child_process";
 import { promises as fs } from "fs";
 import path from "path";
+import { execPromise } from "./utils.mjs";
 
 const isWindows = process.platform === "win32";
-
-// Helper function to execute shell commands
-const execPromise = (command) =>
-  new Promise((resolve, reject) => {
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        reject(error);
-      } else {
-        resolve({ stdout, stderr });
-      }
-    });
-  });
 
 // Define the application root and directories for generated files and proto files
 const appRoot = process.cwd();
@@ -57,7 +45,11 @@ for (const proto of protos) {
     `"${path.join(protosPath, proto)}"`;
   try {
     const { stdout, stderr } = await execPromise(command);
-    console.log(stdout);
+    if (stdout) {
+      console.log(stdout);
+    } else {
+      console.log(`Generated ts file for ${proto}`);
+    }
     if (stderr) console.error(stderr);
   } catch (error) {
     console.error(`An error occurred during generation: ${error}`);

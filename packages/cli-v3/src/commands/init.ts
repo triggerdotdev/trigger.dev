@@ -185,8 +185,9 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 async function createTriggerDir(dir: string, options: InitCommandOptions) {
   return await tracer.startActiveSpan("createTriggerDir", async (span) => {
     try {
-      const defaultValue = `${dir}/src/trigger`;
+      const defaultValue = join(dir, "src", "trigger-2");
 
+      // FIXME: (windows) Text prompts do not accept any user input
       const location = await text({
         message: "Where would you like to create the Trigger.dev directory?",
         defaultValue: defaultValue,
@@ -198,6 +199,8 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
       }
 
       const triggerDir = resolve(process.cwd(), location);
+
+      logger.debug({ triggerDir });
 
       span.setAttributes({
         "cli.triggerDir": triggerDir,

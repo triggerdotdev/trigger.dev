@@ -11,7 +11,6 @@ import {
 import { watch } from "chokidar";
 import { Command } from "commander";
 import { BuildContext, Metafile, context } from "esbuild";
-import { resolve as importResolve } from "import-meta-resolve";
 import { render, useInput } from "ink";
 import { createHash } from "node:crypto";
 import fs, { readFileSync } from "node:fs";
@@ -53,6 +52,7 @@ import {
 } from "../utilities/deployErrors";
 import { findUp, pathExists } from "find-up";
 import { cliRootPath } from "../utilities/resolveInternalFilePath";
+import { escapeImportPath } from "../utilities/windows";
 
 let apiClient: CliApiClient | undefined;
 
@@ -346,7 +346,10 @@ function useDev({
 
       let entryPointContents = workerFacade
         .replace("__TASKS__", createTaskFileImports(taskFiles))
-        .replace("__WORKER_SETUP__", `import { tracingSDK, sender } from "${workerSetupPath}";`);
+        .replace(
+          "__WORKER_SETUP__",
+          `import { tracingSDK, sender } from "${escapeImportPath(workerSetupPath)}";`
+        );
 
       if (configPath) {
         configPath = normalize(configPath);
@@ -354,7 +357,9 @@ function useDev({
 
         entryPointContents = entryPointContents.replace(
           "__IMPORTED_PROJECT_CONFIG__",
-          `import * as importedConfigExports from "${configPath}"; const importedConfig = importedConfigExports.config; const handleError = importedConfigExports.handleError;`
+          `import * as importedConfigExports from "${escapeImportPath(
+            configPath
+          )}"; const importedConfig = importedConfigExports.config; const handleError = importedConfigExports.handleError;`
         );
       } else {
         entryPointContents = entryPointContents.replace(
@@ -366,8 +371,6 @@ function useDev({
       let firstBuild = true;
 
       logger.log(chalkGrey("○ Building background worker…"));
-
-      logger.debug("entryPointContents before esbuild", { entryPointContents });
 
       ctx = await context({
         stdin: {
