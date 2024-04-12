@@ -64,10 +64,12 @@ export default function Page() {
         <PageTitle title="Runs" />
       </NavBar>
       <PageBody>
-        {list.possibleTasks.length === 0 ? (
-          <CreateFirstTaskInstructions />
-        ) : list.runs.length === 0 && !list.hasFilters ? (
-          <RunTaskInstructions />
+        {list.runs.length === 0 && !list.hasFilters ? (
+          list.possibleTasks.length === 0 ? (
+            <CreateFirstTaskInstructions />
+          ) : (
+            <RunTaskInstructions />
+          )
         ) : (
           <div className={cn("grid h-fit grid-cols-1 gap-4")}>
             <div>

@@ -242,9 +242,11 @@ export class SharedQueueConsumer {
         error: messageBody.error,
       });
 
-      this.#ackAndDoMoreWork(message.messageId);
+      await this.#ackAndDoMoreWork(message.messageId);
       return;
     }
+
+    // TODO: For every ACK, decide what should be done with the existing run and attempts. Make sure to check the current statuses first.
 
     switch (messageBody.data.type) {
       case "EXECUTE": {
@@ -260,7 +262,10 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
           });
 
-          this.#ackAndDoMoreWork(message.messageId);
+          // INFO: There used to be a race condition where tasks could be triggered, but execute messages could be dequeued before the run finished being created in the DB
+          //       This should not be happening anymore. In case it does, consider reqeueuing here with a brief delay while limiting total retries.
+
+          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -288,7 +293,7 @@ export class SharedQueueConsumer {
             retryingFromCheckpoint,
           });
 
-          this.#ackAndDoMoreWork(message.messageId);
+          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -300,7 +305,9 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
           });
 
-          this.#ackAndDoMoreWork(message.messageId);
+          await this.#markRunAsWaitingForDeploy(existingTaskRun.id);
+
+          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -311,7 +318,9 @@ export class SharedQueueConsumer {
             deployment: deployment.id,
           });
 
-          this.#ackAndDoMoreWork(message.messageId);
+          await this.#markRunAsWaitingForDeploy(existingTaskRun.id);
+
+          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -320,15 +329,39 @@ export class SharedQueueConsumer {
         );
 
         if (!backgroundTask) {
-          logger.warn("No matching background task found for task run", {
-            taskRun: existingTaskRun.id,
-            taskIdentifier: existingTaskRun.taskIdentifier,
-            deployment: deployment.id,
-            backgroundWorker: deployment.worker.id,
-            taskSlugs: deployment.worker.tasks.map((task) => task.slug),
+          const nonCurrentTask = await prisma.backgroundWorkerTask.findFirst({
+            where: {
+              slug: existingTaskRun.taskIdentifier,
+              projectId: existingTaskRun.projectId,
+              runtimeEnvironmentId: existingTaskRun.runtimeEnvironmentId,
+            },
+            include: {
+              worker: {
+                include: {
+                  deployment: {
+                    include: {},
+                  },
+                },
+              },
+            },
           });
 
-          this.#ackAndDoMoreWork(message.messageId);
+          if (nonCurrentTask) {
+            logger.warn("Task for this run exists but is not part of the current deploy", {
+              taskRun: existingTaskRun.id,
+              taskIdentifier: existingTaskRun.taskIdentifier,
+            });
+          } else {
+            logger.warn("Task for this run has never been deployed", {
+              taskRun: existingTaskRun.id,
+              taskIdentifier: existingTaskRun.taskIdentifier,
+            });
+          }
+
+          await this.#markRunAsWaitingForDeploy(existingTaskRun.id);
+
+          // If this task is ever deployed, a new message will be enqueued after successful indexing
+          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -365,7 +398,7 @@ export class SharedQueueConsumer {
             messageId: message.messageId,
           });
 
-          this.#ackAndDoMoreWork(message.messageId);
+          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -722,9 +755,23 @@ export class SharedQueueConsumer {
     this.#doMoreWork(intervalInMs);
   }
 
-  async #nackAndDoMoreWork(messageId: string, intervalInMs?: number) {
-    await marqs?.nackMessage(messageId);
-    this.#doMoreWork(intervalInMs);
+  async #nackAndDoMoreWork(messageId: string, queueIntervalInMs?: number, nackRetryInMs?: number) {
+    const retryAt = nackRetryInMs ? Date.now() + nackRetryInMs : undefined;
+    await marqs?.nackMessage(messageId, retryAt);
+    this.#doMoreWork(queueIntervalInMs);
+  }
+
+  async #markRunAsWaitingForDeploy(runId: string) {
+    logger.debug("Marking run as waiting for deploy", { runId });
+
+    return await prisma.taskRun.update({
+      where: {
+        id: runId,
+      },
+      data: {
+        status: "WAITING_FOR_DEPLOY",
+      },
+    });
   }
 }
 

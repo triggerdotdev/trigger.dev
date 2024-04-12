@@ -27,6 +27,7 @@ import { TaskRunStatusCombo, descriptionForTaskRunStatus } from "./TaskRunStatus
 
 export const allTaskRunStatuses = [
   "PENDING",
+  "WAITING_FOR_DEPLOY",
   "EXECUTING",
   "RETRYING_AFTER_FAILURE",
   "WAITING_TO_RESUME",
@@ -228,16 +229,18 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
                 All tasks
               </Paragraph>
             </SelectItem>
-            {possibleTasks.map((task) => (
-              <SelectItem key={task} value={task}>
-                <Paragraph
-                  variant="extra-small"
-                  className="pl-0.5 transition group-hover:text-text-bright"
-                >
-                  {task}
-                </Paragraph>
-              </SelectItem>
-            ))}
+            {possibleTasks
+              .sort((a, b) => a.localeCompare(b)) // 🔤
+              .map((task) => (
+                <SelectItem key={task} value={task}>
+                  <Paragraph
+                    variant="extra-small"
+                    className="pl-0.5 transition group-hover:text-text-bright"
+                  >
+                    {task}
+                  </Paragraph>
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
       </SelectGroup>
