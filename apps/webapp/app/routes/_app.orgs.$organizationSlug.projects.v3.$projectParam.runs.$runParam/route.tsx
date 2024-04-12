@@ -12,16 +12,19 @@ import {
   millisecondsToNanoseconds,
   nanosecondsToMilliseconds,
 } from "@trigger.dev/core/v3";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
+import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -181,6 +184,7 @@ export default function Page() {
               totalDuration={duration}
               rootSpanStatus={rootSpanStatus}
               rootStartedAt={rootStartedAt}
+              environmentType={run.environment.type}
             />
           ) : (
             <ResizablePanelGroup
@@ -209,6 +213,7 @@ export default function Page() {
                   totalDuration={duration}
                   rootSpanStatus={rootSpanStatus}
                   rootStartedAt={rootStartedAt}
+                  environmentType={run.environment.type}
                 />
               </ResizablePanel>
               <ResizableHandle withHandle />
@@ -231,6 +236,7 @@ type TasksTreeViewProps = {
   totalDuration: number;
   rootSpanStatus: "executing" | "completed" | "failed";
   rootStartedAt: Date | undefined;
+  environmentType: RuntimeEnvironmentType;
 };
 
 function TasksTreeView({
@@ -241,6 +247,7 @@ function TasksTreeView({
   totalDuration,
   rootSpanStatus,
   rootStartedAt,
+  environmentType,
 }: TasksTreeViewProps) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -345,63 +352,68 @@ function TasksTreeView({
               getNodeProps={getNodeProps}
               getTreeProps={getTreeProps}
               renderNode={({ node, state }) => (
-                <div
-                  className={cn(
-                    "delay-[25ms] flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2 transition-colors",
-                    state.selected
-                      ? "bg-grid-dimmed hover:bg-grid-bright"
-                      : "bg-transparent hover:bg-grid-dimmed"
-                  )}
-                  onClick={() => {
-                    toggleNodeSelection(node.id);
-                  }}
-                >
-                  <div className="flex h-8 items-center">
-                    {Array.from({ length: node.level }).map((_, index) => (
-                      <TaskLine
-                        key={index}
-                        isError={node.data.isError}
-                        isSelected={state.selected}
-                      />
-                    ))}
-                    <div
-                      className={cn(
-                        "flex h-8 w-4 items-center",
-                        node.hasChildren && "hover:bg-charcoal-600"
-                      )}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleExpandNode(node.id);
-                        scrollToNode(node.id);
-                      }}
-                    >
-                      {node.hasChildren ? (
-                        state.expanded ? (
-                          <ChevronDownIcon className="h-4 w-4 text-charcoal-400" />
+                <>
+                  <div
+                    className={cn(
+                      "delay-[25ms] flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2 transition-colors",
+                      state.selected
+                        ? "bg-grid-dimmed hover:bg-grid-bright"
+                        : "bg-transparent hover:bg-grid-dimmed"
+                    )}
+                    onClick={() => {
+                      toggleNodeSelection(node.id);
+                    }}
+                  >
+                    <div className="flex h-8 items-center">
+                      {Array.from({ length: node.level }).map((_, index) => (
+                        <TaskLine
+                          key={index}
+                          isError={node.data.isError}
+                          isSelected={state.selected}
+                        />
+                      ))}
+                      <div
+                        className={cn(
+                          "flex h-8 w-4 items-center",
+                          node.hasChildren && "hover:bg-charcoal-600"
+                        )}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleExpandNode(node.id);
+                          scrollToNode(node.id);
+                        }}
+                      >
+                        {node.hasChildren ? (
+                          state.expanded ? (
+                            <ChevronDownIcon className="h-4 w-4 text-charcoal-400" />
+                          ) : (
+                            <ChevronRightIcon className="h-4 w-4 text-charcoal-400" />
+                          )
                         ) : (
-                          <ChevronRightIcon className="h-4 w-4 text-charcoal-400" />
-                        )
-                      ) : (
-                        <div className="h-8 w-4" />
-                      )}
+                          <div className="h-8 w-4" />
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex w-full items-center justify-between gap-2 pl-1">
-                    <div className="flex items-center gap-2 overflow-x-hidden">
-                      <RunIcon
-                        name={node.data.style?.icon}
-                        spanName={node.data.message}
-                        className="h-4 min-h-4 w-4 min-w-4"
-                      />
-                      <NodeText node={node} />
-                      {node.data.isRoot && <Badge variant="outline-rounded">Root</Badge>}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <NodeStatusIcon node={node} />
+                    <div className="flex w-full items-center justify-between gap-2 pl-1">
+                      <div className="flex items-center gap-2 overflow-x-hidden">
+                        <RunIcon
+                          name={node.data.style?.icon}
+                          spanName={node.data.message}
+                          className="h-4 min-h-4 w-4 min-w-4"
+                        />
+                        <NodeText node={node} />
+                        {node.data.isRoot && <Badge variant="outline-rounded">Root</Badge>}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <NodeStatusIcon node={node} />
+                      </div>
                     </div>
                   </div>
-                </div>
+                  {events.length === 1 && environmentType === "DEVELOPMENT" && (
+                    <ConnectedDevWarning />
+                  )}
+                </>
               )}
               onScroll={(scrollTop) => {
                 //sync the scroll to the tree
@@ -839,5 +851,36 @@ function CurrentTimeIndicator({ totalDuration }: { totalDuration: number }) {
         );
       }}
     </Timeline.FollowCursor>
+  );
+}
+
+function ConnectedDevWarning() {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsVisible(true);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div
+      className={cn(
+        "flex items-center overflow-hidden pl-5 pr-2 transition-opacity duration-500",
+        isVisible ? "opacity-100" : "h-0 opacity-0"
+      )}
+    >
+      <Callout variant="info">
+        <div className="flex flex-col gap-1">
+          <Paragraph variant="small">
+            Runs usually start within 1 second in{" "}
+            <EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />. Check you're running the
+            CLI: <InlineCode className="whitespace-nowrap">npx trigger.dev@beta dev</InlineCode>
+          </Paragraph>
+        </div>
+      </Callout>
+    </div>
   );
 }

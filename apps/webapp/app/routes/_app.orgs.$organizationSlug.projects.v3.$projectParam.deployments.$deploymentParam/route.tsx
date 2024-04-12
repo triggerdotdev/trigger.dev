@@ -19,6 +19,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { DeploymentError } from "~/components/runs/v3/DeploymentError";
 import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -158,25 +159,7 @@ export default function Page() {
               </Table>
             </div>
           ) : deployment.errorData ? (
-            <div className="flex flex-col">
-              {deployment.errorData.stack ? (
-                <CodeBlock
-                  language="markdown"
-                  rowTitle={deployment.errorData.message}
-                  code={deployment.errorData.stack}
-                  maxLines={20}
-                />
-              ) : (
-                <div className="flex flex-col">
-                  <Paragraph
-                    variant="base/bright"
-                    className="w-full border-b border-grid-dimmed py-2.5"
-                  >
-                    {deployment.errorData.message}
-                  </Paragraph>
-                </div>
-              )}
-            </div>
+            <DeploymentError errorData={deployment.errorData} />
           ) : null}
         </div>
       </div>

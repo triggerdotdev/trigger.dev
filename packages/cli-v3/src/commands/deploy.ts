@@ -94,7 +94,7 @@ export function configureDeployCommand(program: Command) {
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
       .option(
         "-p, --project-ref <project ref>",
-        "The project ref. Required if there is no config file."
+        "The project ref. Required if there is no config file. This will override the project specified in the config file."
       )
   )
     .addOption(
@@ -688,7 +688,10 @@ async function buildAndPushImage(
         childProcess.stderr?.on("data", (data: Buffer) => {
           const text = data.toString();
 
-          errors.push(text);
+          // Emitted data chunks can contain multiple lines. Remove empty lines.
+          const lines = text.split("\n").filter(Boolean);
+
+          errors.push(...lines);
           logger.debug(text);
         });
 
@@ -896,14 +899,15 @@ async function buildAndPushSelfHostedImage(
 }
 
 function extractImageDigest(outputs: string[]) {
-  const imageDigestRegex = /sha256:[a-f0-9]{64}/;
+  const imageDigestRegex = /pushing manifest for .+(?<digest>sha256:[a-f0-9]{64})/;
 
   for (const line of outputs) {
-    if (line.includes("pushing manifest")) {
-      const imageDigestMatch = line.match(imageDigestRegex);
-      if (imageDigestMatch) {
-        return imageDigestMatch[0];
-      }
+    const imageDigestMatch = line.match(imageDigestRegex);
+
+    const digest = imageDigestMatch?.groups?.digest;
+
+    if (digest) {
+      return digest;
     }
   }
 }

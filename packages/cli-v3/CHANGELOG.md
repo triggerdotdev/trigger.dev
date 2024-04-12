@@ -1,5 +1,25 @@
 # trigger.dev
 
+## 3.0.0-beta.11
+
+### Patch Changes
+
+- 63a643b7c: v3: fix digest extraction
+  - @trigger.dev/core@3.0.0-beta.11
+
+## 3.0.0-beta.10
+
+### Patch Changes
+
+- 7a9bd18ba: Stop swallowing deployment errors and display them better
+
+## 3.0.0-beta.9
+
+### Patch Changes
+
+- 279717b09: Don’t swallow some error messages when deploying
+- 328947dbf: Use the dashboard url instead of the API url for the View logs link
+
 ## 3.0.0-beta.8
 
 ### Patch Changes

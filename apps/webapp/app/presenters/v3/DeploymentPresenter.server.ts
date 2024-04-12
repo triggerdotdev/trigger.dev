@@ -12,6 +12,12 @@ import { User } from "~/models/user.server";
 import { safeJsonParse } from "~/utils/json";
 import { getUsername } from "~/utils/username";
 
+export type ErrorData = {
+  name: string;
+  message: string;
+  stack?: string;
+};
+
 export class DeploymentPresenter {
   #prismaClient: PrismaClient;
 
@@ -133,7 +139,7 @@ export class DeploymentPresenter {
     };
   }
 
-  #prepareErrorData(errorData: WorkerDeployment["errorData"]) {
+  #prepareErrorData(errorData: WorkerDeployment["errorData"]): ErrorData | undefined {
     if (!errorData) {
       return;
     }

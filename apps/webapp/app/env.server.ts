@@ -139,6 +139,7 @@ const EnvironmentSchema = z.object({
   // this means 1/20 traces or 5% of traces will be sampled (sampled = recorded)
   INTERNAL_OTEL_TRACE_SAMPLING_RATE: z.string().default("20"),
   INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED: z.string().default("0"),
+  INTERNAL_OTEL_TRACE_DISABLED: z.string().default("0"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

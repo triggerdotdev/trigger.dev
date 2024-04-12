@@ -4,7 +4,8 @@
   "commit": false,
   "fixed": [
     [
-      "@trigger.dev/*"
+      "@trigger.dev/*",
+      "trigger.dev"
     ]
   ],
   "linked": [],

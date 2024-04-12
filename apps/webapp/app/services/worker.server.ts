@@ -35,6 +35,7 @@ import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.server";
 import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server";
 import { eventRepository } from "~/v3/eventRepository.server";
+import { ExecuteTasksWaitingForDeployService } from "~/v3/services/executeTasksWaitingForDeploy";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -127,6 +128,9 @@ const workerCatalog = {
     deploymentId: z.string(),
     fromStatus: z.string(),
     errorMessage: z.string(),
+  }),
+  "v3.executeTasksWaitingForDeploy": z.object({
+    backgroundWorkerId: z.string(),
   }),
 };
 
@@ -505,6 +509,15 @@ function getWorkerQueue() {
           const service = new TimeoutDeploymentService();
 
           return await service.call(payload.deploymentId, payload.fromStatus, payload.errorMessage);
+        },
+      },
+      "v3.executeTasksWaitingForDeploy": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new ExecuteTasksWaitingForDeployService();
+
+          return await service.call(payload.backgroundWorkerId);
         },
       },
     },

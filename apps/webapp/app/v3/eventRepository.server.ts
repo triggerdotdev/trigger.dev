@@ -26,6 +26,9 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
+import { singleton } from "~/utils/singleton";
+import { Gauge } from "prom-client";
+import { metricsRegister } from "~/metrics.server";
 
 export type CreatableEvent = Omit<
   Prisma.TaskEventCreateInput,
@@ -148,6 +151,11 @@ export class EventRepository {
   private readonly _flushScheduler: DynamicFlushScheduler<CreatableEvent>;
   private _randomIdGenerator = new RandomIdGenerator();
   private _redisPublishClient: Redis;
+  private _subscriberCount = 0;
+
+  get subscriberCount() {
+    return this._subscriberCount;
+  }
 
   constructor(private db: PrismaClient = prisma, private readonly _config: EventRepoConfig) {
     this._flushScheduler = new DynamicFlushScheduler({
@@ -721,6 +729,9 @@ export class EventRepository {
     // Subscribe to the channel.
     await redis.psubscribe(channel);
 
+    // Increment the subscriber count.
+    this._subscriberCount++;
+
     const eventEmitter = new EventEmitter();
 
     // Define the message handler.
@@ -733,6 +744,8 @@ export class EventRepository {
     // Return a function that can be used to unsubscribe.
     const unsubscribe = async () => {
       await redis.punsubscribe(channel);
+      redis.quit();
+      this._subscriberCount--;
     };
 
     return {
@@ -796,19 +809,34 @@ export class EventRepository {
   }
 }
 
-export const eventRepository = new EventRepository(prisma, {
-  batchSize: env.EVENTS_BATCH_SIZE,
-  batchInterval: env.EVENTS_BATCH_INTERVAL,
-  retentionInDays: env.EVENTS_DEFAULT_LOG_RETENTION,
-  redis: {
-    port: env.REDIS_PORT,
-    host: env.REDIS_HOST,
-    username: env.REDIS_USERNAME,
-    password: env.REDIS_PASSWORD,
-    enableAutoPipelining: true,
-    ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-  },
-});
+export const eventRepository = singleton("eventRepo", initializeEventRepo);
+
+function initializeEventRepo() {
+  const repo = new EventRepository(prisma, {
+    batchSize: env.EVENTS_BATCH_SIZE,
+    batchInterval: env.EVENTS_BATCH_INTERVAL,
+    retentionInDays: env.EVENTS_DEFAULT_LOG_RETENTION,
+    redis: {
+      port: env.REDIS_PORT,
+      host: env.REDIS_HOST,
+      username: env.REDIS_USERNAME,
+      password: env.REDIS_PASSWORD,
+      enableAutoPipelining: true,
+      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+    },
+  });
+
+  new Gauge({
+    name: "event_repository_subscriber_count",
+    help: "Number of event repository subscribers",
+    collect() {
+      this.set(repo.subscriberCount);
+    },
+    registers: [metricsRegister],
+  });
+
+  return repo;
+}
 
 export function stripAttributePrefix(attributes: Attributes, prefix: string) {
   const result: Attributes = {};

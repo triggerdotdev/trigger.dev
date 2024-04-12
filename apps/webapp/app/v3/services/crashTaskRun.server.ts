@@ -13,6 +13,7 @@ import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.se
 
 export const CRASHABLE_RUN_STATUSES: Array<TaskRunStatus> = [
   "PENDING",
+  "WAITING_FOR_DEPLOY",
   "EXECUTING",
   "PAUSED",
   "WAITING_TO_RESUME",
