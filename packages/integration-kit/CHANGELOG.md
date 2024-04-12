@@ -1,5 +1,11 @@
 # @trigger.dev/integration-kit
 
+## 3.0.0-beta.12
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.12
+
 ## 3.0.0-beta.11
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # trigger.dev
 
+## 3.0.0-beta.12
+
+### Patch Changes
+
+- d3a18fbdf: Fix package builds and CLI commands on Windows
+- d3a18fbdf: Init command was failing on Windows because of bad template paths
+  - @trigger.dev/core@3.0.0-beta.12
+
 ## 3.0.0-beta.11
 
 ### Patch Changes
