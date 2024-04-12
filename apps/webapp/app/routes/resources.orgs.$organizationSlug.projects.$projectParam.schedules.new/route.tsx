@@ -188,7 +188,7 @@ export function UpsertScheduleForm({
       };
     } else {
       try {
-        const expression = parseExpression(cronPattern);
+        const expression = parseExpression(cronPattern, { utc: true });
         cronPatternResult = {
           isValid: true,
           description: cronstrue.toString(cronPattern),

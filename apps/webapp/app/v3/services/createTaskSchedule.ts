@@ -4,11 +4,11 @@ import {
   TaskSchedule,
   TaskScheduleInstance,
 } from "@trigger.dev/database";
-import { CreateSchedule } from "~/routes/_app.orgs.$organizationSlug.projects.v3.$projectParam.schedules.new/route";
 import { BaseService } from "./baseService.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { Prisma } from "@trigger.dev/database";
 import { parseExpression } from "cron-parser";
+import { CreateSchedule } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.schedules.new/route";
 
 export type UpsertTaskScheduleServiceOptions = {
   projectId: string;

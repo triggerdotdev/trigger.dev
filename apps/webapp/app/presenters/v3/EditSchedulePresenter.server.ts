@@ -6,6 +6,8 @@ type EditScheduleOptions = {
   friendlyId?: string;
 };
 
+export type EditableScheduleElements = Awaited<ReturnType<EditSchedulePresenter["call"]>>;
+
 export class EditSchedulePresenter {
   #prismaClient: PrismaClient;
 
