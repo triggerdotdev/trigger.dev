@@ -39,6 +39,7 @@ import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuild
 import { UpsertTaskScheduleService } from "~/v3/services/createTaskSchedule";
 import cronstrue from "cronstrue";
 import { useState } from "react";
+import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -223,16 +224,15 @@ export default function Page() {
                 required={true}
                 value={cronPattern}
                 onChange={(e) => {
-                  console.log(e.target.value);
                   setCronPattern(e.target.value);
                 }}
               />
               {cronPatternResult === undefined ? (
                 <Hint>Enter a CRON pattern or use natural language above.</Hint>
               ) : cronPatternResult.isValid ? (
-                <Hint>{cronPatternResult.description}</Hint>
+                <ValidCronMessage isValid={true} message={`${cronPatternResult.description}.`} />
               ) : (
-                <Hint>{cronPatternResult.error}</Hint>
+                <ValidCronMessage isValid={false} message={cronPatternResult.error} />
               )}
             </InputGroup>
             <InputGroup>
@@ -319,5 +319,23 @@ export default function Page() {
         </div>
       </div>
     </Form>
+  );
+}
+
+function ValidCronMessage({ isValid, message }: { isValid: boolean; message: string }) {
+  return (
+    <Paragraph variant="small">
+      <span className="mr-1">
+        {isValid ? (
+          <CheckIcon className="-mt-0.5 mr-1 inline-block h-4 w-4 text-success" />
+        ) : (
+          <XMarkIcon className="-mt-0.5 mr-1 inline-block h-4 w-4 text-error" />
+        )}
+        <span className={isValid ? "text-success" : "text-error"}>
+          {isValid ? "Valid pattern:" : "Invalid pattern:"}
+        </span>
+      </span>
+      <span>{message}</span>
+    </Paragraph>
   );
 }
