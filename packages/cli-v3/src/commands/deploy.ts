@@ -1,4 +1,4 @@
-import { intro, log, outro, spinner } from "@clack/prompts";
+import { intro, log, outro } from "@clack/prompts";
 import { depot } from "@depot/cli";
 import { context, trace } from "@opentelemetry/api";
 import {
@@ -56,7 +56,7 @@ import {
 import { safeJsonParse } from "../utilities/safeJsonParse";
 import { JavascriptProject } from "../utilities/javascriptProject";
 import { cliRootPath } from "../utilities/resolveInternalFilePath";
-import { escapeImportPath } from "../utilities/windows";
+import { escapeImportPath, spinner } from "../utilities/windows";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),

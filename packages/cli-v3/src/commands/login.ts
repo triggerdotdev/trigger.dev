@@ -1,4 +1,4 @@
-import { intro, log, outro, select, spinner } from "@clack/prompts";
+import { intro, log, outro, select } from "@clack/prompts";
 import { recordSpanException } from "@trigger.dev/core/v3";
 import { Command } from "commander";
 import open from "open";
@@ -20,6 +20,7 @@ import { printInitialBanner } from "../utilities/initialBanner.js";
 import { LoginResult } from "../utilities/session.js";
 import { whoAmI } from "./whoami.js";
 import { logger } from "../utilities/logger.js";
+import { spinner } from "../utilities/windows.js";
 
 export const LoginCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string(),

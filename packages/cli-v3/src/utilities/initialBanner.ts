@@ -1,4 +1,3 @@
-import { spinner } from "@clack/prompts";
 import chalk from "chalk";
 import type { Result } from "update-check";
 import checkForUpdate from "update-check";
@@ -6,6 +5,7 @@ import pkg from "../../package.json";
 import { chalkGrey, chalkRun, chalkTask, chalkWorker, green, logo } from "./cliOutput.js";
 import { getVersion } from "./getVersion.js";
 import { logger } from "./logger.js";
+import { spinner } from "./windows";
 
 export async function printInitialBanner(performUpdateCheck = true) {
   const packageVersion = getVersion();

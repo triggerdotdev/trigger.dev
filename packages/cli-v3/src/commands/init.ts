@@ -1,4 +1,4 @@
-import { intro, isCancel, log, outro, select, spinner, text } from "@clack/prompts";
+import { intro, isCancel, log, outro, select, text } from "@clack/prompts";
 import { context, trace } from "@opentelemetry/api";
 import {
   GetProjectResponseBody,
@@ -32,6 +32,7 @@ import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger";
 import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { login } from "./login";
+import { spinner } from "../utilities/windows";
 
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -185,9 +186,8 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 async function createTriggerDir(dir: string, options: InitCommandOptions) {
   return await tracer.startActiveSpan("createTriggerDir", async (span) => {
     try {
-      const defaultValue = join(dir, "src", "trigger-2");
+      const defaultValue = join(dir, "src", "trigger");
 
-      // FIXME: (windows) Text prompts do not accept any user input
       const location = await text({
         message: "Where would you like to create the Trigger.dev directory?",
         defaultValue: defaultValue,
