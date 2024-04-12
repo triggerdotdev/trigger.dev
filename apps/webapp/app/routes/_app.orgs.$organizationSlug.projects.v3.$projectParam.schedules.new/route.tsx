@@ -1,28 +1,24 @@
-import { PlusIcon } from "@heroicons/react/20/solid";
-import { Form, Outlet, useLocation, useNavigation } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
+import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
+import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { parseExpression } from "cron-parser";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { BlankstateInstructions } from "~/components/BlankstateInstructions";
-import { InlineCode } from "~/components/code/InlineCode";
+import { z } from "zod";
 import {
-  EnvironmentLabel,
   environmentTextClassName,
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
-import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Checkbox } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
+import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
-import { ResizablePanel, ResizablePanelGroup } from "~/components/primitives/Resizable";
 import {
   Select,
   SelectContent,
@@ -32,22 +28,17 @@ import {
   SelectValue,
 } from "~/components/primitives/Select";
 import { TextLink } from "~/components/primitives/TextLink";
-import { ScheduleFilters, ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
-import { useEnvironments } from "~/hooks/useEnvironments";
+import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
+import { redirectWithSuccessMessage } from "~/models/message.server";
 import { EditSchedulePresenter } from "~/presenters/v3/EditSchedulePresenter.server";
-import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import {
-  ProjectParamSchema,
-  docsPath,
-  v3NewSchedulePath,
-  v3SchedulesPath,
-} from "~/utils/pathBuilder";
+import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuilder";
+import { UpsertTaskScheduleService } from "~/v3/services/createTaskSchedule";
+import cronstrue from "cronstrue";
+import { useState } from "react";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -62,20 +53,135 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson(result);
 };
 
+const CreateSchedule = z.object({
+  taskIdentifier: z.string().min(1, "Task is required"),
+  cron: z.string().refine(
+    (val) => {
+      try {
+        parseExpression(val);
+        return true;
+      } catch (e) {
+        return false;
+      }
+    },
+    (val) => {
+      try {
+        parseExpression(val);
+        return {};
+      } catch (e) {
+        return { message: e instanceof Error ? e.message : JSON.stringify(e) };
+      }
+    }
+  ),
+  environments: z.preprocess((i) => {
+    console.log(i);
+    if (typeof i === "string") return [i];
+
+    if (Array.isArray(i)) {
+      const envs = i.filter((v) => typeof v === "string" && v !== "");
+      if (envs.length === 0) {
+        return [""];
+      }
+      return envs;
+    }
+
+    return [""];
+  }, z.string().email().array().nonempty("At least one email is required")),
+  externalId: z.string().optional(),
+  deduplicationKey: z.string().optional(),
+});
+
+export type CreateSchedule = z.infer<typeof CreateSchedule>;
+
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+
+  const formData = await request.formData();
+  const submission = parse(formData, { schema: CreateSchedule });
+
+  if (!submission.value || submission.intent !== "submit") {
+    return json(submission);
+  }
+
+  try {
+    const project = await prisma.project.findUnique({
+      where: { slug: projectParam },
+      select: { id: true },
+    });
+
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    const createSchedule = new UpsertTaskScheduleService();
+    const result = await createSchedule.call({
+      projectId: project.id,
+      userId,
+      scheduleFriendlyId: undefined,
+      ...submission.value,
+    });
+
+    return redirectWithSuccessMessage(
+      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }),
+      request,
+      "Schedule created"
+    );
+  } catch (error: any) {
+    return json({ errors: { body: error.message } }, { status: 400 });
+  }
+};
+
+type CronPatternResult =
+  | {
+      isValid: true;
+      description: string;
+    }
+  | {
+      isValid: false;
+      error: string;
+    };
+
 export default function Page() {
   const { schedule, possibleTasks, possibleEnvironments } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
+  const lastSubmission = useActionData();
   const isLoading = navigation.state !== "idle";
   const organization = useOrganization();
-  const environments = useEnvironments();
   const project = useProject();
   const location = useLocation();
-  const currentUser = useUser();
+  const [cronPattern, setCronPattern] = useState<string>(schedule?.cron ?? "");
+
+  const [form, { taskIdentifier, cron, externalId, environments, deduplicationKey }] = useForm({
+    id: "create-schedule",
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
+    onValidate({ formData }) {
+      return parse(formData, { schema: CreateSchedule });
+    },
+  });
+
+  let cronPatternResult: CronPatternResult | undefined = undefined;
+  if (cronPattern !== "") {
+    try {
+      parseExpression(cronPattern);
+      cronPatternResult = {
+        isValid: true,
+        description: cronstrue.toString(cronPattern),
+      };
+    } catch (e) {
+      cronPatternResult = {
+        isValid: false,
+        error: e instanceof Error ? e.message : JSON.stringify(e),
+      };
+    }
+  }
 
   return (
     <Form
       method="POST"
       className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden bg-background-bright"
+      {...form.props}
     >
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Header2 className={cn("whitespace-nowrap")}>New schedule</Header2>
@@ -84,9 +190,12 @@ export default function Page() {
         <div className="p-3">
           <Fieldset>
             <InputGroup>
-              <Label>Task</Label>
+              <Label htmlFor={taskIdentifier.id}>Task</Label>
               <SelectGroup>
-                <Select name="tasks" defaultValue={schedule?.taskIdentifier}>
+                <Select
+                  {...conform.input(taskIdentifier, { type: "select" })}
+                  defaultValue={schedule?.taskIdentifier}
+                >
                   <SelectTrigger size="medium" width="full">
                     <SelectValue placeholder="Select task" className="ml-2 p-0" />
                   </SelectTrigger>
@@ -104,59 +213,87 @@ export default function Page() {
                   </SelectContent>
                 </Select>
               </SelectGroup>
+              <FormError id={taskIdentifier.errorId}>{taskIdentifier.error}</FormError>
             </InputGroup>
             <InputGroup>
-              <Label>CRON pattern</Label>
+              <Label htmlFor={cron.id}>CRON pattern</Label>
               <Input
-                name="cron"
+                {...conform.input(cron, { type: "text" })}
                 placeholder="? ? ? ? ?"
                 required={true}
-                defaultValue={schedule?.cron}
+                value={cronPattern}
+                onChange={(e) => {
+                  console.log(e.target.value);
+                  setCronPattern(e.target.value);
+                }}
               />
-              <Hint>Enter a CRON pattern or use natural language above.</Hint>
+              {cronPatternResult === undefined ? (
+                <Hint>Enter a CRON pattern or use natural language above.</Hint>
+              ) : cronPatternResult.isValid ? (
+                <Hint>{cronPatternResult.description}</Hint>
+              ) : (
+                <Hint>{cronPatternResult.error}</Hint>
+              )}
             </InputGroup>
             <InputGroup>
               <Label>Environments</Label>
-              <RadioGroup name="environments" className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {possibleEnvironments.map((environment) => (
-                  <RadioGroupItem
+                  <Checkbox
+                    key={environment.id}
                     id={environment.id}
+                    {...conform.input(environments, { type: "checkbox" })}
                     label={
                       <span
-                        className={cn("text-sm uppercase", environmentTextClassName(environment))}
+                        className={cn("text-xs uppercase", environmentTextClassName(environment))}
                       >
                         {environmentTitle(environment, environment.userName)}
                       </span>
                     }
                     value={environment.id}
-                    variant="button/small"
+                    defaultChecked={
+                      schedule?.instances.find((i) => i.environmentId === environment.id) !==
+                      undefined
+                    }
+                    variant="button"
                   />
                 ))}
-              </RadioGroup>
+              </div>
               <Hint>Select all the environments where you want this schedule to run.</Hint>
+              <FormError id={environments.errorId}>{environments.error}</FormError>
             </InputGroup>
             <InputGroup>
-              <Label required={false}>External ID</Label>
+              <Label required={false} htmlFor={externalId.id}>
+                External ID
+              </Label>
               <Input
-                name="externalId"
+                {...conform.input(externalId, { type: "text" })}
                 placeholder="Optionally specify your own ID, e.g. user id"
-                required={true}
-                defaultValue={schedule?.cron}
+                defaultValue={schedule?.externalId ?? undefined}
               />
               <Hint>
                 Optionally, you can specify your own IDs (like a user ID) and then use it inside the
                 run function of your task. This allows you to have per-user CRON tasks.{" "}
                 <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
               </Hint>
+              <FormError id={externalId.errorId}>{externalId.error}</FormError>
             </InputGroup>
             <InputGroup>
-              <Label required={false}>Deduplication key</Label>
-              <Input name="deduplicationKey" required={true} defaultValue={schedule?.cron} />
+              <Label required={false} htmlFor={deduplicationKey.id}>
+                Deduplication key
+              </Label>
+              <Input
+                {...conform.input(deduplicationKey, { type: "text" })}
+                defaultValue={
+                  schedule?.userProvidedDeduplicationKey ? schedule?.deduplicationKey : undefined
+                }
+              />
               <Hint>
                 Optionally specify a key, you can only create one schedule with this key. This is
                 very useful when using the SDK and you don't want to create duplicate schedules for
                 a user.
               </Hint>
+              <FormError id={deduplicationKey.errorId}>{deduplicationKey.error}</FormError>
             </InputGroup>
           </Fieldset>
         </div>
@@ -171,8 +308,13 @@ export default function Page() {
           </LinkButton>
         </div>
         <div className="flex items-center gap-4">
-          <Button variant="primary/small" type="submit">
-            Create schedule
+          <Button
+            variant="primary/small"
+            type="submit"
+            disabled={isLoading}
+            LeadingIcon={isLoading ? "spinner" : undefined}
+          >
+            {isLoading ? "Creating schedule" : "Create schedule"}
           </Button>
         </div>
       </div>
