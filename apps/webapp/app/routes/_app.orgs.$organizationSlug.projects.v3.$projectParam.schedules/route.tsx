@@ -200,13 +200,15 @@ function SchedulesTable({
             </TableCell>
             <TableCell>Implement</TableCell>
             <TableCell>
-              {schedule.environments.map((environment) => (
-                <EnvironmentLabel
-                  key={environment.id}
-                  environment={environment}
-                  userName={environment.userName}
-                />
-              ))}
+              <div className="flex gap-1">
+                {schedule.environments.map((environment) => (
+                  <EnvironmentLabel
+                    key={environment.id}
+                    environment={environment}
+                    userName={environment.userName}
+                  />
+                ))}
+              </div>
             </TableCell>
           </TableRow>
         ))}
