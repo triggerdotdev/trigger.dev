@@ -417,6 +417,9 @@ importers:
       cron-parser:
         specifier: ^4.7.1
         version: 4.7.1
+      cronstrue:
+        specifier: ^2.21.0
+        version: 2.21.0
       cross-env:
         specifier: ^7.0.3
         version: 7.0.3

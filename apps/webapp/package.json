@@ -101,6 +101,7 @@
     "clsx": "^1.2.1",
     "compression": "^1.7.4",
     "cron-parser": "^4.7.1",
+    "cronstrue": "^2.21.0",
     "cross-env": "^7.0.3",
     "cuid": "^2.1.8",
     "emails": "workspace:*",
