@@ -257,6 +257,7 @@ class DockerTaskOperations implements TaskOperations {
       return await execa("docker", [
         "exec",
         containerName,
+        "busybox",
         "wget",
         "-q",
         "-O-",
