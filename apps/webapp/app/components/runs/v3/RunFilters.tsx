@@ -1,4 +1,4 @@
-import { TrashIcon } from "@heroicons/react/20/solid";
+import { XMarkIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
 import type { TaskRunStatus as TaskRunStatusType } from "@trigger.dev/database";
 import { RuntimeEnvironment, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
@@ -247,7 +247,7 @@ export function RunsFilters({ possibleEnvironments, possibleTasks }: RunFiltersP
 
       <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} />
 
-      <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={TrashIcon} />
+      <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={XMarkIcon} />
     </div>
   );
 }
