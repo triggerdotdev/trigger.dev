@@ -39,6 +39,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { TextArea } from "~/components/primitives/TextArea";
 import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -49,6 +50,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuilder";
 import { UpsertTaskScheduleService } from "~/v3/services/createTaskSchedule";
+import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.openai/route";
 
 //todo use this in the Upsert code too
 export const CronPattern = z.string().refine(
@@ -156,7 +158,8 @@ export function UpsertScheduleForm({
   schedule,
   possibleTasks,
   possibleEnvironments,
-}: EditableScheduleElements) {
+  showGenerateField,
+}: EditableScheduleElements & { showGenerateField: boolean }) {
   const lastSubmission = useActionData();
   const [cronPattern, setCronPattern] = useState<string>(schedule?.cron ?? "");
   const navigation = useNavigation();
@@ -245,6 +248,7 @@ export function UpsertScheduleForm({
               </SelectGroup>
               <FormError id={taskIdentifier.errorId}>{taskIdentifier.error}</FormError>
             </InputGroup>
+            {showGenerateField && <AIGeneratedCronField />}
             <InputGroup>
               <Label htmlFor={cron.id}>CRON pattern (UTC)</Label>
               <Input

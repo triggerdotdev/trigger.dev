@@ -20,15 +20,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { schedule, possibleTasks, possibleEnvironments } = useTypedLoaderData<typeof loader>();
-
-  const location = useLocation();
+  const { schedule, possibleTasks, possibleEnvironments, showGenerateField } =
+    useTypedLoaderData<typeof loader>();
 
   return (
     <UpsertScheduleForm
       schedule={schedule}
       possibleTasks={possibleTasks}
       possibleEnvironments={possibleEnvironments}
+      showGenerateField={showGenerateField}
     />
   );
 }

@@ -1,4 +1,5 @@
 import { PrismaClient, prisma } from "~/db.server";
+import { env } from "~/env.server";
 
 type EditScheduleOptions = {
   userId: string;
@@ -78,6 +79,7 @@ export class EditSchedulePresenter {
         };
       }),
       schedule: await this.#getExistingSchedule(friendlyId),
+      showGenerateField: env.OPENAI_API_KEY !== undefined,
     };
   }
 
