@@ -12,7 +12,7 @@ type ScheduleListOptions = {
   pageSize?: number;
 } & ScheduleListFilters;
 
-const DEFAULT_PAGE_SIZE = 2;
+const DEFAULT_PAGE_SIZE = 20;
 
 export type ScheduleListItem = {
   id: string;
