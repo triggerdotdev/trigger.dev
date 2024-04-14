@@ -1,22 +1,22 @@
 import * as React from "react";
 import { cn } from "~/utils/cn";
 
-const labelVariants = {
+const variants = {
   small: {
-    text: "font-sans text-sm font-normal text-text-bright",
+    text: "font-sans text-sm font-normal text-text-bright leading-tight",
   },
   medium: {
-    text: "font-sans text-sm leading-5 text-text-bright",
+    text: "font-sans text-sm text-text-bright leading-tight",
   },
   large: {
-    text: "font-sans text-base leading-6 font-medium text-text-bright",
+    text: "font-sans text-base font-medium text-text-bright leading-tight",
   },
 };
 
 type LabelProps = React.AllHTMLAttributes<HTMLLabelElement> & {
   className?: string;
   children: React.ReactNode;
-  variant?: keyof typeof labelVariants;
+  variant?: keyof typeof variants;
   required?: boolean;
 };
 
@@ -27,7 +27,7 @@ export function Label({
   required = true,
   ...props
 }: LabelProps) {
-  const variation = labelVariants[variant];
+  const variation = variants[variant];
   return (
     <label className={cn(variation.text, className)} {...props}>
       {children}

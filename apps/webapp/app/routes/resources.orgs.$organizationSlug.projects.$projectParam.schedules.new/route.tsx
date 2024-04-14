@@ -248,7 +248,7 @@ export function UpsertScheduleForm({
               </SelectGroup>
               <FormError id={taskIdentifier.errorId}>{taskIdentifier.error}</FormError>
             </InputGroup>
-            {showGenerateField && <AIGeneratedCronField />}
+            {showGenerateField && <AIGeneratedCronField onSuccess={setCronPattern} />}
             <InputGroup>
               <Label htmlFor={cron.id}>CRON pattern (UTC)</Label>
               <Input

@@ -1,63 +1,47 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
-import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useFetcher, useLocation, useNavigation } from "@remix-run/react";
+import { useFetcher, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { parseExpression } from "cron-parser";
-import cronstrue from "cronstrue";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
-import {
-  environmentTextClassName,
-  environmentTitle,
-} from "~/components/environments/EnvironmentLabel";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Checkbox } from "~/components/primitives/Checkbox";
-import { DateTime } from "~/components/primitives/DateTime";
-import { Fieldset } from "~/components/primitives/Fieldset";
-import { FormError } from "~/components/primitives/FormError";
-import { Header2, Header3 } from "~/components/primitives/Headers";
-import { Hint } from "~/components/primitives/Hint";
-import { Input } from "~/components/primitives/Input";
-import { InputGroup } from "~/components/primitives/InputGroup";
+import { Button } from "~/components/primitives/Buttons";
 import { Label } from "~/components/primitives/Label";
-import { useLocales } from "~/components/primitives/LocaleProvider";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/primitives/Select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-} from "~/components/primitives/Table";
-import { TextArea } from "~/components/primitives/TextArea";
-import { TextLink } from "~/components/primitives/TextLink";
-import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { redirectWithSuccessMessage } from "~/models/message.server";
-import { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
-import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuilder";
-import { UpsertTaskScheduleService } from "~/v3/services/createTaskSchedule";
+import { ProjectParamSchema } from "~/utils/pathBuilder";
+import OpenAI from "openai";
+import { env } from "~/env.server";
+import { logger } from "~/services/logger.server";
+import { FormError } from "~/components/primitives/FormError";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 
 const schema = z.object({
   message: z.string(),
 });
 
+const ResultSchema = z.discriminatedUnion("isValid", [
+  z.object({
+    isValid: z.literal(true),
+    cron: z.string(),
+  }),
+  z.object({
+    isValid: z.literal(false),
+    error: z.string(),
+  }),
+]);
+
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+
+  if (!env.OPENAI_API_KEY) {
+    return json(
+      {
+        isValid: false as const,
+        error: "OpenAI API key is not set",
+      },
+      { status: 400 }
+    );
+  }
 
   const data = await request.json();
   const submission = schema.safeParse(data);
@@ -73,44 +57,88 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   try {
-    return json({
-      isValid: true as const,
-      cron: "* 1 * * *",
+    const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+    const completion = await openai.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: `You are a helpful assistant who will turn nautral language into a valid CRON expresion. Return JSON in one of these formats, putting in the correct data where you see <THE CRON EXPRESSION> and <ERROR MESSAGE DESCRIBING WHY IT'S NOT VALID>:
+        1. If it's valid: { "isValid": true, "cron": "<THE CRON EXPRESSION>" }
+        2. If it's not possible to make a valid CRON expression: { "isValid": false, "error": "<ERROR MESSAGE DESCRIBING WHY IT'S NOT VALID>"}`,
+        },
+        {
+          role: "user",
+          content: `What is a valid CRON expression for this: ${submission.data.message}`,
+        },
+      ],
+      model: "gpt-3.5-turbo",
     });
 
-    throw new Error("Not implemented");
+    if (!completion.choices[0]?.message.content) {
+      return json(
+        {
+          isValid: false as const,
+          error: "No response from OpenAI",
+        },
+        { status: 500 }
+      );
+    }
+
+    logger.log("Response from OpenAI", {
+      input: submission.data.message,
+      choices: completion.choices,
+    });
+
+    try {
+      const jsonResponse = JSON.parse(completion.choices[0].message.content);
+      const parsedResponse = ResultSchema.safeParse(jsonResponse);
+
+      if (!parsedResponse.success) {
+        return json(
+          {
+            isValid: false as const,
+            error: "Invalid response from OpenAI",
+          },
+          { status: 400 }
+        );
+      }
+
+      return json(parsedResponse.data);
+    } catch (error: any) {
+      return json(
+        {
+          isValid: false as const,
+          error: "Invalid response from OpenAI, not JSON",
+        },
+        { status: 400 }
+      );
+    }
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
 };
 
-const ResultSchema = z.discriminatedUnion("isValid", [
-  z.object({
-    isValid: z.literal(true),
-    cron: z.string(),
-  }),
-  z.object({
-    isValid: z.literal(false),
-    error: z.string(),
-  }),
-]);
-
 type Result = z.infer<typeof ResultSchema>;
 
-type AIGeneratedCronFieldProps = {};
+type AIGeneratedCronFieldProps = {
+  onSuccess: (cron: string) => void;
+};
 
-export function AIGeneratedCronField({}: AIGeneratedCronFieldProps) {
+export function AIGeneratedCronField({ onSuccess }: AIGeneratedCronFieldProps) {
   const fetcher = useFetcher<typeof action>();
   const [text, setText] = useState<string>("");
-  const navigation = useNavigation();
   const organization = useOrganization();
   const project = useProject();
-  const isLoading = navigation.state !== "idle";
+  const isLoading = fetcher.state !== "idle";
 
   const result = fetcher.data ? ResultSchema.safeParse(fetcher.data) : undefined;
-  if (result?.success) {
-    console.log(result.data);
-  }
+  const resultData = result?.success === true ? result.data : undefined;
+
+  useEffect(() => {
+    if (resultData?.isValid === true) {
+      onSuccess(resultData.cron);
+    }
+  }, [resultData]);
 
   const submit = useCallback(async (value: string) => {
     fetcher.submit(
@@ -125,7 +153,10 @@ export function AIGeneratedCronField({}: AIGeneratedCronFieldProps) {
 
   return (
     <div>
-      <Label>Describe your schedule using natural language</Label>
+      <Label>
+        <AISparkleIcon className="inline-block h-4 w-4" /> Describe your schedule using natural
+        language
+      </Label>
       <div
         className="rounded-sm p-px"
         style={{ background: "linear-gradient(to bottom right, #E543FF, #286399)" }}
@@ -142,7 +173,7 @@ export function AIGeneratedCronField({}: AIGeneratedCronFieldProps) {
               type="button"
               variant="tertiary/small"
               disabled={isLoading}
-              LeadingIcon={isLoading ? "spinner" : undefined}
+              LeadingIcon={isLoading ? "spinner" : AISparkleIcon}
               onClick={() => submit(text)}
             >
               {isLoading ? "Generating" : "Generate"}
@@ -150,6 +181,9 @@ export function AIGeneratedCronField({}: AIGeneratedCronFieldProps) {
           </div>
         </div>
       </div>
+      {resultData?.isValid === false ? (
+        <FormError className="mt-2">{resultData.error}</FormError>
+      ) : null}
     </div>
   );
 }
