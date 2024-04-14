@@ -1,13 +1,24 @@
 import { z } from "zod";
 import { SecretStoreOptionsSchema } from "./services/secrets/secretStore.server";
 import { isValidRegex } from "./utils/regex";
+import { isValidDatabaseUrl } from "./utils/db";
 
 const EnvironmentSchema = z.object({
   NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
-  DATABASE_URL: z.string(),
+  DATABASE_URL: z
+    .string()
+    .refine(
+      isValidDatabaseUrl,
+      "DATABASE_URL is invalid, for details please check the additional output above this message."
+    ),
   DATABASE_CONNECTION_LIMIT: z.coerce.number().int().default(10),
   DATABASE_POOL_TIMEOUT: z.coerce.number().int().default(60),
-  DIRECT_URL: z.string(),
+  DIRECT_URL: z
+    .string()
+    .refine(
+      isValidDatabaseUrl,
+      "DIRECT_URL is invalid, for details please check the additional output above this message."
+    ),
   SESSION_SECRET: z.string(),
   MAGIC_LINK_SECRET: z.string(),
   ENCRYPTION_KEY: z.string(),
