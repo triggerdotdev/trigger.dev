@@ -194,7 +194,9 @@ function SchedulesTable({
             <TableCell>{schedule.cron}</TableCell>
             <TableCell>{schedule.cronDescription}</TableCell>
             <TableCell>{schedule.externalId}</TableCell>
-            <TableCell>{schedule.deduplicationKey}</TableCell>
+            <TableCell>
+              {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : null}
+            </TableCell>
             <TableCell>
               <DateTime date={schedule.nextRun} />
             </TableCell>

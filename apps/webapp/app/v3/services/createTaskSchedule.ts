@@ -8,7 +8,10 @@ import { BaseService } from "./baseService.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { Prisma } from "@trigger.dev/database";
 import { parseExpression } from "cron-parser";
-import { CreateSchedule } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.schedules.new/route";
+import {
+  CreateSchedule,
+  CronPattern,
+} from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.schedules.new/route";
 
 export type UpsertTaskScheduleServiceOptions = {
   projectId: string;
@@ -54,7 +57,7 @@ export class UpsertTaskScheduleService extends BaseService {
 
     //validate the cron expression
     try {
-      parseExpression(schedule.cron);
+      CronPattern.parse(schedule.cron);
     } catch (e) {
       throw new Error(
         `Invalid cron expression: ${e instanceof Error ? e.message : JSON.stringify(e)}`
@@ -94,7 +97,8 @@ export class UpsertTaskScheduleService extends BaseService {
         friendlyId: generateFriendlyId("sched"),
         taskIdentifier: schedule.taskIdentifier,
         deduplicationKey: schedule.deduplicationKey ? schedule.deduplicationKey : undefined,
-        userProvidedDeduplicationKey: schedule.deduplicationKey !== undefined,
+        userProvidedDeduplicationKey:
+          schedule.deduplicationKey !== undefined && schedule.deduplicationKey !== "",
         cron: schedule.cron,
         externalId: schedule.externalId,
       },

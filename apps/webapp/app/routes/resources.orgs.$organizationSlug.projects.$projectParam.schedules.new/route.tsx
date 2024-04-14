@@ -51,7 +51,6 @@ import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuild
 import { UpsertTaskScheduleService } from "~/v3/services/createTaskSchedule";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.openai/route";
 
-//todo use this in the Upsert code too
 export const CronPattern = z.string().refine(
   (val) => {
     //only allow CRON expressions that don't include seconds (they have 5 parts)
