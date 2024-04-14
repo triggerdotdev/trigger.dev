@@ -20,7 +20,7 @@ import { useDebounce } from "~/hooks/useDebounce";
 import { useThrottle } from "~/hooks/useThrottle";
 
 export const ScheduleListFilters = z.object({
-  page: z.number().default(1),
+  page: z.coerce.number().default(1),
   tasks: z
     .string()
     .optional()

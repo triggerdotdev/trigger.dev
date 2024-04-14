@@ -12,7 +12,7 @@ type ScheduleListOptions = {
   pageSize?: number;
 } & ScheduleListFilters;
 
-const DEFAULT_PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 2;
 
 export type ScheduleListItem = {
   id: string;
@@ -88,89 +88,144 @@ export class ScheduleListPresenter {
     AND "triggerSource" = 'SCHEDULED';
     `;
 
+    //do this here to protect against SQL injection
+    search = search && search !== "" ? `%${search}%` : undefined;
+
     const totalCount = await this.#prismaClient.taskSchedule.count({
       where: {
         projectId: project.id,
+        taskIdentifier: tasks ? { in: tasks } : undefined,
+        instances: {
+          some: {
+            environmentId: environments ? { in: environments } : undefined,
+          },
+        },
+        AND: search
+          ? {
+              OR: [
+                {
+                  externalId: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  friendlyId: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  deduplicationKey: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  cron: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+              ],
+            }
+          : undefined,
       },
     });
 
-    //get the schedules
-    const rawSchedules = await this.#prismaClient.$queryRaw<
-      {
-        id: string;
-        friendlyId: string;
-        taskIdentifier: string;
-        deduplicationKey: string | null;
-        userProvidedDeduplicationKey: boolean;
-        cron: string;
-        externalId: string | null;
-        environmentId: string;
-      }[]
-    >`SELECT ts.id, ts."friendlyId", ts."taskIdentifier", ts."deduplicationKey", ts."userProvidedDeduplicationKey", ts.cron, ts."externalId", ti."environmentId"
-    FROM "TaskSchedule" ts
-    JOIN "TaskScheduleInstance" ti ON ts.id = ti."taskScheduleId"
-    WHERE ts."projectId" = ${project.id}
-    ${
-      environments && environments.length > 0
-        ? Prisma.sql`AND ti."environmentId" IN (${Prisma.join(environments)})`
-        : Prisma.empty
-    }
-    ${
-      tasks && tasks.length > 0
-        ? Prisma.sql`AND ts."taskIdentifier" IN (${Prisma.join(tasks)})`
-        : Prisma.empty
-    }
-    ${
-      search && search !== ""
-        ? Prisma.sql`AND (ts."externalId" ILIKE ${`%${search}%`} OR ts."friendlyId" ILIKE ${`%${search}%`} OR ts."deduplicationKey" ILIKE ${`%${search}%`} OR ts."cron" ILIKE ${`%${search}%`})`
-        : Prisma.empty
-    };`;
+    const rawSchedules = await this.#prismaClient.taskSchedule.findMany({
+      select: {
+        id: true,
+        friendlyId: true,
+        taskIdentifier: true,
+        deduplicationKey: true,
+        userProvidedDeduplicationKey: true,
+        cron: true,
+        externalId: true,
+        instances: {
+          select: {
+            environmentId: true,
+          },
+        },
+      },
+      where: {
+        projectId: project.id,
+        taskIdentifier: tasks ? { in: tasks } : undefined,
+        instances: environments
+          ? {
+              some: {
+                environmentId: environments ? { in: environments } : undefined,
+              },
+            }
+          : undefined,
+        AND: search
+          ? {
+              OR: [
+                {
+                  externalId: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  friendlyId: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  deduplicationKey: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  cron: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+              ],
+            }
+          : undefined,
+      },
+      take: pageSize,
+      skip: (page - 1) * pageSize,
+    });
 
-    //rawSchedules have environmentId, we want to use the project.environments to collapse the schedules to have an environments array with the environment data
-    const schedules = rawSchedules.reduce((acc, schedule) => {
-      const existingSchedule = acc.find((s) => s.id === schedule.id);
-      const environment = project.environments.find((env) => env.id === schedule.environmentId);
-      if (!environment) {
-        return acc;
-      }
+    const schedules = rawSchedules.map((schedule) => {
+      const nextRun = parseExpression(schedule.cron).next().toISOString();
+      const cronDescription = cronstrue.toString(schedule.cron);
 
-      if (existingSchedule) {
-        existingSchedule.environments.push({
-          id: schedule.environmentId,
-          type: environment.type,
-          userName:
-            environment.orgMember?.user.id === userId
-              ? undefined
-              : getUsername(environment.orgMember?.user),
-        });
-      } else {
-        const nextRun = parseExpression(schedule.cron).next().toISOString();
-        const cronDescription = cronstrue.toString(schedule.cron);
+      return {
+        id: schedule.id,
+        friendlyId: schedule.friendlyId,
+        taskIdentifier: schedule.taskIdentifier,
+        deduplicationKey: schedule.deduplicationKey,
+        userProvidedDeduplicationKey: schedule.userProvidedDeduplicationKey,
+        cron: schedule.cron,
+        cronDescription,
+        externalId: schedule.externalId,
+        nextRun: new Date(nextRun),
+        environments: schedule.instances.map((instance) => {
+          const environment = project.environments.find((env) => env.id === instance.environmentId);
+          if (!environment) {
+            throw new Error(
+              `Environment not found for TaskScheduleInstance env: ${instance.environmentId}`
+            );
+          }
 
-        acc.push({
-          id: schedule.id,
-          friendlyId: schedule.friendlyId,
-          taskIdentifier: schedule.taskIdentifier,
-          deduplicationKey: schedule.deduplicationKey,
-          userProvidedDeduplicationKey: schedule.userProvidedDeduplicationKey,
-          cron: schedule.cron,
-          cronDescription,
-          externalId: schedule.externalId,
-          nextRun: new Date(nextRun),
-          environments: [
-            {
-              id: schedule.environmentId,
-              type: environment.type,
-              userName:
-                environment.orgMember?.user.id === userId
-                  ? undefined
-                  : getUsername(environment.orgMember?.user),
-            },
-          ],
-        });
-      }
-      return acc;
-    }, [] as ScheduleListItem[]);
+          return {
+            id: instance.environmentId,
+            type: environment.type,
+            userName:
+              environment.orgMember?.user.id === userId
+                ? undefined
+                : getUsername(environment.orgMember?.user),
+          };
+        }),
+      };
+    });
 
     return {
       currentPage: page,
