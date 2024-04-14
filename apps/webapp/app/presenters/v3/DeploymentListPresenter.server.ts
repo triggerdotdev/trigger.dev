@@ -1,5 +1,5 @@
 import { WorkerDeploymentStatus } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
+import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
@@ -106,9 +106,9 @@ export class DeploymentListPresenter {
   u."avatarUrl" AS "userAvatarUrl", 
   wd."deployedAt"
 FROM 
-  "WorkerDeployment" as wd
+  ${sqlDatabaseSchema}."WorkerDeployment" as wd
 INNER JOIN 
-  "User" as u ON wd."triggeredById" = u."id" 
+  ${sqlDatabaseSchema}."User" as u ON wd."triggeredById" = u."id" 
 WHERE 
   wd."projectId" = ${project.id}
 ORDER BY 

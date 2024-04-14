@@ -1,5 +1,5 @@
 import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
+import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
@@ -71,7 +71,7 @@ export class TaskListPresenter {
       bwt."runtimeEnvironmentId",
       bwt."createdAt"
     FROM
-      "BackgroundWorkerTask" as bwt
+      ${sqlDatabaseSchema}."BackgroundWorkerTask" as bwt
     WHERE bwt."projectId" = ${project.id}
     ORDER BY
       bwt.slug,
@@ -99,7 +99,7 @@ export class TaskListPresenter {
           "lockedById",
           ROW_NUMBER() OVER (PARTITION BY "lockedById" ORDER BY "updatedAt" DESC) AS rn
         FROM
-          "TaskRun"
+          ${sqlDatabaseSchema}."TaskRun"
         WHERE
           "lockedById" IN(${Prisma.join(tasks.map((t) => t.id))})
             ) t

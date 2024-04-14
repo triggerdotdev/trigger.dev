@@ -1,4 +1,4 @@
-import { PrismaClient, prisma } from "~/db.server";
+import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
 import { TestSearchParams } from "~/routes/_app.orgs.$organizationSlug.projects.v3.$projectParam.test/route";
 import { sortEnvironments } from "~/services/environmentSort.server";
 import { createSearchParams } from "~/utils/searchParams";
@@ -95,14 +95,14 @@ export class TestPresenter {
             bw.*,
             ROW_NUMBER() OVER(ORDER BY string_to_array(bw.version, '.')::int[] DESC) AS rn
       FROM 
-            "BackgroundWorker" bw
+            ${sqlDatabaseSchema}."BackgroundWorker" bw
       WHERE "runtimeEnvironmentId" = ${matchingEnvironment.id}
     ),
     latest_workers AS (SELECT * FROM workers WHERE rn = 1)
-    SELECT "BackgroundWorkerTask".id, version, slug as "taskIdentifier", "filePath", "exportName", "BackgroundWorkerTask"."friendlyId" 
+    SELECT bwt.id, version, slug as "taskIdentifier", "filePath", "exportName", bwt."friendlyId" 
     FROM latest_workers
-    JOIN "BackgroundWorkerTask" ON "BackgroundWorkerTask"."workerId" = latest_workers.id
-    ORDER BY "BackgroundWorkerTask"."exportName" ASC;
+    JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" bwt ON bwt."workerId" = latest_workers.id
+    ORDER BY bwt."exportName" ASC;
     `;
 
     return {
