@@ -122,7 +122,7 @@ export class ScheduleListPresenter {
     }
     ${
       search && search !== ""
-        ? Prisma.sql`AND (ts."externalId" ILIKE ${`%${search}%`} OR ts."friendlyId" ILIKE ${`%${search}%`} OR ts."deduplicationKey" ILIKE ${`%${search}%`})`
+        ? Prisma.sql`AND (ts."externalId" ILIKE ${`%${search}%`} OR ts."friendlyId" ILIKE ${`%${search}%`} OR ts."deduplicationKey" ILIKE ${`%${search}%`} OR ts."cron" ILIKE ${`%${search}%`})`
         : Prisma.empty
     };`;
 

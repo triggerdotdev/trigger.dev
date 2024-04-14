@@ -1,4 +1,4 @@
-import { TrashIcon } from "@heroicons/react/20/solid";
+import { TrashIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
 import { RuntimeEnvironment } from "@trigger.dev/database";
 import { useCallback } from "react";
@@ -88,7 +88,7 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
     <div className="flex w-full flex-row">
       <Input
         name="search"
-        placeholder="Search schedule id, external id or deduplication id"
+        placeholder="Search schedule id, external id, deduplication id or CRON pattern"
         icon="search"
         variant="tertiary"
         className="grow"
@@ -102,13 +102,16 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
           onValueChange={handleEnvironmentChange}
         >
           <SelectTrigger size="minimal" width="full">
-            <SelectValue placeholder={"Select environment"} className="ml-2 p-0" />
+            <SelectValue
+              placeholder={"Select environment"}
+              className="ml-2 whitespace-nowrap p-0"
+            />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={"ALL"}>
               <Paragraph
                 variant="extra-small"
-                className="pl-0.5 transition group-hover:text-text-bright"
+                className="whitespace-nowrap pl-0.5 transition group-hover:text-text-bright"
               >
                 All environments
               </Paragraph>
@@ -134,7 +137,7 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
             <SelectItem value={"ALL"}>
               <Paragraph
                 variant="extra-small"
-                className="pl-0.5 transition group-hover:text-text-bright"
+                className="whitespace-nowrap pl-0.5 transition group-hover:text-text-bright"
               >
                 All tasks
               </Paragraph>
@@ -153,7 +156,7 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
         </Select>
       </SelectGroup>
 
-      <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={TrashIcon} />
+      <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={XMarkIcon} />
     </div>
   );
 }
