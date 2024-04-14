@@ -109,22 +109,24 @@ export default function Page() {
           <>
             <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
               <ResizablePanel order={1} minSize={20} defaultSize={60}>
-                <div className="mb-2 flex items-center justify-between gap-x-2 p-3">
-                  <ScheduleFilters
-                    possibleEnvironments={project.environments}
-                    possibleTasks={possibleTasks}
-                  />
-                  <div className="flex items-center justify-end gap-x-2">
-                    <PaginationControls
-                      currentPage={currentPage}
-                      totalPages={totalPages}
-                      showPageNumbers={false}
+                <div className="p-3">
+                  <div className="mb-2 flex items-center justify-between gap-x-2">
+                    <ScheduleFilters
+                      possibleEnvironments={project.environments}
+                      possibleTasks={possibleTasks}
                     />
+                    <div className="flex items-center justify-end gap-x-2">
+                      <PaginationControls
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        showPageNumbers={false}
+                      />
+                    </div>
                   </div>
-                </div>
-                <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
-                <div className="mt-2 justify-end">
-                  <PaginationControls currentPage={currentPage} totalPages={totalPages} />
+                  <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
+                  <div className="mt-2 justify-end">
+                    <PaginationControls currentPage={currentPage} totalPages={totalPages} />
+                  </div>
                 </div>
               </ResizablePanel>
               {isShowingNewPane && (
