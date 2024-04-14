@@ -15,6 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../primitives/Select";
+import { Input } from "~/components/primitives/Input";
+import { useDebounce } from "~/hooks/useDebounce";
+import { useThrottle } from "~/hooks/useThrottle";
 
 export const ScheduleListFilters = z.object({
   page: z.number().default(1),
@@ -27,7 +30,6 @@ export const ScheduleListFilters = z.object({
     .optional()
     .transform((value) => (value ? value.split(",") : undefined)),
   search: z.string().optional(),
-  enabled: z.boolean().optional(),
 });
 
 export type ScheduleListFilters = z.infer<typeof ScheduleListFilters>;
@@ -47,7 +49,7 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
   const navigate = useNavigate();
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
-  const { environments, tasks, page, search, enabled } = ScheduleListFilters.parse(
+  const { environments, tasks, page, search } = ScheduleListFilters.parse(
     Object.fromEntries(searchParams.entries())
   );
 
@@ -61,13 +63,6 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
     navigate(`${location.pathname}?${searchParams.toString()}`);
   }, []);
 
-  const handleEnabledChange = useCallback((value: string | typeof All) => {
-    handleFilterChange(
-      "enabled",
-      value === "ALL" ? undefined : value === "true" ? "true" : "false"
-    );
-  }, []);
-
   const handleTaskChange = useCallback((value: string | typeof All) => {
     handleFilterChange("tasks", value === "ALL" ? undefined : value);
   }, []);
@@ -76,9 +71,9 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
     handleFilterChange("environments", value === "ALL" ? undefined : value);
   }, []);
 
-  const handleSearchChange = useCallback((value: string) => {
+  const handleSearchChange = useThrottle((value: string) => {
     handleFilterChange("search", value.length === 0 ? undefined : value);
-  }, []);
+  }, 300);
 
   const clearFilters = useCallback(() => {
     searchParams.delete("page");
@@ -90,7 +85,16 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
   }, []);
 
   return (
-    <div className="flex flex-row justify-between">
+    <div className="flex w-full flex-row">
+      <Input
+        name="search"
+        placeholder="Search schedule id, external id or deduplication id"
+        icon="search"
+        variant="tertiary"
+        className="grow"
+        defaultValue={search}
+        onChange={(e) => handleSearchChange(e.target.value)}
+      />
       <SelectGroup>
         <Select
           name="environment"
@@ -145,44 +149,6 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
                 </Paragraph>
               </SelectItem>
             ))}
-          </SelectContent>
-        </Select>
-      </SelectGroup>
-
-      <SelectGroup>
-        <Select
-          name="status"
-          value={enabled === undefined ? "ALL" : `${enabled}`}
-          onValueChange={handleEnabledChange}
-        >
-          <SelectTrigger size="minimal" width="full">
-            <SelectValue placeholder="Status" className="ml-2 p-0" />
-          </SelectTrigger>
-          <SelectContent className="overflow-visible">
-            <SelectItem value={"ALL"} className="">
-              <Paragraph
-                variant="extra-small"
-                className="pl-0.5 transition group-hover:text-text-bright"
-              >
-                All statuses
-              </Paragraph>
-            </SelectItem>
-            <SelectItem value={"true"}>
-              <Paragraph
-                variant="extra-small"
-                className="pl-0.5 transition group-hover:text-text-bright"
-              >
-                Enabled
-              </Paragraph>
-            </SelectItem>
-            <SelectItem value={"false"}>
-              <Paragraph
-                variant="extra-small"
-                className="pl-0.5 transition group-hover:text-text-bright"
-              >
-                Disabled
-              </Paragraph>
-            </SelectItem>
           </SelectContent>
         </Select>
       </SelectGroup>

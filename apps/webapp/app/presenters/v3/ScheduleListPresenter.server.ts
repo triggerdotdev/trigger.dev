@@ -1,4 +1,4 @@
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { parseExpression } from "cron-parser";
 import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { PrismaClient, prisma } from "~/db.server";
@@ -45,16 +45,12 @@ export class ScheduleListPresenter {
     projectSlug,
     tasks,
     environments,
-    enabled,
     search,
     page,
     pageSize = DEFAULT_PAGE_SIZE,
   }: ScheduleListOptions) {
     const hasFilters =
-      tasks !== undefined ||
-      environments !== undefined ||
-      enabled !== undefined ||
-      (search !== undefined && search !== "");
+      tasks !== undefined || environments !== undefined || (search !== undefined && search !== "");
 
     // Find the project scoped to the organization
     const project = await this.#prismaClient.project.findFirstOrThrow({
@@ -113,9 +109,22 @@ export class ScheduleListPresenter {
     >`SELECT ts.id, ts."friendlyId", ts."taskIdentifier", ts."deduplicationKey", ts."userProvidedDeduplicationKey", ts.cron, ts."externalId", ti."environmentId"
     FROM "TaskSchedule" ts
     JOIN "TaskScheduleInstance" ti ON ts.id = ti."taskScheduleId"
-    WHERE ts."projectId" = ${project.id};`;
-
-    logger.log("Schedules", { rawSchedules });
+    WHERE ts."projectId" = ${project.id}
+    ${
+      environments && environments.length > 0
+        ? Prisma.sql`AND ti."environmentId" IN (${Prisma.join(environments)})`
+        : Prisma.empty
+    }
+    ${
+      tasks && tasks.length > 0
+        ? Prisma.sql`AND ts."taskIdentifier" IN (${Prisma.join(tasks)})`
+        : Prisma.empty
+    }
+    ${
+      search && search !== ""
+        ? Prisma.sql`AND (ts."externalId" ILIKE ${`%${search}%`} OR ts."friendlyId" ILIKE ${`%${search}%`} OR ts."deduplicationKey" ILIKE ${`%${search}%`})`
+        : Prisma.empty
+    };`;
 
     //rawSchedules have environmentId, we want to use the project.environments to collapse the schedules to have an environments array with the environment data
     const schedules = rawSchedules.reduce((acc, schedule) => {
@@ -129,7 +138,10 @@ export class ScheduleListPresenter {
         existingSchedule.environments.push({
           id: schedule.environmentId,
           type: environment.type,
-          userName: getUsername(environment.orgMember?.user),
+          userName:
+            environment.orgMember?.user.id === userId
+              ? undefined
+              : getUsername(environment.orgMember?.user),
         });
       } else {
         const nextRun = parseExpression(schedule.cron).next().toISOString();
@@ -149,7 +161,10 @@ export class ScheduleListPresenter {
             {
               id: schedule.environmentId,
               type: environment.type,
-              userName: getUsername(environment.orgMember?.user),
+              userName:
+                environment.orgMember?.user.id === userId
+                  ? undefined
+                  : getUsername(environment.orgMember?.user),
             },
           ],
         });
@@ -162,11 +177,20 @@ export class ScheduleListPresenter {
       totalPages: Math.ceil(totalCount / pageSize),
       schedules,
       possibleTasks: possibleTasks.map((task) => task.slug),
+      possibleEnvironments: project.environments.map((environment) => {
+        return {
+          id: environment.id,
+          type: environment.type,
+          userName:
+            environment.orgMember?.user.id === userId
+              ? undefined
+              : getUsername(environment.orgMember?.user),
+        };
+      }),
       hasFilters,
       filters: {
         tasks,
         environments,
-        enabled,
         search,
       },
     };

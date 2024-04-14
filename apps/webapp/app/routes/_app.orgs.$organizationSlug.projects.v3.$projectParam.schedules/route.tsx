@@ -75,8 +75,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { schedules, possibleTasks, hasFilters, filters, currentPage, totalPages } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    schedules,
+    possibleTasks,
+    possibleEnvironments,
+    hasFilters,
+    filters,
+    currentPage,
+    totalPages,
+  } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
   const organization = useOrganization();
@@ -112,7 +119,7 @@ export default function Page() {
                 <div className="p-3">
                   <div className="mb-2 flex items-center justify-between gap-x-2">
                     <ScheduleFilters
-                      possibleEnvironments={project.environments}
+                      possibleEnvironments={possibleEnvironments}
                       possibleTasks={possibleTasks}
                     />
                     <div className="flex items-center justify-end gap-x-2">
