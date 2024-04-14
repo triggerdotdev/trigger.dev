@@ -39,7 +39,6 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { TextArea } from "~/components/primitives/TextArea";
 import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -149,11 +148,6 @@ type CronPatternResult =
       error: string;
     };
 
-type UpcomingRun = {
-  utc: Date;
-  local: Date;
-};
-
 export function UpsertScheduleForm({
   schedule,
   possibleTasks,
@@ -167,7 +161,6 @@ export function UpsertScheduleForm({
   const organization = useOrganization();
   const project = useProject();
   const location = useLocation();
-  const locale = useLocales();
 
   const [form, { taskIdentifier, cron, externalId, environments, deduplicationKey }] = useForm({
     id: "create-schedule",

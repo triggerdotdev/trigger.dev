@@ -18,16 +18,11 @@ const schema = z.object({
   message: z.string(),
 });
 
-const ResultSchema = z.discriminatedUnion("isValid", [
-  z.object({
-    isValid: z.literal(true),
-    cron: z.string(),
-  }),
-  z.object({
-    isValid: z.literal(false),
-    error: z.string(),
-  }),
-]);
+const ResultSchema = z.object({
+  isValid: z.boolean(),
+  cron: z.string().optional(),
+  error: z.string().optional(),
+});
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -62,7 +57,22 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       messages: [
         {
           role: "system",
-          content: `You are a helpful assistant who will turn nautral language into a valid CRON expresion. Return JSON in one of these formats, putting in the correct data where you see <THE CRON EXPRESSION> and <ERROR MESSAGE DESCRIBING WHY IT'S NOT VALID>:
+          content: `You are a helpful assistant who will turn nautral language into a valid CRON expresion. 
+          
+          The version of CRON that we use is an extension of the minimal.
+
+*    *    *    *    *
+┬    ┬    ┬    ┬    ┬
+│    │    │    │    |
+│    │    │    │    └ day of week (0 - 7, 1L - 7L) (0 or 7 is Sun)
+│    │    │    └───── month (1 - 12)
+│    │    └────────── day of month (1 - 31, L)
+│    └─────────────── hour (0 - 23)
+└──────────────────── minute (0 - 59)
+
+Supports mixed use of ranges and range increments (W character not supported currently). See tests for examples.
+
+          Return JSON in one of these formats, putting in the correct data where you see <THE CRON EXPRESSION> and <ERROR MESSAGE DESCRIBING WHY IT'S NOT VALID>:
         1. If it's valid: { "isValid": true, "cron": "<THE CRON EXPRESSION>" }
         2. If it's not possible to make a valid CRON expression: { "isValid": false, "error": "<ERROR MESSAGE DESCRIBING WHY IT'S NOT VALID>"}`,
         },
@@ -83,11 +93,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         { status: 500 }
       );
     }
-
-    logger.log("Response from OpenAI", {
-      input: submission.data.message,
-      choices: completion.choices,
-    });
 
     try {
       const jsonResponse = JSON.parse(completion.choices[0].message.content);
@@ -118,8 +123,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
-type Result = z.infer<typeof ResultSchema>;
-
 type AIGeneratedCronFieldProps = {
   onSuccess: (cron: string) => void;
 };
@@ -135,10 +138,10 @@ export function AIGeneratedCronField({ onSuccess }: AIGeneratedCronFieldProps) {
   const resultData = result?.success === true ? result.data : undefined;
 
   useEffect(() => {
-    if (resultData?.isValid === true) {
+    if (resultData?.cron !== undefined) {
       onSuccess(resultData.cron);
     }
-  }, [resultData]);
+  }, [resultData?.cron]);
 
   const submit = useCallback(async (value: string) => {
     fetcher.submit(
