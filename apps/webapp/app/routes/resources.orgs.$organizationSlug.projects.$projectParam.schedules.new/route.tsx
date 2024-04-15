@@ -80,12 +80,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
 
     return redirectWithSuccessMessage(
-      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }),
+      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }, false),
       request,
       "Schedule created"
     );
   } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    submission.error.taskIdentifier =
+      error instanceof Error ? error.message : JSON.stringify(error);
+    return json(submission, { status: 400 });
   }
 };
 

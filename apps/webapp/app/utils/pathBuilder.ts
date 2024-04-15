@@ -388,11 +388,18 @@ export function v3RunStreamingPath(
   return `${v3RunPath(organization, project, run)}/stream`;
 }
 
-export function v3SchedulesPath(organization: OrgForPath, project: ProjectForPath) {
-  const location = useLocation();
-  const search = new URLSearchParams(location.search);
-  const searchString = search.toString();
-  const query = searchString ? `?${searchString}` : "";
+export function v3SchedulesPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  keepQueryParam = true
+) {
+  let query = "";
+  if (keepQueryParam) {
+    const location = useLocation();
+    const search = new URLSearchParams(location.search);
+    const searchString = search.toString();
+    query = searchString ? `?${searchString}` : "";
+  }
   return `${v3ProjectPath(organization, project)}/schedules${query}`;
 }
 
