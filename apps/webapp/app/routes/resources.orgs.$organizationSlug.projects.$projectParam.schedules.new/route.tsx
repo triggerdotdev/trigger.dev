@@ -48,7 +48,7 @@ import { cn } from "~/utils/cn";
 import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuilder";
 import { CreateSchedule, CronPattern } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/createTaskSchedule.server";
-import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.openai/route";
+import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
