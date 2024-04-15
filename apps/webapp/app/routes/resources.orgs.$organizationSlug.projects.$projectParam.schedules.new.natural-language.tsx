@@ -93,7 +93,7 @@ export function AIGeneratedCronField({ onSuccess }: AIGeneratedCronFieldProps) {
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            rows={6}
+            rows={3}
             className="m-0 w-full border-0 bg-background-bright px-3 py-2 text-sm text-text-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 file:border-0 file:bg-transparent file:text-base file:font-medium focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
           />
           <div className="flex justify-end gap-2 px-2 pb-2">

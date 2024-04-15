@@ -9,6 +9,10 @@ export const CronPattern = z.string().refine(
       return false;
     }
 
+    if (val === "") {
+      return false;
+    }
+
     try {
       parseExpression(val);
       return true;
@@ -21,6 +25,12 @@ export const CronPattern = z.string().refine(
     if (parts.length > 5) {
       return {
         message: "CRON expressions with seconds are not allowed",
+      };
+    }
+
+    if (val === "") {
+      return {
+        message: "CRON expression is required",
       };
     }
 

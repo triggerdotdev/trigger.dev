@@ -315,6 +315,7 @@ export function UpsertScheduleForm({
             variant="primary/small"
             type="submit"
             disabled={isLoading}
+            shortcut={{ key: "enter", modifiers: ["meta"] }}
             LeadingIcon={isLoading ? "spinner" : undefined}
           >
             {isLoading ? "Creating schedule" : "Create schedule"}
