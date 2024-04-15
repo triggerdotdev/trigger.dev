@@ -3,6 +3,7 @@ import { parseExpression } from "cron-parser";
 import cronstrue from "cronstrue";
 import { PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { RunListPresenter } from "./RunListPresenter.server";
 
 type ViewScheduleOptions = {
   userId: string;
@@ -91,46 +92,11 @@ export class ViewSchedulePresenter {
         })
       : [];
 
-    const runs = await this.#prismaClient.taskRun.findMany({
-      where: {
-        scheduleId: schedule.id,
-      },
-      select: {
-        id: true,
-        number: true,
-        friendlyId: true,
-        taskIdentifier: true,
-        lockedToVersion: {
-          select: {
-            version: true,
-          },
-        },
-        runtimeEnvironment: {
-          select: {
-            id: true,
-            type: true,
-            orgMember: {
-              select: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    displayName: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-        status: true,
-        createdAt: true,
-        lockedAt: true,
-        isTest: true,
-      },
-      take: 5,
-      orderBy: {
-        createdAt: "desc",
-      },
+    const runPresenter = new RunListPresenter(this.#prismaClient);
+    const { runs } = await runPresenter.call({
+      userId,
+      projectSlug,
+      pageSize: 5,
     });
 
     return {
@@ -138,34 +104,7 @@ export class ViewSchedulePresenter {
         ...schedule,
         cronDescription,
         nextRuns,
-        runs: runs.map((run) => {
-          let userName: undefined | string;
-          if (run.runtimeEnvironment.orgMember) {
-            if (run.runtimeEnvironment.orgMember.user.id !== userId) {
-              userName =
-                run.runtimeEnvironment.orgMember.user.displayName ??
-                run.runtimeEnvironment.orgMember.user.name ??
-                undefined;
-            }
-          }
-
-          return {
-            id: run.id,
-            number: run.number,
-            friendlyId: run.friendlyId,
-            taskIdentifier: run.taskIdentifier,
-            version: run.lockedToVersion?.version ?? null,
-            runtimeEnvironment: {
-              id: run.runtimeEnvironment.id,
-              type: run.runtimeEnvironment.type,
-              userName,
-            },
-            status: run.status,
-            createdAt: run.createdAt,
-            lockedAt: run.lockedAt,
-            isTest: run.isTest,
-          };
-        }),
+        runs,
         environments: schedule.instances.map((instance) => {
           const environment = instance.environment;
           let userName: undefined | string;
