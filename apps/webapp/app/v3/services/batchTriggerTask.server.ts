@@ -54,28 +54,6 @@ export class BatchTriggerTaskService extends BaseService {
           })
         : undefined;
 
-      if (dependentAttempt && environment.type === "DEVELOPMENT") {
-        // The dev worker handles dependency resumes and attempt completions in parallel, so we need to clear any existing ones here to prevent race conditions
-        const existingBatch = await this._prisma.batchTaskRun.findUnique({
-          where: {
-            dependentTaskAttemptId: dependentAttempt.id,
-          },
-        });
-
-        if (existingBatch) {
-          await this._prisma.batchTaskRun.update({
-            where: {
-              id: existingBatch.id,
-            },
-            data: {
-              dependentTaskAttempt: {
-                disconnect: true,
-              },
-            },
-          });
-        }
-      }
-
       const batch = await this._prisma.batchTaskRun.create({
         data: {
           friendlyId: generateFriendlyId("batch"),

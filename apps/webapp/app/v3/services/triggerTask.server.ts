@@ -147,28 +147,6 @@ export class TriggerTaskService extends BaseService {
               });
 
               if (dependentAttempt) {
-                if (environment.type === "DEVELOPMENT") {
-                  // The dev worker handles dependency resumes and attempt completions in parallel, so we need to clear any existing ones here to prevent race conditions
-                  const existingDependency = await tx.taskRunDependency.findUnique({
-                    where: {
-                      dependentAttemptId: dependentAttempt.id,
-                    },
-                  });
-
-                  if (existingDependency) {
-                    await tx.taskRunDependency.update({
-                      where: {
-                        id: existingDependency.id,
-                      },
-                      data: {
-                        dependentAttempt: {
-                          disconnect: true,
-                        },
-                      },
-                    });
-                  }
-                }
-
                 await tx.taskRunDependency.create({
                   data: {
                     taskRunId: taskRun.id,
