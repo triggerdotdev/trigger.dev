@@ -45,7 +45,8 @@ export const CronPattern = z.string().refine(
   }
 );
 
-export const CreateSchedule = z.object({
+export const UpsertSchedule = z.object({
+  friendlyId: z.string().optional(),
   taskIdentifier: z.string().min(1, "Task is required"),
   cron: CronPattern,
   environments: z.preprocess(
@@ -56,4 +57,4 @@ export const CreateSchedule = z.object({
   deduplicationKey: z.string().optional(),
 });
 
-export type CreateSchedule = z.infer<typeof CreateSchedule>;
+export type UpsertSchedule = z.infer<typeof UpsertSchedule>;

@@ -4,13 +4,12 @@ import { BaseService } from "./baseService.server";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { nanoid } from "nanoid";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
-import { CreateSchedule, CronPattern } from "../schedules";
+import { UpsertSchedule, CronPattern } from "../schedules";
 
 export type UpsertTaskScheduleServiceOptions = {
   projectId: string;
   userId: string;
-  scheduleFriendlyId: string | undefined;
-} & CreateSchedule;
+} & UpsertSchedule;
 
 type InstanceWithEnvironment = Prisma.TaskScheduleInstanceGetPayload<{
   include: {
@@ -28,7 +27,7 @@ type InstanceWithEnvironment = Prisma.TaskScheduleInstanceGetPayload<{
 
 export class UpsertTaskScheduleService extends BaseService {
   public async call(options: UpsertTaskScheduleServiceOptions) {
-    const { projectId, userId, scheduleFriendlyId, ...schedule } = options;
+    const { projectId, userId, ...schedule } = options;
 
     //first check that the user has access to the project
     const project = await this._prisma.project.findFirst({
@@ -63,10 +62,10 @@ export class UpsertTaskScheduleService extends BaseService {
           ? schedule.deduplicationKey
           : nanoid(24);
 
-      const existingSchedule = scheduleFriendlyId
+      const existingSchedule = schedule.friendlyId
         ? await tx.taskSchedule.findUnique({
             where: {
-              friendlyId: scheduleFriendlyId,
+              friendlyId: schedule.friendlyId,
             },
           })
         : await tx.taskSchedule.findUnique({

@@ -46,7 +46,7 @@ import { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuilder";
-import { CreateSchedule, CronPattern } from "~/v3/schedules";
+import { UpsertSchedule, CronPattern } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/createTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
 
@@ -55,7 +55,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema: CreateSchedule });
+  const submission = parse(formData, { schema: UpsertSchedule });
 
   if (!submission.value) {
     return json(submission);
@@ -75,7 +75,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const result = await createSchedule.call({
       projectId: project.id,
       userId,
-      scheduleFriendlyId: undefined,
       ...submission.value,
     });
 
@@ -121,7 +120,7 @@ export function UpsertScheduleForm({
     lastSubmission: lastSubmission as any,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parse(formData, { schema: CreateSchedule });
+      return parse(formData, { schema: UpsertSchedule });
     },
   });
 
@@ -155,6 +154,8 @@ export function UpsertScheduleForm({
     }
   }
 
+  const mode = schedule ? "edit" : "new";
+
   return (
     <Form
       method="post"
@@ -163,10 +164,13 @@ export function UpsertScheduleForm({
       className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden bg-background-bright"
     >
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
-        <Header2 className={cn("whitespace-nowrap")}>New schedule</Header2>
+        <Header2 className={cn("whitespace-nowrap")}>
+          {schedule?.friendlyId ? "Edit schedule" : "New schedule"}
+        </Header2>
       </div>
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div className="p-3">
+          {schedule && <input type="hidden" name="friendlyId" value={schedule.friendlyId} />}
           <Fieldset>
             <InputGroup>
               <Label htmlFor={taskIdentifier.id}>Task</Label>
@@ -321,12 +325,21 @@ export function UpsertScheduleForm({
             shortcut={{ key: "enter", modifiers: ["meta"] }}
             LeadingIcon={isLoading ? "spinner" : undefined}
           >
-            {isLoading ? "Creating schedule" : "Create schedule"}
+            {buttonText(mode, isLoading)}
           </Button>
         </div>
       </div>
     </Form>
   );
+}
+
+function buttonText(mode: "edit" | "new", isLoading: boolean) {
+  switch (mode) {
+    case "edit":
+      return isLoading ? "Updating schedule" : "Update schedule";
+    case "new":
+      return isLoading ? "Creating schedule" : "Create schedule";
+  }
 }
 
 function ValidCronMessage({ isValid, message }: { isValid: boolean; message: string }) {

@@ -40,7 +40,13 @@ import { EditSchedulePresenter } from "~/presenters/v3/EditSchedulePresenter.ser
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3ScheduleParams, v3SchedulePath, v3SchedulesPath } from "~/utils/pathBuilder";
+import {
+  v3EditSchedulePath,
+  v3NewSchedulePath,
+  v3ScheduleParams,
+  v3SchedulePath,
+  v3SchedulesPath,
+} from "~/utils/pathBuilder";
 import { DeleteTaskScheduleService } from "~/v3/services/deleteTaskSchedule.server";
 import { SetActiveOnTaskScheduleService } from "~/v3/services/setActiveOnTaskSchedule.server";
 
@@ -293,7 +299,11 @@ export default function Page() {
           </Form>
         </div>
         <div className="flex items-center gap-4">
-          <LinkButton variant="tertiary/medium" to="" LeadingIcon={PencilSquareIcon}>
+          <LinkButton
+            variant="tertiary/medium"
+            to={`${v3EditSchedulePath(organization, project, schedule)}${location.search}`}
+            LeadingIcon={PencilSquareIcon}
+          >
             Edit schedule
           </LinkButton>
         </div>

@@ -400,6 +400,14 @@ export function v3SchedulePath(
   return `${v3ProjectPath(organization, project)}/schedules/${schedule.friendlyId}`;
 }
 
+export function v3EditSchedulePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  schedule: { friendlyId: string }
+) {
+  return `${v3ProjectPath(organization, project)}/schedules/edit/${schedule.friendlyId}`;
+}
+
 export function v3NewSchedulePath(organization: OrgForPath, project: ProjectForPath) {
   return `${v3ProjectPath(organization, project)}/schedules/new`;
 }
