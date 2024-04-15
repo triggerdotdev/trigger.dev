@@ -58,7 +58,10 @@ export class UpsertTaskScheduleService extends BaseService {
     }
 
     const result = await $transaction(this._prisma, async (tx) => {
-      const deduplicationKey = schedule.deduplicationKey ?? nanoid(24);
+      const deduplicationKey =
+        typeof schedule.deduplicationKey === "string" && schedule.deduplicationKey !== ""
+          ? schedule.deduplicationKey
+          : nanoid(24);
 
       const existingSchedule = scheduleFriendlyId
         ? await tx.taskSchedule.findUnique({
