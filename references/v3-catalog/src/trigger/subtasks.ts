@@ -139,3 +139,29 @@ export const multipleTriggerWaits = task({
     };
   },
 });
+
+export const triggerAndWaitLoops = task({
+  id: "trigger-wait-loops",
+  run: async ({ message = "test" }: { message?: string }) => {
+    for (let i = 0; i < 2; i++) {
+      await simpleChildTask.triggerAndWait({ payload: { message: `${message} - ${i}` } });
+    }
+
+    for (let i = 0; i < 2; i++) {
+      await simpleChildTask.batchTriggerAndWait({
+        items: [
+          { payload: { message: `${message} - ${i}.a` } },
+          { payload: { message: `${message} - ${i}.b` } },
+        ],
+        // batchOptions: { maxConcurrency: 1 },
+      });
+    }
+
+    // Don't do this!
+    // await Promise.all(
+    //   [{ message: `${message} - 1` }, { message: `${message} - 2` }].map((payload) =>
+    //     simpleChildTask.triggerAndWait({ payload })
+    //   )
+    // );
+  },
+});
