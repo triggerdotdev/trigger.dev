@@ -4,10 +4,7 @@ import { BaseService } from "./baseService.server";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { nanoid } from "nanoid";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
-import {
-  CreateSchedule,
-  CronPattern,
-} from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.schedules.new/route";
+import { CreateSchedule, CronPattern } from "../schedules";
 
 export type UpsertTaskScheduleServiceOptions = {
   projectId: string;

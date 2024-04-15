@@ -6,7 +6,6 @@ import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { parseExpression } from "cron-parser";
 import cronstrue from "cronstrue";
 import { useState } from "react";
-import { z } from "zod";
 import {
   environmentTextClassName,
   environmentTitle,
@@ -21,7 +20,6 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { useLocales } from "~/components/primitives/LocaleProvider";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Select,
@@ -48,55 +46,9 @@ import { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuilder";
-import { UpsertTaskScheduleService } from "~/v3/services/createTaskSchedule";
+import { CreateSchedule, CronPattern } from "~/v3/schedules";
+import { UpsertTaskScheduleService } from "~/v3/services/createTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.openai/route";
-
-export const CronPattern = z.string().refine(
-  (val) => {
-    //only allow CRON expressions that don't include seconds (they have 5 parts)
-    const parts = val.split(" ");
-    if (parts.length > 5) {
-      return false;
-    }
-
-    try {
-      parseExpression(val);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  },
-  (val) => {
-    const parts = val.split(" ");
-    if (parts.length > 5) {
-      return {
-        message: "CRON expressions with seconds are not allowed",
-      };
-    }
-
-    try {
-      parseExpression(val);
-      return {
-        message: "Unknown problem",
-      };
-    } catch (e) {
-      return { message: e instanceof Error ? e.message : JSON.stringify(e) };
-    }
-  }
-);
-
-const CreateSchedule = z.object({
-  taskIdentifier: z.string().min(1, "Task is required"),
-  cron: CronPattern,
-  environments: z.preprocess(
-    (data) => (typeof data === "string" ? [data] : data),
-    z.array(z.string()).min(1, "At least one environment is required")
-  ),
-  externalId: z.string().optional(),
-  deduplicationKey: z.string().optional(),
-});
-
-export type CreateSchedule = z.infer<typeof CreateSchedule>;
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
