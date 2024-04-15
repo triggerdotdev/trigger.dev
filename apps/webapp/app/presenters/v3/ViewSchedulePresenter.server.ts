@@ -96,6 +96,7 @@ export class ViewSchedulePresenter {
     const { runs } = await runPresenter.call({
       userId,
       projectSlug,
+      scheduleId: schedule.id,
       pageSize: 5,
     });
 

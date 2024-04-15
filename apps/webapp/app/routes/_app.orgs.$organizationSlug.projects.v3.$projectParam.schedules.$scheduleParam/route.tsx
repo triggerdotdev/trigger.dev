@@ -115,6 +115,24 @@ export default function Page() {
               </Property>
             </PropertyTable>
             <div className="flex flex-col gap-1">
+              <Header3>Last 5 runs</Header3>
+              <TaskRunsTable
+                total={schedule.runs.length}
+                hasFilters={false}
+                filters={{
+                  tasks: [],
+                  versions: [],
+                  statuses: [],
+                  environments: [],
+                  from: undefined,
+                  to: undefined,
+                }}
+                runs={schedule.runs}
+                isLoading={false}
+                currentUser={user}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
               <Header3>Next 5 runs</Header3>
               <Table>
                 <TableHeader>
@@ -136,24 +154,6 @@ export default function Page() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Header3>Last 5 runs</Header3>
-              <TaskRunsTable
-                total={schedule.runs.length}
-                hasFilters={false}
-                filters={{
-                  tasks: [],
-                  versions: [],
-                  statuses: [],
-                  environments: [],
-                  from: undefined,
-                  to: undefined,
-                }}
-                runs={schedule.runs}
-                isLoading={false}
-                currentUser={user}
-              />
             </div>
           </div>
         </div>

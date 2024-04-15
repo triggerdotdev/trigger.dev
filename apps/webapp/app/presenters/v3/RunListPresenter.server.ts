@@ -1,4 +1,4 @@
-import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
+import { Prisma, TaskRunStatus } from "@trigger.dev/database";
 import { Direction } from "~/components/runs/RunStatuses";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
@@ -12,6 +12,7 @@ type RunListOptions = {
   versions?: string[];
   statuses?: TaskRunStatus[];
   environments?: string[];
+  scheduleId?: string;
   from?: number;
   to?: number;
   //pagination
@@ -40,6 +41,7 @@ export class RunListPresenter {
     versions,
     statuses,
     environments,
+    scheduleId,
     from,
     to,
     direction = "forward",
@@ -160,6 +162,7 @@ export class RunListPresenter {
           ? Prisma.sql`AND tr."runtimeEnvironmentId" IN (${Prisma.join(environments)})`
           : Prisma.empty
       }
+      ${scheduleId ? Prisma.sql`AND tr."scheduleId" = ${scheduleId}` : Prisma.empty}
       ${
         from
           ? Prisma.sql`AND tr."createdAt" >= ${new Date(from).toISOString()}::timestamp`
