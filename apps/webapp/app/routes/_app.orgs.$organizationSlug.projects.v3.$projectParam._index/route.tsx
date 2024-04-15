@@ -29,6 +29,7 @@ import {
 } from "~/components/primitives/Table";
 import { TaskFunctionName, TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
+import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSourceIcon";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -121,7 +122,12 @@ export default function Page() {
                         });
                         return (
                           <TableRow key={task.id} className="group">
-                            <TableCell to={path}>{task.slug}</TableCell>
+                            <TableCell to={path}>
+                              <div className="flex items-center gap-1">
+                                <TaskTriggerSourceIcon source={task.triggerSource} />
+                                <span>{task.slug}</span>
+                              </div>
+                            </TableCell>
                             <TableCell to={path}>
                               <TaskFunctionName
                                 functionName={task.exportName}
