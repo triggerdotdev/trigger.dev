@@ -24,6 +24,7 @@ export type ScheduleListItem = {
   cronDescription: string;
   externalId: string | null;
   nextRun: Date;
+  active: boolean;
   environments: {
     id: string;
     type: RuntimeEnvironmentType;
@@ -147,6 +148,7 @@ export class ScheduleListPresenter {
             environmentId: true,
           },
         },
+        active: true,
       },
       where: {
         projectId: project.id,
@@ -205,6 +207,7 @@ export class ScheduleListPresenter {
         userProvidedDeduplicationKey: schedule.userProvidedDeduplicationKey,
         cron: schedule.cron,
         cronDescription,
+        active: schedule.active,
         externalId: schedule.externalId,
         nextRun: new Date(nextRun),
         environments: schedule.instances.map((instance) => {

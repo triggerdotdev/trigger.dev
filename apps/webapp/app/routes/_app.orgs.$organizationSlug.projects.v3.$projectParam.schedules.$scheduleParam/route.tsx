@@ -29,6 +29,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -41,6 +42,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3ScheduleParams, v3SchedulePath, v3SchedulesPath } from "~/utils/pathBuilder";
 import { DeleteTaskScheduleService } from "~/v3/services/deleteTaskSchedule.server";
+import { SetActiveOnTaskScheduleService } from "~/v3/services/setActiveOnTaskSchedule.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -63,6 +65,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 const schema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("delete"),
+  }),
+  z.object({
+    action: z.literal("enable"),
   }),
   z.object({
     action: z.literal("disable"),
@@ -99,7 +104,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   switch (submission.value.action) {
-    case "delete":
+    case "delete": {
       const deleteService = new DeleteTaskScheduleService();
       try {
         await deleteService.call({
@@ -125,16 +130,41 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           }`
         );
       }
-    case "disable":
-      return redirectWithSuccessMessage(
-        v3SchedulePath(
-          { slug: organizationSlug },
-          { slug: projectParam },
-          { friendlyId: scheduleParam }
-        ),
-        request,
-        `${scheduleParam} disabled`
-      );
+    }
+    case "enable":
+    case "disable": {
+      const service = new SetActiveOnTaskScheduleService();
+      const active = submission.value.action === "enable";
+      try {
+        await service.call({
+          projectId: project.id,
+          userId,
+          friendlyId: scheduleParam,
+          active,
+        });
+        return redirectWithSuccessMessage(
+          v3SchedulePath(
+            { slug: organizationSlug },
+            { slug: projectParam },
+            { friendlyId: scheduleParam }
+          ),
+          request,
+          `${scheduleParam} ${active ? "enabled" : "disabled"}`
+        );
+      } catch (e) {
+        return redirectWithErrorMessage(
+          v3SchedulePath(
+            { slug: organizationSlug },
+            { slug: projectParam },
+            { friendlyId: scheduleParam }
+          ),
+          request,
+          `${scheduleParam} could not be ${active ? "enabled" : "disabled"}: ${
+            e instanceof Error ? e.message : JSON.stringify(e)
+          }`
+        );
+      }
+    }
   }
 };
 
@@ -187,17 +217,7 @@ export default function Page() {
                 {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
               </Property>
               <Property label="Status">
-                {schedule.active ? (
-                  <div className="flex items-center gap-1 text-xs text-success">
-                    <CheckCircleIcon className="h-4 w-4" />
-                    Enabled
-                  </div>
-                ) : (
-                  <div className="text-dimmed flex items-center gap-1 text-xs">
-                    <BoltSlashIcon className="h-4 w-4" />
-                    Disabled
-                  </div>
-                )}
+                <EnabledStatus enabled={schedule.active} />
               </Property>
             </PropertyTable>
             <div className="flex flex-col gap-1">
@@ -253,7 +273,7 @@ export default function Page() {
               LeadingIcon={schedule.active ? BoltSlashIcon : BoltIcon}
               leadingIconClassName={schedule.active ? "text-dimmed" : "text-success"}
               name="action"
-              value="disable"
+              value={schedule.active ? "disable" : "enable"}
             >
               {schedule.active ? "Disable" : "Enable"}
             </Button>

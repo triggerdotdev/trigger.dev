@@ -27,6 +27,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { ScheduleFilters, ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
@@ -185,6 +186,7 @@ function SchedulesTable({
           <TableHeaderCell>Next run (UTC)</TableHeaderCell>
           {/* <TableHeaderCell>Last run (UTC)</TableHeaderCell> */}
           <TableHeaderCell>Environments</TableHeaderCell>
+          <TableHeaderCell>Enabled</TableHeaderCell>
           <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
         </TableRow>
       </TableHeader>
@@ -222,6 +224,9 @@ function SchedulesTable({
                       />
                     ))}
                   </div>
+                </TableCell>
+                <TableCell to={path}>
+                  <EnabledStatus enabled={schedule.active} />
                 </TableCell>
                 <TableCellChevron to={path} isSticky />
               </TableRow>
