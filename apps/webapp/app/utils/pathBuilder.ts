@@ -394,6 +394,18 @@ export function v3SchedulesPath(
   return `${v3ProjectPath(organization, project)}/schedules${query}`;
 }
 
+export function v3SchedulePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  schedule: { friendlyId: string }
+) {
+  const location = useLocation();
+  const search = new URLSearchParams(location.search);
+  const searchString = search.toString();
+  const query = searchString ? `?${searchString}` : "";
+  return `${v3ProjectPath(organization, project)}/schedules/${schedule.friendlyId}${query}`;
+}
+
 export function v3NewSchedulePath(organization: OrgForPath, project: ProjectForPath) {
   const location = useLocation();
   const search = new URLSearchParams(location.search);

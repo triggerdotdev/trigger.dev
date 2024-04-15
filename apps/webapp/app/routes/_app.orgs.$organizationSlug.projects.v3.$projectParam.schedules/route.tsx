@@ -25,6 +25,8 @@ import {
   newProjectPath,
   v3NewSchedulePath,
   v3ProjectPath,
+  v3SchedulePath,
+  v3SchedulesPath,
   v3TestPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
@@ -48,6 +50,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableCellChevron,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -180,6 +183,9 @@ function SchedulesTable({
   schedules: ScheduleListItem[];
   hasFilters: boolean;
 }) {
+  const organization = useOrganization();
+  const project = useProject();
+
   return (
     <Table>
       <TableHeader>
@@ -193,36 +199,41 @@ function SchedulesTable({
           <TableHeaderCell>Next run (UTC)</TableHeaderCell>
           <TableHeaderCell>Last run (UTC)</TableHeaderCell>
           <TableHeaderCell>Environments</TableHeaderCell>
+          <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {schedules.map((schedule) => (
-          <TableRow key={schedule.id}>
-            <TableCell>{schedule.friendlyId}</TableCell>
-            <TableCell>{schedule.taskIdentifier}</TableCell>
-            <TableCell>{schedule.cron}</TableCell>
-            <TableCell>{schedule.cronDescription}</TableCell>
-            <TableCell>{schedule.externalId}</TableCell>
-            <TableCell>
-              {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : null}
-            </TableCell>
-            <TableCell>
-              <DateTime date={schedule.nextRun} />
-            </TableCell>
-            <TableCell>Implement</TableCell>
-            <TableCell>
-              <div className="flex gap-1">
-                {schedule.environments.map((environment) => (
-                  <EnvironmentLabel
-                    key={environment.id}
-                    environment={environment}
-                    userName={environment.userName}
-                  />
-                ))}
-              </div>
-            </TableCell>
-          </TableRow>
-        ))}
+        {schedules.map((schedule) => {
+          const path = v3SchedulePath(organization, project, schedule);
+          return (
+            <TableRow key={schedule.id}>
+              <TableCell to={path}>{schedule.friendlyId}</TableCell>
+              <TableCell to={path}>{schedule.taskIdentifier}</TableCell>
+              <TableCell to={path}>{schedule.cron}</TableCell>
+              <TableCell to={path}>{schedule.cronDescription}</TableCell>
+              <TableCell to={path}>{schedule.externalId}</TableCell>
+              <TableCell to={path}>
+                {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : null}
+              </TableCell>
+              <TableCell to={path}>
+                <DateTime date={schedule.nextRun} />
+              </TableCell>
+              <TableCell to={path}>Implement</TableCell>
+              <TableCell to={path}>
+                <div className="flex gap-1">
+                  {schedule.environments.map((environment) => (
+                    <EnvironmentLabel
+                      key={environment.id}
+                      environment={environment}
+                      userName={environment.userName}
+                    />
+                  ))}
+                </div>
+              </TableCell>
+              <TableCellChevron to={path} isSticky />
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );
