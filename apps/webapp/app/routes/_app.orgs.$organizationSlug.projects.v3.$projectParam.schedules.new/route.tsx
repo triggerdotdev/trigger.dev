@@ -5,6 +5,7 @@ import { EditSchedulePresenter } from "~/presenters/v3/EditSchedulePresenter.ser
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema } from "~/utils/pathBuilder";
 import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new/route";
+import { env } from "~/env.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -16,7 +17,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectSlug: projectParam,
   });
 
-  return typedjson(result);
+  return typedjson({ ...result, showGenerateField: env.OPENAI_API_KEY !== undefined });
 };
 
 export default function Page() {

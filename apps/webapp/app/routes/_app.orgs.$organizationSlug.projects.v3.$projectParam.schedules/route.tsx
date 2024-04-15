@@ -1,51 +1,22 @@
-import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { Outlet, useNavigation } from "@remix-run/react";
+import { PlusIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon } from "@heroicons/react/24/solid";
+import { Outlet, useNavigation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
-import { StepContentContainer } from "~/components/StepContentContainer";
+import { InlineCode } from "~/components/code/InlineCode";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
-import { Header1 } from "~/components/primitives/Headers";
+import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { StepNumber } from "~/components/primitives/StepNumber";
-import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
-import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
-import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
-import {
-  ProjectParamSchema,
-  docsPath,
-  newProjectPath,
-  v3NewSchedulePath,
-  v3ProjectPath,
-  v3SchedulePath,
-  v3SchedulesPath,
-  v3TestPath,
-} from "~/utils/pathBuilder";
-import { ListPagination } from "../../components/ListPagination";
-import { TextLink } from "~/components/primitives/TextLink";
-import { PlusIcon } from "@heroicons/react/20/solid";
-import { ScheduleFilters, ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { PaginationControls } from "~/components/primitives/Pagination";
-import {
-  ScheduleListItem,
-  ScheduleListPresenter,
-} from "~/presenters/v3/ScheduleListPresenter.server";
-import { InlineCode } from "~/components/code/InlineCode";
-import { Callout } from "~/components/primitives/Callout";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import { usePathName } from "~/hooks/usePathName";
 import {
   Table,
   TableBlankRow,
@@ -56,9 +27,22 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { DateTime } from "~/components/primitives/DateTime";
-import { envDetector } from "@opentelemetry/resources";
+import { ScheduleFilters, ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { usePathName } from "~/hooks/usePathName";
+import { useProject } from "~/hooks/useProject";
+import { useUser } from "~/hooks/useUser";
+import {
+  ScheduleListItem,
+  ScheduleListPresenter,
+} from "~/presenters/v3/ScheduleListPresenter.server";
+import { requireUserId } from "~/services/session.server";
+import {
+  ProjectParamSchema,
+  docsPath,
+  v3NewSchedulePath,
+  v3SchedulePath,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -95,7 +79,9 @@ export default function Page() {
   const user = useUser();
   const pathName = usePathName();
 
+  const { scheduleParam } = useParams();
   const isShowingNewPane = pathName.endsWith("/new");
+  const isShowingSchedule = !!scheduleParam;
 
   return (
     <PageContainer>
@@ -140,7 +126,7 @@ export default function Page() {
                   </div>
                 </div>
               </ResizablePanel>
-              {isShowingNewPane && (
+              {(isShowingNewPane || isShowingSchedule) && (
                 <>
                   <ResizableHandle withHandle />
                   <ResizablePanel order={2} minSize={20} defaultSize={40}>

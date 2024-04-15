@@ -92,6 +92,10 @@ export const v3DeploymentParams = ProjectParamSchema.extend({
   deploymentParam: z.string(),
 });
 
+export const v3ScheduleParams = ProjectParamSchema.extend({
+  scheduleParam: z.string(),
+});
+
 export function trimTrailingSlash(path: string) {
   return path.replace(/\/$/, "");
 }
@@ -384,13 +388,11 @@ export function v3RunStreamingPath(
   return `${v3RunPath(organization, project, run)}/stream`;
 }
 
-export function v3SchedulesPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  filters?: ScheduleListFilters
-) {
-  const searchParams = objectToSearchParams(filters);
-  const query = searchParams ? `?${searchParams.toString()}` : "";
+export function v3SchedulesPath(organization: OrgForPath, project: ProjectForPath) {
+  const location = useLocation();
+  const search = new URLSearchParams(location.search);
+  const searchString = search.toString();
+  const query = searchString ? `?${searchString}` : "";
   return `${v3ProjectPath(organization, project)}/schedules${query}`;
 }
 

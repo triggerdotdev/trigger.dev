@@ -1,3 +1,4 @@
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 
@@ -8,6 +9,12 @@ type EditScheduleOptions = {
 };
 
 export type EditableScheduleElements = Awaited<ReturnType<EditSchedulePresenter["call"]>>;
+
+type Environment = {
+  id: string;
+  type: RuntimeEnvironmentType;
+  userName?: string;
+};
 
 export class EditSchedulePresenter {
   #prismaClient: PrismaClient;
@@ -59,31 +66,30 @@ export class EditSchedulePresenter {
     AND "triggerSource" = 'SCHEDULED';
     `;
 
+    const possibleEnvironments = project.environments.map((environment) => {
+      let userName: undefined | string;
+      if (environment.orgMember) {
+        if (environment.orgMember.user.id !== userId) {
+          userName =
+            environment.orgMember.user.displayName ?? environment.orgMember.user.name ?? undefined;
+        }
+      }
+
+      return {
+        id: environment.id,
+        type: environment.type,
+        userName,
+      };
+    });
+
     return {
       possibleTasks: possibleTasks.map((task) => task.slug),
-      possibleEnvironments: project.environments.map((environment) => {
-        let userName: undefined | string;
-        if (environment.orgMember) {
-          if (environment.orgMember.user.id !== userId) {
-            userName =
-              environment.orgMember.user.displayName ??
-              environment.orgMember.user.name ??
-              undefined;
-          }
-        }
-
-        return {
-          id: environment.id,
-          type: environment.type,
-          userName,
-        };
-      }),
-      schedule: await this.#getExistingSchedule(friendlyId),
-      showGenerateField: env.OPENAI_API_KEY !== undefined,
+      possibleEnvironments,
+      schedule: await this.#getExistingSchedule(friendlyId, possibleEnvironments),
     };
   }
 
-  async #getExistingSchedule(scheduleId: string | undefined) {
+  async #getExistingSchedule(scheduleId: string | undefined, possibleEnvironments: Environment[]) {
     if (!scheduleId) {
       return undefined;
     }
@@ -112,6 +118,16 @@ export class EditSchedulePresenter {
       return undefined;
     }
 
-    return schedule;
+    return {
+      ...schedule,
+      environments: schedule.instances.map((instance) => {
+        const environment = possibleEnvironments.find((env) => env.id === instance.environmentId);
+        if (!environment) {
+          throw new Error(`Environment with id ${instance.environmentId} not found`);
+        }
+
+        return environment;
+      }),
+    };
   }
 }
