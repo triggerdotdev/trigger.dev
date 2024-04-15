@@ -388,19 +388,8 @@ export function v3RunStreamingPath(
   return `${v3RunPath(organization, project, run)}/stream`;
 }
 
-export function v3SchedulesPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  keepQueryParam = true
-) {
-  let query = "";
-  if (keepQueryParam) {
-    const location = useLocation();
-    const search = new URLSearchParams(location.search);
-    const searchString = search.toString();
-    query = searchString ? `?${searchString}` : "";
-  }
-  return `${v3ProjectPath(organization, project)}/schedules${query}`;
+export function v3SchedulesPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/schedules`;
 }
 
 export function v3SchedulePath(
@@ -408,19 +397,11 @@ export function v3SchedulePath(
   project: ProjectForPath,
   schedule: { friendlyId: string }
 ) {
-  const location = useLocation();
-  const search = new URLSearchParams(location.search);
-  const searchString = search.toString();
-  const query = searchString ? `?${searchString}` : "";
-  return `${v3ProjectPath(organization, project)}/schedules/${schedule.friendlyId}${query}`;
+  return `${v3ProjectPath(organization, project)}/schedules/${schedule.friendlyId}`;
 }
 
 export function v3NewSchedulePath(organization: OrgForPath, project: ProjectForPath) {
-  const location = useLocation();
-  const search = new URLSearchParams(location.search);
-  const searchString = search.toString();
-  const query = searchString ? `?${searchString}` : "";
-  return `${v3ProjectPath(organization, project)}/schedules/new${query}`;
+  return `${v3ProjectPath(organization, project)}/schedules/new`;
 }
 
 export function v3ProjectSettingsPath(organization: OrgForPath, project: ProjectForPath) {

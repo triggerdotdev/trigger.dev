@@ -1,6 +1,6 @@
 import { PlusIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { Outlet, useNavigation, useParams } from "@remix-run/react";
+import { Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
@@ -72,11 +72,9 @@ export default function Page() {
     currentPage,
     totalPages,
   } = useTypedLoaderData<typeof loader>();
-  const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
+  const location = useLocation();
   const organization = useOrganization();
   const project = useProject();
-  const user = useUser();
   const pathName = usePathName();
 
   const { scheduleParam } = useParams();
@@ -90,7 +88,7 @@ export default function Page() {
         <PageAccessories>
           <LinkButton
             LeadingIcon={PlusIcon}
-            to={v3NewSchedulePath(organization, project)}
+            to={`${v3NewSchedulePath(organization, project)}${location.search}`}
             variant="primary/small"
             shortcut={{ key: "n" }}
             disabled={possibleTasks.length === 0 || isShowingNewPane}
@@ -172,6 +170,7 @@ function SchedulesTable({
 }) {
   const organization = useOrganization();
   const project = useProject();
+  const location = useLocation();
 
   return (
     <Table>
@@ -198,7 +197,7 @@ function SchedulesTable({
           )
         ) : (
           schedules.map((schedule) => {
-            const path = v3SchedulePath(organization, project, schedule);
+            const path = `${v3SchedulePath(organization, project, schedule)}${location.search}`;
             return (
               <TableRow key={schedule.id}>
                 <TableCell to={path}>{schedule.friendlyId}</TableCell>

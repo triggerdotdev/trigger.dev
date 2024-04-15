@@ -1,14 +1,18 @@
+import { parse } from "@conform-to/zod";
 import {
+  BoltIcon,
   BoltSlashIcon,
   CheckCircleIcon,
   PencilSquareIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Form, useLocation } from "@remix-run/react";
+import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import cronstrue from "cronstrue";
 import { H } from "highlight.run";
 import { CheckCircle } from "lucide-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
@@ -26,14 +30,17 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
+import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { EditSchedulePresenter } from "~/presenters/v3/EditSchedulePresenter.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3ScheduleParams, v3SchedulesPath } from "~/utils/pathBuilder";
+import { v3ScheduleParams, v3SchedulePath, v3SchedulesPath } from "~/utils/pathBuilder";
+import { DeleteTaskScheduleService } from "~/v3/services/deleteTaskSchedule.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -53,8 +60,87 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({ schedule: result.schedule });
 };
 
+const schema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("delete"),
+  }),
+  z.object({
+    action: z.literal("disable"),
+  }),
+]);
+
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug, projectParam, scheduleParam } = v3ScheduleParams.parse(params);
+
+  const formData = await request.formData();
+  const submission = parse(formData, { schema });
+
+  if (!submission.value) {
+    return json(submission);
+  }
+
+  const project = await prisma.project.findFirst({
+    where: {
+      slug: projectParam,
+    },
+  });
+
+  if (!project) {
+    return redirectWithErrorMessage(
+      v3SchedulePath(
+        { slug: organizationSlug },
+        { slug: projectParam },
+        { friendlyId: scheduleParam }
+      ),
+      request,
+      `No project found with slug ${projectParam}`
+    );
+  }
+
+  switch (submission.value.action) {
+    case "delete":
+      const deleteService = new DeleteTaskScheduleService();
+      try {
+        await deleteService.call({
+          projectId: project.id,
+          userId,
+          friendlyId: scheduleParam,
+        });
+        return redirectWithSuccessMessage(
+          v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }),
+          request,
+          `${scheduleParam} deleted`
+        );
+      } catch (e) {
+        return redirectWithErrorMessage(
+          v3SchedulePath(
+            { slug: organizationSlug },
+            { slug: projectParam },
+            { friendlyId: scheduleParam }
+          ),
+          request,
+          `${scheduleParam} could not be deleted: ${
+            e instanceof Error ? e.message : JSON.stringify(e)
+          }`
+        );
+      }
+    case "disable":
+      return redirectWithSuccessMessage(
+        v3SchedulePath(
+          { slug: organizationSlug },
+          { slug: projectParam },
+          { friendlyId: scheduleParam }
+        ),
+        request,
+        `${scheduleParam} disabled`
+      );
+  }
+};
+
 export default function Page() {
   const { schedule } = useTypedLoaderData<typeof loader>();
+  const location = useLocation();
   const organization = useOrganization();
   const project = useProject();
   const user = useUser();
@@ -64,7 +150,7 @@ export default function Page() {
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Header2 className={cn("whitespace-nowrap")}>{schedule.friendlyId}</Header2>
         <LinkButton
-          to={v3SchedulesPath(organization, project)}
+          to={`${v3SchedulesPath(organization, project)}${location.search}`}
           variant="minimal/medium"
           LeadingIcon={ExitIcon}
           shortcut={{ key: "esc" }}
@@ -160,15 +246,31 @@ export default function Page() {
       </div>
       <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
         <div className="flex items-center gap-4">
-          <Button
-            type="submit"
-            variant="minimal/medium"
-            LeadingIcon={TrashIcon}
-            leadingIconClassName="text-error"
-            className="text-error"
-          >
-            Delete
-          </Button>
+          <Form method="post">
+            <Button
+              type="submit"
+              variant="minimal/medium"
+              LeadingIcon={schedule.active ? BoltSlashIcon : BoltIcon}
+              leadingIconClassName={schedule.active ? "text-dimmed" : "text-success"}
+              name="action"
+              value="disable"
+            >
+              {schedule.active ? "Disable" : "Enable"}
+            </Button>
+          </Form>
+          <Form method="post">
+            <Button
+              type="submit"
+              variant="minimal/medium"
+              LeadingIcon={TrashIcon}
+              leadingIconClassName="text-error"
+              className="text-error"
+              name="action"
+              value="delete"
+            >
+              Delete
+            </Button>
+          </Form>
         </div>
         <div className="flex items-center gap-4">
           <LinkButton variant="tertiary/medium" to="" LeadingIcon={PencilSquareIcon}>

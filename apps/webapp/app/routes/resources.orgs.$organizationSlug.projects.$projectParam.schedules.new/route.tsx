@@ -80,7 +80,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
 
     return redirectWithSuccessMessage(
-      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }, false),
+      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }),
       request,
       "Schedule created"
     );
@@ -306,7 +306,10 @@ export function UpsertScheduleForm({
       </div>
       <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
         <div className="flex items-center gap-4">
-          <LinkButton to={`${v3SchedulesPath(organization, project)}`} variant="minimal/small">
+          <LinkButton
+            to={`${v3SchedulesPath(organization, project)}${location.search}`}
+            variant="minimal/small"
+          >
             Cancel
           </LinkButton>
         </div>
