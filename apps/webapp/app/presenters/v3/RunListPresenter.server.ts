@@ -8,15 +8,15 @@ type RunListOptions = {
   userId: string;
   projectSlug: string;
   //filters
-  tasks: string[] | undefined;
-  versions: string[] | undefined;
-  statuses: TaskRunStatus[] | undefined;
-  environments: string[] | undefined;
-  from: number | undefined;
-  to: number | undefined;
+  tasks?: string[];
+  versions?: string[];
+  statuses?: TaskRunStatus[];
+  environments?: string[];
+  from?: number;
+  to?: number;
   //pagination
-  direction: Direction | undefined;
-  cursor: string | undefined;
+  direction?: Direction;
+  cursor?: string;
   pageSize?: number;
 };
 
