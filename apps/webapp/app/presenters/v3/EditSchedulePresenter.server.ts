@@ -108,6 +108,7 @@ export class EditSchedulePresenter {
             environmentId: true,
           },
         },
+        active: true,
       },
       where: {
         friendlyId: scheduleId,
