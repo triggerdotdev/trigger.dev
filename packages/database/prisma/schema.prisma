@@ -402,6 +402,10 @@ model RuntimeEnvironment {
   CheckpointRestoreEvent     CheckpointRestoreEvent[]
   taskScheduleInstances      TaskScheduleInstance[]
 
+  sessions         RuntimeEnvironmentSession[]
+  currentSession   RuntimeEnvironmentSession?  @relation("currentSession", fields: [currentSessionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  currentSessionId String?
+
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
 }
@@ -1625,6 +1629,12 @@ model TaskRun {
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
 
+  scheduleInstance   TaskScheduleInstance? @relation(fields: [scheduleInstanceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  scheduleInstanceId String?
+
+  schedule   TaskSchedule? @relation(fields: [scheduleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  scheduleId String?
+
   @@unique([runtimeEnvironmentId, idempotencyKey])
 }
 
@@ -2148,6 +2158,10 @@ model TaskSchedule {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  active Boolean @default(true)
+
+  runs TaskRun[]
+
   @@unique([projectId, deduplicationKey])
 }
 
@@ -2164,6 +2178,28 @@ model TaskScheduleInstance {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  active Boolean @default(true)
+
+  lastScheduledTimestamp DateTime?
+  nextScheduledTimestamp DateTime?
+
+  runs TaskRun[]
+
   //you can only have a schedule attached to each environment once
   @@unique([taskScheduleId, environmentId])
+}
+
+model RuntimeEnvironmentSession {
+  id String @id @default(cuid())
+
+  ipAddress String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  disconnectedAt DateTime?
+
+  currentEnvironments RuntimeEnvironment[] @relation("currentSession")
 }

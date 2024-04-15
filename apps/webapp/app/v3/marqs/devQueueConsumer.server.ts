@@ -9,12 +9,14 @@ import {
 import { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { createNewSession, disconnectSession } from "~/models/runtimeEnvironment.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { marqs } from "~/v3/marqs/index.server";
 import { CancelAttemptService } from "../services/cancelAttempt.server";
+import { CancelTaskRunService } from "../services/cancelTaskRun.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
 import {
   SEMINTATTRS_FORCE_RECORDING,
@@ -22,7 +24,6 @@ import {
   tracer,
 } from "../tracer.server";
 import { DevSubscriber, devPubSub } from "./devPubSub.server";
-import { CancelTaskRunService } from "../services/cancelTaskRun.server";
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
@@ -36,6 +37,7 @@ type BackgroundWorkerWithTasks = BackgroundWorker & { tasks: BackgroundWorkerTas
 export type DevQueueConsumerOptions = {
   maximumItemsPerTrace?: number;
   traceTimeoutSeconds?: number;
+  ipAddress?: string;
 };
 
 export class DevQueueConsumer {
@@ -108,7 +110,7 @@ export class DevQueueConsumer {
     this._backgroundWorkerSubscriber.set(backgroundWorker.id, subscriber);
 
     // Start reading from the queue if we haven't already
-    this.#enable();
+    await this.#enable();
   }
 
   public async taskAttemptCompleted(
@@ -154,6 +156,9 @@ export class DevQueueConsumer {
     logger.debug("Stopping dev queue consumer", { env: this.env });
 
     this._enabled = false;
+
+    // Create the session
+    await disconnectSession(this.env.id);
 
     // We need to cancel all the in progress task run attempts and ack the messages so they will stop processing
     await this.#cancelInProgressRunsAndAttempts(reason);
@@ -261,10 +266,13 @@ export class DevQueueConsumer {
     }
   }
 
-  #enable() {
+  async #enable() {
     if (this._enabled) {
       return;
     }
+
+    // Create the session
+    await createNewSession(this.env, this._options.ipAddress ?? "unknown");
 
     this._enabled = true;
     this._perTraceCountdown = this._options.maximumItemsPerTrace;

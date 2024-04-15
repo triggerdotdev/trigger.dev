@@ -26,6 +26,7 @@ import {
   defaultRetryOptions,
   parsePacket,
   runtime,
+  stringifyIO,
   taskCatalog,
   taskContextManager,
 } from "@trigger.dev/core/v3";
@@ -224,17 +225,20 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
 
       const taskMetadata = taskCatalog.getTaskMetadata(params.id);
 
+      const payloadPacket = await stringifyIO(payload);
+
       const handle = await tracer.startActiveSpan(
         taskMetadata ? "Trigger" : `${params.id} trigger()`,
         async (span) => {
           const response = await apiClient.triggerTask(
             params.id,
             {
-              payload: payload,
+              payload: payloadPacket.data,
               options: {
                 queue: params.queue,
                 concurrencyKey: options?.concurrencyKey,
                 test: taskContextManager.ctx?.run.isTest,
+                payloadType: payloadPacket.dataType,
               },
             },
             { spanParentAsLink: true }
@@ -289,14 +293,21 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
           const response = await apiClient.batchTriggerTask(
             params.id,
             {
-              items: items.map((item) => ({
-                payload: item.payload,
-                options: {
-                  queue: item.options?.queue ?? params.queue,
-                  concurrencyKey: item.options?.concurrencyKey,
-                  test: taskContextManager.ctx?.run.isTest,
-                },
-              })),
+              items: await Promise.all(
+                items.map(async (item) => {
+                  const payloadPacket = await stringifyIO(item.payload);
+
+                  return {
+                    payload: payloadPacket.data,
+                    options: {
+                      queue: item.options?.queue ?? params.queue,
+                      concurrencyKey: item.options?.concurrencyKey,
+                      test: taskContextManager.ctx?.run.isTest,
+                      payloadType: payloadPacket.dataType,
+                    },
+                  };
+                })
+              ),
             },
             { spanParentAsLink: true }
           );
@@ -353,17 +364,20 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
 
       const taskMetadata = taskCatalog.getTaskMetadata(params.id);
 
+      const payloadPacket = await stringifyIO(payload);
+
       return await tracer.startActiveSpan(
         taskMetadata ? "Trigger" : `${params.id} triggerAndWait()`,
         async (span) => {
           const response = await apiClient.triggerTask(params.id, {
-            payload,
+            payload: payloadPacket.data,
             options: {
               dependentAttempt: ctx.attempt.id,
               lockToVersion: taskContextManager.worker?.version, // Lock to current version because we're waiting for it to finish
               queue: params.queue,
               concurrencyKey: options?.concurrencyKey,
               test: taskContextManager.ctx?.run.isTest,
+              payloadType: payloadPacket.dataType,
             },
           });
 
@@ -428,15 +442,22 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
         taskMetadata ? "Batch trigger" : `${params.id} batchTriggerAndWait()`,
         async (span) => {
           const response = await apiClient.batchTriggerTask(params.id, {
-            items: items.map((item) => ({
-              payload: item.payload,
-              options: {
-                lockToVersion: taskContextManager.worker?.version,
-                queue: item.options?.queue ?? params.queue,
-                concurrencyKey: item.options?.concurrencyKey,
-                test: taskContextManager.ctx?.run.isTest,
-              },
-            })),
+            items: await Promise.all(
+              items.map(async (item) => {
+                const payloadPacket = await stringifyIO(item.payload);
+
+                return {
+                  payload: payloadPacket.data,
+                  options: {
+                    lockToVersion: taskContextManager.worker?.version,
+                    queue: item.options?.queue ?? params.queue,
+                    concurrencyKey: item.options?.concurrencyKey,
+                    test: taskContextManager.ctx?.run.isTest,
+                    payloadType: payloadPacket.dataType,
+                  },
+                };
+              })
+            ),
             dependentAttempt: ctx.attempt.id,
           });
 

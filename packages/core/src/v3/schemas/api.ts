@@ -64,6 +64,7 @@ export const TriggerTaskRequestBody = z.object({
       queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),
       test: z.boolean().optional(),
+      payloadType: z.string().optional(),
     })
     .optional(),
 });
