@@ -1,16 +1,7 @@
 import { parse } from "@conform-to/zod";
-import {
-  BoltIcon,
-  BoltSlashIcon,
-  CheckCircleIcon,
-  PencilSquareIcon,
-  TrashIcon,
-} from "@heroicons/react/20/solid";
+import { BoltIcon, BoltSlashIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, useLocation } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import cronstrue from "cronstrue";
-import { H } from "highlight.run";
-import { CheckCircle } from "lucide-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
@@ -36,13 +27,11 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { EditSchedulePresenter } from "~/presenters/v3/EditSchedulePresenter.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
   v3EditSchedulePath,
-  v3NewSchedulePath,
   v3ScheduleParams,
   v3SchedulePath,
   v3SchedulesPath,
