@@ -50,6 +50,15 @@ import { UpsertSchedule, CronPattern } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/createTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
 
+const cronFormat = `*    *    *    *    *
+┬    ┬    ┬    ┬    ┬
+│    │    │    │    |
+│    │    │    │    └ day of week (0 - 7, 1L - 7L) (0 or 7 is Sun)
+│    │    │    └───── month (1 - 12)
+│    │    └────────── day of month (1 - 31, L)
+│    └─────────────── hour (0 - 23)
+└──────────────────── minute (0 - 59)`;
+
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
@@ -200,7 +209,20 @@ export function UpsertScheduleForm({
             </InputGroup>
             {showGenerateField && <AIGeneratedCronField onSuccess={setCronPattern} />}
             <InputGroup>
-              <Label htmlFor={cron.id}>CRON pattern (UTC)</Label>
+              <Label
+                htmlFor={cron.id}
+                tooltip={
+                  <div className="spacy-y-3">
+                    <Paragraph variant="extra-small">We support this CRON format:</Paragraph>
+                    <code>
+                      <pre>{cronFormat}</pre>
+                    </code>
+                    <Paragraph variant="extra-small">"L" means the last.</Paragraph>
+                  </div>
+                }
+              >
+                CRON pattern (UTC)
+              </Label>
               <Input
                 {...conform.input(cron, { type: "text" })}
                 placeholder="? ? ? ? ?"
@@ -218,6 +240,7 @@ export function UpsertScheduleForm({
                 <ValidCronMessage isValid={false} message={cronPatternResult.error} />
               )}
             </InputGroup>
+            {/* //todo add a tooltip with the CRON patterns we support */}
             {nextRuns !== undefined && (
               <div className="flex flex-col gap-1">
                 <Header3>Next 5 runs</Header3>
