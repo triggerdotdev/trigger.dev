@@ -27,9 +27,12 @@ export const TestTaskData = z
     }),
     z.object({
       triggerSource: z.literal("SCHEDULED"),
-      timestamp: z.coerce.date(),
-      lastTimestamp: z.coerce.date().optional(),
-      externalId: z.string().optional(),
+      timestamp: z.preprocess((val) => (val === "" ? undefined : val), z.coerce.date()),
+      lastTimestamp: z.preprocess(
+        (val) => (val === "" ? undefined : val),
+        z.coerce.date().optional()
+      ),
+      externalId: z.preprocess((val) => (val === "" ? undefined : val), z.string().optional()),
     }),
   ])
   .and(
