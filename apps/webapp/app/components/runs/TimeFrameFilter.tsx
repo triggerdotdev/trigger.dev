@@ -7,6 +7,7 @@ import { DateField } from "../primitives/DateField";
 import { formatDateTime } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
+import { Label } from "../primitives/Label";
 
 type RunTimeFrameFilterProps = {
   from?: number;
@@ -202,9 +203,9 @@ export function AbsoluteTimeFrame({
   return (
     <div className="flex flex-col gap-2 pt-2">
       <div className="flex flex-col justify-start gap-2">
-        <div className="flex flex-row items-center gap-1">
+        <div className="space-y-1">
+          <Label>From (UTC)</Label>
           <DateField
-            label="From (UTC)"
             defaultValue={from}
             onValueChange={(value) => {
               onValueChange({ from: value, to: to });
@@ -214,9 +215,9 @@ export function AbsoluteTimeFrame({
             showClearButton
           />
         </div>
-        <div className="flex flex-row items-center gap-1">
+        <div className="space-y-1">
+          <Label>To (UTC)</Label>
           <DateField
-            label="To (UTC)"
             defaultValue={to}
             onValueChange={(value) => {
               onValueChange({ from: from, to: value });

@@ -24,7 +24,6 @@ const variants = {
 type Variant = keyof typeof variants;
 
 type DateFieldProps = {
-  label?: string;
   defaultValue?: Date;
   minValue?: Date;
   maxValue?: Date;
@@ -39,7 +38,6 @@ type DateFieldProps = {
 };
 
 export function DateField({
-  label,
   defaultValue,
   onValueChange,
   minValue,
@@ -88,13 +86,7 @@ export function DateField({
   }, [defaultValue]);
 
   const ref = useRef<null | HTMLDivElement>(null);
-  const { labelProps, fieldProps } = useDateField(
-    {
-      label,
-    },
-    state,
-    ref
-  );
+  const { labelProps, fieldProps } = useDateField({}, state, ref);
 
   //render if reverse date order
   const yearSegment = state.segments.find((s) => s.type === "year")!;
@@ -107,9 +99,6 @@ export function DateField({
 
   return (
     <div className={`flex flex-col items-start ${className || ""}`}>
-      <span {...labelProps} className="mb-1 ml-0.5 text-xs text-charcoal-300">
-        {label}
-      </span>
       <div className="flex flex-row items-center gap-1">
         <div
           {...fieldProps}
@@ -135,6 +124,7 @@ export function DateField({
         </div>
         {showNowButton && (
           <Button
+            type="button"
             variant={variants[variant].nowButtonVariant}
             LeadingIcon={BellAlertIcon}
             leadingIconClassName="text-text-dimmed group-hover:text-text-bright"
@@ -149,6 +139,7 @@ export function DateField({
         )}
         {showClearButton && (
           <Button
+            type="button"
             variant={variants[variant].clearButtonVariant}
             LeadingIcon={"close"}
             leadingIconClassName="-mr-2"
