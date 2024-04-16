@@ -186,14 +186,14 @@ function DateSegment({ segment, state }: DateSegmentProps) {
         ...segmentProps.style,
         minWidth: minWidthForSegment(segment),
       }}
-      className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums outline-none focus:bg-indigo-500 focus:text-white ${
+      className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums outline-none focus:bg-charcoal-600 focus:text-text-bright ${
         !segment.isEditable ? "text-charcoal-500" : "text-text-bright"
       }`}
     >
       {/* Always reserve space for the placeholder, to prevent layout shift when editing. */}
       <span
         aria-hidden="true"
-        className="block text-center italic text-charcoal-500 group-focus:text-white"
+        className="block text-center text-charcoal-500 group-focus:text-text-bright"
         style={{
           visibility: segment.isPlaceholder ? undefined : "hidden",
           height: segment.isPlaceholder ? "" : 0,
@@ -231,7 +231,7 @@ function DateSegmentGuide({ segment }: { segment: DateSegment }) {
       style={{
         minWidth: minWidthForSegment(segment),
       }}
-      className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums outline-none ${
+      className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums text-rose-500 outline-none ${
         !segment.isEditable ? "text-charcoal-500" : "text-text-bright"
       }`}
     >

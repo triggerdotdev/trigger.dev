@@ -190,7 +190,7 @@ const timeFrameValues = [
 
 export type RelativeTimeFrameItem = (typeof timeFrameValues)[number];
 
-function AbsoluteTimeFrame({
+export function AbsoluteTimeFrame({
   from,
   to,
   onValueChange,
