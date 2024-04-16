@@ -3,15 +3,23 @@ import { parse } from "@conform-to/zod";
 import { BeakerIcon } from "@heroicons/react/20/solid";
 import { Await, Form, useActionData, useSubmit } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { prettyPrintPacket } from "@trigger.dev/core/v3";
+import { ScheduledTaskPayload, parsePacket, prettyPrintPacket } from "@trigger.dev/core/v3";
+import { TaskRunStatus } from "@trigger.dev/database";
 import { Suspense, useCallback, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { number } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { DateField } from "~/components/primitives/DateField";
 import { DateTime } from "~/components/primitives/DateTime";
+import { Fieldset } from "~/components/primitives/Fieldset";
+import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
+import { Hint } from "~/components/primitives/Hint";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import {
@@ -77,7 +85,7 @@ export default function Page() {
   const { task, runs } = useTypedLoaderData<typeof loader>();
 
   switch (task.triggerSource) {
-    case "STANDARD":
+    case "STANDARD": {
       const prettyRuns = Promise.all(
         runs.map(async (run) => ({
           ...run,
@@ -92,9 +100,23 @@ export default function Page() {
           </Await>
         </Suspense>
       );
-    case "SCHEDULED":
-      //todo use scheduleTaskPayload schema
-      return <ScheduledTaskForm task={task} runs={runs} />;
+    }
+    case "SCHEDULED": {
+      const prettyRuns = Promise.all(
+        runs.map(async (run) => ({
+          ...run,
+          payload: await getScheduleTaskRunPayload(run),
+        }))
+      );
+
+      return (
+        <Suspense fallback={<></>}>
+          <Await resolve={prettyRuns}>
+            {(data) => <ScheduledTaskForm task={task} runs={data} />}
+          </Await>
+        </Suspense>
+      );
+    }
   }
 }
 
@@ -184,7 +206,9 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTa
           <RecentPayloads
             runs={runs}
             selectedId={selectedCodeSampleId}
-            onSelected={(id, payload) => {
+            onSelected={(id) => {
+              const payload = runs.find((r) => r.id === id)?.payload;
+              if (!payload) return;
               setCode(payload);
               setSelectedCodeSampleId(id);
             }}
@@ -215,7 +239,19 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTa
   );
 }
 
-function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTask["runs"] }) {
+async function getScheduleTaskRunPayload(run: TestTask["runs"][number]) {
+  const payload = await parsePacket({ data: run.payload, dataType: run.payloadType });
+  const parsed = ScheduledTaskPayload.parse(payload);
+  return parsed;
+}
+
+function ScheduledTaskForm({
+  task,
+  runs,
+}: {
+  task: TestTask["task"];
+  runs: (Omit<TestTask["runs"][number], "payload"> & { payload: ScheduledTaskPayload })[];
+}) {
   const lastSubmission = useActionData();
   const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
 
@@ -232,13 +268,62 @@ function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestT
     <Form className="grid h-full max-h-full grid-rows-[1fr_2.5rem]" method="post" {...form.props}>
       <input type="hidden" name="triggerSource" value={task.triggerSource} />
       <ResizablePanelGroup direction="horizontal">
-        <ResizablePanel order={1} minSize={30} defaultSize={60}></ResizablePanel>
+        <ResizablePanel order={1} minSize={30} defaultSize={60}>
+          <Fieldset>
+            <InputGroup>
+              <Label htmlFor={timestamp.id}>Timestamp UTC</Label>
+              <DateField
+                label="Timestamp UTC"
+                defaultValue={new Date()}
+                granularity="second"
+                showNowButton
+                showClearButton
+              />
+              <Hint>
+                This is the timestamp of the CRON, it will come through to your run in the payload.
+              </Hint>
+              <FormError id={timestamp.errorId}>{timestamp.error}</FormError>
+            </InputGroup>
+            <InputGroup>
+              <Label htmlFor={lastTimestamp.id} required={false}>
+                Last timestamp UTC
+              </Label>
+              <DateField
+                label="Timestamp UTC"
+                defaultValue={new Date()}
+                granularity="second"
+                showNowButton
+                showClearButton
+              />
+              <Hint>
+                This is the timestamp of the previous run. You can use this in your code to find new
+                data since the previous run. This can be undefined if there hasn't been a previous
+                run.
+              </Hint>
+              <FormError id={lastTimestamp.errorId}>{lastTimestamp.error}</FormError>
+            </InputGroup>
+            <InputGroup>
+              <Label htmlFor={externalId.id} required={false}>
+                External ID
+              </Label>
+              <DateField
+                label="Timestamp UTC"
+                defaultValue={new Date()}
+                granularity="second"
+                showNowButton
+                showClearButton
+              />
+              <Hint>//todo</Hint>
+              <FormError id={externalId.errorId}>{externalId.error}</FormError>
+            </InputGroup>
+          </Fieldset>
+        </ResizablePanel>
         <ResizableHandle withHandle />
         <ResizablePanel order={2} minSize={20} defaultSize={40}>
           <RecentPayloads
             runs={runs}
             selectedId={selectedCodeSampleId}
-            onSelected={(id, payload) => {
+            onSelected={(id) => {
               setSelectedCodeSampleId(id);
             }}
           />
@@ -273,9 +358,14 @@ function RecentPayloads({
   selectedId,
   onSelected,
 }: {
-  runs: TestTask["runs"];
+  runs: {
+    id: string;
+    createdAt: Date;
+    number: number;
+    status: TaskRunStatus;
+  }[];
   selectedId?: string;
-  onSelected: (id: string, payload: string) => void;
+  onSelected: (id: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-2 pl-4">
@@ -293,7 +383,7 @@ function RecentPayloads({
               key={run.id}
               type="button"
               onClick={(e) => {
-                onSelected(run.id, run.payload ?? "");
+                onSelected(run.id);
               }}
               className="flex items-center gap-2 px-2 py-2"
             >
