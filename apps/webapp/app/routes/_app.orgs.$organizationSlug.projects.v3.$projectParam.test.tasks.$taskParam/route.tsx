@@ -62,8 +62,6 @@ export const action: ActionFunction = async ({ request, params }) => {
   const formData = await request.formData();
   const submission = parse(formData, { schema: TestTaskData });
 
-  console.log(submission);
-
   if (!submission.value) {
     return json(submission);
   }
