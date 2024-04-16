@@ -221,7 +221,7 @@ function DateSegment({ segment, state, variant }: DateSegmentProps) {
         className="flex h-full items-center justify-center text-center text-charcoal-500 group-focus:text-text-bright"
         style={{
           visibility: segment.isPlaceholder ? undefined : "hidden",
-          height: segment.isPlaceholder ? "" : 0,
+          height: segment.isPlaceholder ? undefined : 0,
           pointerEvents: "none",
         }}
       >
