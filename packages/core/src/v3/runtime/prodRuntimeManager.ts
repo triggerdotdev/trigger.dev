@@ -10,7 +10,7 @@ import {
 } from "../schemas";
 import { ZodIpcConnection } from "../zodIpc";
 import { RuntimeManager } from "./manager";
-import { setTimeout } from "node:timers/promises";
+import { unboundedTimeout } from "../utils/timers";
 
 export type ProdRuntimeManagerOptions = {
   waitThresholdInMs?: number;
@@ -56,7 +56,7 @@ export class ProdRuntimeManager implements RuntimeManager {
   async waitForDuration(ms: number): Promise<void> {
     const now = Date.now();
 
-    const resolveAfterDuration = setTimeout(ms, "duration" as const);
+    const resolveAfterDuration = unboundedTimeout(ms, "duration" as const);
 
     if (ms <= this.waitThresholdInMs) {
       await resolveAfterDuration;
