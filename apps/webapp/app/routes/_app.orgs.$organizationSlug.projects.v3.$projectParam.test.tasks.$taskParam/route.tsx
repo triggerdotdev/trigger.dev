@@ -1,13 +1,12 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BeakerIcon } from "@heroicons/react/20/solid";
-import { Await, Form, useActionData, useSubmit } from "@remix-run/react";
+import { Form, useActionData, useSubmit } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { ScheduledTaskPayload, parsePacket, prettyPrintPacket } from "@trigger.dev/core/v3";
 import { TaskRunStatus } from "@trigger.dev/database";
-import { Suspense, useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { number, z } from "zod";
+import { z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
@@ -29,7 +28,6 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { TextLink } from "~/components/primitives/TextLink";
-import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import {
@@ -220,6 +218,19 @@ function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: Sched
   const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>();
   const [externalIdValue, setExternalIdValue] = useState<string | undefined>();
 
+  //set initial values
+  useEffect(() => {
+    const initialRun = runs.find((r) => r.id === selectedCodeSampleId);
+    if (!initialRun) {
+      setTimestampValue(new Date());
+      return;
+    }
+
+    setTimestampValue(initialRun.payload.timestamp);
+    setLastTimestampValue(initialRun.payload.lastTimestamp);
+    setExternalIdValue(initialRun.payload.externalId);
+  }, [selectedCodeSampleId]);
+
   const [
     form,
     { timestamp, lastTimestamp, externalId, triggerSource, taskIdentifier, environmentId },
@@ -258,7 +269,7 @@ function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: Sched
                 <input
                   type="hidden"
                   {...conform.input(timestamp, { type: "hidden" })}
-                  value={timestampValue?.toISOString() ?? " "}
+                  value={timestampValue?.toISOString() ?? ""}
                 />
                 <DateField
                   label="Timestamp UTC"
@@ -266,7 +277,6 @@ function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: Sched
                   onValueChange={(val) => setTimestampValue(val)}
                   granularity="second"
                   showNowButton
-                  showClearButton
                   variant="medium"
                 />
                 <Hint>
@@ -282,7 +292,7 @@ function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: Sched
                 <input
                   type="hidden"
                   {...conform.input(lastTimestamp, { type: "hidden" })}
-                  value={lastTimestampValue?.toISOString() ?? " "}
+                  value={lastTimestampValue?.toISOString() ?? ""}
                 />
                 <DateField
                   label="Last timestamp UTC"
