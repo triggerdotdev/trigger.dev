@@ -12,6 +12,382 @@
     }
   ],
   "paths": {
+    "/api/v1/schedules": {
+      "post": {
+        "operationId": "create_schedule_v1",
+        "description": "Create a new schedule based on the specified options.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScheduleOptions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Schedule created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "schedules"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "typescript",
+            "source": "import { schedules } from \"@trigger.dev/sdk/v3\";\n\nconst schedule = await schedules.create({\n  task: 'my-task',\n  cron: '0 0 * * *'\n});"
+          },
+          {
+            "lang": "sh",
+            "source": "curl --request POST \\\n\t--url https://api.trigger.dev/api/v1/schedules \\\n\t--header 'Authorization: Bearer <token>' \\\n\t--header 'Content-Type: application/json' \\\n\t--data '{\"task\":\"my-task\",\"cron\":\"0 0 * * *\"}'"
+          }
+        ]
+      },
+      "get": {
+        "operationId": "list_schedules_v1",
+        "description": "List all schedules.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer"
+            },
+            "required": false,
+            "description": "Page number of the schedule listing"
+          },
+          {
+            "in": "query",
+            "name": "perPage",
+            "schema": {
+              "type": "integer"
+            },
+            "required": false,
+            "description": "Number of schedules per page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSchedulesResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized request"
+          }
+        },
+        "tags": [
+          "schedules"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "typescript",
+            "source": "import { schedules } from \"@trigger.dev/sdk/v3\";\n\nconst allSchedules = await schedules.list();"
+          },
+          {
+            "lang": "sh",
+            "source": "curl --request GET \\\n\t--url https://api.trigger.dev/api/v1/schedules \\\n\t--header 'Authorization: Bearer <token>'"
+          }
+        ]
+      }
+    },
+    "/api/v1/schedules/{schedule_id}": {
+      "get": {
+        "operationId": "get_schedule_v1",
+        "description": "Get a schedule by its ID.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ID of the schedule."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleObject"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized request"
+          },
+          "404": {
+            "description": "Resource not found"
+          }
+        },
+        "tags": [
+          "schedules"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "typescript",
+            "source": "import { schedules } from \"@trigger.dev/sdk/v3\";\n\nconst schedule = await schedules.retrieve(scheduleId);"
+          },
+          {
+            "lang": "sh",
+            "source": "curl --request GET \\\n\t--url https://api.trigger.dev/api/v1/schedules/{schedule_id} \\\n\t--header 'Authorization: Bearer <token>'"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "update_schedule_v1",
+        "description": "Update a schedule by its ID.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ID of the schedule."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScheduleOptions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Schedule updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Resource not found"
+          }
+        },
+        "tags": [
+          "schedules"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "typescript",
+            "source": "import { schedules } from \"@trigger.dev/sdk/v3\";\n\nconst updatedSchedule = await schedules.update(scheduleId, {\n  task: 'my-updated-task',\n  cron: '0 0 * * *'\n});"
+          },
+          {
+            "lang": "sh",
+            "source": "curl --request PUT \\\n\t--url https://api.trigger.dev/api/v1/schedules/{schedule_id} \\\n\t--header 'Authorization: Bearer <token>' \\\n\t--header 'Content-Type: application/json' \\\n\t--data '{\"task\":\"my-updated-task\",\"cron\":\"0 0 * * *\"}'"
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "delete_schedule_v1",
+        "description": "Delete a schedule by its ID.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ID of the schedule."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule deleted successfully"
+          },
+          "401": {
+            "description": "Unauthorized request"
+          },
+          "404": {
+            "description": "Resource not found"
+          }
+        },
+        "tags": [
+          "schedules"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "typescript",
+            "source": "import { schedules } from \"@trigger.dev/sdk/v3\";\n\nawait schedules.del(scheduleId);"
+          },
+          {
+            "lang": "sh",
+            "source": "curl --request DELETE \\\n\t--url https://api.trigger.dev/api/v1/schedules/{schedule_id} \\\n\t--header 'Authorization: Bearer <token>'"
+          }
+        ]
+      }
+    },
+    "/api/v1/schedules/{schedule_id}/deactivate": {
+      "post": {
+        "operationId": "deactivate_schedule_v1",
+        "description": "Deactivate a schedule by its ID.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ID of the schedule."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleObject"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized request"
+          },
+          "404": {
+            "description": "Resource not found"
+          }
+        },
+        "tags": [
+          "schedules"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "typescript",
+            "source": "import { schedules } from \"@trigger.dev/sdk/v3\";\n\nconst schedule = await schedules.deactivate(scheduleId);"
+          },
+          {
+            "lang": "sh",
+            "source": "curl --request POST \\\n\t--url https://api.trigger.dev/api/v1/schedules/{schedule_id}/deactivate \\\n\t--header 'Authorization: Bearer <token>'"
+          }
+        ]
+      }
+    },
+    "/api/v1/schedules/{schedule_id}/activate": {
+      "post": {
+        "operationId": "activate_schedule_v1",
+        "description": "Activate a schedule by its ID.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "schedule_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ID of the schedule."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleObject"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized request"
+          },
+          "404": {
+            "description": "Resource not found"
+          }
+        },
+        "tags": [
+          "schedules"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "typescript",
+            "source": "import { schedules } from \"@trigger.dev/sdk/v3\";\n\nconst schedule = await schedules.activate(scheduleId);"
+          },
+          {
+            "lang": "sh",
+            "source": "curl --request POST \\\n\t--url https://api.trigger.dev/api/v1/schedules/{schedule_id}/activate \\\n\t--header 'Authorization: Bearer <token>'"
+          }
+        ]
+      }
+    },
     "/api/v1/runs/{run_id}/replay": {
       "post": {
         "description": "Creates a new run with the same payload and options as the original run.",
@@ -52,7 +428,10 @@
                   "properties": {
                     "error": {
                       "type": "string",
-                      "enum": ["Invalid or missing run ID", "Failed to create new run"]
+                      "enum": [
+                        "Invalid or missing run ID",
+                        "Failed to create new run"
+                      ]
                     }
                   }
                 }
@@ -68,7 +447,9 @@
                   "properties": {
                     "error": {
                       "type": "string",
-                      "enum": ["Invalid or Missing API key"]
+                      "enum": [
+                        "Invalid or Missing API key"
+                      ]
                     }
                   }
                 }
@@ -84,7 +465,9 @@
                   "properties": {
                     "error": {
                       "type": "string",
-                      "enum": ["Run not found"]
+                      "enum": [
+                        "Run not found"
+                      ]
                     }
                   }
                 }
@@ -92,8 +475,14 @@
             }
           }
         },
-        "tags": ["run"],
-        "security": [{ "bearerAuth": [] }],
+        "tags": [
+          "run"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "operationId": "replay_run_v1",
         "x-codeSamples": [
           {
@@ -147,7 +536,10 @@
                   "properties": {
                     "error": {
                       "type": "string",
-                      "enum": ["Invalid or missing run ID", "Failed to create new run"]
+                      "enum": [
+                        "Invalid or missing run ID",
+                        "Failed to create new run"
+                      ]
                     }
                   }
                 }
@@ -163,7 +555,9 @@
                   "properties": {
                     "error": {
                       "type": "string",
-                      "enum": ["Invalid or Missing API key"]
+                      "enum": [
+                        "Invalid or Missing API key"
+                      ]
                     }
                   }
                 }
@@ -179,7 +573,9 @@
                   "properties": {
                     "error": {
                       "type": "string",
-                      "enum": ["Run not found"]
+                      "enum": [
+                        "Run not found"
+                      ]
                     }
                   }
                 }
@@ -187,8 +583,14 @@
             }
           }
         },
-        "tags": ["run"],
-        "security": [{ "bearerAuth": [] }],
+        "tags": [
+          "run"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "operationId": "replay_run_v1",
         "x-codeSamples": [
           {
@@ -210,7 +612,109 @@
         "scheme": "bearer",
         "description": "Use your Secret API key in the form 'Bearer <SECRET KEY>' (without the quotation marks)"
       }
+    },
+    "schemas": {
+      "CreateScheduleOptions": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string"
+          },
+          "cron": {
+            "type": "string"
+          },
+          "deduplicationKey": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task",
+          "cron"
+        ]
+      },
+      "ScheduleObject": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "task": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "deduplicationKey": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "cron": {
+            "type": "string"
+          },
+          "cronDescription": {
+            "type": "string"
+          },
+          "nextRun": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduleEnvironment"
+            }
+          }
+        }
+      },
+      "ListSchedulesResult": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduleObject"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "currentPage": {
+                "type": "integer"
+              },
+              "totalPages": {
+                "type": "integer"
+              },
+              "count": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "ScheduleEnvironment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "userName": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
-  "security": [{ "bearerAuth": [] }]
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ]
 }
