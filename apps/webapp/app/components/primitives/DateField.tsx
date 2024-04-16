@@ -24,6 +24,7 @@ const variants = {
 type Variant = keyof typeof variants;
 
 type DateFieldProps = {
+  label: string;
   defaultValue?: Date;
   minValue?: Date;
   maxValue?: Date;
@@ -38,6 +39,7 @@ type DateFieldProps = {
 };
 
 export function DateField({
+  label,
   defaultValue,
   onValueChange,
   minValue,
@@ -86,7 +88,13 @@ export function DateField({
   }, [defaultValue]);
 
   const ref = useRef<null | HTMLDivElement>(null);
-  const { labelProps, fieldProps } = useDateField({}, state, ref);
+  const { labelProps, fieldProps } = useDateField(
+    {
+      label,
+    },
+    state,
+    ref
+  );
 
   //render if reverse date order
   const yearSegment = state.segments.find((s) => s.type === "year")!;
@@ -99,7 +107,7 @@ export function DateField({
 
   return (
     <div className={`flex flex-col items-start ${className || ""}`}>
-      <div className="flex flex-row items-center gap-1">
+      <div className="flex flex-row items-center gap-1" aria-label={label}>
         <div
           {...fieldProps}
           ref={ref}

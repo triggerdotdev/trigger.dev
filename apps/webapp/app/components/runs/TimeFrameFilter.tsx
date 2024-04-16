@@ -206,6 +206,7 @@ export function AbsoluteTimeFrame({
         <div className="space-y-1">
           <Label>From (UTC)</Label>
           <DateField
+            label="From (UTC)"
             defaultValue={from}
             onValueChange={(value) => {
               onValueChange({ from: value, to: to });
@@ -218,6 +219,7 @@ export function AbsoluteTimeFrame({
         <div className="space-y-1">
           <Label>To (UTC)</Label>
           <DateField
+            label="To (UTC)"
             defaultValue={to}
             onValueChange={(value) => {
               onValueChange({ from: from, to: value });

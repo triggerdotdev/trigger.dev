@@ -17,14 +17,15 @@ export class TestTaskService extends BaseService {
         return await triggerTaskService.call(data.taskIdentifier, authenticatedEnvironment, {
           payload: data.payload,
         });
-      case "SCHEDULED":
-      //todo put data into the correct format
-      // return await triggerTaskService.call(data.taskIdentifier, authenticatedEnvironment, {
-      //   payload: data.payload,
-      //   options: {
-      //     scheduled: true,
-      //   },
-      // });
+      case "SCHEDULED": {
+        //todo put data into the correct format
+        // return await triggerTaskService.call(data.taskIdentifier, authenticatedEnvironment, {
+        //   payload: data.payload,
+        //   options: {
+        //     scheduled: true,
+        //   },
+        // });
+      }
       default:
         throw new Error("Invalid trigger source");
     }

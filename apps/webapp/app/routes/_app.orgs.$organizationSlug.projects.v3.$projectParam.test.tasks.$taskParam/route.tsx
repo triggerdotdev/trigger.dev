@@ -7,7 +7,7 @@ import { ScheduledTaskPayload, parsePacket, prettyPrintPacket } from "@trigger.d
 import { TaskRunStatus } from "@trigger.dev/database";
 import { Suspense, useCallback, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { number } from "zod";
+import { number, z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
@@ -61,6 +61,8 @@ export const action: ActionFunction = async ({ request, params }) => {
 
   const formData = await request.formData();
   const submission = parse(formData, { schema: TestTaskData });
+
+  console.log(submission);
 
   if (!submission.value) {
     return json(submission);
@@ -219,14 +221,10 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTa
       </ResizablePanelGroup>
       <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed px-2">
         <div className="flex items-center gap-1">
-          <TaskPath
-            filePath={task.filePath}
-            functionName={`${task.exportName}()`}
-            className="text-xs"
-          />
-          <Paragraph variant="small">will run as a test in your</Paragraph>
+          <Paragraph variant="small" className="whitespace-nowrap">
+            This test will run in
+          </Paragraph>
           <EnvironmentLabel environment={task.environment} />
-          <Paragraph variant="small">environment:</Paragraph>
         </div>
         <Button
           type="submit"
@@ -260,7 +258,10 @@ function ScheduledTaskForm({
   const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>();
   const [externalIdValue, setExternalIdValue] = useState<string | undefined>();
 
-  const [form, { environmentId, timestamp, lastTimestamp, externalId }] = useForm({
+  const [
+    form,
+    { timestamp, lastTimestamp, externalId, triggerSource, taskIdentifier, environmentId },
+  ] = useForm({
     id: "test-task-scheduled",
     // TODO: type this
     lastSubmission: lastSubmission as any,
@@ -271,72 +272,95 @@ function ScheduledTaskForm({
 
   return (
     <Form className="grid h-full max-h-full grid-rows-[1fr_2.5rem]" method="post" {...form.props}>
-      <input type="hidden" name="triggerSource" value={task.triggerSource} />
+      <input
+        type="hidden"
+        {...conform.input(triggerSource, { type: "hidden" })}
+        value={task.triggerSource}
+      />
+      <input
+        type="hidden"
+        {...conform.input(taskIdentifier, { type: "hidden" })}
+        value={task.taskIdentifier}
+      />
+      <input
+        type="hidden"
+        {...conform.input(environmentId, { type: "hidden" })}
+        value={task.environment.id}
+      />
       <ResizablePanelGroup direction="horizontal">
         <ResizablePanel order={1} minSize={30} defaultSize={60}>
-          <Fieldset>
-            <InputGroup>
-              <Label htmlFor={timestamp.id}>Timestamp UTC</Label>
-              <input
-                type="hidden"
-                {...conform.input(timestamp, { type: "hidden" })}
-                value={timestampValue?.toISOString()}
-              />
-              <DateField
-                defaultValue={timestampValue}
-                onValueChange={(val) => setTimestampValue(val)}
-                granularity="second"
-                showNowButton
-                showClearButton
-                variant="medium"
-              />
-              <Hint>
-                This is the timestamp of the CRON, it will come through to your run in the payload.
-              </Hint>
-              <FormError id={timestamp.errorId}>{timestamp.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={lastTimestamp.id} required={false}>
-                Last timestamp UTC
-              </Label>
-              <input
-                type="hidden"
-                {...conform.input(lastTimestamp, { type: "hidden" })}
-                value={lastTimestampValue?.toISOString()}
-              />
-              <DateField
-                defaultValue={lastTimestampValue}
-                onValueChange={(val) => setLastTimestampValue(val)}
-                granularity="second"
-                showNowButton
-                showClearButton
-                variant="medium"
-              />
-              <Hint>
-                This is the timestamp of the previous run. You can use this in your code to find new
-                data since the previous run. This can be undefined if there hasn't been a previous
-                run.
-              </Hint>
-              <FormError id={lastTimestamp.errorId}>{lastTimestamp.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label required={false} htmlFor={externalId.id}>
-                External ID
-              </Label>
-              <Input
-                {...conform.input(externalId, { type: "text" })}
-                placeholder="Optionally specify your own ID, e.g. user id"
-                value={externalIdValue}
-                onChange={(e) => setExternalIdValue(e.target.value)}
-              />
-              <Hint>
-                Optionally, you can specify your own IDs (like a user ID) and then use it inside the
-                run function of your task. This allows you to have per-user CRON tasks.{" "}
-                <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
-              </Hint>
-              <FormError id={externalId.errorId}>{externalId.error}</FormError>
-            </InputGroup>
-          </Fieldset>
+          <div className="p-3">
+            <Fieldset>
+              <InputGroup>
+                <Label htmlFor={timestamp.id}>Timestamp UTC</Label>
+                {timestampValue ? (
+                  <input
+                    type="hidden"
+                    {...conform.input(timestamp, { type: "hidden" })}
+                    value={timestampValue.toISOString()}
+                  />
+                ) : null}
+                <DateField
+                  label="Timestamp UTC"
+                  defaultValue={timestampValue}
+                  onValueChange={(val) => setTimestampValue(val)}
+                  granularity="second"
+                  showNowButton
+                  showClearButton
+                  variant="medium"
+                />
+                <Hint>
+                  This is the timestamp of the CRON, it will come through to your run in the
+                  payload.
+                </Hint>
+                <FormError id={timestamp.errorId}>{timestamp.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={lastTimestamp.id} required={false}>
+                  Last timestamp UTC
+                </Label>
+                {lastTimestampValue ? (
+                  <input
+                    type="hidden"
+                    {...conform.input(lastTimestamp, { type: "hidden" })}
+                    value={lastTimestampValue.toISOString()}
+                  />
+                ) : null}
+                <DateField
+                  label="Last timestamp UTC"
+                  defaultValue={lastTimestampValue}
+                  onValueChange={(val) => setLastTimestampValue(val)}
+                  granularity="second"
+                  showNowButton
+                  showClearButton
+                  variant="medium"
+                />
+                <Hint>
+                  This is the timestamp of the previous run. You can use this in your code to find
+                  new data since the previous run. This can be undefined if there hasn't been a
+                  previous run.
+                </Hint>
+                <FormError id={lastTimestamp.errorId}>{lastTimestamp.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label required={false} htmlFor={externalId.id}>
+                  External ID
+                </Label>
+                <Input
+                  {...conform.input(externalId, { type: "text" })}
+                  placeholder="Optionally specify your own ID, e.g. user id"
+                  value={externalIdValue}
+                  onChange={(e) => setExternalIdValue(e.target.value)}
+                />
+                <Hint>
+                  Optionally, you can specify your own IDs (like a user ID) and then use it inside
+                  the run function of your task. This allows you to have per-user CRON tasks.{" "}
+                  <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
+                </Hint>
+                <FormError id={externalId.errorId}>{externalId.error}</FormError>
+              </InputGroup>
+            </Fieldset>
+          </div>
         </ResizablePanel>
         <ResizableHandle withHandle />
         <ResizablePanel order={2} minSize={20} defaultSize={40}>
@@ -351,14 +375,10 @@ function ScheduledTaskForm({
       </ResizablePanelGroup>
       <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed px-2">
         <div className="flex items-center gap-1">
-          <TaskPath
-            filePath={task.filePath}
-            functionName={`${task.exportName}()`}
-            className="text-xs"
-          />
-          <Paragraph variant="small">will run as a test in your</Paragraph>
+          <Paragraph variant="small" className="whitespace-nowrap">
+            This test will run in
+          </Paragraph>
           <EnvironmentLabel environment={task.environment} />
-          <Paragraph variant="small">environment:</Paragraph>
         </div>
         <Button
           type="submit"
