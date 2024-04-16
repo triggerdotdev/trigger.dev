@@ -49,7 +49,10 @@ const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
-const consoleInterceptor = new ConsoleInterceptor(otelLogger);
+const consoleInterceptor = new ConsoleInterceptor(
+  otelLogger,
+  __PROJECT_CONFIG__.enableConsoleLogging ?? false
+);
 
 const devRuntimeManager = new DevRuntimeManager();
 

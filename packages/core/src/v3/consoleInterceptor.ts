@@ -8,7 +8,10 @@ import { ClockTime } from "./clock/clock";
 import { clock } from "./clock-api";
 
 export class ConsoleInterceptor {
-  constructor(private readonly logger: logsAPI.Logger) {}
+  constructor(
+    private readonly logger: logsAPI.Logger,
+    private readonly sendToStdIO: boolean
+  ) {}
 
   // Intercept the console and send logs to the OpenTelemetry logger
   // during the execution of the callback
@@ -19,6 +22,7 @@ export class ConsoleInterceptor {
       info: console.info,
       warn: console.warn,
       error: console.error,
+      debug: console.debug,
     };
 
     // Override the console methods
@@ -26,6 +30,7 @@ export class ConsoleInterceptor {
     console.info = this.info.bind(this);
     console.warn = this.warn.bind(this);
     console.error = this.error.bind(this);
+    console.debug = this.debug.bind(this);
 
     try {
       return await callback();
@@ -35,7 +40,12 @@ export class ConsoleInterceptor {
       console.info = originalConsole.info;
       console.warn = originalConsole.warn;
       console.error = originalConsole.error;
+      console.debug = originalConsole.debug;
     }
+  }
+
+  debug(...args: unknown[]): void {
+    this.#handleLog(SeverityNumber.DEBUG, this.#getTimestampInHrTime(), "Debug", ...args);
   }
 
   log(...args: unknown[]): void {
@@ -61,6 +71,14 @@ export class ConsoleInterceptor {
     ...args: unknown[]
   ): void {
     const body = util.format(...args);
+
+    if (this.sendToStdIO) {
+      if (severityNumber === SeverityNumber.ERROR) {
+        process.stderr.write(body);
+      } else {
+        process.stdout.write(body);
+      }
+    }
 
     const parsed = tryParseJSON(body);
 

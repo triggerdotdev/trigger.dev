@@ -755,13 +755,17 @@ class TaskRunProcess {
 
   #handleLog(data: Buffer) {
     if (!this._currentExecution) {
+      logger.log(`${chalkGrey("○")} ${chalkGrey(prettyPrintDate(new Date()))} ${data.toString()}`);
+
       return;
     }
 
+    const runId = chalkRun(
+      `${this._currentExecution.run.id}.${this._currentExecution.attempt.number}`
+    );
+
     logger.log(
-      `[${this.metadata.version}][${this._currentExecution.run.id}.${
-        this._currentExecution.attempt.number
-      }] ${data.toString()}`
+      `${chalkGrey("○")} ${chalkGrey(prettyPrintDate(new Date()))} ${runId} ${data.toString()}`
     );
   }
 
@@ -771,15 +775,17 @@ class TaskRunProcess {
     }
 
     if (!this._currentExecution) {
-      logger.error(`[${this.metadata.version}] ${data.toString()}`);
+      logger.log(`${chalkError("○")} ${chalkGrey(prettyPrintDate(new Date()))} ${data.toString()}`);
 
       return;
     }
 
-    logger.error(
-      `[${this.metadata.version}][${this._currentExecution.run.id}.${
-        this._currentExecution.attempt.number
-      }] ${data.toString()}`
+    const runId = chalkRun(
+      `${this._currentExecution.run.id}.${this._currentExecution.attempt.number}`
+    );
+
+    logger.log(
+      `${chalkError("○")} ${chalkGrey(prettyPrintDate(new Date()))} ${runId} ${data.toString()}`
     );
   }
 
