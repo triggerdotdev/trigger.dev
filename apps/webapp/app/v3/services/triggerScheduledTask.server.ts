@@ -4,6 +4,7 @@ import { workerQueue } from "~/services/worker.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import { TriggerTaskService } from "./triggerTask.server";
 import { logger, stringifyIO } from "@trigger.dev/core/v3";
+import { nextScheduledTimestamps } from "../utils/calculateNextSchedule.server";
 
 export class TriggerScheduledTaskService extends BaseService {
   public async call(instanceId: string) {
@@ -59,7 +60,7 @@ export class TriggerScheduledTaskService extends BaseService {
         timestamp: instance.nextScheduledTimestamp,
         lastTimestamp: instance.lastScheduledTimestamp,
         externalId: instance.taskSchedule.externalId,
-        upcoming: registerNextService.nextScheduledTimestamps(
+        upcoming: nextScheduledTimestamps(
           instance.taskSchedule.cron,
           instance.nextScheduledTimestamp!,
           10
