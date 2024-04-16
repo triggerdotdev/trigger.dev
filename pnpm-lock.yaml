@@ -3105,6 +3105,9 @@ importers:
       ts-node:
         specifier: ^10.9.2
         version: 10.9.2(@types/node@20.4.2)(typescript@5.3.3)
+      tsconfig-paths:
+        specifier: ^4.2.0
+        version: 4.2.0
       typescript:
         specifier: ^5.3.0
         version: 5.3.3

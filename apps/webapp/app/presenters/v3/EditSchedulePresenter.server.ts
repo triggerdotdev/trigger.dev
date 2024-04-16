@@ -1,6 +1,5 @@
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
-import { env } from "~/env.server";
 
 type EditScheduleOptions = {
   userId: string;

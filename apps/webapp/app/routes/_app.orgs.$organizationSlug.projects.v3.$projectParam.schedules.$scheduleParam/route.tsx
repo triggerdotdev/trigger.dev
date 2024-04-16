@@ -27,6 +27,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { findProjectBySlug } from "~/models/project.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -43,10 +44,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, scheduleParam } = v3ScheduleParams.parse(params);
 
+  // Find the project scoped to the organization
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+
+  if (!project) {
+    return redirectWithErrorMessage("/", request, "Project not found");
+  }
+
   const presenter = new ViewSchedulePresenter();
   const result = await presenter.call({
     userId,
-    projectSlug: projectParam,
+    projectId: project.id,
     friendlyId: scheduleParam,
   });
 

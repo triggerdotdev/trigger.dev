@@ -5,7 +5,6 @@ import { getUsername } from "~/utils/username";
 import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 
 type RunListOptions = {
-  userId: string;
   projectSlug: string;
   //filters
   tasks?: string[];
@@ -35,7 +34,6 @@ export class RunListPresenter {
   }
 
   public async call({
-    userId,
     projectSlug,
     tasks,
     versions,

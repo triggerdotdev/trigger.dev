@@ -31,6 +31,8 @@ import { ScheduleFilters, ScheduleListFilters } from "~/components/runs/v3/Sched
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
+import { redirectWithErrorMessage } from "~/models/message.server";
+import { findProjectBySlug } from "~/models/project.server";
 import {
   ScheduleListItem,
   ScheduleListPresenter,
@@ -51,10 +53,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const s = Object.fromEntries(url.searchParams.entries());
   const filters = ScheduleListFilters.parse(s);
 
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+
+  if (!project) {
+    return redirectWithErrorMessage("/", request, "Project not found");
+  }
+
   const presenter = new ScheduleListPresenter();
   const list = await presenter.call({
     userId,
-    projectSlug: projectParam,
+    projectId: project.id,
     ...filters,
   });
 

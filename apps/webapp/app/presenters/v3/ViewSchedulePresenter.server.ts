@@ -1,20 +1,12 @@
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { parseExpression } from "cron-parser";
-import cronstrue from "cronstrue";
 import { PrismaClient, prisma } from "~/db.server";
-import { env } from "~/env.server";
+import { nextScheduledTimestamps } from "~/v3/utils/calculateNextSchedule.server";
 import { RunListPresenter } from "./RunListPresenter.server";
+import { ScheduleObject } from "@trigger.dev/core/v3";
 
 type ViewScheduleOptions = {
-  userId: string;
-  projectSlug: string;
+  userId?: string;
+  projectId: string;
   friendlyId: string;
-};
-
-type Environment = {
-  id: string;
-  type: RuntimeEnvironmentType;
-  userName?: string;
 };
 
 export class ViewSchedulePresenter {
@@ -24,33 +16,22 @@ export class ViewSchedulePresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ userId, projectSlug, friendlyId }: ViewScheduleOptions) {
-    // Find the project scoped to the organization
-    const project = await this.#prismaClient.project.findFirstOrThrow({
-      select: {
-        id: true,
-      },
-      where: {
-        slug: projectSlug,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
-      },
-    });
-
+  public async call({ userId, projectId, friendlyId }: ViewScheduleOptions) {
     const schedule = await this.#prismaClient.taskSchedule.findFirst({
       select: {
         id: true,
         friendlyId: true,
         cron: true,
+        cronDescription: true,
         externalId: true,
         deduplicationKey: true,
         userProvidedDeduplicationKey: true,
         taskIdentifier: true,
+        project: {
+          select: {
+            slug: true,
+          },
+        },
         instances: {
           select: {
             environment: {
@@ -76,6 +57,7 @@ export class ViewSchedulePresenter {
       },
       where: {
         friendlyId,
+        projectId,
       },
     });
 
@@ -83,19 +65,11 @@ export class ViewSchedulePresenter {
       return;
     }
 
-    const expression = parseExpression(schedule.cron, { utc: true });
-    const cronDescription = cronstrue.toString(schedule.cron);
-    const nextRuns = schedule.active
-      ? Array.from({ length: 5 }, (_, i) => {
-          const utc = expression.next().toDate();
-          return utc;
-        })
-      : [];
+    const nextRuns = schedule.active ? nextScheduledTimestamps(schedule.cron, new Date(), 5) : [];
 
     const runPresenter = new RunListPresenter(this.#prismaClient);
     const { runs } = await runPresenter.call({
-      userId,
-      projectSlug,
+      projectSlug: schedule.project.slug,
       scheduleId: schedule.id,
       pageSize: 5,
     });
@@ -103,7 +77,6 @@ export class ViewSchedulePresenter {
     return {
       schedule: {
         ...schedule,
-        cronDescription,
         nextRuns,
         runs,
         environments: schedule.instances.map((instance) => {
@@ -126,5 +99,26 @@ export class ViewSchedulePresenter {
         }),
       },
     };
+  }
+
+  public toJSONResponse(result: NonNullable<Awaited<ReturnType<ViewSchedulePresenter["call"]>>>) {
+    const response: ScheduleObject = {
+      id: result.schedule.friendlyId,
+      task: result.schedule.taskIdentifier,
+      active: result.schedule.active,
+      nextRun: result.schedule.nextRuns[0],
+      cron: result.schedule.cron,
+      cronDescription: result.schedule.cronDescription,
+      externalId: result.schedule.externalId ?? undefined,
+      deduplicationKey: result.schedule.userProvidedDeduplicationKey
+        ? result.schedule.deduplicationKey ?? undefined
+        : undefined,
+      environments: result.schedule.instances.map((instance) => ({
+        id: instance.environment.id,
+        type: instance.environment.type,
+      })),
+    };
+
+    return response;
   }
 }

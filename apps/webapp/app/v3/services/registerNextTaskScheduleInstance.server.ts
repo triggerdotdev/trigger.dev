@@ -1,4 +1,4 @@
-import { parseExpression } from "cron-parser";
+import { calculateNextScheduledTimestamp } from "../utils/calculateNextSchedule.server";
 import { BaseService } from "./baseService.server";
 import { TriggerScheduledTaskService } from "./triggerScheduledTask.server";
 
@@ -35,36 +35,4 @@ export class RegisterNextTaskScheduleInstanceService extends BaseService {
     // Enqueue triggering the task at the next scheduled timestamp
     await TriggerScheduledTaskService.enqueue(instanceId, nextScheduledTimestamp);
   }
-
-  public nextScheduledTimestamps(cron: string, lastScheduledTimestamp: Date, count: number = 1) {
-    const result: Array<Date> = [];
-    let nextScheduledTimestamp = lastScheduledTimestamp;
-
-    for (let i = 0; i < count; i++) {
-      nextScheduledTimestamp = calculateNextScheduledTimestamp(cron, nextScheduledTimestamp);
-
-      result.push(nextScheduledTimestamp);
-    }
-
-    return result;
-  }
-}
-
-function calculateNextScheduledTimestamp(schedule: string, lastScheduledTimestamp: Date) {
-  let nextStep = calculateNextStep(schedule, lastScheduledTimestamp);
-
-  while (nextStep.getTime() < Date.now()) {
-    nextStep = calculateNextStep(schedule, nextStep);
-  }
-
-  return nextStep;
-}
-
-function calculateNextStep(schedule: string, currentDate: Date) {
-  return parseExpression(schedule, {
-    currentDate,
-    utc: true,
-  })
-    .next()
-    .toDate();
 }

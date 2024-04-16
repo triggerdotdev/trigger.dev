@@ -1,15 +1,15 @@
 import { Prisma, TaskSchedule } from "@trigger.dev/database";
-import { generateFriendlyId } from "../friendlyIdentifiers";
-import { BaseService } from "./baseService.server";
-import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { nanoid } from "nanoid";
+import { ZodError } from "zod";
+import { $transaction, PrismaClientOrTransaction } from "~/db.server";
+import { generateFriendlyId } from "../friendlyIdentifiers";
+import { CronPattern, UpsertSchedule } from "../schedules";
+import { BaseService } from "./baseService.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
-import { UpsertSchedule, CronPattern } from "../schedules";
+import cronstrue from "cronstrue";
+import { calculateNextScheduledTimestamp } from "../utils/calculateNextSchedule.server";
 
-export type UpsertTaskScheduleServiceOptions = {
-  projectId: string;
-  userId: string;
-} & UpsertSchedule;
+export type UpsertTaskScheduleServiceOptions = UpsertSchedule;
 
 type InstanceWithEnvironment = Prisma.TaskScheduleInstanceGetPayload<{
   include: {
@@ -26,34 +26,36 @@ type InstanceWithEnvironment = Prisma.TaskScheduleInstanceGetPayload<{
 }>;
 
 export class UpsertTaskScheduleService extends BaseService {
-  public async call(options: UpsertTaskScheduleServiceOptions) {
-    const { projectId, userId, ...schedule } = options;
-
-    //first check that the user has access to the project
-    const project = await this._prisma.project.findFirst({
-      where: {
-        id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
-      },
-    });
-
-    if (!project) {
-      throw new Error("User does not have access to the project");
-    }
-
+  public async call(projectId: string, schedule: UpsertTaskScheduleServiceOptions) {
     //validate the cron expression
     try {
       CronPattern.parse(schedule.cron);
     } catch (e) {
+      if (e instanceof ZodError) {
+        throw new Error(`Invalid cron expression: ${e.issues[0].message}`);
+      }
+
       throw new Error(
         `Invalid cron expression: ${e instanceof Error ? e.message : JSON.stringify(e)}`
       );
+    }
+
+    const task = await this._prisma.backgroundWorkerTask.findFirst({
+      where: {
+        slug: schedule.taskIdentifier,
+        projectId: projectId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    if (!task) {
+      throw new Error(`Task with identifier ${schedule.taskIdentifier} not found in project.`);
+    }
+
+    if (task.triggerSource !== "SCHEDULED") {
+      throw new Error(`Task with identifier ${schedule.taskIdentifier} is not a scheduled task.`);
     }
 
     const result = await $transaction(this._prisma, async (tx) => {
@@ -78,9 +80,9 @@ export class UpsertTaskScheduleService extends BaseService {
           });
 
       if (existingSchedule) {
-        return await this.#updateExistingSchedule(tx, existingSchedule, options, projectId);
+        return await this.#updateExistingSchedule(tx, existingSchedule, schedule, projectId);
       } else {
-        return await this.#createNewSchedule(tx, options, projectId, deduplicationKey);
+        return await this.#createNewSchedule(tx, schedule, projectId, deduplicationKey);
       }
     });
 
@@ -108,6 +110,7 @@ export class UpsertTaskScheduleService extends BaseService {
         userProvidedDeduplicationKey:
           options.deduplicationKey !== undefined && options.deduplicationKey !== "",
         cron: options.cron,
+        cronDescription: cronstrue.toString(options.cron),
         externalId: options.externalId,
       },
     });
@@ -156,6 +159,7 @@ export class UpsertTaskScheduleService extends BaseService {
       },
       data: {
         cron: options.cron,
+        cronDescription: cronstrue.toString(options.cron),
         externalId: options.externalId,
       },
     });
@@ -257,11 +261,14 @@ export class UpsertTaskScheduleService extends BaseService {
     return {
       id: taskSchedule.friendlyId,
       task: taskSchedule.taskIdentifier,
+      active: taskSchedule.active,
+      externalId: taskSchedule.externalId,
       deduplicationKey: taskSchedule.userProvidedDeduplicationKey
         ? taskSchedule.deduplicationKey
         : undefined,
       cron: taskSchedule.cron,
-      externalId: taskSchedule.externalId,
+      cronDescription: taskSchedule.cronDescription,
+      nextRun: calculateNextScheduledTimestamp(taskSchedule.cron),
       environments: instances.map((instance) => ({
         id: instance.environment.id,
         shortcode: instance.environment.shortcode,

@@ -114,10 +114,6 @@ export async function createBackgroundTasks(
   prisma: PrismaClientOrTransaction
 ) {
   for (const task of tasks) {
-    logger.debug("Creating background worker task", {
-      task,
-    });
-
     try {
       await prisma.backgroundWorkerTask.create({
         data: {

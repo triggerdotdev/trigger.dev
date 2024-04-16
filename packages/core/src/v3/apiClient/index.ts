@@ -1,18 +1,23 @@
 import { context, propagation } from "@opentelemetry/api";
 import { ZodFetchOptions, zodfetch } from "../../zodfetch";
-import { taskContextManager } from "../tasks/taskContextManager";
-import { SafeAsyncLocalStorage } from "../utils/safeAsyncLocalStorage";
-import { getEnvVar } from "../utils/getEnv";
 import {
-  TriggerTaskRequestBody,
-  TriggerTaskResponse,
   BatchTriggerTaskRequestBody,
   BatchTriggerTaskResponse,
-  CreateUploadPayloadUrlResponseBody,
-  ReplayRunResponse,
   CanceledRunResponse,
+  CreateScheduleOptions,
+  CreateUploadPayloadUrlResponseBody,
+  DeletedScheduleObject,
+  ListScheduleOptions,
+  ListSchedulesResult,
+  ReplayRunResponse,
+  ScheduleObject,
+  TriggerTaskRequestBody,
+  TriggerTaskResponse,
+  UpdateScheduleOptions,
 } from "../schemas";
-import { z } from "zod";
+import { taskContextManager } from "../tasks/taskContextManager";
+import { getEnvVar } from "../utils/getEnv";
+import { SafeAsyncLocalStorage } from "../utils/safeAsyncLocalStorage";
 
 export type TriggerOptions = {
   spanParentAsLink?: boolean;
@@ -113,6 +118,71 @@ export class ApiClient {
       },
       zodFetchOptions
     );
+  }
+
+  createSchedule(options: CreateScheduleOptions) {
+    return zodfetch(ScheduleObject, `${this.baseUrl}/api/v1/schedules`, {
+      method: "POST",
+      headers: this.#getHeaders(false),
+      body: JSON.stringify(options),
+    });
+  }
+
+  listSchedules(options?: ListScheduleOptions) {
+    const searchParams = new URLSearchParams();
+
+    if (options?.page) {
+      searchParams.append("page", options.page.toString());
+    }
+
+    if (options?.perPage) {
+      searchParams.append("perPage", options.perPage.toString());
+    }
+
+    return zodfetch(
+      ListSchedulesResult,
+      `${this.baseUrl}/api/v1/schedules${searchParams.size > 0 ? `?${searchParams}` : ""}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      }
+    );
+  }
+
+  retrieveSchedule(scheduleId: string) {
+    return zodfetch(ScheduleObject, `${this.baseUrl}/api/v1/schedules/${scheduleId}`, {
+      method: "GET",
+      headers: this.#getHeaders(false),
+    });
+  }
+
+  updateSchedule(scheduleId: string, options: UpdateScheduleOptions) {
+    return zodfetch(ScheduleObject, `${this.baseUrl}/api/v1/schedules/${scheduleId}`, {
+      method: "PUT",
+      headers: this.#getHeaders(false),
+      body: JSON.stringify(options),
+    });
+  }
+
+  deactivateSchedule(scheduleId: string) {
+    return zodfetch(ScheduleObject, `${this.baseUrl}/api/v1/schedules/${scheduleId}/deactivate`, {
+      method: "POST",
+      headers: this.#getHeaders(false),
+    });
+  }
+
+  activateSchedule(scheduleId: string) {
+    return zodfetch(ScheduleObject, `${this.baseUrl}/api/v1/schedules/${scheduleId}/activate`, {
+      method: "POST",
+      headers: this.#getHeaders(false),
+    });
+  }
+
+  deleteSchedule(scheduleId: string) {
+    return zodfetch(DeletedScheduleObject, `${this.baseUrl}/api/v1/schedules/${scheduleId}`, {
+      method: "DELETE",
+      headers: this.#getHeaders(false),
+    });
   }
 
   #getHeaders(spanParentAsLink: boolean) {

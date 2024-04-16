@@ -4,10 +4,11 @@ import cronstrue from "cronstrue";
 import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
+import { calculateNextScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
 
 type ScheduleListOptions = {
-  userId: string;
-  projectSlug: string;
+  projectId: string;
+  userId?: string;
   pageSize?: number;
 } & ScheduleListFilters;
 
@@ -43,7 +44,7 @@ export class ScheduleListPresenter {
 
   public async call({
     userId,
-    projectSlug,
+    projectId,
     tasks,
     environments,
     search,
@@ -77,7 +78,7 @@ export class ScheduleListPresenter {
         },
       },
       where: {
-        slug: projectSlug,
+        id: projectId,
       },
     });
 
@@ -142,6 +143,7 @@ export class ScheduleListPresenter {
         deduplicationKey: true,
         userProvidedDeduplicationKey: true,
         cron: true,
+        cronDescription: true,
         externalId: true,
         instances: {
           select: {
@@ -209,8 +211,6 @@ export class ScheduleListPresenter {
     ON t."scheduleId" = r."scheduleId" AND t."createdAt" = r."LatestRun";`;
 
     const schedules = rawSchedules.map((schedule) => {
-      const nextRun = parseExpression(schedule.cron).next().toISOString();
-      const cronDescription = cronstrue.toString(schedule.cron);
       const latestRun = latestRuns.find((r) => r.scheduleId === schedule.id);
 
       return {
@@ -220,11 +220,11 @@ export class ScheduleListPresenter {
         deduplicationKey: schedule.deduplicationKey,
         userProvidedDeduplicationKey: schedule.userProvidedDeduplicationKey,
         cron: schedule.cron,
-        cronDescription,
+        cronDescription: schedule.cronDescription,
         active: schedule.active,
         externalId: schedule.externalId,
-        nextRun: new Date(nextRun),
         lastRun: latestRun?.createdAt,
+        nextRun: calculateNextScheduledTimestamp(schedule.cron),
         environments: schedule.instances.map((instance) => {
           const environment = project.environments.find((env) => env.id === instance.environmentId);
           if (!environment) {
@@ -248,6 +248,7 @@ export class ScheduleListPresenter {
     return {
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
+      totalCount: totalCount,
       schedules,
       possibleTasks: possibleTasks.map((task) => task.slug),
       possibleEnvironments: project.environments.map((environment) => {

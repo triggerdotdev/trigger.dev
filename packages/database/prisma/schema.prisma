@@ -2145,9 +2145,10 @@ model TaskSchedule {
   userProvidedDeduplicationKey Boolean @default(false)
 
   ///the CRON pattern
-  cron       String
+  cron            String
+  cronDescription String  @default("")
   ///Can be provided by the user then accessed inside a run
-  externalId String?
+  externalId      String?
 
   ///Instances of the schedule that are active
   instances TaskScheduleInstance[]

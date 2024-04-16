@@ -46,8 +46,8 @@ import { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuilder";
-import { UpsertSchedule, CronPattern } from "~/v3/schedules";
-import { UpsertTaskScheduleService } from "~/v3/services/createTaskSchedule.server";
+import { CronPattern, UpsertSchedule } from "~/v3/schedules";
+import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
 
 const cronFormat = `*    *    *    *    *
@@ -71,8 +71,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   try {
+    //first check that the user has access to the project
     const project = await prisma.project.findUnique({
-      where: { slug: projectParam },
+      where: {
+        slug: projectParam,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
+      },
       select: { id: true },
     });
 
@@ -81,11 +91,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
 
     const createSchedule = new UpsertTaskScheduleService();
-    const result = await createSchedule.call({
-      projectId: project.id,
-      userId,
-      ...submission.value,
-    });
+    const result = await createSchedule.call(project.id, submission.value);
 
     return redirectWithSuccessMessage(
       v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }),
@@ -290,7 +296,10 @@ export function UpsertScheduleForm({
                   />
                 ))}
               </div>
-              <Hint>Select all the environments where you want this schedule to run.</Hint>
+              <Hint>
+                Select all the environments where you want this schedule to run. Note that scheduled
+                tasks in dev environments will only run while you are connected with the dev CLI
+              </Hint>
               <FormError id={environments.errorId}>{environments.error}</FormError>
             </InputGroup>
             <InputGroup>
