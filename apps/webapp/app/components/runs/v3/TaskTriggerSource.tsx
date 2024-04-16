@@ -1,18 +1,25 @@
 import { ClockIcon } from "@heroicons/react/20/solid";
 import { TaskTriggerSource } from "@trigger.dev/database";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { cn } from "~/utils/cn";
 
-export function TaskTriggerSourceIcon({ source }: { source: TaskTriggerSource }) {
+export function TaskTriggerSourceIcon({
+  source,
+  className,
+}: {
+  source: TaskTriggerSource;
+  className?: string;
+}) {
   switch (source) {
     case "STANDARD": {
       return (
-        <div className="grid size-4 place-items-center">
-          <TaskIcon className="size-3.5 text-blue-500" />
+        <div className={cn("grid size-4 place-items-center text-blue-500", className)}>
+          <TaskIcon className="size-[87.5%]" />
         </div>
       );
     }
     case "SCHEDULED": {
-      return <ClockIcon className="size-4 text-sun-500" />;
+      return <ClockIcon className={cn("size-4 text-sun-500", className)} />;
     }
   }
 }
