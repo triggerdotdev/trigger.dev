@@ -57,8 +57,6 @@ export default function Page() {
   const project = useProject();
   const user = useUser();
 
-  console.log(list);
-
   return (
     <>
       <NavBar>
