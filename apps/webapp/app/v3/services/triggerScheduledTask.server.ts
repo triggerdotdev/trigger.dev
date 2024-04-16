@@ -76,7 +76,8 @@ export class TriggerScheduledTaskService extends BaseService {
       const run = await triggerTask.call(
         instance.taskSchedule.taskIdentifier,
         instance.environment,
-        { payload: payloadPacket.data, options: { payloadType: payloadPacket.dataType } }
+        { payload: payloadPacket.data, options: { payloadType: payloadPacket.dataType } },
+        { customIcon: "scheduled" }
       );
 
       if (!run) {

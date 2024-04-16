@@ -20,6 +20,7 @@ export type TriggerTaskServiceOptions = {
   traceContext?: Record<string, string | undefined>;
   spanParentAsLink?: boolean;
   batchId?: string;
+  customIcon?: string;
 };
 
 export class TriggerTaskService extends BaseService {
@@ -61,7 +62,7 @@ export class TriggerTaskService extends BaseService {
               [SemanticInternalAttributes.SHOW_ACTIONS]: true,
             },
             style: {
-              icon: "task",
+              icon: options.customIcon ?? "task",
             },
             runIsTest: body.options?.test ?? false,
             batchId: options.batchId,
