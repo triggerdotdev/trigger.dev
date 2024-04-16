@@ -184,7 +184,7 @@ function SchedulesTable({
           <TableHeaderCell>External ID</TableHeaderCell>
           <TableHeaderCell>Deduplication key</TableHeaderCell>
           <TableHeaderCell>Next run (UTC)</TableHeaderCell>
-          {/* <TableHeaderCell>Last run (UTC)</TableHeaderCell> */}
+          <TableHeaderCell>Last run (UTC)</TableHeaderCell>
           <TableHeaderCell>Environments</TableHeaderCell>
           <TableHeaderCell>Enabled</TableHeaderCell>
           <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
@@ -206,14 +206,16 @@ function SchedulesTable({
                 <TableCell to={path}>{schedule.taskIdentifier}</TableCell>
                 <TableCell to={path}>{schedule.cron}</TableCell>
                 <TableCell to={path}>{schedule.cronDescription}</TableCell>
-                <TableCell to={path}>{schedule.externalId}</TableCell>
+                <TableCell to={path}>{schedule.externalId ? schedule.externalId : "–"}</TableCell>
                 <TableCell to={path}>
-                  {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : null}
+                  {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
                 </TableCell>
                 <TableCell to={path}>
-                  <DateTime date={schedule.nextRun} />
+                  <DateTime date={schedule.nextRun} timeZone="UTC" />
                 </TableCell>
-                {/* <TableCell to={path}>Implement</TableCell> */}
+                <TableCell to={path}>
+                  {schedule.lastRun ? <DateTime date={schedule.lastRun} timeZone="UTC" /> : "–"}
+                </TableCell>
                 <TableCell to={path}>
                   <div className="flex gap-1">
                     {schedule.environments.map((environment) => (

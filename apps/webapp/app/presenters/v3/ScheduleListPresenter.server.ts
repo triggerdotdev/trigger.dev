@@ -24,6 +24,7 @@ export type ScheduleListItem = {
   cronDescription: string;
   externalId: string | null;
   nextRun: Date;
+  lastRun: Date | undefined;
   active: boolean;
   environments: {
     id: string;
@@ -195,9 +196,23 @@ export class ScheduleListPresenter {
       skip: (page - 1) * pageSize,
     });
 
+    const latestRuns = await this.#prismaClient.$queryRaw<
+      { scheduleId: string; createdAt: Date }[]
+    >`
+    SELECT t."scheduleId", t."createdAt"
+    FROM (
+      SELECT "scheduleId", MAX("createdAt") as "LatestRun"
+      FROM "TaskRun"
+      WHERE "scheduleId" IN (${Prisma.join(rawSchedules.map((s) => s.id))})
+      GROUP BY "scheduleId"
+    ) r
+    JOIN "TaskRun" t
+    ON t."scheduleId" = r."scheduleId" AND t."createdAt" = r."LatestRun";`;
+
     const schedules = rawSchedules.map((schedule) => {
       const nextRun = parseExpression(schedule.cron).next().toISOString();
       const cronDescription = cronstrue.toString(schedule.cron);
+      const latestRun = latestRuns.find((r) => r.scheduleId === schedule.id);
 
       return {
         id: schedule.id,
@@ -210,6 +225,7 @@ export class ScheduleListPresenter {
         active: schedule.active,
         externalId: schedule.externalId,
         nextRun: new Date(nextRun),
+        lastRun: latestRun?.createdAt,
         environments: schedule.instances.map((instance) => {
           const environment = project.environments.find((env) => env.id === instance.environmentId);
           if (!environment) {
