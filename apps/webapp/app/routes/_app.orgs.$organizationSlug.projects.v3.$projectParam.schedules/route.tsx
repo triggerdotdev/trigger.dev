@@ -1,6 +1,6 @@
 import { PlusIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
+import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
@@ -22,7 +22,6 @@ import {
   TableBlankRow,
   TableBody,
   TableCell,
-  TableCellChevron,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -32,7 +31,6 @@ import { ScheduleFilters, ScheduleListFilters } from "~/components/runs/v3/Sched
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
 import {
   ScheduleListItem,
   ScheduleListPresenter,
@@ -201,23 +199,34 @@ function SchedulesTable({
           schedules.map((schedule) => {
             const path = `${v3SchedulePath(organization, project, schedule)}${location.search}`;
             const isSelected = scheduleParam === schedule.friendlyId;
+            const cellClass = schedule.active ? "" : "opacity-50";
             return (
               <TableRow key={schedule.id} className={isSelected ? "bg-grid-dimmed" : undefined}>
-                <TableCell to={path}>{schedule.friendlyId}</TableCell>
-                <TableCell to={path}>{schedule.taskIdentifier}</TableCell>
-                <TableCell to={path}>{schedule.cron}</TableCell>
-                <TableCell to={path}>{schedule.cronDescription}</TableCell>
-                <TableCell to={path}>{schedule.externalId ? schedule.externalId : "–"}</TableCell>
-                <TableCell to={path}>
+                <TableCell to={path} className={cellClass}>
+                  {schedule.friendlyId}
+                </TableCell>
+                <TableCell to={path} className={cellClass}>
+                  {schedule.taskIdentifier}
+                </TableCell>
+                <TableCell to={path} className={cellClass}>
+                  {schedule.cron}
+                </TableCell>
+                <TableCell to={path} className={cellClass}>
+                  {schedule.cronDescription}
+                </TableCell>
+                <TableCell to={path} className={cellClass}>
+                  {schedule.externalId ? schedule.externalId : "–"}
+                </TableCell>
+                <TableCell to={path} className={cellClass}>
                   {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
                 </TableCell>
-                <TableCell to={path}>
+                <TableCell to={path} className={cellClass}>
                   <DateTime date={schedule.nextRun} />
                 </TableCell>
-                <TableCell to={path}>
+                <TableCell to={path} className={cellClass}>
                   {schedule.lastRun ? <DateTime date={schedule.lastRun} /> : "–"}
                 </TableCell>
-                <TableCell to={path}>
+                <TableCell to={path} className={cellClass}>
                   <div className="flex gap-1">
                     {schedule.environments.map((environment) => (
                       <EnvironmentLabel
