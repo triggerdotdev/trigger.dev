@@ -1,7 +1,9 @@
 import { parse } from "@conform-to/zod";
 import { BoltIcon, BoltSlashIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { DialogDescription } from "@radix-ui/react-dialog";
 import { Form, useLocation } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { token } from "morgan";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
@@ -9,6 +11,13 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
@@ -281,19 +290,40 @@ export default function Page() {
               {schedule.active ? "Disable" : "Enable"}
             </Button>
           </Form>
-          <Form method="post">
-            <Button
-              type="submit"
-              variant="minimal/medium"
-              LeadingIcon={TrashIcon}
-              leadingIconClassName="text-error"
-              className="text-error"
-              name="action"
-              value="delete"
-            >
-              Delete
-            </Button>
-          </Form>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                type="submit"
+                variant="minimal/medium"
+                LeadingIcon={TrashIcon}
+                leadingIconClassName="text-error"
+                className="text-error"
+                name="action"
+                value="delete"
+              >
+                Delete
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>Delete schedule</DialogHeader>
+              <DialogDescription>
+                Are you sure you want to delete this schedule? This can't be reversed.
+              </DialogDescription>
+              <DialogFooter>
+                <Form method="post">
+                  <Button
+                    type="submit"
+                    variant="danger/small"
+                    LeadingIcon={TrashIcon}
+                    name="action"
+                    value="delete"
+                  >
+                    Delete
+                  </Button>
+                </Form>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
         <div className="flex items-center gap-4">
           <LinkButton
