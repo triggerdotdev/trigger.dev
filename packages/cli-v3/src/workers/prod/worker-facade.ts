@@ -213,7 +213,7 @@ const zodIpc = new ZodIpcConnection({
               id: _execution.attempt.id,
               error: {
                 type: "INTERNAL_ERROR",
-                code: TaskRunErrorCodes.TASK_EXECUTION_ABORTED,
+                code: TaskRunErrorCodes.GRACEFUL_EXIT_TIMEOUT,
                 message: "Worker process killed while attempt in progress.",
               },
             },
