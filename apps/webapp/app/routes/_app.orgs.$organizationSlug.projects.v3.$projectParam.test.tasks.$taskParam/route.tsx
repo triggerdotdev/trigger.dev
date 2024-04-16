@@ -216,7 +216,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
 function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: ScheduledRun[] }) {
   const lastSubmission = useActionData();
   const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
-  const [timestampValue, setTimestampValue] = useState<Date | undefined>(new Date());
+  const [timestampValue, setTimestampValue] = useState<Date | undefined>();
   const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>();
   const [externalIdValue, setExternalIdValue] = useState<string | undefined>();
 
@@ -255,13 +255,11 @@ function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: Sched
             <Fieldset>
               <InputGroup>
                 <Label htmlFor={timestamp.id}>Timestamp UTC</Label>
-                {timestampValue ? (
-                  <input
-                    type="hidden"
-                    {...conform.input(timestamp, { type: "hidden" })}
-                    value={timestampValue.toISOString()}
-                  />
-                ) : null}
+                <input
+                  type="hidden"
+                  {...conform.input(timestamp, { type: "hidden" })}
+                  value={timestampValue?.toISOString() ?? " "}
+                />
                 <DateField
                   label="Timestamp UTC"
                   defaultValue={timestampValue}
@@ -281,13 +279,11 @@ function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: Sched
                 <Label htmlFor={lastTimestamp.id} required={false}>
                   Last timestamp UTC
                 </Label>
-                {lastTimestampValue ? (
-                  <input
-                    type="hidden"
-                    {...conform.input(lastTimestamp, { type: "hidden" })}
-                    value={lastTimestampValue.toISOString()}
-                  />
-                ) : null}
+                <input
+                  type="hidden"
+                  {...conform.input(lastTimestamp, { type: "hidden" })}
+                  value={lastTimestampValue?.toISOString() ?? " "}
+                />
                 <DateField
                   label="Last timestamp UTC"
                   defaultValue={lastTimestampValue}
@@ -311,7 +307,7 @@ function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: Sched
                 <Input
                   {...conform.input(externalId, { type: "text" })}
                   placeholder="Optionally specify your own ID, e.g. user id"
-                  value={externalIdValue}
+                  value={externalIdValue ?? ""}
                   onChange={(e) => setExternalIdValue(e.target.value)}
                 />
                 <Hint>
@@ -330,7 +326,12 @@ function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: Sched
             runs={runs}
             selectedId={selectedCodeSampleId}
             onSelected={(id) => {
+              const run = runs.find((r) => r.id === id);
+              if (!run) return;
               setSelectedCodeSampleId(id);
+              setTimestampValue(run.payload.timestamp);
+              setLastTimestampValue(run.payload.lastTimestamp);
+              setExternalIdValue(run.payload.externalId);
             }}
           />
         </ResizablePanel>
