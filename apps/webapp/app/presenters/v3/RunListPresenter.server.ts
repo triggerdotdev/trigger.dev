@@ -52,7 +52,9 @@ export class RunListPresenter {
       tasks !== undefined ||
       versions !== undefined ||
       hasStatusFilters ||
-      environments !== undefined;
+      environments !== undefined ||
+      from !== undefined ||
+      to !== undefined;
 
     // Find the project scoped to the organization
     const project = await this.#prismaClient.project.findFirstOrThrow({

@@ -34,7 +34,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const presenter = new RunListPresenter();
   const list = await presenter.call({
-    userId,
     projectSlug: projectParam,
     tasks,
     versions,
@@ -57,6 +56,8 @@ export default function Page() {
   const isLoading = navigation.state !== "idle";
   const project = useProject();
   const user = useUser();
+
+  console.log(list);
 
   return (
     <>
