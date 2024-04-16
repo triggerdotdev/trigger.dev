@@ -1,11 +1,11 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BeakerIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useNavigation, useSubmit } from "@remix-run/react";
+import { Await, Form, useActionData, useSubmit } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { useCallback, useRef, useState } from "react";
+import { prettyPrintPacket } from "@trigger.dev/core/v3";
+import { Suspense, useCallback, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
@@ -26,6 +26,7 @@ import { TestTask, TestTaskPresenter } from "~/presenters/v3/TestTaskPresenter.s
 import { requireUserId } from "~/services/session.server";
 import { v3RunPath, v3TaskParamsSchema } from "~/utils/pathBuilder";
 import { TestTaskService } from "~/v3/services/testTask.server";
+import { TestTaskData } from "~/v3/testTask";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -44,39 +45,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-const schema = z.object({
-  triggerSource: z.enum(["STANDARD", "SCHEDULED"]),
-  payload: z.string().transform((payload, ctx) => {
-    try {
-      const data = JSON.parse(payload);
-      return data as any;
-    } catch (e) {
-      console.log("parsing error", e);
-
-      if (e instanceof Error) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: e.message,
-        });
-      } else {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "This is invalid JSON",
-        });
-      }
-    }
-  }),
-  taskIdentifier: z.string(),
-  environmentId: z.string(),
-  accountId: z.string().optional(),
-});
-
 export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, taskParam } = v3TaskParamsSchema.parse(params);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+  const submission = parse(formData, { schema: TestTaskData });
 
   if (!submission.value) {
     return json(submission);
@@ -99,25 +73,39 @@ export const action: ActionFunction = async ({ request, params }) => {
   );
 };
 
-const startingJson = "{\n\n}";
-
 export default function Page() {
   const { task, runs } = useTypedLoaderData<typeof loader>();
 
   switch (task.triggerSource) {
     case "STANDARD":
-      return <StandardTaskForm task={task} runs={runs} />;
+      const prettyRuns = Promise.all(
+        runs.map(async (run) => ({
+          ...run,
+          payload: await prettyPrintPacket(run.payload, run.payloadType),
+        }))
+      );
+
+      return (
+        <Suspense fallback={<></>}>
+          <Await resolve={prettyRuns}>
+            {(data) => <StandardTaskForm task={task} runs={data} />}
+          </Await>
+        </Suspense>
+      );
     case "SCHEDULED":
+      //todo use scheduleTaskPayload schema
       return <ScheduledTaskForm task={task} runs={runs} />;
   }
 }
+
+const startingJson = "{\n\n}";
 
 function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTask["runs"] }) {
   //form submission
   const submit = useSubmit();
   const lastSubmission = useActionData();
 
-  //examples
+  //recent runs
   const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
   const selectedCodeSample = runs.find((r) => r.id === selectedCodeSampleId)?.payload;
 
@@ -152,7 +140,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTa
     // TODO: type this
     lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parse(formData, { schema: TestTaskData });
     },
   });
 
@@ -193,41 +181,14 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTa
         </ResizablePanel>
         <ResizableHandle withHandle />
         <ResizablePanel order={2} minSize={20} defaultSize={40}>
-          <div className="flex flex-col gap-2 pl-4">
-            <div className="flex h-10 items-center border-b border-grid-dimmed">
-              <Header2>Recent payloads</Header2>
-            </div>
-            {runs.length === 0 ? (
-              <Callout variant="info">
-                Recent payloads will show here once you've completed a Run.
-              </Callout>
-            ) : (
-              <div className="flex flex-col divide-y divide-charcoal-850">
-                {runs.map((run) => (
-                  <button
-                    key={run.id}
-                    type="button"
-                    onClick={(e) => {
-                      setCode(run.payload ?? "");
-                      setSelectedCodeSampleId(run.id);
-                    }}
-                    className="flex items-center gap-2 px-2 py-2"
-                  >
-                    <RadioButtonCircle checked={run.id === selectedCodeSampleId} />
-                    <div className="flex flex-col items-start">
-                      <Paragraph variant="small">
-                        <DateTime date={run.createdAt} />
-                      </Paragraph>
-                      <div className="flex items-center gap-1 text-xs text-text-dimmed">
-                        <div>Run #{run.number}</div>
-                        <TaskRunStatusCombo status={run.status} />
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <RecentPayloads
+            runs={runs}
+            selectedId={selectedCodeSampleId}
+            onSelected={(id, payload) => {
+              setCode(payload);
+              setSelectedCodeSampleId(id);
+            }}
+          />
         </ResizablePanel>
       </ResizablePanelGroup>
       <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed px-2">
@@ -255,5 +216,101 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTa
 }
 
 function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTask["runs"] }) {
-  return <></>;
+  const lastSubmission = useActionData();
+  const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
+
+  const [form, { environmentId, timestamp, lastTimestamp, externalId }] = useForm({
+    id: "test-task-scheduled",
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
+    onValidate({ formData }) {
+      return parse(formData, { schema: TestTaskData });
+    },
+  });
+
+  return (
+    <Form className="grid h-full max-h-full grid-rows-[1fr_2.5rem]" method="post" {...form.props}>
+      <input type="hidden" name="triggerSource" value={task.triggerSource} />
+      <ResizablePanelGroup direction="horizontal">
+        <ResizablePanel order={1} minSize={30} defaultSize={60}></ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel order={2} minSize={20} defaultSize={40}>
+          <RecentPayloads
+            runs={runs}
+            selectedId={selectedCodeSampleId}
+            onSelected={(id, payload) => {
+              setSelectedCodeSampleId(id);
+            }}
+          />
+        </ResizablePanel>
+      </ResizablePanelGroup>
+      <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed px-2">
+        <div className="flex items-center gap-1">
+          <TaskPath
+            filePath={task.filePath}
+            functionName={`${task.exportName}()`}
+            className="text-xs"
+          />
+          <Paragraph variant="small">will run as a test in your</Paragraph>
+          <EnvironmentLabel environment={task.environment} />
+          <Paragraph variant="small">environment:</Paragraph>
+        </div>
+        <Button
+          type="submit"
+          variant="primary/small"
+          LeadingIcon={BeakerIcon}
+          shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
+        >
+          Run test
+        </Button>
+      </div>
+    </Form>
+  );
+}
+
+function RecentPayloads({
+  runs,
+  selectedId,
+  onSelected,
+}: {
+  runs: TestTask["runs"];
+  selectedId?: string;
+  onSelected: (id: string, payload: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 pl-4">
+      <div className="flex h-10 items-center border-b border-grid-dimmed">
+        <Header2>Recent payloads</Header2>
+      </div>
+      {runs.length === 0 ? (
+        <Callout variant="info">
+          Recent payloads will show here once you've completed a Run.
+        </Callout>
+      ) : (
+        <div className="flex flex-col divide-y divide-charcoal-850">
+          {runs.map((run) => (
+            <button
+              key={run.id}
+              type="button"
+              onClick={(e) => {
+                onSelected(run.id, run.payload ?? "");
+              }}
+              className="flex items-center gap-2 px-2 py-2"
+            >
+              <RadioButtonCircle checked={run.id === selectedId} />
+              <div className="flex flex-col items-start">
+                <Paragraph variant="small">
+                  <DateTime date={run.createdAt} />
+                </Paragraph>
+                <div className="flex items-center gap-1 text-xs text-text-dimmed">
+                  <div>Run #{run.number}</div>
+                  <TaskRunStatusCombo status={run.status} />
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

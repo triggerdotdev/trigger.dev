@@ -89,7 +89,7 @@ export class TestTaskPresenter {
     FROM 
         taskruns AS taskr
     WHERE
-        taskr."payloadType" = 'application/json'
+        taskr."payloadType" = 'application/json' OR taskr."payloadType" = 'application/super+json'
     ORDER BY
         taskr."createdAt" DESC;`;
 
@@ -109,11 +109,6 @@ export class TestTaskPresenter {
         },
       },
       runs: latestRuns.map((r) => {
-        //we need to format the code on the server, because we detect if the sample has been edited by comparing the contents
-        try {
-          r.payload = JSON.stringify(JSON.parse(r.payload ?? ""), null, 2);
-        } catch (e) {}
-
         return { ...r, number: Number(r.number) };
       }),
     };
