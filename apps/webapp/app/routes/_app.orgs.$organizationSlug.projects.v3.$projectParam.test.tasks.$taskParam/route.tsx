@@ -22,7 +22,7 @@ import {
 import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { TestTaskPresenter } from "~/presenters/v3/TestTaskPresenter.server";
+import { TestTask, TestTaskPresenter } from "~/presenters/v3/TestTaskPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { v3RunPath, v3TaskParamsSchema } from "~/utils/pathBuilder";
 import { TestTaskService } from "~/v3/services/testTask.server";
@@ -45,6 +45,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 const schema = z.object({
+  triggerSource: z.enum(["STANDARD", "SCHEDULED"]),
   payload: z.string().transform((payload, ctx) => {
     try {
       const data = JSON.parse(payload);
@@ -102,8 +103,16 @@ const startingJson = "{\n\n}";
 
 export default function Page() {
   const { task, runs } = useTypedLoaderData<typeof loader>();
-  const navigation = useNavigation();
 
+  switch (task.triggerSource) {
+    case "STANDARD":
+      return <StandardTaskForm task={task} runs={runs} />;
+    case "SCHEDULED":
+      return <ScheduledTaskForm task={task} runs={runs} />;
+  }
+}
+
+function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTask["runs"] }) {
   //form submission
   const submit = useSubmit();
   const lastSubmission = useActionData();
@@ -123,6 +132,7 @@ export default function Page() {
     (e: React.FormEvent<HTMLFormElement>) => {
       submit(
         {
+          triggerSource: task.triggerSource,
           payload: currentJson.current,
           taskIdentifier: task.taskIdentifier,
           environmentId: task.environment.id,
@@ -153,6 +163,7 @@ export default function Page() {
       {...form.props}
       onSubmit={(e) => submitForm(e)}
     >
+      <input type="hidden" name="triggerSource" value={task.triggerSource} />
       <ResizablePanelGroup direction="horizontal">
         <ResizablePanel order={1} minSize={30} defaultSize={60}>
           <div className="h-full bg-charcoal-900">
@@ -241,4 +252,8 @@ export default function Page() {
       </div>
     </Form>
   );
+}
+
+function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTask["runs"] }) {
+  return <></>;
 }

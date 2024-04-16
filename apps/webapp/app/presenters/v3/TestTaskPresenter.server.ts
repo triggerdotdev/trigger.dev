@@ -24,6 +24,7 @@ export class TestTaskPresenter {
         filePath: true,
         exportName: true,
         slug: true,
+        triggerSource: true,
         runtimeEnvironment: {
           select: {
             id: true,
@@ -99,6 +100,7 @@ export class TestTaskPresenter {
         filePath: task.filePath,
         exportName: task.exportName,
         friendlyId: taskFriendlyId,
+        triggerSource: task.triggerSource,
         environment: {
           id: task.runtimeEnvironment.id,
           type: task.runtimeEnvironment.type,
