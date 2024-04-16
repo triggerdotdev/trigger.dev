@@ -216,7 +216,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
 function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: ScheduledRun[] }) {
   const lastSubmission = useActionData();
   const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
-  const [timestampValue, setTimestampValue] = useState<Date | undefined>();
+  const [timestampValue, setTimestampValue] = useState<Date | undefined>(new Date());
   const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>();
   const [externalIdValue, setExternalIdValue] = useState<string | undefined>();
 
