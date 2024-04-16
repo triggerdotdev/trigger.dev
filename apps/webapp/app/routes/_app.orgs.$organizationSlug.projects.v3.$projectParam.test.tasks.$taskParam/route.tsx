@@ -32,7 +32,12 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { TestTask, TestTaskPresenter } from "~/presenters/v3/TestTaskPresenter.server";
+import {
+  ScheduledRun,
+  StandardRun,
+  TestTask,
+  TestTaskPresenter,
+} from "~/presenters/v3/TestTaskPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, v3RunPath, v3TaskParamsSchema } from "~/utils/pathBuilder";
 import { TestTaskService } from "~/v3/services/testTask.server";
@@ -43,16 +48,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, taskParam } = v3TaskParamsSchema.parse(params);
 
   const presenter = new TestTaskPresenter();
-  const { task, runs } = await presenter.call({
+  const result = await presenter.call({
     userId,
     projectSlug: projectParam,
     taskFriendlyId: taskParam,
   });
 
-  return typedjson({
-    task,
-    runs,
-  });
+  return typedjson(result);
 };
 
 export const action: ActionFunction = async ({ request, params }) => {
@@ -84,47 +86,21 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
-  const { task, runs } = useTypedLoaderData<typeof loader>();
+  const result = useTypedLoaderData<typeof loader>();
 
-  switch (task.triggerSource) {
+  switch (result.triggerSource) {
     case "STANDARD": {
-      const prettyRuns = Promise.all(
-        runs.map(async (run) => ({
-          ...run,
-          payload: await prettyPrintPacket(run.payload, run.payloadType),
-        }))
-      );
-
-      return (
-        <Suspense fallback={<></>}>
-          <Await resolve={prettyRuns}>
-            {(data) => <StandardTaskForm task={task} runs={data} />}
-          </Await>
-        </Suspense>
-      );
+      return <StandardTaskForm task={result.task} runs={result.runs} />;
     }
     case "SCHEDULED": {
-      const prettyRuns = Promise.all(
-        runs.map(async (run) => ({
-          ...run,
-          payload: await getScheduleTaskRunPayload(run),
-        }))
-      );
-
-      return (
-        <Suspense fallback={<></>}>
-          <Await resolve={prettyRuns}>
-            {(data) => <ScheduledTaskForm task={task} runs={data} />}
-          </Await>
-        </Suspense>
-      );
+      return <ScheduledTaskForm task={result.task} runs={result.runs} />;
     }
   }
 }
 
 const startingJson = "{\n\n}";
 
-function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTask["runs"] }) {
+function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: StandardRun[] }) {
   //form submission
   const submit = useSubmit();
   const lastSubmission = useActionData();
@@ -144,7 +120,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTa
     (e: React.FormEvent<HTMLFormElement>) => {
       submit(
         {
-          triggerSource: task.triggerSource,
+          triggerSource: "STANDARD",
           payload: currentJson.current,
           taskIdentifier: task.taskIdentifier,
           environmentId: task.environment.id,
@@ -175,7 +151,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTa
       {...form.props}
       onSubmit={(e) => submitForm(e)}
     >
-      <input type="hidden" name="triggerSource" value={task.triggerSource} />
+      <input type="hidden" name="triggerSource" value={"STANDARD"} />
       <ResizablePanelGroup direction="horizontal">
         <ResizablePanel order={1} minSize={30} defaultSize={60}>
           <div className="h-full bg-charcoal-900">
@@ -237,22 +213,10 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: TestTa
   );
 }
 
-async function getScheduleTaskRunPayload(run: TestTask["runs"][number]) {
-  const payload = await parsePacket({ data: run.payload, dataType: run.payloadType });
-  const parsed = ScheduledTaskPayload.parse(payload);
-  return parsed;
-}
-
-function ScheduledTaskForm({
-  task,
-  runs,
-}: {
-  task: TestTask["task"];
-  runs: (Omit<TestTask["runs"][number], "payload"> & { payload: ScheduledTaskPayload })[];
-}) {
+function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: ScheduledRun[] }) {
   const lastSubmission = useActionData();
   const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
-  const [timestampValue, setTimestampValue] = useState<Date | undefined>(new Date());
+  const [timestampValue, setTimestampValue] = useState<Date | undefined>();
   const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>();
   const [externalIdValue, setExternalIdValue] = useState<string | undefined>();
 
@@ -273,7 +237,7 @@ function ScheduledTaskForm({
       <input
         type="hidden"
         {...conform.input(triggerSource, { type: "hidden" })}
-        value={task.triggerSource}
+        value={"SCHEDULED"}
       />
       <input
         type="hidden"
