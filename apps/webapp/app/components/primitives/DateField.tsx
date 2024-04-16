@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { useLocales } from "./LocaleProvider";
 import { Button } from "./Buttons";
+import { BellAlertIcon } from "@heroicons/react/20/solid";
 
 type DateFieldProps = {
   label?: string;
@@ -98,7 +99,7 @@ export function DateField({
           {...fieldProps}
           ref={ref}
           className={cn(
-            "flex rounded-sm border border-charcoal-800 bg-charcoal-750 p-0.5 px-1.5 transition-colors focus-within:border-charcoal-500 hover:border-charcoal-700 focus-within:hover:border-charcoal-500",
+            "flex rounded-sm border bg-charcoal-700 p-0.5 px-0.5 transition focus-within:border-charcoal-600 hover:border-charcoal-600",
             fieldClassName
           )}
         >
@@ -119,19 +120,22 @@ export function DateField({
         {showNowButton && (
           <Button
             variant="tertiary/small"
+            LeadingIcon={BellAlertIcon}
+            leadingIconClassName="text-text-dimmed group-hover:text-text-bright"
             onClick={() => {
               const now = new Date();
               setValue(utcDateToCalendarDate(new Date()));
               onValueChange?.(now);
             }}
           >
-            Now
+            <span className="text-text-dimmed transition group-hover:text-text-bright">Now</span>
           </Button>
         )}
         {showClearButton && (
           <Button
-            variant="tertiary/small"
+            variant="minimal/small"
             LeadingIcon={"close"}
+            leadingIconClassName="-mr-2"
             onClick={() => {
               setValue(undefined);
               onValueChange?.(undefined);
@@ -142,7 +146,9 @@ export function DateField({
               state.clearSegment("minute");
               state.clearSegment("second");
             }}
-          />
+          >
+            Clear
+          </Button>
         )}
       </div>
       {showGuide && (
@@ -186,7 +192,7 @@ function DateSegment({ segment, state }: DateSegmentProps) {
         ...segmentProps.style,
         minWidth: minWidthForSegment(segment),
       }}
-      className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums outline-none focus:bg-charcoal-600 focus:text-text-bright ${
+      className={`group box-content h-5 rounded-sm px-0.5 text-right text-sm tabular-nums outline-none focus:bg-charcoal-600 focus:text-text-bright ${
         !segment.isEditable ? "text-charcoal-500" : "text-text-bright"
       }`}
     >
