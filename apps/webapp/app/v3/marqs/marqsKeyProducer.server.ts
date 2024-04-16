@@ -59,6 +59,16 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return `${queue}:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
+  currentConcurrencyKey(
+    env: AuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ): string {
+    return [this.queueKey(env, queue, concurrencyKey), constants.CURRENT_CONCURRENCY_PART].join(
+      ":"
+    );
+  }
+
   orgConcurrencyLimitKeyFromQueue(queue: string) {
     const orgId = this.normalizeQueue(queue).split(":")[1];
 
@@ -81,6 +91,14 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     const envId = this.normalizeQueue(queue).split(":")[3];
 
     return `${constants.ENV_PART}:${envId}:${constants.CURRENT_CONCURRENCY_PART}`;
+  }
+
+  orgCurrentConcurrencyKey(env: AuthenticatedEnvironment): string {
+    return [this.orgKeySection(env.organizationId), constants.CURRENT_CONCURRENCY_PART].join(":");
+  }
+
+  envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string {
+    return [this.envKeySection(env.id), constants.CURRENT_CONCURRENCY_PART].join(":");
   }
 
   messageKey(messageId: string) {

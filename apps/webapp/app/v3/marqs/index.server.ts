@@ -55,7 +55,7 @@ export type MarQSOptions = {
  */
 export class MarQS {
   private redis: Redis;
-  private keys: MarQSKeyProducer;
+  public keys: MarQSKeyProducer;
   private queuePriorityStrategy: MarQSQueuePriorityStrategy;
   #requeueingWorkers: Array<AsyncWorker> = [];
 
@@ -85,6 +85,48 @@ export class MarQS {
       envConcurrencyLimit: env.maximumConcurrencyLimit,
       orgConcurrencyLimit: env.organization.maximumConcurrencyLimit,
     });
+  }
+
+  public async getQueueConcurrencyLimit(env: AuthenticatedEnvironment, queue: string) {
+    const result = await this.redis.get(this.keys.queueConcurrencyLimitKey(env, queue));
+
+    return result ? Number(result) : this.options.defaultQueueConcurrency;
+  }
+
+  public async getEnvConcurrencyLimit(env: AuthenticatedEnvironment) {
+    const result = await this.redis.get(this.keys.envConcurrencyLimitKey(env));
+
+    return result ? Number(result) : this.options.defaultEnvConcurrency;
+  }
+
+  public async getOrgConcurrencyLimit(env: AuthenticatedEnvironment) {
+    const result = await this.redis.get(this.keys.orgConcurrencyLimitKey(env));
+
+    return result ? Number(result) : this.options.defaultOrgConcurrency;
+  }
+
+  public async lengthOfQueue(
+    env: AuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ) {
+    return this.redis.zcard(this.keys.queueKey(env, queue, concurrencyKey));
+  }
+
+  public async currentConcurrencyOfQueue(
+    env: AuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ) {
+    return this.redis.scard(this.keys.currentConcurrencyKey(env, queue, concurrencyKey));
+  }
+
+  public async currentConcurrencyOfEnvironment(env: AuthenticatedEnvironment) {
+    return this.redis.scard(this.keys.envCurrentConcurrencyKey(env));
+  }
+
+  public async currentConcurrencyOfOrg(env: AuthenticatedEnvironment) {
+    return this.redis.scard(this.keys.orgCurrentConcurrencyKey(env));
   }
 
   public async enqueueMessage(

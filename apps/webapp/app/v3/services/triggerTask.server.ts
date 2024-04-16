@@ -19,6 +19,7 @@ export type TriggerTaskServiceOptions = {
   triggerVersion?: string;
   traceContext?: Record<string, string | undefined>;
   spanParentAsLink?: boolean;
+  parentAsLinkType?: "replay" | "trigger";
   batchId?: string;
   customIcon?: string;
 };
@@ -54,6 +55,7 @@ export class TriggerTaskService extends BaseService {
         {
           context: options.traceContext,
           spanParentAsLink: options.spanParentAsLink,
+          parentAsLinkType: options.parentAsLinkType,
           kind: "SERVER",
           environment,
           taskSlug: taskId,
