@@ -239,6 +239,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
                 concurrencyKey: options?.concurrencyKey,
                 test: taskContextManager.ctx?.run.isTest,
                 payloadType: payloadPacket.dataType,
+                idempotencyKey: options?.idempotencyKey,
               },
             },
             { spanParentAsLink: true }
@@ -304,6 +305,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
                       concurrencyKey: item.options?.concurrencyKey,
                       test: taskContextManager.ctx?.run.isTest,
                       payloadType: payloadPacket.dataType,
+                      idempotencyKey: item.options?.idempotencyKey,
                     },
                   };
                 })
@@ -378,6 +380,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
               concurrencyKey: options?.concurrencyKey,
               test: taskContextManager.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
+              idempotencyKey: options?.idempotencyKey,
             },
           });
 
@@ -454,6 +457,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
                     concurrencyKey: item.options?.concurrencyKey,
                     test: taskContextManager.ctx?.run.isTest,
                     payloadType: payloadPacket.dataType,
+                    idempotencyKey: item.options?.idempotencyKey,
                   },
                 };
               })

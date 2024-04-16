@@ -34,7 +34,7 @@ export class TriggerTaskService extends BaseService {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
-      const idempotencyKey = options.idempotencyKey ?? nanoid();
+      const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey ?? nanoid();
 
       const existingRun = await this._prisma.taskRun.findUnique({
         where: {

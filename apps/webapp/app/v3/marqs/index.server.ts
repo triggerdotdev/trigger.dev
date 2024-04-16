@@ -113,6 +113,31 @@ export class MarQS {
     return this.redis.zcard(this.keys.queueKey(env, queue, concurrencyKey));
   }
 
+  public async oldestMessageInQueue(
+    env: AuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ) {
+    // Get the "score" of the sorted set to get the oldest message score
+    const result = await this.redis.zrange(
+      this.keys.queueKey(env, queue, concurrencyKey),
+      0,
+      0,
+      "WITHSCORES"
+    );
+
+    logger.debug("Oldest message in queue", {
+      queueName: this.keys.queueKey(env, queue, concurrencyKey),
+      result,
+    });
+
+    if (result.length === 0) {
+      return;
+    }
+
+    return Number(result[1]);
+  }
+
   public async currentConcurrencyOfQueue(
     env: AuthenticatedEnvironment,
     queue: string,
@@ -220,6 +245,20 @@ export class MarQS {
             [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
             [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
           });
+        } else {
+          logger.error("Failed to read message, undoing the dequeueing of the message", {
+            messageData,
+          });
+
+          await this.#callAcknowledgeMessage({
+            messageKey: this.keys.messageKey(messageData.messageId),
+            messageQueue: messageQueue,
+            visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+            concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
+            envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue),
+            orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(messageQueue),
+            messageId: messageData.messageId,
+          });
         }
 
         return message;
@@ -315,6 +354,7 @@ export class MarQS {
 
         await this.#callAcknowledgeMessage({
           messageKey: this.keys.messageKey(messageId),
+          messageQueue: message.queue,
           visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
           concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
           envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
@@ -356,6 +396,7 @@ export class MarQS {
 
         await this.#callAcknowledgeMessage({
           messageKey: this.keys.messageKey(messageId),
+          messageQueue: oldMessage.queue,
           visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
           concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(oldMessage.queue),
           envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(oldMessage.queue),
@@ -733,6 +774,7 @@ export class MarQS {
 
   async #callAcknowledgeMessage({
     messageKey,
+    messageQueue,
     visibilityQueue,
     concurrencyKey,
     envConcurrencyKey,
@@ -740,6 +782,7 @@ export class MarQS {
     messageId,
   }: {
     messageKey: string;
+    messageQueue: string;
     visibilityQueue: string;
     concurrencyKey: string;
     envConcurrencyKey: string;
@@ -748,6 +791,7 @@ export class MarQS {
   }) {
     logger.debug("Calling acknowledgeMessage", {
       messageKey,
+      messageQueue,
       visibilityQueue,
       concurrencyKey,
       envConcurrencyKey,
@@ -757,6 +801,7 @@ export class MarQS {
 
     return this.redis.acknowledgeMessage(
       messageKey,
+      messageQueue,
       visibilityQueue,
       concurrencyKey,
       envConcurrencyKey,
@@ -992,21 +1037,25 @@ return {messageId, messageScore} -- Return message details
     });
 
     this.redis.defineCommand("acknowledgeMessage", {
-      numberOfKeys: 5,
+      numberOfKeys: 6,
       lua: `
--- Keys: messageKey, visibilityQueue, concurrencyKey, envCurrentConcurrencyKey, orgCurrentConcurrencyKey
+-- Keys: messageKey, messageQueue, visibilityQueue, concurrencyKey, envCurrentConcurrencyKey, orgCurrentConcurrencyKey
 local messageKey = KEYS[1]
-local visibilityQueue = KEYS[2]
-local concurrencyKey = KEYS[3]
-local envCurrentConcurrencyKey = KEYS[4]
-local orgCurrentConcurrencyKey = KEYS[5]
-local globalCurrentConcurrencyKey = KEYS[6]
+local messageQueue = KEYS[2]
+local visibilityQueue = KEYS[3]
+local concurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local orgCurrentConcurrencyKey = KEYS[6]
+local globalCurrentConcurrencyKey = KEYS[7]
 
 -- Args: messageId
 local messageId = ARGV[1]
 
 -- Remove the message from the message key
 redis.call('DEL', messageKey)
+
+-- Remove the message from the queue
+redis.call('ZREM', messageQueue, messageId)
 
 -- Remove the message from the timeout queue
 redis.call('ZREM', visibilityQueue, messageId)
@@ -1172,6 +1221,7 @@ declare module "ioredis" {
 
     acknowledgeMessage(
       messageKey: string,
+      messageQueue: string,
       visibilityQueue: string,
       concurrencyKey: string,
       envConcurrencyKey: string,

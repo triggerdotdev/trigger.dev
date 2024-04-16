@@ -110,7 +110,7 @@ export async function registerProjectMetrics(
         const concurrencyLimit = await marqs?.getOrgConcurrencyLimit(firstEnv);
         const currentConcurrency = await marqs?.currentConcurrencyOfOrg(firstEnv);
 
-        if (concurrencyLimit && currentConcurrency) {
+        if (typeof concurrencyLimit === "number" && typeof currentConcurrency === "number") {
           this.set(concurrencyLimit - currentConcurrency);
         }
       },
@@ -164,7 +164,7 @@ async function registerEnvironmentMetrics(
       const concurrencyLimit = await marqs?.getEnvConcurrencyLimit(env);
       const currentConcurrency = await marqs?.currentConcurrencyOfEnvironment(env);
 
-      if (concurrencyLimit && currentConcurrency) {
+      if (typeof concurrencyLimit === "number" && typeof currentConcurrency === "number") {
         this.set(concurrencyLimit - currentConcurrency);
       }
     },
@@ -229,6 +229,19 @@ function registerTaskQueueMetrics(
 
       if (typeof concurrencyLimit === "number" && typeof currentConcurrency === "number") {
         this.set(concurrencyLimit - currentConcurrency);
+      }
+    },
+  });
+
+  new Gauge({
+    name: sanitizeMetricName(`trigger_${env.slug}_task_queue_${queue.name}_oldest_message_age`),
+    help: `The age of the oldest message in the ${queue.name} queue`,
+    registers: [registry],
+    async collect() {
+      const oldestMessage = await marqs?.oldestMessageInQueue(env, queue.name);
+
+      if (oldestMessage) {
+        this.set(oldestMessage);
       }
     },
   });

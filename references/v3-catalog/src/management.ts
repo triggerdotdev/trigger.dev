@@ -13,6 +13,23 @@ export async function run() {
   const replayed = await runs.replay(run.id);
   console.log("replayed run", replayed);
 
+  const run2 = await simpleChildTask.trigger({
+    payload: { message: "Hello, World!" },
+    options: {
+      idempotencyKey: "mmvlgwcidiklyeygen4",
+    },
+  });
+
+  const run3 = await simpleChildTask.trigger({
+    payload: { message: "Hello, World again!" },
+    options: {
+      idempotencyKey: "mmvlgwcidiklyeygen4",
+    },
+  });
+
+  console.log("run2", run2);
+  console.log("run3", run3);
+
   const allSchedules = await schedules.list();
 
   // Create a schedule
