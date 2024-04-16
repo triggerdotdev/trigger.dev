@@ -1,3 +1,4 @@
+import { BellAlertIcon } from "@heroicons/react/20/solid";
 import { CalendarDateTime, createCalendar } from "@internationalized/date";
 import { useDateField, useDateSegment } from "@react-aria/datepicker";
 import type { DateFieldState, DateSegment } from "@react-stately/datepicker";
@@ -5,9 +6,22 @@ import { useDateFieldState } from "@react-stately/datepicker";
 import { Granularity } from "@react-types/datepicker";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
-import { useLocales } from "./LocaleProvider";
 import { Button } from "./Buttons";
-import { BellAlertIcon } from "@heroicons/react/20/solid";
+
+const variants = {
+  small: {
+    fieldStyles: "h-5 text-sm rounded-sm px-0.5",
+    nowButtonVariant: "tertiary/small" as const,
+    clearButtonVariant: "minimal/small" as const,
+  },
+  medium: {
+    fieldStyles: "h-7 text-base rounded px-1",
+    nowButtonVariant: "tertiary/medium" as const,
+    clearButtonVariant: "minimal/medium" as const,
+  },
+};
+
+type Variant = keyof typeof variants;
 
 type DateFieldProps = {
   label?: string;
@@ -21,6 +35,7 @@ type DateFieldProps = {
   showNowButton?: boolean;
   showClearButton?: boolean;
   onValueChange?: (value: Date | undefined) => void;
+  variant?: Variant;
 };
 
 export function DateField({
@@ -35,6 +50,7 @@ export function DateField({
   showGuide = false,
   showNowButton = false,
   showClearButton = false,
+  variant = "small",
 }: DateFieldProps) {
   const [value, setValue] = useState<undefined | CalendarDateTime>(
     utcDateToCalendarDate(defaultValue)
@@ -99,27 +115,27 @@ export function DateField({
           {...fieldProps}
           ref={ref}
           className={cn(
-            "flex rounded-sm border bg-charcoal-700 p-0.5 px-0.5 transition focus-within:border-charcoal-600 hover:border-charcoal-600",
+            "flex rounded-sm border bg-charcoal-700 p-0.5 transition focus-within:border-charcoal-600 hover:border-charcoal-600",
             fieldClassName
           )}
         >
-          <DateSegment segment={yearSegment} state={state} />
-          <DateSegment segment={literalSegment("/")} state={state} />
-          <DateSegment segment={monthSegment} state={state} />
-          <DateSegment segment={literalSegment("/")} state={state} />
-          <DateSegment segment={daySegment} state={state} />
-          <DateSegment segment={literalSegment(", ")} state={state} />
-          <DateSegment segment={hourSegment} state={state} />
-          <DateSegment segment={literalSegment(":")} state={state} />
-          <DateSegment segment={minuteSegment} state={state} />
-          <DateSegment segment={literalSegment(":")} state={state} />
-          <DateSegment segment={secondSegment} state={state} />
-          <DateSegment segment={literalSegment(" ")} state={state} />
-          <DateSegment segment={dayPeriodSegment} state={state} />
+          <DateSegment segment={yearSegment} state={state} variant={variant} />
+          <DateSegment segment={literalSegment("/")} state={state} variant={variant} />
+          <DateSegment segment={monthSegment} state={state} variant={variant} />
+          <DateSegment segment={literalSegment("/")} state={state} variant={variant} />
+          <DateSegment segment={daySegment} state={state} variant={variant} />
+          <DateSegment segment={literalSegment(", ")} state={state} variant={variant} />
+          <DateSegment segment={hourSegment} state={state} variant={variant} />
+          <DateSegment segment={literalSegment(":")} state={state} variant={variant} />
+          <DateSegment segment={minuteSegment} state={state} variant={variant} />
+          <DateSegment segment={literalSegment(":")} state={state} variant={variant} />
+          <DateSegment segment={secondSegment} state={state} variant={variant} />
+          <DateSegment segment={literalSegment(" ")} state={state} variant={variant} />
+          <DateSegment segment={dayPeriodSegment} state={state} variant={variant} />
         </div>
         {showNowButton && (
           <Button
-            variant="tertiary/small"
+            variant={variants[variant].nowButtonVariant}
             LeadingIcon={BellAlertIcon}
             leadingIconClassName="text-text-dimmed group-hover:text-text-bright"
             onClick={() => {
@@ -133,7 +149,7 @@ export function DateField({
         )}
         {showClearButton && (
           <Button
-            variant="minimal/small"
+            variant={variants[variant].clearButtonVariant}
             LeadingIcon={"close"}
             leadingIconClassName="-mr-2"
             onClick={() => {
@@ -178,11 +194,13 @@ function utcDateToCalendarDate(date?: Date) {
 type DateSegmentProps = {
   segment: DateSegment;
   state: DateFieldState;
+  variant: Variant;
 };
 
-function DateSegment({ segment, state }: DateSegmentProps) {
+function DateSegment({ segment, state, variant }: DateSegmentProps) {
   const ref = useRef<null | HTMLDivElement>(null);
   const { segmentProps } = useDateSegment(segment, state, ref);
+  const sizeVariant = variants[variant];
 
   return (
     <div
@@ -192,14 +210,16 @@ function DateSegment({ segment, state }: DateSegmentProps) {
         ...segmentProps.style,
         minWidth: minWidthForSegment(segment),
       }}
-      className={`group box-content h-5 rounded-sm px-0.5 text-right text-sm tabular-nums outline-none focus:bg-charcoal-600 focus:text-text-bright ${
+      className={cn(
+        "group box-content text-center tabular-nums outline-none focus:bg-charcoal-600 focus:text-text-bright",
+        sizeVariant.fieldStyles,
         !segment.isEditable ? "text-charcoal-500" : "text-text-bright"
-      }`}
+      )}
     >
       {/* Always reserve space for the placeholder, to prevent layout shift when editing. */}
       <span
         aria-hidden="true"
-        className="block text-center text-charcoal-500 group-focus:text-text-bright"
+        className="flex h-full items-center justify-center text-center text-charcoal-500 group-focus:text-text-bright"
         style={{
           visibility: segment.isPlaceholder ? undefined : "hidden",
           height: segment.isPlaceholder ? "" : 0,
@@ -208,7 +228,9 @@ function DateSegment({ segment, state }: DateSegmentProps) {
       >
         {segment.placeholder}
       </span>
-      {segment.isPlaceholder ? "" : segment.text}
+      <span className="flex h-full items-center justify-center">
+        {segment.isPlaceholder ? "" : segment.text}
+      </span>
     </div>
   );
 }
