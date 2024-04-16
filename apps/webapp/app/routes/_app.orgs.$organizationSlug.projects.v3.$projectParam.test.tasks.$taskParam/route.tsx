@@ -283,7 +283,6 @@ function ScheduledTaskForm({
                 value={timestampValue?.toISOString()}
               />
               <DateField
-                label="Timestamp UTC"
                 defaultValue={timestampValue}
                 onValueChange={(val) => setTimestampValue(val)}
                 granularity="second"
@@ -306,7 +305,6 @@ function ScheduledTaskForm({
                 value={lastTimestampValue?.toISOString()}
               />
               <DateField
-                label="Timestamp UTC"
                 defaultValue={lastTimestampValue}
                 onValueChange={(val) => setLastTimestampValue(val)}
                 granularity="second"
