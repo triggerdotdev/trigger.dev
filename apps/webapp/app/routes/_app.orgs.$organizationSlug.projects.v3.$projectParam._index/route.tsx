@@ -27,9 +27,13 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { TaskFunctionName, TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
-import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSourceIcon";
+import {
+  TaskTriggerSourceIcon,
+  taskTriggerSourceDescription,
+} from "~/components/runs/v3/TaskTriggerSource";
 import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -123,8 +127,11 @@ export default function Page() {
                         return (
                           <TableRow key={task.id} className="group">
                             <TableCell to={path}>
-                              <div className="flex items-center gap-1">
-                                <TaskTriggerSourceIcon source={task.triggerSource} />
+                              <div className="flex items-center gap-2">
+                                <SimpleTooltip
+                                  button={<TaskTriggerSourceIcon source={task.triggerSource} />}
+                                  content={taskTriggerSourceDescription(task.triggerSource)}
+                                />
                                 <span>{task.slug}</span>
                               </div>
                             </TableCell>
