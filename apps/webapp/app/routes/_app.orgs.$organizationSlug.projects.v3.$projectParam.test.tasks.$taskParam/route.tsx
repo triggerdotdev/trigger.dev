@@ -1,4 +1,4 @@
-import { useForm } from "@conform-to/react";
+import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BeakerIcon } from "@heroicons/react/20/solid";
 import { Await, Form, useActionData, useSubmit } from "@remix-run/react";
@@ -18,6 +18,7 @@ import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
+import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -27,12 +28,13 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
+import { TextLink } from "~/components/primitives/TextLink";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { TestTask, TestTaskPresenter } from "~/presenters/v3/TestTaskPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { v3RunPath, v3TaskParamsSchema } from "~/utils/pathBuilder";
+import { docsPath, v3RunPath, v3TaskParamsSchema } from "~/utils/pathBuilder";
 import { TestTaskService } from "~/v3/services/testTask.server";
 import { TestTaskData } from "~/v3/testTask";
 
@@ -254,6 +256,9 @@ function ScheduledTaskForm({
 }) {
   const lastSubmission = useActionData();
   const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
+  const [timestampValue, setTimestampValue] = useState<Date | undefined>(new Date());
+  const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>();
+  const [externalIdValue, setExternalIdValue] = useState<string | undefined>();
 
   const [form, { environmentId, timestamp, lastTimestamp, externalId }] = useForm({
     id: "test-task-scheduled",
@@ -272,12 +277,19 @@ function ScheduledTaskForm({
           <Fieldset>
             <InputGroup>
               <Label htmlFor={timestamp.id}>Timestamp UTC</Label>
+              <input
+                type="hidden"
+                {...conform.input(timestamp, { type: "hidden" })}
+                value={timestampValue?.toISOString()}
+              />
               <DateField
                 label="Timestamp UTC"
-                defaultValue={new Date()}
+                defaultValue={timestampValue}
+                onValueChange={(val) => setTimestampValue(val)}
                 granularity="second"
                 showNowButton
                 showClearButton
+                variant="medium"
               />
               <Hint>
                 This is the timestamp of the CRON, it will come through to your run in the payload.
@@ -288,12 +300,19 @@ function ScheduledTaskForm({
               <Label htmlFor={lastTimestamp.id} required={false}>
                 Last timestamp UTC
               </Label>
+              <input
+                type="hidden"
+                {...conform.input(lastTimestamp, { type: "hidden" })}
+                value={lastTimestampValue?.toISOString()}
+              />
               <DateField
                 label="Timestamp UTC"
-                defaultValue={new Date()}
+                defaultValue={lastTimestampValue}
+                onValueChange={(val) => setLastTimestampValue(val)}
                 granularity="second"
                 showNowButton
                 showClearButton
+                variant="medium"
               />
               <Hint>
                 This is the timestamp of the previous run. You can use this in your code to find new
@@ -303,17 +322,20 @@ function ScheduledTaskForm({
               <FormError id={lastTimestamp.errorId}>{lastTimestamp.error}</FormError>
             </InputGroup>
             <InputGroup>
-              <Label htmlFor={externalId.id} required={false}>
+              <Label required={false} htmlFor={externalId.id}>
                 External ID
               </Label>
-              <DateField
-                label="Timestamp UTC"
-                defaultValue={new Date()}
-                granularity="second"
-                showNowButton
-                showClearButton
+              <Input
+                {...conform.input(externalId, { type: "text" })}
+                placeholder="Optionally specify your own ID, e.g. user id"
+                value={externalIdValue}
+                onChange={(e) => setExternalIdValue(e.target.value)}
               />
-              <Hint>//todo</Hint>
+              <Hint>
+                Optionally, you can specify your own IDs (like a user ID) and then use it inside the
+                run function of your task. This allows you to have per-user CRON tasks.{" "}
+                <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
+              </Hint>
               <FormError id={externalId.errorId}>{externalId.error}</FormError>
             </InputGroup>
           </Fieldset>
