@@ -170,7 +170,7 @@ export function UpsertScheduleForm({
       method="post"
       action={`/resources/orgs/${organization.slug}/projects/${project.slug}/schedules/new`}
       {...form.props}
-      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden bg-background-bright"
+      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright"
     >
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Header2 className={cn("whitespace-nowrap")}>
@@ -240,7 +240,6 @@ export function UpsertScheduleForm({
                 <ValidCronMessage isValid={false} message={cronPatternResult.error} />
               )}
             </InputGroup>
-            {/* //todo add a tooltip with the CRON patterns we support */}
             {nextRuns !== undefined && (
               <div className="flex flex-col gap-1">
                 <Header3>Next 5 runs</Header3>
@@ -335,14 +334,14 @@ export function UpsertScheduleForm({
         <div className="flex items-center gap-4">
           <LinkButton
             to={`${v3SchedulesPath(organization, project)}${location.search}`}
-            variant="minimal/small"
+            variant="minimal/medium"
           >
             Cancel
           </LinkButton>
         </div>
         <div className="flex items-center gap-4">
           <Button
-            variant="primary/small"
+            variant="primary/medium"
             type="submit"
             disabled={isLoading}
             shortcut={{ key: "enter", modifiers: ["meta"] }}

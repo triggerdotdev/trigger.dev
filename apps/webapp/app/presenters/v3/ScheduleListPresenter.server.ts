@@ -1,10 +1,9 @@
 import { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { parseExpression } from "cron-parser";
+import cronstrue from "cronstrue";
 import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
-import cronstrue from "cronstrue";
-import { logger } from "~/services/logger.server";
 
 type ScheduleListOptions = {
   userId: string;

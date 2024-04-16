@@ -172,6 +172,7 @@ function SchedulesTable({
   const organization = useOrganization();
   const project = useProject();
   const location = useLocation();
+  const { scheduleParam } = useParams();
 
   return (
     <Table>
@@ -187,7 +188,6 @@ function SchedulesTable({
           <TableHeaderCell>Last run (UTC)</TableHeaderCell>
           <TableHeaderCell>Environments</TableHeaderCell>
           <TableHeaderCell>Enabled</TableHeaderCell>
-          <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -200,8 +200,9 @@ function SchedulesTable({
         ) : (
           schedules.map((schedule) => {
             const path = `${v3SchedulePath(organization, project, schedule)}${location.search}`;
+            const isSelected = scheduleParam === schedule.friendlyId;
             return (
-              <TableRow key={schedule.id}>
+              <TableRow key={schedule.id} className={isSelected ? "bg-grid-dimmed" : undefined}>
                 <TableCell to={path}>{schedule.friendlyId}</TableCell>
                 <TableCell to={path}>{schedule.taskIdentifier}</TableCell>
                 <TableCell to={path}>{schedule.cron}</TableCell>
@@ -211,10 +212,10 @@ function SchedulesTable({
                   {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
                 </TableCell>
                 <TableCell to={path}>
-                  <DateTime date={schedule.nextRun} timeZone="UTC" />
+                  <DateTime date={schedule.nextRun} />
                 </TableCell>
                 <TableCell to={path}>
-                  {schedule.lastRun ? <DateTime date={schedule.lastRun} timeZone="UTC" /> : "–"}
+                  {schedule.lastRun ? <DateTime date={schedule.lastRun} /> : "–"}
                 </TableCell>
                 <TableCell to={path}>
                   <div className="flex gap-1">
@@ -230,7 +231,6 @@ function SchedulesTable({
                 <TableCell to={path}>
                   <EnabledStatus enabled={schedule.active} />
                 </TableCell>
-                <TableCellChevron to={path} isSticky />
               </TableRow>
             );
           })

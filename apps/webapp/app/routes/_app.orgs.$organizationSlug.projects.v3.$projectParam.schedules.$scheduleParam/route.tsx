@@ -171,7 +171,7 @@ export default function Page() {
   const user = useUser();
 
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_2.5rem] overflow-hidden bg-background-bright">
+    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Header2 className={cn("whitespace-nowrap")}>{schedule.friendlyId}</Header2>
         <LinkButton
