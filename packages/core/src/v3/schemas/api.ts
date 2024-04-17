@@ -240,19 +240,19 @@ export const ScheduleObject = z.object({
   id: z.string(),
   task: z.string(),
   active: z.boolean(),
-  deduplicationKey: z.string().optional(),
-  externalId: z.string().optional(),
+  deduplicationKey: z.string().nullish(),
+  externalId: z.string().nullish(),
   generator: z.object({
     type: z.literal("CRON"),
     expression: z.string(),
     description: z.string(),
   }),
-  nextRun: z.coerce.date().optional(),
+  nextRun: z.coerce.date().nullish(),
   environments: z.array(
     z.object({
       id: z.string(),
       type: z.string(),
-      userName: z.string().optional(),
+      userName: z.string().nullish(),
     })
   ),
 });

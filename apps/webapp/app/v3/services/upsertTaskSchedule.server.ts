@@ -111,7 +111,7 @@ export class UpsertTaskScheduleService extends BaseService {
           options.deduplicationKey !== undefined && options.deduplicationKey !== "",
         generatorExpression: options.cron,
         generatorDescription: cronstrue.toString(options.cron),
-        externalId: options.externalId,
+        externalId: options.externalId ? options.externalId : undefined,
       },
     });
 
@@ -160,7 +160,7 @@ export class UpsertTaskScheduleService extends BaseService {
       data: {
         generatorExpression: options.cron,
         generatorDescription: cronstrue.toString(options.cron),
-        externalId: options.externalId,
+        externalId: options.externalId ? options.externalId : null,
       },
     });
 
