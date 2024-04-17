@@ -66,7 +66,7 @@ export class TriggerScheduledTaskService extends BaseService {
       } else if (
         !currentWorkerDeployment.worker ||
         !currentWorkerDeployment.worker.tasks.some(
-          (t) => t.id === instance.taskSchedule.taskIdentifier
+          (t) => t.slug === instance.taskSchedule.taskIdentifier
         )
       ) {
         logger.debug(
