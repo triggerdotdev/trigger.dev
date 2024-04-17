@@ -324,10 +324,16 @@ export function UpsertScheduleForm({
               </Label>
               <Input
                 {...conform.input(deduplicationKey, { type: "text" })}
+                disabled={schedule !== undefined}
                 defaultValue={
                   schedule?.userProvidedDeduplicationKey ? schedule?.deduplicationKey : undefined
                 }
               />
+              {schedule && (
+                <Paragraph variant="small">
+                  You can't edit the Deduplication key on an existing schedule.
+                </Paragraph>
+              )}
               <Hint>
                 Optionally specify a key, you can only create one schedule with this key. This is
                 very useful when using the SDK and you don't want to create duplicate schedules for
