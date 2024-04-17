@@ -1,5 +1,16 @@
 # internal-platform
 
+## 3.0.0-beta.13
+
+### Patch Changes
+
+- 4986bfda2: Add option to print console logs in the dev CLI locally (issue #1014)
+- 44e1b8754: Improve the SDK function types and expose a new APIError instead of the APIResult type
+- 4986bfda2: Adding task with a triggerSource of schedule
+- fde939a30: Make optional schedule object fields nullish
+- 03b104a3d: Added JSDocs to the schedule SDK types
+- 4986bfda2: Added a new global - Task Catalog - to better handle task metadata
+
 ## 3.0.0-beta.12
 
 ## 3.0.0-beta.11

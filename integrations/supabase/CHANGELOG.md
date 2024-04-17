@@ -1,5 +1,16 @@
 # @trigger.dev/supabase
 
+## 3.0.0-beta.13
+
+### Patch Changes
+
+- Updated dependencies [4986bfda2]
+- Updated dependencies [44e1b8754]
+- Updated dependencies [4986bfda2]
+- Updated dependencies [4986bfda2]
+  - @trigger.dev/sdk@3.0.0-beta.13
+  - @trigger.dev/integration-kit@3.0.0-beta.13
+
 ## 3.0.0-beta.12
 
 ### Patch Changes
