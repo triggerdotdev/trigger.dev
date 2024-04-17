@@ -2,7 +2,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-r
 import { json } from "@remix-run/server-runtime";
 import { ScheduleObject, UpdateScheduleOptions } from "@trigger.dev/core/v3";
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { Prisma, prisma } from "~/db.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { UpsertSchedule } from "~/v3/schedules";
@@ -34,19 +34,34 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   switch (method) {
     case "DELETE": {
-      const deletedSchedule = await prisma.taskSchedule.delete({
-        where: {
-          friendlyId: parsedParams.data.scheduleId,
-          projectId: authenticationResult.environment.projectId,
-        },
-      });
+      try {
+        const deletedSchedule = await prisma.taskSchedule.delete({
+          where: {
+            friendlyId: parsedParams.data.scheduleId,
+            projectId: authenticationResult.environment.projectId,
+          },
+        });
 
-      return json(
-        {
-          id: deletedSchedule.friendlyId,
-        },
-        { status: 200 }
-      );
+        return json(
+          {
+            id: deletedSchedule.friendlyId,
+          },
+          { status: 200 }
+        );
+      } catch (error) {
+        // Check if it's a Prisma error
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          return json(
+            { error: error.code === "P2025" ? "Schedule not found" : error.message },
+            { status: error.code === "P2025" ? 404 : 422 }
+          );
+        } else {
+          return json(
+            { error: error instanceof Error ? error.message : "Internal Server Error" },
+            { status: 500 }
+          );
+        }
+      }
     }
     case "PUT": {
       const rawBody = await request.json();
