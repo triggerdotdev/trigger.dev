@@ -1,4 +1,4 @@
-import { PlusIcon } from "@heroicons/react/20/solid";
+import { PlusIcon, PlusSmallIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -105,43 +105,44 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        {possibleTasks.length === 0 ? (
-          <CreateScheduledTaskInstructions />
-        ) : (
-          <>
-            <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
-              <ResizablePanel order={1} minSize={20} defaultSize={60}>
-                <div className="p-3">
-                  <div className="mb-2 flex items-center justify-between gap-x-2">
-                    <ScheduleFilters
-                      possibleEnvironments={possibleEnvironments}
-                      possibleTasks={possibleTasks}
+        <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
+          <ResizablePanel order={1} minSize={20} defaultSize={60}>
+            {possibleTasks.length === 0 ? (
+              <CreateScheduledTaskInstructions />
+            ) : schedules.length === 0 && !hasFilters ? (
+              <AttachYourFirstScheduleInstructions />
+            ) : (
+              <div className="p-3">
+                <div className="mb-2 flex items-center justify-between gap-x-2">
+                  <ScheduleFilters
+                    possibleEnvironments={possibleEnvironments}
+                    possibleTasks={possibleTasks}
+                  />
+                  <div className="flex items-center justify-end gap-x-2">
+                    <PaginationControls
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      showPageNumbers={false}
                     />
-                    <div className="flex items-center justify-end gap-x-2">
-                      <PaginationControls
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        showPageNumbers={false}
-                      />
-                    </div>
-                  </div>
-                  <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
-                  <div className="mt-2 justify-end">
-                    <PaginationControls currentPage={currentPage} totalPages={totalPages} />
                   </div>
                 </div>
+
+                <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
+                <div className="mt-2 justify-end">
+                  <PaginationControls currentPage={currentPage} totalPages={totalPages} />
+                </div>
+              </div>
+            )}
+          </ResizablePanel>
+          {(isShowingNewPane || isShowingSchedule) && (
+            <>
+              <ResizableHandle withHandle />
+              <ResizablePanel order={2} minSize={20} defaultSize={40}>
+                <Outlet />
               </ResizablePanel>
-              {(isShowingNewPane || isShowingSchedule) && (
-                <>
-                  <ResizableHandle withHandle />
-                  <ResizablePanel order={2} minSize={20} defaultSize={40}>
-                    <Outlet />
-                  </ResizablePanel>
-                </>
-              )}
-            </ResizablePanelGroup>
-          </>
-        )}
+            </>
+          )}
+        </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
   );
@@ -150,10 +151,10 @@ export default function Page() {
 function CreateScheduledTaskInstructions() {
   return (
     <MainCenteredContainer className="max-w-prose">
-      <BlankstateInstructions title="Create your first task">
+      <BlankstateInstructions title="Create your first scheduled task">
         <Paragraph spacing>
-          You have no scheduled tasks in your project. Before you can schedule a task you need a{" "}
-          <InlineCode>scheduled.task</InlineCode> to attach it to.
+          You have no scheduled tasks in your project. Before you can schedule a task you need to a{" "}
+          <InlineCode>schedules.task</InlineCode>.
         </Paragraph>
         <LinkButton
           to={docsPath("v3/tasks-scheduled")}
@@ -163,6 +164,41 @@ function CreateScheduledTaskInstructions() {
         >
           Create scheduled task docs
         </LinkButton>
+      </BlankstateInstructions>
+    </MainCenteredContainer>
+  );
+}
+
+function AttachYourFirstScheduleInstructions() {
+  const organization = useOrganization();
+  const project = useProject();
+  const location = useLocation();
+
+  return (
+    <MainCenteredContainer className="max-w-prose">
+      <BlankstateInstructions title="Attach your first schedule">
+        <Paragraph spacing>
+          Scheduled tasks will only run automatically if you connect a schedule to them, you can do
+          this in the dashboard or using the SDK.
+        </Paragraph>
+        <div className="flex gap-2">
+          <LinkButton
+            to={`${v3NewSchedulePath(organization, project)}${location.search}`}
+            variant="primary/small"
+            LeadingIcon={PlusSmallIcon}
+            className="inline-flex"
+          >
+            Create in the dashboard
+          </LinkButton>
+          <LinkButton
+            to={docsPath("v3/tasks-scheduled")}
+            variant="primary/small"
+            LeadingIcon={BookOpenIcon}
+            className="inline-flex"
+          >
+            Use the SDK
+          </LinkButton>
+        </div>
       </BlankstateInstructions>
     </MainCenteredContainer>
   );
@@ -198,11 +234,7 @@ function SchedulesTable({
       </TableHeader>
       <TableBody>
         {schedules.length === 0 ? (
-          hasFilters ? (
-            <TableBlankRow colSpan={10}>There are no matches for your filters</TableBlankRow>
-          ) : (
-            <TableBlankRow colSpan={10}>You don't have any schedules.</TableBlankRow>
-          )
+          <TableBlankRow colSpan={10}>There are no matches for your filters</TableBlankRow>
         ) : (
           schedules.map((schedule) => {
             const path = `${v3SchedulePath(organization, project, schedule)}${location.search}`;
