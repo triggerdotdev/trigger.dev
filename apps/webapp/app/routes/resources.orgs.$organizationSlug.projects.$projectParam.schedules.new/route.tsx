@@ -96,7 +96,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return redirectWithSuccessMessage(
       v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }),
       request,
-      "Schedule created"
+      submission.value?.friendlyId === result.id ? "Schedule updated" : "Schedule created"
     );
   } catch (error: any) {
     submission.error.taskIdentifier =
