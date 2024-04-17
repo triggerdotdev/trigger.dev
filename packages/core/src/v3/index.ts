@@ -10,6 +10,7 @@ export * from "./errors";
 export * from "./runtime-api";
 export * from "./logger-api";
 export * from "./clock-api";
+export * from "./task-catalog-api";
 export * from "./types";
 export * from "./limits";
 export { SemanticInternalAttributes } from "./semanticInternalAttributes";
@@ -70,3 +71,5 @@ export {
   packetRequiresOffloading,
   type IOPacket,
 } from "./utils/ioSerialization";
+
+export { StandardTaskCatalog } from "./task-catalog/standardTaskCatalog";

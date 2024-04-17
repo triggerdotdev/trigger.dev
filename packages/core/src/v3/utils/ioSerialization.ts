@@ -48,7 +48,7 @@ export async function stringifyIO(value: any): Promise<IOPacket> {
 
     return { data, dataType: "application/super+json" };
   } catch {
-    return { dataType: "application/json" };
+    return { data: value, dataType: "application/json" };
   }
 }
 
@@ -280,12 +280,18 @@ export async function prettyPrintPacket(rawData: any, dataType?: string): Promis
   }
 
   if (dataType === "application/super+json") {
+    if (typeof rawData === "string") {
+      rawData = safeJsonParse(rawData);
+    }
     const { deserialize } = await loadSuperJSON();
 
     return await prettyPrintPacket(deserialize(rawData), "application/json");
   }
 
   if (dataType === "application/json") {
+    if (typeof rawData === "string") {
+      rawData = safeJsonParse(rawData);
+    }
     return JSON.stringify(rawData, safeReplacer, 2);
   }
 

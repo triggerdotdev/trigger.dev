@@ -26,6 +26,8 @@ import {
   defaultRetryOptions,
   parsePacket,
   runtime,
+  stringifyIO,
+  taskCatalog,
   taskContextManager,
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../../package.json";
@@ -172,7 +174,8 @@ export type BatchResult<TOutput = any> = {
   runs: TaskRunResult<TOutput>[];
 };
 
-export type Task<TInput, TOutput = any> = {
+export interface Task<TInput, TOutput = any> {
+  id: string;
   trigger: (params: { payload: TInput; options?: TaskRunOptions }) => Promise<InvokeHandle>;
   batchTrigger: (params: {
     items: { payload: TInput; options?: TaskRunOptions }[];
@@ -183,7 +186,7 @@ export type Task<TInput, TOutput = any> = {
     items: { payload: TInput; options?: TaskRunOptions }[];
     batchOptions?: BatchRunOptions;
   }) => Promise<BatchResult<TOutput>>;
-};
+}
 
 type TaskRunOptions = {
   idempotencyKey?: string;
@@ -212,6 +215,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
   params: TaskOptions<TInput, TOutput, TInitOutput>
 ): Task<TInput, TOutput> {
   const task: Task<TInput, TOutput> = {
+    id: params.id,
     trigger: async ({ payload, options }) => {
       const apiClient = apiClientManager.client;
 
@@ -219,7 +223,9 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
         throw apiClientMissingError();
       }
 
-      const taskMetadata = runtime.getTaskMetadata(params.id);
+      const taskMetadata = taskCatalog.getTaskMetadata(params.id);
+
+      const payloadPacket = await stringifyIO(payload);
 
       const handle = await tracer.startActiveSpan(
         taskMetadata ? "Trigger" : `${params.id} trigger()`,
@@ -227,11 +233,13 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
           const response = await apiClient.triggerTask(
             params.id,
             {
-              payload: payload,
+              payload: payloadPacket.data,
               options: {
                 queue: params.queue,
                 concurrencyKey: options?.concurrencyKey,
                 test: taskContextManager.ctx?.run.isTest,
+                payloadType: payloadPacket.dataType,
+                idempotencyKey: options?.idempotencyKey,
               },
             },
             { spanParentAsLink: true }
@@ -278,7 +286,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
         throw apiClientMissingError();
       }
 
-      const taskMetadata = runtime.getTaskMetadata(params.id);
+      const taskMetadata = taskCatalog.getTaskMetadata(params.id);
 
       const response = await tracer.startActiveSpan(
         taskMetadata ? "Batch trigger" : `${params.id} batchTrigger()`,
@@ -286,14 +294,22 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
           const response = await apiClient.batchTriggerTask(
             params.id,
             {
-              items: items.map((item) => ({
-                payload: item.payload,
-                options: {
-                  queue: item.options?.queue ?? params.queue,
-                  concurrencyKey: item.options?.concurrencyKey,
-                  test: taskContextManager.ctx?.run.isTest,
-                },
-              })),
+              items: await Promise.all(
+                items.map(async (item) => {
+                  const payloadPacket = await stringifyIO(item.payload);
+
+                  return {
+                    payload: payloadPacket.data,
+                    options: {
+                      queue: item.options?.queue ?? params.queue,
+                      concurrencyKey: item.options?.concurrencyKey,
+                      test: taskContextManager.ctx?.run.isTest,
+                      payloadType: payloadPacket.dataType,
+                      idempotencyKey: item.options?.idempotencyKey,
+                    },
+                  };
+                })
+              ),
             },
             { spanParentAsLink: true }
           );
@@ -348,19 +364,23 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
         throw apiClientMissingError();
       }
 
-      const taskMetadata = runtime.getTaskMetadata(params.id);
+      const taskMetadata = taskCatalog.getTaskMetadata(params.id);
+
+      const payloadPacket = await stringifyIO(payload);
 
       return await tracer.startActiveSpan(
         taskMetadata ? "Trigger" : `${params.id} triggerAndWait()`,
         async (span) => {
           const response = await apiClient.triggerTask(params.id, {
-            payload,
+            payload: payloadPacket.data,
             options: {
               dependentAttempt: ctx.attempt.id,
               lockToVersion: taskContextManager.worker?.version, // Lock to current version because we're waiting for it to finish
               queue: params.queue,
               concurrencyKey: options?.concurrencyKey,
               test: taskContextManager.ctx?.run.isTest,
+              payloadType: payloadPacket.dataType,
+              idempotencyKey: options?.idempotencyKey,
             },
           });
 
@@ -419,21 +439,29 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
         throw apiClientMissingError();
       }
 
-      const taskMetadata = runtime.getTaskMetadata(params.id);
+      const taskMetadata = taskCatalog.getTaskMetadata(params.id);
 
       return await tracer.startActiveSpan(
         taskMetadata ? "Batch trigger" : `${params.id} batchTriggerAndWait()`,
         async (span) => {
           const response = await apiClient.batchTriggerTask(params.id, {
-            items: items.map((item) => ({
-              payload: item.payload,
-              options: {
-                lockToVersion: taskContextManager.worker?.version,
-                queue: item.options?.queue ?? params.queue,
-                concurrencyKey: item.options?.concurrencyKey,
-                test: taskContextManager.ctx?.run.isTest,
-              },
-            })),
+            items: await Promise.all(
+              items.map(async (item) => {
+                const payloadPacket = await stringifyIO(item.payload);
+
+                return {
+                  payload: payloadPacket.data,
+                  options: {
+                    lockToVersion: taskContextManager.worker?.version,
+                    queue: item.options?.queue ?? params.queue,
+                    concurrencyKey: item.options?.concurrencyKey,
+                    test: taskContextManager.ctx?.run.isTest,
+                    payloadType: payloadPacket.dataType,
+                    idempotencyKey: item.options?.idempotencyKey,
+                  },
+                };
+              })
+            ),
             dependentAttempt: ctx.attempt.id,
           });
 
@@ -485,22 +513,19 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
     },
   };
 
-  Object.defineProperty(task, "__trigger", {
-    value: {
-      id: params.id,
-      packageVersion: packageJson.version,
-      queue: params.queue,
-      retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
-      machine: params.machine,
-      fns: {
-        run: params.run,
-        init: params.init,
-        cleanup: params.cleanup,
-        middleware: params.middleware,
-        handleError: params.handleError,
-      },
+  taskCatalog.registerTaskMetadata({
+    id: params.id,
+    packageVersion: packageJson.version,
+    queue: params.queue,
+    retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
+    machine: params.machine,
+    fns: {
+      run: params.run,
+      init: params.init,
+      cleanup: params.cleanup,
+      middleware: params.middleware,
+      handleError: params.handleError,
     },
-    enumerable: false,
   });
 
   return task;

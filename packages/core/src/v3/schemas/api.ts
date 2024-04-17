@@ -63,7 +63,9 @@ export const TriggerTaskRequestBody = z.object({
       lockToVersion: z.string().optional(),
       queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),
+      idempotencyKey: z.string().optional(),
       test: z.boolean().optional(),
+      payloadType: z.string().optional(),
     })
     .optional(),
 });
@@ -210,3 +212,73 @@ export const CanceledRunResponse = z.object({
 });
 
 export type CanceledRunResponse = z.infer<typeof CanceledRunResponse>;
+
+export const ScheduledTaskPayload = z.object({
+  scheduleId: z.string(),
+  timestamp: z.date(),
+  lastTimestamp: z.date().optional(),
+  externalId: z.string().optional(),
+  upcoming: z.array(z.date()),
+});
+
+export type ScheduledTaskPayload = z.infer<typeof ScheduledTaskPayload>;
+
+export const CreateScheduleOptions = z.object({
+  task: z.string(),
+  cron: z.string(),
+  deduplicationKey: z.string().optional(),
+  externalId: z.string().optional(),
+});
+
+export type CreateScheduleOptions = z.infer<typeof CreateScheduleOptions>;
+
+export const UpdateScheduleOptions = CreateScheduleOptions;
+
+export type UpdateScheduleOptions = z.infer<typeof UpdateScheduleOptions>;
+
+export const ScheduleObject = z.object({
+  id: z.string(),
+  task: z.string(),
+  active: z.boolean(),
+  deduplicationKey: z.string().optional(),
+  externalId: z.string().optional(),
+  generator: z.object({
+    type: z.literal("CRON"),
+    expression: z.string(),
+    description: z.string(),
+  }),
+  nextRun: z.coerce.date().optional(),
+  environments: z.array(
+    z.object({
+      id: z.string(),
+      type: z.string(),
+      userName: z.string().optional(),
+    })
+  ),
+});
+
+export type ScheduleObject = z.infer<typeof ScheduleObject>;
+
+export const DeletedScheduleObject = z.object({
+  id: z.string(),
+});
+
+export type DeletedScheduleObject = z.infer<typeof DeletedScheduleObject>;
+
+export const ListSchedulesResult = z.object({
+  data: z.array(ScheduleObject),
+  pagination: z.object({
+    currentPage: z.number(),
+    totalPages: z.number(),
+    count: z.number(),
+  }),
+});
+
+export type ListSchedulesResult = z.infer<typeof ListSchedulesResult>;
+
+export const ListScheduleOptions = z.object({
+  page: z.number().optional(),
+  perPage: z.number().optional(),
+});
+
+export type ListScheduleOptions = z.infer<typeof ListScheduleOptions>;

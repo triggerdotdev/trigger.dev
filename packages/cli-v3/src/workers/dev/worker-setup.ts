@@ -3,10 +3,12 @@ import { Resource } from "@opentelemetry/resources";
 import {
   ProjectConfig,
   SemanticInternalAttributes,
+  StandardTaskCatalog,
   TracingDiagnosticLogLevel,
   TracingSDK,
   ZodMessageSender,
   childToWorkerMessages,
+  taskCatalog,
 } from "@trigger.dev/core/v3";
 
 __SETUP_IMPORTED_PROJECT_CONFIG__;
@@ -43,3 +45,5 @@ process.on("uncaughtException", (error, origin) => {
       console.error("Failed to send UNCAUGHT_EXCEPTION message", err);
     });
 });
+
+taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());

@@ -72,6 +72,7 @@ export type TraceEventOptions = {
   kind?: CreatableEventKind;
   context?: Record<string, string | undefined>;
   spanParentAsLink?: boolean;
+  parentAsLinkType?: "trigger" | "replay";
   spanIdSeed?: string;
   attributes: TraceAttributes;
   environment: AuthenticatedEnvironment;
@@ -474,10 +475,14 @@ export class EventRepository {
 
     if (backLinks && backLinks.length > 0) {
       backLinks.forEach((l) => {
+        const title = String(
+          l.attributes?.[SemanticInternalAttributes.LINK_TITLE] ?? "Triggered by"
+        );
+
         links.push({
           type: "span",
           icon: "trigger",
-          title: `Triggered by`,
+          title,
           traceId: l.context.traceId,
           spanId: l.context.spanId,
         });
@@ -618,6 +623,10 @@ export class EventRepository {
                 traceId: propagatedContext.traceparent.traceId,
                 spanId: propagatedContext.traceparent.spanId,
                 traceFlags: TraceFlags.SAMPLED,
+              },
+              attributes: {
+                [SemanticInternalAttributes.LINK_TITLE]:
+                  options.parentAsLinkType === "replay" ? "Replay of" : "Triggered by",
               },
             },
           ]

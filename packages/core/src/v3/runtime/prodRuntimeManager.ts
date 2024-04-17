@@ -1,16 +1,15 @@
+import { setTimeout } from "node:timers/promises";
 import { clock } from "../clock-api";
 import {
   BatchTaskRunExecutionResult,
   ProdChildToWorkerMessages,
   ProdWorkerToChildMessages,
-  TaskMetadataWithFilePath,
   TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionResult,
 } from "../schemas";
 import { ZodIpcConnection } from "../zodIpc";
 import { RuntimeManager } from "./manager";
-import { setTimeout } from "node:timers/promises";
 
 export type ProdRuntimeManagerOptions = {
   waitThresholdInMs?: number;
@@ -29,8 +28,6 @@ export class ProdRuntimeManager implements RuntimeManager {
 
   _waitForRestore: { resolve: (value: "restore") => void; reject: (err?: any) => void } | undefined;
 
-  _tasks: Map<string, TaskMetadataWithFilePath> = new Map();
-
   constructor(
     private ipc: ZodIpcConnection<
       typeof ProdWorkerToChildMessages,
@@ -41,16 +38,6 @@ export class ProdRuntimeManager implements RuntimeManager {
 
   disable(): void {
     // do nothing
-  }
-
-  registerTasks(tasks: TaskMetadataWithFilePath[]): void {
-    for (const task of tasks) {
-      this._tasks.set(task.id, task);
-    }
-  }
-
-  getTaskMetadata(id: string): TaskMetadataWithFilePath | undefined {
-    return this._tasks.get(id);
   }
 
   async waitForDuration(ms: number): Promise<void> {

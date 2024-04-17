@@ -1,4 +1,5 @@
 import {
+  IOPacket,
   SemanticInternalAttributes,
   TriggerTaskRequestBody,
   packetRequiresOffloading,
@@ -18,7 +19,9 @@ export type TriggerTaskServiceOptions = {
   triggerVersion?: string;
   traceContext?: Record<string, string | undefined>;
   spanParentAsLink?: boolean;
+  parentAsLinkType?: "replay" | "trigger";
   batchId?: string;
+  customIcon?: string;
 };
 
 export class TriggerTaskService extends BaseService {
@@ -31,7 +34,7 @@ export class TriggerTaskService extends BaseService {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
-      const idempotencyKey = options.idempotencyKey ?? nanoid();
+      const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey ?? nanoid();
 
       const existingRun = await this._prisma.taskRun.findUnique({
         where: {
@@ -52,6 +55,7 @@ export class TriggerTaskService extends BaseService {
         {
           context: options.traceContext,
           spanParentAsLink: options.spanParentAsLink,
+          parentAsLinkType: options.parentAsLinkType,
           kind: "SERVER",
           environment,
           taskSlug: taskId,
@@ -60,7 +64,7 @@ export class TriggerTaskService extends BaseService {
               [SemanticInternalAttributes.SHOW_ACTIONS]: true,
             },
             style: {
-              icon: "task",
+              icon: options.customIcon ?? "task",
             },
             runIsTest: body.options?.test ?? false,
             batchId: options.batchId,
@@ -102,6 +106,7 @@ export class TriggerTaskService extends BaseService {
 
             const payloadPacket = await this.#handlePayloadPacket(
               body.payload,
+              body.options?.payloadType ?? "application/json",
               runFriendlyId,
               environment
             );
@@ -115,7 +120,7 @@ export class TriggerTaskService extends BaseService {
                 projectId: environment.projectId,
                 idempotencyKey,
                 taskIdentifier: taskId,
-                payload: payloadPacket.data,
+                payload: payloadPacket.data ?? "",
                 payloadType: payloadPacket.dataType,
                 context: body.context,
                 traceContext: traceContext,
@@ -129,7 +134,10 @@ export class TriggerTaskService extends BaseService {
             });
 
             if (payloadPacket.data) {
-              if (payloadPacket.dataType === "application/json") {
+              if (
+                payloadPacket.dataType === "application/json" ||
+                payloadPacket.dataType === "application/super+json"
+              ) {
                 event.setAttribute("payload", JSON.parse(payloadPacket.data) as any);
               } else {
                 event.setAttribute("payload", payloadPacket.data);
@@ -193,13 +201,15 @@ export class TriggerTaskService extends BaseService {
 
   async #handlePayloadPacket(
     payload: any,
+    payloadType: string,
     pathPrefix: string,
     environment: AuthenticatedEnvironment
   ) {
-    const packet = {
-      data: JSON.stringify(payload),
-      dataType: "application/json",
-    };
+    const packet = this.#createPayloadPacket(payload, payloadType);
+
+    if (!packet.data) {
+      return packet;
+    }
 
     const { needsOffloading, size } = packetRequiresOffloading(packet);
 
@@ -215,6 +225,18 @@ export class TriggerTaskService extends BaseService {
       data: filename,
       dataType: "application/store",
     };
+  }
+
+  #createPayloadPacket(payload: any, payloadType: string): IOPacket {
+    if (payloadType === "application/json") {
+      return { data: JSON.stringify(payload), dataType: "application/json" };
+    }
+
+    if (typeof payload === "string") {
+      return { data: payload, dataType: payloadType };
+    }
+
+    return { dataType: payloadType };
   }
 }
 

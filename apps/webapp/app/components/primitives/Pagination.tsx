@@ -1,16 +1,18 @@
 import { ChevronRightIcon } from "@heroicons/react/24/outline";
 import { ChevronLeftIcon } from "@heroicons/react/24/solid";
 import { Link, useLocation } from "@remix-run/react";
-import { LinkDisabled } from "./LinkWithDisabled";
 import { cn } from "~/utils/cn";
-import { ButtonContent, LinkButton } from "./Buttons";
+import { ButtonContent } from "./Buttons";
+import { LinkDisabled } from "./LinkWithDisabled";
 
 export function PaginationControls({
   currentPage,
   totalPages,
+  showPageNumbers = true,
 }: {
   currentPage: number;
   totalPages: number;
+  showPageNumbers?: boolean;
 }) {
   const location = useLocation();
   if (totalPages <= 1) {
@@ -30,9 +32,11 @@ export function PaginationControls({
         </ButtonContent>
       </LinkDisabled>
 
-      {calculatePageLinks(currentPage, totalPages).map((page, i) => (
-        <PageLinkComponent page={page} key={i} location={location} />
-      ))}
+      {showPageNumbers
+        ? calculatePageLinks(currentPage, totalPages).map((page, i) => (
+            <PageLinkComponent page={page} key={i} location={location} />
+          ))
+        : null}
 
       <LinkDisabled
         to={pageUrl(location, currentPage + 1)}

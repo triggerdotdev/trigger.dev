@@ -296,7 +296,7 @@ function Timeline({ startTime, duration, inProgress, isError }: TimelineProps) {
     <div className="flex w-full flex-col">
       <div className="flex items-center justify-between gap-1">
         <Paragraph variant="small">
-          <DateTimeAccurate date={startTime} /> UTC
+          <DateTimeAccurate date={startTime} />
         </Paragraph>
         {state === "pending" ? (
           <LiveTimer startTime={startTime} className="" />

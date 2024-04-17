@@ -3,12 +3,11 @@ import type { BackgroundWorker } from "@trigger.dev/database";
 import { Prisma, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
+import { generateFriendlyId } from "../friendlyIdentifiers";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
 import { projectPubSub } from "./projectPubSub.server";
-import { env } from "~/env.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -91,10 +90,10 @@ export class CreateBackgroundWorkerService extends BaseService {
             error:
               err instanceof Error
                 ? {
-                  name: err.name,
-                  message: err.message,
-                  stack: err.stack,
-                }
+                    name: err.name,
+                    message: err.message,
+                    stack: err.stack,
+                  }
                 : err,
             project,
             environment,
@@ -128,6 +127,7 @@ export async function createBackgroundTasks(
           retryConfig: task.retry,
           queueConfig: task.queue,
           machineConfig: task.machine,
+          triggerSource: task.triggerSource === "schedule" ? "SCHEDULED" : "STANDARD",
         },
       });
 
@@ -141,13 +141,13 @@ export async function createBackgroundTasks(
       const concurrencyLimit =
         typeof task.queue?.concurrencyLimit === "number"
           ? Math.max(
-            Math.min(
-              task.queue.concurrencyLimit,
-              environment.maximumConcurrencyLimit,
-              environment.organization.maximumConcurrencyLimit
-            ),
-            0
-          )
+              Math.min(
+                task.queue.concurrencyLimit,
+                environment.maximumConcurrencyLimit,
+                environment.organization.maximumConcurrencyLimit
+              ),
+              0
+            )
           : null;
 
       const taskQueue = await prisma.taskQueue.upsert({

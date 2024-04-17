@@ -14,6 +14,8 @@ import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import { objectToSearchParams } from "./searchParams";
+import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
+import { useLocation } from "@remix-run/react";
 
 export type OrgForPath = Pick<Organization, "slug">;
 export type ProjectForPath = Pick<Project, "slug">;
@@ -88,6 +90,10 @@ export const v3SpanParamsSchema = v3RunParamsSchema.extend({
 
 export const v3DeploymentParams = ProjectParamSchema.extend({
   deploymentParam: z.string(),
+});
+
+export const v3ScheduleParams = ProjectParamSchema.extend({
+  scheduleParam: z.string(),
 });
 
 export function trimTrailingSlash(path: string) {
@@ -380,6 +386,30 @@ export function v3RunStreamingPath(
   run: v3RunForPath
 ) {
   return `${v3RunPath(organization, project, run)}/stream`;
+}
+
+export function v3SchedulesPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/schedules`;
+}
+
+export function v3SchedulePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  schedule: { friendlyId: string }
+) {
+  return `${v3ProjectPath(organization, project)}/schedules/${schedule.friendlyId}`;
+}
+
+export function v3EditSchedulePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  schedule: { friendlyId: string }
+) {
+  return `${v3ProjectPath(organization, project)}/schedules/edit/${schedule.friendlyId}`;
+}
+
+export function v3NewSchedulePath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/schedules/new`;
 }
 
 export function v3ProjectSettingsPath(organization: OrgForPath, project: ProjectForPath) {

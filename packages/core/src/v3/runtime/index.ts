@@ -1,11 +1,6 @@
 const API_NAME = "runtime";
 
-import {
-  BatchTaskRunExecutionResult,
-  TaskMetadataWithFilePath,
-  TaskRunContext,
-  TaskRunExecutionResult,
-} from "../schemas";
+import { BatchTaskRunExecutionResult, TaskRunContext, TaskRunExecutionResult } from "../schemas";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals";
 import { type RuntimeManager } from "./manager";
 import { NoopRuntimeManager } from "./noopRuntimeManager";
@@ -52,14 +47,6 @@ export class RuntimeAPI {
   public disable() {
     this.#getRuntimeManager().disable();
     unregisterGlobal(API_NAME);
-  }
-
-  public registerTasks(tasks: TaskMetadataWithFilePath[]): void {
-    this.#getRuntimeManager().registerTasks(tasks);
-  }
-
-  public getTaskMetadata(id: string): TaskMetadataWithFilePath | undefined {
-    return this.#getRuntimeManager().getTaskMetadata(id);
   }
 
   #getRuntimeManager(): RuntimeManager {

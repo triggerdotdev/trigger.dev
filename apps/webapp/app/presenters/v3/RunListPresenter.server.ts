@@ -1,22 +1,22 @@
-import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
+import { Prisma, TaskRunStatus } from "@trigger.dev/database";
 import { Direction } from "~/components/runs/RunStatuses";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 
 type RunListOptions = {
-  userId: string;
   projectSlug: string;
   //filters
-  tasks: string[] | undefined;
-  versions: string[] | undefined;
-  statuses: TaskRunStatus[] | undefined;
-  environments: string[] | undefined;
-  from: number | undefined;
-  to: number | undefined;
+  tasks?: string[];
+  versions?: string[];
+  statuses?: TaskRunStatus[];
+  environments?: string[];
+  scheduleId?: string;
+  from?: number;
+  to?: number;
   //pagination
-  direction: Direction | undefined;
-  cursor: string | undefined;
+  direction?: Direction;
+  cursor?: string;
   pageSize?: number;
 };
 
@@ -34,12 +34,12 @@ export class RunListPresenter {
   }
 
   public async call({
-    userId,
     projectSlug,
     tasks,
     versions,
     statuses,
     environments,
+    scheduleId,
     from,
     to,
     direction = "forward",
@@ -52,7 +52,9 @@ export class RunListPresenter {
       tasks !== undefined ||
       versions !== undefined ||
       hasStatusFilters ||
-      environments !== undefined;
+      environments !== undefined ||
+      from !== undefined ||
+      to !== undefined;
 
     // Find the project scoped to the organization
     const project = await this.#prismaClient.project.findFirstOrThrow({
@@ -160,6 +162,7 @@ export class RunListPresenter {
           ? Prisma.sql`AND tr."runtimeEnvironmentId" IN (${Prisma.join(environments)})`
           : Prisma.empty
       }
+      ${scheduleId ? Prisma.sql`AND tr."scheduleId" = ${scheduleId}` : Prisma.empty}
       ${
         from
           ? Prisma.sql`AND tr."createdAt" >= ${new Date(from).toISOString()}::timestamp`

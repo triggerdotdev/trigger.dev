@@ -1,4 +1,4 @@
-import { RetryOptions, TaskMetadataWithFilePath, TaskRunContext } from "../schemas";
+import { RetryOptions, TaskMetadata, TaskMetadataWithFilePath, TaskRunContext } from "../schemas";
 import { Prettify } from "./utils";
 
 export * from "./utils";
@@ -63,7 +63,7 @@ export type HandleErrorFunction = (
   params: HandleErrorArgs
 ) => HandleErrorResult;
 
-export type TaskMetadataWithFunctions = TaskMetadataWithFilePath & {
+export type TaskMetadataWithFunctions = TaskMetadata & {
   fns: {
     run: (payload: any, params: RunFnParams<any>) => Promise<any>;
     init?: (payload: any, params: InitFnParams) => Promise<InitOutput>;

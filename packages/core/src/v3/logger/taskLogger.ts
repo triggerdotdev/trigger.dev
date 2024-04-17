@@ -70,7 +70,7 @@ export class OtelTaskLogger implements TaskLogger {
     severityNumber: SeverityNumber,
     properties?: Record<string, unknown>
   ) {
-    let attributes: Attributes = { ...flattenAttributes(properties) };
+    let attributes: Attributes = { ...flattenAttributes(safeJsonProcess(properties)) };
 
     const icon = iconStringForSeverity(severityNumber);
     if (icon !== undefined) {
@@ -103,5 +103,13 @@ export class NoopTaskLogger implements TaskLogger {
   error() {}
   trace<T>(name: string, fn: (span: Span) => Promise<T>): Promise<T> {
     return fn({} as Span);
+  }
+}
+
+function safeJsonProcess(value?: Record<string, unknown>): Record<string, unknown> | undefined {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
   }
 }
