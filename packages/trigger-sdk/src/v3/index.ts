@@ -3,6 +3,7 @@ export * from "./config";
 export * from "./wait";
 export * from "./cache";
 export { retry, type RetryOptions } from "./retry";
+export { queue } from "./shared";
 
 import type { Context } from "./shared";
 export type { Context };
