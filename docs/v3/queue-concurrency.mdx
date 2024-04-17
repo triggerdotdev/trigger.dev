@@ -153,8 +153,8 @@ export async function POST(request: Request) {
           //every free user gets a queue with a concurrency limit of 1
           name: "free-users",
           concurrencyLimit: 1,
-          concurrencyKey: data.userId,
         },
+        concurrencyKey: data.userId,
       },
     });
 
