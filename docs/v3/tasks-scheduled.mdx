@@ -3,7 +3,12 @@ title: "Scheduled tasks"
 description: "A task that is triggered on a recurring schedule using CRON syntax."
 ---
 
-They are defined in your code using `schedules.task()`. Then you need to attach a schedule to the task either in the schedules section of the dashboard or by using the SDK. You can provide an `externalId` when registering a schedule, this allows you to have schedules for your users. A task can have multiple schedules attached to it.
+To use scheduled tasks you need to do two things:
+
+1. Define a task in your code using `schedules.task()`.
+2. Attach a schedule to the task either using the dashboard or the SDK.
+
+<Info>A task can have multiple schedules attached to it.</Info>
 
 Like all tasks they don't have timeouts, they should be placed inside a [/trigger folder](/v3/trigger-folder), and you [can configure them](/v3/tasks-overview#defining-a-task).
 
@@ -18,29 +23,23 @@ export const firstScheduledTask = schedules.task({
   run: async (payload) => {
     //when the task was scheduled to run
     //note this will be slightly different from new Date() because it takes a few ms to run the task
-    console.log(payload.timestamp);
+    console.log(payload.timestamp); //is a Date object
 
     //when the task was last run
     //this can be undefined if it's never been run
-    console.log(payload.lastTimestamp);
-
-    //elapsed time since last run (can be undefined if it's the first run)
-    const msSinceLastRun = payload.lastTimestamp
-      ? payload.timestamp.getTime() - payload.lastTimestamp.getTime()
-      : undefined;
-    console.log(msSinceLastRun);
+    console.log(payload.lastTimestamp); //is a Date object or undefined
 
     //the schedule id (you can have many schedules for the same task)
     //using this you can remove the schedule, update it, etc
-    console.log(payload.scheduleId);
+    console.log(payload.scheduleId); //is a string
 
     //you can optionally provide an external id when creating the schedule
     //usually you would set this to a userId or some other unique identifier
     //this can be undefined if you didn't provide one
-    console.log(payload.externalId);
+    console.log(payload.externalId); //is a string or undefined
 
     //the next 5 dates this task is scheduled to run
-    console.log(payload.upcoming);
+    console.log(payload.upcoming); //is an array of Date objects
   },
 });
 ```
@@ -84,7 +83,7 @@ These are the options when creating a schedule:
 └──────────────────── minute (0 - 59)
 ```
 
-"L" means the last. In the "day of week" field, 1L means the last Monday of the month. In the day of month field, L means the last day of the month.
+"L" means the last. In the "day of week" field, 1L means the last Monday of the month. In the "day of month" field, L means the last day of the month.
 
 ### Using the dashboard
 
