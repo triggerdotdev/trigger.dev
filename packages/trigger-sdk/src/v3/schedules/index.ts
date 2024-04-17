@@ -1,4 +1,11 @@
-import { InitOutput, apiClientManager, taskCatalog } from "@trigger.dev/core/v3";
+import {
+  DeletedScheduleObject,
+  InitOutput,
+  ListSchedulesResult,
+  ScheduleObject,
+  apiClientManager,
+  taskCatalog,
+} from "@trigger.dev/core/v3";
 import { Task, TaskOptions, apiClientMissingError, createTask } from "../shared";
 import * as SchedulesAPI from "./api";
 
@@ -23,7 +30,7 @@ export function task<TOutput, TInitOutput extends InitOutput>(
  * @param options.deduplicationKey - An optional deduplication key for the schedule
  * @returns The created schedule
  */
-export async function create(options: SchedulesAPI.CreateScheduleOptions) {
+export async function create(options: SchedulesAPI.CreateScheduleOptions): Promise<ScheduleObject> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -38,7 +45,7 @@ export async function create(options: SchedulesAPI.CreateScheduleOptions) {
  * @param scheduleId - The ID of the schedule to retrieve
  * @returns The retrieved schedule
  */
-export async function retrieve(scheduleId: string) {
+export async function retrieve(scheduleId: string): Promise<ScheduleObject> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -57,7 +64,10 @@ export async function retrieve(scheduleId: string) {
  * @param options.externalId - An optional external identifier for the schedule
  * @returns The updated schedule
  */
-export async function update(scheduleId: string, options: SchedulesAPI.UpdateScheduleOptions) {
+export async function update(
+  scheduleId: string,
+  options: SchedulesAPI.UpdateScheduleOptions
+): Promise<ScheduleObject> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -71,7 +81,7 @@ export async function update(scheduleId: string, options: SchedulesAPI.UpdateSch
  * Deletes a schedule
  * @param scheduleId - The ID of the schedule to delete
  */
-export async function del(scheduleId: string) {
+export async function del(scheduleId: string): Promise<DeletedScheduleObject> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -85,7 +95,7 @@ export async function del(scheduleId: string) {
  * Deactivates a schedule
  * @param scheduleId - The ID of the schedule to deactivate
  */
-export async function deactivate(scheduleId: string) {
+export async function deactivate(scheduleId: string): Promise<ScheduleObject> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -99,7 +109,7 @@ export async function deactivate(scheduleId: string) {
  * Activates a schedule
  * @param scheduleId - The ID of the schedule to activate
  */
-export async function activate(scheduleId: string) {
+export async function activate(scheduleId: string): Promise<ScheduleObject> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -116,7 +126,9 @@ export async function activate(scheduleId: string) {
  * @param options.perPage - The number of schedules per page
  * @returns The list of schedules
  */
-export async function list(options?: SchedulesAPI.ListScheduleOptions) {
+export async function list(
+  options?: SchedulesAPI.ListScheduleOptions
+): Promise<ListSchedulesResult> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {

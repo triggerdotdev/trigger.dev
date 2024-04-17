@@ -1,5 +1,5 @@
 import { context, propagation } from "@opentelemetry/api";
-import { ZodFetchOptions, zodfetch } from "../../zodfetch";
+import { ZodFetchOptions, zodfetch } from "../zodfetch";
 import {
   BatchTriggerTaskRequestBody,
   BatchTriggerTaskResponse,
@@ -25,7 +25,7 @@ export type TriggerOptions = {
 
 const zodFetchOptions: ZodFetchOptions = {
   retry: {
-    maxAttempts: 5,
+    maxAttempts: 3,
     minTimeoutInMs: 1000,
     maxTimeoutInMs: 30_000,
     factor: 2,

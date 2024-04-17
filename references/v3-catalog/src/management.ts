@@ -1,4 +1,4 @@
-import { runs, schedules } from "@trigger.dev/sdk/v3";
+import { APIError, runs, schedules } from "@trigger.dev/sdk/v3";
 import { simpleChildTask } from "./trigger/subtasks";
 import dotenv from "dotenv";
 import { firstScheduledTask } from "./trigger/scheduled";
@@ -6,77 +6,73 @@ import { firstScheduledTask } from "./trigger/scheduled";
 dotenv.config();
 
 export async function run() {
-  const run = await simpleChildTask.trigger({ payload: { message: "Hello, World!" } });
-  const canceled = await runs.cancel(run.id);
-  console.log("canceled run", canceled);
+  try {
+    const run = await simpleChildTask.trigger({ payload: { message: "Hello, World!" } });
+    const canceled = await runs.cancel(run.id);
+    console.log("canceled run", canceled);
 
-  const replayed = await runs.replay(run.id);
-  console.log("replayed run", replayed);
+    const replayed = await runs.replay(run.id);
+    console.log("replayed run", replayed);
 
-  const run2 = await simpleChildTask.trigger({
-    payload: { message: "Hello, World!" },
-    options: {
-      idempotencyKey: "mmvlgwcidiklyeygen4",
-    },
-  });
+    const run2 = await simpleChildTask.trigger({
+      payload: { message: "Hello, World!" },
+      options: {
+        idempotencyKey: "mmvlgwcidiklyeygen4",
+      },
+    });
 
-  const run3 = await simpleChildTask.trigger({
-    payload: { message: "Hello, World again!" },
-    options: {
-      idempotencyKey: "mmvlgwcidiklyeygen4",
-    },
-  });
+    const run3 = await simpleChildTask.trigger({
+      payload: { message: "Hello, World again!" },
+      options: {
+        idempotencyKey: "mmvlgwcidiklyeygen4",
+      },
+    });
 
-  console.log("run2", run2);
-  console.log("run3", run3);
+    console.log("run2", run2);
+    console.log("run3", run3);
 
-  const allSchedules = await schedules.list();
+    const allSchedules = await schedules.list();
 
-  // Create a schedule
-  const createdSchedule = await schedules.create({
-    task: firstScheduledTask.id,
-    cron: "0 0 * * *",
-    externalId: "ext_1234444",
-    deduplicationKey: "dedup_1234444",
-  });
+    console.log("all schedules", allSchedules);
 
-  if (createdSchedule.ok) {
-    console.log("created schedule", createdSchedule.data);
+    // Create a schedule
+    const createdSchedule = await schedules.create({
+      task: firstScheduledTask.id,
+      cron: "0 0 * * *",
+      externalId: "ext_1234444",
+      deduplicationKey: "dedup_1234444",
+    });
 
-    const retrievedSchedule = await schedules.retrieve(createdSchedule.data.id);
+    console.log("created schedule", createdSchedule);
 
-    if (retrievedSchedule.ok) {
-      console.log("retrieved schedule", retrievedSchedule.data);
+    const retrievedSchedule = await schedules.retrieve(createdSchedule.id);
 
-      const updatedSchedule = await schedules.update(createdSchedule.data.id, {
-        task: firstScheduledTask.id,
-        cron: "0 0 1 * *",
-        externalId: "ext_1234444",
-      });
+    console.log("retrieved schedule", retrievedSchedule);
 
-      if (updatedSchedule.ok) {
-        console.log("updated schedule", updatedSchedule.data);
+    const updatedSchedule = await schedules.update(createdSchedule.id, {
+      task: firstScheduledTask.id,
+      cron: "0 0 1 * *",
+      externalId: "ext_1234444",
+    });
 
-        const deactivatedSchedule = await schedules.deactivate(createdSchedule.data.id);
+    console.log("updated schedule", updatedSchedule);
 
-        if (deactivatedSchedule.ok) {
-          console.log("deactivated schedule", deactivatedSchedule.data);
-        } else {
-          console.error("failed to deactivate schedule", deactivatedSchedule.error);
-        }
+    const deactivatedSchedule = await schedules.deactivate(createdSchedule.id);
 
-        const activatedSchedule = await schedules.activate(createdSchedule.data.id);
+    console.log("deactivated schedule", deactivatedSchedule);
 
-        if (activatedSchedule.ok) {
-          console.log("activated schedule", activatedSchedule.data);
+    const activatedSchedule = await schedules.activate(createdSchedule.id);
 
-          const deletedSchedule = await schedules.del(createdSchedule.data.id);
+    console.log("activated schedule", activatedSchedule);
 
-          if (deletedSchedule.ok) {
-            console.log("deleted schedule", deletedSchedule.data);
-          }
-        }
-      }
+    const deletedSchedule = await schedules.del(createdSchedule.id);
+
+    console.log("deleted schedule", deletedSchedule);
+  } catch (error) {
+    if (error instanceof APIError) {
+      console.error("APIError", error);
+    } else {
+      console.error("Unknown error", error);
     }
   }
 }
