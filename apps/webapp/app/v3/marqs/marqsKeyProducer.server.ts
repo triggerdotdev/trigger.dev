@@ -15,6 +15,18 @@ const constants = {
 export class MarQSShortKeyProducer implements MarQSKeyProducer {
   constructor(private _prefix: string) {}
 
+  sharedQueueScanPattern() {
+    return `${this._prefix}*${constants.SHARED_QUEUE}`;
+  }
+
+  stripKeyPrefix(key: string): string {
+    if (key.startsWith(this._prefix)) {
+      return key.slice(this._prefix.length);
+    }
+
+    return key;
+  }
+
   queueConcurrencyLimitKey(env: AuthenticatedEnvironment, queue: string) {
     return [this.queueKey(env, queue), constants.CONCURRENCY_LIMIT_PART].join(":");
   }

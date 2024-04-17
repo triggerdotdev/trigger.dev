@@ -25,6 +25,7 @@ export interface MarQSKeyProducer {
   orgConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
   queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
   envSharedQueueKey(env: AuthenticatedEnvironment): string;
+  sharedQueueScanPattern(): string;
   concurrencyLimitKeyFromQueue(queue: string): string;
   currentConcurrencyKeyFromQueue(queue: string): string;
   currentConcurrencyKey(
@@ -39,6 +40,7 @@ export interface MarQSKeyProducer {
   orgCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
   envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
   messageKey(messageId: string): string;
+  stripKeyPrefix(key: string): string;
 }
 
 export type PriorityStrategyChoice = string | { abort: true };
