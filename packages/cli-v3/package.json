@@ -1,6 +1,6 @@
 {
   "name": "trigger.dev",
-  "version": "3.0.0-beta.11",
+  "version": "3.0.0-beta.12",
   "description": "A Command-Line Interface for Trigger.dev (v3) projects",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -45,8 +45,8 @@
     "@types/semver": "^7.3.13",
     "@types/ws": "^8.5.3",
     "cpy-cli": "^5.0.0",
+    "nodemon": "^3.0.1",
     "npm-run-all": "^4.1.5",
-    "npm-watch": "^0.11.0",
     "open": "^10.0.3",
     "p-retry": "^6.1.0",
     "rimraf": "^3.0.2",
@@ -55,9 +55,6 @@
     "typescript": "^5.3.3",
     "vitest": "^0.34.4",
     "xdg-app-paths": "^8.3.0"
-  },
-  "watch": {
-    "build:prod-containerfile": "src/Containerfile.prod"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.check.json",
@@ -68,7 +65,7 @@
     "dev": "npm run clean && run-p dev:**",
     "dev:main": "tsup --watch",
     "dev:workers": "tsup --config tsup.workers.config.ts --watch",
-    "dev:prod-containerfile": "npm-watch",
+    "dev:test": "nodemon -w src/Containerfile.prod -x npm run build:prod-containerfile",
     "clean": "rimraf dist",
     "start": "node dist/index.js",
     "test": "vitest"
@@ -88,7 +85,7 @@
     "@opentelemetry/sdk-trace-base": "^1.22.0",
     "@opentelemetry/sdk-trace-node": "^1.22.0",
     "@opentelemetry/semantic-conventions": "^1.22.0",
-    "@trigger.dev/core": "workspace:^3.0.0-beta.11",
+    "@trigger.dev/core": "workspace:^3.0.0-beta.12",
     "@types/degit": "^2.8.3",
     "chalk": "^5.2.0",
     "chokidar": "^3.5.3",

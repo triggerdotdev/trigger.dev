@@ -1,4 +1,4 @@
-import { intro, isCancel, log, outro, select, spinner, text } from "@clack/prompts";
+import { intro, isCancel, log, outro, select, text } from "@clack/prompts";
 import { context, trace } from "@opentelemetry/api";
 import {
   GetProjectResponseBody,
@@ -30,8 +30,9 @@ import { createFile, pathExists, readFile } from "../utilities/fileSystem";
 import { getUserPackageManager } from "../utilities/getUserPackageManager";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger";
-import { resolveInternalFilePath } from "../utilities/resolveInternalFilePath";
+import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { login } from "./login";
+import { spinner } from "../utilities/windows";
 
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -185,7 +186,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 async function createTriggerDir(dir: string, options: InitCommandOptions) {
   return await tracer.startActiveSpan("createTriggerDir", async (span) => {
     try {
-      const defaultValue = `${dir}/src/trigger`;
+      const defaultValue = join(dir, "src", "trigger");
 
       const location = await text({
         message: "Where would you like to create the Trigger.dev directory?",
@@ -198,6 +199,8 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
       }
 
       const triggerDir = resolve(process.cwd(), location);
+
+      logger.debug({ triggerDir });
 
       span.setAttributes({
         "cli.triggerDir": triggerDir,
@@ -239,11 +242,11 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
         return { location, isCustomValue: location !== defaultValue };
       }
 
-      const exampleFile = resolveInternalFilePath(`./templates/examples/${example}.ts.template`);
+      const templatePath = join(cliRootPath(), "templates", "examples", `${example}.ts.template`);
       const outputPath = join(triggerDir, "example.ts");
 
       await createFileFromTemplate({
-        templatePath: exampleFile,
+        templatePath,
         outputPath,
         replacements: {},
       });
@@ -440,7 +443,7 @@ async function writeConfigFile(
       spnnr.start("Creating config file");
 
       const projectDir = resolve(process.cwd(), dir);
-      const templatePath = resolveInternalFilePath("./templates/trigger.config.ts.template");
+      const templatePath = join(cliRootPath(), "templates", "trigger.config.ts.template");
       const outputPath = join(projectDir, "trigger.config.ts");
 
       span.setAttributes({

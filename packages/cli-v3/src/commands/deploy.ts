@@ -1,4 +1,4 @@
-import { intro, log, outro, spinner } from "@clack/prompts";
+import { intro, log, outro } from "@clack/prompts";
 import { depot } from "@depot/cli";
 import { context, trace } from "@opentelemetry/api";
 import {
@@ -12,11 +12,10 @@ import chalk from "chalk";
 import { Command, Option as CommandOption } from "commander";
 import { Metafile, build } from "esbuild";
 import { execa } from "execa";
-import { resolve as importResolve } from "import-meta-resolve";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, posix } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import terminalLink from "terminal-link";
 import invariant from "tiny-invariant";
@@ -56,6 +55,8 @@ import {
 } from "../utilities/deployErrors";
 import { safeJsonParse } from "../utilities/safeJsonParse";
 import { JavascriptProject } from "../utilities/javascriptProject";
+import { cliRootPath } from "../utilities/resolveInternalFilePath";
+import { escapeImportPath, spinner } from "../utilities/windows";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -939,27 +940,27 @@ async function compileProject(
 
       const taskFiles = await gatherTaskFiles(config);
       const workerFacade = readFileSync(
-        new URL(importResolve("./workers/prod/worker-facade.js", import.meta.url)).href.replace(
-          "file://",
-          ""
-        ),
+        join(cliRootPath(), "workers", "prod", "worker-facade.js"),
         "utf-8"
       );
 
-      const workerSetupPath = new URL(
-        importResolve("./workers/prod/worker-setup.js", import.meta.url)
-      ).href.replace("file://", "");
+      const workerSetupPath = join(cliRootPath(), "workers", "dev", "worker-setup.js");
 
       let workerContents = workerFacade
         .replace("__TASKS__", createTaskFileImports(taskFiles))
-        .replace("__WORKER_SETUP__", `import { tracingSDK } from "${workerSetupPath}";`);
+        .replace(
+          "__WORKER_SETUP__",
+          `import { tracingSDK } from "${escapeImportPath(workerSetupPath)}";`
+        );
 
       if (configPath) {
         logger.debug("Importing project config from", { configPath });
 
         workerContents = workerContents.replace(
           "__IMPORTED_PROJECT_CONFIG__",
-          `import * as importedConfigExports from "${configPath}"; const importedConfig = importedConfigExports.config; const handleError = importedConfigExports.handleError;`
+          `import * as importedConfigExports from "${escapeImportPath(
+            configPath
+          )}"; const importedConfig = importedConfigExports.config; const handleError = importedConfigExports.handleError;`
         );
       } else {
         workerContents = workerContents.replace(
@@ -1015,10 +1016,7 @@ async function compileProject(
       }
 
       const entryPointContents = readFileSync(
-        new URL(importResolve("./workers/prod/entry-point.js", import.meta.url)).href.replace(
-          "file://",
-          ""
-        ),
+        join(cliRootPath(), "workers", "prod", "entry-point.js"),
         "utf-8"
       );
 
@@ -1076,12 +1074,13 @@ async function compileProject(
       logger.debug(`Writing compiled files to ${tempDir}`);
 
       // Get the metaOutput for the result build
-      const metaOutput = result.metafile!.outputs[join("out", "stdin.js")];
+      const metaOutput = result.metafile!.outputs[posix.join("out", "stdin.js")];
 
       invariant(metaOutput, "Meta output for the result build is missing");
 
       // Get the metaOutput for the entryPoint build
-      const entryPointMetaOutput = entryPointResult.metafile!.outputs[join("out", "stdin.js")];
+      const entryPointMetaOutput =
+        entryPointResult.metafile!.outputs[posix.join("out", "stdin.js")];
 
       invariant(entryPointMetaOutput, "Meta output for the entryPoint build is missing");
 
@@ -1156,9 +1155,7 @@ async function compileProject(
       }
 
       // Write the Containerfile to /tmp/dir/Containerfile
-      const containerFilePath = new URL(
-        importResolve("./Containerfile.prod", import.meta.url)
-      ).href.replace("file://", "");
+      const containerFilePath = join(cliRootPath(), "Containerfile.prod");
       // Copy the Containerfile to /tmp/dir/Containerfile
       await copyFile(containerFilePath, join(tempDir, "Containerfile"));
 

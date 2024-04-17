@@ -11,12 +11,11 @@ import {
 import { watch } from "chokidar";
 import { Command } from "commander";
 import { BuildContext, Metafile, context } from "esbuild";
-import { resolve as importResolve } from "import-meta-resolve";
 import { render, useInput } from "ink";
 import { createHash } from "node:crypto";
 import fs, { readFileSync } from "node:fs";
 import { ClientRequestArgs } from "node:http";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, normalize } from "node:path";
 import pDebounce from "p-debounce";
 import { WebSocket } from "partysocket";
 import React, { Suspense, useEffect } from "react";
@@ -52,6 +51,8 @@ import {
   parseNpmInstallError,
 } from "../utilities/deployErrors";
 import { findUp, pathExists } from "find-up";
+import { cliRootPath } from "../utilities/resolveInternalFilePath";
+import { escapeImportPath } from "../utilities/windows";
 
 let apiClient: CliApiClient | undefined;
 
@@ -338,28 +339,27 @@ function useDev({
 
       const taskFiles = await gatherTaskFiles(config);
 
-      const workerFacade = readFileSync(
-        new URL(importResolve("./workers/dev/worker-facade.js", import.meta.url)).href.replace(
-          "file://",
-          ""
-        ),
-        "utf-8"
-      );
+      const workerFacadePath = join(cliRootPath(), "workers", "dev", "worker-facade.js");
+      const workerFacade = readFileSync(workerFacadePath, "utf-8");
 
-      const workerSetupPath = new URL(
-        importResolve("./workers/dev/worker-setup.js", import.meta.url)
-      ).href.replace("file://", "");
+      const workerSetupPath = join(cliRootPath(), "workers", "dev", "worker-setup.js");
 
       let entryPointContents = workerFacade
         .replace("__TASKS__", createTaskFileImports(taskFiles))
-        .replace("__WORKER_SETUP__", `import { tracingSDK, sender } from "${workerSetupPath}";`);
+        .replace(
+          "__WORKER_SETUP__",
+          `import { tracingSDK, sender } from "${escapeImportPath(workerSetupPath)}";`
+        );
 
       if (configPath) {
+        configPath = normalize(configPath);
         logger.debug("Importing project config from", { configPath });
 
         entryPointContents = entryPointContents.replace(
           "__IMPORTED_PROJECT_CONFIG__",
-          `import * as importedConfigExports from "${configPath}"; const importedConfig = importedConfigExports.config; const handleError = importedConfigExports.handleError;`
+          `import * as importedConfigExports from "${escapeImportPath(
+            configPath
+          )}"; const importedConfig = importedConfigExports.config; const handleError = importedConfigExports.handleError;`
         );
       } else {
         entryPointContents = entryPointContents.replace(
@@ -414,7 +414,11 @@ function useDev({
                   logger.log(chalkGrey("○ Building background worker…"));
                 }
 
-                const metaOutputKey = join("out", `stdin.js`);
+                const metaOutputKey = join("out", `stdin.js`).replace(/\\/g, "/");
+
+                logger.debug("Metafile", {
+                  metafileOutputs: JSON.stringify(result.metafile?.outputs),
+                });
 
                 const metaOutput = result.metafile!.outputs[metaOutputKey];
 

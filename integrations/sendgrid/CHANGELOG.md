@@ -1,5 +1,12 @@
 # @trigger.dev/sendgrid
 
+## 3.0.0-beta.12
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.12
+- @trigger.dev/sdk@3.0.0-beta.12
+
 ## 3.0.0-beta.11
 
 ### Patch Changes

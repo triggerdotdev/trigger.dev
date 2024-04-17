@@ -1,5 +1,11 @@
 # @trigger.dev/otlp-importer
 
+## 3.0.0-beta.12
+
+### Patch Changes
+
+- d3a18fbdf: Fix package builds and CLI commands on Windows
+
 ## 3.0.0-beta.11
 
 ## 3.0.0-beta.7

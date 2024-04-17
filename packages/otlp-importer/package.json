@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/otlp-importer",
-  "version": "3.0.0-beta.11",
+  "version": "3.0.0-beta.12",
   "description": "OpenTelemetry OTLP Importer for Node.js written in TypeScript",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -32,7 +32,7 @@
     "generate": "npm run protos",
     "protos": "npm run submodule && npm run protos:generate",
     "protos:generate": "node ./scripts/generate-protos.mjs",
-    "submodule": "command -v git >/dev/null 2>&1 && git submodule sync --recursive && git submodule update --init --recursive || echo 'git not installed'",
+    "submodule": "node ./scripts/submodule.mjs",
     "typecheck": "tsc --noEmit",
     "test": "jest"
   },
