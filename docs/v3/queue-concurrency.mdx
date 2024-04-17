@@ -15,7 +15,7 @@ export const oneAtATime = task({
   queue: {
     concurrencyLimit: 1,
   },
-  run: async ({ payload, ctx }) => {
+  run: async (payload) => {
     //...
   },
 });
@@ -31,7 +31,7 @@ export const parallelism = task({
   queue: {
     concurrencyLimit: 100,
   },
-  run: async ({ payload, ctx }) => {
+  run: async (payload) => {
     //...
   },
 });
@@ -169,8 +169,8 @@ export async function POST(request: Request) {
           //every paid user gets a queue with a concurrency limit of 10
           name: "paid-users",
           concurrencyLimit: 10,
-          concurrencyKey: data.userId,
         },
+        concurrencyKey: data.userId,
       },
     });
 
