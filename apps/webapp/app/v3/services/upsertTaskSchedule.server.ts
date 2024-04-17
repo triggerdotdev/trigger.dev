@@ -186,26 +186,15 @@ export class UpsertTaskScheduleService extends BaseService {
     });
 
     // create the new instances
-    let instances: InstanceWithEnvironment[] = [];
+    const newInstances: InstanceWithEnvironment[] = [];
+    const updatingInstances: InstanceWithEnvironment[] = [];
 
     for (const environmentId of options.environments) {
       const existingInstance = existingInstances.find((i) => i.environmentId === environmentId);
 
       if (existingInstance) {
-        if (!existingInstance.active) {
-          // If the instance is not active, we need to activate it
-          await tx.taskScheduleInstance.update({
-            where: {
-              id: existingInstance.id,
-            },
-            data: {
-              active: true,
-            },
-          });
-        }
-
         // Update the existing instance
-        instances.push({ ...existingInstance, active: true });
+        updatingInstances.push(existingInstance);
       } else {
         // Create a new instance
         const instance = await tx.taskScheduleInstance.create({
@@ -226,34 +215,52 @@ export class UpsertTaskScheduleService extends BaseService {
           },
         });
 
-        instances.push(instance);
+        newInstances.push(instance);
       }
     }
 
     // find the instances that need to be removed
-    const instancesToDeactivate = existingInstances.filter(
+    const instancesToDeleted = existingInstances.filter(
       (i) => !options.environments.includes(i.environmentId)
     );
 
-    // deactivate the instances
-    for (const instance of instancesToDeactivate) {
-      await tx.taskScheduleInstance.update({
+    // delete the instances no longer selected
+    for (const instance of instancesToDeleted) {
+      await tx.taskScheduleInstance.delete({
         where: {
           id: instance.id,
-        },
-        data: {
-          active: false,
         },
       });
     }
 
-    if (scheduleHasChanged) {
-      const registerService = new RegisterNextTaskScheduleInstanceService(tx);
+    const registerService = new RegisterNextTaskScheduleInstanceService(tx);
 
-      for (const instance of existingInstances) {
+    for (const instance of newInstances) {
+      await registerService.call(instance.id);
+    }
+
+    if (scheduleHasChanged) {
+      for (const instance of updatingInstances) {
         await registerService.call(instance.id);
       }
     }
+
+    const instances = await tx.taskScheduleInstance.findMany({
+      where: {
+        taskScheduleId: scheduleRecord.id,
+      },
+      include: {
+        environment: {
+          include: {
+            orgMember: {
+              include: {
+                user: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
     return { scheduleRecord, instances };
   }

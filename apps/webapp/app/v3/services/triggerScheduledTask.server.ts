@@ -3,8 +3,10 @@ import { BaseService } from "./baseService.server";
 import { workerQueue } from "~/services/worker.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import { TriggerTaskService } from "./triggerTask.server";
-import { logger, stringifyIO } from "@trigger.dev/core/v3";
+import { stringifyIO } from "@trigger.dev/core/v3";
 import { nextScheduledTimestamps } from "../utils/calculateNextSchedule.server";
+import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
+import { logger } from "~/services/logger.server";
 
 export class TriggerScheduledTaskService extends BaseService {
   public async call(instanceId: string) {
@@ -47,6 +49,40 @@ export class TriggerScheduledTaskService extends BaseService {
       (!instance.environment.currentSession || instance.environment.currentSession.disconnectedAt)
     ) {
       shouldTrigger = false;
+    }
+
+    if (instance.environment.type !== "DEVELOPMENT") {
+      // Get the current backgroundWorker for this environment
+      const currentWorkerDeployment = await findCurrentWorkerDeployment(instance.environment.id);
+
+      if (!currentWorkerDeployment) {
+        logger.debug("No current worker deployment found, skipping task trigger", {
+          instanceId,
+          scheduleId: instance.taskSchedule.friendlyId,
+          environmentId: instance.environment.id,
+        });
+
+        shouldTrigger = false;
+      } else if (
+        !currentWorkerDeployment.worker ||
+        !currentWorkerDeployment.worker.tasks.some(
+          (t) => t.id === instance.taskSchedule.taskIdentifier
+        )
+      ) {
+        logger.debug(
+          "Current worker deployment does not contain the scheduled task identifier, skipping task trigger",
+          {
+            instanceId,
+            scheduleId: instance.taskSchedule.friendlyId,
+            environmentId: instance.environment.id,
+            workerDeploymentId: currentWorkerDeployment.id,
+            workerId: currentWorkerDeployment.worker?.id,
+            taskIdentifier: instance.taskSchedule.taskIdentifier,
+          }
+        );
+
+        shouldTrigger = false;
+      }
     }
 
     const registerNextService = new RegisterNextTaskScheduleInstanceService();
