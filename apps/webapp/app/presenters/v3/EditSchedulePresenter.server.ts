@@ -97,7 +97,7 @@ export class EditSchedulePresenter {
       select: {
         id: true,
         friendlyId: true,
-        cron: true,
+        generatorExpression: true,
         externalId: true,
         deduplicationKey: true,
         userProvidedDeduplicationKey: true,
@@ -120,6 +120,7 @@ export class EditSchedulePresenter {
 
     return {
       ...schedule,
+      cron: schedule.generatorExpression,
       environments: schedule.instances.map((instance) => {
         const environment = possibleEnvironments.find((env) => env.id === instance.environmentId);
         if (!environment) {

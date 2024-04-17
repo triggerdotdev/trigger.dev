@@ -242,8 +242,11 @@ export const ScheduleObject = z.object({
   active: z.boolean(),
   deduplicationKey: z.string().optional(),
   externalId: z.string().optional(),
-  cron: z.string(),
-  cronDescription: z.string(),
+  generator: z.object({
+    type: z.literal("CRON"),
+    expression: z.string(),
+    description: z.string(),
+  }),
   nextRun: z.coerce.date().optional(),
   environments: z.array(
     z.object({

@@ -33,6 +33,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   try {
+    const existingSchedule = await prisma.taskSchedule.findFirst({
+      where: {
+        friendlyId: parsedParams.data.scheduleId,
+        projectId: authenticationResult.environment.projectId,
+      },
+    });
+
+    if (!existingSchedule) {
+      return json({ error: "Schedule not found" }, { status: 404 });
+    }
+
     await prisma.taskSchedule.update({
       where: {
         friendlyId: parsedParams.data.scheduleId,

@@ -245,13 +245,18 @@
           ]
         },
         {
-          "group": "Management API",
+          "group": "Runs API",
           "pages": [
             "v3/management-start-run",
             "v3/management-get-run",
             "v3/management-get-runs",
             "v3/management-replay-run",
-            "v3/management-cancel-run",
+            "v3/management-cancel-run"
+          ]
+        },
+        {
+          "group": "Schedules API",
+          "pages": [
             "v3/management-list-schedules",
             "v3/management-create-schedule",
             "v3/management-retrieve-schedule",

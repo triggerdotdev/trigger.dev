@@ -1,6 +1,4 @@
 import { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
-import { parseExpression } from "cron-parser";
-import cronstrue from "cronstrue";
 import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
@@ -124,7 +122,7 @@ export class ScheduleListPresenter {
                   },
                 },
                 {
-                  cron: {
+                  generatorExpression: {
                     contains: search,
                     mode: "insensitive",
                   },
@@ -142,8 +140,8 @@ export class ScheduleListPresenter {
         taskIdentifier: true,
         deduplicationKey: true,
         userProvidedDeduplicationKey: true,
-        cron: true,
-        cronDescription: true,
+        generatorExpression: true,
+        generatorDescription: true,
         externalId: true,
         instances: {
           select: {
@@ -184,7 +182,7 @@ export class ScheduleListPresenter {
                   },
                 },
                 {
-                  cron: {
+                  generatorExpression: {
                     contains: search,
                     mode: "insensitive",
                   },
@@ -220,12 +218,12 @@ export class ScheduleListPresenter {
         taskIdentifier: schedule.taskIdentifier,
         deduplicationKey: schedule.deduplicationKey,
         userProvidedDeduplicationKey: schedule.userProvidedDeduplicationKey,
-        cron: schedule.cron,
-        cronDescription: schedule.cronDescription,
+        cron: schedule.generatorExpression,
+        cronDescription: schedule.generatorDescription,
         active: schedule.active,
         externalId: schedule.externalId,
         lastRun: latestRun?.createdAt,
-        nextRun: calculateNextScheduledTimestamp(schedule.cron),
+        nextRun: calculateNextScheduledTimestamp(schedule.generatorExpression),
         environments: schedule.instances.map((instance) => {
           const environment = project.environments.find((env) => env.id === instance.environmentId);
           if (!environment) {

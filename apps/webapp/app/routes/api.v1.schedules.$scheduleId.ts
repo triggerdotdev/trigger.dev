@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { UpdateScheduleOptions } from "@trigger.dev/core/v3";
+import { ScheduleObject, UpdateScheduleOptions } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
@@ -70,7 +70,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
         const schedule = await service.call(authenticationResult.environment.projectId, options);
 
-        return json(schedule, { status: 200 });
+        const responseObject: ScheduleObject = {
+          id: schedule.id,
+          task: schedule.task,
+          active: schedule.active,
+          generator: {
+            type: "CRON",
+            expression: schedule.cron,
+            description: schedule.cronDescription,
+          },
+          externalId: schedule.externalId ?? undefined,
+          deduplicationKey: schedule.deduplicationKey,
+          environments: schedule.environments,
+          nextRun: schedule.nextRun,
+        };
+
+        return json(responseObject, { status: 200 });
       } catch (error) {
         return json(
           { error: error instanceof Error ? error.message : "Internal Server Error" },

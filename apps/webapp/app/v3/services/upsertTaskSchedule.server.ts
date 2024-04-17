@@ -109,8 +109,8 @@ export class UpsertTaskScheduleService extends BaseService {
         deduplicationKey,
         userProvidedDeduplicationKey:
           options.deduplicationKey !== undefined && options.deduplicationKey !== "",
-        cron: options.cron,
-        cronDescription: cronstrue.toString(options.cron),
+        generatorExpression: options.cron,
+        generatorDescription: cronstrue.toString(options.cron),
         externalId: options.externalId,
       },
     });
@@ -158,13 +158,14 @@ export class UpsertTaskScheduleService extends BaseService {
         id: existingSchedule.id,
       },
       data: {
-        cron: options.cron,
-        cronDescription: cronstrue.toString(options.cron),
+        generatorExpression: options.cron,
+        generatorDescription: cronstrue.toString(options.cron),
         externalId: options.externalId,
       },
     });
 
-    const scheduleHasChanged = scheduleRecord.cron !== existingSchedule.cron;
+    const scheduleHasChanged =
+      scheduleRecord.generatorExpression !== existingSchedule.generatorExpression;
 
     // find the existing instances
     const existingInstances = await tx.taskScheduleInstance.findMany({
@@ -266,9 +267,9 @@ export class UpsertTaskScheduleService extends BaseService {
       deduplicationKey: taskSchedule.userProvidedDeduplicationKey
         ? taskSchedule.deduplicationKey
         : undefined,
-      cron: taskSchedule.cron,
-      cronDescription: taskSchedule.cronDescription,
-      nextRun: calculateNextScheduledTimestamp(taskSchedule.cron),
+      cron: taskSchedule.generatorExpression,
+      cronDescription: taskSchedule.generatorDescription,
+      nextRun: calculateNextScheduledTimestamp(taskSchedule.generatorExpression),
       environments: instances.map((instance) => ({
         id: instance.environment.id,
         shortcode: instance.environment.shortcode,

@@ -21,8 +21,8 @@ export class ViewSchedulePresenter {
       select: {
         id: true,
         friendlyId: true,
-        cron: true,
-        cronDescription: true,
+        generatorExpression: true,
+        generatorDescription: true,
         externalId: true,
         deduplicationKey: true,
         userProvidedDeduplicationKey: true,
@@ -65,7 +65,9 @@ export class ViewSchedulePresenter {
       return;
     }
 
-    const nextRuns = schedule.active ? nextScheduledTimestamps(schedule.cron, new Date(), 5) : [];
+    const nextRuns = schedule.active
+      ? nextScheduledTimestamps(schedule.generatorExpression, new Date(), 5)
+      : [];
 
     const runPresenter = new RunListPresenter(this.#prismaClient);
     const { runs } = await runPresenter.call({
@@ -77,6 +79,8 @@ export class ViewSchedulePresenter {
     return {
       schedule: {
         ...schedule,
+        cron: schedule.generatorExpression,
+        cronDescription: schedule.generatorDescription,
         nextRuns,
         runs,
         environments: schedule.instances.map((instance) => {
@@ -107,8 +111,11 @@ export class ViewSchedulePresenter {
       task: result.schedule.taskIdentifier,
       active: result.schedule.active,
       nextRun: result.schedule.nextRuns[0],
-      cron: result.schedule.cron,
-      cronDescription: result.schedule.cronDescription,
+      generator: {
+        type: "CRON",
+        expression: result.schedule.cron,
+        description: result.schedule.cronDescription,
+      },
       externalId: result.schedule.externalId ?? undefined,
       deduplicationKey: result.schedule.userProvidedDeduplicationKey
         ? result.schedule.deduplicationKey ?? undefined

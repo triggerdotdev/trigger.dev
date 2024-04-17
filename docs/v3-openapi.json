@@ -639,29 +639,56 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "example": "sched_1234",
+            "description": "The unique ID of the schedule, prefixed with 'sched_'"
           },
           "task": {
-            "type": "string"
+            "type": "string",
+            "example": "my-scheduled-task",
+            "description": "The id of the scheduled task that will be triggered by this schedule"
           },
           "active": {
-            "type": "boolean"
+            "type": "boolean",
+            "example": true,
+            "description": "Whether the schedule is active or not"
           },
           "deduplicationKey": {
-            "type": "string"
+            "type": "string",
+            "example": "dedup_key_1234",
+            "description": "The deduplication key used to prevent creating duplicate schedules"
           },
           "externalId": {
-            "type": "string"
+            "type": "string",
+            "example": "user_1234",
+            "description": "The external ID of the schedule. Can be anything that is useful to you (e.g., user ID, org ID, etc.)"
           },
-          "cron": {
-            "type": "string"
-          },
-          "cronDescription": {
-            "type": "string"
+          "generator": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "CRON"
+                ]
+              },
+              "expression": {
+                "type": "string",
+                "description": "The cron expression used to generate the schedule",
+                "example": "0 0 * * *"
+              },
+              "description": {
+                "type": "string",
+                "description": "The description of the generator in plain english",
+                "example": "Every day at midnight"
+              }
+            }
           },
           "nextRun": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "The next time the schedule will run",
+            "example": "2024-04-01T00:00:00Z"
           },
           "environments": {
             "type": "array",

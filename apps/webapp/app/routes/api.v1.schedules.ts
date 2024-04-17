@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { CreateScheduleOptions } from "@trigger.dev/core/v3";
+import { CreateScheduleOptions, ScheduleObject } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -46,7 +46,22 @@ export async function action({ request }: ActionFunctionArgs) {
 
     const schedule = await service.call(authenticationResult.environment.projectId, options);
 
-    return json(schedule, { status: 200 });
+    const responseObject: ScheduleObject = {
+      id: schedule.id,
+      task: schedule.task,
+      active: schedule.active,
+      generator: {
+        type: "CRON",
+        expression: schedule.cron,
+        description: schedule.cronDescription,
+      },
+      externalId: schedule.externalId ?? undefined,
+      deduplicationKey: schedule.deduplicationKey,
+      environments: schedule.environments,
+      nextRun: schedule.nextRun,
+    };
+
+    return json(responseObject, { status: 200 });
   } catch (error) {
     return json(
       { error: error instanceof Error ? error.message : "Internal Server Error" },
@@ -86,8 +101,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     data: result.schedules.map((schedule) => ({
       id: schedule.friendlyId,
       task: schedule.taskIdentifier,
-      cron: schedule.cron,
-      cronDescription: schedule.cronDescription,
+      generator: {
+        type: "CRON",
+        expression: schedule.cron,
+        description: schedule.cronDescription,
+      },
       deduplicationKey: schedule.userProvidedDeduplicationKey
         ? schedule.deduplicationKey
         : undefined,
