@@ -1629,10 +1629,10 @@ model TaskRun {
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
 
-  scheduleInstance   TaskScheduleInstance? @relation(fields: [scheduleInstanceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  scheduleInstance   TaskScheduleInstance? @relation(fields: [scheduleInstanceId], references: [id], onDelete: SetNull)
   scheduleInstanceId String?
 
-  schedule   TaskSchedule? @relation(fields: [scheduleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  schedule   TaskSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
   scheduleId String?
 
   @@unique([runtimeEnvironmentId, idempotencyKey])
