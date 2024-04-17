@@ -1739,6 +1739,9 @@ importers:
       zod-error:
         specifier: 1.5.0
         version: 1.5.0
+      zod-validation-error:
+        specifier: ^1.5.0
+        version: 1.5.0(zod@3.22.3)
     devDependencies:
       '@trigger.dev/tsconfig':
         specifier: workspace:*

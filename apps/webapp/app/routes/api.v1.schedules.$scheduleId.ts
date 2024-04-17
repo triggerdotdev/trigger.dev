@@ -6,6 +6,7 @@ import { prisma } from "~/db.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { UpsertSchedule } from "~/v3/schedules";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 
 const ParamsSchema = z.object({
@@ -87,6 +88,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
         return json(responseObject, { status: 200 });
       } catch (error) {
+        if (error instanceof ServiceValidationError) {
+          return json({ error: error.message }, { status: 422 });
+        }
+
         return json(
           { error: error instanceof Error ? error.message : "Internal Server Error" },
           { status: 500 }

@@ -4,7 +4,7 @@ import { ZodError } from "zod";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { CronPattern, UpsertSchedule } from "../schedules";
-import { BaseService } from "./baseService.server";
+import { BaseService, ServiceValidationError } from "./baseService.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import cronstrue from "cronstrue";
 import { calculateNextScheduledTimestamp } from "../utils/calculateNextSchedule.server";
@@ -32,10 +32,10 @@ export class UpsertTaskScheduleService extends BaseService {
       CronPattern.parse(schedule.cron);
     } catch (e) {
       if (e instanceof ZodError) {
-        throw new Error(`Invalid cron expression: ${e.issues[0].message}`);
+        throw new ServiceValidationError(`Invalid cron expression: ${e.issues[0].message}`);
       }
 
-      throw new Error(
+      throw new ServiceValidationError(
         `Invalid cron expression: ${e instanceof Error ? e.message : JSON.stringify(e)}`
       );
     }

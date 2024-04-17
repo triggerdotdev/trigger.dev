@@ -13,13 +13,7 @@ async function replayRun(runId: string): Promise<ReplayRunResponse> {
     throw apiClientMissingError();
   }
 
-  const response = await apiClient.replayRun(runId);
-
-  if (!response.ok) {
-    throw new Error(response.error);
-  }
-
-  return response.data;
+  return await apiClient.replayRun(runId);
 }
 
 async function cancelRun(runId: string): Promise<CanceledRunResponse> {
@@ -29,11 +23,5 @@ async function cancelRun(runId: string): Promise<CanceledRunResponse> {
     throw apiClientMissingError();
   }
 
-  const response = await apiClient.cancelRun(runId);
-
-  if (!response.ok) {
-    throw new Error(response.error);
-  }
-
-  return response.data;
+  return await apiClient.cancelRun(runId);
 }

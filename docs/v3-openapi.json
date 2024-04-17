@@ -40,6 +40,9 @@
           "400": {
             "description": "Invalid request parameters"
           },
+          "422": {
+            "description": "Unprocessable Entity"
+          },
           "401": {
             "description": "Unauthorized"
           }
@@ -216,6 +219,9 @@
           },
           "404": {
             "description": "Resource not found"
+          },
+          "422": {
+            "description": "Unprocessable Entity"
           }
         },
         "tags": [

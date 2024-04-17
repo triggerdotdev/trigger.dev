@@ -245,13 +245,9 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             { spanParentAsLink: true }
           );
 
-          if (!response.ok) {
-            throw new Error(response.error);
-          }
+          span.setAttribute("messaging.message.id", response.id);
 
-          span.setAttribute("messaging.message.id", response.data.id);
-
-          return response.data;
+          return response;
         },
         {
           kind: SpanKind.PRODUCER,
@@ -314,13 +310,9 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             { spanParentAsLink: true }
           );
 
-          if (!response.ok) {
-            throw new Error(response.error);
-          }
+          span.setAttribute("messaging.message.id", response.batchId);
 
-          span.setAttribute("messaging.message.id", response.data.batchId);
-
-          return response.data;
+          return response;
         },
         {
           kind: SpanKind.PRODUCER,
@@ -384,14 +376,10 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             },
           });
 
-          if (!response.ok) {
-            throw new Error(response.error);
-          }
-
-          span.setAttribute("messaging.message.id", response.data.id);
+          span.setAttribute("messaging.message.id", response.id);
 
           const result = await runtime.waitForTask({
-            id: response.data.id,
+            id: response.id,
             ctx,
           });
 
@@ -465,15 +453,11 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             dependentAttempt: ctx.attempt.id,
           });
 
-          if (!response.ok) {
-            throw new Error(response.error);
-          }
-
-          span.setAttribute("messaging.message.id", response.data.batchId);
+          span.setAttribute("messaging.message.id", response.batchId);
 
           const result = await runtime.waitForBatch({
-            id: response.data.batchId,
-            runs: response.data.runs,
+            id: response.batchId,
+            runs: response.runs,
             ctx,
           });
 

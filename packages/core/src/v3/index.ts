@@ -7,6 +7,7 @@ export * from "./zodNamespace";
 export * from "./zodSocket";
 export * from "./zodIpc";
 export * from "./errors";
+export * from "./apiErrors";
 export * from "./runtime-api";
 export * from "./logger-api";
 export * from "./clock-api";

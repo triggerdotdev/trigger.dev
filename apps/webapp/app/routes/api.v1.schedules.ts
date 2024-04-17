@@ -5,6 +5,7 @@ import { z } from "zod";
 import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { UpsertSchedule } from "~/v3/schedules";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 
 const SearchParamsSchema = z.object({
@@ -63,6 +64,10 @@ export async function action({ request }: ActionFunctionArgs) {
 
     return json(responseObject, { status: 200 });
   } catch (error) {
+    if (error instanceof ServiceValidationError) {
+      return json({ error: error.message }, { status: 422 });
+    }
+
     return json(
       { error: error instanceof Error ? error.message : "Internal Server Error" },
       { status: 500 }
