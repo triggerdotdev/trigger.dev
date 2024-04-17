@@ -197,9 +197,9 @@ export class ScheduleListPresenter {
       skip: (page - 1) * pageSize,
     });
 
-    const latestRuns = await this.#prismaClient.$queryRaw<
-      { scheduleId: string; createdAt: Date }[]
-    >`
+    const latestRuns =
+      rawSchedules.length > 0
+        ? await this.#prismaClient.$queryRaw<{ scheduleId: string; createdAt: Date }[]>`
     SELECT t."scheduleId", t."createdAt"
     FROM (
       SELECT "scheduleId", MAX("createdAt") as "LatestRun"
@@ -208,7 +208,8 @@ export class ScheduleListPresenter {
       GROUP BY "scheduleId"
     ) r
     JOIN "TaskRun" t
-    ON t."scheduleId" = r."scheduleId" AND t."createdAt" = r."LatestRun";`;
+    ON t."scheduleId" = r."scheduleId" AND t."createdAt" = r."LatestRun";`
+        : [];
 
     const schedules = rawSchedules.map((schedule) => {
       const latestRun = latestRuns.find((r) => r.scheduleId === schedule.id);
