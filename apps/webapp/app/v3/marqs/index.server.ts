@@ -126,11 +126,6 @@ export class MarQS {
       "WITHSCORES"
     );
 
-    logger.debug("Oldest message in queue", {
-      queueName: this.keys.queueKey(env, queue, concurrencyKey),
-      result,
-    });
-
     if (result.length === 0) {
       return;
     }
