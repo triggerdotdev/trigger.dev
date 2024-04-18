@@ -1686,8 +1686,8 @@ model TaskRunDependency {
   checkpointEventId String?                 @unique
 
   /// An attempt that is dependent on this task run. 
-  dependentAttempt   TaskRunAttempt? @relation("dependentAttempt", fields: [dependentAttemptId], references: [id])
-  dependentAttemptId String?         @unique
+  dependentAttempt   TaskRunAttempt? @relation(fields: [dependentAttemptId], references: [id])
+  dependentAttemptId String?
 
   /// A batch run that is dependent on this task run
   dependentBatchRun   BatchTaskRun? @relation("dependentBatchRun", fields: [dependentBatchRunId], references: [id])
@@ -1751,8 +1751,8 @@ model TaskRunAttempt {
   output     String?
   outputType String  @default("application/json")
 
-  taskRunDependency      TaskRunDependency? @relation("dependentAttempt")
-  batchTaskRunDependency BatchTaskRun?
+  dependencies      TaskRunDependency[]
+  batchDependencies BatchTaskRun[]
 
   checkpoints            Checkpoint[]
   batchTaskRunItems      BatchTaskRunItem[]
@@ -1923,7 +1923,7 @@ model BatchTaskRun {
   runtimeEnvironmentId String
 
   dependentTaskAttempt   TaskRunAttempt? @relation(fields: [dependentTaskAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  dependentTaskAttemptId String?         @unique
+  dependentTaskAttemptId String?
 
   items           BatchTaskRunItem[]
   runDependencies TaskRunDependency[] @relation("dependentBatchRun")

@@ -114,3 +114,54 @@ export const subtasksWithRetries = task({
     };
   },
 });
+
+export const multipleTriggerWaits = task({
+  id: "multiple-trigger-waits",
+  run: async ({ message = "test" }: { message?: string }) => {
+    await simpleChildTask.triggerAndWait({ payload: { message: `${message} - 1.a` } });
+    await simpleChildTask.triggerAndWait({ payload: { message: `${message} - 2.a` } });
+
+    await simpleChildTask.batchTriggerAndWait({
+      items: [
+        { payload: { message: `${message} - 3.a` } },
+        { payload: { message: `${message} - 3.b` } },
+      ],
+    });
+    await simpleChildTask.batchTriggerAndWait({
+      items: [
+        { payload: { message: `${message} - 4.a` } },
+        { payload: { message: `${message} - 4.b` } },
+      ],
+    });
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
+export const triggerAndWaitLoops = task({
+  id: "trigger-wait-loops",
+  run: async ({ message = "test" }: { message?: string }) => {
+    for (let i = 0; i < 2; i++) {
+      await simpleChildTask.triggerAndWait({ payload: { message: `${message} - ${i}` } });
+    }
+
+    for (let i = 0; i < 2; i++) {
+      await simpleChildTask.batchTriggerAndWait({
+        items: [
+          { payload: { message: `${message} - ${i}.a` } },
+          { payload: { message: `${message} - ${i}.b` } },
+        ],
+        // batchOptions: { maxConcurrency: 1 },
+      });
+    }
+
+    // Don't do this!
+    // await Promise.all(
+    //   [{ message: `${message} - 1` }, { message: `${message} - 2` }].map((payload) =>
+    //     simpleChildTask.triggerAndWait({ payload })
+    //   )
+    // );
+  },
+});

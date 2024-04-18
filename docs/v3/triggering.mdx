@@ -165,6 +165,45 @@ export const myTask = task({
 
 This is where it gets interesting. You can trigger a task and then wait for the result. This is useful when you need to call a different task and then use the result to continue with your task.
 
+<Accordion title="Don't use this in parallel, e.g. with `Promise.all()`">
+  Instead, use `batchTriggerAndWait()` if you can, or a for loop if you can't.
+
+  To control concurrency using batch triggers, you can set `queue.concurrencyLimit` on the child task.
+
+<CodeGroup>
+```ts /trigger/batch.ts
+export const batchTask = task({
+  id: "batch-task",
+  run: async (payload: string) => {
+    const results = await childTask.batchTriggerAndWait({
+      items: [{ payload: "item1" }, { payload: "item2" }],
+    });
+    console.log("Results", results);
+
+    //...do stuff with the results
+  },
+});
+```
+
+```ts /trigger/loop.ts
+export const loopTask = task({
+  id: "loop-task",
+  run: async (payload: string) => {
+    //this will be slower than the batch version
+    //as we have to resume the parent after each iteration
+    for (let i = 0; i < 2; i++) {
+      const result = await childTask.triggerAndWait({ payload: `item${i}` });
+      console.log("Result", result);
+
+      //...do stuff with the result
+    }
+  },
+});
+```
+</CodeGroup>
+
+</Accordion>
+
 ```ts /trigger/parent.ts
 export const parentTask = task({
   id: "parent-task",
@@ -180,6 +219,47 @@ export const parentTask = task({
 ### batchTriggerAndWait()
 
 You can batch trigger a task and wait for all the results. This is useful for the fan-out pattern, where you need to call a task multiple times and then wait for all the results to continue with your task.
+
+<Accordion title="Don't use this in parallel, e.g. with `Promise.all()`">
+  Instead, pass in all items at once and set an appropriate `maxConcurrency`. Alternatively, use sequentially with a for loop.
+
+  To control concurrency, you can set `queue.concurrencyLimit` on the child task.
+
+<CodeGroup>
+```ts /trigger/batch.ts
+export const batchTask = task({
+  id: "batch-task",
+  run: async (payload: string) => {
+    const results = await childTask.batchTriggerAndWait({
+      items: [{ payload: "item1" }, { payload: "item2" }],
+    });
+    console.log("Results", results);
+
+    //...do stuff with the results
+  },
+});
+```
+
+```ts /trigger/loop.ts
+export const loopTask = task({
+  id: "loop-task",
+  run: async (payload: string) => {
+    //this will be slower than a single batchTriggerAndWait()
+    //as we have to resume the parent after each iteration
+    for (let i = 0; i < 2; i++) {
+      const result = await childTask.batchTriggerAndWait({
+        items: [{ payload: `itemA${i}` }, { payload: `itemB${i}` }],
+      });
+      console.log("Result", result);
+
+      //...do stuff with the result
+    }
+  },
+});
+```
+</CodeGroup>
+
+</Accordion>
 
 ```ts /trigger/nested.ts
 export const batchParentTask = task({
