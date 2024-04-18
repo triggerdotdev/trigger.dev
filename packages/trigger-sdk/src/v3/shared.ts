@@ -179,12 +179,12 @@ export interface Task<TInput, TOutput = any> {
   trigger: (params: { payload: TInput; options?: TaskRunOptions }) => Promise<InvokeHandle>;
   batchTrigger: (params: {
     items: { payload: TInput; options?: TaskRunOptions }[];
-    batchOptions?: BatchRunOptions;
+    // batchOptions?: BatchRunOptions;
   }) => Promise<InvokeBatchHandle>;
   triggerAndWait: (params: { payload: TInput; options?: TaskRunOptions }) => Promise<TOutput>;
   batchTriggerAndWait: (params: {
     items: { payload: TInput; options?: TaskRunOptions }[];
-    batchOptions?: BatchRunOptions;
+    // batchOptions?: BatchRunOptions;
   }) => Promise<BatchResult<TOutput>>;
 }
 
