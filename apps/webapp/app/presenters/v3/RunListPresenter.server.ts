@@ -85,11 +85,12 @@ export class RunListPresenter {
     });
 
     //get all possible tasks
-    const possibleTasks = await this.#prismaClient.$queryRaw<{ slug: string }[]>`
-    SELECT DISTINCT(slug)
-    FROM ${sqlDatabaseSchema}."BackgroundWorkerTask"
-    WHERE "projectId" = ${project.id};
-    `;
+    const possibleTasks = await this.#prismaClient.backgroundWorkerTask.findMany({
+      distinct: ["slug"],
+      where: {
+        projectId: project.id,
+      },
+    });
 
     //get the runs
     let runs = await this.#prismaClient.$queryRaw<

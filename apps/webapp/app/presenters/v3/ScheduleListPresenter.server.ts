@@ -81,12 +81,13 @@ export class ScheduleListPresenter {
     });
 
     //get all possible scheduled tasks
-    const possibleTasks = await this.#prismaClient.$queryRaw<{ slug: string }[]>`
-    SELECT DISTINCT(slug)
-    FROM ${sqlDatabaseSchema}."BackgroundWorkerTask"
-    WHERE "projectId" = ${project.id}
-    AND "triggerSource" = 'SCHEDULED';
-    `;
+    const possibleTasks = await this.#prismaClient.backgroundWorkerTask.findMany({
+      distinct: ["slug"],
+      where: {
+        projectId: project.id,
+        triggerSource: "SCHEDULED",
+      },
+    });
 
     //do this here to protect against SQL injection
     search = search && search !== "" ? `%${search}%` : undefined;
