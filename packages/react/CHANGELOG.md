@@ -1,5 +1,12 @@
 # @trigger.dev/react
 
+## 3.0.0-beta.14
+
+### Patch Changes
+
+- Updated dependencies [584c7da5d]
+  - @trigger.dev/core@3.0.0-beta.14
+
 ## 3.0.0-beta.13
 
 ### Patch Changes
