@@ -182,7 +182,7 @@ const zodIpc = new ZodIpcConnection({
             execution: _execution,
             result: {
               ok: false,
-              id: _execution.attempt.id,
+              id: _execution.run.id,
               error: {
                 type: "INTERNAL_ERROR",
                 code: TaskRunErrorCodes.GRACEFUL_EXIT_TIMEOUT,
