@@ -65,6 +65,7 @@ const EnvironmentSchema = z.object({
   AWS_SQS_BATCH_SIZE: z.coerce.number().int().optional().default(1),
   AWS_SQS_WAIT_TIME_MS: z.coerce.number().int().optional().default(100),
   DISABLE_SSE: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
 
   // Redis options
   REDIS_HOST: z.string().optional(),

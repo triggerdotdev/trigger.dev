@@ -1,5 +1,20 @@
 # trigger.dev
 
+## 3.0.0-beta.13
+
+### Patch Changes
+
+- 4986bfda2: Add option to print console logs in the dev CLI locally (issue #1014)
+- 4986bfda2: Adding task with a triggerSource of schedule
+- 4986bfda2: Added a new global - Task Catalog - to better handle task metadata
+- Updated dependencies [4986bfda2]
+- Updated dependencies [44e1b8754]
+- Updated dependencies [4986bfda2]
+- Updated dependencies [fde939a30]
+- Updated dependencies [03b104a3d]
+- Updated dependencies [4986bfda2]
+  - @trigger.dev/core@3.0.0-beta.13
+
 ## 3.0.0-beta.12
 
 ### Patch Changes

@@ -1,6 +1,5 @@
 import {
   ClockIcon,
-  FolderIcon,
   HandRaisedIcon,
   InformationCircleIcon,
   Squares2X2Icon,
@@ -41,6 +40,8 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
   switch (name) {
     case "task":
       return <TaskIcon className={cn(className, "text-blue-500")} />;
+    case "scheduled":
+      return <ClockIcon className={cn(className, "text-sun-500")} />;
     case "attempt":
       return <AttemptIcon className={cn(className, "text-text-dimmed")} />;
     case "wait":

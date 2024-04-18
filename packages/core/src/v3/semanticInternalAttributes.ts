@@ -40,4 +40,5 @@ export const SemanticInternalAttributes = {
   RETRY_AT: "retry.at",
   RETRY_DELAY: "retry.delay",
   RETRY_COUNT: "retry.count",
+  LINK_TITLE: "$link.title",
 };

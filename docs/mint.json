@@ -100,7 +100,6 @@
         "v3/upgrading-from-v2",
         "v3/changelog",
         "v3/feature-matrix",
-        "v3/known-issues",
         "v3/limits-performance"
       ]
     },
@@ -225,13 +224,25 @@
           ]
         },
         {
-          "group": "Management API",
+          "group": "Runs API",
           "pages": [
             "v3/management-start-run",
             "v3/management-get-run",
             "v3/management-get-runs",
             "v3/management-replay-run",
             "v3/management-cancel-run"
+          ]
+        },
+        {
+          "group": "Schedules API",
+          "pages": [
+            "v3/management-list-schedules",
+            "v3/management-create-schedule",
+            "v3/management-retrieve-schedule",
+            "v3/management-update-schedule",
+            "v3/management-delete-schedule",
+            "v3/management-deactivate-schedule",
+            "v3/management-activate-schedule"
           ]
         }
       ]

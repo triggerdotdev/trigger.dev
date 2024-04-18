@@ -1,11 +1,10 @@
+import { Span, SpanKind } from "@opentelemetry/api";
+import { PrismaClientOrTransaction, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
-import { PrismaClient } from "@trigger.dev/database";
-import { prisma } from "~/db.server";
-import { Span, SpanKind } from "@opentelemetry/api";
 
 export abstract class BaseService {
-  constructor(protected readonly _prisma: PrismaClient = prisma) {}
+  constructor(protected readonly _prisma: PrismaClientOrTransaction = prisma) {}
 
   protected async traceWithEnv<T>(
     trace: string,
@@ -31,5 +30,12 @@ export abstract class BaseService {
         }
       }
     );
+  }
+}
+
+export class ServiceValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ServiceValidationError";
   }
 }

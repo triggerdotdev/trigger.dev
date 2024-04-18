@@ -1,4 +1,4 @@
-import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
+import { Prisma, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
@@ -61,6 +61,7 @@ export class TaskListPresenter {
         filePath: string;
         runtimeEnvironmentId: string;
         createdAt: Date;
+        triggerSource: TaskTriggerSource;
       }[]
     >`
     SELECT DISTINCT ON(bwt.slug, bwt."runtimeEnvironmentId")
@@ -69,7 +70,8 @@ export class TaskListPresenter {
       bwt."exportName",
       bwt."filePath",
       bwt."runtimeEnvironmentId",
-      bwt."createdAt"
+      bwt."createdAt",
+      bwt."triggerSource"
     FROM
       ${sqlDatabaseSchema}."BackgroundWorkerTask" as bwt
     WHERE bwt."projectId" = ${project.id}

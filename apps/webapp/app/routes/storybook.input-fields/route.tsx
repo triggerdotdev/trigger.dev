@@ -1,15 +1,7 @@
-import { Form } from "@remix-run/react";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { MainCenteredContainer } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
-import { Fieldset } from "~/components/primitives/Fieldset";
-import { FormButtons } from "~/components/primitives/FormButtons";
-import { FormError } from "~/components/primitives/FormError";
-import { FormTitle } from "~/components/primitives/FormTitle";
-import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
-import { Label } from "~/components/primitives/Label";
+import { TimeFrameFilter } from "~/components/runs/TimeFrameFilter";
 
 export default function Story() {
   return (
@@ -64,14 +56,14 @@ function InputFieldSet({ disabled }: { disabled?: boolean }) {
           disabled={disabled}
           variant="large"
           placeholder="Search"
-          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} size="large" />}
           shortcut="⌘K"
         />
         <Input
           disabled={disabled}
           variant="medium"
           placeholder="Search"
-          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />}
+          icon={<EnvironmentLabel environment={{ type: "DEVELOPMENT" }} size="large" />}
           shortcut="⌘K"
         />
         <Input

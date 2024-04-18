@@ -10,7 +10,7 @@ type DateTimeProps = {
 
 export const DateTime = ({
   date,
-  timeZone = "UTC",
+  timeZone,
   includeSeconds = true,
   includeTime = true,
 }: DateTimeProps) => {
@@ -20,7 +20,7 @@ export const DateTime = ({
 
   const initialFormattedDateTime = formatDateTime(
     realDate,
-    timeZone,
+    timeZone ?? "UTC",
     locales,
     includeSeconds,
     includeTime
@@ -32,7 +32,13 @@ export const DateTime = ({
     const resolvedOptions = Intl.DateTimeFormat().resolvedOptions();
 
     setFormattedDateTime(
-      formatDateTime(realDate, resolvedOptions.timeZone, locales, includeSeconds, includeTime)
+      formatDateTime(
+        realDate,
+        timeZone ?? resolvedOptions.timeZone,
+        locales,
+        includeSeconds,
+        includeTime
+      )
     );
   }, [locales, includeSeconds, realDate]);
 

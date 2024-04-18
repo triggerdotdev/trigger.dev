@@ -27,6 +27,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
+import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
 import { useLinkStatus } from "~/hooks/useLinkStatus";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -176,19 +177,22 @@ function TaskSelector({
                     "z-20 rounded-sm outline outline-1 outline-offset-[-1px] outline-secondary"
                 )}
               >
-                <TableCell to={path} actionClassName="px-2 py-1">
+                <TableCell to={path} actionClassName="pl-2.5 pr-1 py-1">
                   <RadioButtonCircle checked={isActive || isPending} />
                 </TableCell>
-                <TableCell to={path} actionClassName="px-2 py-1">
+                <TableCell to={path} actionClassName="pl-1 pr-2 py-1">
                   <div className="flex flex-col gap-0.5">
                     <TaskFunctionName
                       variant="extra-small"
                       functionName={t.exportName}
                       className="-ml-1 inline-flex"
                     />
-                    <Paragraph variant="extra-small" className="text-text-dimmed">
-                      {t.taskIdentifier}
-                    </Paragraph>
+                    <div className="flex items-start gap-1">
+                      <TaskTriggerSourceIcon source={t.triggerSource} className="size-3.5" />
+                      <Paragraph variant="extra-small" className="text-text-dimmed">
+                        {t.taskIdentifier}
+                      </Paragraph>
+                    </div>
                   </div>
                 </TableCell>
 

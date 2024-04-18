@@ -14,6 +14,10 @@ There are currently four ways you can trigger any task from your own code:
 
 Additionally, [scheduled tasks](/v3/tasks-scheduled) get automatically triggered on their schedule and [webhooks](/v3/tasks-webhooks) when receiving a webhook.
 
+## Scheduled tasks
+
+You should attach one or more schedules to your `schedules.task()` to trigger it on a recurring schedule. [Read the scheduled tasks docs](/v3/tasks-scheduled).
+
 ## From outside of a task
 
 You can trigger any task from your backend code, using either `trigger()` or `batchTrigger()`.

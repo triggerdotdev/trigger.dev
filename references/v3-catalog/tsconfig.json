@@ -6,8 +6,10 @@
     "lib": ["DOM", "DOM.Iterable"],
     "paths": {
       "@/*": ["./src/*"],
-      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
-      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"]
+      "@trigger.dev/core/v3": ["../../packages/core/src/v3/index"],
+      "@trigger.dev/core/v3/*": ["../../packages/core/src/v3/*"],
+      "@trigger.dev/sdk/v3": ["../../packages/trigger-sdk/src/v3/index"],
+      "@trigger.dev/sdk/v3/*": ["../../packages/trigger-sdk/src/v3/*"]
     }
   }
 }

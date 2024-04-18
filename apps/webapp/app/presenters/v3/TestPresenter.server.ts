@@ -1,3 +1,4 @@
+import { TaskTriggerSource } from "@trigger.dev/database";
 import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
 import { TestSearchParams } from "~/routes/_app.orgs.$organizationSlug.projects.v3.$projectParam.test/route";
 import { sortEnvironments } from "~/services/environmentSort.server";
@@ -89,6 +90,7 @@ export class TestPresenter {
         filePath: string;
         exportName: string;
         friendlyId: string;
+        triggerSource: TaskTriggerSource;
       }[]
     >`WITH workers AS (
       SELECT 
@@ -117,6 +119,7 @@ export class TestPresenter {
           filePath: task.filePath,
           exportName: task.exportName,
           friendlyId: task.friendlyId,
+          triggerSource: task.triggerSource,
         };
       }),
     };

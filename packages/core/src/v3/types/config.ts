@@ -41,4 +41,9 @@ export interface ProjectConfig {
    * @default "log"
    */
   logLevel?: LogLevel;
+
+  /**
+   * Enable console logging while running the dev CLI. This will print out logs from console.log, console.warn, and console.error. By default all logs are sent to the trigger.dev backend, and not logged to the console.
+   */
+  enableConsoleLogging?: boolean;
 }

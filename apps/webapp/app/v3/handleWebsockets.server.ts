@@ -31,6 +31,10 @@ function initalizeWebSocketServer() {
 }
 
 async function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage) {
+  logger.debug("Handle websocket connection", {
+    ipAddress: req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+  });
+
   const authHeader = req.headers.authorization;
 
   if (!authHeader || typeof authHeader !== "string") {
@@ -54,7 +58,11 @@ async function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage) {
 
   const authenticatedEnv = authenticationResult.environment;
 
-  const authenticatedConnection = new AuthenticatedSocketConnection(ws, authenticatedEnv);
+  const authenticatedConnection = new AuthenticatedSocketConnection(
+    ws,
+    authenticatedEnv,
+    req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "unknown"
+  );
 
   authenticatedConnections.set(authenticatedConnection.id, authenticatedConnection);
 
