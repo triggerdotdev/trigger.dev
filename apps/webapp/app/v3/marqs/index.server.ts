@@ -55,19 +55,21 @@ export type MarQSOptions = {
  */
 export class MarQS {
   private redis: Redis;
-  private keys: MarQSKeyProducer;
+  public keys: MarQSKeyProducer;
   private queuePriorityStrategy: MarQSQueuePriorityStrategy;
   #requeueingWorkers: Array<AsyncWorker> = [];
+  #rebalanceWorkers: Array<AsyncWorker> = [];
 
   constructor(private readonly options: MarQSOptions) {
     this.redis = new Redis(options.redis);
 
-    // Spawn options.workers workers to requeue visible messages
-    this.#startRequeuingWorkers();
-    this.#registerCommands();
-
     this.keys = options.keysProducer;
     this.queuePriorityStrategy = options.queuePriorityStrategy;
+
+    // Spawn options.workers workers to requeue visible messages
+    this.#startRequeuingWorkers();
+    this.#startRebalanceWorkers();
+    this.#registerCommands();
   }
 
   public async updateQueueConcurrencyLimits(
@@ -85,6 +87,68 @@ export class MarQS {
       envConcurrencyLimit: env.maximumConcurrencyLimit,
       orgConcurrencyLimit: env.organization.maximumConcurrencyLimit,
     });
+  }
+
+  public async getQueueConcurrencyLimit(env: AuthenticatedEnvironment, queue: string) {
+    const result = await this.redis.get(this.keys.queueConcurrencyLimitKey(env, queue));
+
+    return result ? Number(result) : this.options.defaultQueueConcurrency;
+  }
+
+  public async getEnvConcurrencyLimit(env: AuthenticatedEnvironment) {
+    const result = await this.redis.get(this.keys.envConcurrencyLimitKey(env));
+
+    return result ? Number(result) : this.options.defaultEnvConcurrency;
+  }
+
+  public async getOrgConcurrencyLimit(env: AuthenticatedEnvironment) {
+    const result = await this.redis.get(this.keys.orgConcurrencyLimitKey(env));
+
+    return result ? Number(result) : this.options.defaultOrgConcurrency;
+  }
+
+  public async lengthOfQueue(
+    env: AuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ) {
+    return this.redis.zcard(this.keys.queueKey(env, queue, concurrencyKey));
+  }
+
+  public async oldestMessageInQueue(
+    env: AuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ) {
+    // Get the "score" of the sorted set to get the oldest message score
+    const result = await this.redis.zrange(
+      this.keys.queueKey(env, queue, concurrencyKey),
+      0,
+      0,
+      "WITHSCORES"
+    );
+
+    if (result.length === 0) {
+      return;
+    }
+
+    return Number(result[1]);
+  }
+
+  public async currentConcurrencyOfQueue(
+    env: AuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ) {
+    return this.redis.scard(this.keys.currentConcurrencyKey(env, queue, concurrencyKey));
+  }
+
+  public async currentConcurrencyOfEnvironment(env: AuthenticatedEnvironment) {
+    return this.redis.scard(this.keys.envCurrentConcurrencyKey(env));
+  }
+
+  public async currentConcurrencyOfOrg(env: AuthenticatedEnvironment) {
+    return this.redis.scard(this.keys.orgCurrentConcurrencyKey(env));
   }
 
   public async enqueueMessage(
@@ -177,6 +241,21 @@ export class MarQS {
             [SemanticAttributes.MESSAGE_ID]: message.messageId,
             [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
             [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+          });
+        } else {
+          logger.error("Failed to read message, undoing the dequeueing of the message", {
+            messageData,
+          });
+
+          await this.#callAcknowledgeMessage({
+            parentQueue,
+            messageKey: this.keys.messageKey(messageData.messageId),
+            messageQueue: messageQueue,
+            visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+            concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
+            envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue),
+            orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(messageQueue),
+            messageId: messageData.messageId,
           });
         }
 
@@ -272,7 +351,9 @@ export class MarQS {
         });
 
         await this.#callAcknowledgeMessage({
+          parentQueue: message.parentQueue,
           messageKey: this.keys.messageKey(messageId),
+          messageQueue: message.queue,
           visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
           concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
           envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
@@ -313,7 +394,9 @@ export class MarQS {
         });
 
         await this.#callAcknowledgeMessage({
+          parentQueue: oldMessage.parentQueue,
           messageKey: this.keys.messageKey(messageId),
+          messageQueue: oldMessage.queue,
           visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
           concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(oldMessage.queue),
           envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(oldMessage.queue),
@@ -556,6 +639,17 @@ export class MarQS {
     return result;
   }
 
+  #startRebalanceWorkers() {
+    // Start a new worker to rebalance parent queues periodically
+    for (let i = 0; i < this.options.workers; i++) {
+      const worker = new AsyncWorker(this.#rebalanceParentQueues.bind(this), 60_000);
+
+      this.#rebalanceWorkers.push(worker);
+
+      worker.start();
+    }
+  }
+
   #startRequeuingWorkers() {
     // Start a new worker to requeue visible messages
     for (let i = 0; i < this.options.workers; i++) {
@@ -614,6 +708,106 @@ export class MarQS {
         messageScore: parsedMessage.data.timestamp,
       });
     }
+  }
+
+  async #rebalanceParentQueues() {
+    return await new Promise<void>((resolve, reject) => {
+      // Scan for sorted sets with the parent queue pattern
+      const pattern = this.keys.sharedQueueScanPattern();
+      const redis = this.redis.duplicate();
+      const stream = redis.scanStream({
+        match: pattern,
+        type: "zset",
+        count: 100,
+      });
+
+      logger.debug("Streaming parent queues based on pattern", {
+        pattern,
+        component: "marqs",
+        operation: "rebalanceParentQueues",
+      });
+
+      stream.on("data", async (keys) => {
+        stream.pause();
+
+        const uniqueKeys = Array.from(new Set<string>(keys));
+
+        logger.debug("Rebalancing parent queues", {
+          component: "marqs",
+          operation: "rebalanceParentQueues",
+          parentQueues: uniqueKeys,
+        });
+
+        Promise.all(
+          uniqueKeys.map(async (key) => this.#rebalanceParentQueue(this.keys.stripKeyPrefix(key)))
+        ).finally(() => {
+          stream.resume();
+        });
+      });
+
+      stream.on("end", () => {
+        redis.quit().finally(() => {
+          resolve();
+        });
+      });
+
+      stream.on("error", (e) => {
+        redis.quit().finally(() => {
+          reject(e);
+        });
+      });
+    });
+  }
+
+  // Parent queue is a sorted set, the values of which are queue keys and the scores are is the oldest message in the queue
+  // We need to scan the parent queue and rebalance the queues based on the oldest message in the queue
+  async #rebalanceParentQueue(parentQueue: string) {
+    return await new Promise<void>((resolve, reject) => {
+      const redis = this.redis.duplicate();
+
+      const stream = redis.zscanStream(parentQueue, {
+        match: "*",
+        count: 100,
+      });
+
+      stream.on("data", async (childQueues) => {
+        stream.pause();
+
+        // childQueues is a flat array but of the form [queue1, score1, queue2, score2, ...], we want to group them into pairs
+        const childQueuesWithScores: Record<string, string> = {};
+
+        for (let i = 0; i < childQueues.length; i += 2) {
+          childQueuesWithScores[childQueues[i]] = childQueues[i + 1];
+        }
+
+        logger.debug("Rebalancing child queues", {
+          parentQueue,
+          childQueuesWithScores,
+          component: "marqs",
+          operation: "rebalanceParentQueues",
+        });
+
+        await Promise.all(
+          Object.entries(childQueuesWithScores).map(async ([childQueue, currentScore]) =>
+            this.#callRebalanceParentQueueChild({ parentQueue, childQueue, currentScore })
+          )
+        ).finally(() => {
+          stream.resume();
+        });
+      });
+
+      stream.on("end", () => {
+        redis.quit().finally(() => {
+          resolve();
+        });
+      });
+
+      stream.on("error", (e) => {
+        redis.quit().finally(() => {
+          reject(e);
+        });
+      });
+    });
   }
 
   async #callEnqueueMessage(message: MessagePayload) {
@@ -690,14 +884,18 @@ export class MarQS {
   }
 
   async #callAcknowledgeMessage({
+    parentQueue,
     messageKey,
+    messageQueue,
     visibilityQueue,
     concurrencyKey,
     envConcurrencyKey,
     orgConcurrencyKey,
     messageId,
   }: {
+    parentQueue: string;
     messageKey: string;
+    messageQueue: string;
     visibilityQueue: string;
     concurrencyKey: string;
     envConcurrencyKey: string;
@@ -706,20 +904,25 @@ export class MarQS {
   }) {
     logger.debug("Calling acknowledgeMessage", {
       messageKey,
+      messageQueue,
       visibilityQueue,
       concurrencyKey,
       envConcurrencyKey,
       orgConcurrencyKey,
       messageId,
+      parentQueue,
     });
 
     return this.redis.acknowledgeMessage(
+      parentQueue,
       messageKey,
+      messageQueue,
       visibilityQueue,
       concurrencyKey,
       envConcurrencyKey,
       orgConcurrencyKey,
-      messageId
+      messageId,
+      messageQueue
     );
   }
 
@@ -844,6 +1047,35 @@ export class MarQS {
     );
   }
 
+  async #callRebalanceParentQueueChild({
+    parentQueue,
+    childQueue,
+    currentScore,
+  }: {
+    parentQueue: string;
+    childQueue: string;
+    currentScore: string;
+  }) {
+    const rebalanceResult = await this.redis.rebalanceParentQueueChild(
+      childQueue,
+      parentQueue,
+      childQueue,
+      currentScore
+    );
+
+    if (rebalanceResult) {
+      logger.debug("Rebalanced parent queue child", {
+        parentQueue,
+        childQueue,
+        currentScore,
+        rebalanceResult,
+        operation: "rebalanceParentQueueChild",
+      });
+    }
+
+    return rebalanceResult;
+  }
+
   #registerCommands() {
     this.redis.defineCommand("enqueueMessage", {
       numberOfKeys: 3,
@@ -950,21 +1182,34 @@ return {messageId, messageScore} -- Return message details
     });
 
     this.redis.defineCommand("acknowledgeMessage", {
-      numberOfKeys: 5,
+      numberOfKeys: 7,
       lua: `
--- Keys: messageKey, visibilityQueue, concurrencyKey, envCurrentConcurrencyKey, orgCurrentConcurrencyKey
-local messageKey = KEYS[1]
-local visibilityQueue = KEYS[2]
-local concurrencyKey = KEYS[3]
-local envCurrentConcurrencyKey = KEYS[4]
-local orgCurrentConcurrencyKey = KEYS[5]
-local globalCurrentConcurrencyKey = KEYS[6]
+-- Keys: parentQueue, messageKey, messageQueue, visibilityQueue, concurrencyKey, envCurrentConcurrencyKey, orgCurrentConcurrencyKey
+local parentQueue = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueue = KEYS[3]
+local visibilityQueue = KEYS[4]
+local concurrencyKey = KEYS[5]
+local envCurrentConcurrencyKey = KEYS[6]
+local orgCurrentConcurrencyKey = KEYS[7]
 
--- Args: messageId
+-- Args: messageId, messageQueueName
 local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
 
 -- Remove the message from the message key
 redis.call('DEL', messageKey)
+
+-- Remove the message from the queue
+redis.call('ZREM', messageQueue, messageId)
+
+-- Rebalance the parent queue
+local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
+if #earliestMessage == 0 then
+    redis.call('ZREM', parentQueue, messageQueueName)
+else
+    redis.call('ZADD', parentQueue, earliestMessage[2], messageQueueName)
+end
 
 -- Remove the message from the timeout queue
 redis.call('ZREM', visibilityQueue, messageId)
@@ -1093,6 +1338,37 @@ redis.call('SET', envConcurrencyLimitKey, envConcurrencyLimit)
 redis.call('SET', orgConcurrencyLimitKey, orgConcurrencyLimit)
       `,
     });
+
+    this.redis.defineCommand("rebalanceParentQueueChild", {
+      numberOfKeys: 2,
+      lua: `
+-- Keys: childQueueKey, parentQueueKey
+local childQueueKey = KEYS[1]
+local parentQueueKey = KEYS[2]
+
+-- Args: childQueueName, currentScore
+local childQueueName = ARGV[1]
+local currentScore = ARGV[2]
+
+-- Rebalance the parent queue
+local earliestMessage = redis.call('ZRANGE', childQueueKey, 0, 0, 'WITHSCORES')
+if #earliestMessage == 0 then
+    redis.call('ZREM', parentQueueKey, childQueueName)
+
+    -- Return true because the parent queue was rebalanced
+    return true
+else
+    -- If the earliest message is different, update the parent queue and return true, else return false
+    if earliestMessage[2] == currentScore then
+        return false
+    end
+
+    redis.call('ZADD', parentQueueKey, earliestMessage[2], childQueueName)
+
+    return earliestMessage[2]
+end
+`,
+    });
   }
 }
 
@@ -1129,12 +1405,15 @@ declare module "ioredis" {
     ): Result<[string, string] | null, Context>;
 
     acknowledgeMessage(
+      parentQueue: string,
       messageKey: string,
+      messageQueue: string,
       visibilityQueue: string,
       concurrencyKey: string,
       envConcurrencyKey: string,
       orgConcurrencyKey: string,
       messageId: string,
+      messageQueueName: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -1181,6 +1460,14 @@ declare module "ioredis" {
       orgConcurrencyLimit: string,
       callback?: Callback<void>
     ): Result<void, Context>;
+
+    rebalanceParentQueueChild(
+      childQueueKey: string,
+      parentQueueKey: string,
+      childQueueName: string,
+      currentScore: string,
+      callback?: Callback<number | string | null>
+    ): Result<number | string | null, Context>;
   }
 }
 

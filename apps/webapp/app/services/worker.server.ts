@@ -36,6 +36,7 @@ import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.
 import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { ExecuteTasksWaitingForDeployService } from "~/v3/services/executeTasksWaitingForDeploy";
+import { TriggerScheduledTaskService } from "~/v3/services/triggerScheduledTask.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -131,6 +132,9 @@ const workerCatalog = {
   }),
   "v3.executeTasksWaitingForDeploy": z.object({
     backgroundWorkerId: z.string(),
+  }),
+  "v3.triggerScheduledTask": z.object({
+    instanceId: z.string(),
   }),
 };
 
@@ -518,6 +522,15 @@ function getWorkerQueue() {
           const service = new ExecuteTasksWaitingForDeployService();
 
           return await service.call(payload.backgroundWorkerId);
+        },
+      },
+      "v3.triggerScheduledTask": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new TriggerScheduledTaskService();
+
+          return await service.call(payload.instanceId);
         },
       },
     },

@@ -8,6 +8,7 @@ export const TaskResource = z.object({
   queue: QueueOptions.optional(),
   retry: RetryOptions.optional(),
   machine: Machine.partial().optional(),
+  triggerSource: z.string().optional(),
 });
 
 export type TaskResource = z.infer<typeof TaskResource>;

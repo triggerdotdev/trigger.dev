@@ -49,7 +49,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
 
 type TableBodyProps = {
   className?: string;
-  children: ReactNode;
+  children?: ReactNode;
 };
 
 export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(

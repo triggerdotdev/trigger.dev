@@ -97,3 +97,16 @@ export async function createProject(
 
   return project;
 }
+
+export async function findProjectBySlug(orgSlug: string, projectSlug: string, userId: string) {
+  // Find the project scoped to the organization, making sure the user belongs to that org
+  return await prisma.project.findFirst({
+    where: {
+      slug: projectSlug,
+      organization: {
+        slug: orgSlug,
+        members: { some: { userId } },
+      },
+    },
+  });
+}

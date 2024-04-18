@@ -1,14 +1,23 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
-export function useThrottle<T extends (...args: any[]) => any>(fn: T, delay: number) {
+export function useThrottle(fn: (...args: any[]) => void, duration: number) {
   const timeout = useRef<ReturnType<typeof setTimeout>>();
 
-  return (...args: Parameters<T>) => {
-    if (!timeout.current) {
-      fn(...args);
-      timeout.current = setTimeout(() => {
-        timeout.current = undefined;
-      }, delay);
+  // Clean up when the component is unmounted
+  useEffect(() => {
+    return () => {
+      if (timeout.current) clearTimeout(timeout.current);
+    };
+  }, []);
+
+  return (...args: Parameters<typeof fn>) => {
+    if (timeout.current) {
+      clearTimeout(timeout.current);
     }
+
+    timeout.current = setTimeout(() => {
+      fn(...args);
+      timeout.current = undefined;
+    }, duration);
   };
 }

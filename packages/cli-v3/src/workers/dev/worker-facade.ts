@@ -1,15 +1,16 @@
 import {
   Config,
+  DurableClock,
+  LogLevel,
   ProjectConfig,
   TaskExecutor,
-  type TracingSDK,
-  type HandleErrorFunction,
-  DurableClock,
-  clock,
-  logLevels,
-  LogLevel,
-  getEnvVar,
   ZodSchemaParsedError,
+  clock,
+  getEnvVar,
+  logLevels,
+  taskCatalog,
+  type HandleErrorFunction,
+  type TracingSDK,
 } from "@trigger.dev/core/v3";
 
 __WORKER_SETUP__;
@@ -30,7 +31,6 @@ import {
   ConsoleInterceptor,
   DevRuntimeManager,
   OtelTaskLogger,
-  TaskMetadataWithFilePath,
   TaskRunErrorCodes,
   TaskRunExecution,
   TriggerTracer,
@@ -43,15 +43,16 @@ import {
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../../../package.json";
 
-import { TaskMetadataWithFunctions } from "../../types.js";
-
 declare const sender: ZodMessageSender<typeof childToWorkerMessages>;
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
-const consoleInterceptor = new ConsoleInterceptor(otelLogger);
+const consoleInterceptor = new ConsoleInterceptor(
+  otelLogger,
+  __PROJECT_CONFIG__.enableConsoleLogging ?? false
+);
 
 const devRuntimeManager = new DevRuntimeManager();
 
@@ -81,61 +82,26 @@ const TaskFiles: Record<string, string> = {};
 __TASKS__;
 declare const __TASKS__: Record<string, string>;
 
-function getTasks(): Array<TaskMetadataWithFunctions> {
-  const result: Array<TaskMetadataWithFunctions> = [];
-
+// Register the task file metadata (fileName and exportName) for each task
+(() => {
   for (const [importName, taskFile] of Object.entries(TaskFiles)) {
     const fileImports = TaskFileImports[importName];
 
     for (const [exportName, task] of Object.entries(fileImports ?? {})) {
-      if ((task as any).__trigger) {
-        result.push({
-          id: (task as any).__trigger.id,
+      if (
+        typeof task === "object" &&
+        task !== null &&
+        "id" in task &&
+        typeof task.id === "string"
+      ) {
+        taskCatalog.registerTaskFileMetadata(task.id, {
           exportName,
-          packageVersion: (task as any).__trigger.packageVersion,
           filePath: (taskFile as any).filePath,
-          queue: (task as any).__trigger.queue,
-          retry: (task as any).__trigger.retry,
-          machine: (task as any).__trigger.machine,
-          fns: (task as any).__trigger.fns,
         });
       }
     }
   }
-
-  return result;
-}
-
-function getTaskMetadata(): Array<TaskMetadataWithFilePath> {
-  const result = getTasks();
-
-  // Remove the functions from the metadata
-  return result.map((task) => {
-    const { fns, ...metadata } = task;
-
-    return metadata;
-  });
-}
-
-const tasks = getTasks();
-
-runtime.registerTasks(tasks);
-
-const taskExecutors: Map<string, TaskExecutor> = new Map();
-
-for (const task of tasks) {
-  taskExecutors.set(
-    task.id,
-    new TaskExecutor(task, {
-      tracer,
-      tracingSDK,
-      consoleInterceptor,
-      projectConfig: __PROJECT_CONFIG__,
-      importedConfig,
-      handleErrorFn: handleError,
-    })
-  );
-}
+})();
 
 let _execution: TaskRunExecution | undefined;
 let _isRunning = false;
@@ -164,10 +130,10 @@ const handler = new ZodMessageHandler({
 
       process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
 
-      const executor = taskExecutors.get(execution.task.id);
+      const task = taskCatalog.getTask(execution.task.id);
 
-      if (!executor) {
-        console.error(`Could not find executor for task ${execution.task.id}`);
+      if (!task) {
+        console.error(`Could not find task ${execution.task.id}`);
 
         await sender.send("TASK_RUN_COMPLETED", {
           execution,
@@ -183,6 +149,15 @@ const handler = new ZodMessageHandler({
 
         return;
       }
+
+      const executor = new TaskExecutor(task, {
+        tracer,
+        tracingSDK,
+        consoleInterceptor,
+        projectConfig: __PROJECT_CONFIG__,
+        importedConfig,
+        handleErrorFn: handleError,
+      });
 
       try {
         _execution = execution;
@@ -220,7 +195,7 @@ process.on("message", async (msg: any) => {
   await handler.handleMessage(msg);
 });
 
-const TASK_METADATA = getTaskMetadata();
+const TASK_METADATA = taskCatalog.getAllTaskMetadata();
 
 sender.send("TASKS_READY", { tasks: TASK_METADATA }).catch((err) => {
   if (err instanceof ZodSchemaParsedError) {

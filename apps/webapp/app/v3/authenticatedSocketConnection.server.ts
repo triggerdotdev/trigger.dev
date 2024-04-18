@@ -19,7 +19,11 @@ export class AuthenticatedSocketConnection {
   private _consumer: DevQueueConsumer;
   private _messageHandler: ZodMessageHandler<typeof clientWebsocketMessages>;
 
-  constructor(public ws: WebSocket, public authenticatedEnv: AuthenticatedEnvironment) {
+  constructor(
+    public ws: WebSocket,
+    public authenticatedEnv: AuthenticatedEnvironment,
+    private readonly ipAddress: string | string[]
+  ) {
     this.id = randomUUID();
 
     this._sender = new ZodMessageSender({
@@ -42,7 +46,9 @@ export class AuthenticatedSocketConnection {
       },
     });
 
-    this._consumer = new DevQueueConsumer(authenticatedEnv, this._sender);
+    this._consumer = new DevQueueConsumer(authenticatedEnv, this._sender, {
+      ipAddress: Array.isArray(this.ipAddress) ? this.ipAddress.join(", ") : this.ipAddress,
+    });
 
     ws.addEventListener("message", this.#handleMessage.bind(this));
     ws.addEventListener("close", this.#handleClose.bind(this));

@@ -23,7 +23,7 @@ const variants = {
   },
   "button/small": {
     button:
-      "flex items-center w-fit h-8 pl-2 pr-3 rounded border border-charcoal-800 hover:bg-charcoal-850 hover:border-charcoal-750 transition",
+      "flex items-center w-fit h-8 pl-2 pr-3 rounded border border-charcoal-600 hover:bg-charcoal-850 hover:border-charcoal-500 transition",
     label: "text-sm text-text-bright select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-0",
@@ -32,7 +32,7 @@ const variants = {
   },
   button: {
     button:
-      "w-fit py-2 pl-3 pr-4 rounded border border-charcoal-800 hover:bg-charcoal-850 hover:border-charcoal-750 transition",
+      "w-fit py-2 pl-3 pr-4 rounded border border-charcoal-600 hover:bg-charcoal-850 hover:border-charcoal-500 transition",
     label: "text-text-bright select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-1",
@@ -57,7 +57,7 @@ export type CheckboxProps = Omit<
   name?: string;
   value?: string;
   variant?: keyof typeof variants;
-  label?: string;
+  label?: React.ReactNode;
   description?: string;
   badges?: string[];
   className?: string;
@@ -137,7 +137,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           className={cn(
             inputPositionClasses,
             props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
-            "read-only:border-charcoal-650 disabled:border-charcoal-650 rounded-sm border border-charcoal-700 bg-transparent transition checked:!bg-indigo-500 read-only:!bg-charcoal-700 group-hover:bg-charcoal-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none  focus-visible:ring-indigo-500 disabled:!bg-charcoal-700"
+            "read-only:border-charcoal-650 disabled:border-charcoal-650 rounded-sm border border-charcoal-600 bg-transparent transition checked:!bg-indigo-500 read-only:!bg-charcoal-700 group-hover:bg-charcoal-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none  focus-visible:ring-indigo-500 disabled:!bg-charcoal-700"
           )}
           id={id}
           ref={ref}

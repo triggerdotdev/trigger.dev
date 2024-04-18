@@ -1,3 +1,4 @@
+import { TaskTriggerSource } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { TestSearchParams } from "~/routes/_app.orgs.$organizationSlug.projects.v3.$projectParam.test/route";
 import { sortEnvironments } from "~/services/environmentSort.server";
@@ -89,6 +90,7 @@ export class TestPresenter {
         filePath: string;
         exportName: string;
         friendlyId: string;
+        triggerSource: TaskTriggerSource;
       }[]
     >`WITH workers AS (
       SELECT 
@@ -99,7 +101,7 @@ export class TestPresenter {
       WHERE "runtimeEnvironmentId" = ${matchingEnvironment.id}
     ),
     latest_workers AS (SELECT * FROM workers WHERE rn = 1)
-    SELECT "BackgroundWorkerTask".id, version, slug as "taskIdentifier", "filePath", "exportName", "BackgroundWorkerTask"."friendlyId" 
+    SELECT "BackgroundWorkerTask".id, version, slug as "taskIdentifier", "filePath", "exportName", "BackgroundWorkerTask"."friendlyId", "BackgroundWorkerTask"."triggerSource"
     FROM latest_workers
     JOIN "BackgroundWorkerTask" ON "BackgroundWorkerTask"."workerId" = latest_workers.id
     ORDER BY "BackgroundWorkerTask"."exportName" ASC;
@@ -117,6 +119,7 @@ export class TestPresenter {
           filePath: task.filePath,
           exportName: task.exportName,
           friendlyId: task.friendlyId,
+          triggerSource: task.triggerSource,
         };
       }),
     };

@@ -63,7 +63,9 @@ export const TriggerTaskRequestBody = z.object({
       lockToVersion: z.string().optional(),
       queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),
+      idempotencyKey: z.string().optional(),
       test: z.boolean().optional(),
+      payloadType: z.string().optional(),
     })
     .optional(),
 });
@@ -210,3 +212,107 @@ export const CanceledRunResponse = z.object({
 });
 
 export type CanceledRunResponse = z.infer<typeof CanceledRunResponse>;
+
+export const ScheduledTaskPayload = z.object({
+  /** The schedule id associated with this run (you can have many schedules for the same task).
+    You can use this to remove the schedule, update it, etc */
+  scheduleId: z.string(),
+  /** When the task was scheduled to run.
+   * Note this will be slightly different from `new Date()` because it takes a few ms to run the task. */
+  timestamp: z.date(),
+  /** When the task was last run (it has been).
+    This can be undefined if it's never been run */
+  lastTimestamp: z.date().optional(),
+  /** You can optionally provide an external id when creating the schedule.
+    Usually you would use a userId or some other unique identifier.
+    This defaults to undefined if you didn't provide one. */
+  externalId: z.string().optional(),
+  /** The next 5 dates this task is scheduled to run */
+  upcoming: z.array(z.date()),
+});
+
+export type ScheduledTaskPayload = z.infer<typeof ScheduledTaskPayload>;
+
+export const CreateScheduleOptions = z.object({
+  /** The id of the task you want to attach to. */
+  task: z.string(),
+  /**  The schedule in CRON format.
+   * 
+   * ```txt
+*    *    *    *    *    *
+┬    ┬    ┬    ┬    ┬
+│    │    │    │    |
+│    │    │    │    └ day of week (0 - 7, 1L - 7L) (0 or 7 is Sun)
+│    │    │    └───── month (1 - 12)
+│    │    └────────── day of month (1 - 31, L)
+│    └─────────────── hour (0 - 23)
+└──────────────────── minute (0 - 59)
+   * ```
+
+"L" means the last. In the "day of week" field, 1L means the last Monday of the month. In the day of month field, L means the last day of the month.
+
+   */
+  cron: z.string(),
+  /** (Optional) You can only create one schedule with this key. If you use it twice, the second call will update the schedule.
+   *
+   * This is useful if you don't want to create duplicate schedules for a user. */
+  deduplicationKey: z.string().optional(),
+  /** Optionally, you can specify your own IDs (like a user ID) and then use it inside the run function of your task.
+   *
+   * This allows you to have per-user CRON tasks.
+   */
+  externalId: z.string().optional(),
+});
+
+export type CreateScheduleOptions = z.infer<typeof CreateScheduleOptions>;
+
+export const UpdateScheduleOptions = CreateScheduleOptions;
+
+export type UpdateScheduleOptions = z.infer<typeof UpdateScheduleOptions>;
+
+export const ScheduleObject = z.object({
+  id: z.string(),
+  task: z.string(),
+  active: z.boolean(),
+  deduplicationKey: z.string().nullish(),
+  externalId: z.string().nullish(),
+  generator: z.object({
+    type: z.literal("CRON"),
+    expression: z.string(),
+    description: z.string(),
+  }),
+  nextRun: z.coerce.date().nullish(),
+  environments: z.array(
+    z.object({
+      id: z.string(),
+      type: z.string(),
+      userName: z.string().nullish(),
+    })
+  ),
+});
+
+export type ScheduleObject = z.infer<typeof ScheduleObject>;
+
+export const DeletedScheduleObject = z.object({
+  id: z.string(),
+});
+
+export type DeletedScheduleObject = z.infer<typeof DeletedScheduleObject>;
+
+export const ListSchedulesResult = z.object({
+  data: z.array(ScheduleObject),
+  pagination: z.object({
+    currentPage: z.number(),
+    totalPages: z.number(),
+    count: z.number(),
+  }),
+});
+
+export type ListSchedulesResult = z.infer<typeof ListSchedulesResult>;
+
+export const ListScheduleOptions = z.object({
+  page: z.number().optional(),
+  perPage: z.number().optional(),
+});
+
+export type ListScheduleOptions = z.infer<typeof ListScheduleOptions>;

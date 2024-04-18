@@ -48,7 +48,7 @@ export async function stringifyIO(value: any): Promise<IOPacket> {
 
     return { data, dataType: "application/super+json" };
   } catch {
-    return { dataType: "application/json" };
+    return { data: value, dataType: "application/json" };
   }
 }
 
@@ -110,26 +110,24 @@ async function exportPacket(packet: IOPacket, pathPrefix: string): Promise<IOPac
 
   const presignedResponse = await apiClientManager.client!.createUploadPayloadUrl(filename);
 
-  if (presignedResponse.ok) {
-    const uploadResponse = await fetch(presignedResponse.data.presignedUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": packet.dataType,
-      },
-      body: packet.data,
-    });
+  const uploadResponse = await fetch(presignedResponse.presignedUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": packet.dataType,
+    },
+    body: packet.data,
+  });
 
-    if (!uploadResponse.ok) {
-      throw new Error(
-        `Failed to upload output to ${presignedResponse.data.presignedUrl}: ${uploadResponse.statusText}`
-      );
-    }
-
-    return {
-      data: filename,
-      dataType: "application/store",
-    };
+  if (!uploadResponse.ok) {
+    throw new Error(
+      `Failed to upload output to ${presignedResponse.presignedUrl}: ${uploadResponse.statusText}`
+    );
   }
+
+  return {
+    data: filename,
+    dataType: "application/store",
+  };
 
   return packet;
 }
@@ -172,24 +170,22 @@ async function importPacket(packet: IOPacket, span?: Span): Promise<IOPacket> {
 
   const presignedResponse = await apiClientManager.client.getPayloadUrl(packet.data);
 
-  if (presignedResponse.ok) {
-    const response = await fetch(presignedResponse.data.presignedUrl);
+  const response = await fetch(presignedResponse.presignedUrl);
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to import packet ${presignedResponse.data.presignedUrl}: ${response.statusText}`
-      );
-    }
-
-    const data = await response.text();
-
-    span?.setAttribute("size", Buffer.byteLength(data, "utf8"));
-
-    return {
-      data,
-      dataType: response.headers.get("content-type") ?? "application/json",
-    };
+  if (!response.ok) {
+    throw new Error(
+      `Failed to import packet ${presignedResponse.presignedUrl}: ${response.statusText}`
+    );
   }
+
+  const data = await response.text();
+
+  span?.setAttribute("size", Buffer.byteLength(data, "utf8"));
+
+  return {
+    data,
+    dataType: response.headers.get("content-type") ?? "application/json",
+  };
 
   return packet;
 }
@@ -280,12 +276,18 @@ export async function prettyPrintPacket(rawData: any, dataType?: string): Promis
   }
 
   if (dataType === "application/super+json") {
+    if (typeof rawData === "string") {
+      rawData = safeJsonParse(rawData);
+    }
     const { deserialize } = await loadSuperJSON();
 
     return await prettyPrintPacket(deserialize(rawData), "application/json");
   }
 
   if (dataType === "application/json") {
+    if (typeof rawData === "string") {
+      rawData = safeJsonParse(rawData);
+    }
     return JSON.stringify(rawData, safeReplacer, 2);
   }
 

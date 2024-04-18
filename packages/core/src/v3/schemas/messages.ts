@@ -1,5 +1,13 @@
 import { z } from "zod";
 import { TaskRunExecution, TaskRunExecutionResult } from "./common";
+import {
+  RunFnParams,
+  InitFnParams,
+  InitOutput,
+  MiddlewareFnParams,
+  HandleErrorFnParams,
+  HandleErrorResult,
+} from "../types";
 
 export const EnvironmentType = z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"]);
 export type EnvironmentType = z.infer<typeof EnvironmentType>;
@@ -253,18 +261,23 @@ export type QueueOptions = z.infer<typeof QueueOptions>;
 
 export const TaskMetadata = z.object({
   id: z.string(),
-  exportName: z.string(),
   packageVersion: z.string(),
   queue: QueueOptions.optional(),
   retry: RetryOptions.optional(),
   machine: Machine.partial().optional(),
+  triggerSource: z.string().optional(),
 });
 
 export type TaskMetadata = z.infer<typeof TaskMetadata>;
 
-export const TaskMetadataWithFilePath = TaskMetadata.extend({
+export const TaskFileMetadata = z.object({
   filePath: z.string(),
+  exportName: z.string(),
 });
+
+export type TaskFileMetadata = z.infer<typeof TaskFileMetadata>;
+
+export const TaskMetadataWithFilePath = TaskMetadata.merge(TaskFileMetadata);
 
 export type TaskMetadataWithFilePath = z.infer<typeof TaskMetadataWithFilePath>;
 
