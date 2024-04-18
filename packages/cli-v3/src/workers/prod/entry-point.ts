@@ -11,7 +11,6 @@ import {
 import { HttpReply, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { z } from "zod";
 import { ProdBackgroundWorker } from "./backgroundWorker";
 import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors";
 import { setTimeout } from "node:timers/promises";
@@ -58,6 +57,8 @@ class ProdWorker {
     port: number,
     private host = "0.0.0.0"
   ) {
+    process.on("SIGTERM", this.#handleSignal.bind(this, "SIGTERM"));
+
     this.#coordinatorSocket = this.#createCoordinatorSocket(COORDINATOR_HOST);
 
     this.#backgroundWorker = new ProdBackgroundWorker("worker.js", {
@@ -150,6 +151,36 @@ class ProdWorker {
     this.#httpServer = this.#createHttpServer();
   }
 
+  async #handleSignal(signal: NodeJS.Signals) {
+    logger.log("Received signal", { signal });
+
+    if (signal === "SIGTERM") {
+      if (this.executing) {
+        const terminationGracePeriodSeconds = 60 * 60;
+
+        logger.log("Waiting for attempt to complete before exiting", {
+          terminationGracePeriodSeconds,
+        });
+
+        // Wait for termination grace period minus 5s to give cleanup a chance to complete
+        await setTimeout(terminationGracePeriodSeconds * 1000 - 5000);
+
+        logger.log("Termination timeout reached, exiting gracefully.");
+      } else {
+        logger.log("Not executing, exiting immediately.");
+      }
+
+      await this.#exitGracefully();
+    }
+
+    logger.log("Unhandled signal", { signal });
+  }
+
+  async #exitGracefully() {
+    await this.#backgroundWorker.close();
+    process.exit(0);
+  }
+
   async #reconnect(isPostStart = false, reconnectImmediately = false) {
     if (isPostStart) {
       this.waitForPostStart = false;
@@ -206,8 +237,7 @@ class ProdWorker {
         logger.log("WARNING: Will checkpoint but also requested exit. This won't end well.");
       }
 
-      await this.#backgroundWorker.close();
-      process.exit(0);
+      await this.#exitGracefully();
     }
 
     this.executing = false;
@@ -605,7 +635,6 @@ class ProdWorker {
                 break;
               }
             }
-            logger.log("preStop", { url: req.url });
 
             return reply.text("preStop ok");
           }

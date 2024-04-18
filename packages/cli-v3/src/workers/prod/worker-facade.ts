@@ -175,6 +175,23 @@ const zodIpc = new ZodIpcConnection({
     CLEANUP: async ({ flush, kill }, sender) => {
       if (kill) {
         await tracingSDK.flush();
+
+        if (_execution) {
+          // Fail currently executing attempt
+          await sender.send("TASK_RUN_COMPLETED", {
+            execution: _execution,
+            result: {
+              ok: false,
+              id: _execution.attempt.id,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: TaskRunErrorCodes.GRACEFUL_EXIT_TIMEOUT,
+                message: "Worker process killed while attempt in progress.",
+              },
+            },
+          });
+        }
+
         // Now we need to exit the process
         await sender.send("READY_TO_DISPOSE", undefined);
       } else {
@@ -185,6 +202,9 @@ const zodIpc = new ZodIpcConnection({
     },
   },
 });
+
+// Ignore SIGTERM, handled by entry point
+process.on("SIGTERM", async () => {});
 
 const prodRuntimeManager = new ProdRuntimeManager(zodIpc, {
   waitThresholdInMs: parseInt(process.env.TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS ?? "30000", 10),

@@ -248,14 +248,52 @@ export class CompleteAttemptService extends BaseService {
         },
       });
 
-      await this._prisma.taskRun.update({
-        where: {
-          id: taskRunAttempt.taskRunId,
-        },
-        data: {
-          status: "COMPLETED_WITH_ERRORS",
-        },
-      });
+      if (
+        completion.error.type === "INTERNAL_ERROR" &&
+        completion.error.code === "GRACEFUL_EXIT_TIMEOUT"
+      ) {
+        // We need to fail all incomplete spans
+        const inProgressEvents = await eventRepository.queryIncompleteEvents({
+          attemptId: execution.attempt.id,
+        });
+
+        logger.debug("Failing in-progress events", {
+          inProgressEvents: inProgressEvents.map((event) => event.id),
+        });
+
+        const exception = {
+          type: "Graceful exit timeout",
+          message: completion.error.message,
+        };
+
+        await Promise.all(
+          inProgressEvents.map((event) => {
+            return eventRepository.crashEvent({
+              event: event,
+              crashedAt: new Date(),
+              exception,
+            });
+          })
+        );
+
+        await this._prisma.taskRun.update({
+          where: {
+            id: taskRunAttempt.taskRunId,
+          },
+          data: {
+            status: "SYSTEM_FAILURE",
+          },
+        });
+      } else {
+        await this._prisma.taskRun.update({
+          where: {
+            id: taskRunAttempt.taskRunId,
+          },
+          data: {
+            status: "COMPLETED_WITH_ERRORS",
+          },
+        });
+      }
 
       if (!env || env.type !== "DEVELOPMENT") {
         await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);

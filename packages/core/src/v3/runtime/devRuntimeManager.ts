@@ -5,6 +5,7 @@ import {
   TaskRunExecutionResult,
 } from "../schemas";
 import { RuntimeManager } from "./manager";
+import { unboundedTimeout } from "../utils/timers";
 
 export class DevRuntimeManager implements RuntimeManager {
   _taskWaits: Map<
@@ -24,15 +25,11 @@ export class DevRuntimeManager implements RuntimeManager {
   }
 
   async waitForDuration(ms: number): Promise<void> {
-    return new Promise((resolve) => {
-      setTimeout(resolve, ms);
-    });
+    await unboundedTimeout(ms);
   }
 
   async waitUntil(date: Date): Promise<void> {
-    return new Promise((resolve) => {
-      setTimeout(resolve, date.getTime() - Date.now());
-    });
+    return this.waitForDuration(date.getTime() - Date.now());
   }
 
   async waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {

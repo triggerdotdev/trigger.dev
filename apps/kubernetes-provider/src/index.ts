@@ -133,6 +133,7 @@ class KubernetesTaskOperations implements TaskOperations {
         },
         spec: {
           ...this.#defaultPodSpec,
+          terminationGracePeriodSeconds: 60 * 60,
           containers: [
             {
               name: this.#getRunContainerName(opts.runId),
