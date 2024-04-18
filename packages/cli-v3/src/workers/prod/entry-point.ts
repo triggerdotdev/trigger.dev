@@ -156,7 +156,7 @@ class ProdWorker {
 
     if (signal === "SIGTERM") {
       if (this.executing) {
-        const terminationGracePeriodSeconds = 10 * 60;
+        const terminationGracePeriodSeconds = 60 * 60;
 
         logger.log("Waiting for attempt to complete before exiting", {
           terminationGracePeriodSeconds,

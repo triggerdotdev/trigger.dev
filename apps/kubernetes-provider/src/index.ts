@@ -133,7 +133,7 @@ class KubernetesTaskOperations implements TaskOperations {
         },
         spec: {
           ...this.#defaultPodSpec,
-          terminationGracePeriodSeconds: 10 * 60,
+          terminationGracePeriodSeconds: 60 * 60,
           containers: [
             {
               name: this.#getRunContainerName(opts.runId),
@@ -410,7 +410,7 @@ class KubernetesTaskOperations implements TaskOperations {
       `for i in $(seq ${retries}); do sleep 1; busybox wget -q -O- 127.0.0.1:8000/${type}?cause=${cause} && break; done`,
     ];
 
-    logger.log("getLifecycleCommand()", { exec });
+    logger.debug("getLifecycleCommand()", { exec });
 
     return exec;
   }
