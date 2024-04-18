@@ -34,7 +34,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const presenter = new RunListPresenter();
   const list = await presenter.call({
-    userId,
     projectSlug: projectParam,
     tasks,
     versions,

@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "3.0.0-beta.12",
+  "version": "3.0.0-beta.13",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -76,7 +76,8 @@
     "superjson": "^2.2.1",
     "ulidx": "^2.2.1",
     "zod": "3.22.3",
-    "zod-error": "1.5.0"
+    "zod-error": "1.5.0",
+    "zod-validation-error": "^1.5.0"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",

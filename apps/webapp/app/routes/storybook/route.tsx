@@ -114,6 +114,10 @@ const stories: Story[] = [
   },
   {
     sectionTitle: "Forms",
+    name: "Date fields",
+    slug: "date-fields",
+  },
+  {
     name: "Simple form",
     slug: "simple-form",
   },

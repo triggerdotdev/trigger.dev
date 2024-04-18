@@ -20,4 +20,5 @@ export const config: TriggerConfig = {
   dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp"],
   instrumentations: [new OpenAIInstrumentation()],
   logLevel: "log",
+  enableConsoleLogging: true,
 };

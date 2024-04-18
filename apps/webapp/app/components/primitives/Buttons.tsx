@@ -286,8 +286,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
 type LinkPropsType = Pick<
   LinkProps,
   "to" | "target" | "onClick" | "onMouseDown" | "onMouseEnter" | "onMouseLeave" | "download"
-> &
-  React.ComponentProps<typeof ButtonContent>;
+> & { disabled?: boolean } & React.ComponentProps<typeof ButtonContent>;
 export const LinkButton = ({
   to,
   onClick,
@@ -295,6 +294,7 @@ export const LinkButton = ({
   onMouseEnter,
   onMouseLeave,
   download,
+  disabled = false,
   ...props
 }: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
@@ -307,6 +307,19 @@ export const LinkButton = ({
         }
       },
     });
+  }
+
+  if (disabled) {
+    return (
+      <div
+        className={cn(
+          "group pointer-events-none cursor-default opacity-40 outline-none",
+          props.fullWidth ? "w-full" : ""
+        )}
+      >
+        <ButtonContent {...props} />
+      </div>
+    );
   }
 
   if (to.toString().startsWith("http") || to.toString().startsWith("/resources")) {

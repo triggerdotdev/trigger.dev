@@ -4,6 +4,7 @@ import {
   ArrowRightOnRectangleIcon,
   BeakerIcon,
   ChartBarIcon,
+  ClockIcon,
   CursorArrowRaysIcon,
   IdentificationIcon,
   KeyIcon,
@@ -47,6 +48,7 @@ import {
   v3ProjectPath,
   v3ProjectSettingsPath,
   v3RunsPath,
+  v3SchedulesPath,
   v3TestPath,
 } from "~/utils/pathBuilder";
 import { Feedback } from "../Feedback";
@@ -570,6 +572,13 @@ function V3ProjectSideMenu({
         iconColor="text-lime-500"
         to={v3TestPath(organization, project)}
         data-action="test"
+      />
+      <SideMenuItem
+        name="Schedules"
+        icon={ClockIcon}
+        iconColor="text-sun-500"
+        to={v3SchedulesPath(organization, project)}
+        data-action="schedules"
       />
       <SideMenuItem
         name="API keys"

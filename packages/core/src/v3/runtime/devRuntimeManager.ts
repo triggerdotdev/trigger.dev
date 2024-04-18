@@ -1,6 +1,5 @@
 import {
   BatchTaskRunExecutionResult,
-  TaskMetadataWithFilePath,
   TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionResult,
@@ -19,22 +18,10 @@ export class DevRuntimeManager implements RuntimeManager {
     { resolve: (value: BatchTaskRunExecutionResult) => void; reject: (err?: any) => void }
   > = new Map();
 
-  _tasks: Map<string, TaskMetadataWithFilePath> = new Map();
-
   _pendingCompletionNotifications: Map<string, TaskRunExecutionResult> = new Map();
 
   disable(): void {
     // do nothing
-  }
-
-  registerTasks(tasks: TaskMetadataWithFilePath[]): void {
-    for (const task of tasks) {
-      this._tasks.set(task.id, task);
-    }
-  }
-
-  getTaskMetadata(id: string): TaskMetadataWithFilePath | undefined {
-    return this._tasks.get(id);
   }
 
   async waitForDuration(ms: number): Promise<void> {

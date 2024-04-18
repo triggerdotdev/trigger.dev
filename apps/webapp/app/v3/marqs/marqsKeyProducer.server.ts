@@ -15,6 +15,18 @@ const constants = {
 export class MarQSShortKeyProducer implements MarQSKeyProducer {
   constructor(private _prefix: string) {}
 
+  sharedQueueScanPattern() {
+    return `${this._prefix}*${constants.SHARED_QUEUE}`;
+  }
+
+  stripKeyPrefix(key: string): string {
+    if (key.startsWith(this._prefix)) {
+      return key.slice(this._prefix.length);
+    }
+
+    return key;
+  }
+
   queueConcurrencyLimitKey(env: AuthenticatedEnvironment, queue: string) {
     return [this.queueKey(env, queue), constants.CONCURRENCY_LIMIT_PART].join(":");
   }
@@ -59,6 +71,16 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return `${queue}:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
+  currentConcurrencyKey(
+    env: AuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ): string {
+    return [this.queueKey(env, queue, concurrencyKey), constants.CURRENT_CONCURRENCY_PART].join(
+      ":"
+    );
+  }
+
   orgConcurrencyLimitKeyFromQueue(queue: string) {
     const orgId = this.normalizeQueue(queue).split(":")[1];
 
@@ -81,6 +103,14 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     const envId = this.normalizeQueue(queue).split(":")[3];
 
     return `${constants.ENV_PART}:${envId}:${constants.CURRENT_CONCURRENCY_PART}`;
+  }
+
+  orgCurrentConcurrencyKey(env: AuthenticatedEnvironment): string {
+    return [this.orgKeySection(env.organizationId), constants.CURRENT_CONCURRENCY_PART].join(":");
+  }
+
+  envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string {
+    return [this.envKeySection(env.id), constants.CURRENT_CONCURRENCY_PART].join(":");
   }
 
   messageKey(messageId: string) {

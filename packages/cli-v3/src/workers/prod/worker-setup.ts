@@ -2,8 +2,10 @@ import { Resource } from "@opentelemetry/resources";
 import {
   ProjectConfig,
   SemanticInternalAttributes,
+  StandardTaskCatalog,
   TracingDiagnosticLogLevel,
   TracingSDK,
+  taskCatalog,
 } from "@trigger.dev/core/v3";
 
 __SETUP_IMPORTED_PROJECT_CONFIG__;
@@ -36,3 +38,5 @@ process.on("uncaughtException", (error, origin) => {
     },
   });
 });
+
+taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());

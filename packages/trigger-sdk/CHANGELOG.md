@@ -1,5 +1,22 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.13
+
+### Patch Changes
+
+- 4986bfda2: Export queue from the SDK
+- 44e1b8754: Improve the SDK function types and expose a new APIError instead of the APIResult type
+- 4986bfda2: Adding task with a triggerSource of schedule
+- 4986bfda2: Added a new global - Task Catalog - to better handle task metadata
+- Updated dependencies [4986bfda2]
+- Updated dependencies [44e1b8754]
+- Updated dependencies [4986bfda2]
+- Updated dependencies [fde939a30]
+- Updated dependencies [03b104a3d]
+- Updated dependencies [4986bfda2]
+  - @trigger.dev/core@3.0.0-beta.13
+  - @trigger.dev/core-backend@3.0.0-beta.13
+
 ## 3.0.0-beta.12
 
 ### Patch Changes

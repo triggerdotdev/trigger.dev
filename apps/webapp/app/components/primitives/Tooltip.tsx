@@ -1,6 +1,7 @@
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { cn } from "~/utils/cn";
+import { InformationCircleIcon } from "@heroicons/react/20/solid";
 
 const variantClasses = {
   basic:
@@ -80,6 +81,24 @@ function SimpleTooltip({
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+export function InfoIconTooltip({
+  content,
+  buttonClassName,
+}: {
+  content: React.ReactNode;
+  buttonClassName?: string;
+}) {
+  return (
+    <SimpleTooltip
+      button={
+        <InformationCircleIcon className={cn("h-3.5 w-3.5 text-text-dimmed", buttonClassName)} />
+      }
+      content={content}
+      variant="dark"
+    />
   );
 }
 
