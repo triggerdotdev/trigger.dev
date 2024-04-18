@@ -117,7 +117,7 @@ const handler = new ZodMessageHandler({
           execution,
           result: {
             ok: false,
-            id: execution.attempt.id,
+            id: execution.run.id,
             error: {
               type: "INTERNAL_ERROR",
               code: TaskRunErrorCodes.TASK_ALREADY_RUNNING,
@@ -139,7 +139,7 @@ const handler = new ZodMessageHandler({
           execution,
           result: {
             ok: false,
-            id: execution.attempt.id,
+            id: execution.run.id,
             error: {
               type: "INTERNAL_ERROR",
               code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,

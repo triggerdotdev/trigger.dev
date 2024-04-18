@@ -110,7 +110,7 @@ const zodIpc = new ZodIpcConnection({
           execution,
           result: {
             ok: false,
-            id: execution.attempt.id,
+            id: execution.run.id,
             error: {
               type: "INTERNAL_ERROR",
               code: TaskRunErrorCodes.TASK_ALREADY_RUNNING,
@@ -131,7 +131,7 @@ const zodIpc = new ZodIpcConnection({
           execution,
           result: {
             ok: false,
-            id: execution.attempt.id,
+            id: execution.run.id,
             error: {
               type: "INTERNAL_ERROR",
               code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,

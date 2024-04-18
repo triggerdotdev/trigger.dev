@@ -5,6 +5,7 @@ import {
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import { WorkerDeploymentStatus } from "@trigger.dev/database";
+import assertNever from "assert-never";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
@@ -54,8 +55,7 @@ export function DeploymentStatusIcon({
         />
       );
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }
@@ -74,8 +74,7 @@ export function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): 
     case "FAILED":
       return "text-error";
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }
@@ -97,8 +96,7 @@ export function deploymentStatusTitle(status: WorkerDeploymentStatus): string {
     case "FAILED":
       return "Failed";
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }

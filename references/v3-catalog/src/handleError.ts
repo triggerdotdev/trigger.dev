@@ -1,5 +1,7 @@
-import type { HandleErrorFunction } from "@trigger.dev/sdk/v3";
+import { logger, type HandleErrorFunction } from "@trigger.dev/sdk/v3";
 
 export const handleError: HandleErrorFunction = async (payload, error, { ctx, retry }) => {
-  console.log("GOT TO handleError FUNCTION");
+  logger.log("handling error", { error });
+
+  return { skipRetrying: true };
 };

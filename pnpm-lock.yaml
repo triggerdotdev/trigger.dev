@@ -402,6 +402,9 @@ importers:
       '@whatwg-node/fetch':
         specifier: ^0.9.14
         version: 0.9.14
+      assert-never:
+        specifier: ^1.2.1
+        version: 1.2.1
       aws4fetch:
         specifier: ^1.0.18
         version: 1.0.18
@@ -15825,6 +15828,10 @@ packages:
       pvtsutils: 1.3.5
       pvutils: 1.1.3
       tslib: 2.6.2
+    dev: false
+
+  /assert-never@1.2.1:
+    resolution: {integrity: sha512-TaTivMB6pYI1kXwrFlEhLeGfOqoDNdTxjCdwRfFFkEA30Eu+k48W34nlok2EYWJfFFzqaEmichdNM7th6M5HNw==}
     dev: false
 
   /assert-plus@1.0.0:

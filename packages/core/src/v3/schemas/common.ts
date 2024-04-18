@@ -74,6 +74,7 @@ export const TaskRun = z.object({
   tags: z.array(z.string()),
   isTest: z.boolean().default(false),
   createdAt: z.coerce.date(),
+  idempotencyKey: z.string().optional(),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;

@@ -10,6 +10,7 @@ import {
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import { TaskRunStatus } from "@trigger.dev/database";
+import assertNever from "assert-never";
 import { SnowflakeIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
@@ -88,8 +89,7 @@ export function TaskRunStatusIcon({
       return <FireIcon className={cn(runStatusClassNameColor(status), className)} />;
 
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }
@@ -120,8 +120,7 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
     case "CRASHED":
       return "text-error";
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }
@@ -153,8 +152,7 @@ export function runStatusTitle(status: TaskRunStatus): string {
     case "CRASHED":
       return "Crashed";
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }

@@ -352,6 +352,7 @@ function extractResourceProperties(attributes: KeyValue[]) {
     queueId: extractStringAttribute(attributes, SemanticInternalAttributes.QUEUE_ID),
     queueName: extractStringAttribute(attributes, SemanticInternalAttributes.QUEUE_NAME),
     batchId: extractStringAttribute(attributes, SemanticInternalAttributes.BATCH_ID),
+    idempotencyKey: extractStringAttribute(attributes, SemanticInternalAttributes.IDEMPOTENCY_KEY),
   };
 }
 

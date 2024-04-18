@@ -1588,7 +1588,7 @@ model TaskRun {
 
   status TaskRunStatus @default(PENDING)
 
-  idempotencyKey String
+  idempotencyKey String?
   taskIdentifier String
 
   isTest Boolean @default(false)
@@ -1625,7 +1625,7 @@ model TaskRun {
 
   concurrencyKey String?
 
-  batchItem              BatchTaskRunItem?
+  batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
 
@@ -1816,6 +1816,8 @@ model TaskEvent {
   runId     String
   runIsTest Boolean @default(false)
 
+  idempotencyKey String?
+
   taskSlug       String
   taskPath       String?
   taskExportName String?
@@ -1913,7 +1915,7 @@ model BatchTaskRun {
 
   status BatchTaskRunStatus @default(PENDING)
 
-  idempotencyKey String
+  idempotencyKey String?
   taskIdentifier String
 
   checkpointEvent   CheckpointRestoreEvent? @relation(fields: [checkpointEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -1948,7 +1950,7 @@ model BatchTaskRunItem {
   batchTaskRunId String
 
   taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  taskRunId String  @unique
+  taskRunId String
 
   taskRunAttempt   TaskRunAttempt? @relation(fields: [taskRunAttemptId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   taskRunAttemptId String?

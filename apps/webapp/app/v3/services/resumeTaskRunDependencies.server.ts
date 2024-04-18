@@ -12,7 +12,7 @@ export class ResumeTaskRunDependenciesService extends BaseService {
       include: {
         taskRun: {
           include: {
-            batchItem: true,
+            batchItems: true,
             dependency: {
               include: {
                 dependentAttempt: true,
@@ -34,14 +34,16 @@ export class ResumeTaskRunDependenciesService extends BaseService {
       return;
     }
 
-    const { batchItem, dependency } = taskAttempt.taskRun;
+    const { batchItems, dependency } = taskAttempt.taskRun;
 
-    if (!batchItem && !dependency) {
+    if (!batchItems.length && !dependency) {
       return;
     }
 
-    if (batchItem) {
-      await this.#resumeBatchItem(batchItem, taskAttempt);
+    if (batchItems.length) {
+      for (const batchItem of batchItems) {
+        await this.#resumeBatchItem(batchItem, taskAttempt);
+      }
       return;
     }
 

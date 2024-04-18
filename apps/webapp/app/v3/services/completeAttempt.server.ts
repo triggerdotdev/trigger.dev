@@ -39,10 +39,12 @@ export class CompleteAttemptService extends BaseService {
     env?: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
   }): Promise<"COMPLETED" | "RETRIED"> {
-    const taskRunAttempt = await findAttempt(this._prisma, completion.id);
+    const taskRunAttempt = await findAttempt(this._prisma, execution.attempt.id);
 
     if (!taskRunAttempt) {
-      logger.error("[CompleteAttemptService] Task run attempt not found", { id: completion.id });
+      logger.error("[CompleteAttemptService] Task run attempt not found", {
+        id: execution.attempt.id,
+      });
 
       // Update the task run to be failed
       await this._prisma.taskRun.update({
@@ -76,7 +78,7 @@ export class CompleteAttemptService extends BaseService {
     env?: AuthenticatedEnvironment
   ): Promise<"COMPLETED"> {
     await this._prisma.taskRunAttempt.update({
-      where: { friendlyId: completion.id },
+      where: { id: taskRunAttempt.id },
       data: {
         status: "COMPLETED",
         completedAt: new Date(),
@@ -144,7 +146,7 @@ export class CompleteAttemptService extends BaseService {
     }
 
     await this._prisma.taskRunAttempt.update({
-      where: { friendlyId: completion.id },
+      where: { id: taskRunAttempt.id },
       data: {
         status: "FAILED",
         completedAt: new Date(),
