@@ -4,6 +4,7 @@ import { z } from "zod";
 import { logger } from "./services/logger.server";
 import { env } from "./env.server";
 import { singleton } from "./utils/singleton";
+import { isValidDatabaseUrl } from "./utils/db";
 
 export type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -138,3 +139,23 @@ export type { PrismaClient } from "@trigger.dev/database";
 export const PrismaErrorSchema = z.object({
   code: z.string(),
 });
+
+function getDatabaseSchema() {
+  if (!isValidDatabaseUrl(env.DATABASE_URL)) {
+    throw new Error("Invalid Database URL");
+  }
+
+  const databaseUrl = new URL(env.DATABASE_URL);
+  const schemaFromSearchParam = databaseUrl.searchParams.get("schema");
+
+  if (!schemaFromSearchParam) {
+    console.debug("❗ database schema unspecified, will default to `public` schema");
+    return "public";
+  }
+
+  return schemaFromSearchParam;
+}
+
+export const DATABASE_SCHEMA = singleton("DATABASE_SCHEMA", getDatabaseSchema);
+
+export const sqlDatabaseSchema = Prisma.sql([`${DATABASE_SCHEMA}`]);

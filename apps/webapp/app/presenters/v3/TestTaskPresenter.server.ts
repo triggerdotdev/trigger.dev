@@ -5,7 +5,7 @@ import {
   TaskRunStatus,
   TaskTriggerSource,
 } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
+import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 
 type TestTaskOptions = {
@@ -107,9 +107,9 @@ export class TestTaskPresenter {
       SELECT 
           tr.* 
       FROM 
-          "TaskRun" as tr
+          ${sqlDatabaseSchema}."TaskRun" as tr
       JOIN
-          "BackgroundWorkerTask" as bwt
+          ${sqlDatabaseSchema}."BackgroundWorkerTask" as bwt
       ON
           tr."taskIdentifier" = bwt.slug
       WHERE

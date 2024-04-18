@@ -58,12 +58,13 @@ export class EditSchedulePresenter {
       },
     });
 
-    const possibleTasks = await this.#prismaClient.$queryRaw<{ slug: string }[]>`
-    SELECT DISTINCT(slug)
-    FROM "BackgroundWorkerTask"
-    WHERE "projectId" = ${project.id} 
-    AND "triggerSource" = 'SCHEDULED';
-    `;
+    const possibleTasks = await this.#prismaClient.backgroundWorkerTask.findMany({
+      distinct: ["slug"],
+      where: {
+        projectId: project.id,
+        triggerSource: "SCHEDULED",
+      },
+    });
 
     const possibleEnvironments = project.environments.map((environment) => {
       let userName: undefined | string;

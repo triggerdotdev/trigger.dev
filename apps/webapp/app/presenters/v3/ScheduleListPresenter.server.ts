@@ -1,6 +1,6 @@
 import { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
-import { PrismaClient, prisma } from "~/db.server";
+import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { getUsername } from "~/utils/username";
 import { calculateNextScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
 
@@ -81,12 +81,13 @@ export class ScheduleListPresenter {
     });
 
     //get all possible scheduled tasks
-    const possibleTasks = await this.#prismaClient.$queryRaw<{ slug: string }[]>`
-    SELECT DISTINCT(slug)
-    FROM "BackgroundWorkerTask"
-    WHERE "projectId" = ${project.id}
-    AND "triggerSource" = 'SCHEDULED';
-    `;
+    const possibleTasks = await this.#prismaClient.backgroundWorkerTask.findMany({
+      distinct: ["slug"],
+      where: {
+        projectId: project.id,
+        triggerSource: "SCHEDULED",
+      },
+    });
 
     //do this here to protect against SQL injection
     search = search && search !== "" ? `%${search}%` : undefined;
@@ -201,11 +202,11 @@ export class ScheduleListPresenter {
     SELECT t."scheduleId", t."createdAt"
     FROM (
       SELECT "scheduleId", MAX("createdAt") as "LatestRun"
-      FROM "TaskRun"
+      FROM ${sqlDatabaseSchema}."TaskRun"
       WHERE "scheduleId" IN (${Prisma.join(rawSchedules.map((s) => s.id))})
       GROUP BY "scheduleId"
     ) r
-    JOIN "TaskRun" t
+    JOIN ${sqlDatabaseSchema}."TaskRun" t
     ON t."scheduleId" = r."scheduleId" AND t."createdAt" = r."LatestRun";`
         : [];
 

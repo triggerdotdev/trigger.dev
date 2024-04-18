@@ -1,6 +1,6 @@
 import { Prisma, TaskRunStatus } from "@trigger.dev/database";
 import { Direction } from "~/components/runs/RunStatuses";
-import { PrismaClient, prisma } from "~/db.server";
+import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 
@@ -85,11 +85,12 @@ export class RunListPresenter {
     });
 
     //get all possible tasks
-    const possibleTasks = await this.#prismaClient.$queryRaw<{ slug: string }[]>`
-    SELECT DISTINCT(slug)
-    FROM "BackgroundWorkerTask"
-    WHERE "projectId" = ${project.id};
-    `;
+    const possibleTasks = await this.#prismaClient.backgroundWorkerTask.findMany({
+      distinct: ["slug"],
+      where: {
+        projectId: project.id,
+      },
+    });
 
     //get the runs
     let runs = await this.#prismaClient.$queryRaw<
@@ -122,15 +123,15 @@ export class RunListPresenter {
     tr."isTest" AS "isTest",
     COUNT(tra.id) AS attempts
   FROM
-    "TaskRun" tr
+    ${sqlDatabaseSchema}."TaskRun" tr
   LEFT JOIN
     (
       SELECT *,
         ROW_NUMBER() OVER (PARTITION BY "taskRunId" ORDER BY "createdAt" DESC) rn
-      FROM "TaskRunAttempt"
+      FROM ${sqlDatabaseSchema}."TaskRunAttempt"
     ) tra ON tr.id = tra."taskRunId" AND tra.rn = 1
   LEFT JOIN
-    "BackgroundWorker" bw ON tra."backgroundWorkerId" = bw.id
+    ${sqlDatabaseSchema}."BackgroundWorker" bw ON tra."backgroundWorkerId" = bw.id
   WHERE
       -- project
       tr."projectId" = ${project.id}

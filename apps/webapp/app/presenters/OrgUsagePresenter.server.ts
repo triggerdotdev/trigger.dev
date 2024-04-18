@@ -1,5 +1,5 @@
 import { estimate } from "@trigger.dev/billing";
-import { PrismaClient, prisma } from "~/db.server";
+import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { BillingService } from "~/services/billing.server";
 
@@ -53,7 +53,7 @@ export class OrgUsagePresenter {
         month: string;
         count: number;
       }[]
-    >`SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, COUNT(*) as count FROM "JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '6 months' AND "internal" = FALSE GROUP BY month ORDER BY month ASC`;
+    >`SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, COUNT(*) as count FROM ${sqlDatabaseSchema}."JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '6 months' AND "internal" = FALSE GROUP BY month ORDER BY month ASC`;
 
     const hasMonthlyRunData = monthlyRunsDataRaw.length > 0;
     const monthlyRunsData = monthlyRunsDataRaw.map((obj) => ({
@@ -117,7 +117,7 @@ export class OrgUsagePresenter {
 
     const dailyRunsRawData = await this.#prismaClient.$queryRaw<
       { day: Date; runs: BigInt }[]
-    >`SELECT date_trunc('day', "createdAt") as day, COUNT(*) as runs FROM "JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '30 days' AND "internal" = FALSE GROUP BY day`;
+    >`SELECT date_trunc('day', "createdAt") as day, COUNT(*) as runs FROM ${sqlDatabaseSchema}."JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '30 days' AND "internal" = FALSE GROUP BY day`;
 
     const hasDailyRunsData = dailyRunsRawData.length > 0;
     const dailyRunsDataFilledIn = fillInMissingDailyRuns(ThirtyDaysAgo, 31, dailyRunsRawData);

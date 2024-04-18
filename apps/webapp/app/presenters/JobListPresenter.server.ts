@@ -3,7 +3,7 @@ import {
   DisplayPropertySchema,
   EventSpecificationSchema,
 } from "@trigger.dev/core";
-import { PrismaClient, Prisma, prisma } from "~/db.server";
+import { PrismaClient, Prisma, prisma, sqlDatabaseSchema } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
@@ -122,7 +122,7 @@ export class JobListPresenter {
               "jobId",
               ROW_NUMBER() OVER(PARTITION BY "jobId" ORDER BY "createdAt" DESC) as rn
           FROM 
-              "JobRun" 
+              ${sqlDatabaseSchema}."JobRun" 
           WHERE 
               "jobId" IN (${Prisma.join(jobs.map((j) => j.id))})
       ) t
