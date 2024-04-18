@@ -39,7 +39,6 @@ const SemanticAttributes = {
 
 export type MarQSOptions = {
   redis: RedisOptions;
-  defaultQueueConcurrency: number;
   defaultEnvConcurrency: number;
   defaultOrgConcurrency: number;
   windowSize?: number;
@@ -92,7 +91,7 @@ export class MarQS {
   public async getQueueConcurrencyLimit(env: AuthenticatedEnvironment, queue: string) {
     const result = await this.redis.get(this.keys.queueConcurrencyLimitKey(env, queue));
 
-    return result ? Number(result) : this.options.defaultQueueConcurrency;
+    return result ? Number(result) : undefined;
   }
 
   public async getEnvConcurrencyLimit(env: AuthenticatedEnvironment) {
@@ -860,7 +859,6 @@ export class MarQS {
       messageQueue,
       String(this.options.visibilityTimeoutInMs ?? 300000), // 5 minutes
       String(Date.now()),
-      String(this.options.defaultQueueConcurrency),
       String(this.options.defaultEnvConcurrency),
       String(this.options.defaultOrgConcurrency)
     );
@@ -1015,16 +1013,22 @@ export class MarQS {
       concurrencyLimitKey,
       envConcurrencyLimitKey,
       orgConcurrencyLimitKey,
-      String(this.options.defaultQueueConcurrency),
       String(this.options.defaultEnvConcurrency),
       String(this.options.defaultOrgConcurrency)
     );
 
+    const queueCurrent = Number(capacities[0]);
+    const envLimit = Number(capacities[3]);
+    const orgLimit = Number(capacities[5]);
+    const queueLimit = capacities[1] ? Number(capacities[1]) : Math.min(envLimit, orgLimit);
+    const envCurrent = Number(capacities[2]);
+    const orgCurrent = Number(capacities[4]);
+
     // [queue current, queue limit, env current, env limit, org current, org limit]
     return {
-      queue: { current: Number(capacities[0]), limit: Number(capacities[1]) },
-      env: { current: Number(capacities[2]), limit: Number(capacities[3]) },
-      org: { current: Number(capacities[4]), limit: Number(capacities[5]) },
+      queue: { current: queueCurrent, limit: queueLimit },
+      env: { current: envCurrent, limit: envLimit },
+      org: { current: orgCurrent, limit: orgLimit },
     };
   }
 
@@ -1119,13 +1123,12 @@ local currentConcurrencyKey = KEYS[7]
 local envCurrentConcurrencyKey = KEYS[8]
 local orgCurrentConcurrencyKey = KEYS[9]
 
--- Args: childQueueName, visibilityQueue, currentTime, defaultConcurrencyLimit, defaultEnvConcurrencyLimit, defaultOrgConcurrencyLimit
+-- Args: childQueueName, visibilityQueue, currentTime, defaultEnvConcurrencyLimit, defaultOrgConcurrencyLimit
 local childQueueName = ARGV[1]
 local visibilityTimeout = tonumber(ARGV[2])
 local currentTime = tonumber(ARGV[3])
-local defaultConcurrencyLimit = ARGV[4]
-local defaultEnvConcurrencyLimit = ARGV[5]
-local defaultOrgConcurrencyLimit = ARGV[6]
+local defaultEnvConcurrencyLimit = ARGV[4]
+local defaultOrgConcurrencyLimit = ARGV[5]
 
 -- Check current org concurrency against the limit
 local orgCurrentConcurrency = tonumber(redis.call('SCARD', orgCurrentConcurrencyKey) or '0')
@@ -1145,8 +1148,9 @@ end
 
 -- Check current queue concurrency against the limit
 local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) or '0')
-local concurrencyLimit = tonumber(redis.call('GET', concurrencyLimitKey) or defaultConcurrencyLimit)
+local concurrencyLimit = tonumber(redis.call('GET', concurrencyLimitKey) or '1000000')
 
+-- Check condition only if concurrencyLimit exists
 if currentConcurrency >= concurrencyLimit then
     return nil
 end
@@ -1304,10 +1308,9 @@ local concurrencyLimitKey = KEYS[4]
 local envConcurrencyLimitKey = KEYS[5]
 local orgConcurrencyLimitKey = KEYS[6]
 
--- Args defaultConcurrencyLimit, defaultEnvConcurrencyLimit, defaultOrgConcurrencyLimit
-local defaultConcurrencyLimit = tonumber(ARGV[1])
-local defaultEnvConcurrencyLimit = tonumber(ARGV[2])
-local defaultOrgConcurrencyLimit = tonumber(ARGV[3])
+-- Args defaultEnvConcurrencyLimit, defaultOrgConcurrencyLimit
+local defaultEnvConcurrencyLimit = tonumber(ARGV[1])
+local defaultOrgConcurrencyLimit = tonumber(ARGV[2])
 
 local currentOrgConcurrency = tonumber(redis.call('SCARD', currentOrgConcurrencyKey) or '0')
 local orgConcurrencyLimit = tonumber(redis.call('GET', orgConcurrencyLimitKey) or defaultOrgConcurrencyLimit)
@@ -1316,7 +1319,7 @@ local currentEnvConcurrency = tonumber(redis.call('SCARD', currentEnvConcurrency
 local envConcurrencyLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
 
 local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) or '0')
-local concurrencyLimit = tonumber(redis.call('GET', concurrencyLimitKey) or defaultConcurrencyLimit)
+local concurrencyLimit = redis.call('GET', concurrencyLimitKey)
 
 -- Return current capacity and concurrency limits for the queue, env, org
 return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, currentOrgConcurrency, orgConcurrencyLimit } 
@@ -1398,7 +1401,6 @@ declare module "ioredis" {
       childQueueName: string,
       visibilityTimeout: string,
       currentTime: string,
-      defaultConcurrencyLimit: string,
       defaultEnvConcurrencyLimit: string,
       defaultOrgConcurrencyLimit: string,
       callback?: Callback<[string, string]>
@@ -1447,7 +1449,6 @@ declare module "ioredis" {
       concurrencyLimitKey: string,
       envConcurrencyLimitKey: string,
       orgConcurrencyLimitKey: string,
-      defaultConcurrencyLimit: string,
       defaultEnvConcurrencyLimit: string,
       defaultOrgConcurrencyLimit: string,
       callback?: Callback<number[]>
@@ -1492,7 +1493,6 @@ function getMarQSClient() {
         envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
         workers: 1,
         redis: redisOptions,
-        defaultQueueConcurrency: env.DEFAULT_QUEUE_EXECUTION_CONCURRENCY_LIMIT,
         defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
         defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
         visibilityTimeoutInMs: 120 * 1000, // 2 minutes,
