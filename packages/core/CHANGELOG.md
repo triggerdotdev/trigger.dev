@@ -1,5 +1,12 @@
 # internal-platform
 
+## 3.0.0-beta.14
+
+### Patch Changes
+
+- 584c7da5d: - Add graceful exit for prod workers
+  - Prevent overflow in long waits
+
 ## 3.0.0-beta.13
 
 ### Patch Changes

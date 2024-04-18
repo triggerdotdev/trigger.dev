@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 3.0.0-beta.14
+
+### Patch Changes
+
+- 584c7da5d: - Add graceful exit for prod workers
+  - Prevent overflow in long waits
+- Updated dependencies [584c7da5d]
+  - @trigger.dev/core@3.0.0-beta.14
+
 ## 3.0.0-beta.13
 
 ### Patch Changes

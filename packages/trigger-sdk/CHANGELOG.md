@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.14
+
+### Patch Changes
+
+- c9e1a3e9c: Remove unimplemented batchOptions
+- Updated dependencies [584c7da5d]
+  - @trigger.dev/core@3.0.0-beta.14
+  - @trigger.dev/core-backend@3.0.0-beta.14
+
 ## 3.0.0-beta.13
 
 ### Patch Changes
