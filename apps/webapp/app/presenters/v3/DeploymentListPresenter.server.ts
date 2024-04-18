@@ -97,7 +97,7 @@ export class DeploymentListPresenter {
   wd."id", 
   wd."shortCode", 
   wd."version", 
-  (SELECT COUNT(*) FROM "BackgroundWorkerTask" WHERE "BackgroundWorkerTask"."workerId" = wd."workerId") AS "tasksCount", 
+  (SELECT COUNT(*) FROM ${sqlDatabaseSchema}."BackgroundWorkerTask" WHERE "BackgroundWorkerTask"."workerId" = wd."workerId") AS "tasksCount", 
   wd."environmentId", 
   wd."status", 
   u."id" AS "userId", 
