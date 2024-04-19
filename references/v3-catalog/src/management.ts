@@ -7,26 +7,26 @@ dotenv.config();
 
 export async function run() {
   try {
-    const run = await simpleChildTask.trigger({ payload: { message: "Hello, World!" } });
+    const run = await simpleChildTask.trigger({ message: "Hello, World!" });
     const canceled = await runs.cancel(run.id);
     console.log("canceled run", canceled);
 
     const replayed = await runs.replay(run.id);
     console.log("replayed run", replayed);
 
-    const run2 = await simpleChildTask.trigger({
-      payload: { message: "Hello, World!" },
-      options: {
+    const run2 = await simpleChildTask.trigger(
+      { message: "Hello, World!" },
+      {
         idempotencyKey: "mmvlgwcidiklyeygen4",
-      },
-    });
+      }
+    );
 
-    const run3 = await simpleChildTask.trigger({
-      payload: { message: "Hello, World again!" },
-      options: {
+    const run3 = await simpleChildTask.trigger(
+      { message: "Hello, World again!" },
+      {
         idempotencyKey: "mmvlgwcidiklyeygen4",
-      },
-    });
+      }
+    );
 
     console.log("run2", run2);
     console.log("run3", run3);
