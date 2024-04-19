@@ -283,7 +283,6 @@ function TasksTreeView({
           onChange={(e) => setFilterText(e.target.value)}
         />
         <div className="flex items-center gap-2">
-          <LiveReloadingStatus rootSpanCompleted={rootSpanStatus !== "executing"} />
           <Switch
             variant="small"
             label="Errors only"
@@ -319,14 +318,15 @@ function TasksTreeView({
         {/* Tree list */}
         <ResizablePanel order={1} minSize={20} defaultSize={50} className="pl-3">
           <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
-            <div className="flex items-center">
+            <div className="flex items-center pr-2">
               {parentRunFriendlyId ? (
                 <ShowParentLink runFriendlyId={parentRunFriendlyId} />
               ) : (
-                <Paragraph variant="small" className="text-charcoal-500">
+                <Paragraph variant="small" className="flex-1 text-charcoal-500">
                   This is the root task
                 </Paragraph>
               )}
+              <LiveReloadingStatus rootSpanCompleted={rootSpanStatus !== "executing"} />
             </div>
             <TreeView
               parentRef={parentRef}
@@ -724,6 +724,7 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
       fullWidth
       textAlignLeft
       shortcut={{ key: "p" }}
+      className="flex-1"
     >
       {mouseOver ? (
         <ShowParentIconSelected className="h-4 w-4 text-indigo-500" />
