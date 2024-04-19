@@ -91,6 +91,38 @@ type ToggleExpandNodeAction = {
   } & WithScrollToNode;
 };
 
+type ExpandAllBelowDepthAction = {
+  type: "EXPAND_ALL_BELOW_DEPTH";
+  payload: {
+    depth: number;
+    tree: FlatTree<any>;
+  };
+};
+
+type CollapseAllBelowDepthAction = {
+  type: "COLLAPSE_ALL_BELOW_DEPTH";
+  payload: {
+    depth: number;
+    tree: FlatTree<any>;
+  };
+};
+
+type ExpandLevelAction = {
+  type: "EXPAND_LEVEL";
+  payload: {
+    level: number;
+    tree: FlatTree<any>;
+  };
+};
+
+type CollapseLevelAction = {
+  type: "COLLAPSE_LEVEL";
+  payload: {
+    level: number;
+    tree: FlatTree<any>;
+  };
+};
+
 type SelectFirstVisibleNodeAction = {
   type: "SELECT_FIRST_VISIBLE_NODE";
   payload: {
@@ -135,6 +167,10 @@ export type Action =
   | ExpandNodeAction
   | CollapseNodeAction
   | ToggleExpandNodeAction
+  | ExpandAllBelowDepthAction
+  | CollapseAllBelowDepthAction
+  | ExpandLevelAction
+  | CollapseLevelAction
   | SelectFirstVisibleNodeAction
   | SelectLastVisibleNodeAction
   | SelectNextVisibleNodeAction
@@ -228,6 +264,78 @@ export function reducer(state: TreeState, action: Action): TreeState {
           },
         });
       }
+    }
+    case "EXPAND_ALL_BELOW_DEPTH": {
+      const nodesToExpand = action.payload.tree.filter(
+        (n) => n.level >= action.payload.depth && n.hasChildren
+      );
+
+      const newNodes = Object.fromEntries(
+        Object.entries(state.nodes).map(([key, value]) => [
+          key,
+          {
+            ...value,
+            expanded: nodesToExpand.find((n) => n.id === key) ? true : value.expanded,
+          },
+        ])
+      );
+
+      const visibleNodes = applyVisibility(action.payload.tree, newNodes);
+      return { nodes: visibleNodes, changes: generateChanges(state.nodes, visibleNodes) };
+    }
+    case "COLLAPSE_ALL_BELOW_DEPTH": {
+      const nodesToCollapse = action.payload.tree.filter(
+        (n) => n.level >= action.payload.depth && n.hasChildren
+      );
+
+      const newNodes = Object.fromEntries(
+        Object.entries(state.nodes).map(([key, value]) => [
+          key,
+          {
+            ...value,
+            expanded: nodesToCollapse.find((n) => n.id === key) ? false : value.expanded,
+          },
+        ])
+      );
+
+      const visibleNodes = applyVisibility(action.payload.tree, newNodes);
+      return { nodes: visibleNodes, changes: generateChanges(state.nodes, visibleNodes) };
+    }
+    case "EXPAND_LEVEL": {
+      const nodesToExpand = action.payload.tree.filter(
+        (n) => n.level === action.payload.level && n.hasChildren
+      );
+
+      const newNodes = Object.fromEntries(
+        Object.entries(state.nodes).map(([key, value]) => [
+          key,
+          {
+            ...value,
+            expanded: nodesToExpand.find((n) => n.id === key) ? true : value.expanded,
+          },
+        ])
+      );
+
+      const visibleNodes = applyVisibility(action.payload.tree, newNodes);
+      return { nodes: visibleNodes, changes: generateChanges(state.nodes, visibleNodes) };
+    }
+    case "COLLAPSE_LEVEL": {
+      const nodesToCollapse = action.payload.tree.filter(
+        (n) => n.level === action.payload.level && n.hasChildren
+      );
+
+      const newNodes = Object.fromEntries(
+        Object.entries(state.nodes).map(([key, value]) => [
+          key,
+          {
+            ...value,
+            expanded: nodesToCollapse.find((n) => n.id === key) ? false : value.expanded,
+          },
+        ])
+      );
+
+      const visibleNodes = applyVisibility(action.payload.tree, newNodes);
+      return { nodes: visibleNodes, changes: generateChanges(state.nodes, visibleNodes) };
     }
     case "SELECT_FIRST_VISIBLE_NODE": {
       const node = firstVisibleNode(action.payload.tree, state.nodes);

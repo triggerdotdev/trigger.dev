@@ -36,7 +36,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import { ShortcutKey } from "~/components/primitives/ShortcutKey";
+import { ShortcutKey, variants } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
@@ -66,6 +66,8 @@ import {
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
+import { number } from "zod";
+import { useHotkeys } from "react-hotkeys-hook";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -251,6 +253,10 @@ function TasksTreeView({
     getNodeProps,
     toggleNodeSelection,
     toggleExpandNode,
+    expandAllBelowDepth,
+    expandLevel,
+    collapseLevel,
+    collapseAllBelowDepth,
     selectNode,
     scrollToNode,
     virtualizer,
@@ -419,8 +425,20 @@ function TasksTreeView({
       <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
         <div className="flex items-center gap-4">
           <ArrowKeyShortcuts />
-          <ShortcutWithAction shortcut={{ key: "e" }} action={() => {}} title="Expand all" />
-          <ShortcutWithAction shortcut={{ key: "c" }} action={() => {}} title="Collapse all" />
+          <ShortcutWithAction
+            shortcut={{ key: "e" }}
+            action={() => expandAllBelowDepth(0)}
+            title="Expand all"
+          />
+          <ShortcutWithAction
+            shortcut={{ key: "c" }}
+            action={() => collapseAllBelowDepth(1)}
+            title="Collapse all"
+          />
+          <NumberShortcuts
+            expand={(number) => expandLevel(number)}
+            collapse={(number) => collapseLevel(number)}
+          />
         </div>
         <div className="flex items-center gap-4">
           <Switch
@@ -916,6 +934,37 @@ function ShortcutWithAction({
       <ShortcutKey shortcut={shortcut} variant="medium" />
       <Paragraph variant="extra-small" className="ml-1.5">
         {title}
+      </Paragraph>
+    </div>
+  );
+}
+
+function NumberShortcuts({
+  expand,
+  collapse,
+}: {
+  expand: (depth: number) => void;
+  collapse: (depth: number) => void;
+}) {
+  const [mode, setMode] = useState<"expand" | "collapse">("expand");
+  useHotkeys(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"], (event, hotkeysEvent) => {
+    switch (mode) {
+      case "expand":
+        expand(Number(event.key));
+        setMode("collapse");
+        break;
+      case "collapse":
+        collapse(Number(event.key));
+        setMode("expand");
+        break;
+    }
+  });
+
+  return (
+    <div className="flex items-center gap-0.5">
+      <span className={variants.medium}>1–10</span>
+      <Paragraph variant="extra-small" className="ml-1.5">
+        Toggle level
       </Paragraph>
     </div>
   );

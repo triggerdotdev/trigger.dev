@@ -9,7 +9,7 @@ import {
   ChevronUpIcon,
 } from "@heroicons/react/20/solid";
 
-const variants = {
+export const variants = {
   small:
     "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase",
   medium:

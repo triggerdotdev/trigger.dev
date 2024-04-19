@@ -165,6 +165,10 @@ export type UseTreeStateOutput = {
   expandNode: (id: string, scrollToNode?: boolean) => void;
   collapseNode: (id: string) => void;
   toggleExpandNode: (id: string, scrollToNode?: boolean) => void;
+  expandAllBelowDepth: (depth: number) => void;
+  collapseAllBelowDepth: (depth: number) => void;
+  expandLevel: (level: number) => void;
+  collapseLevel: (level: number) => void;
   selectFirstVisibleNode: (scrollToNode?: boolean) => void;
   selectLastVisibleNode: (scrollToNode?: boolean) => void;
   selectNextVisibleNode: (scrollToNode?: boolean) => void;
@@ -333,6 +337,34 @@ export function useTree<TData>({
     [state]
   );
 
+  const expandAllBelowDepth = useCallback(
+    (depth: number) => {
+      dispatch({ type: "EXPAND_ALL_BELOW_DEPTH", payload: { tree, depth } });
+    },
+    [state]
+  );
+
+  const collapseAllBelowDepth = useCallback(
+    (depth: number) => {
+      dispatch({ type: "COLLAPSE_ALL_BELOW_DEPTH", payload: { tree, depth } });
+    },
+    [state]
+  );
+
+  const expandLevel = useCallback(
+    (level: number) => {
+      dispatch({ type: "EXPAND_LEVEL", payload: { tree, level } });
+    },
+    [state]
+  );
+
+  const collapseLevel = useCallback(
+    (level: number) => {
+      dispatch({ type: "COLLAPSE_LEVEL", payload: { tree, level } });
+    },
+    [state]
+  );
+
   const getTreeProps = useCallback(() => {
     return {
       role: "tree",
@@ -427,6 +459,10 @@ export function useTree<TData>({
     expandNode,
     collapseNode,
     toggleExpandNode,
+    expandAllBelowDepth,
+    collapseAllBelowDepth,
+    expandLevel,
+    collapseLevel,
     selectFirstVisibleNode,
     selectLastVisibleNode,
     selectNextVisibleNode,
