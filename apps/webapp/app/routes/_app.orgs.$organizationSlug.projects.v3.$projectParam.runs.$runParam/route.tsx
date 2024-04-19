@@ -435,14 +435,13 @@ function TasksTreeView({
             title="Collapse all"
           />
           <NumberShortcuts toggleLevel={(number) => toggleExpandLevel(number)} />
+          <ShortcutWithAction
+            shortcut={{ key: "d" }}
+            action={() => setShowDurations((d) => !d)}
+            title="Toggle durations"
+          />
         </div>
         <div className="flex items-center gap-4">
-          <Switch
-            variant="small"
-            label="Show durations"
-            checked={showDurations}
-            onCheckedChange={(e) => setShowDurations(e.valueOf())}
-          />
           <Slider
             variant={"tertiary"}
             className="w-20"
