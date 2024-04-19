@@ -8,10 +8,7 @@ import { RuntimeManager } from "./manager";
 import { unboundedTimeout } from "../utils/timers";
 
 export class DevRuntimeManager implements RuntimeManager {
-  _taskWaits: Map<
-    string,
-    { resolve: (value: TaskRunExecutionResult) => void; reject?: (err?: any) => void }
-  > = new Map();
+  _taskWaits: Map<string, { resolve: (value: TaskRunExecutionResult) => void }> = new Map();
 
   _batchWaits: Map<
     string,
@@ -41,8 +38,8 @@ export class DevRuntimeManager implements RuntimeManager {
       return pendingCompletion;
     }
 
-    const promise = new Promise<TaskRunExecutionResult>((resolve, reject) => {
-      this._taskWaits.set(params.id, { resolve, reject });
+    const promise = new Promise<TaskRunExecutionResult>((resolve) => {
+      this._taskWaits.set(params.id, { resolve });
     });
 
     return await promise;
@@ -93,15 +90,7 @@ export class DevRuntimeManager implements RuntimeManager {
       return;
     }
 
-    if (!wait.reject) {
-      wait.resolve(completion);
-    } else {
-      if (completion.ok) {
-        wait.resolve(completion);
-      } else {
-        wait.reject(completion);
-      }
-    }
+    wait.resolve(completion);
 
     this._taskWaits.delete(execution.run.id);
   }

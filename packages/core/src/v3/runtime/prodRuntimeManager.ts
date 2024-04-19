@@ -1,4 +1,3 @@
-import { setTimeout } from "node:timers/promises";
 import { clock } from "../clock-api";
 import {
   BatchTaskRunExecutionResult,
@@ -8,19 +7,16 @@ import {
   TaskRunExecution,
   TaskRunExecutionResult,
 } from "../schemas";
+import { unboundedTimeout } from "../utils/timers";
 import { ZodIpcConnection } from "../zodIpc";
 import { RuntimeManager } from "./manager";
-import { unboundedTimeout } from "../utils/timers";
 
 export type ProdRuntimeManagerOptions = {
   waitThresholdInMs?: number;
 };
 
 export class ProdRuntimeManager implements RuntimeManager {
-  _taskWaits: Map<
-    string,
-    { resolve: (value: TaskRunExecutionResult) => void; reject?: (err?: any) => void }
-  > = new Map();
+  _taskWaits: Map<string, { resolve: (value: TaskRunExecutionResult) => void }> = new Map();
 
   _batchWaits: Map<
     string,
@@ -91,8 +87,8 @@ export class ProdRuntimeManager implements RuntimeManager {
   }
 
   async waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
-    const promise = new Promise<TaskRunExecutionResult>((resolve, reject) => {
-      this._taskWaits.set(params.id, { resolve, reject });
+    const promise = new Promise<TaskRunExecutionResult>((resolve) => {
+      this._taskWaits.set(params.id, { resolve });
     });
 
     await this.ipc.send("WAIT_FOR_TASK", {
@@ -139,15 +135,7 @@ export class ProdRuntimeManager implements RuntimeManager {
       return;
     }
 
-    if (!wait.reject) {
-      wait.resolve(completion);
-    } else {
-      if (completion.ok) {
-        wait.resolve(completion);
-      } else {
-        wait.reject(completion);
-      }
-    }
+    wait.resolve(completion);
 
     this._taskWaits.delete(execution.run.id);
   }

@@ -23,13 +23,13 @@ export const testConcurrency = task({
 
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    await testConcurrencyChild.batchTrigger({
-      items: Array.from({ length: count }).map((_, index) => ({
+    await testConcurrencyChild.batchTrigger(
+      Array.from({ length: count }).map((_, index) => ({
         payload: {
           delay,
         },
-      })),
-    });
+      }))
+    );
 
     logger.info(`All ${count} tasks triggered`);
 

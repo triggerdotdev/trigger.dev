@@ -164,9 +164,7 @@ We've unified triggering in v3. You use `trigger()` or `batchTrigger()` which yo
 async function yourBackendFunction() {
   //call `trigger()` on any task
   const handle = await openaiTask.trigger({
-    payload: {
-      prompt: "Tell me a programming joke",
-    },
+    prompt: "Tell me a programming joke",
   });
 }
 ```

@@ -83,19 +83,15 @@ export const parentTask = task({
     await wait.for({ seconds: 5 });
 
     const childTaskResponse = await childTask.triggerAndWait({
-      payload: {
-        message: payload.message,
-        forceError: false,
-      },
+      message: payload.message,
+      forceError: false,
     });
 
     logger.info("Child task response", { childTaskResponse });
 
     await childTask.trigger({
-      payload: {
-        message: `${payload.message} - 2.a`,
-        forceError: true,
-      },
+      message: `${payload.message} - 2.a`,
+      forceError: true,
     });
 
     return {
