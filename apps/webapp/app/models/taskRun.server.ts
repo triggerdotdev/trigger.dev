@@ -12,6 +12,7 @@ import {
   TaskRunStatus,
 } from "@trigger.dev/database";
 import { assertNever } from "assert-never";
+import { logger } from "~/services/logger.server";
 
 const SUCCESSFUL_STATUSES = [TaskRunStatus.COMPLETED_SUCCESSFULLY];
 const FAILURE_STATUSES = [
@@ -34,6 +35,12 @@ export function executionResultForTaskRun(
     const attempt = taskRun.attempts.find((a) => a.status === TaskRunAttemptStatus.COMPLETED);
 
     if (!attempt) {
+      logger.error("Task run is successful but no successful attempt found", {
+        taskRunId: taskRun.id,
+        taskRunStatus: taskRun.status,
+        taskRunAttempts: taskRun.attempts.map((a) => a.status),
+      });
+
       return undefined;
     }
 
@@ -60,12 +67,25 @@ export function executionResultForTaskRun(
     const attempt = taskRun.attempts.find((a) => a.status === TaskRunAttemptStatus.FAILED);
 
     if (!attempt) {
+      logger.error("Task run is failed but no failed attempt found", {
+        taskRunId: taskRun.id,
+        taskRunStatus: taskRun.status,
+        taskRunAttempts: taskRun.attempts.map((a) => a.status),
+      });
+
       return undefined;
     }
 
     const error = TaskRunError.safeParse(attempt.error);
 
     if (!error.success) {
+      logger.error("Failed to parse error from failed task run attempt", {
+        taskRunId: taskRun.id,
+        taskRunStatus: taskRun.status,
+        taskRunAttempts: taskRun.attempts.map((a) => a.status),
+        error: attempt.error,
+      });
+
       return {
         ok: false,
         id: taskRun.friendlyId,
