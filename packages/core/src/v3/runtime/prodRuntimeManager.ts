@@ -95,7 +95,11 @@ export class ProdRuntimeManager implements RuntimeManager {
       friendlyId: params.id,
     });
 
-    return await promise;
+    const result = await promise;
+
+    clock.reset();
+
+    return result;
   }
 
   async waitForBatch(params: {
@@ -121,6 +125,8 @@ export class ProdRuntimeManager implements RuntimeManager {
     });
 
     const results = await promise;
+
+    clock.reset();
 
     return {
       id: params.id,
