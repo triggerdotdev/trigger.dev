@@ -123,6 +123,14 @@ type CollapseLevelAction = {
   };
 };
 
+type ToggleExpandLevelAction = {
+  type: "TOGGLE_EXPAND_LEVEL";
+  payload: {
+    level: number;
+    tree: FlatTree<any>;
+  };
+};
+
 type SelectFirstVisibleNodeAction = {
   type: "SELECT_FIRST_VISIBLE_NODE";
   payload: {
@@ -171,6 +179,7 @@ export type Action =
   | CollapseAllBelowDepthAction
   | ExpandLevelAction
   | CollapseLevelAction
+  | ToggleExpandLevelAction
   | SelectFirstVisibleNodeAction
   | SelectLastVisibleNodeAction
   | SelectNextVisibleNodeAction
@@ -303,7 +312,7 @@ export function reducer(state: TreeState, action: Action): TreeState {
     }
     case "EXPAND_LEVEL": {
       const nodesToExpand = action.payload.tree.filter(
-        (n) => n.level === action.payload.level && n.hasChildren
+        (n) => n.level <= action.payload.level && n.hasChildren
       );
 
       const newNodes = Object.fromEntries(
@@ -336,6 +345,37 @@ export function reducer(state: TreeState, action: Action): TreeState {
 
       const visibleNodes = applyVisibility(action.payload.tree, newNodes);
       return { nodes: visibleNodes, changes: generateChanges(state.nodes, visibleNodes) };
+    }
+    case "TOGGLE_EXPAND_LEVEL": {
+      //first get the first item at that level in the tree. If it is expanded, collapse all nodes at that level
+      //if it is collapsed, expand all nodes at that level
+      const nodesAtLevel = action.payload.tree.filter(
+        (n) => n.level === action.payload.level && n.hasChildren
+      );
+      const firstNode = nodesAtLevel[0];
+      if (!firstNode) {
+        return state;
+      }
+
+      const currentlyExpanded = state.nodes[firstNode.id]?.expanded ?? true;
+      const currentVisible = state.nodes[firstNode.id]?.visible ?? true;
+      if (currentlyExpanded && currentVisible) {
+        return reducer(state, {
+          type: "COLLAPSE_LEVEL",
+          payload: {
+            level: action.payload.level,
+            tree: action.payload.tree,
+          },
+        });
+      } else {
+        return reducer(state, {
+          type: "EXPAND_LEVEL",
+          payload: {
+            level: action.payload.level,
+            tree: action.payload.tree,
+          },
+        });
+      }
     }
     case "SELECT_FIRST_VISIBLE_NODE": {
       const node = firstVisibleNode(action.payload.tree, state.nodes);

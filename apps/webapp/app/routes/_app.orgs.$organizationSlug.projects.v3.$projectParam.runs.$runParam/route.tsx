@@ -254,8 +254,7 @@ function TasksTreeView({
     toggleNodeSelection,
     toggleExpandNode,
     expandAllBelowDepth,
-    expandLevel,
-    collapseLevel,
+    toggleExpandLevel,
     collapseAllBelowDepth,
     selectNode,
     scrollToNode,
@@ -435,10 +434,7 @@ function TasksTreeView({
             action={() => collapseAllBelowDepth(1)}
             title="Collapse all"
           />
-          <NumberShortcuts
-            expand={(number) => expandLevel(number)}
-            collapse={(number) => collapseLevel(number)}
-          />
+          <NumberShortcuts toggleLevel={(number) => toggleExpandLevel(number)} />
         </div>
         <div className="flex items-center gap-4">
           <Switch
@@ -939,30 +935,16 @@ function ShortcutWithAction({
   );
 }
 
-function NumberShortcuts({
-  expand,
-  collapse,
-}: {
-  expand: (depth: number) => void;
-  collapse: (depth: number) => void;
-}) {
-  const [mode, setMode] = useState<"expand" | "collapse">("expand");
+function NumberShortcuts({ toggleLevel }: { toggleLevel: (depth: number) => void }) {
   useHotkeys(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"], (event, hotkeysEvent) => {
-    switch (mode) {
-      case "expand":
-        expand(Number(event.key));
-        setMode("collapse");
-        break;
-      case "collapse":
-        collapse(Number(event.key));
-        setMode("expand");
-        break;
-    }
+    toggleLevel(Number(event.key));
   });
 
   return (
     <div className="flex items-center gap-0.5">
-      <span className={variants.medium}>1–10</span>
+      <span className={cn(variants.medium, "ml-0 mr-0")}>0</span>
+      <span className="text-[0.75rem] text-text-dimmed">–</span>
+      <span className={cn(variants.medium, "ml-0 mr-0")}>9</span>
       <Paragraph variant="extra-small" className="ml-1.5">
         Toggle level
       </Paragraph>
