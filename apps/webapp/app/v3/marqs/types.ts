@@ -1,4 +1,3 @@
-import { RedisOptions } from "ioredis";
 import { z } from "zod";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 

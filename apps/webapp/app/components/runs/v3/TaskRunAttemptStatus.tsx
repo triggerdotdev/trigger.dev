@@ -8,6 +8,7 @@ import {
 } from "@heroicons/react/20/solid";
 import type { TaskRunAttemptStatus as TaskRunAttemptStatusType } from "@trigger.dev/database";
 import { TaskRunAttemptStatus } from "@trigger.dev/database";
+import assertNever from "assert-never";
 import { SnowflakeIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
@@ -72,8 +73,7 @@ export function TaskRunAttemptStatusIcon({
     case "COMPLETED":
       return <CheckCircleIcon className={cn(runAttemptStatusClassNameColor(status), className)} />;
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }
@@ -99,8 +99,7 @@ export function runAttemptStatusClassNameColor(status: ExtendedTaskAttemptStatus
     case "COMPLETED":
       return "text-success";
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }
@@ -126,8 +125,7 @@ export function runAttemptStatusTitle(status: ExtendedTaskAttemptStatus | null):
     case "COMPLETED":
       return "Completed";
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }

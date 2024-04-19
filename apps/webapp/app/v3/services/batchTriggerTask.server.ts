@@ -1,9 +1,9 @@
 import { BatchTriggerTaskRequestBody } from "@trigger.dev/core/v3";
-import { nanoid } from "nanoid";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { BaseService } from "./baseService.server";
 import { TriggerTaskService } from "./triggerTask.server";
+import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
 
 export type BatchTriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -22,23 +22,23 @@ export class BatchTriggerTaskService extends BaseService {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
-      const idempotencyKey = options.idempotencyKey ?? nanoid();
-
-      const existingBatch = await this._prisma.batchTaskRun.findUnique({
-        where: {
-          runtimeEnvironmentId_idempotencyKey: {
-            runtimeEnvironmentId: environment.id,
-            idempotencyKey,
-          },
-        },
-        include: {
-          items: {
-            include: {
-              taskRun: true,
+      const existingBatch = options.idempotencyKey
+        ? await this._prisma.batchTaskRun.findUnique({
+            where: {
+              runtimeEnvironmentId_idempotencyKey: {
+                runtimeEnvironmentId: environment.id,
+                idempotencyKey: options.idempotencyKey,
+              },
             },
-          },
-        },
-      });
+            include: {
+              items: {
+                include: {
+                  taskRun: true,
+                },
+              },
+            },
+          })
+        : undefined;
 
       if (existingBatch) {
         span.setAttribute("batchId", existingBatch.friendlyId);
@@ -58,7 +58,7 @@ export class BatchTriggerTaskService extends BaseService {
         data: {
           friendlyId: generateFriendlyId("batch"),
           runtimeEnvironmentId: environment.id,
-          idempotencyKey,
+          idempotencyKey: options.idempotencyKey,
           taskIdentifier: taskId,
           dependentTaskAttemptId: dependentAttempt?.id,
         },
@@ -70,8 +70,6 @@ export class BatchTriggerTaskService extends BaseService {
       let index = 0;
 
       for (const item of body.items) {
-        const idempotencyKey = nanoid();
-
         const run = await triggerTaskService.call(
           taskId,
           environment,
@@ -83,7 +81,6 @@ export class BatchTriggerTaskService extends BaseService {
             },
           },
           {
-            idempotencyKey,
             triggerVersion: options.triggerVersion,
             traceContext: options.traceContext,
             spanParentAsLink: options.spanParentAsLink,
@@ -96,6 +93,7 @@ export class BatchTriggerTaskService extends BaseService {
             data: {
               batchTaskRunId: batch.id,
               taskRunId: run.id,
+              status: batchTaskRunItemStatusForRunStatus(run.status),
             },
           });
 

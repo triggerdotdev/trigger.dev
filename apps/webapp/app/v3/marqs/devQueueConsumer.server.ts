@@ -118,7 +118,7 @@ export class DevQueueConsumer {
     completion: TaskRunExecutionResult,
     execution: TaskRunExecution
   ) {
-    this._inProgressAttempts.delete(completion.id);
+    this._inProgressAttempts.delete(execution.attempt.id);
 
     if (completion.ok) {
       this._taskSuccesses++;
@@ -424,7 +424,7 @@ export class DevQueueConsumer {
           orderBy: { number: "desc" },
         },
         tags: true,
-        batchItem: {
+        batchItems: {
           include: {
             batchTaskRun: true,
           },
@@ -499,6 +499,7 @@ export class DevQueueConsumer {
         createdAt: lockedTaskRun.createdAt,
         tags: lockedTaskRun.tags.map((tag) => tag.name),
         isTest: lockedTaskRun.isTest,
+        idempotencyKey: lockedTaskRun.idempotencyKey ?? undefined,
       },
       queue: {
         id: queue.friendlyId,
@@ -520,9 +521,10 @@ export class DevQueueConsumer {
         slug: this.env.project.slug,
         name: this.env.project.name,
       },
-      batch: lockedTaskRun.batchItem?.batchTaskRun
-        ? { id: lockedTaskRun.batchItem.batchTaskRun.friendlyId }
-        : undefined,
+      batch:
+        lockedTaskRun.batchItems[0] && lockedTaskRun.batchItems[0].batchTaskRun
+          ? { id: lockedTaskRun.batchItems[0].batchTaskRun.friendlyId }
+          : undefined,
     };
 
     const environmentRepository = new EnvironmentVariablesRepository();

@@ -5,6 +5,7 @@ import {
   SEMATTRS_MESSAGING_SYSTEM,
 } from "@opentelemetry/semantic-conventions";
 import {
+  BatchTaskRunExecutionResult,
   HandleErrorFnParams,
   HandleErrorResult,
   InitFnParams,
@@ -24,6 +25,7 @@ import {
   conditionallyImportPacket,
   createErrorTaskError,
   defaultRetryOptions,
+  logger,
   parsePacket,
   runtime,
   stringifyIO,
@@ -378,6 +380,29 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
 
           span.setAttribute("messaging.message.id", response.id);
 
+          if (options?.idempotencyKey) {
+            // If an idempotency key is provided, we can check if the result is already available
+            const result = await apiClient.getRunResult(response.id);
+
+            if (result) {
+              logger.log(
+                `Result reused from previous task run with idempotency key '${options.idempotencyKey}'.`,
+                {
+                  runId: response.id,
+                  idempotencyKey: options.idempotencyKey,
+                }
+              );
+
+              const runResult = await handleTaskRunExecutionResult<TOutput>(result);
+
+              if (!runResult.ok) {
+                throw runResult.error;
+              }
+
+              return runResult.output;
+            }
+          }
+
           const result = await runtime.waitForTask({
             id: response.id,
             ctx,
@@ -455,13 +480,68 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
 
           span.setAttribute("messaging.message.id", response.batchId);
 
+          const getBatchResults = async (): Promise<BatchTaskRunExecutionResult> => {
+            // We need to check if the results are already available, but only if any of the items options has an idempotency key
+            const hasIdempotencyKey = items.some((item) => item.options?.idempotencyKey);
+
+            if (hasIdempotencyKey) {
+              const results = await apiClient.getBatchResults(response.batchId);
+
+              if (results) {
+                return results;
+              }
+            }
+
+            return {
+              id: response.batchId,
+              items: [],
+            };
+          };
+
+          const existingResults = await getBatchResults();
+
+          const incompleteRuns = response.runs.filter(
+            (runId) => !existingResults.items.some((item) => item.id === runId)
+          );
+
+          if (incompleteRuns.length === 0) {
+            logger.log(
+              `Results reused from previous task runs because of the provided idempotency keys.`
+            );
+
+            // All runs are already completed
+            const runs = await handleBatchTaskRunExecutionResult<TOutput>(existingResults.items);
+
+            return {
+              id: existingResults.id,
+              runs,
+            };
+          }
+
           const result = await runtime.waitForBatch({
             id: response.batchId,
-            runs: response.runs,
+            runs: incompleteRuns,
             ctx,
           });
 
-          const runs = await handleBatchTaskRunExecutionResult<TOutput>(result.items);
+          // Combine the already completed runs with the newly completed runs, ordered by the original order
+          const combinedItems: BatchTaskRunExecutionResult["items"] = [];
+
+          for (const runId of response.runs) {
+            const existingItem = existingResults.items.find((item) => item.id === runId);
+
+            if (existingItem) {
+              combinedItems.push(existingItem);
+            } else {
+              const newItem = result.items.find((item) => item.id === runId);
+
+              if (newItem) {
+                combinedItems.push(newItem);
+              }
+            }
+          }
+
+          const runs = await handleBatchTaskRunExecutionResult<TOutput>(combinedItems);
 
           return {
             id: result.id,

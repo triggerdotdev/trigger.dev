@@ -96,6 +96,7 @@
     "@uiw/react-codemirror": "^4.19.5",
     "@upstash/ratelimit": "^1.0.1",
     "@whatwg-node/fetch": "^0.9.14",
+    "assert-never": "^1.2.1",
     "aws4fetch": "^1.0.18",
     "class-variance-authority": "^0.5.2",
     "clsx": "^1.2.1",

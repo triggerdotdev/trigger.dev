@@ -812,7 +812,7 @@ class SharedQueueTasks {
     if (ok) {
       const success: TaskRunSuccessfulExecutionResult = {
         ok,
-        id: attempt.friendlyId,
+        id: attempt.taskRun.friendlyId,
         output: attempt.output ?? undefined,
         outputType: attempt.outputType,
       };
@@ -820,7 +820,7 @@ class SharedQueueTasks {
     } else {
       const failure: TaskRunFailedExecutionResult = {
         ok,
-        id: attempt.friendlyId,
+        id: attempt.taskRun.friendlyId,
         error: attempt.error as TaskRunError,
       };
       return failure;
@@ -848,7 +848,7 @@ class SharedQueueTasks {
         taskRun: {
           include: {
             tags: true,
-            batchItem: {
+            batchItems: {
               include: {
                 batchTaskRun: true,
               },
@@ -956,6 +956,7 @@ class SharedQueueTasks {
         createdAt: taskRun.createdAt,
         tags: taskRun.tags.map((tag) => tag.name),
         isTest: taskRun.isTest,
+        idempotencyKey: taskRun.idempotencyKey ?? undefined,
       },
       queue: {
         id: queue.friendlyId,
@@ -977,9 +978,10 @@ class SharedQueueTasks {
         slug: attempt.runtimeEnvironment.project.slug,
         name: attempt.runtimeEnvironment.project.name,
       },
-      batch: taskRun.batchItem?.batchTaskRun
-        ? { id: taskRun.batchItem.batchTaskRun.friendlyId }
-        : undefined,
+      batch:
+        taskRun.batchItems[0] && taskRun.batchItems[0].batchTaskRun
+          ? { id: taskRun.batchItems[0].batchTaskRun.friendlyId }
+          : undefined,
       worker: {
         id: attempt.backgroundWorkerId,
         contentHash: attempt.backgroundWorker.contentHash,

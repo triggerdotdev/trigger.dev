@@ -41,4 +41,5 @@ export const SemanticInternalAttributes = {
   RETRY_DELAY: "retry.delay",
   RETRY_COUNT: "retry.count",
   LINK_TITLE: "$link.title",
+  IDEMPOTENCY_KEY: "ctx.run.idempotencyKey",
 };

@@ -11,6 +11,7 @@ import type { JobRunStatus } from "@trigger.dev/database";
 import { cn } from "~/utils/cn";
 import { Spinner } from "../primitives/Spinner";
 import { z } from "zod";
+import assertNever from "assert-never";
 
 export function RunStatus({ status }: { status: JobRunStatus }) {
   return (
@@ -51,8 +52,7 @@ export function RunStatusIcon({ status, className }: { status: JobRunStatus; cla
     case "CANCELED":
       return <NoSymbolIcon className={cn(runStatusClassNameColor(status), className)} />;
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }
@@ -89,8 +89,7 @@ export function runStatusTitle(status: JobRunStatus): string {
     case "INVALID_PAYLOAD":
       return "Invalid payload";
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }
@@ -123,8 +122,7 @@ export function runStatusClassNameColor(status: JobRunStatus): string {
     case "CANCELED":
       return "text-charcoal-500";
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }

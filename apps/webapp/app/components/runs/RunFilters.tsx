@@ -32,6 +32,7 @@ import {
 import { TimeFrameFilter } from "./TimeFrameFilter";
 import { Button } from "../primitives/Buttons";
 import { useCallback } from "react";
+import assertNever from "assert-never";
 
 export function RunsFilters() {
   const navigate = useNavigate();
@@ -182,8 +183,7 @@ export function FilterStatusIcon({
     case "FAILED":
       return <XCircleIcon className={cn(filterStatusClassNameColor(status), className)} />;
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }
@@ -205,8 +205,7 @@ export function filterStatusTitle(status: FilterableStatus): string {
     case "TIMEDOUT":
       return "Timed out";
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }
@@ -228,8 +227,7 @@ export function filterStatusClassNameColor(status: FilterableStatus): string {
     case "TIMEDOUT":
       return "text-amber-300";
     default: {
-      const _exhaustiveCheck: never = status;
-      throw new Error(`Non-exhaustive match for value: ${status}`);
+      assertNever(status);
     }
   }
 }

@@ -76,7 +76,6 @@ const EnvironmentSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_TLS_DISABLED: z.string().optional(),
 
-  DEFAULT_QUEUE_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(5),
   DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS: z.coerce.number().int().positive().default(1),

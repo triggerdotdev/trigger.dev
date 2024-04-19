@@ -108,8 +108,20 @@ export class NoopTaskLogger implements TaskLogger {
 
 function safeJsonProcess(value?: Record<string, unknown>): Record<string, unknown> | undefined {
   try {
-    return JSON.parse(JSON.stringify(value));
+    return JSON.parse(JSON.stringify(value, jsonErrorReplacer));
   } catch {
     return value;
   }
+}
+
+function jsonErrorReplacer(key: string, value: unknown) {
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+    };
+  }
+
+  return value;
 }
