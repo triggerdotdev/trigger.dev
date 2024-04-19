@@ -1,5 +1,28 @@
 # trigger.dev
 
+## 3.0.0-beta.15
+
+### Patch Changes
+
+- 26093896d: When using idempotency keys, triggerAndWait and batchTriggerAndWait will still work even if the existing runs have already been completed (or even partially completed, in the case of batchTriggerAndWait)
+
+  - TaskRunExecutionResult.id is now the run friendlyId, not the attempt friendlyId
+  - A single TaskRun can now have many batchItems, in the case of batchTriggerAndWait while using idempotency keys
+  - A run’s idempotencyKey is now added to the ctx as well as the TaskEvent and displayed in the span view
+  - When resolving batchTriggerAndWait, the runtimes no longer reject promises, leading to an error in the parent task
+
+- b82db67b8: Add additional logging around cleaning up dev workers, and always kill them after 5 seconds if they haven't already exited
+- 62c9a5b71: Fixes an issue that caused failed tasks when resuming after calling `triggerAndWait` or `batchTriggerAndWait` in prod/staging (this doesn't effect dev).
+
+  The version of Node.js we use for deployed workers (latest 20) would crash with an out-of-memory error when the checkpoint was restored. This crash does not happen on Node 18x or Node21x, so we've decided to upgrade the worker version to Node.js21x, to mitigate this issue.
+
+  You'll need to re-deploy to production to fix the issue.
+
+- Updated dependencies [374edef02]
+- Updated dependencies [26093896d]
+- Updated dependencies [62c9a5b71]
+  - @trigger.dev/core@3.0.0-beta.15
+
 ## 3.0.0-beta.14
 
 ### Patch Changes
