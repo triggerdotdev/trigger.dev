@@ -363,7 +363,7 @@ function TasksTreeView({
                         : "bg-transparent hover:bg-grid-dimmed"
                     )}
                     onClick={() => {
-                      toggleNodeSelection(node.id);
+                      selectNode(node.id);
                     }}
                   >
                     <div className="flex h-8 items-center">
