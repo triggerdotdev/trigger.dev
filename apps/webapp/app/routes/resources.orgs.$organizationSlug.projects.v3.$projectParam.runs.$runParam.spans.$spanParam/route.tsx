@@ -4,10 +4,11 @@ import {
   QueueListIcon,
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
-import { useParams } from "@remix-run/react";
+import { useFetcher, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { useEffect } from "react";
+import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
@@ -17,6 +18,7 @@ import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import { Spinner } from "~/components/primitives/Spinner";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
@@ -58,13 +60,44 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({ span });
 };
 
-export default function Page() {
-  const {
-    span: { event },
-  } = useTypedLoaderData<typeof loader>();
+export function SpanView({ runParam, spanId }: { runParam: string; spanId: string | undefined }) {
   const organization = useOrganization();
   const project = useProject();
-  const { runParam } = useParams();
+  const fetcher = useTypedFetcher<typeof loader>();
+
+  useEffect(() => {
+    if (spanId === undefined) return;
+    fetcher.load(
+      `/resources/orgs/${organization.slug}/projects/v3/${project.slug}/runs/${runParam}/spans/${spanId}`
+    );
+  }, [organization.slug, project.slug, runParam, spanId]);
+
+  if (spanId === undefined) {
+    return null;
+  }
+
+  if (fetcher.state !== "idle" || fetcher.data === undefined) {
+    return (
+      <div
+        className={cn(
+          "grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright"
+        )}
+      >
+        <div className="mx-3 flex items-center gap-2 overflow-x-hidden border-b border-grid-dimmed">
+          <div className="size-4 bg-grid-dimmed" />
+          <div className="h-6 w-[60%] bg-grid-dimmed" />
+        </div>
+        <div className="flex items-center justify-center">
+          <Spinner />
+        </div>
+      </div>
+    );
+  }
+
+  const {
+    span: { event },
+  } = fetcher.data;
+
 
   return (
     <div

@@ -4,7 +4,8 @@ import {
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
-import { Outlet, useNavigate, useParams, useRevalidator } from "@remix-run/react";
+import type { Location } from "@remix-run/react";
+import { useNavigate, useParams, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
 import {
@@ -44,11 +45,12 @@ import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3
 import { useDebounce } from "~/hooks/useDebounce";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
 import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { logger } from "~/services/logger.server";
 import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -60,6 +62,8 @@ import {
   v3RunStreamingPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
+import { useReplaceLocation } from "~/hooks/useReplaceLocation";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -82,19 +86,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-function getSpanId(path: string): string | undefined {
-  const regex = /spans\/([^\/]*)/;
-  const match = path.match(regex);
-  return match ? match[1] : undefined;
+function getSpanId(location: Location<any>): string | undefined {
+  const search = new URLSearchParams(location.search);
+  return search.get("span") ?? undefined;
 }
 
 export default function Page() {
   const { run, trace, resizeSettings } = useTypedLoaderData<typeof loader>();
-  const navigate = useNavigate();
   const organization = useOrganization();
-  const pathName = usePathName();
   const project = useProject();
   const user = useUser();
+  const { location, replaceSearchParam } = useReplaceLocation();
+  const selectedSpanId = getSpanId(location);
+
 
   const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
 
@@ -133,10 +137,8 @@ export default function Page() {
 
   const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
 
-  const selectedSpanId = getSpanId(pathName);
-
   const changeToSpan = useDebounce((selectedSpan: string) => {
-    navigate(v3RunSpanPath(organization, project, run, { spanId: selectedSpan }));
+    replaceSearchParam("span", selectedSpan);
   }, 250);
 
   const revalidator = useRevalidator();
@@ -175,7 +177,7 @@ export default function Page() {
               onSelectedIdChanged={(selectedSpan) => {
                 //instantly close the panel if no span is selected
                 if (!selectedSpan) {
-                  navigate(v3RunPath(organization, project, run));
+                  replaceSearchParam("span");
                   return;
                 }
 
@@ -204,7 +206,7 @@ export default function Page() {
                   onSelectedIdChanged={(selectedSpan) => {
                     //instantly close the panel if no span is selected
                     if (!selectedSpan) {
-                      navigate(v3RunPath(organization, project, run));
+                      replaceSearchParam("span");
                       return;
                     }
 
@@ -218,7 +220,7 @@ export default function Page() {
               </ResizablePanel>
               <ResizableHandle withHandle />
               <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.layout?.[1]}>
-                <Outlet key={selectedSpanId} />
+                <SpanView runParam={run.friendlyId} spanId={selectedSpanId} />
               </ResizablePanel>
             </ResizablePanelGroup>
           )}

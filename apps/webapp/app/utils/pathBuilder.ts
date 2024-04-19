@@ -368,7 +368,7 @@ export function v3RunSpanPath(
   run: v3RunForPath,
   span: v3SpanForPath
 ) {
-  return `${v3RunPath(organization, project, run)}/spans/${span.spanId}`;
+  return `${v3RunPath(organization, project, run)}?span=${span.spanId}`;
 }
 
 export function v3TraceSpanPath(
