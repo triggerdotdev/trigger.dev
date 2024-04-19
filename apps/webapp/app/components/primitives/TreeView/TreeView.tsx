@@ -5,6 +5,7 @@ import { cn } from "~/utils/cn";
 import { NodeState, NodesState, reducer } from "./reducer";
 import { applyFilterToState, concreteStateFromInput, selectedIdFromState } from "./utils";
 import { motion } from "framer-motion";
+import exp from "constants";
 
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
@@ -408,22 +409,42 @@ export function useTree<TData>({
           }
           case "Left":
           case "ArrowLeft": {
+            e.preventDefault();
+
             const selected = selectedIdFromState(state.nodes);
             if (selected) {
               const treeNode = tree.find((node) => node.id === selected);
-              if (treeNode && treeNode.hasChildren && state.nodes[selected].expanded) {
+
+              if (e.altKey) {
+                if (treeNode && treeNode.hasChildren) {
+                  collapseLevel(treeNode.level);
+                }
+              }
+
+              const shouldCollapse =
+                treeNode && treeNode.hasChildren && state.nodes[selected].expanded;
+              if (shouldCollapse) {
                 collapseNode(selected);
               } else {
                 selectParentNode(true);
               }
             }
-            e.preventDefault();
+
             break;
           }
           case "Right":
           case "ArrowRight": {
             const selected = selectedIdFromState(state.nodes);
+
             if (selected) {
+              const treeNode = tree.find((node) => node.id === selected);
+
+              if (e.altKey) {
+                if (treeNode && treeNode.hasChildren) {
+                  expandLevel(treeNode.level);
+                }
+              }
+
               expandNode(selected, true);
             }
             e.preventDefault();
