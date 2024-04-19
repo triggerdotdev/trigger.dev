@@ -68,6 +68,7 @@ export class TaskContextManager {
         [SemanticInternalAttributes.ORGANIZATION_SLUG]: this.ctx.organization.slug,
         [SemanticInternalAttributes.ORGANIZATION_NAME]: this.ctx.organization.name,
         [SemanticInternalAttributes.BATCH_ID]: this.ctx.batch?.id,
+        [SemanticInternalAttributes.IDEMPOTENCY_KEY]: this.ctx.run.idempotencyKey,
       };
     }
 

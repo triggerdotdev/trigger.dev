@@ -10,7 +10,7 @@ import { unboundedTimeout } from "../utils/timers";
 export class DevRuntimeManager implements RuntimeManager {
   _taskWaits: Map<
     string,
-    { resolve: (value: TaskRunExecutionResult) => void; reject: (err?: any) => void }
+    { resolve: (value: TaskRunExecutionResult) => void; reject?: (err?: any) => void }
   > = new Map();
 
   _batchWaits: Map<
@@ -65,16 +65,12 @@ export class DevRuntimeManager implements RuntimeManager {
           if (pendingCompletion) {
             this._pendingCompletionNotifications.delete(runId);
 
-            if (pendingCompletion.ok) {
-              resolve(pendingCompletion);
-            } else {
-              reject(pendingCompletion);
-            }
+            resolve(pendingCompletion);
 
             return;
           }
 
-          this._taskWaits.set(runId, { resolve, reject });
+          this._taskWaits.set(runId, { resolve });
         });
       })
     );
@@ -97,10 +93,14 @@ export class DevRuntimeManager implements RuntimeManager {
       return;
     }
 
-    if (completion.ok) {
+    if (!wait.reject) {
       wait.resolve(completion);
     } else {
-      wait.reject(completion);
+      if (completion.ok) {
+        wait.resolve(completion);
+      } else {
+        wait.reject(completion);
+      }
     }
 
     this._taskWaits.delete(execution.run.id);

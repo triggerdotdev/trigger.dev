@@ -19,7 +19,7 @@ export type ProdRuntimeManagerOptions = {
 export class ProdRuntimeManager implements RuntimeManager {
   _taskWaits: Map<
     string,
-    { resolve: (value: TaskRunExecutionResult) => void; reject: (err?: any) => void }
+    { resolve: (value: TaskRunExecutionResult) => void; reject?: (err?: any) => void }
   > = new Map();
 
   _batchWaits: Map<
@@ -114,7 +114,7 @@ export class ProdRuntimeManager implements RuntimeManager {
     const promise = Promise.all(
       params.runs.map((runId) => {
         return new Promise<TaskRunExecutionResult>((resolve, reject) => {
-          this._taskWaits.set(runId, { resolve, reject });
+          this._taskWaits.set(runId, { resolve });
         });
       })
     );
@@ -139,10 +139,14 @@ export class ProdRuntimeManager implements RuntimeManager {
       return;
     }
 
-    if (completion.ok) {
+    if (!wait.reject) {
       wait.resolve(completion);
     } else {
-      wait.reject(completion);
+      if (completion.ok) {
+        wait.resolve(completion);
+      } else {
+        wait.reject(completion);
+      }
     }
 
     this._taskWaits.delete(execution.run.id);

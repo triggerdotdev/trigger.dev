@@ -1,6 +1,7 @@
 import { context, propagation } from "@opentelemetry/api";
 import { ZodFetchOptions, zodfetch } from "../zodfetch";
 import {
+  BatchTaskRunExecutionResult,
   BatchTriggerTaskRequestBody,
   BatchTriggerTaskResponse,
   CanceledRunResponse,
@@ -11,6 +12,7 @@ import {
   ListSchedulesResult,
   ReplayRunResponse,
   ScheduleObject,
+  TaskRunExecutionResult,
   TriggerTaskRequestBody,
   TriggerTaskResponse,
   UpdateScheduleOptions,
@@ -18,6 +20,7 @@ import {
 import { taskContextManager } from "../tasks/taskContextManager";
 import { getEnvVar } from "../utils/getEnv";
 import { SafeAsyncLocalStorage } from "../utils/safeAsyncLocalStorage";
+import { APIError } from "../apiErrors";
 
 export type TriggerOptions = {
   spanParentAsLink?: boolean;
@@ -44,6 +47,40 @@ export class ApiClient {
     private readonly accessToken: string
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
+  }
+
+  async getRunResult(runId: string): Promise<TaskRunExecutionResult | undefined> {
+    try {
+      return await zodfetch(
+        TaskRunExecutionResult,
+        `${this.baseUrl}/api/v1/runs/${runId}/result`,
+        {
+          method: "GET",
+          headers: this.#getHeaders(false),
+        },
+        zodFetchOptions
+      );
+    } catch (error) {
+      if (error instanceof APIError) {
+        if (error.status === 404) {
+          return undefined;
+        }
+      }
+
+      throw error;
+    }
+  }
+
+  async getBatchResults(batchId: string): Promise<BatchTaskRunExecutionResult | undefined> {
+    return await zodfetch(
+      BatchTaskRunExecutionResult,
+      `${this.baseUrl}/api/v1/batches/${batchId}/results`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      zodFetchOptions
+    );
   }
 
   triggerTask(taskId: string, body: TriggerTaskRequestBody, options?: TriggerOptions) {

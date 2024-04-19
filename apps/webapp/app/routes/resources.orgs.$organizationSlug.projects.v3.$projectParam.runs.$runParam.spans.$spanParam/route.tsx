@@ -163,6 +163,9 @@ export function SpanView({ runParam, spanId }: { runParam: string; spanId: strin
             )}
             <Property label="Message">{event.message}</Property>
             <Property label="Task ID">{event.taskSlug}</Property>
+            {event.idempotencyKey && (
+              <Property label="Idempotency key">{event.idempotencyKey}</Property>
+            )}
             {event.taskPath && event.taskExportName && (
               <Property label="Task">
                 <TaskPath

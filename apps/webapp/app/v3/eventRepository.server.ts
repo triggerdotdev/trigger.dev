@@ -63,6 +63,7 @@ export type TraceAttributes = Partial<
     | "batchId"
     | "payload"
     | "payloadType"
+    | "idempotencyKey"
   >
 >;
 
@@ -371,6 +372,7 @@ export class EventRepository {
         id: event.spanId,
         parentId: event.parentId ?? undefined,
         runId: event.runId,
+        idempotencyKey: event.idempotencyKey,
         data: {
           message: event.message,
           style: event.style,
@@ -459,7 +461,7 @@ export class EventRepository {
     const links: SpanLink[] = [];
 
     if (messagingEvent.success && messagingEvent.data) {
-      if ("id" in messagingEvent.data.message) {
+      if (messagingEvent.data.message && "id" in messagingEvent.data.message) {
         if (messagingEvent.data.message.id.startsWith("run_")) {
           links.push({
             type: "run",
@@ -719,6 +721,7 @@ export class EventRepository {
       links: links as unknown as Prisma.InputJsonValue,
       payload: options.attributes.payload,
       payloadType: options.attributes.payloadType,
+      idempotencyKey: options.attributes.idempotencyKey,
     };
 
     if (options.immediate) {

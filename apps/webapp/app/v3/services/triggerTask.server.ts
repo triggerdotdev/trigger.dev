@@ -34,18 +34,20 @@ export class TriggerTaskService extends BaseService {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
-      const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey ?? nanoid();
+      const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey;
 
-      const existingRun = await this._prisma.taskRun.findUnique({
-        where: {
-          runtimeEnvironmentId_idempotencyKey: {
-            runtimeEnvironmentId: environment.id,
-            idempotencyKey,
-          },
-        },
-      });
+      const existingRun = idempotencyKey
+        ? await this._prisma.taskRun.findUnique({
+            where: {
+              runtimeEnvironmentId_idempotencyKey: {
+                runtimeEnvironmentId: environment.id,
+                idempotencyKey,
+              },
+            },
+          })
+        : undefined;
 
-      if (existingRun) {
+      if (existingRun && existingRun.taskIdentifier === taskId) {
         span.setAttribute("runId", existingRun.friendlyId);
         return existingRun;
       }
@@ -68,6 +70,7 @@ export class TriggerTaskService extends BaseService {
             },
             runIsTest: body.options?.test ?? false,
             batchId: options.batchId,
+            idempotencyKey,
           },
           incomplete: true,
           immediate: true,

@@ -116,7 +116,7 @@ export class TaskExecutor {
 
                   return {
                     ok: true,
-                    id: execution.attempt.id,
+                    id: execution.run.id,
                     output: finalOutput.data,
                     outputType: finalOutput.dataType,
                   } satisfies TaskRunExecutionResult;
@@ -125,7 +125,7 @@ export class TaskExecutor {
 
                   return {
                     ok: false,
-                    id: execution.attempt.id,
+                    id: execution.run.id,
                     error: {
                       type: "INTERNAL_ERROR",
                       code: TaskRunErrorCodes.TASK_OUTPUT_ERROR,
@@ -150,7 +150,7 @@ export class TaskExecutor {
                   recordSpanException(span, handleErrorResult.error ?? runError);
 
                   return {
-                    id: execution.attempt.id,
+                    id: execution.run.id,
                     ok: false,
                     error: handleErrorResult.error
                       ? parseError(handleErrorResult.error)
@@ -164,7 +164,7 @@ export class TaskExecutor {
 
                   return {
                     ok: false,
-                    id: execution.attempt.id,
+                    id: execution.run.id,
                     error: {
                       type: "INTERNAL_ERROR",
                       code: TaskRunErrorCodes.HANDLE_ERROR_ERROR,

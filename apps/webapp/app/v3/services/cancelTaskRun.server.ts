@@ -4,9 +4,9 @@ import { marqs } from "~/v3/marqs/index.server";
 import { devPubSub } from "../marqs/devPubSub.server";
 import { BaseService } from "./baseService.server";
 import { socketIo } from "../handleSocketIo.server";
-import { assertUnreachable } from "../utils/asserts.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
 import { logger } from "~/services/logger.server";
+import assertNever from "assert-never";
 
 export const CANCELLABLE_STATUSES: Array<TaskRunStatus> = [
   "PENDING",
@@ -148,7 +148,7 @@ export class CancelTaskRunService extends BaseService {
             break;
           }
           default: {
-            assertUnreachable(attempt.status);
+            assertNever(attempt.status);
           }
         }
       }

@@ -1,12 +1,10 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { PrismaErrorSchema, prisma } from "~/db.server";
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { CancelRunService } from "~/services/runs/cancelRun.server";
-import { ApiRunPresenter } from "~/presenters/ApiRunPresenter.server";
-import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
 import { logger } from "~/services/logger.server";
+import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
 
 const ParamsSchema = z.object({
   /* This is the run friendly ID */
