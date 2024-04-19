@@ -110,7 +110,7 @@ export function SpanView({
     <div
       className={cn(
         "grid h-full max-h-full overflow-hidden bg-background-bright",
-        event.showActionBar ? "grid-rows-[2.5rem_1fr_2.5rem]" : "grid-rows-[2.5rem_1fr]"
+        event.showActionBar ? "grid-rows-[2.5rem_1fr_3.25rem]" : "grid-rows-[2.5rem_1fr]"
       )}
     >
       <div className="mx-3 flex items-center justify-between gap-2 overflow-x-hidden border-b border-grid-dimmed">
@@ -228,7 +228,7 @@ export function SpanView({
                   { friendlyId: event.runId },
                   { spanId: event.spanId }
                 )}
-                variant="minimal/small"
+                variant="minimal/medium"
                 LeadingIcon={QueueListIcon}
                 shortcut={{ key: "f" }}
               >
@@ -256,7 +256,7 @@ function RunActionButtons({ span }: { span: Span }) {
     return (
       <Dialog>
         <DialogTrigger asChild>
-          <Button variant="danger/small" LeadingIcon={StopCircleIcon}>
+          <Button variant="danger/medium" LeadingIcon={StopCircleIcon}>
             Cancel run
           </Button>
         </DialogTrigger>
@@ -276,7 +276,7 @@ function RunActionButtons({ span }: { span: Span }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="tertiary/small" LeadingIcon={ArrowPathIcon}>
+        <Button variant="tertiary/medium" LeadingIcon={ArrowPathIcon}>
           Replay run
         </Button>
       </DialogTrigger>
