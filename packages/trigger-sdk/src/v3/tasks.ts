@@ -19,7 +19,7 @@ import { TaskOptions, Task, createTask } from "./shared";
  * 
  * @returns A task that can be triggered
  */
-export function task<TInput, TOutput = any, TInitOutput extends InitOutput = any>(
+export function task<TInput = void, TOutput = unknown, TInitOutput extends InitOutput = any>(
   options: TaskOptions<TInput, TOutput, TInitOutput>
 ): Task<TInput, TOutput> {
   return createTask<TInput, TOutput, TInitOutput>(options);

@@ -107,24 +107,19 @@ export async function POST(request: Request) {
 
   if (data.branch === "main") {
     //trigger the task, with a different queue
-    const handle = await generatePullRequest.trigger({
-      payload: data,
-      options: {
-        queue: {
-          //the "main-branch" queue will have a concurrency limit of 10
-          //this triggered run will use that queue
-          name: "main-branch",
-          concurrencyLimit: 10,
-        },
+    const handle = await generatePullRequest.trigger(data, {
+      queue: {
+        //the "main-branch" queue will have a concurrency limit of 10
+        //this triggered run will use that queue
+        name: "main-branch",
+        concurrencyLimit: 10,
       },
     });
 
     return Response.json(handle);
   } else {
     //triggered with the default (concurrency of 1)
-    const handle = await generatePullRequest.trigger({
-      payload: data,
-    });
+    const handle = await generatePullRequest.trigger(data);
     return Response.json(handle);
   }
 }
@@ -146,32 +141,26 @@ export async function POST(request: Request) {
 
   if (data.isFreeUser) {
     //free users can only have 1 PR generated at a time
-    const handle = await generatePullRequest.trigger({
-      payload: data,
-      options: {
-        queue: {
-          //every free user gets a queue with a concurrency limit of 1
-          name: "free-users",
-          concurrencyLimit: 1,
-        },
-        concurrencyKey: data.userId,
+    const handle = await generatePullRequest.trigger(data, {
+      queue: {
+        //every free user gets a queue with a concurrency limit of 1
+        name: "free-users",
+        concurrencyLimit: 1,
       },
+      concurrencyKey: data.userId,
     });
 
     //return a success response with the handle
     return Response.json(handle);
   } else {
     //trigger the task, with a different queue
-    const handle = await generatePullRequest.trigger({
-      payload: data,
-      options: {
-        queue: {
-          //every paid user gets a queue with a concurrency limit of 10
-          name: "paid-users",
-          concurrencyLimit: 10,
-        },
-        concurrencyKey: data.userId,
+    const handle = await generatePullRequest.trigger(data, {
+      queue: {
+        //every paid user gets a queue with a concurrency limit of 10
+        name: "paid-users",
+        concurrencyLimit: 10,
       },
+      concurrencyKey: data.userId,
     });
 
     //return a success response with the handle

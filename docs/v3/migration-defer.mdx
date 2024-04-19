@@ -71,7 +71,7 @@ export async function runLongRunningTask() {
 }
 ```
 
-In Trigger.dev your logic goes in the `run` function of a task. You can then `trigger` and `batchTrigger` that task, with a payload and options.
+In Trigger.dev your logic goes in the `run` function of a task. You can then `trigger` and `batchTrigger` that task, with a payload as the first argument.
 
 ```ts /app/actions/actions.ts
 "use server";
@@ -79,7 +79,7 @@ In Trigger.dev your logic goes in the `run` function of a task. You can then `tr
 import { longRunningTask } from "@/trigger/someTasks";
 
 export async function runLongRunningTask() {
-  return await longRunningTask.trigger({ payload: { foo: "bar" } });
+  return await longRunningTask.trigger({ foo: "bar" });
 }
 ```
 
@@ -243,7 +243,7 @@ export const longRunningTask = task({
 import { longRunningTask } from "@/trigger/longRunningTask";
 
 export async function runLongRunningTask() {
-  return await longRunningTask.trigger({ payload: { foo: "bar" } });
+  return await longRunningTask.trigger({ foo: "bar" });
 }
 ```
 

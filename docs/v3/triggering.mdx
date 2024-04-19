@@ -48,7 +48,7 @@ export async function POST(request: Request) {
   const data = await request.json();
 
   //trigger your task
-  const handle = await emailSequence.trigger({ payload: { to: data.email, name: data.name } });
+  const handle = await emailSequence.trigger({ to: data.email, name: data.name });
 
   //return a success response with the handle
   return Response.json(handle);
@@ -67,7 +67,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const data = await request.json();
 
   //trigger your task
-  const handle = await emailSequence.trigger({ payload: { to: data.email, name: data.name } });
+  const handle = await emailSequence.trigger({ to: data.email, name: data.name });
 
   //return a success response with the handle
   return json(handle);
@@ -91,9 +91,9 @@ export async function POST(request: Request) {
   const data = await request.json();
 
   //batch trigger your task
-  const batchHandle = await emailSequence.batchTrigger({
-    items: data.users.map((u) => ({ payload: { to: u.email, name: u.name } })),
-  });
+  const batchHandle = await emailSequence.batchTrigger(
+    data.users.map((u) => ({ payload: { to: u.email, name: u.name } }))
+  );
 
   //return a success response with the handle
   return Response.json(batchHandle);
@@ -112,9 +112,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const data = await request.json();
 
   //batch trigger your task
-  const batchHandle = await emailSequence.batchTrigger({
-    items: data.users.map((u) => ({ payload: { to: u.email, name: u.name } })),
-  });
+  const batchHandle = await emailSequence.batchTrigger(
+    data.users.map((u) => ({ payload: { to: u.email, name: u.name } }))
+  );
 
   //return a success response with the handle
   return json(batchHandle);
@@ -137,7 +137,7 @@ import { myOtherTask } from "~/trigger/my-other-task";
 export const myTask = task({
   id: "my-task",
   run: async (payload: string) => {
-    const handle = await myOtherTask.trigger({ payload: "some data" });
+    const handle = await myOtherTask.trigger("some data");
 
     //...do other stuff
   },
@@ -154,7 +154,7 @@ import { myOtherTask } from "~/trigger/my-other-task";
 export const myTask = task({
   id: "my-task",
   run: async (payload: string) => {
-    const batchHandle = await myOtherTask.batchTrigger({ items: [{ payload: "some data" }] });
+    const batchHandle = await myOtherTask.batchTrigger([{ payload: "some data" }]);
 
     //...do other stuff
   },
@@ -168,16 +168,18 @@ This is where it gets interesting. You can trigger a task and then wait for the 
 <Accordion title="Don't use this in parallel, e.g. with `Promise.all()`">
   Instead, use `batchTriggerAndWait()` if you can, or a for loop if you can't.
 
-  To control concurrency using batch triggers, you can set `queue.concurrencyLimit` on the child task.
+To control concurrency using batch triggers, you can set `queue.concurrencyLimit` on the child task.
 
 <CodeGroup>
+
 ```ts /trigger/batch.ts
 export const batchTask = task({
   id: "batch-task",
   run: async (payload: string) => {
-    const results = await childTask.batchTriggerAndWait({
-      items: [{ payload: "item1" }, { payload: "item2" }],
-    });
+    const results = await childTask.batchTriggerAndWait([
+      { payload: "item1" },
+      { payload: "item2" },
+    ]);
     console.log("Results", results);
 
     //...do stuff with the results
@@ -192,7 +194,7 @@ export const loopTask = task({
     //this will be slower than the batch version
     //as we have to resume the parent after each iteration
     for (let i = 0; i < 2; i++) {
-      const result = await childTask.triggerAndWait({ payload: `item${i}` });
+      const result = await childTask.triggerAndWait(`item${i}`);
       console.log("Result", result);
 
       //...do stuff with the result
@@ -200,6 +202,7 @@ export const loopTask = task({
   },
 });
 ```
+
 </CodeGroup>
 
 </Accordion>
@@ -208,7 +211,7 @@ export const loopTask = task({
 export const parentTask = task({
   id: "parent-task",
   run: async (payload: string) => {
-    const result = await batchChildTask.triggerAndWait({ payload: "some-data" });
+    const result = await batchChildTask.triggerAndWait("some-data");
     console.log("Result", result);
 
     //...do stuff with the result
@@ -223,16 +226,18 @@ You can batch trigger a task and wait for all the results. This is useful for th
 <Accordion title="Don't use this in parallel, e.g. with `Promise.all()`">
   Instead, pass in all items at once and set an appropriate `maxConcurrency`. Alternatively, use sequentially with a for loop.
 
-  To control concurrency, you can set `queue.concurrencyLimit` on the child task.
+To control concurrency, you can set `queue.concurrencyLimit` on the child task.
 
 <CodeGroup>
+
 ```ts /trigger/batch.ts
 export const batchTask = task({
   id: "batch-task",
   run: async (payload: string) => {
-    const results = await childTask.batchTriggerAndWait({
-      items: [{ payload: "item1" }, { payload: "item2" }],
-    });
+    const results = await childTask.batchTriggerAndWait([
+      { payload: "item1" },
+      { payload: "item2" },
+    ]);
     console.log("Results", results);
 
     //...do stuff with the results
@@ -247,9 +252,10 @@ export const loopTask = task({
     //this will be slower than a single batchTriggerAndWait()
     //as we have to resume the parent after each iteration
     for (let i = 0; i < 2; i++) {
-      const result = await childTask.batchTriggerAndWait({
-        items: [{ payload: `itemA${i}` }, { payload: `itemB${i}` }],
-      });
+      const result = await childTask.batchTriggerAndWait([
+        { payload: `itemA${i}` },
+        { payload: `itemB${i}` },
+      ]);
       console.log("Result", result);
 
       //...do stuff with the result
@@ -257,6 +263,7 @@ export const loopTask = task({
   },
 });
 ```
+
 </CodeGroup>
 
 </Accordion>
@@ -265,9 +272,11 @@ export const loopTask = task({
 export const batchParentTask = task({
   id: "parent-task",
   run: async (payload: string) => {
-    const results = await childTask.batchTriggerAndWait({
-      items: [{ payload: "item4" }, { payload: "item5" }, { payload: "item6" }],
-    });
+    const results = await childTask.batchTriggerAndWait([
+      { payload: "item4" },
+      { payload: "item5" },
+      { payload: "item6" },
+    ]);
     console.log("Results", results);
 
     //...do stuff with the result
@@ -326,9 +335,7 @@ import { createAvatar } from "@/trigger/create-avatar";
 export async function create() {
   try {
     const handle = await createAvatar.trigger({
-      payload: {
-        userImage: "http://...",
-      },
+      userImage: "http://...",
     });
 
     return { handle };

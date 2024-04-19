@@ -49,7 +49,11 @@ export function queue(options: { name: string } & QueueOptions): Queue {
   return options;
 }
 
-export type TaskOptions<TPayload, TOutput = any, TInitOutput extends InitOutput = any> = {
+export type TaskOptions<
+  TPayload = void,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+> = {
   /** An id for your task. This must be unique inside your project and not change between versions.  */
   id: string;
   /** The retry settings when an uncaught error is thrown.
@@ -168,7 +172,7 @@ export type TaskRunResult<TOutput = any> =
   | {
       ok: false;
       id: string;
-      error: any;
+      error: unknown;
     };
 
 export type BatchResult<TOutput = any> = {
@@ -176,18 +180,72 @@ export type BatchResult<TOutput = any> = {
   runs: TaskRunResult<TOutput>[];
 };
 
-export interface Task<TInput, TOutput = any> {
+type BatchItem<TInput> = TInput extends void
+  ? { payload?: TInput; options?: TaskRunOptions }
+  : { payload: TInput; options?: TaskRunOptions };
+
+export interface Task<TInput = void, TOutput = any> {
+  /**
+   * The id of the task.
+   */
   id: string;
-  trigger: (params: { payload: TInput; options?: TaskRunOptions }) => Promise<InvokeHandle>;
-  batchTrigger: (params: {
-    items: { payload: TInput; options?: TaskRunOptions }[];
-    // batchOptions?: BatchRunOptions;
-  }) => Promise<InvokeBatchHandle>;
-  triggerAndWait: (params: { payload: TInput; options?: TaskRunOptions }) => Promise<TOutput>;
-  batchTriggerAndWait: (params: {
-    items: { payload: TInput; options?: TaskRunOptions }[];
-    // batchOptions?: BatchRunOptions;
-  }) => Promise<BatchResult<TOutput>>;
+  /**
+   * Trigger a task with the given payload, and continue without waiting for the result. If you want to wait for the result, use `triggerAndWait`. Returns the id of the triggered task run.
+   * @param payload
+   * @param options
+   * @returns InvokeHandle
+   * - `id` - The id of the triggered task run.
+   */
+  trigger: (payload: TInput, options?: TaskRunOptions) => Promise<InvokeHandle>;
+
+  /**
+   * Batch trigger multiple task runs with the given payloads, and continue without waiting for the results. If you want to wait for the results, use `batchTriggerAndWait`. Returns the id of the triggered batch.
+   * @param items
+   * @returns InvokeBatchHandle
+   * - `batchId` - The id of the triggered batch.
+   * - `runs` - The ids of the triggered task runs.
+   */
+  batchTrigger: (items: Array<BatchItem<TInput>>) => Promise<InvokeBatchHandle>;
+
+  /**
+   * Trigger a task with the given payload, and wait for the result. Returns the result of the task run
+   * @param payload
+   * @param options - Options for the task run
+   * @returns TaskRunResult
+   * @example
+   * ```
+   * const result = await task.triggerAndWait({ foo: "bar" });
+   *
+   * if (result.ok) {
+   *  console.log(result.output);
+   * } else {
+   *  console.error(result.error);
+   * }
+   * ```
+   */
+  triggerAndWait: (payload: TInput, options?: TaskRunOptions) => Promise<TaskRunResult<TOutput>>;
+
+  /**
+   * Batch trigger multiple task runs with the given payloads, and wait for the results. Returns the results of the task runs.
+   * @param items
+   * @returns BatchResult
+   * @example
+   * ```
+   * const result = await task.batchTriggerAndWait([
+   *  { payload: { foo: "bar" } },
+   *  { payload: { foo: "baz" } },
+   * ]);
+   *
+   * for (const run of result.runs) {
+   *  if (run.ok) {
+   *    console.log(run.output);
+   *  } else {
+   *    console.error(run.error);
+   *  }
+   * }
+   * ```
+   */
+  batchTriggerAndWait: (items: Array<BatchItem<TInput>>) => Promise<BatchResult<TOutput>>;
 }
 
 type TaskRunOptions = {
@@ -201,10 +259,6 @@ type TaskRunOptions = {
 
 type TaskRunConcurrencyOptions = Queue;
 
-type BatchRunOptions = TaskRunOptions & {
-  maxConcurrency?: number;
-};
-
 export type Prettify<T> = {
   [K in keyof T]: T[K];
 } & {};
@@ -213,12 +267,12 @@ export type DynamicBaseOptions = {
   id: string;
 };
 
-export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
+export function createTask<TInput = void, TOutput = unknown, TInitOutput extends InitOutput = any>(
   params: TaskOptions<TInput, TOutput, TInitOutput>
 ): Task<TInput, TOutput> {
   const task: Task<TInput, TOutput> = {
     id: params.id,
-    trigger: async ({ payload, options }) => {
+    trigger: async (payload, options) => {
       const apiClient = apiClientManager.client;
 
       if (!apiClient) {
@@ -258,7 +312,6 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
             ["messaging.client_id"]: taskContextManager.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
-            ["messaging.message.body.size"]: JSON.stringify(payload).length,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             ...(taskMetadata
               ? accessoryAttributes({
@@ -277,7 +330,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
 
       return handle;
     },
-    batchTrigger: async ({ items }) => {
+    batchTrigger: async (items) => {
       const apiClient = apiClientManager.client;
 
       if (!apiClient) {
@@ -323,9 +376,6 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             ["messaging.batch.message_count"]: items.length,
             ["messaging.client_id"]: taskContextManager.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
-            ["messaging.message.body.size"]: items
-              .map((item) => JSON.stringify(item.payload))
-              .join("").length,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
             ...(taskMetadata
@@ -345,7 +395,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
 
       return response;
     },
-    triggerAndWait: async ({ payload, options }) => {
+    triggerAndWait: async (payload, options) => {
       const ctx = taskContextManager.ctx;
 
       if (!ctx) {
@@ -393,13 +443,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
                 }
               );
 
-              const runResult = await handleTaskRunExecutionResult<TOutput>(result);
-
-              if (!runResult.ok) {
-                throw runResult.error;
-              }
-
-              return runResult.output;
+              return await handleTaskRunExecutionResult<TOutput>(result);
             }
           }
 
@@ -408,13 +452,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             ctx,
           });
 
-          const runResult = await handleTaskRunExecutionResult<TOutput>(result);
-
-          if (!runResult.ok) {
-            throw runResult.error;
-          }
-
-          return runResult.output;
+          return await handleTaskRunExecutionResult<TOutput>(result);
         },
         {
           kind: SpanKind.PRODUCER,
@@ -439,7 +477,7 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
         }
       );
     },
-    batchTriggerAndWait: async ({ items }) => {
+    batchTriggerAndWait: async (items) => {
       const ctx = taskContextManager.ctx;
 
       if (!ctx) {
@@ -555,9 +593,6 @@ export function createTask<TInput, TOutput, TInitOutput extends InitOutput>(
             ["messaging.batch.message_count"]: items.length,
             ["messaging.client_id"]: taskContextManager.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
-            ["messaging.message.body.size"]: items
-              .map((item) => JSON.stringify(item.payload))
-              .join("").length,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
             ...(taskMetadata

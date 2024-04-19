@@ -4,19 +4,19 @@ export const superParentTask = task({
   id: "super-parent-task",
   run: async () => {
     const result = await superChildTask.triggerAndWait({
-      payload: {
-        foo: "bar",
-        whenToDo: new Date(),
-      },
+      foo: "bar",
+      whenToDo: new Date(),
     });
 
-    logger.log(`typeof result.date = ${typeof result.date}`);
-    logger.log(`typeof result.regex = ${typeof result.regex}`);
-    logger.log(`typeof result.bigint = ${typeof result.bigint}`);
-    logger.log(`typeof result.set = ${typeof result.set}`);
-    logger.log(`typeof result.map = ${typeof result.map}`);
-    logger.log(`typeof result.error = ${typeof result.error}`);
-    logger.log(`typeof result.url = ${typeof result.url}`);
+    if (result.ok) {
+      logger.log(`typeof result.date = ${typeof result.output.date}`);
+      logger.log(`typeof result.output.regex = ${typeof result.output.regex}`);
+      logger.log(`typeof result.output.bigint = ${typeof result.output.bigint}`);
+      logger.log(`typeof result.output.set = ${typeof result.output.set}`);
+      logger.log(`typeof result.output.map = ${typeof result.output.map}`);
+      logger.log(`typeof result.output.error = ${typeof result.output.error}`);
+      logger.log(`typeof result.output.url = ${typeof result.output.url}`);
+    }
 
     return "## super-parent-task completed";
   },
@@ -49,64 +49,60 @@ export const superHugePayloadTask = task({
   run: async () => {
     const largePayload = createLargeObject(1000, 128);
 
-    const result = await superHugeOutputTask.triggerAndWait({
-      payload: largePayload,
-    });
+    const result = await superHugeOutputTask.triggerAndWait(largePayload);
 
     logger.log("Result from superHugeOutputTask: ", { result });
 
-    const batchResult = await superHugeOutputTask.batchTriggerAndWait({
-      items: [
-        { payload: largePayload },
-        {
-          payload: {
-            small: "object",
-          },
+    const batchResult = await superHugeOutputTask.batchTriggerAndWait([
+      { payload: largePayload },
+      {
+        payload: {
+          small: "object",
         },
-        { payload: largePayload },
-        {
-          payload: {
-            small: "object",
-          },
+      },
+      { payload: largePayload },
+      {
+        payload: {
+          small: "object",
         },
-        { payload: largePayload },
-        {
-          payload: {
-            small: "object",
-          },
+      },
+      { payload: largePayload },
+      {
+        payload: {
+          small: "object",
         },
-        { payload: largePayload },
-        {
-          payload: {
-            small: "object",
-          },
+      },
+      { payload: largePayload },
+      {
+        payload: {
+          small: "object",
         },
-        { payload: largePayload },
-        {
-          payload: {
-            small: "object",
-          },
+      },
+      { payload: largePayload },
+      {
+        payload: {
+          small: "object",
         },
-        { payload: largePayload },
-        {
-          payload: {
-            small: "object",
-          },
+      },
+      { payload: largePayload },
+      {
+        payload: {
+          small: "object",
         },
-        { payload: largePayload },
-        {
-          payload: {
-            small: "object",
-          },
+      },
+      { payload: largePayload },
+      {
+        payload: {
+          small: "object",
         },
-        { payload: largePayload },
-        {
-          payload: {
-            small: "object",
-          },
+      },
+      { payload: largePayload },
+      {
+        payload: {
+          small: "object",
         },
-      ],
-    });
+      },
+    ]);
 
     logger.log("Result from superHugeOutputTask batchTriggerAndWait: ", { batchResult });
 
@@ -118,7 +114,7 @@ export const superHugePayloadTask = task({
 
 export const superHugeOutputTask = task({
   id: "super-huge-output-task",
-  run: async (payload) => {
+  run: async (payload: any) => {
     return payload;
   },
 });
@@ -127,9 +123,7 @@ export const superStringTask = task({
   id: "super-string-parent-task",
   run: async () => {
     const result = await superStringChildTask.triggerAndWait({
-      payload: {
-        foo: "bar",
-      },
+      foo: "bar",
     });
 
     return result;
@@ -138,7 +132,7 @@ export const superStringTask = task({
 
 export const superStringChildTask = task({
   id: "super-string-child-task",
-  run: async () => {
+  run: async (payload: any) => {
     return "## super-string-child-task completed";
   },
 });
