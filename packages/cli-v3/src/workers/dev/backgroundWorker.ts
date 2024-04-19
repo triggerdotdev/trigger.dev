@@ -627,6 +627,15 @@ class TaskRunProcess {
     });
 
     this._isBeingKilled = kill;
+
+    // Set a timeout to kill the child process if it hasn't been killed within 5 seconds
+    setTimeout(() => {
+      if (this._child && !this._child.killed) {
+        logger.debug(`[${this.execution.run.id}] killing task run process after timeout`);
+
+        this._child.kill();
+      }
+    }, 5000);
   }
 
   async executeTaskRun(payload: TaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
@@ -709,6 +718,8 @@ class TaskRunProcess {
         break;
       }
       case "READY_TO_DISPOSE": {
+        logger.debug(`[${this.execution.run.id}] task run process is ready to dispose`);
+
         this.#kill();
 
         break;
@@ -791,6 +802,8 @@ class TaskRunProcess {
 
   #kill() {
     if (this._child && !this._child.killed) {
+      logger.debug(`[${this.execution.run.id}] killing task run process`);
+
       this._child?.kill();
     }
   }
