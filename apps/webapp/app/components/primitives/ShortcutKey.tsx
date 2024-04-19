@@ -2,6 +2,12 @@ import { Fragment } from "react";
 import { Modifier, ShortcutDefinition } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { useOperatingSystem } from "./OperatingSystemProvider";
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+} from "@heroicons/react/20/solid";
 
 const variants = {
   small:
@@ -23,7 +29,7 @@ export function ShortcutKey({ shortcut, variant, className }: ShortcutKeyProps) 
   const isMac = platform === "mac";
   let relevantShortcut = "mac" in shortcut ? (isMac ? shortcut.mac : shortcut.windows) : shortcut;
   const modifiers = relevantShortcut.modifiers ?? [];
-  const character = keyString(relevantShortcut.key, isMac);
+  const character = keyString(relevantShortcut.key, isMac, variant);
 
   return (
     <span className={cn(variants[variant], className)}>
@@ -35,10 +41,22 @@ export function ShortcutKey({ shortcut, variant, className }: ShortcutKeyProps) 
   );
 }
 
-function keyString(key: String, isMac: boolean) {
+function keyString(key: String, isMac: boolean, size: "small" | "medium") {
+  key = key.toLowerCase();
+
+  const className = size === "small" ? "w-2.5 h-4" : "w-3 h-5";
+
   switch (key) {
     case "enter":
       return isMac ? "↵" : key;
+    case "arrowdown":
+      return <ChevronDownIcon className={className} />;
+    case "arrowup":
+      return <ChevronUpIcon className={className} />;
+    case "arrowleft":
+      return <ChevronLeftIcon className={className} />;
+    case "arrowright":
+      return <ChevronRightIcon className={className} />;
     default:
       return key;
   }

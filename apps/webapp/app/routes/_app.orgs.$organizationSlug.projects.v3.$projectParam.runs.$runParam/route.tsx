@@ -1,11 +1,13 @@
 import {
+  ArrowsPointingInIcon,
+  ArrowsPointingOutIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
 import type { Location } from "@remix-run/react";
-import { useNavigate, useParams, useRevalidator } from "@remix-run/react";
+import { useParams, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
 import {
@@ -24,7 +26,7 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -34,6 +36,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
@@ -45,12 +48,12 @@ import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3
 import { useDebounce } from "~/hooks/useDebounce";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
-import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useReplaceLocation } from "~/hooks/useReplaceLocation";
+import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useUser } from "~/hooks/useUser";
 import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
-import { logger } from "~/services/logger.server";
 import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -63,7 +66,6 @@ import {
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
-import { useReplaceLocation } from "~/hooks/useReplaceLocation";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -272,7 +274,7 @@ function TasksTreeView({
   });
 
   return (
-    <div className="grid h-full grid-rows-[2.5rem_1fr] overflow-hidden">
+    <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Input
           placeholder="Search log"
@@ -288,23 +290,6 @@ function TasksTreeView({
             label="Errors only"
             checked={errorsOnly}
             onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
-          />
-          <Switch
-            variant="small"
-            label="Show durations"
-            checked={showDurations}
-            onCheckedChange={(e) => setShowDurations(e.valueOf())}
-          />
-          <Slider
-            variant={"tertiary"}
-            className="w-20"
-            LeadingIcon={MagnifyingGlassMinusIcon}
-            TrailingIcon={MagnifyingGlassPlusIcon}
-            value={[scale]}
-            onValueChange={(value) => setScale(value[0])}
-            min={0}
-            max={1}
-            step={0.05}
           />
         </div>
       </div>
@@ -341,7 +326,7 @@ function TasksTreeView({
                 <>
                   <div
                     className={cn(
-                      "delay-[25ms] flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2 transition-colors",
+                      "flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
                       state.selected
                         ? "bg-grid-dimmed hover:bg-grid-bright"
                         : "bg-transparent hover:bg-grid-dimmed"
@@ -431,6 +416,32 @@ function TasksTreeView({
           />
         </ResizablePanel>
       </ResizablePanelGroup>
+      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
+        <div className="flex items-center gap-4">
+          <ArrowKeyShortcuts />
+          <ShortcutWithAction shortcut={{ key: "e" }} action={() => {}} title="Expand all" />
+          <ShortcutWithAction shortcut={{ key: "c" }} action={() => {}} title="Collapse all" />
+        </div>
+        <div className="flex items-center gap-4">
+          <Switch
+            variant="small"
+            label="Show durations"
+            checked={showDurations}
+            onCheckedChange={(e) => setShowDurations(e.valueOf())}
+          />
+          <Slider
+            variant={"tertiary"}
+            className="w-20"
+            LeadingIcon={MagnifyingGlassMinusIcon}
+            TrailingIcon={MagnifyingGlassPlusIcon}
+            value={[scale]}
+            onValueChange={(value) => setScale(value[0])}
+            min={0}
+            max={1}
+            step={0.05}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -868,6 +879,44 @@ function ConnectedDevWarning() {
           </Paragraph>
         </div>
       </Callout>
+    </div>
+  );
+}
+
+function ArrowKeyShortcuts() {
+  return (
+    <div className="flex items-center gap-0.5">
+      <ShortcutKey shortcut={{ key: "arrowup" }} variant="medium" />
+      <ShortcutKey shortcut={{ key: "arrowdown" }} variant="medium" />
+      <ShortcutKey shortcut={{ key: "arrowleft" }} variant="medium" />
+      <ShortcutKey shortcut={{ key: "arrowright" }} variant="medium" />
+      <Paragraph variant="extra-small" className="ml-1.5">
+        Navigate
+      </Paragraph>
+    </div>
+  );
+}
+
+function ShortcutWithAction({
+  shortcut,
+  title,
+  action,
+}: {
+  shortcut: Shortcut;
+  title: string;
+  action: () => void;
+}) {
+  useShortcutKeys({
+    shortcut,
+    action,
+  });
+
+  return (
+    <div className="flex items-center gap-0.5">
+      <ShortcutKey shortcut={shortcut} variant="medium" />
+      <Paragraph variant="extra-small" className="ml-1.5">
+        {title}
+      </Paragraph>
     </div>
   );
 }
