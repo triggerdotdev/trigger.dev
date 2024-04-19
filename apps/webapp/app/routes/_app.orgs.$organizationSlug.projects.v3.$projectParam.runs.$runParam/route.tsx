@@ -355,7 +355,15 @@ function TasksTreeView({
                         )}
                         onClick={(e) => {
                           e.stopPropagation();
-                          toggleExpandNode(node.id);
+                          if (e.altKey) {
+                            if (state.expanded) {
+                              collapseAllBelowDepth(node.level);
+                            } else {
+                              expandAllBelowDepth(node.level);
+                            }
+                          } else {
+                            toggleExpandNode(node.id);
+                          }
                           scrollToNode(node.id);
                         }}
                       >
