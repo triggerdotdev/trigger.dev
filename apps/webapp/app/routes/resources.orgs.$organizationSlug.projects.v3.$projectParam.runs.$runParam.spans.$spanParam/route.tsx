@@ -60,7 +60,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({ span });
 };
 
-export function SpanView({ runParam, spanId }: { runParam: string; spanId: string | undefined }) {
+export function SpanView({
+  runParam,
+  spanId,
+  closePanel,
+}: {
+  runParam: string;
+  spanId: string | undefined;
+  closePanel: () => void;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const fetcher = useTypedFetcher<typeof loader>();
@@ -98,7 +106,6 @@ export function SpanView({ runParam, spanId }: { runParam: string; spanId: strin
     span: { event },
   } = fetcher.data;
 
-
   return (
     <div
       className={cn(
@@ -118,8 +125,8 @@ export function SpanView({ runParam, spanId }: { runParam: string; spanId: strin
           </Header2>
         </div>
         {runParam && (
-          <LinkButton
-            to={v3RunPath(organization, project, { friendlyId: runParam })}
+          <Button
+            onClick={closePanel}
             variant="minimal/medium"
             LeadingIcon={ExitIcon}
             shortcut={{ key: "esc" }}

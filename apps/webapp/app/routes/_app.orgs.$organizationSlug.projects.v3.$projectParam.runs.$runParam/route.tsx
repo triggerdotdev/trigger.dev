@@ -99,7 +99,6 @@ export default function Page() {
   const { location, replaceSearchParam } = useReplaceLocation();
   const selectedSpanId = getSpanId(location);
 
-
   const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
 
   if (!trace) {
@@ -220,7 +219,11 @@ export default function Page() {
               </ResizablePanel>
               <ResizableHandle withHandle />
               <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.layout?.[1]}>
-                <SpanView runParam={run.friendlyId} spanId={selectedSpanId} />
+                <SpanView
+                  runParam={run.friendlyId}
+                  spanId={selectedSpanId}
+                  closePanel={() => replaceSearchParam("span")}
+                />
               </ResizablePanel>
             </ResizablePanelGroup>
           )}
