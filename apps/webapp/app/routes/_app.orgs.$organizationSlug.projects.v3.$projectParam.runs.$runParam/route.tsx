@@ -167,57 +167,38 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
-          {selectedSpanId === undefined ? (
-            <TasksTreeView
-              selectedId={selectedSpanId}
-              key={events[0]?.id ?? "-"}
-              events={events}
-              parentRunFriendlyId={parentRunFriendlyId}
-              onSelectedIdChanged={(selectedSpan) => {
-                //instantly close the panel if no span is selected
-                if (!selectedSpan) {
-                  replaceSearchParam("span");
-                  return;
-                }
+          <ResizablePanelGroup
+            direction="horizontal"
+            className="h-full max-h-full"
+            onLayout={(layout) => {
+              if (layout.length !== 2) return;
+              if (!selectedSpanId) return;
+              setResizableRunSettings(document, layout);
+            }}
+          >
+            <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0]}>
+              <TasksTreeView
+                selectedId={selectedSpanId}
+                key={events[0]?.id ?? "-"}
+                events={events}
+                parentRunFriendlyId={parentRunFriendlyId}
+                onSelectedIdChanged={(selectedSpan) => {
+                  //instantly close the panel if no span is selected
+                  if (!selectedSpan) {
+                    replaceSearchParam("span");
+                    return;
+                  }
 
-                changeToSpan(selectedSpan);
-              }}
-              totalDuration={duration}
-              rootSpanStatus={rootSpanStatus}
-              rootStartedAt={rootStartedAt}
-              environmentType={run.environment.type}
-            />
-          ) : (
-            <ResizablePanelGroup
-              direction="horizontal"
-              className="h-full max-h-full"
-              onLayout={(layout) => {
-                if (layout.length !== 2) return;
-                setResizableRunSettings(document, layout);
-              }}
-            >
-              <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0]}>
-                <TasksTreeView
-                  selectedId={selectedSpanId}
-                  key={events[0]?.id ?? "-"}
-                  events={events}
-                  parentRunFriendlyId={parentRunFriendlyId}
-                  onSelectedIdChanged={(selectedSpan) => {
-                    //instantly close the panel if no span is selected
-                    if (!selectedSpan) {
-                      replaceSearchParam("span");
-                      return;
-                    }
-
-                    changeToSpan(selectedSpan);
-                  }}
-                  totalDuration={duration}
-                  rootSpanStatus={rootSpanStatus}
-                  rootStartedAt={rootStartedAt}
-                  environmentType={run.environment.type}
-                />
-              </ResizablePanel>
-              <ResizableHandle withHandle />
+                  changeToSpan(selectedSpan);
+                }}
+                totalDuration={duration}
+                rootSpanStatus={rootSpanStatus}
+                rootStartedAt={rootStartedAt}
+                environmentType={run.environment.type}
+              />
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            {selectedSpanId && (
               <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.layout?.[1]}>
                 <SpanView
                   runParam={run.friendlyId}
@@ -225,8 +206,8 @@ export default function Page() {
                   closePanel={() => replaceSearchParam("span")}
                 />
               </ResizablePanel>
-            </ResizablePanelGroup>
-          )}
+            )}
+          </ResizablePanelGroup>
         </div>
       </PageBody>
     </>
