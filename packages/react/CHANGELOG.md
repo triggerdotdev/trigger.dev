@@ -1,5 +1,12 @@
 # @trigger.dev/react
 
+## 3.0.0-beta.16
+
+### Patch Changes
+
+- Updated dependencies [ed2a26c86]
+  - @trigger.dev/core@3.0.0-beta.16
+
 ## 3.0.0-beta.15
 
 ### Patch Changes

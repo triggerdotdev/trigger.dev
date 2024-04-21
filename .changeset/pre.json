@@ -44,6 +44,7 @@
     "@trigger.dev/yalt": "2.3.18"
   },
   "changesets": [
+    "angry-eagles-trade",
     "breezy-gorillas-mate",
     "chilled-hornets-move",
     "clean-pianos-listen",
