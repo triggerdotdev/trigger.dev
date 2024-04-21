@@ -1139,9 +1139,22 @@ async function compileProject(
 
       await writeJSONFile(join(tempDir, "package.json"), packageJsonContents);
 
-      await copyAdditionalFiles(config, tempDir);
+      const copyResult = await copyAdditionalFiles(config, tempDir);
 
+      if (!copyResult.ok) {
+        compileSpinner.stop("Project built with warnings");
+
+        log.warn(
+          `No additionalFiles matches for:\n\n${copyResult.noMatches
+            .map((glob) => `- "${glob}"`)
+            .join("\n")}\n\nIf this is unexpected you should check your ${terminalLink(
+            "glob patterns",
+            "https://github.com/isaacs/node-glob?tab=readme-ov-file#glob-primer"
+          )} are valid.`
+        );
+      } else {
       compileSpinner.stop("Project built successfully");
+      }
 
       const resolvingDependenciesResult = await resolveDependencies(
         tempDir,
