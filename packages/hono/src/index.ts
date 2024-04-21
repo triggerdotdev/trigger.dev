@@ -55,10 +55,13 @@ function convertToStandardRequest(req: HonoRequest): Request {
     headers[key] = value;
   }
 
+  // https://developer.mozilla.org/en-US/docs/Web/API/fetch#body
+  const includeBody = ["GET", "HEAD"].includes(req.raw.method);
+
   return new Request(req.raw.url, {
     method: req.raw.method,
     headers,
-    body: req.raw.body,
+    body: includeBody ? req.raw.body : undefined,
     // @ts-ignore
     duplex: "half",
   });
