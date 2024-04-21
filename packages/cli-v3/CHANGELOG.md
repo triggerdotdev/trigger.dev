@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 3.0.0-beta.16
+
+### Patch Changes
+
+- ed2a26c86: - Fix additionalFiles that aren't decendants
+  - Stop swallowing uncaught exceptions in prod
+  - Improve warnings and errors, fail early on critical warnings
+  - New arg to --save-logs even for successful builds
+- Updated dependencies [ed2a26c86]
+  - @trigger.dev/core@3.0.0-beta.16
+
 ## 3.0.0-beta.15
 
 ### Patch Changes
