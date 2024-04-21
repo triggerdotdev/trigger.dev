@@ -53,7 +53,7 @@ export const config: TriggerConfig = {
 
 ## ESM-only packages
 
-We'll let you know when run the CLI dev command if this is a problem. Some packages are ESM-only so they don't work directly from CJS when using Node.js. In that case you need to add them to the `dependenciesToBundle` array in your `trigger.config.ts` file.
+We'll let you know when running the CLI dev command if this is a problem. Some packages are ESM-only so they don't work directly from CJS when using Node.js. In that case you need to add them to the `dependenciesToBundle` array in your `trigger.config.ts` file.
 
 ```ts trigger.config.ts
 import type { TriggerConfig } from "@trigger.dev/sdk/v3";
@@ -92,13 +92,26 @@ Prisma works by generating a client from your `prisma.schema` file. This means y
 
   <Step title="package.json postinstall `prisma generate`">
 
-    ```json
+
+    <CodeGroup>
+
+    ```json default path
     {
       "scripts": {
         "postinstall": "prisma generate"
       }
     }
     ```
+
+    ```json custom path
+    {
+      "scripts": {
+        "postinstall": "prisma generate --schema=./custom/path/to/schema.prisma"
+      }
+    }
+    ```
+
+    </CodeGroup>
 
     Anything you put in `postinstall` will be run as part of the install step. This is how Next.js recommends you set up Prisma anyway.
 
@@ -111,7 +124,12 @@ Prisma works by generating a client from your `prisma.schema` file. This means y
 
     export const config: TriggerConfig = {
       //..other stuff
+
+      // using the default path
       additionalFiles: ["./prisma/schema.prisma"],
+      // or a custom path, for example in a monorepo
+      additionalFiles: ["../../custom/path/to/schema.prisma"],
+
       additionalPackages: ["prisma@5.11.0"],
     };
     ```

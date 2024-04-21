@@ -16,6 +16,8 @@ export interface ProjectConfig {
    * List of additional files to include in your trigger.dev bundle. e.g. ["./prisma/schema.prisma"]
    *
    * Supports glob patterns.
+   * 
+   * Note: The path separator for glob patterns is `/`, even on Windows!
    */
   additionalFiles?: string[];
   /**
