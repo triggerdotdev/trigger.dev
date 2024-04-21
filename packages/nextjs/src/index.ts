@@ -70,12 +70,15 @@ async function convertToStandardRequest(nextReq: NextApiRequest): Promise<Reques
     headers.set(key, value as string);
   });
 
+  // https://developer.mozilla.org/en-US/docs/Web/API/fetch#body
+  const includeBody = !!method && ["GET", "HEAD"].includes(method);
+
   // Create a new Request object (hardcode the url because it doesn't really matter what it is)
   const webReq = new Request("https://next.js/api/trigger", {
     headers,
     method,
     // @ts-ignore
-    body: nextReq,
+    body: includeBody ? nextReq : undefined,
     duplex: "half",
   });
 
