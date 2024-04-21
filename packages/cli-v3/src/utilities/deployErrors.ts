@@ -3,9 +3,10 @@ import { relative } from "node:path";
 import { chalkError, chalkPurple, chalkGrey, chalkGreen, chalkWarning } from "./cliOutput";
 import { logger } from "./logger";
 import { ReadConfigResult } from "./configFiles";
-import { TaskMetadataParseError } from "../workers/common/errors";
 import { z } from "zod";
 import { groupTaskMetadataIssuesByTask } from "@trigger.dev/core/v3";
+import terminalLink from "terminal-link";
+import { docs } from "./links";
 
 export type ESMRequireError = {
   type: "esm-require-error";
@@ -86,6 +87,10 @@ export function logESMRequireError(parsedError: ESMRequireError, resolvedConfig:
       )}. This will bundle the module with your code.\n`
     );
   }
+
+  logger.log(
+    `${chalkGrey("○")} For more info see the ${terminalLink("relevant docs", docs.config.esm)}.\n`
+  );
 }
 
 export type PackageNotFoundError = {
