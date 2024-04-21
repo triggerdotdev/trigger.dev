@@ -43,7 +43,7 @@ import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
 
-import { Glob } from "glob";
+import { Glob, GlobOptions } from "glob";
 import type { SetOptional } from "type-fest";
 import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
 import { chalkError, chalkPurple, chalkWarning } from "../utilities/cliOutput";
@@ -1443,11 +1443,24 @@ async function gatherRequiredDependencies(
   return Object.fromEntries(Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-async function copyAdditionalFiles(config: ResolvedConfig, tempDir: string) {
+type AdditionalFilesReturn =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      noMatches: string[];
+    };
+
+async function copyAdditionalFiles(
+  config: ResolvedConfig,
+  tempDir: string
+): Promise<AdditionalFilesReturn> {
   const additionalFiles = config.additionalFiles ?? [];
+  const noMatches: string[] = [];
 
   if (additionalFiles.length === 0) {
-    return;
+    return { ok: true };
   }
 
   return await tracer.startActiveSpan(
@@ -1463,25 +1476,77 @@ async function copyAdditionalFiles(config: ResolvedConfig, tempDir: string) {
           additionalFiles,
         });
 
-        const glob = new Glob(additionalFiles, {
+        const globOptions = {
           withFileTypes: true,
           ignore: ["node_modules"],
           cwd: config.projectDir,
           nodir: true,
-        });
+        } satisfies GlobOptions;
 
+        const globs: Array<GlobOptions> = [];
+        let i = 0;
+
+        for (const additionalFile of additionalFiles) {
+          let glob: GlobOptions | Glob<typeof globOptions>;
+
+          if (i === 0) {
+            glob = new Glob(additionalFile, globOptions);
+          } else {
+            const previousGlob = globs[i - 1];
+            if (!previousGlob) {
+              logger.error("No previous glob, this shouldn't happen", { i, additionalFiles });
+              continue;
+            }
+
+            // Use the previous glob's options and cache
+            glob = new Glob(additionalFile, previousGlob);
+          }
+
+          if (!(Symbol.asyncIterator in glob)) {
+            logger.error("Glob should be an async iterator", { glob });
+            throw new Error("Unrecoverable error while copying additional files");
+          }
+
+          let matches = 0;
         for await (const file of glob) {
-          const relativeDestinationPath = join(
-            tempDir,
-            relative(config.projectDir, file.fullpath())
-          );
+            matches++;
+
+            // Any additional files that aren't a child of projectDir will be moved inside tempDir, so they can be part of the build context
+            // The file "../foo/bar" will be written to "tempDir/foo/bar"
+            // The file "../../bar/baz" will be written to "tempDir/bar/baz"
+            const pathInsideTempDir = relative(config.projectDir, file.fullpath())
+              .split(posix.sep)
+              .filter((p) => p !== "..")
+              .join(posix.sep);
+
+            const relativeDestinationPath = join(tempDir, pathInsideTempDir);
 
           logger.debug(`Copying file ${file.fullpath()} to ${relativeDestinationPath}`);
+
           await mkdir(dirname(relativeDestinationPath), { recursive: true });
           await copyFile(file.fullpath(), relativeDestinationPath);
+          }
+
+          if (matches === 0) {
+            noMatches.push(additionalFile);
+          }
+
+          globs[i] = glob;
+          i++;
         }
 
         span.end();
+
+        if (noMatches.length > 0) {
+          return {
+            ok: false,
+            noMatches,
+          } as const;
+        }
+
+        return {
+          ok: true,
+        } as const;
       } catch (error) {
         recordSpanException(span, error);
 
