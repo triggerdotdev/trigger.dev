@@ -73,14 +73,7 @@ export function SpanCodePathAccessory({
     >
       {accessory.items.map((item, index) => (
         <Fragment key={index}>
-          <span
-            className={cn(
-              "truncate",
-              index === accessory.items.length - 1 ? "text-sun-100" : "text-text-dimmed"
-            )}
-          >
-            {item.text}
-          </span>
+          <span className={cn("truncate", "text-text-dimmed")}>{item.text}</span>
           {index < accessory.items.length - 1 && (
             <span className="text-text-dimmed">
               <ChevronRightIcon className="h-4 w-4" />

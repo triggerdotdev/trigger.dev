@@ -27,7 +27,7 @@ type TaskFunctionNameProps = {
 
 export function TaskFunctionName({ variant, functionName, className }: TaskFunctionNameProps) {
   return (
-    <InlineCode variant={variant} className={cn("text-sun-100", className)}>
+    <InlineCode variant={variant} className={cn("text-text-dimmed", className)}>
       {`${functionName}()`}
     </InlineCode>
   );
