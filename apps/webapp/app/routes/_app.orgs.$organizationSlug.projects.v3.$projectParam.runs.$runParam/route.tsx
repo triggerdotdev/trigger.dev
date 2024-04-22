@@ -68,6 +68,8 @@ import {
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 import { number } from "zod";
 import { useHotkeys } from "react-hotkeys-hook";
+import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
+import { Header3 } from "~/components/primitives/Headers";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -430,24 +432,34 @@ function TasksTreeView({
         </ResizablePanel>
       </ResizablePanelGroup>
       <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
-        <div className="flex items-center gap-4">
-          <ArrowKeyShortcuts />
-          <ShortcutWithAction
-            shortcut={{ key: "e" }}
-            action={() => expandAllBelowDepth(0)}
-            title="Expand all"
-          />
-          <ShortcutWithAction
-            shortcut={{ key: "c" }}
-            action={() => collapseAllBelowDepth(1)}
-            title="Collapse all"
-          />
-          <NumberShortcuts toggleLevel={(number) => toggleExpandLevel(number)} />
-          <ShortcutWithAction
-            shortcut={{ key: "d" }}
-            action={() => setShowDurations((d) => !d)}
-            title="Toggle durations"
-          />
+        <div className="grow @container">
+          <div className="hidden items-center gap-4 @[42rem]:flex">
+            <KeyboardShortcuts
+              expandAllBelowDepth={expandAllBelowDepth}
+              collapseAllBelowDepth={collapseAllBelowDepth}
+              toggleExpandLevel={toggleExpandLevel}
+              setShowDurations={setShowDurations}
+            />
+          </div>
+          <div className="@[42rem]:hidden">
+            <Popover>
+              <PopoverArrowTrigger>Shortcuts</PopoverArrowTrigger>
+              <PopoverContent
+                className="min-w-[20rem] overflow-y-auto p-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                align="start"
+              >
+                <Header3 spacing>Keyboard shortcuts</Header3>
+                <div className="flex flex-col gap-2">
+                  <KeyboardShortcuts
+                    expandAllBelowDepth={expandAllBelowDepth}
+                    collapseAllBelowDepth={collapseAllBelowDepth}
+                    toggleExpandLevel={toggleExpandLevel}
+                    setShowDurations={setShowDurations}
+                  />
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <Slider
@@ -904,14 +916,48 @@ function ConnectedDevWarning() {
   );
 }
 
+function KeyboardShortcuts({
+  expandAllBelowDepth,
+  collapseAllBelowDepth,
+  toggleExpandLevel,
+  setShowDurations,
+}: {
+  expandAllBelowDepth: (depth: number) => void;
+  collapseAllBelowDepth: (depth: number) => void;
+  toggleExpandLevel: (depth: number) => void;
+  setShowDurations: (show: (show: boolean) => boolean) => void;
+}) {
+  return (
+    <>
+      <ArrowKeyShortcuts />
+      <ShortcutWithAction
+        shortcut={{ key: "e" }}
+        action={() => expandAllBelowDepth(0)}
+        title="Expand all"
+      />
+      <ShortcutWithAction
+        shortcut={{ key: "c" }}
+        action={() => collapseAllBelowDepth(1)}
+        title="Collapse all"
+      />
+      <NumberShortcuts toggleLevel={(number) => toggleExpandLevel(number)} />
+      <ShortcutWithAction
+        shortcut={{ key: "d" }}
+        action={() => setShowDurations((d) => !d)}
+        title="Toggle durations"
+      />
+    </>
+  );
+}
+
 function ArrowKeyShortcuts() {
   return (
     <div className="flex items-center gap-0.5">
-      <ShortcutKey shortcut={{ key: "arrowup" }} variant="medium" />
-      <ShortcutKey shortcut={{ key: "arrowdown" }} variant="medium" />
-      <ShortcutKey shortcut={{ key: "arrowleft" }} variant="medium" />
-      <ShortcutKey shortcut={{ key: "arrowright" }} variant="medium" />
-      <Paragraph variant="extra-small" className="ml-1.5">
+      <ShortcutKey shortcut={{ key: "arrowup" }} variant="medium" className="ml-0 mr-0" />
+      <ShortcutKey shortcut={{ key: "arrowdown" }} variant="medium" className="ml-0 mr-0" />
+      <ShortcutKey shortcut={{ key: "arrowleft" }} variant="medium" className="ml-0 mr-0" />
+      <ShortcutKey shortcut={{ key: "arrowright" }} variant="medium" className="ml-0 mr-0" />
+      <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
         Navigate
       </Paragraph>
     </div>
@@ -934,8 +980,8 @@ function ShortcutWithAction({
 
   return (
     <div className="flex items-center gap-0.5">
-      <ShortcutKey shortcut={shortcut} variant="medium" />
-      <Paragraph variant="extra-small" className="ml-1.5">
+      <ShortcutKey shortcut={shortcut} variant="medium" className="ml-0 mr-0" />
+      <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
         {title}
       </Paragraph>
     </div>
@@ -952,7 +998,7 @@ function NumberShortcuts({ toggleLevel }: { toggleLevel: (depth: number) => void
       <span className={cn(variants.medium, "ml-0 mr-0")}>0</span>
       <span className="text-[0.75rem] text-text-dimmed">–</span>
       <span className={cn(variants.medium, "ml-0 mr-0")}>9</span>
-      <Paragraph variant="extra-small" className="ml-1.5">
+      <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
         Toggle level
       </Paragraph>
     </div>
