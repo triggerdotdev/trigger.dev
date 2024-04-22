@@ -1,10 +1,9 @@
 import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
-import { useEffect } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import invariant from "tiny-invariant";
+import { Suspense, useEffect } from "react";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
 import { InitCommandV3, TriggerDevStepV3 } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
@@ -28,22 +27,17 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { TaskFunctionName, TaskPath } from "~/components/runs/v3/TaskPath";
-import {
-  TaskRunStatusCombo,
-  TaskRunStatusIcon,
-  runStatusClassNameColor,
-} from "~/components/runs/v3/TaskRunStatus";
+import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
+import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
 import {
   TaskTriggerSourceIcon,
   taskTriggerSourceDescription,
 } from "~/components/runs/v3/TaskTriggerSource";
-import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
-import { TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
+import { TaskActivity, TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3RunsPath, v3TasksStreamingPath } from "~/utils/pathBuilder";
@@ -54,14 +48,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new TaskListPresenter();
-    const tasks = await presenter.call({
+    const { tasks, activity } = await presenter.call({
       userId,
       organizationSlug,
       projectSlug: projectParam,
     });
 
-    return typedjson({
+    return typeddefer({
       tasks,
+      activity,
     });
   } catch (error) {
     console.error(error);
@@ -76,7 +71,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const user = useUser();
-  const { tasks } = useTypedLoaderData<typeof loader>();
+  const { tasks, activity } = useTypedLoaderData<typeof loader>();
   const hasTasks = tasks.length > 0;
 
   //live reload the page when the tasks change
@@ -108,6 +103,7 @@ export default function Page() {
                       <TableHeaderCell>Task ID</TableHeaderCell>
                       <TableHeaderCell>Task</TableHeaderCell>
                       <TableHeaderCell>Path</TableHeaderCell>
+                      <TableHeaderCell>Activity (7d)</TableHeaderCell>
                       <TableHeaderCell>Environments</TableHeaderCell>
                       <TableHeaderCell>Last run</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
@@ -137,6 +133,16 @@ export default function Page() {
                               />
                             </TableCell>
                             <TableCell to={path}>{task.filePath}</TableCell>
+                            <TableCell to={path}>
+                              <Suspense fallback={<></>}>
+                                <TypedAwait resolve={activity}>
+                                  {(data) => {
+                                    const taskData = data[task.slug];
+                                    return <TaskActivityGraph activity={taskData} />;
+                                  }}
+                                </TypedAwait>
+                              </Suspense>
+                            </TableCell>
                             <TableCell to={path}>
                               <div className="space-x-2">
                                 {task.environments.map((environment) => (
@@ -224,5 +230,37 @@ function CreateTaskInstructions() {
         <Paragraph>This page will automatically refresh.</Paragraph>
       </StepContentContainer>
     </MainCenteredContainer>
+  );
+}
+
+function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
+  return (
+    <ResponsiveContainer width="100%" height={200}>
+      <BarChart
+        data={activity}
+        margin={{
+          top: 0,
+          right: 0,
+          left: 0,
+          bottom: 0,
+        }}
+        className="-ml-7"
+      >
+        <XAxis dataKey="day" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
+        <YAxis
+          stroke="#94A3B8"
+          fontSize={12}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={(value) => `${value}`}
+        />
+        {/* <Tooltip
+      cursor={{ fill: "rgba(255,255,255,0.05)" }}
+      content={<CustomTooltip />}
+    /> */}
+        <Bar dataKey="COMPLETED_SUCCESSFULLY" fill="#16A34A" stackId="a" />
+        <Bar dataKey="COMPLETED_WITH_ERRORS" fill="#ff0000" stackId="a" />
+      </BarChart>
+    </ResponsiveContainer>
   );
 }

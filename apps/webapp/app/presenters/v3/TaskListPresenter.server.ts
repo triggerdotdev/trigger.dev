@@ -28,6 +28,10 @@ export type Task = {
   };
 };
 
+type Return = Awaited<ReturnType<TaskListPresenter["call"]>>;
+
+export type TaskActivity = Awaited<Return["activity"]>[string];
+
 export class TaskListPresenter {
   #prismaClient: PrismaClient;
 
@@ -163,6 +167,66 @@ export class TaskListPresenter {
       return acc;
     }, [] as Task[]);
 
-    return outputTasks;
+    //then get the activity for each task
+    const activity = this.#getActivity(outputTasks.map((t) => t.slug));
+
+    return { tasks: outputTasks, activity };
+  }
+
+  async #getActivity(tasks: string[]) {
+    const activity = await this.#prismaClient.$queryRaw<
+      {
+        taskIdentifier: string;
+        status: TaskRunStatus;
+        day: Date;
+        count: BigInt;
+      }[]
+    >`
+    SELECT 
+    tr."taskIdentifier", 
+    tr."status",
+    DATE(tr."createdAt") as day, 
+    COUNT(*) 
+  FROM 
+    ${sqlDatabaseSchema}."TaskRun" as tr
+  WHERE 
+    tr."taskIdentifier" IN (${Prisma.join(tasks)})
+    AND tr."createdAt" >= (current_date - interval '7 days')
+  GROUP BY 
+    tr."taskIdentifier", 
+    tr."status", 
+    day
+  ORDER BY 
+    tr."taskIdentifier" ASC,
+    day ASC,
+    tr."status" ASC;`;
+
+    //today with no time
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return activity.reduce((acc, a) => {
+      let existingTask = acc[a.taskIdentifier];
+
+      if (!existingTask) {
+        existingTask = [];
+        acc[a.taskIdentifier] = existingTask;
+      }
+
+      const dayString = a.day.toISOString();
+      const day = existingTask.find((d) => d.day === dayString);
+
+      if (day) {
+        day[a.status] = Number(a.count);
+      } else {
+        const newDay = {
+          day: dayString,
+          [a.status]: Number(a.count),
+        } as { day: string } & Record<TaskRunStatus, number>;
+        existingTask.push(newDay);
+      }
+
+      return acc;
+    }, {} as Record<string, ({ day: string } & Record<TaskRunStatus, number>)[]>);
   }
 }
