@@ -418,6 +418,7 @@ export function useTree<TData>({
                 if (treeNode && treeNode.hasChildren) {
                   collapseLevel(treeNode.level);
                 }
+                break;
               }
 
               const shouldCollapse =
