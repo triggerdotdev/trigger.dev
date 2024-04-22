@@ -57,6 +57,7 @@ import { safeJsonParse } from "../utilities/safeJsonParse";
 import { JavascriptProject } from "../utilities/javascriptProject";
 import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { escapeImportPath, spinner } from "../utilities/windows";
+import { updateTriggerPackages } from "./update";
 import { docs, getInTouch } from "../utilities/links";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
@@ -74,6 +75,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   outputMetafile: z.string().optional(),
   apiUrl: z.string().optional(),
   saveLogs: z.boolean().default(false),
+  skipUpdateCheck: z.boolean().default(false),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -90,6 +92,7 @@ export function configureDeployCommand(program: Command) {
         "prod"
       )
       .option("--skip-typecheck", "Whether to skip the pre-build typecheck")
+      .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
       .option(
         "--ignore-env-var-check",
         "Detected missing environment variables won't block deployment"
@@ -166,6 +169,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const span = trace.getSpan(context.active());
 
   intro("Deploying project");
+
+  if (!options.skipUpdateCheck) {
+    await updateTriggerPackages(dir, { ...options }, true, true);
+  }
 
   const authorization = await login({
     embedded: true,

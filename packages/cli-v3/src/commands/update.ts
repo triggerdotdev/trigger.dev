@@ -1,148 +1,288 @@
-import { confirm } from "@clack/prompts";
-import { RunOptions, run } from "npm-check-updates";
-import path from "path";
+import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
+import { RunOptions, run as ncuRun } from "npm-check-updates";
 import { z } from "zod";
-import { chalkError, chalkSuccess } from "../utilities/cliOutput.js";
-import { readJSONFileSync, writeJSONFile } from "../utilities/fileSystem.js";
-import { installDependencies } from "../utilities/installDependencies.js";
+import { readJSONFile, writeJSONFile } from "../utilities/fileSystem.js";
 import { spinner } from "../utilities/windows.js";
+import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";
+import { Command } from "commander";
+import { logger } from "../utilities/logger.js";
+import { PackageJson } from "type-fest";
+import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { join, resolve } from "path";
+import { JavascriptProject } from "../utilities/javascriptProject.js";
+import { PackageManager } from "../utilities/getUserPackageManager.js";
+import { getVersion } from "../utilities/getVersion.js";
 
-export const UpdateCommandOptionsSchema = z.object({
-  to: z.string().optional(),
+export const UpdateCommandOptions = CommonCommandOptions.pick({
+  logLevel: true,
+  skipTelemetry: true,
 });
 
-export type UpdateCommandOptions = z.infer<typeof UpdateCommandOptionsSchema>;
+export type UpdateCommandOptions = z.infer<typeof UpdateCommandOptions>;
 
-type NcuRunOptionTarget = "latest" | `@${string}`;
+export function configureUpdateCommand(program: Command) {
+  return program
+    .command("update")
+    .description("Updates all @trigger.dev/* packages to match the CLI version")
+    .argument("[path]", "The path to the directory that contains the package.json file", ".")
+    .option(
+      "-l, --log-level <level>",
+      "The CLI log level to use (debug, info, log, warn, error, none). This does not effect the log level of your trigger.dev tasks.",
+      "log"
+    )
+    .option("--skip-telemetry", "Opt-out of sending telemetry")
+    .action(async (path, options) => {
+      wrapCommandAction("dev", UpdateCommandOptions, options, async (opts) => {
+        await printStandloneInitialBanner(true);
+        await updateCommand(path, opts);
+      });
+    });
+}
 
-export async function updateCommand(projectPath: string, anyOptions: any) {
-  const loadingSpinner = spinner();
-  loadingSpinner.start("Checking settings");
+const NcuRunResult = z.record(z.string());
+type NcuRunResult = z.infer<typeof NcuRunResult>;
 
-  const parseRes = UpdateCommandOptionsSchema.safeParse(anyOptions);
-  if (!parseRes.success) {
-    loadingSpinner.stop(chalkError(parseRes.error.message));
+const triggerPackageFilter = /^@trigger\.dev/;
+
+export async function updateCommand(dir: string, options: UpdateCommandOptions) {
+  await updateTriggerPackages(dir, options);
+}
+
+export async function updateTriggerPackages(
+  dir: string,
+  options: UpdateCommandOptions,
+  embedded?: boolean,
+  skipIntro?: boolean
+) {
+  if (!skipIntro) {
+    intro(embedded ? "Dependency update check" : "Updating packages");
+  }
+
+  const projectPath = resolve(process.cwd(), dir);
+
+  const updateSpinner = spinner();
+  updateSpinner.start("Loading package.json");
+
+  const { packageJson, readonlyPackageJson, packageJsonPath } = await getPackageJson(projectPath);
+
+  if (!packageJson) {
+    updateSpinner.stop("Couldn't load package.json");
     return;
   }
-  const options = parseRes.data;
 
-  const triggerDevPackage = "@trigger.dev";
-  const packageJSONPath = path.join(projectPath, "package.json");
-  const packageData = readJSONFileSync(packageJSONPath);
-  if (!packageData) {
-    loadingSpinner.stop(chalkError("Couldn't load package.json"));
+  updateSpinner.message("Loaded package.json");
+
+  const cliVersion = getVersion();
+
+  const triggerDepsToUpdate = await checkForPackageUpdates(packageJson, "beta", updateSpinner);
+
+  if (!triggerDepsToUpdate) {
+    if (!embedded) {
+      outro("All done");
+    }
     return;
   }
 
-  loadingSpinner.message("Checking for updates");
+  const triggerDependencies = Object.fromEntries(
+    Object.entries({ ...packageJson.dependencies, ...packageJson.devDependencies }).filter(
+      ([name, version]) =>
+        triggerPackageFilter.test(name) && version && !version.startsWith("workspace")
+    )
+  ) as Record<string, string>;
 
-  const packageMaps: { [k: string]: { type: string; version: string } } = {};
-  const packageDependencies = packageData.dependencies || {};
-  const packageDevDependencies = packageData.devDependencies || {};
-  Object.keys(packageDependencies).forEach((i) => {
-    packageMaps[i] = { type: "dependencies", version: packageDependencies[i] };
+  const versionedTriggerPackages = packagesWithOldAndNewVersions(packageJson, {
+    ...triggerDependencies,
+    ...triggerDepsToUpdate,
   });
-  Object.keys(packageDevDependencies).forEach((i) => {
-    packageMaps[i] = {
-      type: "devDependencies",
-      version: packageDevDependencies[i],
+
+  const versionMismatchDetected =
+    versionedTriggerPackages.length > 1 &&
+    versionedTriggerPackages.some((p) => p.old !== versionedTriggerPackages[0]?.old);
+
+  if (versionMismatchDetected) {
+    log.warn(
+      "Package version mismatch detected!\nPlease update all packages to the same version to prevent errors."
+    );
+  }
+
+  mutatePackageJsonWithUpdatedPackages(packageJson, triggerDepsToUpdate);
+
+  // Always require user confirmation
+  const userWantsToUpdate = await updateConfirmation(
+    versionedTriggerPackages,
+    versionMismatchDetected
+  );
+
+  if (isCancel(userWantsToUpdate)) {
+    throw new OutroCommandError();
+  }
+
+  if (!userWantsToUpdate) {
+    const outroMessage = versionMismatchDetected ? "You've been warned!" : "Okay, maybe next time!";
+
+    if (!embedded) {
+      outro(outroMessage);
+    }
+
+    return;
+  }
+
+  const installSpinner = spinner();
+  installSpinner.start("Writing new package.json file");
+
+  await writeJSONFile(packageJsonPath, packageJson, true);
+
+  async function revertPackageJsonChanges() {
+    await writeJSONFile(packageJsonPath, readonlyPackageJson, true);
+  }
+
+  installSpinner.message("Installing new package versions");
+
+  const jsProject = new JavascriptProject(projectPath);
+
+  let packageManager: PackageManager | undefined;
+
+  try {
+    packageManager = await jsProject.getPackageManager();
+
+    installSpinner.message(`Installing new package versions with ${packageManager}`);
+
+    await jsProject.install();
+  } catch (error) {
+    installSpinner.stop(
+      `Failed to install new package versions${packageManager ? ` with ${packageManager}` : ""}`
+    );
+
+    await revertPackageJsonChanges();
+    throw error;
+  }
+
+  installSpinner.stop("Installed new package versions");
+
+  if (!embedded) {
+    outro("Packages updated");
+  }
+}
+
+function mutatePackageJsonWithUpdatedPackages(
+  packageJson: PackageJson,
+  triggerDepsToUpdate: Record<string, string>
+) {
+  for (const [packageName, newVersion] of Object.entries(triggerDepsToUpdate)) {
+    if (packageJson.dependencies?.[packageName]) {
+      packageJson.dependencies[packageName] = newVersion;
+      continue;
+    }
+
+    if (packageJson.devDependencies?.[packageName]) {
+      packageJson.devDependencies[packageName] = newVersion;
+      continue;
+    }
+
+    throw new Error(`Package to update not found in original package.json: ${packageName}`);
+  }
+}
+
+function getNcuTargetVersion(version: string): RunOptions["target"] {
+  switch (version) {
+    case "latest":
+    case "newest":
+    case "greatest":
+    case "minor":
+    case "patch":
+    case "semver":
+      return version;
+    default:
+      return `@${version}`;
+  }
+}
+
+function packagesWithOldAndNewVersions(packageJson: PackageJson, packagesToUpdate: NcuRunResult) {
+  return Object.entries(packagesToUpdate).map(([packageName, newVersion]) => {
+    const oldVersion =
+      packageJson.dependencies?.[packageName] ?? packageJson.devDependencies?.[packageName];
+
+    if (!oldVersion) {
+      throw new Error(`Package to update not found in original package.json: ${packageName}`);
+    }
+
+    return {
+      package: packageName,
+      old: oldVersion,
+      new: newVersion,
     };
   });
+}
 
-  const targetVersion = getTargetVersion(options.to);
+async function updateConfirmation(
+  versionedPackages: ReturnType<typeof packagesWithOldAndNewVersions>,
+  versionMismatchDetected?: boolean
+) {
+  logger.table(versionedPackages);
+
+  let confirmMessage = "Would you like to update those packages?";
+
+  if (versionMismatchDetected) {
+    confirmMessage += " (Please say yes!)";
+  }
+
+  return await confirm({
+    message: confirmMessage,
+  });
+}
+
+export async function getPackageJson(absoluteProjectPath: string) {
+  const packageJsonPath = join(absoluteProjectPath, "package.json");
+
+  const readonlyPackageJson = Object.freeze((await readJSONFile(packageJsonPath)) as PackageJson);
+
+  const packageJson = structuredClone(readonlyPackageJson);
+
+  return { packageJson, readonlyPackageJson, packageJsonPath };
+}
+
+export async function checkForPackageUpdates(
+  packageJson: PackageJson,
+  targetVersion: string,
+  existingSpinner?: ReturnType<typeof spinner>
+) {
+  const updateCheckSpinner = existingSpinner ?? spinner();
+
+  updateCheckSpinner[existingSpinner ? "message" : "start"]("Checking for updates");
+
+  const normalizedTarget = getNcuTargetVersion(targetVersion);
 
   // Use npm-check-updates to get updated dependency versions
   const ncuOptions: RunOptions = {
-    packageData,
-    upgrade: true,
-    jsonUpgraded: true,
-    target: targetVersion,
+    packageData: packageJson as RunOptions["packageData"],
+    target: normalizedTarget,
+    filter: triggerPackageFilter,
   };
 
-  // Can either give a json like package.json or just with deps and their new versions
-  const updatedDependencies: { [k: string]: any } | void = await run(ncuOptions);
+  logger.debug({ ncuOptions: JSON.stringify(ncuOptions, undefined, 2) });
 
-  if (!updatedDependencies) {
-    loadingSpinner.stop(chalkError("Couldn't update dependencies"));
+  // Check for new versions of @trigger.dev packages
+  const ncuRunResult = await ncuRun(ncuOptions);
+  logger.debug({ ncuRunResult });
+
+  const triggerDepsToUpdate = NcuRunResult.safeParse(ncuRunResult);
+
+  if (!triggerDepsToUpdate.success) {
+    logger.error("Failed to parse ncu result", { ncuRunResult });
+    updateCheckSpinner.stop("Couldn't update dependencies");
     return;
   }
 
-  const ifUpdatedDependenciesIsPackageJSON =
-    updatedDependencies.hasOwnProperty("dependencies") ||
-    updatedDependencies.hasOwnProperty("devDependencies");
+  console.log({ triggerDepsToUpdate: triggerDepsToUpdate.data });
 
-  const dependencies = updatedDependencies.dependencies || {};
-  const devDependencies = updatedDependencies.devDependencies || {};
+  const totalToUpdate = Object.keys(triggerDepsToUpdate.data).length;
 
-  const allDependencies = ifUpdatedDependenciesIsPackageJSON
-    ? Object.keys({ ...dependencies, ...devDependencies })
-    : Object.keys(updatedDependencies);
-
-  const triggerPackages = allDependencies.filter((pkg) => pkg.startsWith(triggerDevPackage));
-
-  // If there are no @trigger.dev packages
-  if (triggerPackages.length === 0) {
-    loadingSpinner.stop(chalkSuccess(`All @trigger.dev/* packages are already up to date.`));
+  if (totalToUpdate === 0) {
+    updateCheckSpinner.stop("No package updates found");
     return;
   }
 
-  // Filter the packages with null and what don't match what
-  // they are installed with so that they can be updated
-  const packagesToUpdate = triggerPackages.filter((pkg: string) => updatedDependencies[pkg]);
+  updateCheckSpinner.stop("Found packages to update");
 
-  // If no packages require any updation
-  if (packagesToUpdate.length === 0) {
-    loadingSpinner.stop(chalkSuccess(`All @trigger.dev/* packages are already up to date.`));
-    return;
-  }
-
-  let applyUpdates = targetVersion !== "latest";
-
-  if (targetVersion === "latest") {
-    applyUpdates = await hasUserConfirmed(packagesToUpdate, packageMaps, updatedDependencies);
-  }
-
-  if (applyUpdates) {
-    const newPackageJSON = packageData;
-    packagesToUpdate.forEach((packageName) => {
-      const tmp = packageMaps[packageName];
-      if (tmp) {
-        newPackageJSON[tmp.type][packageName] = updatedDependencies[packageName];
-      }
-    });
-    await writeJSONFile(packageJSONPath, newPackageJSON);
-    await installDependencies(projectPath);
-  }
-}
-
-// expects a version number, or latest.
-// if version number is specified, prepend it with '@' for ncu.
-function getTargetVersion(toVersion?: string): NcuRunOptionTarget {
-  if (!toVersion) {
-    return "latest";
-  }
-  return toVersion === "latest" ? "latest" : `@${toVersion}`;
-}
-
-async function hasUserConfirmed(
-  packagesToUpdate: string[],
-  packageMaps: { [x: string]: { type: string; version: string } },
-  updatedDependencies: { [x: string]: any }
-): Promise<boolean> {
-  // Inform the user of the dependencies that can be updated
-  console.log("\nNewer versions found for the following packages:");
-  console.table(
-    packagesToUpdate.map((i) => ({
-      name: i,
-      old: packageMaps[i]?.version,
-      new: updatedDependencies[i],
-    }))
-  );
-
-  // Ask the user if they want to update the dependencies
-  const shouldContinue = await confirm({
-    message: "Do you want to update these packages in package.json and re-install dependencies?",
-  });
-
-  return shouldContinue as boolean;
+  return triggerDepsToUpdate.data;
 }

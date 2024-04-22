@@ -8,8 +8,8 @@ import { logger } from "./logger.js";
 import { spinner } from "./windows";
 
 export async function printInitialBanner(performUpdateCheck = true) {
-  const packageVersion = getVersion();
-  const text = `\n${logo()} ${chalkGrey(`(${packageVersion})`)}\n`;
+  const cliVersion = getVersion();
+  const text = `\n${logo()} ${chalkGrey(`(${cliVersion})`)}\n`;
 
   logger.info(text);
 
@@ -22,7 +22,7 @@ export async function printInitialBanner(performUpdateCheck = true) {
     // Log a slightly more noticeable message if this is a major bump
     if (maybeNewVersion !== undefined) {
       loadingSpinner.stop(`Update available ${chalk.green(maybeNewVersion)}`);
-      const currentMajor = parseInt(packageVersion.split(".")[0]!);
+      const currentMajor = parseInt(cliVersion.split(".")[0]!);
       const newMajor = parseInt(maybeNewVersion.split(".")[0]!);
       if (newMajor > currentMajor) {
         logger.warn(
@@ -38,9 +38,9 @@ After installation, run Trigger.dev with \`npx trigger.dev\`.`
 }
 
 export async function printStandloneInitialBanner(performUpdateCheck = true) {
-  const packageVersion = getVersion();
+  const cliVersion = getVersion();
 
-  logger.log(`\n${logo()} ${chalkGrey("(v3 Developer Preview)")}`);
+  logger.log(`\n${logo()} ${chalkGrey(`(${cliVersion})`)}\n`);
 
   if (performUpdateCheck) {
     const maybeNewVersion = await updateCheck();

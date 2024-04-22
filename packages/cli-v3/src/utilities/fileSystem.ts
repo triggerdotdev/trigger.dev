@@ -67,8 +67,8 @@ export async function safeFeadJSONFile(path: string) {
   }
 }
 
-export async function writeJSONFile(path: string, json: any) {
-  await writeFile(path, JSON.stringify(json), "utf8");
+export async function writeJSONFile(path: string, json: any, pretty = false) {
+  await writeFile(path, JSON.stringify(json, undefined, pretty ? 2 : undefined), "utf8");
 }
 
 export function readJSONFileSync(path: string) {
