@@ -64,9 +64,15 @@ async function getTriggerDirectories(dirPath: string): Promise<string[]> {
   const triggerDirectories: string[] = [];
 
   for (const entry of entries) {
-    if (!entry.isDirectory() || IGNORED_DIRS.includes(entry.name)) continue;
+    if (!entry.isDirectory() || IGNORED_DIRS.includes(entry.name) || entry.name.startsWith("."))
+      continue;
 
     const fullPath = join(dirPath, entry.name);
+
+    // Ignore the directory if it's <any>/app/api/trigger
+    if (fullPath.endsWith("app/api/trigger")) {
+      continue;
+    }
 
     if (entry.name === "trigger") {
       triggerDirectories.push(fullPath);
