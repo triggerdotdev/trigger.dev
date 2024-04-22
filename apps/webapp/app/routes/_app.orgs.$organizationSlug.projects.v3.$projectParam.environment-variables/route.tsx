@@ -247,7 +247,7 @@ export default function Page() {
           </Table>
 
           <Callout variant="info" className="mb-4">
-            Dev environment variables specified here will be overriden by ones in your .env file
+            Dev environment variables specified here will be overridden by ones in your .env file
             when running locally.
           </Callout>
         </div>
