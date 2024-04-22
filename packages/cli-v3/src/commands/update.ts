@@ -1,17 +1,18 @@
 import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
 import { RunOptions, run as ncuRun } from "npm-check-updates";
 import { z } from "zod";
-import { readJSONFile, writeJSONFile } from "../utilities/fileSystem.js";
+import { readJSONFile, removeFile, writeJSONFile } from "../utilities/fileSystem.js";
 import { spinner } from "../utilities/windows.js";
 import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";
 import { Command } from "commander";
 import { logger } from "../utilities/logger.js";
 import { PackageJson } from "type-fest";
-import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { printStandloneInitialBanner, updateCheck } from "../utilities/initialBanner.js";
 import { join, resolve } from "path";
 import { JavascriptProject } from "../utilities/javascriptProject.js";
 import { PackageManager } from "../utilities/getUserPackageManager.js";
 import { getVersion } from "../utilities/getVersion.js";
+import { chalkError, prettyWarning } from "../utilities/cliOutput.js";
 
 export const UpdateCommandOptions = CommonCommandOptions.pick({
   logLevel: true,
@@ -52,76 +53,89 @@ export async function updateTriggerPackages(
   dir: string,
   options: UpdateCommandOptions,
   embedded?: boolean,
-  skipIntro?: boolean
+  requireUpdate?: boolean
 ) {
-  if (!skipIntro) {
-    intro(embedded ? "Dependency update check" : "Updating packages");
+  if (!embedded) {
+    intro("Updating packages");
   }
 
   const projectPath = resolve(process.cwd(), dir);
 
-  const updateSpinner = spinner();
-  updateSpinner.start("Loading package.json");
-
   const { packageJson, readonlyPackageJson, packageJsonPath } = await getPackageJson(projectPath);
 
   if (!packageJson) {
-    updateSpinner.stop("Couldn't load package.json");
+    log.error("Failed to load package.json. Try to re-run with `-l debug` to see what's going on.");
     return;
   }
 
-  updateSpinner.message("Loaded package.json");
-
   const cliVersion = getVersion();
+  const newCliVersion = await updateCheck();
 
-  const triggerDepsToUpdate = await checkForPackageUpdates(packageJson, "beta", updateSpinner);
+  if (newCliVersion) {
+    prettyWarning(
+      "You're not running the latest CLI version, please consider updating ASAP",
+      "To update, run: `(p)npm i trigger.dev@beta`\nOr run with:    `(p)npx trigger.dev@beta`",
+      "Yarn works too!"
+    );
+  }
 
-  if (!triggerDepsToUpdate) {
+  const triggerDependencies = getTriggerDependencies(packageJson);
+
+  function getVersionMismatches(deps: Dependency[], targetVersion: string): Dependency[] {
+    const mismatches: Dependency[] = [];
+
+    for (const dep of deps) {
+      if (dep.version === targetVersion) {
+        continue;
+      }
+
+      mismatches.push(dep);
+    }
+
+    return mismatches;
+  }
+
+  const versionMismatches = getVersionMismatches(triggerDependencies, cliVersion);
+
+  if (versionMismatches.length === 0) {
     if (!embedded) {
-      outro("All done");
+      outro(`Nothing to do${newCliVersion ? " ..but you should really update your CLI!" : ""}`);
     }
     return;
   }
 
-  const triggerDependencies = Object.fromEntries(
-    Object.entries({ ...packageJson.dependencies, ...packageJson.devDependencies }).filter(
-      ([name, version]) =>
-        triggerPackageFilter.test(name) && version && !version.startsWith("workspace")
-    )
-  ) as Record<string, string>;
+  prettyWarning(
+    "Mismatch between your CLI version and installed packages",
+    "We recommend pinned versions for guaranteed compatibility"
+  );
 
-  const versionedTriggerPackages = packagesWithOldAndNewVersions(packageJson, {
-    ...triggerDependencies,
-    ...triggerDepsToUpdate,
-  });
+  log.message(""); // spacing
 
-  const versionMismatchDetected =
-    versionedTriggerPackages.length > 1 &&
-    versionedTriggerPackages.some((p) => p.old !== versionedTriggerPackages[0]?.old);
-
-  if (versionMismatchDetected) {
-    log.warn(
-      "Package version mismatch detected!\nPlease update all packages to the same version to prevent errors."
-    );
-  }
-
-  mutatePackageJsonWithUpdatedPackages(packageJson, triggerDepsToUpdate);
+  // FIXME: What happens without TTY? Packages shouldn't be updated in CI.
 
   // Always require user confirmation
-  const userWantsToUpdate = await updateConfirmation(
-    versionedTriggerPackages,
-    versionMismatchDetected
-  );
+  const userWantsToUpdate = await updateConfirmation(versionMismatches, cliVersion);
 
   if (isCancel(userWantsToUpdate)) {
     throw new OutroCommandError();
   }
 
   if (!userWantsToUpdate) {
-    const outroMessage = versionMismatchDetected ? "You've been warned!" : "Okay, maybe next time!";
+    if (requireUpdate) {
+      if (!embedded) {
+        outro("You shall not pass!");
+      }
+
+      logger.log(
+        `${chalkError(
+          "X Error:"
+        )} Update required. Use \`--skip-update-check\` to enter a world of pain.`
+      );
+      process.exit(1);
+    }
 
     if (!embedded) {
-      outro(outroMessage);
+      outro("You've been warned!");
     }
 
     return;
@@ -130,10 +144,27 @@ export async function updateTriggerPackages(
   const installSpinner = spinner();
   installSpinner.start("Writing new package.json file");
 
+  // Backup package.json
+  const packageJsonBackupPath = `${packageJsonPath}.bak`;
+  await writeJSONFile(packageJsonBackupPath, readonlyPackageJson, true);
+
+  const exitHandler = async (sig: any) => {
+    log.warn(
+      `You may have to manually roll back any package.json changes. Backup written to ${packageJsonBackupPath}`
+    );
+  };
+
+  // Add exit handler to warn about manual rollback of package.json
+  // Automatically rolling back can end up overwriting with an empty file instead
+  process.prependOnceListener("exit", exitHandler);
+
+  // Update package.json
+  mutatePackageJsonWithUpdatedPackages(packageJson, versionMismatches, cliVersion);
   await writeJSONFile(packageJsonPath, packageJson, true);
 
   async function revertPackageJsonChanges() {
     await writeJSONFile(packageJsonPath, readonlyPackageJson, true);
+    await removeFile(packageJsonBackupPath);
   }
 
   installSpinner.message("Installing new package versions");
@@ -153,33 +184,69 @@ export async function updateTriggerPackages(
       `Failed to install new package versions${packageManager ? ` with ${packageManager}` : ""}`
     );
 
+    // Remove exit handler in case of failure
+    process.removeListener("exit", exitHandler);
+
     await revertPackageJsonChanges();
     throw error;
   }
 
   installSpinner.stop("Installed new package versions");
 
+  // Remove exit handler once packages have been updated, also delete backup file
+  process.removeListener("exit", exitHandler);
+  await removeFile(packageJsonBackupPath);
+
   if (!embedded) {
-    outro("Packages updated");
+    outro(
+      `Packages updated${newCliVersion ? " ..but you should really update your CLI too!" : ""}`
+    );
   }
+}
+
+type Dependency = {
+  type: "dependencies" | "devDependencies";
+  name: string;
+  version: string;
+};
+
+function getTriggerDependencies(packageJson: PackageJson): Dependency[] {
+  const deps: Dependency[] = [];
+
+  for (const type of ["dependencies", "devDependencies"] as const) {
+    for (const [name, version] of Object.entries(packageJson[type] ?? {})) {
+      if (!version) {
+        continue;
+      }
+
+      if (version.startsWith("workspace")) {
+        continue;
+      }
+
+      if (!triggerPackageFilter.test(name)) {
+        continue;
+      }
+
+      deps.push({ type, name, version });
+    }
+  }
+
+  return deps;
 }
 
 function mutatePackageJsonWithUpdatedPackages(
   packageJson: PackageJson,
-  triggerDepsToUpdate: Record<string, string>
+  depsToUpdate: Dependency[],
+  targetVersion: string
 ) {
-  for (const [packageName, newVersion] of Object.entries(triggerDepsToUpdate)) {
-    if (packageJson.dependencies?.[packageName]) {
-      packageJson.dependencies[packageName] = newVersion;
-      continue;
+  for (const { type, name, version } of depsToUpdate) {
+    if (!packageJson[type]) {
+      throw new Error(
+        `No ${type} entry found in package.json. Please try to upgrade manually instead.`
+      );
     }
 
-    if (packageJson.devDependencies?.[packageName]) {
-      packageJson.devDependencies[packageName] = newVersion;
-      continue;
-    }
-
-    throw new Error(`Package to update not found in original package.json: ${packageName}`);
+    packageJson[type]![name] = targetVersion;
   }
 }
 
@@ -197,34 +264,22 @@ function getNcuTargetVersion(version: string): RunOptions["target"] {
   }
 }
 
-function packagesWithOldAndNewVersions(packageJson: PackageJson, packagesToUpdate: NcuRunResult) {
-  return Object.entries(packagesToUpdate).map(([packageName, newVersion]) => {
-    const oldVersion =
-      packageJson.dependencies?.[packageName] ?? packageJson.devDependencies?.[packageName];
+function printUpdateTable(depsToUpdate: Dependency[], targetVersion: string): void {
+  log.message("Suggested updates");
 
-    if (!oldVersion) {
-      throw new Error(`Package to update not found in original package.json: ${packageName}`);
-    }
+  const tableData = depsToUpdate.map((dep) => ({
+    package: dep.name,
+    old: dep.version,
+    new: targetVersion,
+  }));
 
-    return {
-      package: packageName,
-      old: oldVersion,
-      new: newVersion,
-    };
-  });
+  logger.table(tableData);
 }
 
-async function updateConfirmation(
-  versionedPackages: ReturnType<typeof packagesWithOldAndNewVersions>,
-  versionMismatchDetected?: boolean
-) {
-  logger.table(versionedPackages);
+async function updateConfirmation(depsToUpdate: Dependency[], targetVersion: string) {
+  printUpdateTable(depsToUpdate, targetVersion);
 
-  let confirmMessage = "Would you like to update those packages?";
-
-  if (versionMismatchDetected) {
-    confirmMessage += " (Please say yes!)";
-  }
+  let confirmMessage = "Would you like to apply those updates?";
 
   return await confirm({
     message: confirmMessage,

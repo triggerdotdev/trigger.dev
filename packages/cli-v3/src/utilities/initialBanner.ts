@@ -54,7 +54,11 @@ export async function printStandloneInitialBanner(performUpdateCheck = true) {
   logger.log(`${chalkGrey("-".repeat(54))}`);
 }
 
-export function printDevBanner() {
+export function printDevBanner(printTopBorder = true) {
+  if (printTopBorder) {
+    logger.log(chalkGrey("-".repeat(54)));
+  }
+
   logger.log(
     `${chalkGrey("Key:")} ${chalkWorker("Version")} ${chalkGrey("|")} ${chalkTask(
       "Task"

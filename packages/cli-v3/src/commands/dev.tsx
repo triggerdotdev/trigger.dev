@@ -100,13 +100,6 @@ export async function devCommand(dir: string, options: DevCommandOptions) {
     return;
   }
 
-  if (!options.skipUpdateCheck) {
-    // An empty line makes all the difference
-    console.log();
-
-    await updateTriggerPackages(dir, { ...options }, true);
-  }
-
   const authorization = await isLoggedIn(options.profile);
 
   if (!authorization.ok) {
@@ -142,7 +135,13 @@ async function startDev(
     }
 
     await printStandloneInitialBanner(true);
-    printDevBanner();
+
+    if (!options.skipUpdateCheck) {
+      console.log(); // spacing
+      await updateTriggerPackages(dir, { ...options }, false, true);
+    }
+
+    printDevBanner(!options.skipUpdateCheck);
 
     logger.debug("Starting dev session", { dir, options, authorization });
 
