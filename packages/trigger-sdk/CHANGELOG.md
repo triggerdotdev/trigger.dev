@@ -1,5 +1,88 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.16
+
+### Patch Changes
+
+- Updated dependencies [ed2a26c86]
+  - @trigger.dev/core@3.0.0-beta.16
+  - @trigger.dev/core-backend@3.0.0-beta.16
+
+## 3.0.0-beta.15
+
+### Patch Changes
+
+- 374edef02: Updates the `trigger`, `batchTrigger` and their `*AndWait` variants to use the first parameter for the payload/items, and the second parameter for options.
+
+  Before:
+
+  ```ts
+  await yourTask.trigger({ payload: { foo: "bar" }, options: { idempotencyKey: "key_1234" } });
+  await yourTask.triggerAndWait({
+    payload: { foo: "bar" },
+    options: { idempotencyKey: "key_1234" },
+  });
+
+  await yourTask.batchTrigger({
+    items: [{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }],
+  });
+  await yourTask.batchTriggerAndWait({
+    items: [{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }],
+  });
+  ```
+
+  After:
+
+  ```ts
+  await yourTask.trigger({ foo: "bar" }, { idempotencyKey: "key_1234" });
+  await yourTask.triggerAndWait({ foo: "bar" }, { idempotencyKey: "key_1234" });
+
+  await yourTask.batchTrigger([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
+  await yourTask.batchTriggerAndWait([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
+  ```
+
+  We've also changed the API of the `triggerAndWait` result. Before, if the subtask that was triggered finished with an error, we would automatically "rethrow" the error in the parent task.
+
+  Now instead we're returning a `TaskRunResult` object that allows you to discriminate between successful and failed runs in the subtask:
+
+  Before:
+
+  ```ts
+  try {
+    const result = await yourTask.triggerAndWait({ foo: "bar" });
+
+    // result is the output of your task
+    console.log("result", result);
+  } catch (error) {
+    // handle subtask errors here
+  }
+  ```
+
+  After:
+
+  ```ts
+  const result = await yourTask.triggerAndWait({ foo: "bar" });
+
+  if (result.ok) {
+    console.log(`Run ${result.id} succeeded with output`, result.output);
+  } else {
+    console.log(`Run ${result.id} failed with error`, result.error);
+  }
+  ```
+
+- 26093896d: When using idempotency keys, triggerAndWait and batchTriggerAndWait will still work even if the existing runs have already been completed (or even partially completed, in the case of batchTriggerAndWait)
+
+  - TaskRunExecutionResult.id is now the run friendlyId, not the attempt friendlyId
+  - A single TaskRun can now have many batchItems, in the case of batchTriggerAndWait while using idempotency keys
+  - A run’s idempotencyKey is now added to the ctx as well as the TaskEvent and displayed in the span view
+  - When resolving batchTriggerAndWait, the runtimes no longer reject promises, leading to an error in the parent task
+
+- Updated dependencies [374edef02]
+- Updated dependencies [26093896d]
+- Updated dependencies [62c9a5b71]
+  - @trigger.dev/core@3.0.0-beta.15
+  - @trigger.dev/core-backend@3.0.0-beta.15
+
 ## 3.0.0-beta.14
 
 ### Patch Changes

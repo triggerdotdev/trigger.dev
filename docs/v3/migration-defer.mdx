@@ -11,7 +11,6 @@ This guide highlights the differences and should help you migrate your project.
 
 Here are some features you might be using in Defer that are coming this month to v3:
 
-- [Scheduled tasks (including CRON)](/v3/tasks-scheduled) will be available in mid-April.
 - Triggering a task with a delay (like `assignOptions` delay in Defer) will be available soon – there is [an alternative](#delay) you can use for now.
 
 You can view the full feature matrix [here](/v3/feature-matrix).
@@ -256,6 +255,36 @@ export async function runLongRunningTask() {
 
 #### Example 2: A CRON task
 
-<Warning>
-  "Scheduled" tasks will be available by mid-April. This will allow you to replace Defer CRON tasks.
-</Warning>
+We call these [scheduled tasks](/v3/tasks-scheduled) in Trigger.dev.
+
+In Defer you might have a function like this:
+
+```ts
+import { defer } from "@defer/client";
+
+async function sendMondayNewletter() {
+  // business logic here
+}
+
+export default defer.cron(sendMondayNewletter, "0 0 * * 1");
+```
+
+In Trigger.dev the task looks like this:
+
+```ts
+import { schedules } from "@trigger.dev/sdk/v3";
+
+//this task will run when any of the attached schedules trigger
+export const sendMondayNewletter = schedules.task({
+  id: "send-monday-newsletter",
+  run: async (payload) => {
+    // business logic here
+  },
+});
+```
+
+Then you need to attach a schedule to the task, either using the dashboard or in your code. You can attach unlimited schedules to a task.
+
+<Card title="Attaching schedules" icon="clock" href="/v3/tasks-scheduled">
+  How to attach a schedule to a task
+</Card>

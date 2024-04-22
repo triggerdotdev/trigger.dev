@@ -1,5 +1,21 @@
 # @trigger.dev/shopify
 
+## 3.0.0-beta.16
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.16
+- @trigger.dev/sdk@3.0.0-beta.16
+
+## 3.0.0-beta.15
+
+### Patch Changes
+
+- Updated dependencies [374edef02]
+- Updated dependencies [26093896d]
+  - @trigger.dev/sdk@3.0.0-beta.15
+  - @trigger.dev/integration-kit@3.0.0-beta.15
+
 ## 3.0.0-beta.14
 
 ### Patch Changes

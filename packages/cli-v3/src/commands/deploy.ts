@@ -43,7 +43,7 @@ import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
 
-import { Glob } from "glob";
+import { Glob, GlobOptions } from "glob";
 import type { SetOptional } from "type-fest";
 import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
 import { chalkError, chalkPurple, chalkWarning } from "../utilities/cliOutput";
@@ -57,6 +57,7 @@ import { safeJsonParse } from "../utilities/safeJsonParse";
 import { JavascriptProject } from "../utilities/javascriptProject";
 import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { escapeImportPath, spinner } from "../utilities/windows";
+import { docs, getInTouch } from "../utilities/links";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -72,6 +73,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   outputMetafile: z.string().optional(),
   apiUrl: z.string().optional(),
+  saveLogs: z.boolean().default(false),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -138,6 +140,12 @@ export function configureDeployCommand(program: Command) {
       new CommandOption(
         "--output-metafile <path>",
         "If provided, will save the esbuild metafile for the build to the specified path"
+      ).hideHelp()
+    )
+    .addOption(
+      new CommandOption(
+        "--save-logs",
+        "If provided, will save logs even for successful builds"
       ).hideHelp()
     )
     .action(async (path, options) => {
@@ -306,24 +314,41 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const image = await buildImage();
 
+  const warnings = checkLogsForWarnings(image.logs);
+
+  if (!warnings.ok) {
+    await failDeploy(
+      deploymentResponse.data.shortCode,
+      warnings.summary,
+      image.logs,
+      deploymentSpinner,
+      warnings.warnings,
+      warnings.errors
+    );
+
+    throw new SkipLoggingError(`Failed to build project image: ${warnings.summary}`);
+  }
+
   if (!image.ok) {
-    deploymentSpinner.stop(`Failed to build project.`);
-
-    // If there are logs, let's write it out to a temporary file and include the path in the error message
-    if (image.logs.trim() !== "") {
-      const logPath = join(await createTempDir(), `build-${deploymentResponse.data.shortCode}.log`);
-
-      await writeFile(logPath, image.logs);
-
-      logger.log(
-        `${chalkError("X Error:")} ${image.error}. Full build logs have been saved to ${logPath})`
-      );
-    } else {
-      logger.log(`${chalkError("X Error:")} ${image.error}.`);
-    }
+    await failDeploy(
+      deploymentResponse.data.shortCode,
+      image.error,
+      image.logs,
+      deploymentSpinner,
+      warnings.warnings
+    );
 
     throw new SkipLoggingError(`Failed to build project image: ${image.error}`);
   }
+
+  const preExitTasks = async () => {
+    printWarnings(warnings.warnings);
+
+    if (options.saveLogs) {
+      const logPath = await saveLogs(deploymentResponse.data.shortCode, image.logs);
+      log.info(`Build logs have been saved to ${logPath}`);
+    }
+  };
 
   const imageReference = options.selfHosted
     ? `${selfHostedRegistryHost ? `${selfHostedRegistryHost}/` : ""}${image.image}${
@@ -339,6 +364,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     deploymentSpinner.stop(
       `Project image built: ${imageReference}. Skipping deployment as requested`
     );
+
+    await preExitTasks();
 
     throw new SkipCommandError("Skipping deployment as requested");
   }
@@ -359,6 +386,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   if (!startIndexingResponse.success) {
     deploymentSpinner.stop(`Failed to start indexing: ${startIndexingResponse.error}`);
 
+    await preExitTasks();
+
     throw new SkipLoggingError(`Failed to start indexing: ${startIndexingResponse.error}`);
   }
 
@@ -370,11 +399,15 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   if (!finishedDeployment) {
     deploymentSpinner.stop(`Deployment failed to complete`);
 
+    await preExitTasks();
+
     throw new SkipLoggingError("Deployment failed to complete: unknown issue");
   }
 
   if (typeof finishedDeployment === "string") {
     deploymentSpinner.stop(`Deployment failed to complete: ${finishedDeployment}`);
+
+    await preExitTasks();
 
     throw new SkipLoggingError(`Deployment failed to complete: ${finishedDeployment}`);
   }
@@ -386,7 +419,13 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   switch (finishedDeployment.status) {
     case "DEPLOYED": {
-      deploymentSpinner.stop("Deployment completed");
+      if (warnings.warnings.length > 0) {
+        deploymentSpinner.stop("Deployment completed with warnings");
+      } else {
+        deploymentSpinner.stop("Deployment completed");
+      }
+
+      await preExitTasks();
 
       const taskCount = finishedDeployment.worker?.tasks.length ?? 0;
 
@@ -417,6 +456,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
               logTaskMetadataParseError(parsedError.data.zodIssues, parsedError.data.tasks);
 
+              await preExitTasks();
+
               throw new SkipLoggingError(
                 `Deployment encountered an error: ${finishedDeployment.errorData.name}`
               );
@@ -439,6 +480,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
           logESMRequireError(parsedError, resolvedConfig);
         }
 
+        await preExitTasks();
+
         throw new SkipLoggingError(
           `Deployment encountered an error: ${finishedDeployment.errorData.name}`
         );
@@ -447,20 +490,187 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
           `Deployment failed with an unknown error. Please contact eric@trigger.dev for help. ${deploymentLink}`
         );
 
+        await preExitTasks();
+
         throw new SkipLoggingError("Deployment failed with an unknown error");
       }
     }
     case "CANCELED": {
       deploymentSpinner.stop(`Deployment was canceled. ${deploymentLink}`);
 
+      await preExitTasks();
+
       throw new SkipLoggingError("Deployment was canceled");
     }
     case "TIMED_OUT": {
       deploymentSpinner.stop(`Deployment timed out. ${deploymentLink}`);
 
+      await preExitTasks();
+
       throw new SkipLoggingError("Deployment timed out");
     }
   }
+}
+
+function printErrors(errors?: string[]) {
+  for (const error of errors ?? []) {
+    log.error(`${chalkError("Error:")} ${error}`);
+  }
+}
+
+function printWarnings(warnings?: string[]) {
+  for (const warning of warnings ?? []) {
+    log.warn(`${chalkWarning("Warning:")} ${warning}`);
+  }
+}
+
+type WarningsCheckReturn =
+  | {
+      ok: true;
+      warnings: string[];
+    }
+  | {
+      ok: false;
+      summary: string;
+      errors: string[];
+      warnings: string[];
+    };
+
+type LogParserOptions = Array<{
+  regex: RegExp;
+  message: string;
+  shouldFail?: boolean;
+}>;
+
+// Try to extract useful warnings from logs. Sometimes we may even want to fail the build. This won't work if the step is cached.
+function checkLogsForWarnings(logs: string): WarningsCheckReturn {
+  const warnings: LogParserOptions = [
+    {
+      regex: /prisma:warn We could not find your Prisma schema/,
+      message: `Prisma generate failed to find the default schema. Did you include it in config.additionalFiles? ${terminalLink(
+        "Config docs",
+        docs.config.prisma
+      )}\nCustom schema paths require a postinstall script like this: \`prisma generate --schema=./custom/path/to/schema.prisma\``,
+      shouldFail: true,
+    },
+  ];
+
+  const errorMessages: string[] = [];
+  const warningMessages: string[] = [];
+
+  let shouldFail = false;
+
+  for (const warning of warnings) {
+    const matches = logs.match(warning.regex);
+
+    if (!matches) {
+      continue;
+    }
+
+    const message = getMessageFromTemplate(warning.message, matches.groups);
+
+    if (warning.shouldFail) {
+      shouldFail = true;
+      errorMessages.push(message);
+    } else {
+      warningMessages.push(message);
+    }
+  }
+
+  if (shouldFail) {
+    return {
+      ok: false,
+      summary: "Build succeeded with critical warnings. Will not proceed",
+      warnings: warningMessages,
+      errors: errorMessages,
+    };
+  }
+
+  return {
+    ok: true,
+    warnings: warningMessages,
+  };
+}
+
+// Try to extract useful error messages from the logs
+function checkLogsForErrors(logs: string) {
+  const errors: LogParserOptions = [
+    {
+      regex: /Error: Provided --schema at (?<schema>.*) doesn't exist/,
+      message: `Prisma generate failed to find the specified schema at "$schema".\nDid you include it in config.additionalFiles? ${terminalLink(
+        "Config docs",
+        docs.config.prisma
+      )}`,
+    },
+    {
+      regex: /sh: 1: (?<packageOrBinary>.*): not found/,
+      message: `$packageOrBinary not found\n\nIf it's a package: Include it in ${terminalLink(
+        "config.additionalPackages",
+        docs.config.prisma
+      )}\nIf it's a binary:  Please ${terminalLink(
+        "get in touch",
+        getInTouch
+      )} and we'll see what we can do!`,
+    },
+  ];
+
+  for (const error of errors) {
+    const matches = logs.match(error.regex);
+
+    if (!matches) {
+      continue;
+    }
+
+    const message = getMessageFromTemplate(error.message, matches.groups);
+
+    log.error(`${chalkError("Error:")} ${message}`);
+    break;
+  }
+}
+
+function getMessageFromTemplate(template: string, replacer: RegExpMatchArray["groups"]) {
+  let message = template;
+
+  if (replacer) {
+    for (const [key, value] of Object.entries(replacer)) {
+      message = message.replaceAll(`$${key}`, value);
+    }
+  }
+
+  return message;
+}
+
+async function saveLogs(shortCode: string, logs: string) {
+  const logPath = join(await createTempDir(), `build-${shortCode}.log`);
+  await writeFile(logPath, logs);
+  return logPath;
+}
+
+async function failDeploy(
+  shortCode: string,
+  errorSummary: string,
+  logs: string,
+  deploymentSpinner: ReturnType<typeof spinner>,
+  warnings?: string[],
+  errors?: string[]
+) {
+  deploymentSpinner.stop(`Failed to deploy project`);
+
+  // If there are logs, let's write it out to a temporary file and include the path in the error message
+  if (logs.trim() !== "") {
+    const logPath = await saveLogs(shortCode, logs);
+
+    printWarnings(warnings);
+    printErrors(errors);
+
+    checkLogsForErrors(logs);
+
+    outro(`${chalkError("Error:")} ${errorSummary}. Full build logs have been saved to ${logPath}`);
+  } else {
+    outro(`${chalkError("Error:")} ${errorSummary}.`);
+  }
+
+  // TODO: Let platform know so it can fail the deploy with an appropriate error
 }
 
 async function checkEnvVars(
@@ -944,7 +1154,7 @@ async function compileProject(
         "utf-8"
       );
 
-      const workerSetupPath = join(cliRootPath(), "workers", "dev", "worker-setup.js");
+      const workerSetupPath = join(cliRootPath(), "workers", "prod", "worker-setup.js");
 
       let workerContents = workerFacade
         .replace("__TASKS__", createTaskFileImports(taskFiles))
@@ -1139,9 +1349,22 @@ async function compileProject(
 
       await writeJSONFile(join(tempDir, "package.json"), packageJsonContents);
 
-      await copyAdditionalFiles(config, tempDir);
+      const copyResult = await copyAdditionalFiles(config, tempDir);
 
-      compileSpinner.stop("Project built successfully");
+      if (!copyResult.ok) {
+        compileSpinner.stop("Project built with warnings");
+
+        log.warn(
+          `No additionalFiles matches for:\n\n${copyResult.noMatches
+            .map((glob) => `- "${glob}"`)
+            .join("\n")}\n\nIf this is unexpected you should check your ${terminalLink(
+            "glob patterns",
+            "https://github.com/isaacs/node-glob?tab=readme-ov-file#glob-primer"
+          )} are valid.`
+        );
+      } else {
+        compileSpinner.stop("Project built successfully");
+      }
 
       const resolvingDependenciesResult = await resolveDependencies(
         tempDir,
@@ -1443,11 +1666,24 @@ async function gatherRequiredDependencies(
   return Object.fromEntries(Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-async function copyAdditionalFiles(config: ResolvedConfig, tempDir: string) {
+type AdditionalFilesReturn =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      noMatches: string[];
+    };
+
+async function copyAdditionalFiles(
+  config: ResolvedConfig,
+  tempDir: string
+): Promise<AdditionalFilesReturn> {
   const additionalFiles = config.additionalFiles ?? [];
+  const noMatches: string[] = [];
 
   if (additionalFiles.length === 0) {
-    return;
+    return { ok: true };
   }
 
   return await tracer.startActiveSpan(
@@ -1463,25 +1699,77 @@ async function copyAdditionalFiles(config: ResolvedConfig, tempDir: string) {
           additionalFiles,
         });
 
-        const glob = new Glob(additionalFiles, {
+        const globOptions = {
           withFileTypes: true,
           ignore: ["node_modules"],
           cwd: config.projectDir,
           nodir: true,
-        });
+        } satisfies GlobOptions;
 
-        for await (const file of glob) {
-          const relativeDestinationPath = join(
-            tempDir,
-            relative(config.projectDir, file.fullpath())
-          );
+        const globs: Array<GlobOptions> = [];
+        let i = 0;
 
-          logger.debug(`Copying file ${file.fullpath()} to ${relativeDestinationPath}`);
-          await mkdir(dirname(relativeDestinationPath), { recursive: true });
-          await copyFile(file.fullpath(), relativeDestinationPath);
+        for (const additionalFile of additionalFiles) {
+          let glob: GlobOptions | Glob<typeof globOptions>;
+
+          if (i === 0) {
+            glob = new Glob(additionalFile, globOptions);
+          } else {
+            const previousGlob = globs[i - 1];
+            if (!previousGlob) {
+              logger.error("No previous glob, this shouldn't happen", { i, additionalFiles });
+              continue;
+            }
+
+            // Use the previous glob's options and cache
+            glob = new Glob(additionalFile, previousGlob);
+          }
+
+          if (!(Symbol.asyncIterator in glob)) {
+            logger.error("Glob should be an async iterator", { glob });
+            throw new Error("Unrecoverable error while copying additional files");
+          }
+
+          let matches = 0;
+          for await (const file of glob) {
+            matches++;
+
+            // Any additional files that aren't a child of projectDir will be moved inside tempDir, so they can be part of the build context
+            // The file "../foo/bar" will be written to "tempDir/foo/bar"
+            // The file "../../bar/baz" will be written to "tempDir/bar/baz"
+            const pathInsideTempDir = relative(config.projectDir, file.fullpath())
+              .split(posix.sep)
+              .filter((p) => p !== "..")
+              .join(posix.sep);
+
+            const relativeDestinationPath = join(tempDir, pathInsideTempDir);
+
+            logger.debug(`Copying file ${file.fullpath()} to ${relativeDestinationPath}`);
+
+            await mkdir(dirname(relativeDestinationPath), { recursive: true });
+            await copyFile(file.fullpath(), relativeDestinationPath);
+          }
+
+          if (matches === 0) {
+            noMatches.push(additionalFile);
+          }
+
+          globs[i] = glob;
+          i++;
         }
 
         span.end();
+
+        if (noMatches.length > 0) {
+          return {
+            ok: false,
+            noMatches,
+          } as const;
+        }
+
+        return {
+          ok: true,
+        } as const;
       } catch (error) {
         recordSpanException(span, error);
 
