@@ -5,8 +5,8 @@ import {
   PlatformToProviderMessages,
   ProviderToPlatformMessages,
   SharedQueueToClientMessages,
-  ZodNamespace,
 } from "@trigger.dev/core/v3";
+import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { Server } from "socket.io";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";

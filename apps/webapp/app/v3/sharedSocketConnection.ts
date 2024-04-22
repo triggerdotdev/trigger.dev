@@ -1,11 +1,10 @@
+import { clientWebsocketMessages, serverWebsocketMessages } from "@trigger.dev/core/v3";
 import {
-  MessageCatalogToSocketIoEvents,
-  StructuredLogger,
   ZodMessageHandler,
   ZodMessageSender,
-  clientWebsocketMessages,
-  serverWebsocketMessages,
-} from "@trigger.dev/core/v3";
+  MessageCatalogToSocketIoEvents,
+} from "@trigger.dev/core/v3/zodMessageHandler";
+import type { StructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { Evt } from "evt";
 import { randomUUID } from "node:crypto";
 import { logger } from "~/services/logger.server";

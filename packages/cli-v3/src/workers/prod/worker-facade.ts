@@ -1,20 +1,19 @@
 import {
   Config,
-  DurableClock,
   HandleErrorFunction,
   LogLevel,
   ProdChildToWorkerMessages,
   ProdWorkerToChildMessages,
   ProjectConfig,
-  TaskExecutor,
-  ZodIpcConnection,
-  ZodSchemaParsedError,
   clock,
   getEnvVar,
   logLevels,
   taskCatalog,
   type TracingSDK,
 } from "@trigger.dev/core/v3";
+import { TaskExecutor, DurableClock } from "@trigger.dev/core/v3/workers";
+import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
+import { ZodSchemaParsedError } from "@trigger.dev/core/v3/zodMessageHandler";
 import "source-map-support/register.js";
 
 __WORKER_SETUP__;
@@ -34,13 +33,13 @@ const otelLogger = tracingSDK.getLogger("trigger-prod-worker", packageJson.versi
 import {
   ConsoleInterceptor,
   OtelTaskLogger,
-  ProdRuntimeManager,
   TaskRunErrorCodes,
   TaskRunExecution,
   TriggerTracer,
   logger,
   runtime,
 } from "@trigger.dev/core/v3";
+import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
 import * as packageJson from "../../../package.json";
 
 const durableClock = new DurableClock();

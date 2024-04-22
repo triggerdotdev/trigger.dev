@@ -1,10 +1,7 @@
 import {
   Config,
-  DurableClock,
   LogLevel,
   ProjectConfig,
-  TaskExecutor,
-  ZodSchemaParsedError,
   clock,
   getEnvVar,
   logLevels,
@@ -12,6 +9,7 @@ import {
   type HandleErrorFunction,
   type TracingSDK,
 } from "@trigger.dev/core/v3";
+import { TaskExecutor, DurableClock } from "@trigger.dev/core/v3/workers";
 
 __WORKER_SETUP__;
 declare const __WORKER_SETUP__: unknown;
@@ -29,18 +27,21 @@ const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.versio
 
 import {
   ConsoleInterceptor,
-  DevRuntimeManager,
   OtelTaskLogger,
   TaskRunErrorCodes,
   TaskRunExecution,
   TriggerTracer,
-  ZodMessageHandler,
-  ZodMessageSender,
   childToWorkerMessages,
   logger,
   runtime,
   workerToChildMessages,
 } from "@trigger.dev/core/v3";
+import { DevRuntimeManager } from "@trigger.dev/core/v3/dev";
+import {
+  ZodMessageHandler,
+  ZodMessageSender,
+  ZodSchemaParsedError,
+} from "@trigger.dev/core/v3/zodMessageHandler";
 import * as packageJson from "../../../package.json";
 
 declare const sender: ZodMessageSender<typeof childToWorkerMessages>;

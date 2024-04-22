@@ -8,9 +8,9 @@ import {
   PlatformToCoordinatorMessages,
   ProdWorkerSocketData,
   ProdWorkerToCoordinatorMessages,
-  ZodNamespace,
-  ZodSocketConnection,
 } from "@trigger.dev/core/v3";
+import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
+import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
 import { HttpReply, getTextBody, SimpleLogger } from "@trigger.dev/core-apps";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";

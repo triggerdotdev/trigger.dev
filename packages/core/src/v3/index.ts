@@ -2,10 +2,6 @@ import { BatchTriggerTaskRequestBody, TriggerTaskRequestBody } from "./schemas";
 
 export * from "./schemas";
 export * from "./apiClient";
-export * from "./zodMessageHandler";
-export * from "./zodNamespace";
-export * from "./zodSocket";
-export * from "./zodIpc";
 export * from "./errors";
 export * from "./apiErrors";
 export * from "./runtime-api";
@@ -26,6 +22,8 @@ export {
 } from "./utils/durations";
 export { getEnvVar } from "./utils/getEnv";
 
+export { taskContextManager, TaskContextSpanProcessor } from "./tasks/taskContextManager";
+
 export function parseTriggerTaskRequestBody(body: unknown) {
   return TriggerTaskRequestBody.safeParse(body);
 }
@@ -34,11 +32,6 @@ export function parseBatchTriggerTaskRequestBody(body: unknown) {
   return BatchTriggerTaskRequestBody.safeParse(body);
 }
 
-export { taskContextManager, TaskContextSpanProcessor } from "./tasks/taskContextManager";
-export type { RuntimeManager } from "./runtime/manager";
-export { DevRuntimeManager } from "./runtime/devRuntimeManager";
-export { ProdRuntimeManager } from "./runtime/prodRuntimeManager";
-export { PreciseWallClock as DurableClock } from "./clock/preciseWallClock";
 export { TriggerTracer } from "./tracer";
 
 export type { TaskLogger, LogLevel } from "./logger/taskLogger";
@@ -59,7 +52,6 @@ export { accessoryAttributes } from "./utils/styleAttributes";
 export { eventFilterMatches } from "../eventFilterMatches";
 export { omit } from "./utils/omit";
 export { TracingSDK, type TracingDiagnosticLogLevel, recordSpanException } from "./otel";
-export { TaskExecutor, type TaskExecutorOptions } from "./workers/taskExecutor";
 export { detectDependencyVersion } from "./utils/detectDependencyVersion";
 export {
   parsePacket,

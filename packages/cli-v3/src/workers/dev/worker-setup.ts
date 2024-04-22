@@ -6,10 +6,10 @@ import {
   StandardTaskCatalog,
   TracingDiagnosticLogLevel,
   TracingSDK,
-  ZodMessageSender,
   childToWorkerMessages,
   taskCatalog,
 } from "@trigger.dev/core/v3";
+import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 
 __SETUP_IMPORTED_PROJECT_CONFIG__;
 declare const __SETUP_IMPORTED_PROJECT_CONFIG__: unknown;

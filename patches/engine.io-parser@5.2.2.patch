@@ -1,0 +1,12 @@
+diff --git a/build/esm/index.d.ts b/build/esm/index.d.ts
+index f126d758bb0d2216fc2a3759c538fa15a741217b..54d6893aac1285fb1d78d854c1ab400496327570 100644
+--- a/build/esm/index.d.ts
++++ b/build/esm/index.d.ts
+@@ -2,7 +2,6 @@
+ import { encodePacket } from "./encodePacket.js";
+ import { decodePacket } from "./decodePacket.js";
+ import { Packet, PacketType, RawData, BinaryType } from "./commons.js";
+-import type { TransformStream } from "node:stream/web";
+ declare const encodePayload: (packets: Packet[], callback: (encodedPayload: string) => void) => void;
+ declare const decodePayload: (encodedPayload: string, binaryType?: BinaryType) => Packet[];
+ export declare function createPacketEncoderStream(): TransformStream<Packet, any>;

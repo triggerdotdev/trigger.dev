@@ -1,5 +1,5 @@
 import { Logger } from "@trigger.dev/core-backend";
-import { ZodMessageCatalogSchema, ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3";
+import { ZodMessageCatalogSchema, ZodMessageHandler } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
 import Redis, { RedisOptions } from "ioredis";
 import { z } from "zod";

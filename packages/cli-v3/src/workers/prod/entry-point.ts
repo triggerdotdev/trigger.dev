@@ -6,8 +6,8 @@ import {
   ProdWorkerToCoordinatorMessages,
   TaskResource,
   WaitReason,
-  ZodSocketConnection,
 } from "@trigger.dev/core/v3";
+import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
 import { HttpReply, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";

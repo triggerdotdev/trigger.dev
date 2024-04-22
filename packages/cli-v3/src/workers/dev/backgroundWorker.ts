@@ -11,13 +11,12 @@ import {
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
-  ZodMessageHandler,
-  ZodMessageSender,
   childToWorkerMessages,
   correctErrorStackTrace,
   formatDurationMilliseconds,
   workerToChildMessages,
 } from "@trigger.dev/core/v3";
+import { ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import dotenv from "dotenv";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";

@@ -7,9 +7,9 @@ import {
   PlatformToProviderMessages,
   ProviderToPlatformMessages,
   SharedQueueToClientMessages,
-  ZodMessageSender,
-  ZodSocketConnection,
 } from "@trigger.dev/core/v3";
+import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
+import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
 import { getRandomPortNumber, HttpReply, getTextBody } from "./http";
 import { SimpleLogger } from "./logger";
 

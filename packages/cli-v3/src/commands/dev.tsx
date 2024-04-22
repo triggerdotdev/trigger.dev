@@ -2,12 +2,11 @@ import {
   CreateBackgroundWorkerRequestBody,
   ResolvedConfig,
   TaskResource,
-  ZodMessageHandler,
-  ZodMessageSender,
   clientWebsocketMessages,
   detectDependencyVersion,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
+import { ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import { watch } from "chokidar";
 import { Command } from "commander";
 import { BuildContext, Metafile, context } from "esbuild";
