@@ -2,6 +2,7 @@ import { LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
+import { v3RunSpanPath } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -33,8 +34,20 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return new Response("Not found", { status: 404 });
   }
 
+  const run = await prisma.taskRun.findUnique({
+    where: {
+      friendlyId: validatedParams.runParam,
+    },
+  });
+
+  if (!run) {
+    throw new Response("Not found", { status: 404 });
+  }
+
   // Redirect to the project's runs page
   return redirect(
-    `/orgs/${project.organization.slug}/projects/v3/${project.slug}/runs/${validatedParams.runParam}`
+    v3RunSpanPath({ slug: project.organization.slug }, { slug: project.slug }, run, {
+      spanId: run.spanId,
+    })
   );
 }

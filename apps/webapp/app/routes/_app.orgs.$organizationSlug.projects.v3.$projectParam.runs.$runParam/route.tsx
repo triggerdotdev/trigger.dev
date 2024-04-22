@@ -1,10 +1,13 @@
 import {
+  ArrowsPointingInIcon,
+  ArrowsPointingOutIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
-import { Outlet, useNavigate, useParams, useRevalidator } from "@remix-run/react";
+import type { Location } from "@remix-run/react";
+import { useParams, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
 import {
@@ -23,7 +26,7 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -33,6 +36,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
+import { ShortcutKey, variants } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
@@ -45,8 +49,9 @@ import { useDebounce } from "~/hooks/useDebounce";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
+import { useReplaceLocation } from "~/hooks/useReplaceLocation";
+import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useUser } from "~/hooks/useUser";
 import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";
@@ -60,6 +65,11 @@ import {
   v3RunStreamingPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
+import { number } from "zod";
+import { useHotkeys } from "react-hotkeys-hook";
+import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
+import { Header3 } from "~/components/primitives/Headers";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -82,19 +92,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-function getSpanId(path: string): string | undefined {
-  const regex = /spans\/([^\/]*)/;
-  const match = path.match(regex);
-  return match ? match[1] : undefined;
+function getSpanId(location: Location<any>): string | undefined {
+  const search = new URLSearchParams(location.search);
+  return search.get("span") ?? undefined;
 }
 
 export default function Page() {
   const { run, trace, resizeSettings } = useTypedLoaderData<typeof loader>();
-  const navigate = useNavigate();
   const organization = useOrganization();
-  const pathName = usePathName();
   const project = useProject();
   const user = useUser();
+  const { location, replaceSearchParam } = useReplaceLocation();
+  const selectedSpanId = getSpanId(location);
 
   const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
 
@@ -133,10 +142,8 @@ export default function Page() {
 
   const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
 
-  const selectedSpanId = getSpanId(pathName);
-
   const changeToSpan = useDebounce((selectedSpan: string) => {
-    navigate(v3RunSpanPath(organization, project, run, { spanId: selectedSpan }));
+    replaceSearchParam("span", selectedSpan);
   }, 250);
 
   const revalidator = useRevalidator();
@@ -166,62 +173,47 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
-          {selectedSpanId === undefined ? (
-            <TasksTreeView
-              selectedId={selectedSpanId}
-              key={events[0]?.id ?? "-"}
-              events={events}
-              parentRunFriendlyId={parentRunFriendlyId}
-              onSelectedIdChanged={(selectedSpan) => {
-                //instantly close the panel if no span is selected
-                if (!selectedSpan) {
-                  navigate(v3RunPath(organization, project, run));
-                  return;
-                }
+          <ResizablePanelGroup
+            direction="horizontal"
+            className="h-full max-h-full"
+            onLayout={(layout) => {
+              if (layout.length !== 2) return;
+              if (!selectedSpanId) return;
+              setResizableRunSettings(document, layout);
+            }}
+          >
+            <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0]}>
+              <TasksTreeView
+                selectedId={selectedSpanId}
+                key={events[0]?.id ?? "-"}
+                events={events}
+                parentRunFriendlyId={parentRunFriendlyId}
+                onSelectedIdChanged={(selectedSpan) => {
+                  //instantly close the panel if no span is selected
+                  if (!selectedSpan) {
+                    replaceSearchParam("span");
+                    return;
+                  }
 
-                changeToSpan(selectedSpan);
-              }}
-              totalDuration={duration}
-              rootSpanStatus={rootSpanStatus}
-              rootStartedAt={rootStartedAt}
-              environmentType={run.environment.type}
-            />
-          ) : (
-            <ResizablePanelGroup
-              direction="horizontal"
-              className="h-full max-h-full"
-              onLayout={(layout) => {
-                if (layout.length !== 2) return;
-                setResizableRunSettings(document, layout);
-              }}
-            >
-              <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0]}>
-                <TasksTreeView
-                  selectedId={selectedSpanId}
-                  key={events[0]?.id ?? "-"}
-                  events={events}
-                  parentRunFriendlyId={parentRunFriendlyId}
-                  onSelectedIdChanged={(selectedSpan) => {
-                    //instantly close the panel if no span is selected
-                    if (!selectedSpan) {
-                      navigate(v3RunPath(organization, project, run));
-                      return;
-                    }
-
-                    changeToSpan(selectedSpan);
-                  }}
-                  totalDuration={duration}
-                  rootSpanStatus={rootSpanStatus}
-                  rootStartedAt={rootStartedAt}
-                  environmentType={run.environment.type}
+                  changeToSpan(selectedSpan);
+                }}
+                totalDuration={duration}
+                rootSpanStatus={rootSpanStatus}
+                rootStartedAt={rootStartedAt}
+                environmentType={run.environment.type}
+              />
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            {selectedSpanId && (
+              <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.layout?.[1]}>
+                <SpanView
+                  runParam={run.friendlyId}
+                  spanId={selectedSpanId}
+                  closePanel={() => replaceSearchParam("span")}
                 />
               </ResizablePanel>
-              <ResizableHandle withHandle />
-              <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.layout?.[1]}>
-                <Outlet key={selectedSpanId} />
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          )}
+            )}
+          </ResizablePanelGroup>
         </div>
       </PageBody>
     </>
@@ -263,6 +255,9 @@ function TasksTreeView({
     getNodeProps,
     toggleNodeSelection,
     toggleExpandNode,
+    expandAllBelowDepth,
+    toggleExpandLevel,
+    collapseAllBelowDepth,
     selectNode,
     scrollToNode,
     virtualizer,
@@ -286,7 +281,7 @@ function TasksTreeView({
   });
 
   return (
-    <div className="grid h-full grid-rows-[2.5rem_1fr] overflow-hidden">
+    <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Input
           placeholder="Search log"
@@ -297,29 +292,11 @@ function TasksTreeView({
           onChange={(e) => setFilterText(e.target.value)}
         />
         <div className="flex items-center gap-2">
-          <LiveReloadingStatus rootSpanCompleted={rootSpanStatus !== "executing"} />
           <Switch
             variant="small"
             label="Errors only"
             checked={errorsOnly}
             onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
-          />
-          <Switch
-            variant="small"
-            label="Show durations"
-            checked={showDurations}
-            onCheckedChange={(e) => setShowDurations(e.valueOf())}
-          />
-          <Slider
-            variant={"tertiary"}
-            className="w-20"
-            LeadingIcon={MagnifyingGlassMinusIcon}
-            TrailingIcon={MagnifyingGlassPlusIcon}
-            value={[scale]}
-            onValueChange={(value) => setScale(value[0])}
-            min={0}
-            max={1}
-            step={0.05}
           />
         </div>
       </div>
@@ -333,14 +310,15 @@ function TasksTreeView({
         {/* Tree list */}
         <ResizablePanel order={1} minSize={20} defaultSize={50} className="pl-3">
           <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
-            <div className="flex items-center">
+            <div className="flex items-center pr-2">
               {parentRunFriendlyId ? (
                 <ShowParentLink runFriendlyId={parentRunFriendlyId} />
               ) : (
-                <Paragraph variant="small" className="text-charcoal-500">
+                <Paragraph variant="small" className="flex-1 text-charcoal-500">
                   This is the root task
                 </Paragraph>
               )}
+              <LiveReloadingStatus rootSpanCompleted={rootSpanStatus !== "executing"} />
             </div>
             <TreeView
               parentRef={parentRef}
@@ -355,13 +333,13 @@ function TasksTreeView({
                 <>
                   <div
                     className={cn(
-                      "delay-[25ms] flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2 transition-colors",
+                      "flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
                       state.selected
                         ? "bg-grid-dimmed hover:bg-grid-bright"
                         : "bg-transparent hover:bg-grid-dimmed"
                     )}
                     onClick={() => {
-                      toggleNodeSelection(node.id);
+                      selectNode(node.id);
                     }}
                   >
                     <div className="flex h-8 items-center">
@@ -379,7 +357,15 @@ function TasksTreeView({
                         )}
                         onClick={(e) => {
                           e.stopPropagation();
-                          toggleExpandNode(node.id);
+                          if (e.altKey) {
+                            if (state.expanded) {
+                              collapseAllBelowDepth(node.level);
+                            } else {
+                              expandAllBelowDepth(node.level);
+                            }
+                          } else {
+                            toggleExpandNode(node.id);
+                          }
                           scrollToNode(node.id);
                         }}
                       >
@@ -445,6 +431,50 @@ function TasksTreeView({
           />
         </ResizablePanel>
       </ResizablePanelGroup>
+      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
+        <div className="grow @container">
+          <div className="hidden items-center gap-4 @[42rem]:flex">
+            <KeyboardShortcuts
+              expandAllBelowDepth={expandAllBelowDepth}
+              collapseAllBelowDepth={collapseAllBelowDepth}
+              toggleExpandLevel={toggleExpandLevel}
+              setShowDurations={setShowDurations}
+            />
+          </div>
+          <div className="@[42rem]:hidden">
+            <Popover>
+              <PopoverArrowTrigger>Shortcuts</PopoverArrowTrigger>
+              <PopoverContent
+                className="min-w-[20rem] overflow-y-auto p-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                align="start"
+              >
+                <Header3 spacing>Keyboard shortcuts</Header3>
+                <div className="flex flex-col gap-2">
+                  <KeyboardShortcuts
+                    expandAllBelowDepth={expandAllBelowDepth}
+                    collapseAllBelowDepth={collapseAllBelowDepth}
+                    toggleExpandLevel={toggleExpandLevel}
+                    setShowDurations={setShowDurations}
+                  />
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <Slider
+            variant={"tertiary"}
+            className="w-20"
+            LeadingIcon={MagnifyingGlassMinusIcon}
+            TrailingIcon={MagnifyingGlassPlusIcon}
+            value={[scale]}
+            onValueChange={(value) => setScale(value[0])}
+            min={0}
+            max={1}
+            step={0.05}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -738,6 +768,7 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
       fullWidth
       textAlignLeft
       shortcut={{ key: "p" }}
+      className="flex-1"
     >
       {mouseOver ? (
         <ShowParentIconSelected className="h-4 w-4 text-indigo-500" />
@@ -881,6 +912,95 @@ function ConnectedDevWarning() {
           </Paragraph>
         </div>
       </Callout>
+    </div>
+  );
+}
+
+function KeyboardShortcuts({
+  expandAllBelowDepth,
+  collapseAllBelowDepth,
+  toggleExpandLevel,
+  setShowDurations,
+}: {
+  expandAllBelowDepth: (depth: number) => void;
+  collapseAllBelowDepth: (depth: number) => void;
+  toggleExpandLevel: (depth: number) => void;
+  setShowDurations: (show: (show: boolean) => boolean) => void;
+}) {
+  return (
+    <>
+      <ArrowKeyShortcuts />
+      <ShortcutWithAction
+        shortcut={{ key: "e" }}
+        action={() => expandAllBelowDepth(0)}
+        title="Expand all"
+      />
+      <ShortcutWithAction
+        shortcut={{ key: "c" }}
+        action={() => collapseAllBelowDepth(1)}
+        title="Collapse all"
+      />
+      <NumberShortcuts toggleLevel={(number) => toggleExpandLevel(number)} />
+      <ShortcutWithAction
+        shortcut={{ key: "d" }}
+        action={() => setShowDurations((d) => !d)}
+        title="Toggle durations"
+      />
+    </>
+  );
+}
+
+function ArrowKeyShortcuts() {
+  return (
+    <div className="flex items-center gap-0.5">
+      <ShortcutKey shortcut={{ key: "arrowup" }} variant="medium" className="ml-0 mr-0" />
+      <ShortcutKey shortcut={{ key: "arrowdown" }} variant="medium" className="ml-0 mr-0" />
+      <ShortcutKey shortcut={{ key: "arrowleft" }} variant="medium" className="ml-0 mr-0" />
+      <ShortcutKey shortcut={{ key: "arrowright" }} variant="medium" className="ml-0 mr-0" />
+      <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
+        Navigate
+      </Paragraph>
+    </div>
+  );
+}
+
+function ShortcutWithAction({
+  shortcut,
+  title,
+  action,
+}: {
+  shortcut: Shortcut;
+  title: string;
+  action: () => void;
+}) {
+  useShortcutKeys({
+    shortcut,
+    action,
+  });
+
+  return (
+    <div className="flex items-center gap-0.5">
+      <ShortcutKey shortcut={shortcut} variant="medium" className="ml-0 mr-0" />
+      <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
+        {title}
+      </Paragraph>
+    </div>
+  );
+}
+
+function NumberShortcuts({ toggleLevel }: { toggleLevel: (depth: number) => void }) {
+  useHotkeys(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"], (event, hotkeysEvent) => {
+    toggleLevel(Number(event.key));
+  });
+
+  return (
+    <div className="flex items-center gap-0.5">
+      <span className={cn(variants.medium, "ml-0 mr-0")}>0</span>
+      <span className="text-[0.75rem] text-text-dimmed">–</span>
+      <span className={cn(variants.medium, "ml-0 mr-0")}>9</span>
+      <Paragraph variant="extra-small" className="ml-1.5 whitespace-nowrap">
+        Toggle level
+      </Paragraph>
     </div>
   );
 }

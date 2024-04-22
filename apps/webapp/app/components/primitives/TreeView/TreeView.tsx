@@ -1,10 +1,10 @@
 import { VirtualItem, Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
+import { motion } from "framer-motion";
 import { MutableRefObject, RefObject, useCallback, useEffect, useReducer, useRef } from "react";
 import { UnmountClosed } from "react-collapse";
 import { cn } from "~/utils/cn";
 import { NodeState, NodesState, reducer } from "./reducer";
 import { applyFilterToState, concreteStateFromInput, selectedIdFromState } from "./utils";
-import { motion } from "framer-motion";
 
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
@@ -165,6 +165,11 @@ export type UseTreeStateOutput = {
   expandNode: (id: string, scrollToNode?: boolean) => void;
   collapseNode: (id: string) => void;
   toggleExpandNode: (id: string, scrollToNode?: boolean) => void;
+  expandAllBelowDepth: (depth: number) => void;
+  collapseAllBelowDepth: (depth: number) => void;
+  expandLevel: (level: number) => void;
+  collapseLevel: (level: number) => void;
+  toggleExpandLevel: (level: number) => void;
   selectFirstVisibleNode: (scrollToNode?: boolean) => void;
   selectLastVisibleNode: (scrollToNode?: boolean) => void;
   selectNextVisibleNode: (scrollToNode?: boolean) => void;
@@ -333,6 +338,41 @@ export function useTree<TData>({
     [state]
   );
 
+  const expandAllBelowDepth = useCallback(
+    (depth: number) => {
+      dispatch({ type: "EXPAND_ALL_BELOW_DEPTH", payload: { tree, depth } });
+    },
+    [state]
+  );
+
+  const collapseAllBelowDepth = useCallback(
+    (depth: number) => {
+      dispatch({ type: "COLLAPSE_ALL_BELOW_DEPTH", payload: { tree, depth } });
+    },
+    [state]
+  );
+
+  const expandLevel = useCallback(
+    (level: number) => {
+      dispatch({ type: "EXPAND_LEVEL", payload: { tree, level } });
+    },
+    [state]
+  );
+
+  const collapseLevel = useCallback(
+    (level: number) => {
+      dispatch({ type: "COLLAPSE_LEVEL", payload: { tree, level } });
+    },
+    [state]
+  );
+
+  const toggleExpandLevel = useCallback(
+    (level: number) => {
+      dispatch({ type: "TOGGLE_EXPAND_LEVEL", payload: { tree, level } });
+    },
+    [state]
+  );
+
   const getTreeProps = useCallback(() => {
     return {
       role: "tree",
@@ -368,25 +408,48 @@ export function useTree<TData>({
           }
           case "Left":
           case "ArrowLeft": {
+            e.preventDefault();
+
             const selected = selectedIdFromState(state.nodes);
             if (selected) {
               const treeNode = tree.find((node) => node.id === selected);
-              if (treeNode && treeNode.hasChildren && state.nodes[selected].expanded) {
+
+              if (e.altKey) {
+                if (treeNode && treeNode.hasChildren) {
+                  collapseLevel(treeNode.level);
+                }
+                break;
+              }
+
+              const shouldCollapse =
+                treeNode && treeNode.hasChildren && state.nodes[selected].expanded;
+              if (shouldCollapse) {
                 collapseNode(selected);
               } else {
                 selectParentNode(true);
               }
             }
-            e.preventDefault();
+
             break;
           }
           case "Right":
           case "ArrowRight": {
+            e.preventDefault();
+
             const selected = selectedIdFromState(state.nodes);
+
             if (selected) {
+              const treeNode = tree.find((node) => node.id === selected);
+
+              if (e.altKey) {
+                if (treeNode && treeNode.hasChildren) {
+                  expandLevel(treeNode.level);
+                }
+                break;
+              }
+
               expandNode(selected, true);
             }
-            e.preventDefault();
             break;
           }
           case "Escape": {
@@ -427,6 +490,11 @@ export function useTree<TData>({
     expandNode,
     collapseNode,
     toggleExpandNode,
+    expandAllBelowDepth,
+    collapseAllBelowDepth,
+    expandLevel,
+    collapseLevel,
+    toggleExpandLevel,
     selectFirstVisibleNode,
     selectLastVisibleNode,
     selectNextVisibleNode,
