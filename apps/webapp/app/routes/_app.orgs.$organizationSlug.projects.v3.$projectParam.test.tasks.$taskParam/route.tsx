@@ -6,7 +6,6 @@ import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runt
 import { TaskRunStatus } from "@trigger.dev/database";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { z } from "zod";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
@@ -37,7 +36,7 @@ import {
   TestTaskPresenter,
 } from "~/presenters/v3/TestTaskPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { docsPath, v3RunPath, v3TaskParamsSchema } from "~/utils/pathBuilder";
+import { docsPath, v3RunSpanPath, v3TaskParamsSchema } from "~/utils/pathBuilder";
 import { TestTaskService } from "~/v3/services/testTask.server";
 import { TestTaskData } from "~/v3/testTask";
 
@@ -77,7 +76,12 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   return redirectWithSuccessMessage(
-    v3RunPath({ slug: organizationSlug }, { slug: projectParam }, { friendlyId: run.friendlyId }),
+    v3RunSpanPath(
+      { slug: organizationSlug },
+      { slug: projectParam },
+      { friendlyId: run.friendlyId },
+      { spanId: run.spanId }
+    ),
     request,
     "Test run created"
   );
