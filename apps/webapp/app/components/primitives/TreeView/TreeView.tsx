@@ -434,6 +434,8 @@ export function useTree<TData>({
           }
           case "Right":
           case "ArrowRight": {
+            e.preventDefault();
+
             const selected = selectedIdFromState(state.nodes);
 
             if (selected) {
@@ -443,11 +445,11 @@ export function useTree<TData>({
                 if (treeNode && treeNode.hasChildren) {
                   expandLevel(treeNode.level);
                 }
+                break;
               }
 
               expandNode(selected, true);
             }
-            e.preventDefault();
             break;
           }
           case "Escape": {
