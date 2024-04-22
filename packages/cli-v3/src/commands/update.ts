@@ -79,6 +79,11 @@ export async function updateTriggerPackages(
     );
   }
 
+  if (!process.stdout.isTTY) {
+    (embedded ? log.info : outro)("No TTY attached, skipping package update check");
+    return;
+  }
+
   const triggerDependencies = getTriggerDependencies(packageJson);
 
   function getVersionMismatches(deps: Dependency[], targetVersion: string): Dependency[] {
@@ -111,8 +116,6 @@ export async function updateTriggerPackages(
 
   log.message(""); // spacing
 
-  // FIXME: What happens without TTY? Packages shouldn't be updated in CI.
-
   // Always require user confirmation
   const userWantsToUpdate = await updateConfirmation(versionMismatches, cliVersion);
 
@@ -122,9 +125,7 @@ export async function updateTriggerPackages(
 
   if (!userWantsToUpdate) {
     if (requireUpdate) {
-      if (!embedded) {
-        outro("You shall not pass!");
-      }
+      outro("You shall not pass!");
 
       logger.log(
         `${chalkError(
