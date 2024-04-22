@@ -60,7 +60,7 @@ export default function Page() {
   const user = useUser();
 
   return (
-    <>
+    <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
       {job.hasIntegrationsRequiringAction && (
         <Callout variant="error" to={organizationIntegrationsPath(organization)} className="mb-2">
           {simplur`This Job has ${
@@ -96,6 +96,6 @@ export default function Page() {
           </div>
         )}
       </Help>
-    </>
+    </div>
   );
 }
