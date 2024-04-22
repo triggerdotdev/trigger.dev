@@ -4,7 +4,7 @@ import { User } from "@trigger.dev/database";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { RunListAppliedFilters, RunListItem } from "~/presenters/v3/RunListPresenter.server";
-import { docsPath, v3RunPath, v3TestPath } from "~/utils/pathBuilder";
+import { docsPath, v3RunPath, v3RunSpanPath, v3TestPath } from "~/utils/pathBuilder";
 import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
@@ -78,7 +78,7 @@ export function TaskRunsTable({
           <BlankState isLoading={isLoading} filters={filters} />
         ) : (
           runs.map((run) => {
-            const path = v3RunPath(organization, project, run);
+            const path = v3RunSpanPath(organization, project, run, { spanId: run.spanId });
             const usernameForEnv =
               currentUser.id !== run.environment.userId ? run.environment.userName : undefined;
             return (

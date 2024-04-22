@@ -106,6 +106,7 @@ export class RunListPresenter {
         lockedAt: Date | null;
         completedAt: Date | null;
         isTest: boolean;
+        spanId: string;
         attempts: BigInt;
       }[]
     >`
@@ -121,6 +122,7 @@ export class RunListPresenter {
     tr."lockedAt" AS "lockedAt",
     tra."completedAt" AS "completedAt",
     tr."isTest" AS "isTest",
+    tr."spanId" AS "spanId",
     COUNT(tra.id) AS attempts
   FROM
     ${sqlDatabaseSchema}."TaskRun" tr
@@ -225,6 +227,7 @@ export class RunListPresenter {
           status: run.status,
           version: run.version,
           taskIdentifier: run.taskIdentifier,
+          spanId: run.spanId,
           attempts: Number(run.attempts),
           isReplayable: true,
           isCancellable: CANCELLABLE_STATUSES.includes(run.status),
