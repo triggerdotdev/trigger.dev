@@ -1,11 +1,10 @@
 import { VirtualItem, Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
+import { motion } from "framer-motion";
 import { MutableRefObject, RefObject, useCallback, useEffect, useReducer, useRef } from "react";
 import { UnmountClosed } from "react-collapse";
 import { cn } from "~/utils/cn";
 import { NodeState, NodesState, reducer } from "./reducer";
 import { applyFilterToState, concreteStateFromInput, selectedIdFromState } from "./utils";
-import { motion } from "framer-motion";
-import exp from "constants";
 
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
