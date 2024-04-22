@@ -148,7 +148,6 @@ export default function Page() {
                                 ))}
                               </div>
                             </TableCell>
-
                             <TableCell to={path}>
                               {task.latestRun ? (
                                 <div
