@@ -29,7 +29,11 @@ import {
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { TaskFunctionName, TaskPath } from "~/components/runs/v3/TaskPath";
-import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
+import {
+  TaskRunStatusCombo,
+  TaskRunStatusIcon,
+  runStatusClassNameColor,
+} from "~/components/runs/v3/TaskRunStatus";
 import {
   TaskTriggerSourceIcon,
   taskTriggerSourceDescription,
@@ -97,35 +101,26 @@ export default function Page() {
         <div className={cn("grid h-full grid-cols-1 gap-4")}>
           <div className="h-full">
             {hasTasks ? (
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4 pb-4">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHeaderCell>Task ID</TableHeaderCell>
                       <TableHeaderCell>Task</TableHeaderCell>
                       <TableHeaderCell>Path</TableHeaderCell>
-                      <TableHeaderCell>Environment</TableHeaderCell>
+                      <TableHeaderCell>Environments</TableHeaderCell>
                       <TableHeaderCell>Last run</TableHeaderCell>
-                      <TableHeaderCell>
-                        <div className="sr-only">Last run status</div>
-                      </TableHeaderCell>
-                      <TableHeaderCell>Created at</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {tasks.length > 0 ? (
                       tasks.map((task) => {
-                        const usernameForEnv =
-                          user.id !== task.environment.userId
-                            ? task.environment.userName
-                            : undefined;
                         const path = v3RunsPath(organization, project, {
                           tasks: [task.slug],
-                          environments: [task.environment.id],
                         });
                         return (
-                          <TableRow key={task.id} className="group">
+                          <TableRow key={task.slug} className="group">
                             <TableCell to={path}>
                               <div className="flex items-center gap-2">
                                 <SimpleTooltip
@@ -143,35 +138,34 @@ export default function Page() {
                             </TableCell>
                             <TableCell to={path}>{task.filePath}</TableCell>
                             <TableCell to={path}>
-                              <EnvironmentLabel
-                                environment={task.environment}
-                                userName={usernameForEnv}
-                              />
+                              <div className="space-x-2">
+                                {task.environments.map((environment) => (
+                                  <EnvironmentLabel
+                                    key={environment.id}
+                                    environment={environment}
+                                    userName={environment.userName}
+                                  />
+                                ))}
+                              </div>
                             </TableCell>
 
                             <TableCell to={path}>
                               {task.latestRun ? (
                                 <div
                                   className={cn(
-                                    "flex items-center gap-2",
-                                    classForTaskRunStatus(task.latestRun.status)
+                                    "flex items-center gap-1",
+                                    runStatusClassNameColor(task.latestRun.status)
                                   )}
                                 >
+                                  <TaskRunStatusIcon
+                                    status={task.latestRun.status}
+                                    className="h-4 w-4"
+                                  />
                                   <DateTime date={task.latestRun.createdAt} />
                                 </div>
                               ) : (
                                 "Never run"
                               )}
-                            </TableCell>
-                            <TableCell to={path}>
-                              {task.latestRun ? (
-                                <TaskRunStatusCombo status={task.latestRun.status} />
-                              ) : (
-                                "–"
-                              )}
-                            </TableCell>
-                            <TableCell to={path}>
-                              <DateTime date={task.createdAt} />
                             </TableCell>
                             <TableCellChevron to={path} />
                           </TableRow>
@@ -195,16 +189,6 @@ export default function Page() {
       </PageBody>
     </PageContainer>
   );
-}
-
-function classForTaskRunStatus(status: TaskRunStatus) {
-  switch (status) {
-    case "SYSTEM_FAILURE":
-    case "COMPLETED_WITH_ERRORS":
-      return "text-error";
-    default:
-      return "";
-  }
 }
 
 function CreateTaskInstructions() {

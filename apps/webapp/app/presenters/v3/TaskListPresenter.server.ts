@@ -1,11 +1,32 @@
-import { Prisma, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
+import {
+  Prisma,
+  RuntimeEnvironmentType,
+  TaskRunStatus,
+  TaskTriggerSource,
+} from "@trigger.dev/database";
 import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
+import { sortEnvironments } from "~/services/environmentSort.server";
 import { getUsername } from "~/utils/username";
 
-export type Task = Awaited<ReturnType<TaskListPresenter["call"]>>[0];
+export type Task = {
+  slug: string;
+  exportName: string;
+  filePath: string;
+  createdAt: Date;
+  triggerSource: TaskTriggerSource;
+  environments: {
+    id: string;
+    type: RuntimeEnvironmentType;
+    userName?: string;
+  }[];
+  latestRun?: {
+    createdAt: Date;
+    status: TaskRunStatus;
+  };
+};
 
 export class TaskListPresenter {
   #prismaClient: PrismaClient;
@@ -64,73 +85,84 @@ export class TaskListPresenter {
         triggerSource: TaskTriggerSource;
       }[]
     >`
-    SELECT DISTINCT ON(bwt.slug, bwt."runtimeEnvironmentId")
-      bwt.slug,
-      bwt.id,
-      bwt."exportName",
-      bwt."filePath",
-      bwt."runtimeEnvironmentId",
-      bwt."createdAt",
-      bwt."triggerSource"
-    FROM
-      ${sqlDatabaseSchema}."BackgroundWorkerTask" as bwt
-    WHERE bwt."projectId" = ${project.id}
-    ORDER BY
-      bwt.slug,
-      bwt."runtimeEnvironmentId",
-      bwt."createdAt" DESC;`;
+    WITH workers AS (
+      SELECT DISTINCT ON ("runtimeEnvironmentId") id, "runtimeEnvironmentId", version
+      FROM ${sqlDatabaseSchema}."BackgroundWorker"
+      WHERE "runtimeEnvironmentId" IN (${Prisma.join(project.environments.map((e) => e.id))})
+      ORDER BY "runtimeEnvironmentId", "createdAt" DESC
+    )
+    SELECT tasks.id, slug, "filePath", "exportName", "triggerSource", tasks."runtimeEnvironmentId", tasks."createdAt"
+    FROM workers
+    JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" tasks ON tasks."workerId" = workers.id
+    ORDER BY slug ASC;`;
 
     let latestRuns = [] as {
       createdAt: Date;
       status: TaskRunStatus;
-      lockedById: string;
+      taskIdentifier: string;
     }[];
 
     if (tasks.length > 0) {
+      const uniqueTaskSlugs = new Set(tasks.map((t) => t.slug));
       latestRuns = await this.#prismaClient.$queryRaw<
         {
           createdAt: Date;
           status: TaskRunStatus;
-          lockedById: string;
+          taskIdentifier: string;
         }[]
       >`
       SELECT * FROM (
         SELECT
           "createdAt",
           "status",
-          "lockedById",
-          ROW_NUMBER() OVER (PARTITION BY "lockedById" ORDER BY "updatedAt" DESC) AS rn
+          "taskIdentifier",
+          ROW_NUMBER() OVER (PARTITION BY "taskIdentifier" ORDER BY "updatedAt" DESC) AS rn
         FROM
           ${sqlDatabaseSchema}."TaskRun"
         WHERE
-          "lockedById" IN(${Prisma.join(tasks.map((t) => t.id))})
-            ) t
-            WHERE rn = 1;`;
+          "taskIdentifier" IN(${Prisma.join(Array.from(uniqueTaskSlugs))})
+          AND "projectId" = ${project.id}
+      ) t
+      WHERE rn = 1;`;
     }
 
-    return tasks.map((task) => {
-      const latestRun = latestRuns.find((r) => r.lockedById === task.id);
+    //group by the task identifier (task.slug). Add the latestRun and add all the environments.
+    const outputTasks = tasks.reduce((acc, task) => {
+      const latestRun = latestRuns.find((r) => r.taskIdentifier === task.slug);
       const environment = project.environments.find((env) => env.id === task.runtimeEnvironmentId);
       if (!environment) {
         throw new Error(`Environment not found for TaskRun ${task.id}`);
       }
 
-      return {
-        ...task,
-        environment: {
-          id: environment.id,
-          type: environment.type,
-          slug: environment.slug,
-          userId: environment.orgMember?.user.id,
-          userName: getUsername(environment.orgMember?.user),
-        },
-        latestRun: latestRun
-          ? {
-              createdAt: latestRun.createdAt,
-              status: latestRun.status,
-            }
-          : undefined,
-      };
-    });
+      let existingTask = acc.find((t) => t.slug === task.slug);
+
+      if (!existingTask) {
+        existingTask = {
+          ...task,
+          environments: [],
+        };
+        acc.push(existingTask);
+      }
+
+      existingTask.environments.push({
+        id: environment.id,
+        type: environment.type,
+        userName: getUsername(environment.orgMember?.user),
+      });
+
+      //order the environments
+      existingTask.environments = sortEnvironments(existingTask.environments);
+
+      existingTask.latestRun = latestRun
+        ? {
+            createdAt: latestRun.createdAt,
+            status: latestRun.status,
+          }
+        : undefined;
+
+      return acc;
+    }, [] as Task[]);
+
+    return outputTasks;
   }
 }
