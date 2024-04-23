@@ -1,5 +1,12 @@
 # trigger.dev
 
+## 3.0.0-beta.17
+
+### Patch Changes
+
+- b20760173: v3 CLI update command and package manager detection fix
+  - @trigger.dev/core@3.0.0-beta.17
+
 ## 3.0.0-beta.16
 
 ### Patch Changes
