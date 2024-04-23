@@ -3,13 +3,18 @@ import {
   LogLevel,
   ProjectConfig,
   clock,
-  getEnvVar,
-  logLevels,
   taskCatalog,
   type HandleErrorFunction,
-  type TracingSDK,
 } from "@trigger.dev/core/v3";
-import { TaskExecutor, DurableClock } from "@trigger.dev/core/v3/workers";
+import {
+  TaskExecutor,
+  DurableClock,
+  getEnvVar,
+  logLevels,
+  OtelTaskLogger,
+  ConsoleInterceptor,
+  type TracingSDK,
+} from "@trigger.dev/core/v3/workers";
 
 __WORKER_SETUP__;
 declare const __WORKER_SETUP__: unknown;
@@ -26,8 +31,6 @@ const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.versio
 const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.version);
 
 import {
-  ConsoleInterceptor,
-  OtelTaskLogger,
   TaskRunErrorCodes,
   TaskRunExecution,
   TriggerTracer,

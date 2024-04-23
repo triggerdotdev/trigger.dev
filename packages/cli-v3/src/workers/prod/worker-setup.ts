@@ -1,12 +1,10 @@
 import { Resource } from "@opentelemetry/resources";
+import { ProjectConfig, SemanticInternalAttributes, taskCatalog } from "@trigger.dev/core/v3";
 import {
-  ProjectConfig,
-  SemanticInternalAttributes,
-  StandardTaskCatalog,
   TracingDiagnosticLogLevel,
   TracingSDK,
-  taskCatalog,
-} from "@trigger.dev/core/v3";
+  StandardTaskCatalog,
+} from "@trigger.dev/core/v3/workers";
 
 __SETUP_IMPORTED_PROJECT_CONFIG__;
 declare const __SETUP_IMPORTED_PROJECT_CONFIG__: unknown;

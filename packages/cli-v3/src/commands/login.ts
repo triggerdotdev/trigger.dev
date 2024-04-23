@@ -1,5 +1,5 @@
 import { intro, log, outro, select } from "@clack/prompts";
-import { recordSpanException } from "@trigger.dev/core/v3";
+import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import { Command } from "commander";
 import open from "open";
 import pRetry, { AbortError } from "p-retry";

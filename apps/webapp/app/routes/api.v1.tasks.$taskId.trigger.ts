@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { parseTriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -52,7 +52,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // Now parse the request body
   const anyBody = await request.json();
 
-  const body = parseTriggerTaskRequestBody(anyBody);
+  const body = TriggerTaskRequestBody.safeParse(anyBody);
 
   if (!body.success) {
     return json({ error: "Invalid request body" }, { status: 400 });

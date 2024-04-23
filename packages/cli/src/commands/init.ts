@@ -21,7 +21,7 @@ import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/parseNameAndPath";
 import { readPackageJson } from "../utils/readPackageJson";
 import { renderTitle } from "../utils/renderTitle";
-import { TriggerApi, WhoamiResponse } from "../utils/triggerApi";
+import { TriggerApi } from "../utils/triggerApi";
 import { getJsRuntime } from "../utils/jsRuntime";
 
 export type InitCommandOptions = {
@@ -165,7 +165,9 @@ async function printNextSteps(
   framework: Framework
 ) {
   logger.success(`✔ Successfully initialized Trigger.dev!`);
-  logger.warn(`⚠️ Warning: We don't currently support long-running servers! For more details, check out https://github.com/triggerdotdev/trigger.dev/issues/244.`);
+  logger.warn(
+    `⚠️ Warning: We don't currently support long-running servers! For more details, check out https://github.com/triggerdotdev/trigger.dev/issues/244.`
+  );
   logger.info("Next steps:");
   logger.info(`   1. Run your ${framework.name} project locally with '${packageManager} run dev'`);
   logger.info(

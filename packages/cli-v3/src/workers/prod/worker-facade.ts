@@ -6,12 +6,17 @@ import {
   ProdWorkerToChildMessages,
   ProjectConfig,
   clock,
+  taskCatalog,
+} from "@trigger.dev/core/v3";
+import {
+  TaskExecutor,
+  DurableClock,
   getEnvVar,
   logLevels,
-  taskCatalog,
+  OtelTaskLogger,
+  ConsoleInterceptor,
   type TracingSDK,
-} from "@trigger.dev/core/v3";
-import { TaskExecutor, DurableClock } from "@trigger.dev/core/v3/workers";
+} from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { ZodSchemaParsedError } from "@trigger.dev/core/v3/zodMessageHandler";
 import "source-map-support/register.js";
@@ -31,8 +36,6 @@ const otelTracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.versi
 const otelLogger = tracingSDK.getLogger("trigger-prod-worker", packageJson.version);
 
 import {
-  ConsoleInterceptor,
-  OtelTaskLogger,
   TaskRunErrorCodes,
   TaskRunExecution,
   TriggerTracer,

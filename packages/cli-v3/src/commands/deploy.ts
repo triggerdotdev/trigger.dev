@@ -6,8 +6,8 @@ import {
   TaskMetadataFailedToParseData,
   detectDependencyVersion,
   flattenAttributes,
-  recordSpanException,
 } from "@trigger.dev/core/v3";
+import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import chalk from "chalk";
 import { Command, Option as CommandOption } from "commander";
 import { Metafile, build } from "esbuild";
