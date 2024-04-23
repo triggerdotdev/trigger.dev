@@ -1,5 +1,4 @@
 import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
-import { RunOptions, run as ncuRun } from "npm-check-updates";
 import { z } from "zod";
 import { readJSONFile, removeFile, writeJSONFile } from "../utilities/fileSystem.js";
 import { spinner } from "../utilities/windows.js";
@@ -39,9 +38,6 @@ export function configureUpdateCommand(program: Command) {
       });
     });
 }
-
-const NcuRunResult = z.record(z.string());
-type NcuRunResult = z.infer<typeof NcuRunResult>;
 
 const triggerPackageFilter = /^@trigger\.dev/;
 
@@ -265,20 +261,6 @@ function mutatePackageJsonWithUpdatedPackages(
   }
 }
 
-function getNcuTargetVersion(version: string): RunOptions["target"] {
-  switch (version) {
-    case "latest":
-    case "newest":
-    case "greatest":
-    case "minor":
-    case "patch":
-    case "semver":
-      return version;
-    default:
-      return `@${version}`;
-  }
-}
-
 function printUpdateTable(depsToUpdate: Dependency[], targetVersion: string): void {
   log.message("Suggested updates");
 
@@ -309,50 +291,4 @@ export async function getPackageJson(absoluteProjectPath: string) {
   const packageJson = structuredClone(readonlyPackageJson);
 
   return { packageJson, readonlyPackageJson, packageJsonPath };
-}
-
-export async function checkForPackageUpdates(
-  packageJson: PackageJson,
-  targetVersion: string,
-  existingSpinner?: ReturnType<typeof spinner>
-) {
-  const updateCheckSpinner = existingSpinner ?? spinner();
-
-  updateCheckSpinner[existingSpinner ? "message" : "start"]("Checking for updates");
-
-  const normalizedTarget = getNcuTargetVersion(targetVersion);
-
-  // Use npm-check-updates to get updated dependency versions
-  const ncuOptions: RunOptions = {
-    packageData: packageJson as RunOptions["packageData"],
-    target: normalizedTarget,
-    filter: triggerPackageFilter,
-  };
-
-  logger.debug({ ncuOptions: JSON.stringify(ncuOptions, undefined, 2) });
-
-  // Check for new versions of @trigger.dev packages
-  const ncuRunResult = await ncuRun(ncuOptions);
-  logger.debug({ ncuRunResult });
-
-  const triggerDepsToUpdate = NcuRunResult.safeParse(ncuRunResult);
-
-  if (!triggerDepsToUpdate.success) {
-    logger.error("Failed to parse ncu result", { ncuRunResult });
-    updateCheckSpinner.stop("Couldn't update dependencies");
-    return;
-  }
-
-  console.log({ triggerDepsToUpdate: triggerDepsToUpdate.data });
-
-  const totalToUpdate = Object.keys(triggerDepsToUpdate.data).length;
-
-  if (totalToUpdate === 0) {
-    updateCheckSpinner.stop("No package updates found");
-    return;
-  }
-
-  updateCheckSpinner.stop("Found packages to update");
-
-  return triggerDepsToUpdate.data;
 }
