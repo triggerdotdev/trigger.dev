@@ -23,11 +23,12 @@ yarn dlx trigger.dev@beta deploy
 
 It performs a few steps to deploy:
 
-1. Typechecks the code.
-2. Compiles and bundles the code.
-3. Checks that [environment variables](/v3/deploy-environment-variables) are set.
-4. Deploys the code to the cloud.
-5. Registers the tasks as a new version in the environment (prod by default).
+1. Updates `@trigger.dev/*` packages.
+2. Typechecks the code.
+3. Compiles and bundles the code.
+4. Checks that [environment variables](/v3/deploy-environment-variables) are set.
+5. Deploys the code to the cloud.
+6. Registers the tasks as a new version in the environment (prod by default).
 
 ## Options
 
