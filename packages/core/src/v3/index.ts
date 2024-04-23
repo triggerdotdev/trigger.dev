@@ -5,6 +5,7 @@ export * from "./errors";
 export * from "./limits";
 export * from "./logger-api";
 export * from "./runtime-api";
+export * from "./task-context-api";
 export * from "./schemas";
 export { SemanticInternalAttributes } from "./semanticInternalAttributes";
 export * from "./task-catalog-api";
@@ -17,8 +18,6 @@ export {
   millisecondsToNanoseconds,
   nanosecondsToMilliseconds,
 } from "./utils/durations";
-
-export { taskContextManager } from "./tasks/taskContextManager";
 
 export { TriggerTracer } from "./tracer";
 

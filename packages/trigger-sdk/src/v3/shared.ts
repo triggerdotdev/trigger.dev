@@ -30,7 +30,7 @@ import {
   runtime,
   stringifyIO,
   taskCatalog,
-  taskContextManager,
+  taskContext,
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../../package.json";
 import { tracer } from "./tracer";
@@ -293,7 +293,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
               options: {
                 queue: params.queue,
                 concurrencyKey: options?.concurrencyKey,
-                test: taskContextManager.ctx?.run.isTest,
+                test: taskContext.ctx?.run.isTest,
                 payloadType: payloadPacket.dataType,
                 idempotencyKey: options?.idempotencyKey,
               },
@@ -310,7 +310,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
           attributes: {
             [SEMATTRS_MESSAGING_OPERATION]: "publish",
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
-            ["messaging.client_id"]: taskContextManager.worker?.id,
+            ["messaging.client_id"]: taskContext.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             ...(taskMetadata
@@ -354,7 +354,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
                     options: {
                       queue: item.options?.queue ?? params.queue,
                       concurrencyKey: item.options?.concurrencyKey,
-                      test: taskContextManager.ctx?.run.isTest,
+                      test: taskContext.ctx?.run.isTest,
                       payloadType: payloadPacket.dataType,
                       idempotencyKey: item.options?.idempotencyKey,
                     },
@@ -374,7 +374,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
           attributes: {
             [SEMATTRS_MESSAGING_OPERATION]: "publish",
             ["messaging.batch.message_count"]: items.length,
-            ["messaging.client_id"]: taskContextManager.worker?.id,
+            ["messaging.client_id"]: taskContext.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
@@ -396,7 +396,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
       return response;
     },
     triggerAndWait: async (payload, options) => {
-      const ctx = taskContextManager.ctx;
+      const ctx = taskContext.ctx;
 
       if (!ctx) {
         throw new Error("triggerAndWait can only be used from inside a task.run()");
@@ -419,10 +419,10 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
             payload: payloadPacket.data,
             options: {
               dependentAttempt: ctx.attempt.id,
-              lockToVersion: taskContextManager.worker?.version, // Lock to current version because we're waiting for it to finish
+              lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
               queue: params.queue,
               concurrencyKey: options?.concurrencyKey,
-              test: taskContextManager.ctx?.run.isTest,
+              test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
               idempotencyKey: options?.idempotencyKey,
             },
@@ -459,7 +459,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
           attributes: {
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
             [SEMATTRS_MESSAGING_OPERATION]: "publish",
-            ["messaging.client_id"]: taskContextManager.worker?.id,
+            ["messaging.client_id"]: taskContext.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             ...(taskMetadata
@@ -478,7 +478,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
       );
     },
     batchTriggerAndWait: async (items) => {
-      const ctx = taskContextManager.ctx;
+      const ctx = taskContext.ctx;
 
       if (!ctx) {
         throw new Error("batchTriggerAndWait can only be used from inside a task.run()");
@@ -503,10 +503,10 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
                 return {
                   payload: payloadPacket.data,
                   options: {
-                    lockToVersion: taskContextManager.worker?.version,
+                    lockToVersion: taskContext.worker?.version,
                     queue: item.options?.queue ?? params.queue,
                     concurrencyKey: item.options?.concurrencyKey,
-                    test: taskContextManager.ctx?.run.isTest,
+                    test: taskContext.ctx?.run.isTest,
                     payloadType: payloadPacket.dataType,
                     idempotencyKey: item.options?.idempotencyKey,
                   },
@@ -591,7 +591,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
           attributes: {
             [SEMATTRS_MESSAGING_OPERATION]: "publish",
             ["messaging.batch.message_count"]: items.length,
-            ["messaging.client_id"]: taskContextManager.worker?.id,
+            ["messaging.client_id"]: taskContext.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
