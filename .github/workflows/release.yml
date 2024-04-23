@@ -12,7 +12,7 @@ on:
 jobs:
   release:
     name: 🦋 Changesets Release
-    runs-on: buildjet-8vcpu-ubuntu-2204
+    runs-on: [buildjet-8vcpu-ubuntu-2204, buildjet-pinned-location_de]
     if: |
       github.repository == 'triggerdotdev/trigger.dev'
     outputs:
