@@ -238,6 +238,12 @@ function getTriggerDependencies(packageJson: PackageJson): Dependency[] {
         continue;
       }
 
+      const ignoredPackages = ["@trigger.dev/companyicons"];
+
+      if (ignoredPackages.includes(name)) {
+        continue;
+      }
+
       deps.push({ type, name, version });
     }
   }
