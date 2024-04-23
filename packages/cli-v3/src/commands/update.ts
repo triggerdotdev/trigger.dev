@@ -70,8 +70,8 @@ export async function updateTriggerPackages(
   if (newCliVersion) {
     prettyWarning(
       "You're not running the latest CLI version, please consider updating ASAP",
-      "To update, run: `(p)npm i trigger.dev@beta`\nOr run with:    `(p)npx trigger.dev@beta`",
-      "Yarn works too!"
+      `Current:     ${cliVersion}\nLatest:      ${newCliVersion}`,
+      "Run latest:  npx trigger.dev@beta"
     );
   }
 
@@ -140,7 +140,7 @@ ${versionMismatches.map((dep) => `- ${dep.name}@${dep.version}`).join("\n")}\n`
       logger.log(
         `${chalkError(
           "X Error:"
-        )} Update required: Version mismatches will cause errors and headaches. Don't use \`--skip-update-check\`, just update, please.\n`
+        )} Update required: Version mismatches are a common source of bugs and errors. Please update or use \`--skip-update-check\` at your own risk.\n`
       );
       process.exit(1);
     }
