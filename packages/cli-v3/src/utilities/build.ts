@@ -11,7 +11,7 @@ export function bundleTriggerDevCore(buildIdentifier: string, tsconfigPath?: str
     name: "trigger-bundle-core",
     setup(build) {
       build.onResolve({ filter: /.*/ }, (args) => {
-        if (args.path !== "@trigger.dev/core/v3") {
+        if (!args.path.startsWith("@trigger.dev/core/v3")) {
           return undefined;
         }
 
@@ -22,18 +22,15 @@ export function bundleTriggerDevCore(buildIdentifier: string, tsconfigPath?: str
           triggerSdkPath,
         });
 
-        const resolvedPath = require.resolve("@trigger.dev/core/v3", {
+        const resolvedPath = require.resolve(args.path, {
           paths: [triggerSdkPath],
         });
 
-        logger.debug(
-          `[${buildIdentifier}][trigger-bundle-core] Externalizing @trigger.dev/core/v3`,
-          {
-            ...args,
-            triggerSdkPath,
-            resolvedPath,
-          }
-        );
+        logger.debug(`[${buildIdentifier}][trigger-bundle-core] Externalizing ${args.path}`, {
+          ...args,
+          triggerSdkPath,
+          resolvedPath,
+        });
 
         return {
           path: resolvedPath,
