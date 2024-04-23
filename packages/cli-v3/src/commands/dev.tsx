@@ -53,6 +53,7 @@ import {
 import { findUp, pathExists } from "find-up";
 import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { escapeImportPath } from "../utilities/windows";
+import { updateTriggerPackages } from "./update";
 
 let apiClient: CliApiClient | undefined;
 
@@ -61,6 +62,7 @@ const DevCommandOptions = CommonCommandOptions.extend({
   debugOtel: z.boolean().default(false),
   config: z.string().optional(),
   projectRef: z.string().optional(),
+  skipUpdateCheck: z.boolean().default(false),
 });
 
 type DevCommandOptions = z.infer<typeof DevCommandOptions>;
@@ -78,6 +80,7 @@ export function configureDevCommand(program: Command) {
       )
       .option("--debugger", "Enable the debugger")
       .option("--debug-otel", "Enable OpenTelemetry debugging")
+      .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
   ).action(async (path, options) => {
     wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
       await devCommand(path, opts);
@@ -132,7 +135,13 @@ async function startDev(
     }
 
     await printStandloneInitialBanner(true);
-    printDevBanner();
+
+    if (!options.skipUpdateCheck) {
+      console.log(); // spacing
+      await updateTriggerPackages(dir, { ...options }, false, true);
+    }
+
+    printDevBanner(!options.skipUpdateCheck);
 
     logger.debug("Starting dev session", { dir, options, authorization });
 

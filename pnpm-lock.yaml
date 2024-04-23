@@ -1561,9 +1561,6 @@ importers:
       node-fetch:
         specifier: ^3.3.0
         version: 3.3.0
-      npm-check-updates:
-        specifier: ^16.12.2
-        version: 16.12.3
       object-hash:
         specifier: ^3.0.0
         version: 3.0.0

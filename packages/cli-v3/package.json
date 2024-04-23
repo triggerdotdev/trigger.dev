@@ -106,7 +106,6 @@
     "mock-fs": "^5.2.0",
     "nanoid": "^4.0.2",
     "node-fetch": "^3.3.0",
-    "npm-check-updates": "^16.12.2",
     "object-hash": "^3.0.0",
     "p-debounce": "^4.0.0",
     "p-throttle": "^6.1.0",
