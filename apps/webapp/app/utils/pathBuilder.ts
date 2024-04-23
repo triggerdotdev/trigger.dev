@@ -14,8 +14,6 @@ import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import { objectToSearchParams } from "./searchParams";
-import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
-import { useLocation } from "@remix-run/react";
 
 export type OrgForPath = Pick<Organization, "slug">;
 export type ProjectForPath = Pick<Project, "slug">;
@@ -368,7 +366,7 @@ export function v3RunSpanPath(
   run: v3RunForPath,
   span: v3SpanForPath
 ) {
-  return `${v3RunPath(organization, project, run)}/spans/${span.spanId}`;
+  return `${v3RunPath(organization, project, run)}?span=${span.spanId}`;
 }
 
 export function v3TraceSpanPath(

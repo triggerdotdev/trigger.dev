@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
-import { v3RunPath } from "~/utils/pathBuilder";
+import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
 
 const FormSchema = z.object({
@@ -54,12 +54,13 @@ export const action: ActionFunction = async ({ request, params }) => {
       );
     }
 
-    const runPath = v3RunPath(
+    const runPath = v3RunSpanPath(
       {
         slug: taskRun.project.organization.slug,
       },
       { slug: taskRun.project.slug },
-      { friendlyId: newRun.friendlyId }
+      { friendlyId: newRun.friendlyId },
+      { spanId: newRun.spanId }
     );
 
     return redirectWithSuccessMessage(runPath, request, `Replaying run`);
