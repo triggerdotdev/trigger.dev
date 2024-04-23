@@ -197,7 +197,7 @@ class PNPMCommands implements PackageManagerCommands {
     const { stdout } = await $({ cwd: options.cwd })`${this.cmd} list ${packageName} -r --json`;
     const result = JSON.parse(stdout) as PnpmList;
 
-    logger.debug(`Resolving ${packageName} version using pnpm`, { result });
+    logger.debug(`Resolving ${packageName} version using ${this.name}`, { result });
 
     // Return the first dependency version that matches the package name
     for (const dep of result) {
@@ -228,7 +228,7 @@ class NPMCommands implements PackageManagerCommands {
   }
 
   private get cmd() {
-    return process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+    return process.platform === "win32" ? "npm.cmd" : "npm";
   }
 
   async installDependencies(options: PackageManagerOptions) {
@@ -241,7 +241,7 @@ class NPMCommands implements PackageManagerCommands {
     const { stdout } = await $({ cwd: options.cwd })`${this.cmd} list ${packageName} --json`;
     const output = JSON.parse(stdout) as NpmListOutput;
 
-    logger.debug(`Resolving ${packageName} version using npm`, { output });
+    logger.debug(`Resolving ${packageName} version using ${this.name}`, { output });
 
     return this.#recursivelySearchDependencies(output.dependencies, packageName);
   }
@@ -272,7 +272,7 @@ class YarnCommands implements PackageManagerCommands {
   }
 
   private get cmd() {
-    return process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+    return process.platform === "win32" ? "yarn.cmd" : "yarn";
   }
 
   async installDependencies(options: PackageManagerOptions) {
@@ -286,7 +286,7 @@ class YarnCommands implements PackageManagerCommands {
 
     const lines = stdout.split("\n");
 
-    logger.debug(`Resolving ${packageName} version using yarn`, { lines });
+    logger.debug(`Resolving ${packageName} version using ${this.name}`, { lines });
 
     for (const line of lines) {
       const json = JSON.parse(line);
