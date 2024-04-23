@@ -5,6 +5,10 @@ import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trac
 import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch";
 import { DiagConsoleLogger, DiagLogLevel, diag, trace } from "@opentelemetry/api";
 import * as packageJson from "../../package.json";
+import {
+  SEMRESATTRS_SERVICE_NAME,
+  SEMRESATTRS_SERVICE_VERSION,
+} from "@opentelemetry/semantic-conventions";
 
 function initializeTracing(): NodeTracerProvider | undefined {
   if (process.argv.includes("--skip-telemetry") || process.env.TRIGGER_DEV_SKIP_TELEMETRY) {
@@ -19,7 +23,8 @@ function initializeTracing(): NodeTracerProvider | undefined {
     detectors: [processDetectorSync],
   }).merge(
     new Resource({
-      service: "trigger.dev cli v3",
+      [SEMRESATTRS_SERVICE_NAME]: "trigger.dev cli v3",
+      [SEMRESATTRS_SERVICE_VERSION]: packageJson.version,
     })
   );
 
@@ -38,9 +43,9 @@ function initializeTracing(): NodeTracerProvider | undefined {
 
   const spanExporter = new OTLPTraceExporter({
     url: "https://otel.baselime.io/v1",
-    timeoutMillis: 500,
+    timeoutMillis: 5000,
     headers: {
-      "x-api-key": "e9f963244f8b092850d42e34a5339b2d5e68070b".split("").reverse().join(""), // this is a joke
+      "x-api-key": "b6e0fbbaf8dc2524773d2152ae2e9eb5c7fbaa52",
     },
   });
 
@@ -59,5 +64,5 @@ function initializeTracing(): NodeTracerProvider | undefined {
 export const provider = initializeTracing();
 
 export function getTracer() {
-  return trace.getTracer("trigger.dev cli", packageJson.version);
+  return trace.getTracer("trigger.dev cli v3", packageJson.version);
 }
