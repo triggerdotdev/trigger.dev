@@ -6,6 +6,7 @@ import {
 } from "@opentelemetry/semantic-conventions";
 import {
   BatchTaskRunExecutionResult,
+  FailureFnParams,
   HandleErrorFnParams,
   HandleErrorResult,
   InitFnParams,
@@ -143,15 +144,62 @@ export type TaskOptions<
    * @param params - Metadata about the run.
    */
   run: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<TOutput>;
+
+  /**
+   * init is called before the run function is called. It's useful for setting up any global state.
+   */
   init?: (payload: TPayload, params: InitFnParams) => Promise<TInitOutput>;
+
+  /**
+   * cleanup is called after the run function has completed.
+   */
+  cleanup?: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<void>;
+
+  /**
+   * handleError is called when the run function throws an error. It can be used to modify the error or return new retry options.
+   */
   handleError?: (
     payload: TPayload,
     error: unknown,
     params: HandleErrorFnParams<TInitOutput>
   ) => HandleErrorResult;
-  cleanup?: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<void>;
+
+  /**
+   * middleware allows you to run code "around" the run function. This can be useful for logging, metrics, or other cross-cutting concerns.
+   *
+   * When writing middleware, you should always call `next()` to continue the execution of the task:
+   *
+   * ```ts
+   * export const middlewareTask = task({
+   *  id: "middleware-task",
+   *  middleware: async (payload, { ctx, next }) => {
+   *   console.log("Before run");
+   *   await next();
+   *   console.log("After run");
+   *  },
+   *  run: async (payload, { ctx }) => {}
+   * });
+   * ```
+   */
   middleware?: (payload: TPayload, params: MiddlewareFnParams) => Promise<void>;
-  onSuccess?: (payload: TPayload, params: SuccessFnParams<TOutput, TInitOutput>) => Promise<void>;
+
+  /**
+   * onSuccess is called after the run function has successfully completed.
+   */
+  onSuccess?: (
+    payload: TPayload,
+    output: TOutput,
+    params: SuccessFnParams<TInitOutput>
+  ) => Promise<void>;
+
+  /**
+   * onFailure is called after a task run has failed (meaning the run function threw an error and won't be retried anymore)
+   */
+  onFailure?: (
+    payload: TPayload,
+    error: unknown,
+    params: FailureFnParams<TInitOutput>
+  ) => Promise<void>;
 };
 
 type InvokeHandle = {
@@ -624,6 +672,8 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
       cleanup: params.cleanup,
       middleware: params.middleware,
       handleError: params.handleError,
+      onSuccess: params.onSuccess,
+      onFailure: params.onFailure,
     },
   });
 

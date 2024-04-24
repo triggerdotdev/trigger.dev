@@ -1,4 +1,4 @@
-import { InitFnParams } from ".";
+import { FailureFnParams, InitFnParams, SuccessFnParams } from ".";
 import { LogLevel } from "../logger/taskLogger";
 import { RetryOptions } from "../schemas";
 import type { InstrumentationOption } from "@opentelemetry/instrumentation";
@@ -54,4 +54,14 @@ export interface ProjectConfig {
    * Run before a task is executed, for all tasks. This is useful for setting up any global state that is needed for all tasks.
    */
   init?: (payload: unknown, params: InitFnParams) => void | Promise<void>;
+
+  /**
+   * onSuccess is called after the run function has successfully completed.
+   */
+  onSuccess?: (payload: unknown, output: unknown, params: SuccessFnParams<any>) => Promise<void>;
+
+  /**
+   * onFailure is called after a task run has failed (meaning the run function threw an error and won't be retried anymore)
+   */
+  onFailure?: (payload: unknown, error: unknown, params: FailureFnParams<any>) => Promise<void>;
 }

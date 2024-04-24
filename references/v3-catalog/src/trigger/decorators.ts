@@ -1,4 +1,4 @@
-import { task } from "@trigger.dev/sdk/v3";
+import { logger, task } from "@trigger.dev/sdk/v3";
 import { AppDataSource, Photo } from "./orm";
 
 export const taskThatUsesDecorators = task({
@@ -15,5 +15,11 @@ export const taskThatUsesDecorators = task({
     photo.isPublished = true;
 
     await AppDataSource.manager.save(photo);
+  },
+  onSuccess: async (payload, output, { ctx }) => {
+    logger.log("Photo created successfully", { output, ctx });
+  },
+  onFailure: async (payload, error, { ctx }) => {
+    logger.error("Failed to create photo", { error, ctx });
   },
 });

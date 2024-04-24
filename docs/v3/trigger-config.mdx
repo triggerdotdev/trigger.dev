@@ -31,6 +31,41 @@ export const config: TriggerConfig = {
 
 Most of the time you don't need to change anything in this file, or if you do then we will tell you when you the run the CLI command.
 
+## Global initialization
+
+You can run code before any task is run by adding a `init` function to your `trigger.config.ts` file.
+
+```ts trigger.config.ts
+import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+
+export const config: TriggerConfig = {
+  //..other stuff
+  init: async (payload, { ctx }) => {
+    console.log("I run before any task is run");
+  },
+};
+```
+
+You'll have access to the run payload and the context object. Currently you cannot return anything from this function.
+
+## Notification functions
+
+You can add a function to get notified when any task succeeds or fails using `onSuccess` and `onFailure`:
+
+```ts trigger.config.ts
+import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+
+export const config: TriggerConfig = {
+  //..other stuff
+  onSuccess: async (payload, output, { ctx }) => {
+    console.log("Task succeeded", ctx.task.id);
+  },
+  onFailure: async (payload, error, { ctx }) => {
+    console.log("Task failed", ctx.task.id);
+  },
+};
+```
+
 ## Instrumentations
 
 We use OpenTelemetry (OTEL) for our run logs. This means you get a lot of information about your tasks with no effort. But you probably want to add more information to your logs. For example, here's all the Prisma calls automatically logged:
@@ -138,23 +173,6 @@ Prisma works by generating a client from your `prisma.schema` file. This means y
 </Step>
 
 </Steps>
-
-## Global initialization
-
-You can run code before any task is run by adding a `init` function to your `trigger.config.ts` file.
-
-```ts trigger.config.ts
-import type { TriggerConfig } from "@trigger.dev/sdk/v3";
-
-export const config: TriggerConfig = {
-  //..other stuff
-  init: async (payload, { ctx }) => {
-    console.log("I run before any task is run");
-  },
-};
-```
-
-You'll have access to the run payload and the context object. Currently you cannot return anything from this function.
 
 ## TypeORM support
 

@@ -29,4 +29,9 @@ export const config: TriggerConfig = {
       await AppDataSource.initialize();
     }
   },
+  onFailure: async (payload, error, { ctx }) => {
+    console.log(`Task ${ctx.task.id} failed ${ctx.run.id}`);
+
+    throw error;
+  },
 };
