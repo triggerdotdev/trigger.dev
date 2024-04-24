@@ -146,13 +146,11 @@ export default function Page() {
                                     return (
                                       <>
                                         {taskData !== undefined ? (
-                                          <div className="h-7 w-[5.375rem] rounded-sm border border-grid-dimmed p-0.5">
+                                          <div className="h-6 w-[5.125rem] rounded-sm">
                                             <TaskActivityGraph activity={taskData} />
                                           </div>
                                         ) : (
-                                          <div className="flex h-7 w-[5.375rem] items-center">
-                                            <p className="text-xs text-text-dimmed">No activity</p>
-                                          </div>
+                                          "No activity"
                                         )}
                                       </>
                                     );
@@ -270,6 +268,7 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
           allowEscapeViewBox={{ x: true, y: true }}
           wrapperStyle={{ zIndex: 1000 }}
         />
+        <Bar dataKey="bg" background={{ fill: "#212327" }} stackId="a" />
         <Bar dataKey="PENDING" fill="#5F6570" stackId="a" />
         <Bar dataKey="WAITING_FOR_DEPLOY" fill="#FBBF24" stackId="a" />
         <Bar dataKey="EXECUTING" fill="#3B82F6" stackId="a" />
