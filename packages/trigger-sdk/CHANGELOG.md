@@ -1,5 +1,22 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.18
+
+### Patch Changes
+
+- b68012f81: Make msw a normal dependency (for now) to fix Module Not Found error in Next.js.
+
+  It turns out that webpack will "hoist" dynamically imported modules and attempt to resolve them at build time, even though it's an optional peer dep:
+
+  https://x.com/maverickdotdev/status/1782465214308319404
+
+- b68012f81: Move to our global system from AsyncLocalStorage for the current task context storage
+- b68012f81: Extracting out all the non-SDK related features from the main @trigger.dev/core/v3 export
+- Updated dependencies [b68012f81]
+- Updated dependencies [b68012f81]
+  - @trigger.dev/core@3.0.0-beta.18
+  - @trigger.dev/core-backend@3.0.0-beta.18
+
 ## 3.0.0-beta.17
 
 ### Patch Changes

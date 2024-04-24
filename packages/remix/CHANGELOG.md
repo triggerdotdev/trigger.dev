@@ -1,5 +1,14 @@
 # @trigger.dev/remix
 
+## 3.0.0-beta.18
+
+### Patch Changes
+
+- Updated dependencies [b68012f81]
+- Updated dependencies [b68012f81]
+- Updated dependencies [b68012f81]
+  - @trigger.dev/sdk@3.0.0-beta.18
+
 ## 3.0.0-beta.17
 
 ### Patch Changes

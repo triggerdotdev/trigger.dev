@@ -1,5 +1,12 @@
 # internal-platform
 
+## 3.0.0-beta.18
+
+### Patch Changes
+
+- b68012f81: Move to our global system from AsyncLocalStorage for the current task context storage
+- b68012f81: Extracting out all the non-SDK related features from the main @trigger.dev/core/v3 export
+
 ## 3.0.0-beta.17
 
 ## 3.0.0-beta.16
