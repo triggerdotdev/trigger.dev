@@ -91,12 +91,11 @@ export class ResumeAttemptService extends BaseService {
 
       switch (params.type) {
         case "WAIT_FOR_DURATION": {
-          logger.error(
-            "Attempt requested resume after duration wait, this is unexpected and likely a bug",
-            { attemptId: attempt.id }
-          );
+          logger.debug("Sending duration wait resume message", {
+            attemptId: attempt.id,
+            attemptFriendlyId: params.attemptFriendlyId,
+          });
 
-          // Attempts should not request resume for duration waits, this is just here as a backup
           socketIo.coordinatorNamespace.emit("RESUME_AFTER_DURATION", {
             version: "v1",
             attemptId: attempt.id,
