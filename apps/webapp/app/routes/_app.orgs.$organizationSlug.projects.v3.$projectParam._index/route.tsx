@@ -1,8 +1,9 @@
 import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { TaskRunStatus } from "@trigger.dev/database";
 import { Suspense, useEffect } from "react";
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
 import { InitCommandV3, TriggerDevStepV3 } from "~/components/SetupCommands";
@@ -11,8 +12,8 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
-import { DateTime } from "~/components/primitives/DateTime";
-import { Header1 } from "~/components/primitives/Headers";
+import { DateTime, formatDateTime } from "~/components/primitives/DateTime";
+import { Header1, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
@@ -28,7 +29,11 @@ import {
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
-import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
+import {
+  TaskRunStatusIcon,
+  runStatusClassNameColor,
+  runStatusTitle,
+} from "~/components/runs/v3/TaskRunStatus";
 import {
   TaskTriggerSourceIcon,
   taskTriggerSourceDescription,
@@ -251,13 +256,50 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
         width={82}
         height={24}
       >
-        {/* <Tooltip
-      cursor={{ fill: "rgba(255,255,255,0.05)" }}
-      content={<CustomTooltip />}
-    /> */}
-        <Bar dataKey="COMPLETED_SUCCESSFULLY" fill="#16A34A" stackId="a" />
-        <Bar dataKey="COMPLETED_WITH_ERRORS" fill="#ff0000" stackId="a" />
+        <Tooltip
+          cursor={{ fill: "rgba(255,255,255,0.05)" }}
+          content={<CustomTooltip />}
+          allowEscapeViewBox={{ x: true, y: true }}
+        />
+        <Bar dataKey="PENDING" fill="#5F6570" stackId="a" />
+        <Bar dataKey="WAITING_FOR_DEPLOY" fill="#FBBF24" stackId="a" />
+        <Bar dataKey="EXECUTING" fill="#3B82F6" stackId="a" />
+        <Bar dataKey="RETRYING_AFTER_FAILURE" fill="#3B82F6" stackId="a" />
+        <Bar dataKey="WAITING_TO_RESUME" fill="#3B82F6" stackId="a" />
+        <Bar dataKey="COMPLETED_SUCCESSFULLY" fill="#28BF5C" stackId="a" />
+        <Bar dataKey="CANCELED" fill="#5F6570" stackId="a" />
+        <Bar dataKey="COMPLETED_WITH_ERRORS" fill="#F43F5E" stackId="a" />
+        <Bar dataKey="INTERRUPTED" fill="#F43F5E" stackId="a" />
+        <Bar dataKey="SYSTEM_FAILURE" fill="#F43F5E" stackId="a" />
+        <Bar dataKey="PAUSED" fill="#FBBF24" stackId="a" />
+        <Bar dataKey="CRASHED" fill="#F43F5E" stackId="a" />
       </BarChart>
     </ResponsiveContainer>
   );
 }
+
+const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
+  if (active && payload) {
+    const items = payload.map((p) => ({
+      label: runStatusTitle(p.dataKey as TaskRunStatus),
+      value: p.value,
+    }));
+    const title = payload[0].payload.day as string;
+    const formattedDate = formatDateTime(new Date(title), "UTC", [], false, false);
+    return (
+      <div className="z-100 relative rounded border border-grid-bright bg-background-dimmed px-3 py-2">
+        <Header3 spacing>{formattedDate}</Header3>
+        <div className="flex flex-col gap-1">
+          {items.map((item) => (
+            <div key={item.label} className="flex gap-1 text-xs text-text-bright">
+              <p>{item.label}:</p>
+              <p>{item.value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
