@@ -119,6 +119,9 @@ export class ResumeAttemptService extends BaseService {
             logger.error("No task dependency", { attemptId: attempt.id });
             return;
           }
+
+          await this.#handleDependencyResume(attempt, completedAttemptIds, tx);
+
           break;
         }
         case "WAIT_FOR_BATCH": {
@@ -136,14 +139,15 @@ export class ResumeAttemptService extends BaseService {
             logger.error("No batch dependency", { attemptId: attempt.id });
             return;
           }
+
+          await this.#handleDependencyResume(attempt, completedAttemptIds, tx);
+
           break;
         }
         default: {
           break;
         }
       }
-
-      await this.#handleDependencyResume(attempt, completedAttemptIds, tx);
     });
   }
 
