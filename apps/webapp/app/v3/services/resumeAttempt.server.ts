@@ -96,6 +96,8 @@ export class ResumeAttemptService extends BaseService {
             attemptFriendlyId: params.attemptFriendlyId,
           });
 
+          await this.#setPostResumeStatuses(attempt, tx);
+
           socketIo.coordinatorNamespace.emit("RESUME_AFTER_DURATION", {
             version: "v1",
             attemptId: attempt.id,
@@ -218,7 +220,20 @@ export class ResumeAttemptService extends BaseService {
       executions.push(executionPayload.execution);
     }
 
-    const updated = await tx.taskRunAttempt.update({
+    await this.#setPostResumeStatuses(attempt, tx);
+
+    socketIo.coordinatorNamespace.emit("RESUME_AFTER_DEPENDENCY", {
+      version: "v1",
+      runId: attempt.taskRunId,
+      attemptId: attempt.id,
+      attemptFriendlyId: attempt.friendlyId,
+      completions,
+      executions,
+    });
+  }
+
+  async #setPostResumeStatuses(attempt: TaskRunAttempt, tx: PrismaClientOrTransaction) {
+    return await tx.taskRunAttempt.update({
       where: {
         id: attempt.id,
       },
@@ -232,15 +247,6 @@ export class ResumeAttemptService extends BaseService {
           },
         },
       },
-    });
-
-    socketIo.coordinatorNamespace.emit("RESUME_AFTER_DEPENDENCY", {
-      version: "v1",
-      runId: attempt.taskRunId,
-      attemptId: attempt.id,
-      attemptFriendlyId: attempt.friendlyId,
-      completions,
-      executions,
     });
   }
 }
