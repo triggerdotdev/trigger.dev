@@ -153,4 +153,26 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "retry-with-failed-errors",
+  name: "Retry with failed errors",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "foo.bar",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello World", { ctx, payload });
+
+    return await io.runTask("task-example-1", async () => {
+      if (Math.random() > 0.5) {
+        throw new Error("Failed on purpose");
+      }
+
+      return {
+        message: "Hello World",
+      };
+    });
+  },
+});
+
 createExpressServer(client);

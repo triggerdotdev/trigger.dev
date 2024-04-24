@@ -45,6 +45,14 @@ export class ContinueRunService {
           },
         });
 
+        // Delete any tasks that are errored
+        await tx.task.deleteMany({
+          where: {
+            runId: runId,
+            status: "ERRORED",
+          },
+        });
+
         await ResumeRunService.enqueue(run, tx);
       },
       { timeout: 10000 }
