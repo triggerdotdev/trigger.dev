@@ -1502,7 +1502,7 @@ importers:
         specifier: ^1.22.0
         version: 1.22.0
       '@trigger.dev/core':
-        specifier: workspace:^3.0.0-beta.18
+        specifier: workspace:3.0.0-beta.18
         version: link:../core
       '@types/degit':
         specifier: ^2.8.3
@@ -2312,10 +2312,10 @@ importers:
         specifier: ^1.22.0
         version: 1.22.0
       '@trigger.dev/core':
-        specifier: workspace:^3.0.0-beta.18
+        specifier: workspace:3.0.0-beta.18
         version: link:../core
       '@trigger.dev/core-backend':
-        specifier: workspace:^3.0.0-beta.18
+        specifier: workspace:3.0.0-beta.18
         version: link:../core-backend
       chalk:
         specifier: ^5.2.0
