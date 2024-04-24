@@ -138,15 +138,23 @@ export default function Page() {
                               />
                             </TableCell>
                             <TableCell to={path}>{task.filePath}</TableCell>
-                            <TableCell to={path}>
+                            <TableCell to={path} className="p-0">
                               <Suspense fallback={<></>}>
                                 <TypedAwait resolve={activity}>
                                   {(data) => {
                                     const taskData = data[task.slug];
                                     return (
-                                      <div className="h-6 w-[5.125rem]">
-                                        <TaskActivityGraph activity={taskData} />
-                                      </div>
+                                      <>
+                                        {taskData !== undefined ? (
+                                          <div className="h-7 w-[5.375rem] rounded-sm border border-grid-dimmed p-0.5">
+                                            <TaskActivityGraph activity={taskData} />
+                                          </div>
+                                        ) : (
+                                          <div className="flex h-7 w-[5.375rem] items-center">
+                                            <p className="text-xs text-text-dimmed">No activity</p>
+                                          </div>
+                                        )}
+                                      </>
                                     );
                                   }}
                                 </TypedAwait>
@@ -260,6 +268,7 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
           cursor={{ fill: "rgba(255,255,255,0.05)" }}
           content={<CustomTooltip />}
           allowEscapeViewBox={{ x: true, y: true }}
+          wrapperStyle={{ zIndex: 1000 }}
         />
         <Bar dataKey="PENDING" fill="#5F6570" stackId="a" />
         <Bar dataKey="WAITING_FOR_DEPLOY" fill="#FBBF24" stackId="a" />
@@ -287,7 +296,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
     const title = payload[0].payload.day as string;
     const formattedDate = formatDateTime(new Date(title), "UTC", [], false, false);
     return (
-      <div className="z-100 relative rounded border border-grid-bright bg-background-dimmed px-3 py-2">
+      <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
         <Header3 spacing>{formattedDate}</Header3>
         <div className="flex flex-col gap-1">
           {items.map((item) => (
