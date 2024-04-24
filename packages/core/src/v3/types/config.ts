@@ -1,3 +1,4 @@
+import { InitFnParams } from ".";
 import { LogLevel } from "../logger/taskLogger";
 import { RetryOptions } from "../schemas";
 import type { InstrumentationOption } from "@opentelemetry/instrumentation";
@@ -16,7 +17,7 @@ export interface ProjectConfig {
    * List of additional files to include in your trigger.dev bundle. e.g. ["./prisma/schema.prisma"]
    *
    * Supports glob patterns.
-   * 
+   *
    * Note: The path separator for glob patterns is `/`, even on Windows!
    */
   additionalFiles?: string[];
@@ -48,4 +49,9 @@ export interface ProjectConfig {
    * Enable console logging while running the dev CLI. This will print out logs from console.log, console.warn, and console.error. By default all logs are sent to the trigger.dev backend, and not logged to the console.
    */
   enableConsoleLogging?: boolean;
+
+  /**
+   * Run before a task is executed, for all tasks. This is useful for setting up any global state that is needed for all tasks.
+   */
+  init?: (payload: unknown, params: InitFnParams) => void | Promise<void>;
 }

@@ -18,7 +18,10 @@
     "execa": "^8.0.1",
     "msw": "^2.2.1",
     "openai": "^4.28.0",
+    "pg": "^8.11.5",
+    "reflect-metadata": "^0.1.13",
     "stripe": "^12.14.0",
+    "typeorm": "^0.3.20",
     "yt-dlp-wrap": "^2.3.12"
   },
   "devDependencies": {

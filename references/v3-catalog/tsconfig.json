@@ -10,6 +10,8 @@
       "@trigger.dev/core/v3/*": ["../../packages/core/src/v3/*"],
       "@trigger.dev/sdk/v3": ["../../packages/trigger-sdk/src/v3/index"],
       "@trigger.dev/sdk/v3/*": ["../../packages/trigger-sdk/src/v3/*"]
-    }
+    },
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true
   }
 }

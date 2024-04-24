@@ -1,5 +1,6 @@
 import type { TriggerConfig } from "@trigger.dev/sdk/v3";
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
+import { AppDataSource } from "@/trigger/orm";
 
 export { handleError } from "./src/handleError";
 
@@ -21,4 +22,11 @@ export const config: TriggerConfig = {
   instrumentations: [new OpenAIInstrumentation()],
   logLevel: "log",
   enableConsoleLogging: true,
+  init: async (payload, { ctx }) => {
+    if (ctx.organization.id === "clsylhs0v0002dyx75xx4pod1") {
+      console.log("Initializing the app data source");
+
+      await AppDataSource.initialize();
+    }
+  },
 };

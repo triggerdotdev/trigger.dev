@@ -90,6 +90,8 @@ export class TaskExecutor {
 
             parsedPayload = await parsePacket(payloadPacket);
 
+            await this.#callConfigInit(parsedPayload, ctx);
+
             initOutput = await this.#callTaskInit(parsedPayload, ctx);
 
             const output = await this.#callRun(parsedPayload, ctx, initOutput);
@@ -225,9 +227,37 @@ export class TaskExecutor {
       return {};
     }
 
-    return this._tracer.startActiveSpan("init", async (span) => {
-      return await initFn(payload, { ctx });
-    });
+    return this._tracer.startActiveSpan(
+      "init",
+      async (span) => {
+        return await initFn(payload, { ctx });
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "function",
+        },
+      }
+    );
+  }
+
+  async #callConfigInit(payload: unknown, ctx: TaskRunContext) {
+    const initFn = this._importedConfig?.init;
+
+    if (!initFn) {
+      return {};
+    }
+
+    return this._tracer.startActiveSpan(
+      "config.init",
+      async (span) => {
+        return await initFn(payload, { ctx });
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "function",
+        },
+      }
+    );
   }
 
   async #callTaskCleanup(payload: unknown, ctx: TaskRunContext, init: unknown) {
