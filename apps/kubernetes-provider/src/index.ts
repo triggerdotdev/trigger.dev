@@ -211,7 +211,7 @@ class KubernetesTaskOperations implements TaskOperations {
             },
             {
               name: "populate-taskinfo",
-              image: "busybox",
+              image: "docker.io/library/busybox",
               command: ["/bin/sh", "-c"],
               args: ["printenv COORDINATOR_HOST | tee /etc/taskinfo/coordinator-host"],
               env: [
