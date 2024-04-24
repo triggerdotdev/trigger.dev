@@ -137,7 +137,7 @@ async function startDev(
 
     if (!options.skipUpdateCheck) {
       console.log(); // spacing
-      await updateTriggerPackages(dir, { ...options }, false, true);
+      await updateTriggerPackages(dir, { ...options }, true, true);
     }
 
     printDevBanner(!options.skipUpdateCheck);
