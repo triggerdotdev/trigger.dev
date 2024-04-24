@@ -53,6 +53,10 @@ export class TaskCatalogAPI {
     return this.#getCatalog().getTask(id);
   }
 
+  public taskExists(id: string): boolean {
+    return this.#getCatalog().taskExists(id);
+  }
+
   #getCatalog(): TaskCatalog {
     return getGlobal(API_NAME) ?? NOOP_TASK_CATALOG;
   }

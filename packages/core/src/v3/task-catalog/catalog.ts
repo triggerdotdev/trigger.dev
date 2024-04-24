@@ -8,4 +8,5 @@ export interface TaskCatalog {
   getAllTaskMetadata(): Array<TaskMetadataWithFilePath>;
   getTaskMetadata(id: string): TaskMetadataWithFilePath | undefined;
   getTask(id: string): TaskMetadataWithFunctions | undefined;
+  taskExists(id: string): boolean;
 }

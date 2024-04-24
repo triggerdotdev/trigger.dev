@@ -1,9 +1,9 @@
 import {
   CoordinatorToPlatformMessages,
-  InferSocketMessageSchema,
   TaskRunExecution,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
+import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";

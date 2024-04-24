@@ -2,12 +2,11 @@ import {
   CreateBackgroundWorkerRequestBody,
   ResolvedConfig,
   TaskResource,
-  ZodMessageHandler,
-  ZodMessageSender,
   clientWebsocketMessages,
   detectDependencyVersion,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
+import { ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import { watch } from "chokidar";
 import { Command } from "commander";
 import { BuildContext, Metafile, context } from "esbuild";
@@ -425,10 +424,6 @@ function useDev({
 
                 const metaOutputKey = join("out", `stdin.js`).replace(/\\/g, "/");
 
-                logger.debug("Metafile", {
-                  metafileOutputs: JSON.stringify(result.metafile?.outputs),
-                });
-
                 const metaOutput = result.metafile!.outputs[metaOutputKey];
 
                 if (!metaOutput) {
@@ -509,8 +504,15 @@ function useDev({
 
                   const taskResources: Array<TaskResource> = [];
 
-                  if (!backgroundWorker.tasks) {
-                    throw new Error(`Background Worker started without tasks`);
+                  if (!backgroundWorker.tasks || backgroundWorker.tasks.length === 0) {
+                    logger.log(
+                      `${chalkError(
+                        "X Error:"
+                      )} Worker failed to build: no tasks found. Searched in ${config.triggerDirectories.join(
+                        ", "
+                      )}`
+                    );
+                    return;
                   }
 
                   for (const task of backgroundWorker.tasks) {
@@ -535,6 +537,10 @@ function useDev({
                     );
                     return;
                   }
+
+                  logger.debug("Creating background worker with tasks", {
+                    tasks: taskResources,
+                  });
 
                   const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
                     localOnly: true,
@@ -638,7 +644,7 @@ function useDev({
     const throttledRebuild = pDebounce(runBuild, 250, { before: true });
 
     const taskFileWatcher = watch(
-      config.triggerDirectories.map((triggerDir) => `${triggerDir}/*.ts`),
+      config.triggerDirectories.map((triggerDir) => `${triggerDir}/**/*.ts`),
       {
         ignoreInitial: true,
       }

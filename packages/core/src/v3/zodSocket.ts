@@ -1,7 +1,8 @@
-import { io, Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
+import { io } from "socket.io-client";
 import { z } from "zod";
 import { EventEmitterLike, ZodMessageValueSchema } from "./zodMessageHandler";
-import { LogLevel, SimpleStructuredLogger, StructuredLogger } from "./zodNamespace";
+import { LogLevel, SimpleStructuredLogger, StructuredLogger } from "./utils/structuredLogger";
 
 export interface ZodSocketMessageCatalogSchema {
   [key: string]:

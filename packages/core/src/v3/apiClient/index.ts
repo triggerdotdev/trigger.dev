@@ -17,7 +17,7 @@ import {
   TriggerTaskResponse,
   UpdateScheduleOptions,
 } from "../schemas";
-import { taskContextManager } from "../tasks/taskContextManager";
+import { taskContext } from "../task-context-api";
 import { getEnvVar } from "../utils/getEnv";
 import { SafeAsyncLocalStorage } from "../utils/safeAsyncLocalStorage";
 import { APIError } from "../apiErrors";
@@ -229,7 +229,7 @@ export class ApiClient {
     };
 
     // Only inject the context if we are inside a task
-    if (taskContextManager.isInsideTask) {
+    if (taskContext.isInsideTask) {
       propagation.inject(context.active(), headers);
 
       if (spanParentAsLink) {

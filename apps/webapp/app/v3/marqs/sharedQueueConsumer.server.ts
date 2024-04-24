@@ -8,9 +8,9 @@ import {
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
-  ZodMessageSender,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
+import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import {
   BackgroundWorker,
   BackgroundWorkerTask,
@@ -26,7 +26,6 @@ import { EnvironmentVariablesRepository } from "../environmentVariables/environm
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
 import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
-import { CancelAttemptService } from "../services/cancelAttempt.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
 import { tracer } from "../tracer.server";
 

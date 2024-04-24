@@ -3,9 +3,9 @@ import {
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
-  ZodMessageSender,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
+import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";

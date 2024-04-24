@@ -24,3 +24,5 @@ export function task<TInput = void, TOutput = unknown, TInitOutput extends InitO
 ): Task<TInput, TOutput> {
   return createTask<TInput, TOutput, TInitOutput>(options);
 }
+
+export type { TaskOptions, Task };

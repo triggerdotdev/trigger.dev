@@ -1,4 +1,5 @@
-import { CoordinatorToPlatformMessages, InferSocketMessageSchema } from "@trigger.dev/core/v3";
+import { CoordinatorToPlatformMessages } from "@trigger.dev/core/v3";
+import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import type {
   CheckpointRestoreEvent,
   TaskRunAttemptStatus,

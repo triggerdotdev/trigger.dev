@@ -1,4 +1,5 @@
-import { flattenAttributes, recordSpanException } from "@trigger.dev/core/v3";
+import { flattenAttributes } from "@trigger.dev/core/v3";
+import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import { Command } from "commander";
 import { z } from "zod";
 import { getTracer, provider } from "../telemetry/tracing";

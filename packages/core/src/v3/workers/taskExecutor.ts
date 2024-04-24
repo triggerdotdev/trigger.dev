@@ -12,7 +12,7 @@ import {
   TaskRunExecutionRetry,
 } from "../schemas";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
-import { taskContextManager } from "../tasks/taskContextManager";
+import { taskContext } from "../task-context-api";
 import { TriggerTracer } from "../tracer";
 import { HandleErrorFunction, ProjectConfig, TaskMetadataWithFunctions } from "../types";
 import {
@@ -67,141 +67,137 @@ export class TaskExecutor {
       dataType: execution.run.payloadType,
     };
 
-    const result = await taskContextManager.runWith(
-      {
-        ctx,
-        worker,
-      },
-      async () => {
-        this._tracingSDK.asyncResourceDetector.resolveWithAttributes({
-          ...taskContextManager.attributes,
-          [SemanticInternalAttributes.SDK_VERSION]: this.task.packageVersion,
-          [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
-        });
+    taskContext.setGlobalTaskContext({
+      ctx,
+      worker,
+    });
 
-        return await this._tracer.startActiveSpan(
-          attemptMessage,
-          async (span) => {
-            return await this._consoleInterceptor.intercept(console, async () => {
-              let parsedPayload: any;
-              let initOutput: any;
+    this._tracingSDK.asyncResourceDetector.resolveWithAttributes({
+      ...taskContext.attributes,
+      [SemanticInternalAttributes.SDK_VERSION]: this.task.packageVersion,
+      [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
+    });
 
-              try {
-                const payloadPacket = await conditionallyImportPacket(originalPacket, this._tracer);
+    const result = await this._tracer.startActiveSpan(
+      attemptMessage,
+      async (span) => {
+        return await this._consoleInterceptor.intercept(console, async () => {
+          let parsedPayload: any;
+          let initOutput: any;
 
-                parsedPayload = await parsePacket(payloadPacket);
+          try {
+            const payloadPacket = await conditionallyImportPacket(originalPacket, this._tracer);
 
-                initOutput = await this.#callTaskInit(parsedPayload, ctx);
+            parsedPayload = await parsePacket(payloadPacket);
 
-                const output = await this.#callRun(parsedPayload, ctx, initOutput);
+            initOutput = await this.#callTaskInit(parsedPayload, ctx);
 
-                try {
-                  const stringifiedOutput = await stringifyIO(output);
+            const output = await this.#callRun(parsedPayload, ctx, initOutput);
 
-                  const finalOutput = await conditionallyExportPacket(
-                    stringifiedOutput,
-                    `${execution.attempt.id}/output`,
-                    this._tracer
-                  );
+            try {
+              const stringifiedOutput = await stringifyIO(output);
 
-                  const attributes = await createPacketAttributes(
-                    finalOutput,
-                    SemanticInternalAttributes.OUTPUT,
-                    SemanticInternalAttributes.OUTPUT_TYPE
-                  );
+              const finalOutput = await conditionallyExportPacket(
+                stringifiedOutput,
+                `${execution.attempt.id}/output`,
+                this._tracer
+              );
 
-                  if (attributes) {
-                    span.setAttributes(attributes);
-                  }
+              const attributes = await createPacketAttributes(
+                finalOutput,
+                SemanticInternalAttributes.OUTPUT,
+                SemanticInternalAttributes.OUTPUT_TYPE
+              );
 
-                  return {
-                    ok: true,
-                    id: execution.run.id,
-                    output: finalOutput.data,
-                    outputType: finalOutput.dataType,
-                  } satisfies TaskRunExecutionResult;
-                } catch (stringifyError) {
-                  recordSpanException(span, stringifyError);
-
-                  return {
-                    ok: false,
-                    id: execution.run.id,
-                    error: {
-                      type: "INTERNAL_ERROR",
-                      code: TaskRunErrorCodes.TASK_OUTPUT_ERROR,
-                      message:
-                        stringifyError instanceof Error
-                          ? stringifyError.message
-                          : typeof stringifyError === "string"
-                          ? stringifyError
-                          : undefined,
-                    },
-                  } satisfies TaskRunExecutionResult;
-                }
-              } catch (runError) {
-                try {
-                  const handleErrorResult = await this.#handleError(
-                    execution,
-                    runError,
-                    parsedPayload,
-                    ctx
-                  );
-
-                  recordSpanException(span, handleErrorResult.error ?? runError);
-
-                  return {
-                    id: execution.run.id,
-                    ok: false,
-                    error: handleErrorResult.error
-                      ? parseError(handleErrorResult.error)
-                      : parseError(runError),
-                    retry:
-                      handleErrorResult.status === "retry" ? handleErrorResult.retry : undefined,
-                    skippedRetrying: handleErrorResult.status === "skipped",
-                  } satisfies TaskRunExecutionResult;
-                } catch (handleErrorError) {
-                  recordSpanException(span, handleErrorError);
-
-                  return {
-                    ok: false,
-                    id: execution.run.id,
-                    error: {
-                      type: "INTERNAL_ERROR",
-                      code: TaskRunErrorCodes.HANDLE_ERROR_ERROR,
-                      message:
-                        handleErrorError instanceof Error
-                          ? handleErrorError.message
-                          : typeof handleErrorError === "string"
-                          ? handleErrorError
-                          : undefined,
-                    },
-                  } satisfies TaskRunExecutionResult;
-                }
-              } finally {
-                await this.#callTaskCleanup(parsedPayload, ctx, initOutput);
+              if (attributes) {
+                span.setAttributes(attributes);
               }
-            });
-          },
-          {
-            kind: SpanKind.CONSUMER,
-            attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "attempt",
-              ...accessoryAttributes({
-                items: [
-                  {
-                    text: ctx.task.filePath,
-                  },
-                  {
-                    text: `${ctx.task.exportName}.run()`,
-                  },
-                ],
-                style: "codepath",
-              }),
-            },
-          },
-          this._tracer.extractContext(traceContext)
-        );
-      }
+
+              return {
+                ok: true,
+                id: execution.run.id,
+                output: finalOutput.data,
+                outputType: finalOutput.dataType,
+              } satisfies TaskRunExecutionResult;
+            } catch (stringifyError) {
+              recordSpanException(span, stringifyError);
+
+              return {
+                ok: false,
+                id: execution.run.id,
+                error: {
+                  type: "INTERNAL_ERROR",
+                  code: TaskRunErrorCodes.TASK_OUTPUT_ERROR,
+                  message:
+                    stringifyError instanceof Error
+                      ? stringifyError.message
+                      : typeof stringifyError === "string"
+                      ? stringifyError
+                      : undefined,
+                },
+              } satisfies TaskRunExecutionResult;
+            }
+          } catch (runError) {
+            try {
+              const handleErrorResult = await this.#handleError(
+                execution,
+                runError,
+                parsedPayload,
+                ctx
+              );
+
+              recordSpanException(span, handleErrorResult.error ?? runError);
+
+              return {
+                id: execution.run.id,
+                ok: false,
+                error: handleErrorResult.error
+                  ? parseError(handleErrorResult.error)
+                  : parseError(runError),
+                retry: handleErrorResult.status === "retry" ? handleErrorResult.retry : undefined,
+                skippedRetrying: handleErrorResult.status === "skipped",
+              } satisfies TaskRunExecutionResult;
+            } catch (handleErrorError) {
+              recordSpanException(span, handleErrorError);
+
+              return {
+                ok: false,
+                id: execution.run.id,
+                error: {
+                  type: "INTERNAL_ERROR",
+                  code: TaskRunErrorCodes.HANDLE_ERROR_ERROR,
+                  message:
+                    handleErrorError instanceof Error
+                      ? handleErrorError.message
+                      : typeof handleErrorError === "string"
+                      ? handleErrorError
+                      : undefined,
+                },
+              } satisfies TaskRunExecutionResult;
+            }
+          } finally {
+            await this.#callTaskCleanup(parsedPayload, ctx, initOutput);
+          }
+        });
+      },
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "attempt",
+          ...accessoryAttributes({
+            items: [
+              {
+                text: ctx.task.filePath,
+              },
+              {
+                text: `${ctx.task.exportName}.run()`,
+              },
+            ],
+            style: "codepath",
+          }),
+        },
+      },
+      this._tracer.extractContext(traceContext)
     );
 
     return result;
