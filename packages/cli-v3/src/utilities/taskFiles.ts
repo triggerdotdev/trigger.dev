@@ -21,9 +21,27 @@ export async function gatherTaskFiles(config: ResolvedConfig): Promise<Array<Tas
   const taskFiles: Array<TaskFile> = [];
 
   for (const triggerDir of config.triggerDirectories) {
-    const files = await fs.promises.readdir(triggerDir, { withFileTypes: true });
-    for (const file of files) {
-      if (!file.isFile()) continue;
+    const files = await gatherTaskFilesFromDir(triggerDir, triggerDir, config);
+    taskFiles.push(...files);
+  }
+
+  return taskFiles;
+}
+
+async function gatherTaskFilesFromDir(
+  dirPath: string,
+  triggerDir: string,
+  config: ResolvedConfig
+): Promise<TaskFile[]> {
+  const taskFiles: TaskFile[] = [];
+
+  const files = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  for (const file of files) {
+    if (!file.isFile()) {
+      // Recurse into subdirectories
+      const fullPath = join(dirPath, file.name);
+      taskFiles.push(...(await gatherTaskFilesFromDir(fullPath, triggerDir, config)));
+    } else {
       if (
         !file.name.endsWith(".js") &&
         !file.name.endsWith(".ts") &&
@@ -33,7 +51,7 @@ export async function gatherTaskFiles(config: ResolvedConfig): Promise<Array<Tas
         continue;
       }
 
-      const fullPath = join(triggerDir, file.name);
+      const fullPath = join(dirPath, file.name);
       const filePath = relative(config.projectDir, fullPath);
 
       //remove the file extension and replace any invalid characters with underscores

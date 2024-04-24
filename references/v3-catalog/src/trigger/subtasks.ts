@@ -4,7 +4,7 @@ import { taskWithRetries } from "./retries";
 export const simpleParentTask = task({
   id: "simple-parent-task",
   run: async (payload: { message: string }) => {
-    await simpleChildTask.trigger({
+    const result = await simpleChildTask.trigger({
       message: `${payload.message} - 2.a`,
     });
 

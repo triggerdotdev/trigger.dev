@@ -87,10 +87,12 @@ declare const __TASKS__: Record<string, string>;
         "id" in task &&
         typeof task.id === "string"
       ) {
-        taskCatalog.registerTaskFileMetadata(task.id, {
-          exportName,
-          filePath: (taskFile as any).filePath,
-        });
+        if (taskCatalog.taskExists(task.id)) {
+          taskCatalog.registerTaskFileMetadata(task.id, {
+            exportName,
+            filePath: (taskFile as any).filePath,
+          });
+        }
       }
     }
   }
