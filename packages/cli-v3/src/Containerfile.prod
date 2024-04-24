@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     busybox \
     ca-certificates \
     dumb-init \
+    git \
     openssl \
     && rm -rf /var/lib/apt/lists/*
 
