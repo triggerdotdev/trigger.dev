@@ -134,19 +134,26 @@ export async function authenticatePersonalAccessToken(
 
   const hashedToken = hashToken(token);
 
-  const personalAccessToken = await prisma.personalAccessToken.update({
+  const personalAccessToken = await prisma.personalAccessToken.findFirst({
     where: {
       hashedToken,
       revokedAt: null,
+    },
+  });
+
+  if (!personalAccessToken) {
+    // The token may have been revoked or is entirely invalid
+    return;
+  }
+
+  await prisma.personalAccessToken.update({
+    where: {
+      id: personalAccessToken.id,
     },
     data: {
       lastAccessedAt: new Date(),
     },
   });
-
-  if (!personalAccessToken) {
-    return;
-  }
 
   const decryptedToken = decryptPersonalAccessToken(personalAccessToken);
 
