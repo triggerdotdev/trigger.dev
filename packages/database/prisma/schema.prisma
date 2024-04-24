@@ -991,7 +991,7 @@ model JobRunExecution {
   reason JobRunExecutionReason @default(EXECUTE_JOB)
   status JobRunExecutionStatus @default(PENDING)
 
-  resumeTask   Task?   @relation(fields: [resumeTaskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  resumeTask   Task?   @relation(fields: [resumeTaskId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   resumeTaskId String?
 
   graphileJobId String?
