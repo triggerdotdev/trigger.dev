@@ -9,6 +9,7 @@ import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
 import { sortEnvironments } from "~/services/environmentSort.server";
+import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
 
 export type Task = {
@@ -191,7 +192,7 @@ export class TaskListPresenter {
     ${sqlDatabaseSchema}."TaskRun" as tr
   WHERE 
     tr."taskIdentifier" IN (${Prisma.join(tasks)})
-    AND tr."createdAt" >= (current_date - interval '7 days')
+    AND tr."createdAt" >= (current_date - interval '6 days')
   GROUP BY 
     tr."taskIdentifier", 
     tr."status", 
@@ -203,28 +204,41 @@ export class TaskListPresenter {
 
     //today with no time
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    today.setUTCHours(0, 0, 0, 0);
 
     return activity.reduce((acc, a) => {
       let existingTask = acc[a.taskIdentifier];
 
       if (!existingTask) {
         existingTask = [];
+        //populate the array with the past 7 days
+        for (let i = 6; i >= 0; i--) {
+          const day = new Date(today);
+          day.setUTCDate(today.getDate() - i);
+          day.setUTCHours(0, 0, 0, 0);
+
+          existingTask.push({
+            day: day.toISOString(),
+            [TaskRunStatus.COMPLETED_SUCCESSFULLY]: 0,
+          } as { day: string } & Record<TaskRunStatus, number>);
+        }
+
         acc[a.taskIdentifier] = existingTask;
       }
 
       const dayString = a.day.toISOString();
       const day = existingTask.find((d) => d.day === dayString);
 
-      if (day) {
-        day[a.status] = Number(a.count);
-      } else {
-        const newDay = {
+      if (!day) {
+        logger.warn(`Day not found for TaskRun`, {
           day: dayString,
-          [a.status]: Number(a.count),
-        } as { day: string } & Record<TaskRunStatus, number>;
-        existingTask.push(newDay);
+          taskIdentifier: a.taskIdentifier,
+          existingTask,
+        });
+        return acc;
       }
+
+      day[a.status] = Number(a.count);
 
       return acc;
     }, {} as Record<string, ({ day: string } & Record<TaskRunStatus, number>)[]>);
