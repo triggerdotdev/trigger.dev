@@ -65,6 +65,29 @@ export function prettyPrintDate(date: Date = new Date()) {
   return formattedDate;
 }
 
+export function prettyError(header: string, body?: string, footer?: string) {
+  const prefix = "Error: ";
+  const indent = Array(prefix.length).fill(" ").join("");
+  const spacing = "\n\n";
+
+  const prettyPrefix = chalkError(prefix);
+
+  const withIndents = (text?: string) =>
+    text
+      ?.split("\n")
+      .map((line) => `${indent}${line}`)
+      .join("\n");
+
+  const prettyBody = withIndents(body);
+  const prettyFooter = withIndents(footer);
+
+  log.error(
+    `${prettyPrefix}${header}${prettyBody ? `${spacing}${prettyBody}` : ""}${
+      prettyFooter ? `${spacing}${prettyFooter}` : ""
+    }`
+  );
+}
+
 export function prettyWarning(header: string, body?: string, footer?: string) {
   const prefix = "Warning: ";
   const indent = Array(prefix.length).fill(" ").join("");

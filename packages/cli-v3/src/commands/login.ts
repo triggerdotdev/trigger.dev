@@ -13,7 +13,7 @@ import {
   tracer,
   wrapCommandAction,
 } from "../cli/common.js";
-import { chalkLink } from "../utilities/cliOutput.js";
+import { chalkLink, prettyError } from "../utilities/cliOutput.js";
 import { readAuthConfigProfile, writeAuthConfigProfile } from "../utilities/configFiles.js";
 import { getVersion } from "../utilities/getVersion.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";
@@ -109,10 +109,16 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
             skipTelemetry: !span.isRecording(),
             logLevel: logger.loggerLevel,
           },
-          opts.embedded
+          true
         );
 
         if (!whoAmIResult.success) {
+          prettyError("Whoami failed", whoAmIResult.error);
+
+          if (!opts.embedded) {
+            outro("Login failed");
+          }
+
           throw new Error(whoAmIResult.error);
         } else {
           if (!opts.embedded) {
