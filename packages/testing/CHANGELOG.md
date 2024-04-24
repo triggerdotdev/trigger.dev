@@ -1,5 +1,13 @@
 # @trigger.dev/testing
 
+## 3.0.0-beta.20
+
+### Patch Changes
+
+- Updated dependencies [e3db25739]
+  - @trigger.dev/core@3.0.0-beta.20
+  - @trigger.dev/sdk@3.0.0-beta.20
+
 ## 3.0.0-beta.19
 
 ### Patch Changes

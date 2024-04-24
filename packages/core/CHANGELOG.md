@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.0.0-beta.20
+
+### Patch Changes
+
+- e3db25739: Fix error stack traces
+
 ## 3.0.0-beta.19
 
 ## 3.0.0-beta.18

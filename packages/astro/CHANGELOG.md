@@ -1,5 +1,11 @@
 # @trigger.dev/astro
 
+## 3.0.0-beta.20
+
+### Patch Changes
+
+- @trigger.dev/sdk@3.0.0-beta.20
+
 ## 3.0.0-beta.19
 
 ### Patch Changes
