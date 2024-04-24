@@ -111,15 +111,15 @@ export async function updateTriggerPackages(
 
     console.log(
       `ERROR: Version mismatch detected while running in CI. This won't end well. Aborting.
-
-Please run the dev command locally and check that your CLI version matches the one printed below. Additionally, all \`@trigger.dev/*\` packages also need to match this version.
-
-If your local CLI version doesn't match the one below, you may want to add the \`trigger.dev\` package to your dependencies. You will also have to update your workflow deploy command to \`npx trigger.dev deploy\` to ensure your pinned CLI version is used.
-
-CLI version: ${cliVersion}
-
-Current package versions that don't match the CLI:
-${versionMismatches.map((dep) => `- ${dep.name}@${dep.version}`).join("\n")}\n`
+  
+  Please run the dev command locally and check that your CLI version matches the one printed below. Additionally, all \`@trigger.dev/*\` packages also need to match this version.
+  
+  If your local CLI version doesn't match the one below, you may want to pin the CLI version in this CI step. To do that, just replace \`trigger.dev@beta\` with \`trigger.dev@<FULL_VERSION>\`, for example: \`npx trigger.dev@3.0.0-beta.17 deploy\`
+  
+  CLI version: ${cliVersion}
+  
+  Current package versions that don't match the CLI:
+  ${versionMismatches.map((dep) => `- ${dep.name}@${dep.version}`).join("\n")}\n`
     );
     process.exit(1);
   }
