@@ -113,13 +113,19 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         );
 
         if (!whoAmIResult.success) {
-          prettyError("Whoami failed", whoAmIResult.error);
+          prettyError("Unable to validate existing personal access token", whoAmIResult.error);
 
           if (!opts.embedded) {
-            outro("Login failed");
-          }
+            outro(
+              `Login failed using stored token. To fix, first logout using \`trigger.dev logout${
+                options?.profile ? ` --profile ${options.profile}` : ""
+              }\` and then try again.`
+            );
 
-          throw new Error(whoAmIResult.error);
+            throw new SkipLoggingError(whoAmIResult.error);
+          } else {
+            throw new Error(whoAmIResult.error);
+          }
         } else {
           if (!opts.embedded) {
             const continueOption = await select({
