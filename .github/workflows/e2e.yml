@@ -4,7 +4,7 @@ on:
 jobs:
   e2e:
     name: "🧪 E2E Tests"
-    runs-on: [buildjet-16vcpu-ubuntu-2204, buildjet-pinned-location_de]
+    runs-on: buildjet-16vcpu-ubuntu-2204
     steps:
       - name: 🐳 Login to Docker Hub
         uses: docker/login-action@v2
