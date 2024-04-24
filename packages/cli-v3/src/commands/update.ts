@@ -50,7 +50,9 @@ export async function updateTriggerPackages(
   options: UpdateCommandOptions,
   embedded?: boolean,
   requireUpdate?: boolean
-) {
+): Promise<boolean> {
+  let hasOutput = false;
+
   if (!embedded) {
     intro("Updating packages");
   }
@@ -61,7 +63,7 @@ export async function updateTriggerPackages(
 
   if (!packageJson) {
     log.error("Failed to load package.json. Try to re-run with `-l debug` to see what's going on.");
-    return;
+    return false;
   }
 
   const cliVersion = getVersion();
@@ -73,6 +75,8 @@ export async function updateTriggerPackages(
       `Current:     ${cliVersion}\nLatest:      ${newCliVersion}`,
       "Run latest:  npx trigger.dev@beta"
     );
+
+    hasOutput = true;
   }
 
   const triggerDependencies = getTriggerDependencies(packageJson);
@@ -96,8 +100,9 @@ export async function updateTriggerPackages(
   if (versionMismatches.length === 0) {
     if (!embedded) {
       outro(`Nothing to do${newCliVersion ? " ..but you should really update your CLI!" : ""}`);
+      return hasOutput;
     }
-    return;
+    return hasOutput;
   }
 
   prettyWarning(
@@ -149,7 +154,7 @@ export async function updateTriggerPackages(
       outro("You've been warned!");
     }
 
-    return;
+    return hasOutput;
   }
 
   const installSpinner = spinner();
@@ -213,6 +218,8 @@ export async function updateTriggerPackages(
       `Packages updated${newCliVersion ? " ..but you should really update your CLI too!" : ""}`
     );
   }
+
+  return hasOutput;
 }
 
 type Dependency = {

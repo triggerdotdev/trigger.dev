@@ -135,12 +135,13 @@ async function startDev(
 
     await printStandloneInitialBanner(true);
 
+    let displayedUpdateMessage = false;
+
     if (!options.skipUpdateCheck) {
-      console.log(); // spacing
-      await updateTriggerPackages(dir, { ...options }, true, true);
+      displayedUpdateMessage = await updateTriggerPackages(dir, { ...options }, true, true);
     }
 
-    printDevBanner(!options.skipUpdateCheck);
+    printDevBanner(displayedUpdateMessage);
 
     logger.debug("Starting dev session", { dir, options, authorization });
 

@@ -40,15 +40,17 @@ After installation, run Trigger.dev with \`npx trigger.dev\`.`
 export async function printStandloneInitialBanner(performUpdateCheck = true) {
   const cliVersion = getVersion();
 
-  logger.log(`\n${logo()} ${chalkGrey(`(${cliVersion})`)}\n`);
-
   if (performUpdateCheck) {
     const maybeNewVersion = await updateCheck();
 
     // Log a slightly more noticeable message if this is a major bump
     if (maybeNewVersion !== undefined) {
-      logger.log(`Update available ${chalk.green(maybeNewVersion)}`);
+      logger.log(`\n${logo()} ${chalkGrey(`(${cliVersion} -> ${chalk.green(maybeNewVersion)})`)}`);
+    } else {
+      logger.log(`\n${logo()} ${chalkGrey(`(${cliVersion})`)}`);
     }
+  } else {
+    logger.log(`\n${logo()} ${chalkGrey(`(${cliVersion})`)}`);
   }
 
   logger.log(`${chalkGrey("-".repeat(54))}`);
