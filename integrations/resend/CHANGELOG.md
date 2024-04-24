@@ -1,5 +1,13 @@
 # @trigger.dev/resend
 
+## 3.0.0-beta.19
+
+### Patch Changes
+
+- Updated dependencies [e9a63a486]
+  - @trigger.dev/sdk@3.0.0-beta.19
+  - @trigger.dev/integration-kit@3.0.0-beta.19
+
 ## 3.0.0-beta.18
 
 ### Patch Changes

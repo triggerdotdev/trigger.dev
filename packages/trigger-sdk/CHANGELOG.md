@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.19
+
+### Patch Changes
+
+- e9a63a486: Lock SDK and CLI deps on exact core version
+  - @trigger.dev/core@3.0.0-beta.19
+  - @trigger.dev/core-backend@3.0.0-beta.19
+
 ## 3.0.0-beta.18
 
 ### Patch Changes
