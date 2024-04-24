@@ -1,5 +1,20 @@
 # trigger.dev
 
+## 3.0.0-beta.18
+
+### Patch Changes
+
+- b68012f81: Remove the env var check during deploy (too many false negatives)
+- b68012f81: Fixes an issue that was treating v2 trigger directories as v3
+- 74d1e61e4: Fix a bug where revoking the CLI token would prevent you from ever logging in again with the CLI.
+- 52b2a8289: Add git to prod worker image which fixes private package installs
+- b68012f81: Move to our global system from AsyncLocalStorage for the current task context storage
+- b68012f81: Extracting out all the non-SDK related features from the main @trigger.dev/core/v3 export
+- b68012f81: Add support for tasks located in subdirectories inside trigger dirs
+- Updated dependencies [b68012f81]
+- Updated dependencies [b68012f81]
+  - @trigger.dev/core@3.0.0-beta.18
+
 ## 3.0.0-beta.17
 
 ### Patch Changes
