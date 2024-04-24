@@ -210,6 +210,18 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
       },
     });
 
+    if (existingCliPersonalAccessToken.revokedAt) {
+      // re-activate revoked CLI PAT so we can use it again
+      await prisma.personalAccessToken.update({
+        where: {
+          id: existingCliPersonalAccessToken.id,
+        },
+        data: {
+          revokedAt: null,
+        },
+      });
+    }
+
     //we don't return the decrypted token
     return {
       id: existingCliPersonalAccessToken.id,
