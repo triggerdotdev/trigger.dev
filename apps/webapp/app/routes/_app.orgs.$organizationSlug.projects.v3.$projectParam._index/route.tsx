@@ -138,7 +138,11 @@ export default function Page() {
                                 <TypedAwait resolve={activity}>
                                   {(data) => {
                                     const taskData = data[task.slug];
-                                    return <TaskActivityGraph activity={taskData} />;
+                                    return (
+                                      <div className="h-6 w-[5.125rem]">
+                                        <TaskActivityGraph activity={taskData} />
+                                      </div>
+                                    );
                                   }}
                                 </TypedAwait>
                               </Suspense>
@@ -235,7 +239,7 @@ function CreateTaskInstructions() {
 
 function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
   return (
-    <ResponsiveContainer width="100%" height={200}>
+    <ResponsiveContainer width="100%" height="100%">
       <BarChart
         data={activity}
         margin={{
@@ -244,16 +248,9 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
           left: 0,
           bottom: 0,
         }}
-        className="-ml-7"
+        width={82}
+        height={24}
       >
-        <XAxis dataKey="day" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
-        <YAxis
-          stroke="#94A3B8"
-          fontSize={12}
-          tickLine={false}
-          axisLine={false}
-          tickFormatter={(value) => `${value}`}
-        />
         {/* <Tooltip
       cursor={{ fill: "rgba(255,255,255,0.05)" }}
       content={<CustomTooltip />}
