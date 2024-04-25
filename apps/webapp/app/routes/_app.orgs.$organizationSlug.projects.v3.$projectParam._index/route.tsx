@@ -1,6 +1,7 @@
 import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { TaskRunStatus } from "@trigger.dev/database";
 import { Fragment, Suspense, useEffect } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
@@ -55,7 +56,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new TaskListPresenter();
-    const { tasks, activity, runningStats } = await presenter.call({
+    const { tasks, activity, runningStats, durations } = await presenter.call({
       userId,
       organizationSlug,
       projectSlug: projectParam,
@@ -65,6 +66,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       tasks,
       activity,
       runningStats,
+      durations,
     });
   } catch (error) {
     console.error(error);
@@ -78,7 +80,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
-  const { tasks, activity, runningStats } = useTypedLoaderData<typeof loader>();
+  const { tasks, activity, runningStats, durations } = useTypedLoaderData<typeof loader>();
   const hasTasks = tasks.length > 0;
 
   //live reload the page when the tasks change
@@ -113,6 +115,7 @@ export default function Page() {
                       <TableHeaderCell>Running</TableHeaderCell>
                       <TableHeaderCell>Queued</TableHeaderCell>
                       <TableHeaderCell>Activity (7d)</TableHeaderCell>
+                      <TableHeaderCell>Avg. duration</TableHeaderCell>
                       <TableHeaderCell>Environments</TableHeaderCell>
                       <TableHeaderCell>Last run</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
@@ -168,7 +171,7 @@ export default function Page() {
                                 </TypedAwait>
                               </Suspense>
                             </TableCell>
-                            <TableCell to={path} className="p-0">
+                            <TableCell to={path} className="p-0" actionClassName="py-0">
                               <Suspense fallback={<TaskActivityBlankState />}>
                                 <TypedAwait resolve={activity}>
                                   {(data) => {
@@ -184,6 +187,20 @@ export default function Page() {
                                         )}
                                       </>
                                     );
+                                  }}
+                                </TypedAwait>
+                              </Suspense>
+                            </TableCell>
+                            <TableCell to={path} className="p-0">
+                              <Suspense fallback={<></>}>
+                                <TypedAwait resolve={durations}>
+                                  {(data) => {
+                                    const taskData = data[task.slug];
+                                    return taskData
+                                      ? formatDurationMilliseconds(taskData * 1000, {
+                                          style: "short",
+                                        })
+                                      : "–";
                                   }}
                                 </TypedAwait>
                               </Suspense>

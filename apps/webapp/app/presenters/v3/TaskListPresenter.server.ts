@@ -175,7 +175,12 @@ export class TaskListPresenter extends BasePresenter {
       project.id
     );
 
-    return { tasks: outputTasks, activity, runningStats };
+    const durations = this.#getAverageDurations(
+      outputTasks.map((t) => t.slug),
+      project.id
+    );
+
+    return { tasks: outputTasks, activity, runningStats, durations };
   }
 
   async #getActivity(tasks: string[], projectId: string) {
@@ -295,5 +300,30 @@ export class TaskListPresenter extends BasePresenter {
 
       return acc;
     }, {} as Record<string, { queued: number; running: number }>);
+  }
+
+  async #getAverageDurations(tasks: string[], projectId: string) {
+    const durations = await this._replica.$queryRaw<
+      {
+        taskIdentifier: string;
+        duration: Number;
+      }[]
+    >`    
+    SELECT 
+      tr."taskIdentifier", 
+      AVG(EXTRACT(EPOCH FROM (tr."updatedAt" - tr."lockedAt"))) as duration
+      FROM 
+      ${sqlDatabaseSchema}."TaskRun" as tr
+    WHERE 
+      tr."taskIdentifier" IN (${Prisma.join(tasks)})
+      AND tr."projectId" = ${projectId}
+      AND tr."createdAt" >= (current_date - interval '6 days')
+      AND tr."status" IN ('COMPLETED_SUCCESSFULLY')
+    GROUP BY 
+      tr."taskIdentifier";`;
+
+    logger.info("Durations", { durations });
+
+    return Object.fromEntries(durations.map((s) => [s.taskIdentifier, Number(s.duration)]));
   }
 }
