@@ -11,6 +11,8 @@ import { User } from "~/models/user.server";
 import { sortEnvironments } from "~/services/environmentSort.server";
 import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
+import { BasePresenter } from "./basePresenter.server";
+import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 
 export type Task = {
   slug: string;
@@ -33,13 +35,7 @@ type Return = Awaited<ReturnType<TaskListPresenter["call"]>>;
 
 export type TaskActivity = Awaited<Return["activity"]>[string];
 
-export class TaskListPresenter {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
+export class TaskListPresenter extends BasePresenter {
   public async call({
     userId,
     projectSlug,
@@ -49,7 +45,7 @@ export class TaskListPresenter {
     projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
   }) {
-    const project = await this.#prismaClient.project.findFirstOrThrow({
+    const project = await this._replica.project.findFirstOrThrow({
       select: {
         id: true,
         environments: {
@@ -79,7 +75,7 @@ export class TaskListPresenter {
       },
     });
 
-    const tasks = await this.#prismaClient.$queryRaw<
+    const tasks = await this._replica.$queryRaw<
       {
         id: string;
         slug: string;
@@ -109,7 +105,7 @@ export class TaskListPresenter {
 
     if (tasks.length > 0) {
       const uniqueTaskSlugs = new Set(tasks.map((t) => t.slug));
-      latestRuns = await this.#prismaClient.$queryRaw<
+      latestRuns = await this._replica.$queryRaw<
         {
           createdAt: Date;
           status: TaskRunStatus;
@@ -174,11 +170,16 @@ export class TaskListPresenter {
       project.id
     );
 
-    return { tasks: outputTasks, activity };
+    const runningStats = this.#getRunningStats(
+      outputTasks.map((t) => t.slug),
+      project.id
+    );
+
+    return { tasks: outputTasks, activity, runningStats };
   }
 
   async #getActivity(tasks: string[], projectId: string) {
-    const activity = await this.#prismaClient.$queryRaw<
+    const activity = await this._replica.$queryRaw<
       {
         taskIdentifier: string;
         status: TaskRunStatus;
@@ -246,5 +247,53 @@ export class TaskListPresenter {
 
       return acc;
     }, {} as Record<string, ({ day: string } & Record<TaskRunStatus, number>)[]>);
+  }
+
+  async #getRunningStats(tasks: string[], projectId: string) {
+    const statuses = await this._replica.$queryRaw<
+      {
+        taskIdentifier: string;
+        status: TaskRunStatus;
+        count: BigInt;
+      }[]
+    >`
+    SELECT 
+    tr."taskIdentifier", 
+    tr."status",
+    COUNT(*) 
+  FROM 
+    ${sqlDatabaseSchema}."TaskRun" as tr
+  WHERE 
+    tr."taskIdentifier" IN (${Prisma.join(tasks)})
+    AND tr."projectId" = ${projectId}
+    AND tr."status" IN ('PENDING', 'WAITING_FOR_DEPLOY', 'EXECUTING', 'RETRYING_AFTER_FAILURE', 'WAITING_TO_RESUME')
+  GROUP BY 
+    tr."taskIdentifier", 
+    tr."status"
+  ORDER BY 
+    tr."taskIdentifier" ASC,
+    tr."status" ASC;`;
+
+    return statuses.reduce((acc, a) => {
+      let existingTask = acc[a.taskIdentifier];
+
+      if (!existingTask) {
+        existingTask = {
+          queued: 0,
+          running: 0,
+        };
+
+        acc[a.taskIdentifier] = existingTask;
+      }
+
+      if (QUEUED_STATUSES.includes(a.status)) {
+        existingTask.queued += Number(a.count);
+      }
+      if (RUNNING_STATUSES.includes(a.status)) {
+        existingTask.running += Number(a.count);
+      }
+
+      return acc;
+    }, {} as Record<string, { queued: number; running: number }>);
   }
 }

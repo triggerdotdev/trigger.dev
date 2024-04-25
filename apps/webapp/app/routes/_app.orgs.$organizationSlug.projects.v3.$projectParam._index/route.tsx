@@ -16,6 +16,7 @@ import { DateTime, formatDateTime } from "~/components/primitives/DateTime";
 import { Header1, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import {
   Table,
@@ -54,7 +55,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new TaskListPresenter();
-    const { tasks, activity } = await presenter.call({
+    const { tasks, activity, runningStats } = await presenter.call({
       userId,
       organizationSlug,
       projectSlug: projectParam,
@@ -63,6 +64,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return typeddefer({
       tasks,
       activity,
+      runningStats,
     });
   } catch (error) {
     console.error(error);
@@ -76,8 +78,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
-  const user = useUser();
-  const { tasks, activity } = useTypedLoaderData<typeof loader>();
+  const { tasks, activity, runningStats } = useTypedLoaderData<typeof loader>();
   const hasTasks = tasks.length > 0;
 
   //live reload the page when the tasks change
@@ -109,6 +110,8 @@ export default function Page() {
                       <TableHeaderCell>Task ID</TableHeaderCell>
                       <TableHeaderCell>Task</TableHeaderCell>
                       <TableHeaderCell>Path</TableHeaderCell>
+                      <TableHeaderCell>Running</TableHeaderCell>
+                      <TableHeaderCell>Queued</TableHeaderCell>
                       <TableHeaderCell>Activity (7d)</TableHeaderCell>
                       <TableHeaderCell>Environments</TableHeaderCell>
                       <TableHeaderCell>Last run</TableHeaderCell>
@@ -139,6 +142,32 @@ export default function Page() {
                               />
                             </TableCell>
                             <TableCell to={path}>{task.filePath}</TableCell>
+                            <TableCell to={path} className="p-0">
+                              <Suspense
+                                fallback={
+                                  <>
+                                    <Spinner color="muted" />
+                                  </>
+                                }
+                              >
+                                <TypedAwait resolve={runningStats}>
+                                  {(data) => {
+                                    const taskData = data[task.slug];
+                                    return taskData?.running ?? "0";
+                                  }}
+                                </TypedAwait>
+                              </Suspense>
+                            </TableCell>
+                            <TableCell to={path} className="p-0">
+                              <Suspense fallback={<></>}>
+                                <TypedAwait resolve={runningStats}>
+                                  {(data) => {
+                                    const taskData = data[task.slug];
+                                    return taskData?.queued ?? "0";
+                                  }}
+                                </TypedAwait>
+                              </Suspense>
+                            </TableCell>
                             <TableCell to={path} className="p-0">
                               <Suspense fallback={<TaskActivityBlankState />}>
                                 <TypedAwait resolve={activity}>
