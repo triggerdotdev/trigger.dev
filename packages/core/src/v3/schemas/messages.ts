@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TaskRunExecution, TaskRunExecutionResult } from "./common";
+import { WaitReason } from "./schemas";
 
 export const EnvironmentType = z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"]);
 export type EnvironmentType = z.infer<typeof EnvironmentType>;
@@ -356,7 +357,11 @@ export const ProdChildToWorkerMessages = {
   },
   CANCEL_CHECKPOINT: {
     message: z.object({
-      version: z.literal("v1").default("v1"),
+      version: z.enum(["v1", "v2"]).default("v2"),
+    }),
+    callback: z.object({
+      checkpointCanceled: z.boolean(),
+      reason: WaitReason.optional(),
     }),
   },
   WAIT_FOR_DURATION: {

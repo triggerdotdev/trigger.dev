@@ -396,7 +396,11 @@ export const ProdWorkerToCoordinatorMessages = {
   },
   CANCEL_CHECKPOINT: {
     message: z.object({
-      version: z.literal("v1").default("v1"),
+      version: z.enum(["v1", "v2"]).default("v2"),
+    }),
+    callback: z.object({
+      checkpointCanceled: z.boolean(),
+      reason: WaitReason.optional(),
     }),
   },
   TASK_HEARTBEAT: {
