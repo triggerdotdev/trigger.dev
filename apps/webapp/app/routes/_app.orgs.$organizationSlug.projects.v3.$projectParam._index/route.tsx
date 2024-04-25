@@ -1,20 +1,21 @@
-import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
+import { ChatBubbleLeftRightIcon, ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { TaskRunStatus } from "@trigger.dev/database";
-import { Fragment, Suspense, useEffect } from "react";
+import { Fragment, Suspense, useEffect, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
-import { InitCommandV3, TriggerDevStepV3 } from "~/components/SetupCommands";
+import { InitCommandV3, TriggerDevStepV3, TriggerLoginStepV3 } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { DateTime, formatDateTime } from "~/components/primitives/DateTime";
-import { Header1, Header3 } from "~/components/primitives/Headers";
+import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -56,7 +57,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new TaskListPresenter();
-    const { tasks, activity, runningStats, durations } = await presenter.call({
+    const { tasks, userHasTasks, activity, runningStats, durations } = await presenter.call({
       userId,
       organizationSlug,
       projectSlug: projectParam,
@@ -64,6 +65,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     return typeddefer({
       tasks,
+      userHasTasks,
       activity,
       runningStats,
       durations,
@@ -80,7 +82,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
-  const { tasks, activity, runningStats, durations } = useTypedLoaderData<typeof loader>();
+  const { tasks, userHasTasks, activity, runningStats, durations } =
+    useTypedLoaderData<typeof loader>();
   const hasTasks = tasks.length > 0;
 
   //live reload the page when the tasks change
@@ -106,6 +109,7 @@ export default function Page() {
           <div className="h-full">
             {hasTasks ? (
               <div className="flex flex-col gap-4 pb-4">
+                {!userHasTasks && <UserHasNoTasks />}
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -247,7 +251,9 @@ export default function Page() {
                 </Table>
               </div>
             ) : (
-              <CreateTaskInstructions />
+              <MainCenteredContainer className="max-w-prose">
+                <CreateTaskInstructions />
+              </MainCenteredContainer>
             )}
           </div>
         </div>
@@ -258,7 +264,7 @@ export default function Page() {
 
 function CreateTaskInstructions() {
   return (
-    <MainCenteredContainer className="max-w-prose">
+    <div>
       <div className="mb-6 flex items-center justify-between border-b">
         <Header1 spacing>Get setup in 3 minutes</Header1>
         <div className="flex items-center gap-2">
@@ -289,7 +295,51 @@ function CreateTaskInstructions() {
       <StepContentContainer>
         <Paragraph>This page will automatically refresh.</Paragraph>
       </StepContentContainer>
-    </MainCenteredContainer>
+    </div>
+  );
+}
+
+function UserHasNoTasks() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Callout
+      variant="info"
+      cta={
+        <Button
+          variant="tertiary/small"
+          TrailingIcon={open ? ChevronUpIcon : ChevronDownIcon}
+          onClick={() => setOpen((o) => !o)}
+        >
+          {open ? "Close" : "Setup your dev environment"}
+        </Button>
+      }
+    >
+      {open ? (
+        <div>
+          <Header2 spacing>Get setup in 3 minutes</Header2>
+
+          <StepNumber stepNumber="1" title="Open up your project" />
+          <StepContentContainer>
+            <Paragraph>You'll need to open a terminal at the root of your project.</Paragraph>
+          </StepContentContainer>
+          <StepNumber stepNumber="2" title="Run the CLI 'login' command" />
+          <StepContentContainer>
+            <TriggerLoginStepV3 />
+          </StepContentContainer>
+          <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
+          <StepContentContainer>
+            <TriggerDevStepV3 />
+          </StepContentContainer>
+          <StepNumber stepNumber="4" title="Waiting for tasks" displaySpinner />
+          <StepContentContainer>
+            <Paragraph>This page will automatically refresh.</Paragraph>
+          </StepContentContainer>
+        </div>
+      ) : (
+        "Your DEV environment isn't setup yet."
+      )}
+    </Callout>
   );
 }
 

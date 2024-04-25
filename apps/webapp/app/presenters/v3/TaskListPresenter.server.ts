@@ -177,7 +177,12 @@ export class TaskListPresenter extends BasePresenter {
       project.id
     );
 
-    return { tasks: outputTasks, activity, runningStats, durations };
+    const userEnvironment = project.environments.find((e) => e.orgMember?.user.id === userId);
+    const userHasTasks = userEnvironment
+      ? outputTasks.some((t) => t.environments.some((e) => e.id === userEnvironment.id))
+      : false;
+
+    return { tasks: outputTasks, userHasTasks, activity, runningStats, durations };
   }
 
   async #getActivity(tasks: string[], projectId: string) {
