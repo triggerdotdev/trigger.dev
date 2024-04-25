@@ -79,7 +79,7 @@ export const taskWithRetries = task({
     maxTimeoutInMs: 30_000,
     randomize: false,
   },
-  run: async ({ payload, ctx }) => {
+  run: async (payload: any, { ctx }) => {
     //...
   },
 });
@@ -99,7 +99,7 @@ export const oneAtATime = task({
   queue: {
     concurrencyLimit: 1,
   },
-  run: async ({ payload, ctx }) => {
+  run: async (payload: any, { ctx }) => {
     //...
   },
 });
@@ -116,7 +116,7 @@ export const heavyTask = task({
     cpu: 2,
     memory: 4,
   },
-  run: async ({ payload, ctx }) => {
+  run: async (payload: any, { ctx }) => {
     //...
   },
 });
@@ -124,27 +124,143 @@ export const heavyTask = task({
 
 ### `init` function
 
-This function is called before a run attempt.
+This function is called before a run attempt:
+
+```ts /trigger/init.ts
+export const taskWithInit = task({
+  id: "task-with-init",
+  init: async (payload, { ctx }) => {
+    //...
+  },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+You can also return data from the `init` function that will be available in the params of the `run`, `cleanup`, `onSuccess`, and `onFailure` functions.
+
+```ts /trigger/init-return.ts
+export const taskWithInitReturn = task({
+  id: "task-with-init-return",
+  init: async (payload, { ctx }) => {
+    return { someData: "someValue" };
+  },
+  run: async (payload: any, { ctx, init }) => {
+    console.log(init.someData); // "someValue"
+  },
+});
+```
 
 ### `cleanup` function
 
-This function is called after a run attempt has succeeded or failed.
+This function is called after the `run` function is executed, regardless of whether the run was successful or not. It's useful for cleaning up resources, logging, or other side effects.
+
+```ts /trigger/cleanup.ts
+export const taskWithCleanup = task({
+  id: "task-with-cleanup",
+  cleanup: async (payload, { ctx }) => {
+    //...
+  },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
 
 ### `middleware` function
 
 This function is called before the `run` function, it allows you to wrap the run function with custom code. For more information [read the guide](/v3/middleware).
 
+### `onStart` function
+
+When a task run starts, the `onStart` function is called. It's useful for sending notifications, logging, and other side effects. This function will only be called one per run (not per retry). If you want to run code before each retry, use the `init` function.
+
+```ts /trigger/on-start.ts
+export const taskWithOnStart = task({
+  id: "task-with-on-start",
+  onStart: async (payload, { ctx }) => {
+    //...
+  },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+You can also define an `onStart` function in your `trigger.config.ts` file to get notified when any task starts.
+
+```ts trigger.config.ts
+import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+
+export const config: TriggerConfig = {
+  onStart: async (payload, { ctx }) => {
+    console.log("Task started", ctx.task.id);
+  },
+};
+```
+
 ### `onSuccess` function
 
-When a task attempt succeeds, the `onSuccess` function is called. It's useful for sending notifications, logging, or other side effects.
+When a task run succeeds, the `onSuccess` function is called. It's useful for sending notifications, logging, syncing state to your database, or other side effects.
 
-<Snippet file="coming-soon-slim.mdx" />
+```ts /trigger/on-success.ts
+export const taskWithOnSuccess = task({
+  id: "task-with-on-success",
+  onSuccess: async (payload, output, { ctx }) => {
+    //...
+  },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
 
-### `onError` function
+You can also define an `onSuccess` function in your `trigger.config.ts` file to get notified when any task succeeds.
 
-When a task attempt fails, the `onError` function is called. It's useful for sending notifications, logging, or other side effects.
+```ts trigger.config.ts
+import type { TriggerConfig } from "@trigger.dev/sdk/v3";
 
-<Snippet file="coming-soon-slim.mdx" />
+export const config: TriggerConfig = {
+  onSuccess: async (payload, output, { ctx }) => {
+    console.log("Task succeeded", ctx.task.id);
+  },
+};
+```
+
+### `onFailure` function
+
+When a task run fails, the `onFailure` function is called. It's useful for sending notifications, logging, or other side effects. It will only be executed once the task run has exhausted all its retries.
+
+```ts /trigger/on-failure.ts
+export const taskWithOnFailure = task({
+  id: "task-with-on-failure",
+  onFailure: async (payload, error, { ctx }) => {
+    //...
+  },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+You can also define an `onFailure` function in your `trigger.config.ts` file to get notified when any task fails.
+
+```ts trigger.config.ts
+import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+
+export const config: TriggerConfig = {
+  onFailure: async (payload, error, { ctx }) => {
+    console.log("Task failed", ctx.task.id);
+  },
+};
+```
+
+### `handleError` functions
+
+You can define a function that will be called when an error is thrown in the `run` function, that allows you to control how the error is handled and whether the task should be retried.
+
+Read more about `handleError` in our [Errors and Retrying guide](/v3/errors-retrying).
 
 ## Next steps
 

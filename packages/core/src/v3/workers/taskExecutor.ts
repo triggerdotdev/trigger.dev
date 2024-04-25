@@ -90,9 +90,15 @@ export class TaskExecutor {
 
             parsedPayload = await parsePacket(payloadPacket);
 
-            initOutput = await this.#callTaskInit(parsedPayload, ctx);
+            if (execution.attempt.number === 1) {
+              await this.#callOnStartFunctions(parsedPayload, ctx);
+            }
+
+            initOutput = await this.#callInitFunctions(parsedPayload, ctx);
 
             const output = await this.#callRun(parsedPayload, ctx, initOutput);
+
+            await this.#callOnSuccessFunctions(parsedPayload, output, ctx, initOutput);
 
             try {
               const stringifiedOutput = await stringifyIO(output);
@@ -147,6 +153,15 @@ export class TaskExecutor {
               );
 
               recordSpanException(span, handleErrorResult.error ?? runError);
+
+              if (handleErrorResult.status !== "retry") {
+                await this.#callOnFailureFunctions(
+                  parsedPayload,
+                  handleErrorResult.error ?? runError,
+                  ctx,
+                  initOutput
+                );
+              }
 
               return {
                 id: execution.run.id,
@@ -218,16 +233,194 @@ export class TaskExecutor {
     return middlewareFn(payload, { ctx, next: async () => runFn(payload, { ctx, init }) });
   }
 
-  async #callTaskInit(payload: unknown, ctx: TaskRunContext) {
+  async #callInitFunctions(payload: unknown, ctx: TaskRunContext) {
+    await this.#callConfigInit(payload, ctx);
+
     const initFn = this.task.fns.init;
 
     if (!initFn) {
       return {};
     }
 
-    return this._tracer.startActiveSpan("init", async (span) => {
-      return await initFn(payload, { ctx });
-    });
+    return this._tracer.startActiveSpan(
+      "init",
+      async (span) => {
+        return await initFn(payload, { ctx });
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "function",
+        },
+      }
+    );
+  }
+
+  async #callConfigInit(payload: unknown, ctx: TaskRunContext) {
+    const initFn = this._importedConfig?.init;
+
+    if (!initFn) {
+      return {};
+    }
+
+    return this._tracer.startActiveSpan(
+      "config.init",
+      async (span) => {
+        return await initFn(payload, { ctx });
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "function",
+        },
+      }
+    );
+  }
+
+  async #callOnSuccessFunctions(
+    payload: unknown,
+    output: any,
+    ctx: TaskRunContext,
+    initOutput: any
+  ) {
+    await this.#callOnSuccessFunction(
+      this.task.fns.onSuccess,
+      "task.onSuccess",
+      payload,
+      output,
+      ctx,
+      initOutput
+    );
+
+    await this.#callOnSuccessFunction(
+      this._importedConfig?.onSuccess,
+      "config.onSuccess",
+      payload,
+      output,
+      ctx,
+      initOutput
+    );
+  }
+
+  async #callOnSuccessFunction(
+    onSuccessFn: TaskMetadataWithFunctions["fns"]["onSuccess"],
+    name: string,
+    payload: unknown,
+    output: any,
+    ctx: TaskRunContext,
+    initOutput: any
+  ) {
+    if (!onSuccessFn) {
+      return;
+    }
+
+    try {
+      await this._tracer.startActiveSpan(
+        name,
+        async (span) => {
+          return await onSuccessFn(payload, output, { ctx, init: initOutput });
+        },
+        {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "function",
+          },
+        }
+      );
+    } catch {
+      // Ignore errors from onSuccess functions
+    }
+  }
+
+  async #callOnFailureFunctions(
+    payload: unknown,
+    error: unknown,
+    ctx: TaskRunContext,
+    initOutput: any
+  ) {
+    await this.#callOnFailureFunction(
+      this.task.fns.onFailure,
+      "task.onFailure",
+      payload,
+      error,
+      ctx,
+      initOutput
+    );
+
+    await this.#callOnFailureFunction(
+      this._importedConfig?.onFailure,
+      "config.onFailure",
+      payload,
+      error,
+      ctx,
+      initOutput
+    );
+  }
+
+  async #callOnFailureFunction(
+    onFailureFn: TaskMetadataWithFunctions["fns"]["onFailure"],
+    name: string,
+    payload: unknown,
+    error: unknown,
+    ctx: TaskRunContext,
+    initOutput: any
+  ) {
+    if (!onFailureFn) {
+      return;
+    }
+
+    try {
+      return await this._tracer.startActiveSpan(
+        name,
+        async (span) => {
+          return await onFailureFn(payload, error, { ctx, init: initOutput });
+        },
+        {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "function",
+          },
+        }
+      );
+    } catch (e) {
+      // Ignore errors from onFailure functions
+    }
+  }
+
+  async #callOnStartFunctions(payload: unknown, ctx: TaskRunContext) {
+    await this.#callOnStartFunction(
+      this._importedConfig?.onStart,
+      "config.onStart",
+      payload,
+      ctx,
+      {}
+    );
+
+    await this.#callOnStartFunction(this.task.fns.onStart, "task.onStart", payload, ctx, {});
+  }
+
+  async #callOnStartFunction(
+    onStartFn: TaskMetadataWithFunctions["fns"]["onStart"],
+    name: string,
+    payload: unknown,
+    ctx: TaskRunContext,
+    initOutput: any
+  ) {
+    if (!onStartFn) {
+      return;
+    }
+
+    try {
+      await this._tracer.startActiveSpan(
+        name,
+        async (span) => {
+          return await onStartFn(payload, { ctx });
+        },
+        {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "function",
+          },
+        }
+      );
+    } catch {
+      // Ignore errors from onStart functions
+    }
   }
 
   async #callTaskCleanup(payload: unknown, ctx: TaskRunContext, init: unknown) {
