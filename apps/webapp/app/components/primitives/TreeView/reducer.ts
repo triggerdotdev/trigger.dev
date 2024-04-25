@@ -1,3 +1,4 @@
+import assertNever from "assert-never";
 import { FlatTree } from "./TreeView";
 import {
   applyVisibility,
@@ -389,6 +390,8 @@ export function reducer(state: TreeState, action: Action): TreeState {
           },
         });
       }
+
+      return state;
     }
     case "SELECT_LAST_VISIBLE_NODE": {
       const node = lastVisibleNode(action.payload.tree, state.nodes);
@@ -402,6 +405,8 @@ export function reducer(state: TreeState, action: Action): TreeState {
           },
         });
       }
+
+      return state;
     }
     case "SELECT_NEXT_VISIBLE_NODE": {
       const selected = selectedIdFromState(state.nodes);
@@ -429,6 +434,8 @@ export function reducer(state: TreeState, action: Action): TreeState {
           },
         });
       }
+
+      return state;
     }
     case "SELECT_PREVIOUS_VISIBLE_NODE": {
       const selected = selectedIdFromState(state.nodes);
@@ -503,6 +510,9 @@ export function reducer(state: TreeState, action: Action): TreeState {
         collapsedIds,
       });
       return newState;
+    }
+    default: {
+      assertNever(action);
     }
   }
 
