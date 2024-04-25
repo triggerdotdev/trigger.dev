@@ -222,7 +222,7 @@ export const AppDataSource = new DataSource({
 });
 ```
 
-And then in your trigger.config.ts file you can initialize the datasource using the new `init` option:
+And then in your trigger.config.ts file you can initialize the datasource using the `onStart` lifecycle function option:
 
 ```ts trigger.config.ts
 import type { TriggerConfig } from "@trigger.dev/sdk/v3";
@@ -230,7 +230,7 @@ import { AppDataSource } from "@/trigger/orm";
 
 export const config: TriggerConfig = {
   // ... other options here
-  init: async (payload, { ctx }) => {
+  onStart: async (payload, { ctx }) => {
     await AppDataSource.initialize();
   },
 };
