@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Machine, QueueOptions, RetryOptions } from "./messages";
+import { QueueOptions, RetryOptions, Machine } from "./schemas";
 
 export const TaskResource = z.object({
   id: z.string(),
