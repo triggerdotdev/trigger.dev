@@ -169,12 +169,15 @@ export class TaskListPresenter {
     }, [] as Task[]);
 
     //then get the activity for each task
-    const activity = this.#getActivity(outputTasks.map((t) => t.slug));
+    const activity = this.#getActivity(
+      outputTasks.map((t) => t.slug),
+      project.id
+    );
 
     return { tasks: outputTasks, activity };
   }
 
-  async #getActivity(tasks: string[]) {
+  async #getActivity(tasks: string[], projectId: string) {
     const activity = await this.#prismaClient.$queryRaw<
       {
         taskIdentifier: string;
@@ -192,6 +195,7 @@ export class TaskListPresenter {
     ${sqlDatabaseSchema}."TaskRun" as tr
   WHERE 
     tr."taskIdentifier" IN (${Prisma.join(tasks)})
+    AND tr."projectId" = ${projectId}
     AND tr."createdAt" >= (current_date - interval '6 days')
   GROUP BY 
     tr."taskIdentifier", 

@@ -268,19 +268,25 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
           allowEscapeViewBox={{ x: true, y: true }}
           wrapperStyle={{ zIndex: 1000 }}
         />
-        <Bar dataKey="bg" background={{ fill: "#212327" }} stackId="a" />
-        <Bar dataKey="PENDING" fill="#5F6570" stackId="a" />
-        <Bar dataKey="WAITING_FOR_DEPLOY" fill="#FBBF24" stackId="a" />
-        <Bar dataKey="EXECUTING" fill="#3B82F6" stackId="a" />
-        <Bar dataKey="RETRYING_AFTER_FAILURE" fill="#3B82F6" stackId="a" />
-        <Bar dataKey="WAITING_TO_RESUME" fill="#3B82F6" stackId="a" />
-        <Bar dataKey="COMPLETED_SUCCESSFULLY" fill="#28BF5C" stackId="a" />
-        <Bar dataKey="CANCELED" fill="#5F6570" stackId="a" />
-        <Bar dataKey="COMPLETED_WITH_ERRORS" fill="#F43F5E" stackId="a" />
-        <Bar dataKey="INTERRUPTED" fill="#F43F5E" stackId="a" />
-        <Bar dataKey="SYSTEM_FAILURE" fill="#F43F5E" stackId="a" />
-        <Bar dataKey="PAUSED" fill="#FBBF24" stackId="a" />
-        <Bar dataKey="CRASHED" fill="#F43F5E" stackId="a" />
+        <Bar
+          dataKey="bg"
+          background={{ fill: "#212327" }}
+          stackId="a"
+          radius={2}
+          activeBar={false}
+        />
+        <Bar dataKey="PENDING" fill="#5F6570" stackId="a" activeBar={false} />
+        <Bar dataKey="WAITING_FOR_DEPLOY" fill="#F59E0B" stackId="a" activeBar={false} />
+        <Bar dataKey="EXECUTING" fill="#3B82F6" stackId="a" activeBar={false} />
+        <Bar dataKey="RETRYING_AFTER_FAILURE" fill="#3B82F6" stackId="a" activeBar={false} />
+        <Bar dataKey="WAITING_TO_RESUME" fill="#3B82F6" stackId="a" activeBar={false} />
+        <Bar dataKey="COMPLETED_SUCCESSFULLY" fill="#28BF5C" stackId="a" activeBar={false} />
+        <Bar dataKey="CANCELED" fill="#5F6570" stackId="a" activeBar={false} />
+        <Bar dataKey="COMPLETED_WITH_ERRORS" fill="#F43F5E" stackId="a" activeBar={false} />
+        <Bar dataKey="INTERRUPTED" fill="#F43F5E" stackId="a" activeBar={false} />
+        <Bar dataKey="SYSTEM_FAILURE" fill="#F43F5E" stackId="a" activeBar={false} />
+        <Bar dataKey="PAUSED" fill="#FCD34D" stackId="a" activeBar={false} />
+        <Bar dataKey="CRASHED" fill="#F43F5E" stackId="a" activeBar={false} />
       </BarChart>
     </ResponsiveContainer>
   );
