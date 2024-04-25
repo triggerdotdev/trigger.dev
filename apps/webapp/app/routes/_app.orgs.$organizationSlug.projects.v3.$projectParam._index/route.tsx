@@ -319,7 +319,7 @@ function UserHasNoTasks() {
         <div>
           <Header2 spacing>Get setup in 3 minutes</Header2>
 
-          <StepNumber stepNumber="1" title="Open up your project" />
+          <StepNumber stepNumber="1" title="Open up your project" className="mt-6" />
           <StepContentContainer>
             <Paragraph>You'll need to open a terminal at the root of your project.</Paragraph>
           </StepContentContainer>
