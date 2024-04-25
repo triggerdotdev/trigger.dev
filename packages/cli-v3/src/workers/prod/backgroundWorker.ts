@@ -13,6 +13,7 @@ import {
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
+  WaitReason,
   correctErrorStackTrace,
 } from "@trigger.dev/core/v3";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
@@ -68,8 +69,10 @@ export class ProdBackgroundWorker {
   > = new Evt();
 
   public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
+  public checkpointCanceledNotification = Evt.create<{ checkpointCanceled: boolean }>();
+
   public onReadyForCheckpoint = Evt.create<{ version?: "v1" }>();
-  public onCancelCheckpoint = Evt.create<{ version?: "v1" }>();
+  public onCancelCheckpoint = Evt.create<{ version?: "v1" | "v2"; reason?: WaitReason }>();
 
   private _onClose: Evt<void> = new Evt();
 
@@ -251,6 +254,9 @@ export class ProdBackgroundWorker {
       this.preCheckpointNotification.attach((message) => {
         taskRunProcess.preCheckpointNotification.post(message);
       });
+      this.checkpointCanceledNotification.attach((message) => {
+        taskRunProcess.checkpointCanceledNotification.post(message);
+      });
 
       await taskRunProcess.initialize();
 
@@ -377,8 +383,10 @@ class TaskRunProcess {
   > = new Evt();
 
   public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
+  public checkpointCanceledNotification = Evt.create<{ checkpointCanceled: boolean }>();
+
   public onReadyForCheckpoint = Evt.create<{ version?: "v1" }>();
-  public onCancelCheckpoint = Evt.create<{ version?: "v1" }>();
+  public onCancelCheckpoint = Evt.create<{ version?: "v1" | "v2"; reason?: WaitReason }>();
 
   constructor(
     private execution: ProdTaskRunExecution,
@@ -438,13 +446,26 @@ class TaskRunProcess {
           this.onWaitForBatch.post(message);
         },
         WAIT_FOR_DURATION: async (message) => {
+          // Post to coordinator
           this.onWaitForDuration.post(message);
 
-          // The coordinator will let us know if a checkpoint is about to happen
-          // We then pass this back down to the runtime in the child process
-          const { willCheckpointAndRestore } = await this.preCheckpointNotification.waitFor();
+          try {
+            // ..and wait for response
+            const { willCheckpointAndRestore } = await this.preCheckpointNotification.waitFor(
+              30_000
+            );
 
-          return { willCheckpointAndRestore };
+            return {
+              willCheckpointAndRestore,
+            };
+          } catch (error) {
+            console.error("Error while waiting for pre-checkpoint notification", error);
+
+            // Assume we won't get checkpointed
+            return {
+              willCheckpointAndRestore: false,
+            };
+          }
         },
         WAIT_FOR_TASK: async (message) => {
           this.onWaitForTask.post(message);
@@ -453,7 +474,30 @@ class TaskRunProcess {
           this.onReadyForCheckpoint.post(message);
         },
         CANCEL_CHECKPOINT: async (message) => {
+          const version = "v2";
+
+          // Post to coordinator
           this.onCancelCheckpoint.post(message);
+
+          try {
+            // ..and wait for response
+            const { checkpointCanceled } = await this.checkpointCanceledNotification.waitFor(
+              30_000
+            );
+
+            return {
+              version,
+              checkpointCanceled,
+            };
+          } catch (error) {
+            console.error("Error while waiting for checkpoint cancellation", error);
+
+            // Assume it's been canceled
+            return {
+              version,
+              checkpointCanceled: true,
+            };
+          }
         },
       },
     });

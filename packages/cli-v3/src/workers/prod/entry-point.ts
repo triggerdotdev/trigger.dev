@@ -43,7 +43,6 @@ class ProdWorker {
   private attemptFriendlyId?: string;
 
   private nextResumeAfter?: WaitReason;
-  private waitForPostStart = false;
 
   #httpPort: number;
   #backgroundWorker: ProdBackgroundWorker;
@@ -82,18 +81,27 @@ class ProdWorker {
       this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
     });
 
+    // Currently, this is only used for duration waits. Might need adjusting for other use cases.
     this.#backgroundWorker.onCancelCheckpoint.attach(async (message) => {
-      logger.log("onCancelCheckpoint() clearing paused state, don't wait for post start hook", {
-        paused: this.paused,
-        nextResumeAfter: this.nextResumeAfter,
-        waitForPostStart: this.waitForPostStart,
-      });
+      logger.log("onCancelCheckpoint()", { message });
 
-      this.paused = false;
-      this.nextResumeAfter = undefined;
-      this.waitForPostStart = false;
+      const { checkpointCanceled } = await this.#coordinatorSocket.socket.emitWithAck(
+        "CANCEL_CHECKPOINT",
+        {
+          version: "v2",
+          reason: message.reason,
+        }
+      );
 
-      this.#coordinatorSocket.socket.emit("CANCEL_CHECKPOINT", { version: "v1" });
+      if (checkpointCanceled) {
+        if (message.reason === "WAIT_FOR_DURATION") {
+          // Worker will resume immediately
+          this.paused = false;
+          this.nextResumeAfter = undefined;
+        }
+      }
+
+      this.#backgroundWorker.checkpointCanceledNotification.post({ checkpointCanceled });
     });
 
     this.#backgroundWorker.onWaitForDuration.attach(async (message) => {
@@ -182,10 +190,6 @@ class ProdWorker {
   }
 
   async #reconnect(isPostStart = false, reconnectImmediately = false) {
-    if (isPostStart) {
-      this.waitForPostStart = false;
-    }
-
     this.#coordinatorSocket.close();
 
     if (!reconnectImmediately) {
@@ -224,7 +228,6 @@ class ProdWorker {
     if (willCheckpointAndRestore) {
       this.paused = true;
       this.nextResumeAfter = reason;
-      this.waitForPostStart = true;
     }
   }
 
@@ -244,7 +247,6 @@ class ProdWorker {
     this.attemptFriendlyId = undefined;
 
     if (willCheckpointAndRestore) {
-      this.waitForPostStart = true;
       this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
       return;
     }
@@ -267,6 +269,7 @@ class ProdWorker {
     return headers;
   }
 
+  // FIXME: If the the worker can't connect for a while, this runs MANY times - it should only run once
   #createCoordinatorSocket(host: string) {
     const extraHeaders = this.#returnValidatedExtraHeaders({
       "x-machine-name": MACHINE_NAME,
@@ -423,8 +426,22 @@ class ProdWorker {
         },
       },
       onConnection: async (socket, handler, sender, logger) => {
-        if (this.waitForPostStart) {
-          logger.log("skip connection handler, waiting for post start hook");
+        if (this.paused) {
+          if (!this.nextResumeAfter) {
+            return;
+          }
+
+          if (!this.attemptFriendlyId) {
+            logger.error("Missing friendly ID");
+            return;
+          }
+
+          socket.emit("READY_FOR_RESUME", {
+            version: "v1",
+            attemptFriendlyId: this.attemptFriendlyId,
+            type: this.nextResumeAfter,
+          });
+
           return;
         }
 
@@ -519,30 +536,6 @@ class ProdWorker {
           }
         }
 
-        if (this.paused) {
-          if (!this.nextResumeAfter) {
-            return;
-          }
-
-          if (!this.attemptFriendlyId) {
-            logger.error("Missing friendly ID");
-            return;
-          }
-
-          if (this.nextResumeAfter === "WAIT_FOR_DURATION") {
-            this.#resumeAfterDuration();
-            return;
-          }
-
-          socket.emit("READY_FOR_RESUME", {
-            version: "v1",
-            attemptFriendlyId: this.attemptFriendlyId,
-            type: this.nextResumeAfter,
-          });
-
-          return;
-        }
-
         if (this.executing) {
           return;
         }
@@ -587,7 +580,8 @@ class ProdWorker {
           case "/status": {
             return reply.json({
               executing: this.executing,
-              pause: this.paused,
+              paused: this.paused,
+              completed: this.completed.size,
               nextResumeAfter: this.nextResumeAfter,
             });
           }

@@ -191,10 +191,20 @@ export const ProdChildToWorkerMessages = {
     }),
   },
   CANCEL_CHECKPOINT: {
-    message: z.object({
-      version: z.enum(["v1", "v2"]).default("v2"),
-    }),
+    message: z
+      .discriminatedUnion("version", [
+        z.object({
+          version: z.literal("v1"),
+        }),
+        z.object({
+          version: z.literal("v2"),
+          reason: WaitReason.optional(),
+        }),
+      ])
+      .default({ version: "v1" }),
     callback: z.object({
+      // TODO: Figure out how best to handle callback schema parsing in zod IPC
+      version: z.literal("v2") /* .default("v2") */,
       checkpointCanceled: z.boolean(),
       reason: WaitReason.optional(),
     }),
@@ -597,10 +607,19 @@ export const ProdWorkerToCoordinatorMessages = {
     }),
   },
   CANCEL_CHECKPOINT: {
-    message: z.object({
-      version: z.enum(["v1", "v2"]).default("v2"),
-    }),
+    message: z
+      .discriminatedUnion("version", [
+        z.object({
+          version: z.literal("v1"),
+        }),
+        z.object({
+          version: z.literal("v2"),
+          reason: WaitReason.optional(),
+        }),
+      ])
+      .default({ version: "v1" }),
     callback: z.object({
+      version: z.literal("v2").default("v2"),
       checkpointCanceled: z.boolean(),
       reason: WaitReason.optional(),
     }),
