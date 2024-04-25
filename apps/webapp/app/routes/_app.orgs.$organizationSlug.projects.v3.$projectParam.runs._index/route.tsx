@@ -34,6 +34,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const presenter = new RunListPresenter();
   const list = await presenter.call({
+    userId,
     projectSlug: projectParam,
     tasks,
     versions,
@@ -88,7 +89,6 @@ export default function Page() {
                 filters={list.filters}
                 runs={list.runs}
                 isLoading={isLoading}
-                currentUser={user}
               />
               <ListPagination list={list} className="mt-2 justify-end" />
             </div>

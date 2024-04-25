@@ -13,6 +13,7 @@ import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
 import { BasePresenter } from "./basePresenter.server";
 import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
 
 export type Task = {
   slug: string;
@@ -145,11 +146,7 @@ export class TaskListPresenter extends BasePresenter {
         acc.push(existingTask);
       }
 
-      existingTask.environments.push({
-        id: environment.id,
-        type: environment.type,
-        userName: getUsername(environment.orgMember?.user),
-      });
+      existingTask.environments.push(displayableEnvironments(environment, userId));
 
       //order the environments
       existingTask.environments = sortEnvironments(existingTask.environments);
@@ -321,8 +318,6 @@ export class TaskListPresenter extends BasePresenter {
       AND tr."status" IN ('COMPLETED_SUCCESSFULLY', 'COMPLETED_WITH_ERRORS')
     GROUP BY 
       tr."taskIdentifier";`;
-
-    logger.info("Durations", { durations });
 
     return Object.fromEntries(durations.map((s) => [s.taskIdentifier, Number(s.duration)]));
   }
