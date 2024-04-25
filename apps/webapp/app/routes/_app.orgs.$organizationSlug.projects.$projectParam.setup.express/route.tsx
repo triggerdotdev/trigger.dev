@@ -1,5 +1,4 @@
 import { ChatBubbleLeftRightIcon, Squares2X2Icon } from "@heroicons/react/20/solid";
-import invariant from "tiny-invariant";
 import { ExpressLogo } from "~/assets/logos/ExpressLogo";
 import { Feedback } from "~/components/Feedback";
 import { RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
@@ -11,20 +10,17 @@ import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
-import { useAppOrigin } from "~/hooks/useAppOrigin";
-import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useProjectSetupComplete } from "~/hooks/useProjectSetupComplete";
 import { projectSetupPath } from "~/utils/pathBuilder";
+import { useV2OnboardingApiKey } from "../_app.orgs.$organizationSlug.projects.$projectParam.setup/route";
 
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   useProjectSetupComplete();
-  const devEnvironment = useDevEnvironment();
-  invariant(devEnvironment, "Dev environment must be defined");
-  const appOrigin = useAppOrigin();
+  const { apiKey } = useV2OnboardingApiKey();
 
   return (
     <div className="mx-auto max-w-3xl pt-16">
@@ -73,7 +69,7 @@ export default function Page() {
               <ClipboardField
                 secure
                 className="w-fit"
-                value={devEnvironment.apiKey}
+                value={apiKey}
                 variant={"secondary/medium"}
                 icon={<Badge variant="outline">Server</Badge>}
               />
