@@ -2,7 +2,7 @@ import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { TaskRunStatus } from "@trigger.dev/database";
-import { Suspense, useEffect } from "react";
+import { Fragment, Suspense, useEffect } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
@@ -30,6 +30,7 @@ import {
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
 import {
+  TaskRunStatusCombo,
   TaskRunStatusIcon,
   runStatusClassNameColor,
   runStatusTitle,
@@ -139,7 +140,7 @@ export default function Page() {
                             </TableCell>
                             <TableCell to={path}>{task.filePath}</TableCell>
                             <TableCell to={path} className="p-0">
-                              <Suspense fallback={<></>}>
+                              <Suspense fallback={<TaskActivityBlankState />}>
                                 <TypedAwait resolve={activity}>
                                   {(data) => {
                                     const taskData = data[task.slug];
@@ -150,7 +151,7 @@ export default function Page() {
                                             <TaskActivityGraph activity={taskData} />
                                           </div>
                                         ) : (
-                                          "No activity"
+                                          <TaskActivityBlankState />
                                         )}
                                       </>
                                     );
@@ -263,7 +264,7 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
         height={24}
       >
         <Tooltip
-          cursor={{ fill: "rgba(255,255,255,0.05)" }}
+          cursor={{ fill: "transparent" }}
           content={<CustomTooltip />}
           allowEscapeViewBox={{ x: true, y: true }}
           wrapperStyle={{ zIndex: 1000 }}
@@ -271,44 +272,72 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
         <Bar
           dataKey="bg"
           background={{ fill: "#212327" }}
+          strokeWidth={0}
           stackId="a"
-          radius={2}
-          activeBar={false}
+          barSize={10}
         />
-        <Bar dataKey="PENDING" fill="#5F6570" stackId="a" activeBar={false} />
-        <Bar dataKey="WAITING_FOR_DEPLOY" fill="#F59E0B" stackId="a" activeBar={false} />
-        <Bar dataKey="EXECUTING" fill="#3B82F6" stackId="a" activeBar={false} />
-        <Bar dataKey="RETRYING_AFTER_FAILURE" fill="#3B82F6" stackId="a" activeBar={false} />
-        <Bar dataKey="WAITING_TO_RESUME" fill="#3B82F6" stackId="a" activeBar={false} />
-        <Bar dataKey="COMPLETED_SUCCESSFULLY" fill="#28BF5C" stackId="a" activeBar={false} />
-        <Bar dataKey="CANCELED" fill="#5F6570" stackId="a" activeBar={false} />
-        <Bar dataKey="COMPLETED_WITH_ERRORS" fill="#F43F5E" stackId="a" activeBar={false} />
-        <Bar dataKey="INTERRUPTED" fill="#F43F5E" stackId="a" activeBar={false} />
-        <Bar dataKey="SYSTEM_FAILURE" fill="#F43F5E" stackId="a" activeBar={false} />
-        <Bar dataKey="PAUSED" fill="#FCD34D" stackId="a" activeBar={false} />
-        <Bar dataKey="CRASHED" fill="#F43F5E" stackId="a" activeBar={false} />
+        <Bar dataKey="PENDING" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="WAITING_FOR_DEPLOY" fill="#F59E0B" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="EXECUTING" fill="#3B82F6" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar
+          dataKey="RETRYING_AFTER_FAILURE"
+          fill="#3B82F6"
+          stackId="a"
+          strokeWidth={0}
+          barSize={10}
+        />
+        <Bar dataKey="WAITING_TO_RESUME" fill="#3B82F6" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar
+          dataKey="COMPLETED_SUCCESSFULLY"
+          fill="#28BF5C"
+          stackId="a"
+          strokeWidth={0}
+          barSize={10}
+        />
+        <Bar dataKey="CANCELED" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar
+          dataKey="COMPLETED_WITH_ERRORS"
+          fill="#F43F5E"
+          stackId="a"
+          strokeWidth={0}
+          barSize={10}
+        />
+        <Bar dataKey="INTERRUPTED" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="SYSTEM_FAILURE" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="PAUSED" fill="#FCD34D" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="CRASHED" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
       </BarChart>
     </ResponsiveContainer>
+  );
+}
+
+function TaskActivityBlankState() {
+  return (
+    <div className="flex h-6 w-[5.125rem] items-center gap-0.5 rounded-sm">
+      {[...Array(7)].map((_, i) => (
+        <div key={i} className="h-full w-2.5 bg-[#212327]" />
+      ))}
+    </div>
   );
 }
 
 const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
   if (active && payload) {
     const items = payload.map((p) => ({
-      label: runStatusTitle(p.dataKey as TaskRunStatus),
+      status: p.dataKey as TaskRunStatus,
       value: p.value,
     }));
     const title = payload[0].payload.day as string;
     const formattedDate = formatDateTime(new Date(title), "UTC", [], false, false);
     return (
       <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-        <Header3 spacing>{formattedDate}</Header3>
-        <div className="flex flex-col gap-1">
+        <Header3 className="border-b-charcoal-650 border-b pb-2">{formattedDate}</Header3>
+        <div className="mt-2 grid grid-cols-[1fr_auto] gap-2 text-xs text-text-bright">
           {items.map((item) => (
-            <div key={item.label} className="flex gap-1 text-xs text-text-bright">
-              <p>{item.label}:</p>
+            <Fragment key={item.status}>
+              <TaskRunStatusCombo status={item.status} />
               <p>{item.value}</p>
-            </div>
+            </Fragment>
           ))}
         </div>
       </div>
