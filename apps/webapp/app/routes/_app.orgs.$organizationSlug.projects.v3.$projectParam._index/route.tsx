@@ -111,7 +111,6 @@ export default function Page() {
                     <TableRow>
                       <TableHeaderCell>Task ID</TableHeaderCell>
                       <TableHeaderCell>Task</TableHeaderCell>
-                      <TableHeaderCell>Path</TableHeaderCell>
                       <TableHeaderCell>Running</TableHeaderCell>
                       <TableHeaderCell>Queued</TableHeaderCell>
                       <TableHeaderCell>Activity (7d)</TableHeaderCell>
@@ -138,13 +137,12 @@ export default function Page() {
                                 <span>{task.slug}</span>
                               </div>
                             </TableCell>
-                            <TableCell to={path}>
+                            <TableCell to={path} className="py-0" actionClassName="py-0">
                               <TaskFunctionName
                                 functionName={task.exportName}
-                                variant="extra-small"
+                                variant="extra-extra-small"
                               />
                             </TableCell>
-                            <TableCell to={path}>{task.filePath}</TableCell>
                             <TableCell to={path} className="p-0">
                               <Suspense
                                 fallback={
