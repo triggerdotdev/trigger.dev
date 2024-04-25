@@ -20,12 +20,6 @@ export function sortEnvironments<T extends SortType>(environments: T[]): T[] {
 
     const difference = aIndex - bIndex;
 
-    logger.debug("sortEnvironments", {
-      a,
-      b,
-      difference,
-    });
-
     if (difference === 0) {
       //same environment so sort by name
       const usernameA = a.userName || "";
