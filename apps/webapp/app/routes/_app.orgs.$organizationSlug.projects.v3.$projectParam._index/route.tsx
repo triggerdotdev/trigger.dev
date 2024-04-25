@@ -269,12 +269,14 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
           allowEscapeViewBox={{ x: true, y: true }}
           wrapperStyle={{ zIndex: 1000 }}
         />
+        {/* The background */}
         <Bar
           dataKey="bg"
           background={{ fill: "#212327" }}
           strokeWidth={0}
           stackId="a"
           barSize={10}
+          isAnimationActive={false}
         />
         <Bar dataKey="PENDING" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
         <Bar dataKey="WAITING_FOR_DEPLOY" fill="#F59E0B" stackId="a" strokeWidth={0} barSize={10} />
