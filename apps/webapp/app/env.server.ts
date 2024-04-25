@@ -19,6 +19,7 @@ const EnvironmentSchema = z.object({
       isValidDatabaseUrl,
       "DIRECT_URL is invalid, for details please check the additional output above this message."
     ),
+  DATABASE_READ_REPLICA_URL: z.string().optional(),
   SESSION_SECRET: z.string(),
   MAGIC_LINK_SECRET: z.string(),
   ENCRYPTION_KEY: z.string(),
