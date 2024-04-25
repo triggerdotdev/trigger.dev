@@ -1636,6 +1636,8 @@ model TaskRun {
   scheduleId String?
 
   @@unique([runtimeEnvironmentId, idempotencyKey])
+  // Task activity graph
+  @@index([projectId, createdAt, taskIdentifier])
 }
 
 enum TaskRunStatus {
