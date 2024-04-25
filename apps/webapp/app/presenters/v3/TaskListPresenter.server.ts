@@ -318,7 +318,7 @@ export class TaskListPresenter extends BasePresenter {
       tr."taskIdentifier" IN (${Prisma.join(tasks)})
       AND tr."projectId" = ${projectId}
       AND tr."createdAt" >= (current_date - interval '6 days')
-      AND tr."status" IN ('COMPLETED_SUCCESSFULLY')
+      AND tr."status" IN ('COMPLETED_SUCCESSFULLY', 'COMPLETED_WITH_ERRORS')
     GROUP BY 
       tr."taskIdentifier";`;
 
