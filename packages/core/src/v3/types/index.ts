@@ -22,6 +22,10 @@ export type InitFnParams = Prettify<{
   ctx: Context;
 }>;
 
+export type StartFnParams = Prettify<{
+  ctx: Context;
+}>;
+
 export type Context = TaskRunContext;
 
 export type SuccessFnParams<TInitOutput extends InitOutput> = RunFnParams<TInitOutput>;
@@ -75,5 +79,6 @@ export type TaskMetadataWithFunctions = TaskMetadata & {
     ) => HandleErrorResult;
     onSuccess?: (payload: any, output: any, params: SuccessFnParams<any>) => Promise<void>;
     onFailure?: (payload: any, error: unknown, params: FailureFnParams<any>) => Promise<void>;
+    onStart?: (payload: any, params: StartFnParams) => Promise<void>;
   };
 };

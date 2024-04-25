@@ -1,4 +1,4 @@
-import { FailureFnParams, InitFnParams, SuccessFnParams } from ".";
+import { FailureFnParams, InitFnParams, StartFnParams, SuccessFnParams } from ".";
 import { LogLevel } from "../logger/taskLogger";
 import { RetryOptions } from "../schemas";
 import type { InstrumentationOption } from "@opentelemetry/instrumentation";
@@ -64,4 +64,9 @@ export interface ProjectConfig {
    * onFailure is called after a task run has failed (meaning the run function threw an error and won't be retried anymore)
    */
   onFailure?: (payload: unknown, error: unknown, params: FailureFnParams<any>) => Promise<void>;
+
+  /**
+   * onStart is called the first time a task is executed in a run (not before every retry)
+   */
+  onStart?: (payload: unknown, params: StartFnParams) => Promise<void>;
 }

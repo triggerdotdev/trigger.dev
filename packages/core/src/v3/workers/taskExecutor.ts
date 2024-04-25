@@ -90,6 +90,10 @@ export class TaskExecutor {
 
             parsedPayload = await parsePacket(payloadPacket);
 
+            if (execution.attempt.number === 1) {
+              await this.#callOnStartFunctions(parsedPayload, ctx);
+            }
+
             initOutput = await this.#callInitFunctions(parsedPayload, ctx);
 
             const output = await this.#callRun(parsedPayload, ctx, initOutput);
@@ -376,6 +380,46 @@ export class TaskExecutor {
       );
     } catch (e) {
       // Ignore errors from onFailure functions
+    }
+  }
+
+  async #callOnStartFunctions(payload: unknown, ctx: TaskRunContext) {
+    await this.#callOnStartFunction(
+      this._importedConfig?.onStart,
+      "config.onStart",
+      payload,
+      ctx,
+      {}
+    );
+
+    await this.#callOnStartFunction(this.task.fns.onStart, "task.onStart", payload, ctx, {});
+  }
+
+  async #callOnStartFunction(
+    onStartFn: TaskMetadataWithFunctions["fns"]["onStart"],
+    name: string,
+    payload: unknown,
+    ctx: TaskRunContext,
+    initOutput: any
+  ) {
+    if (!onStartFn) {
+      return;
+    }
+
+    try {
+      await this._tracer.startActiveSpan(
+        name,
+        async (span) => {
+          return await onStartFn(payload, { ctx });
+        },
+        {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "function",
+          },
+        }
+      );
+    } catch {
+      // Ignore errors from onStart functions
     }
   }
 

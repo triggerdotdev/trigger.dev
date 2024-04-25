@@ -18,6 +18,7 @@ import {
   RetryOptions,
   RunFnParams,
   SemanticInternalAttributes,
+  StartFnParams,
   SuccessFnParams,
   TaskRunContext,
   TaskRunExecutionResult,
@@ -184,6 +185,11 @@ export type TaskOptions<
   middleware?: (payload: TPayload, params: MiddlewareFnParams) => Promise<void>;
 
   /**
+   * onStart is called the first time a task is executed in a run (not before every retry)
+   */
+  onStart?: (payload: TPayload, params: StartFnParams) => Promise<void>;
+
+  /**
    * onSuccess is called after the run function has successfully completed.
    */
   onSuccess?: (
@@ -295,6 +301,14 @@ export interface Task<TInput = void, TOutput = any> {
    */
   batchTriggerAndWait: (items: Array<BatchItem<TInput>>) => Promise<BatchResult<TOutput>>;
 }
+
+export type TaskPayload<TTask extends Task> = TTask extends Task<infer TInput, any>
+  ? TInput
+  : never;
+
+export type TaskOutput<TTask extends Task> = TTask extends Task<any, infer TOutput>
+  ? TOutput
+  : never;
 
 type TaskRunOptions = {
   idempotencyKey?: string;
@@ -674,6 +688,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
       handleError: params.handleError,
       onSuccess: params.onSuccess,
       onFailure: params.onFailure,
+      onStart: params.onStart,
     },
   });
 

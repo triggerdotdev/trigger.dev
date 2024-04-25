@@ -15,11 +15,18 @@ export const taskThatUsesDecorators = task({
     photo.isPublished = true;
 
     await AppDataSource.manager.save(photo);
+
+    if (Math.random() > 0.5) {
+      throw new Error("Failed to create photo");
+    }
   },
   onSuccess: async (payload, output, { ctx }) => {
     logger.log("Photo created successfully", { output, ctx });
   },
   onFailure: async (payload, error, { ctx }) => {
     logger.error("Failed to create photo", { error, ctx });
+  },
+  onStart: async (payload, { ctx }) => {
+    logger.log("Starting to create photo", { ctx });
   },
 });

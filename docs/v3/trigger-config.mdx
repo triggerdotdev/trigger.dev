@@ -48,9 +48,9 @@ export const config: TriggerConfig = {
 
 You'll have access to the run payload and the context object. Currently you cannot return anything from this function.
 
-## Notification functions
+## Lifecycle functions
 
-You can add a function to get notified when any task succeeds or fails using `onSuccess` and `onFailure`:
+You can add lifecycle functions to get notified when any task starts, succeeds, or fails using `onStart`, `onSuccess` and `onFailure`:
 
 ```ts trigger.config.ts
 import type { TriggerConfig } from "@trigger.dev/sdk/v3";
@@ -63,8 +63,13 @@ export const config: TriggerConfig = {
   onFailure: async (payload, error, { ctx }) => {
     console.log("Task failed", ctx.task.id);
   },
+  onStart: async (payload, { ctx }) => {
+    console.log("Task started", ctx.task.id);
+  },
 };
 ```
+
+Read more about task lifecycle functions in the [tasks overview](/v3/tasks-overview).
 
 ## Instrumentations
 

@@ -138,7 +138,7 @@ export const taskWithInit = task({
 });
 ```
 
-You can also return data from the `init` function that will be available in the params of the `run` function.
+You can also return data from the `init` function that will be available in the params of the `run`, `cleanup`, `onSuccess`, and `onFailure` functions.
 
 ```ts /trigger/init-return.ts
 export const taskWithInitReturn = task({
@@ -172,9 +172,37 @@ export const taskWithCleanup = task({
 
 This function is called before the `run` function, it allows you to wrap the run function with custom code. For more information [read the guide](/v3/middleware).
 
+### `onStart` function
+
+When a task run starts, the `onStart` function is called. It's useful for sending notifications, logging, and other side effects. This function will only be called one per run (not per retry). If you want to run code before each retry, use the `init` function.
+
+```ts /trigger/on-start.ts
+export const taskWithOnStart = task({
+  id: "task-with-on-start",
+  onStart: async (payload, { ctx }) => {
+    //...
+  },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+You can also define an `onStart` function in your `trigger.config.ts` file to get notified when any task starts.
+
+```ts trigger.config.ts
+import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+
+export const config: TriggerConfig = {
+  onStart: async (payload, { ctx }) => {
+    console.log("Task started", ctx.task.id);
+  },
+};
+```
+
 ### `onSuccess` function
 
-When a task attempt succeeds, the `onSuccess` function is called. It's useful for sending notifications, logging, or other side effects.
+When a task run succeeds, the `onSuccess` function is called. It's useful for sending notifications, logging, syncing state to your database, or other side effects.
 
 ```ts /trigger/on-success.ts
 export const taskWithOnSuccess = task({
@@ -227,6 +255,12 @@ export const config: TriggerConfig = {
   },
 };
 ```
+
+### `handleError` functions
+
+You can define a function that will be called when an error is thrown in the `run` function, that allows you to control how the error is handled and whether the task should be retried.
+
+Read more about `handleError` in our [Errors and Retrying guide](/v3/errors-retrying).
 
 ## Next steps
 
