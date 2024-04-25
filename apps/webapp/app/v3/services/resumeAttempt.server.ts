@@ -2,13 +2,14 @@ import {
   CoordinatorToPlatformMessages,
   TaskRunExecution,
   TaskRunExecutionResult,
+  WaitReason,
 } from "@trigger.dev/core/v3";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { socketIo } from "../handleSocketIo.server";
-import { sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
+import { SharedQueueMessageBody, sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
 import { BaseService } from "./baseService.server";
 import { TaskRunAttempt } from "@trigger.dev/database";
 
@@ -149,6 +150,9 @@ export class ResumeAttemptService extends BaseService {
           break;
         }
       }
+
+      // Prevent infinite restores by failing runs that don't heartbeat after post-restore resume requests
+      await this.#replaceResumeWithFailMessage(attempt.taskRunId, params.type);
     });
   }
 
@@ -248,5 +252,51 @@ export class ResumeAttemptService extends BaseService {
         },
       },
     });
+  }
+
+  async #replaceResumeWithFailMessage(messageId: string, waitReason: WaitReason) {
+    const currentMessage = await marqs?.readMessage(messageId);
+
+    if (!currentMessage) {
+      logger.debug("No message to replace", { messageId, waitReason });
+      return;
+    }
+
+    const currentBody = SharedQueueMessageBody.safeParse(currentMessage.data);
+
+    if (!currentBody.success) {
+      logger.debug("Invalid message body", { messageId, waitReason, currentBody });
+      return;
+    }
+
+    const currentType = currentBody.data.type;
+
+    if (currentType !== "RESUME" && currentType !== "RESUME_AFTER_DURATION") {
+      logger.debug("Not a resume message", { messageId, waitReason, currentBody });
+      return;
+    }
+
+    let reason = "Worker unresponsive after restore";
+
+    switch (waitReason) {
+      case "WAIT_FOR_DURATION":
+        reason = "Worker unresponsive after waiting for duration";
+        break;
+      case "WAIT_FOR_TASK":
+        reason = "Worker unresponsive after waiting for task";
+        break;
+      case "WAIT_FOR_BATCH":
+        reason = "Worker unresponsive after waiting for batch task";
+        break;
+      default:
+        break;
+    }
+
+    const failMessage: SharedQueueMessageBody = {
+      type: "FAIL",
+      reason,
+    };
+
+    return await marqs?.replaceMessage(messageId, failMessage, undefined, true);
   }
 }
