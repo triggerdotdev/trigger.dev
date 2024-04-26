@@ -125,7 +125,8 @@
     "url": "^0.11.1",
     "ws": "^8.12.0",
     "zod": "3.22.3",
-    "zod-validation-error": "^1.5.0"
+    "zod-validation-error": "^1.5.0",
+    "typescript": "^5.4.0"
   },
   "engines": {
     "node": ">=18.0.0"
