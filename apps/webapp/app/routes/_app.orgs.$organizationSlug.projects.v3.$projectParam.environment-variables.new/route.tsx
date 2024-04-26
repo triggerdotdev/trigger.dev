@@ -208,7 +208,7 @@ export default function Page() {
             </InputGroup>
 
             <Callout variant="info" className="inline-flex">
-              Dev environment variables specified here will be overriden by ones in your{" "}
+              Dev environment variables specified here will be overridden by ones in your{" "}
               <InlineCode variant="extra-small">.env</InlineCode> file when running locally.
             </Callout>
 

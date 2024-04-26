@@ -10,20 +10,3 @@ export function useEnvironments(matches?: UIMatch[]) {
 
   return project.environments;
 }
-
-export function useDevEnvironment(matches?: UIMatch[]) {
-  const user = useUser();
-  const environments = useEnvironments(matches);
-  if (!environments) return;
-
-  return environments.find(
-    (environment) => environment.type === "DEVELOPMENT" && environment.userId === user.id
-  );
-}
-
-export function useProdEnvironment(matches?: UIMatch[]) {
-  const environments = useEnvironments(matches);
-  if (!environments) return;
-
-  return environments.find((environment) => environment.type === "PRODUCTION");
-}

@@ -1,5 +1,4 @@
 import { ChatBubbleLeftRightIcon, Squares2X2Icon } from "@heroicons/react/20/solid";
-import invariant from "tiny-invariant";
 import { NestjsLogo } from "~/assets/logos/NestjsLogo";
 import { Feedback } from "~/components/Feedback";
 import { TriggerDevStep } from "~/components/SetupCommands";
@@ -11,12 +10,12 @@ import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
-import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useProjectSetupComplete } from "~/hooks/useProjectSetupComplete";
 import { projectSetupPath } from "~/utils/pathBuilder";
 import { CodeBlock } from "../../components/code/CodeBlock";
+import { useV2OnboardingApiKey } from "../_app.orgs.$organizationSlug.projects.$projectParam.setup/route";
 
 const AppModuleCode = `
 import { Module } from '@nestjs/common';
@@ -114,10 +113,8 @@ export default function SetupNestJS() {
   const organization = useOrganization();
   const project = useProject();
   useProjectSetupComplete();
-  const devEnvironment = useDevEnvironment();
+  const { apiKey } = useV2OnboardingApiKey();
   const appOrigin = useAppOrigin();
-
-  invariant(devEnvironment, "devEnvironment is required");
 
   return (
     <div className="mx-auto max-w-3xl pt-16">
@@ -161,7 +158,7 @@ export default function SetupNestJS() {
           <CodeBlock
             fileName=".env"
             showChrome
-            code={`TRIGGER_API_KEY=${devEnvironment.apiKey}\nTRIGGER_API_URL=${appOrigin}`}
+            code={`TRIGGER_API_KEY=${apiKey}\nTRIGGER_API_URL=${appOrigin}`}
           />
         </StepContentContainer>
         <StepNumber stepNumber="3" title="Add the TriggerDevModule" />

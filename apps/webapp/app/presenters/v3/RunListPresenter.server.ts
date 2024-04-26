@@ -1,10 +1,12 @@
 import { Prisma, TaskRunStatus } from "@trigger.dev/database";
 import { Direction } from "~/components/runs/RunStatuses";
 import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
+import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
 import { getUsername } from "~/utils/username";
 import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 
 type RunListOptions = {
+  userId?: string;
   projectSlug: string;
   //filters
   tasks?: string[];
@@ -34,6 +36,7 @@ export class RunListPresenter {
   }
 
   public async call({
+    userId,
     projectSlug,
     tasks,
     versions,
@@ -231,12 +234,7 @@ export class RunListPresenter {
           attempts: Number(run.attempts),
           isReplayable: true,
           isCancellable: CANCELLABLE_STATUSES.includes(run.status),
-          environment: {
-            type: environment.type,
-            slug: environment.slug,
-            userId: environment.orgMember?.user.id,
-            userName: getUsername(environment.orgMember?.user),
-          },
+          environment: displayableEnvironments(environment, userId),
         };
       }),
       pagination: {

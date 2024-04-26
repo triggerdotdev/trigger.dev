@@ -36,7 +36,6 @@ type RunsTableProps = {
   showJob?: boolean;
   runs: RunListItem[];
   isLoading?: boolean;
-  currentUser: User;
 };
 
 export function TaskRunsTable({
@@ -45,7 +44,6 @@ export function TaskRunsTable({
   filters,
   runs,
   isLoading = false,
-  currentUser,
 }: RunsTableProps) {
   const organization = useOrganization();
   const project = useProject();
@@ -78,15 +76,16 @@ export function TaskRunsTable({
         ) : (
           runs.map((run) => {
             const path = v3RunSpanPath(organization, project, run, { spanId: run.spanId });
-            const usernameForEnv =
-              currentUser.id !== run.environment.userId ? run.environment.userName : undefined;
             return (
               <TableRow key={run.id}>
                 <TableCell to={path}>#{run.number}</TableCell>
                 <TableCell to={path}>{run.taskIdentifier}</TableCell>
                 <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>
-                  <EnvironmentLabel environment={run.environment} userName={usernameForEnv} />
+                  <EnvironmentLabel
+                    environment={run.environment}
+                    userName={run.environment.userName}
+                  />
                 </TableCell>
                 <TableCell to={path}>
                   <TaskRunStatusCombo status={run.status} />

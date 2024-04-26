@@ -1,6 +1,5 @@
 import { ChatBubbleLeftRightIcon, Squares2X2Icon } from "@heroicons/react/20/solid";
 import { useState } from "react";
-import invariant from "tiny-invariant";
 import { NextjsLogo } from "~/assets/logos/NextjsLogo";
 import { Feedback } from "~/components/Feedback";
 import { InitCommand, RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
@@ -21,11 +20,11 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
-import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useProjectSetupComplete } from "~/hooks/useProjectSetupComplete";
 import { projectSetupPath } from "~/utils/pathBuilder";
+import { useV2OnboardingApiKey } from "../_app.orgs.$organizationSlug.projects.$projectParam.setup/route";
 
 type SelectionChoices = "use-existing-project" | "create-new-next-app";
 
@@ -33,11 +32,9 @@ export default function SetupNextjs() {
   const organization = useOrganization();
   const project = useProject();
   useProjectSetupComplete();
-  const devEnvironment = useDevEnvironment();
+  const { apiKey } = useV2OnboardingApiKey();
   const appOrigin = useAppOrigin();
   const [selectedValue, setSelectedValue] = useState<SelectionChoices | null>(null);
-
-  invariant(devEnvironment, "devEnvironment is required");
 
   return (
     <div className="mx-auto max-w-3xl pt-16">
@@ -152,7 +149,7 @@ export default function SetupNextjs() {
                 title="Run the CLI 'init' command in your new Next.js project"
               />
               <StepContentContainer>
-                <InitCommand appOrigin={appOrigin} apiKey={devEnvironment.apiKey} />
+                <InitCommand appOrigin={appOrigin} apiKey={apiKey} />
                 <Paragraph spacing variant="small">
                   You’ll notice a new folder in your project called 'jobs'. We’ve added a very
                   simple example Job in <InlineCode variant="extra-small">examples.ts</InlineCode>{" "}
@@ -179,7 +176,7 @@ export default function SetupNextjs() {
                 title="Run the CLI 'init' command in an existing Next.js project"
               />
               <StepContentContainer>
-                <InitCommand appOrigin={appOrigin} apiKey={devEnvironment.apiKey} />
+                <InitCommand appOrigin={appOrigin} apiKey={apiKey} />
 
                 <Paragraph spacing variant="small">
                   You’ll notice a new folder in your project called 'jobs'. We’ve added a very

@@ -1,21 +1,24 @@
-import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
+import { ChatBubbleLeftRightIcon, ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
-import { useEffect } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import invariant from "tiny-invariant";
+import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { TaskRunStatus } from "@trigger.dev/database";
+import { Fragment, Suspense, useEffect, useState } from "react";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
+import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
-import { InitCommandV3, TriggerDevStepV3 } from "~/components/SetupCommands";
+import { InitCommandV3, TriggerDevStepV3, TriggerLoginStepV3 } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
-import { DateTime } from "~/components/primitives/DateTime";
-import { Header1 } from "~/components/primitives/Headers";
+import { Callout } from "~/components/primitives/Callout";
+import { DateTime, formatDateTime } from "~/components/primitives/DateTime";
+import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import {
   Table,
@@ -28,18 +31,22 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { TaskFunctionName, TaskPath } from "~/components/runs/v3/TaskPath";
-import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
+import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
+import {
+  TaskRunStatusCombo,
+  TaskRunStatusIcon,
+  runStatusClassNameColor,
+  runStatusTitle,
+} from "~/components/runs/v3/TaskRunStatus";
 import {
   TaskTriggerSourceIcon,
   taskTriggerSourceDescription,
 } from "~/components/runs/v3/TaskTriggerSource";
-import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
-import { TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
+import { TaskActivity, TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3RunsPath, v3TasksStreamingPath } from "~/utils/pathBuilder";
@@ -50,14 +57,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new TaskListPresenter();
-    const tasks = await presenter.call({
+    const { tasks, userHasTasks, activity, runningStats, durations } = await presenter.call({
       userId,
       organizationSlug,
       projectSlug: projectParam,
     });
 
-    return typedjson({
+    return typeddefer({
       tasks,
+      userHasTasks,
+      activity,
+      runningStats,
+      durations,
     });
   } catch (error) {
     console.error(error);
@@ -71,8 +82,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
-  const user = useUser();
-  const { tasks } = useTypedLoaderData<typeof loader>();
+  const { tasks, userHasTasks, activity, runningStats, durations } =
+    useTypedLoaderData<typeof loader>();
   const hasTasks = tasks.length > 0;
 
   //live reload the page when the tasks change
@@ -97,35 +108,30 @@ export default function Page() {
         <div className={cn("grid h-full grid-cols-1 gap-4")}>
           <div className="h-full">
             {hasTasks ? (
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4 pb-4">
+                {!userHasTasks && <UserHasNoTasks />}
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHeaderCell>Task ID</TableHeaderCell>
                       <TableHeaderCell>Task</TableHeaderCell>
-                      <TableHeaderCell>Path</TableHeaderCell>
-                      <TableHeaderCell>Environment</TableHeaderCell>
+                      <TableHeaderCell>Running</TableHeaderCell>
+                      <TableHeaderCell>Queued</TableHeaderCell>
+                      <TableHeaderCell>Activity (7d)</TableHeaderCell>
+                      <TableHeaderCell>Avg. duration</TableHeaderCell>
+                      <TableHeaderCell>Environments</TableHeaderCell>
                       <TableHeaderCell>Last run</TableHeaderCell>
-                      <TableHeaderCell>
-                        <div className="sr-only">Last run status</div>
-                      </TableHeaderCell>
-                      <TableHeaderCell>Created at</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {tasks.length > 0 ? (
                       tasks.map((task) => {
-                        const usernameForEnv =
-                          user.id !== task.environment.userId
-                            ? task.environment.userName
-                            : undefined;
                         const path = v3RunsPath(organization, project, {
                           tasks: [task.slug],
-                          environments: [task.environment.id],
                         });
                         return (
-                          <TableRow key={task.id} className="group">
+                          <TableRow key={task.slug} className="group">
                             <TableCell to={path}>
                               <div className="flex items-center gap-2">
                                 <SimpleTooltip
@@ -135,43 +141,100 @@ export default function Page() {
                                 <span>{task.slug}</span>
                               </div>
                             </TableCell>
-                            <TableCell to={path}>
+                            <TableCell to={path} className="py-0" actionClassName="py-0">
                               <TaskFunctionName
                                 functionName={task.exportName}
-                                variant="extra-small"
+                                variant="extra-extra-small"
                               />
                             </TableCell>
-                            <TableCell to={path}>{task.filePath}</TableCell>
+                            <TableCell to={path} className="p-0">
+                              <Suspense
+                                fallback={
+                                  <>
+                                    <Spinner color="muted" />
+                                  </>
+                                }
+                              >
+                                <TypedAwait resolve={runningStats}>
+                                  {(data) => {
+                                    const taskData = data[task.slug];
+                                    return taskData?.running ?? "0";
+                                  }}
+                                </TypedAwait>
+                              </Suspense>
+                            </TableCell>
+                            <TableCell to={path} className="p-0">
+                              <Suspense fallback={<></>}>
+                                <TypedAwait resolve={runningStats}>
+                                  {(data) => {
+                                    const taskData = data[task.slug];
+                                    return taskData?.queued ?? "0";
+                                  }}
+                                </TypedAwait>
+                              </Suspense>
+                            </TableCell>
+                            <TableCell to={path} className="p-0" actionClassName="py-0">
+                              <Suspense fallback={<TaskActivityBlankState />}>
+                                <TypedAwait resolve={activity}>
+                                  {(data) => {
+                                    const taskData = data[task.slug];
+                                    return (
+                                      <>
+                                        {taskData !== undefined ? (
+                                          <div className="h-6 w-[5.125rem] rounded-sm">
+                                            <TaskActivityGraph activity={taskData} />
+                                          </div>
+                                        ) : (
+                                          <TaskActivityBlankState />
+                                        )}
+                                      </>
+                                    );
+                                  }}
+                                </TypedAwait>
+                              </Suspense>
+                            </TableCell>
+                            <TableCell to={path} className="p-0">
+                              <Suspense fallback={<></>}>
+                                <TypedAwait resolve={durations}>
+                                  {(data) => {
+                                    const taskData = data[task.slug];
+                                    return taskData
+                                      ? formatDurationMilliseconds(taskData * 1000, {
+                                          style: "short",
+                                        })
+                                      : "–";
+                                  }}
+                                </TypedAwait>
+                              </Suspense>
+                            </TableCell>
                             <TableCell to={path}>
-                              <EnvironmentLabel
-                                environment={task.environment}
-                                userName={usernameForEnv}
-                              />
+                              <div className="space-x-2">
+                                {task.environments.map((environment) => (
+                                  <EnvironmentLabel
+                                    key={environment.id}
+                                    environment={environment}
+                                    userName={environment.userName}
+                                  />
+                                ))}
+                              </div>
                             </TableCell>
-
                             <TableCell to={path}>
                               {task.latestRun ? (
                                 <div
                                   className={cn(
-                                    "flex items-center gap-2",
-                                    classForTaskRunStatus(task.latestRun.status)
+                                    "flex items-center gap-1",
+                                    runStatusClassNameColor(task.latestRun.status)
                                   )}
                                 >
+                                  <TaskRunStatusIcon
+                                    status={task.latestRun.status}
+                                    className="h-4 w-4"
+                                  />
                                   <DateTime date={task.latestRun.createdAt} />
                                 </div>
                               ) : (
                                 "Never run"
                               )}
-                            </TableCell>
-                            <TableCell to={path}>
-                              {task.latestRun ? (
-                                <TaskRunStatusCombo status={task.latestRun.status} />
-                              ) : (
-                                "–"
-                              )}
-                            </TableCell>
-                            <TableCell to={path}>
-                              <DateTime date={task.createdAt} />
                             </TableCell>
                             <TableCellChevron to={path} />
                           </TableRow>
@@ -188,7 +251,9 @@ export default function Page() {
                 </Table>
               </div>
             ) : (
-              <CreateTaskInstructions />
+              <MainCenteredContainer className="max-w-prose">
+                <CreateTaskInstructions />
+              </MainCenteredContainer>
             )}
           </div>
         </div>
@@ -197,19 +262,9 @@ export default function Page() {
   );
 }
 
-function classForTaskRunStatus(status: TaskRunStatus) {
-  switch (status) {
-    case "SYSTEM_FAILURE":
-    case "COMPLETED_WITH_ERRORS":
-      return "text-error";
-    default:
-      return "";
-  }
-}
-
 function CreateTaskInstructions() {
   return (
-    <MainCenteredContainer className="max-w-prose">
+    <div>
       <div className="mb-6 flex items-center justify-between border-b">
         <Header1 spacing>Get setup in 3 minutes</Header1>
         <div className="flex items-center gap-2">
@@ -240,6 +295,150 @@ function CreateTaskInstructions() {
       <StepContentContainer>
         <Paragraph>This page will automatically refresh.</Paragraph>
       </StepContentContainer>
-    </MainCenteredContainer>
+    </div>
   );
 }
+
+function UserHasNoTasks() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Callout
+      variant="info"
+      cta={
+        <Button
+          variant="tertiary/small"
+          TrailingIcon={open ? ChevronUpIcon : ChevronDownIcon}
+          onClick={() => setOpen((o) => !o)}
+        >
+          {open ? "Close" : "Setup your dev environment"}
+        </Button>
+      }
+    >
+      {open ? (
+        <div>
+          <Header2 spacing>Get setup in 3 minutes</Header2>
+
+          <StepNumber stepNumber="1" title="Open up your project" className="mt-6" />
+          <StepContentContainer>
+            <Paragraph>You'll need to open a terminal at the root of your project.</Paragraph>
+          </StepContentContainer>
+          <StepNumber stepNumber="2" title="Run the CLI 'login' command" />
+          <StepContentContainer>
+            <TriggerLoginStepV3 />
+          </StepContentContainer>
+          <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
+          <StepContentContainer>
+            <TriggerDevStepV3 />
+          </StepContentContainer>
+          <StepNumber stepNumber="4" title="Waiting for tasks" displaySpinner />
+          <StepContentContainer>
+            <Paragraph>This page will automatically refresh.</Paragraph>
+          </StepContentContainer>
+        </div>
+      ) : (
+        "Your DEV environment isn't setup yet."
+      )}
+    </Callout>
+  );
+}
+
+function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart
+        data={activity}
+        margin={{
+          top: 0,
+          right: 0,
+          left: 0,
+          bottom: 0,
+        }}
+        width={82}
+        height={24}
+      >
+        <Tooltip
+          cursor={{ fill: "transparent" }}
+          content={<CustomTooltip />}
+          allowEscapeViewBox={{ x: true, y: true }}
+          wrapperStyle={{ zIndex: 1000 }}
+        />
+        {/* The background */}
+        <Bar
+          dataKey="bg"
+          background={{ fill: "#212327" }}
+          strokeWidth={0}
+          stackId="a"
+          barSize={10}
+          isAnimationActive={false}
+        />
+        <Bar dataKey="PENDING" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="WAITING_FOR_DEPLOY" fill="#F59E0B" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="EXECUTING" fill="#3B82F6" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar
+          dataKey="RETRYING_AFTER_FAILURE"
+          fill="#3B82F6"
+          stackId="a"
+          strokeWidth={0}
+          barSize={10}
+        />
+        <Bar dataKey="WAITING_TO_RESUME" fill="#3B82F6" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar
+          dataKey="COMPLETED_SUCCESSFULLY"
+          fill="#28BF5C"
+          stackId="a"
+          strokeWidth={0}
+          barSize={10}
+        />
+        <Bar dataKey="CANCELED" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar
+          dataKey="COMPLETED_WITH_ERRORS"
+          fill="#F43F5E"
+          stackId="a"
+          strokeWidth={0}
+          barSize={10}
+        />
+        <Bar dataKey="INTERRUPTED" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="SYSTEM_FAILURE" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="PAUSED" fill="#FCD34D" stackId="a" strokeWidth={0} barSize={10} />
+        <Bar dataKey="CRASHED" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+function TaskActivityBlankState() {
+  return (
+    <div className="flex h-6 w-[5.125rem] items-center gap-0.5 rounded-sm">
+      {[...Array(7)].map((_, i) => (
+        <div key={i} className="h-full w-2.5 bg-[#212327]" />
+      ))}
+    </div>
+  );
+}
+
+const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
+  if (active && payload) {
+    const items = payload.map((p) => ({
+      status: p.dataKey as TaskRunStatus,
+      value: p.value,
+    }));
+    const title = payload[0].payload.day as string;
+    const formattedDate = formatDateTime(new Date(title), "UTC", [], false, false);
+    return (
+      <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
+        <Header3 className="border-b-charcoal-650 border-b pb-2">{formattedDate}</Header3>
+        <div className="mt-2 grid grid-cols-[1fr_auto] gap-2 text-xs text-text-bright">
+          {items.map((item) => (
+            <Fragment key={item.status}>
+              <TaskRunStatusCombo status={item.status} />
+              <p>{item.value}</p>
+            </Fragment>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};

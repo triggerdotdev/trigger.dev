@@ -247,7 +247,6 @@ export default function Page() {
                 }}
                 runs={schedule.runs}
                 isLoading={false}
-                currentUser={user}
               />
             </div>
             <div className="flex flex-col gap-1">

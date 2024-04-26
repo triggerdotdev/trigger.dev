@@ -1,4 +1,5 @@
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { logger } from "./logger.server";
 
 const environmentSortOrder: RuntimeEnvironmentType[] = [
   "DEVELOPMENT",
@@ -9,12 +10,23 @@ const environmentSortOrder: RuntimeEnvironmentType[] = [
 
 type SortType = {
   type: RuntimeEnvironmentType;
+  userName?: string | null;
 };
 
 export function sortEnvironments<T extends SortType>(environments: T[]): T[] {
   return environments.sort((a, b) => {
     const aIndex = environmentSortOrder.indexOf(a.type);
     const bIndex = environmentSortOrder.indexOf(b.type);
-    return aIndex - bIndex;
+
+    const difference = aIndex - bIndex;
+
+    if (difference === 0) {
+      //same environment so sort by name
+      const usernameA = a.userName || "";
+      const usernameB = b.userName || "";
+      return usernameA.localeCompare(usernameB);
+    }
+
+    return difference;
   });
 }

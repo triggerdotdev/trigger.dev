@@ -1,19 +1,42 @@
-import { Prisma, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
+import {
+  Prisma,
+  RuntimeEnvironmentType,
+  TaskRunStatus,
+  TaskTriggerSource,
+} from "@trigger.dev/database";
 import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
+import { sortEnvironments } from "~/services/environmentSort.server";
+import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
+import { BasePresenter } from "./basePresenter.server";
+import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
 
-export type Task = Awaited<ReturnType<TaskListPresenter["call"]>>[0];
+export type Task = {
+  slug: string;
+  exportName: string;
+  filePath: string;
+  createdAt: Date;
+  triggerSource: TaskTriggerSource;
+  environments: {
+    id: string;
+    type: RuntimeEnvironmentType;
+    userName?: string;
+  }[];
+  latestRun?: {
+    createdAt: Date;
+    status: TaskRunStatus;
+  };
+};
 
-export class TaskListPresenter {
-  #prismaClient: PrismaClient;
+type Return = Awaited<ReturnType<TaskListPresenter["call"]>>;
 
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
+export type TaskActivity = Awaited<Return["activity"]>[string];
 
+export class TaskListPresenter extends BasePresenter {
   public async call({
     userId,
     projectSlug,
@@ -23,7 +46,7 @@ export class TaskListPresenter {
     projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
   }) {
-    const project = await this.#prismaClient.project.findFirstOrThrow({
+    const project = await this._replica.project.findFirstOrThrow({
       select: {
         id: true,
         environments: {
@@ -53,7 +76,7 @@ export class TaskListPresenter {
       },
     });
 
-    const tasks = await this.#prismaClient.$queryRaw<
+    const tasks = await this._replica.$queryRaw<
       {
         id: string;
         slug: string;
@@ -64,73 +87,243 @@ export class TaskListPresenter {
         triggerSource: TaskTriggerSource;
       }[]
     >`
-    SELECT DISTINCT ON(bwt.slug, bwt."runtimeEnvironmentId")
-      bwt.slug,
-      bwt.id,
-      bwt."exportName",
-      bwt."filePath",
-      bwt."runtimeEnvironmentId",
-      bwt."createdAt",
-      bwt."triggerSource"
-    FROM
-      ${sqlDatabaseSchema}."BackgroundWorkerTask" as bwt
-    WHERE bwt."projectId" = ${project.id}
-    ORDER BY
-      bwt.slug,
-      bwt."runtimeEnvironmentId",
-      bwt."createdAt" DESC;`;
+    WITH workers AS (
+      SELECT DISTINCT ON ("runtimeEnvironmentId") id, "runtimeEnvironmentId", version
+      FROM ${sqlDatabaseSchema}."BackgroundWorker"
+      WHERE "runtimeEnvironmentId" IN (${Prisma.join(project.environments.map((e) => e.id))})
+      ORDER BY "runtimeEnvironmentId", "createdAt" DESC
+    )
+    SELECT tasks.id, slug, "filePath", "exportName", "triggerSource", tasks."runtimeEnvironmentId", tasks."createdAt"
+    FROM workers
+    JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" tasks ON tasks."workerId" = workers.id
+    ORDER BY slug ASC;`;
 
     let latestRuns = [] as {
       createdAt: Date;
       status: TaskRunStatus;
-      lockedById: string;
+      taskIdentifier: string;
     }[];
 
     if (tasks.length > 0) {
-      latestRuns = await this.#prismaClient.$queryRaw<
+      const uniqueTaskSlugs = new Set(tasks.map((t) => t.slug));
+      latestRuns = await this._replica.$queryRaw<
         {
           createdAt: Date;
           status: TaskRunStatus;
-          lockedById: string;
+          taskIdentifier: string;
         }[]
       >`
       SELECT * FROM (
         SELECT
           "createdAt",
           "status",
-          "lockedById",
-          ROW_NUMBER() OVER (PARTITION BY "lockedById" ORDER BY "updatedAt" DESC) AS rn
+          "taskIdentifier",
+          ROW_NUMBER() OVER (PARTITION BY "taskIdentifier" ORDER BY "updatedAt" DESC) AS rn
         FROM
           ${sqlDatabaseSchema}."TaskRun"
         WHERE
-          "lockedById" IN(${Prisma.join(tasks.map((t) => t.id))})
-            ) t
-            WHERE rn = 1;`;
+          "taskIdentifier" IN(${Prisma.join(Array.from(uniqueTaskSlugs))})
+          AND "projectId" = ${project.id}
+      ) t
+      WHERE rn = 1;`;
     }
 
-    return tasks.map((task) => {
-      const latestRun = latestRuns.find((r) => r.lockedById === task.id);
+    //group by the task identifier (task.slug). Add the latestRun and add all the environments.
+    const outputTasks = tasks.reduce((acc, task) => {
+      const latestRun = latestRuns.find((r) => r.taskIdentifier === task.slug);
       const environment = project.environments.find((env) => env.id === task.runtimeEnvironmentId);
       if (!environment) {
         throw new Error(`Environment not found for TaskRun ${task.id}`);
       }
 
-      return {
-        ...task,
-        environment: {
-          id: environment.id,
-          type: environment.type,
-          slug: environment.slug,
-          userId: environment.orgMember?.user.id,
-          userName: getUsername(environment.orgMember?.user),
-        },
-        latestRun: latestRun
-          ? {
-              createdAt: latestRun.createdAt,
-              status: latestRun.status,
-            }
-          : undefined,
-      };
-    });
+      let existingTask = acc.find((t) => t.slug === task.slug);
+
+      if (!existingTask) {
+        existingTask = {
+          ...task,
+          environments: [],
+        };
+        acc.push(existingTask);
+      }
+
+      existingTask.environments.push(displayableEnvironments(environment, userId));
+
+      //order the environments
+      existingTask.environments = sortEnvironments(existingTask.environments);
+
+      existingTask.latestRun = latestRun
+        ? {
+            createdAt: latestRun.createdAt,
+            status: latestRun.status,
+          }
+        : undefined;
+
+      return acc;
+    }, [] as Task[]);
+
+    //then get the activity for each task
+    const activity = this.#getActivity(
+      outputTasks.map((t) => t.slug),
+      project.id
+    );
+
+    const runningStats = this.#getRunningStats(
+      outputTasks.map((t) => t.slug),
+      project.id
+    );
+
+    const durations = this.#getAverageDurations(
+      outputTasks.map((t) => t.slug),
+      project.id
+    );
+
+    const userEnvironment = project.environments.find((e) => e.orgMember?.user.id === userId);
+    const userHasTasks = userEnvironment
+      ? outputTasks.some((t) => t.environments.some((e) => e.id === userEnvironment.id))
+      : false;
+
+    return { tasks: outputTasks, userHasTasks, activity, runningStats, durations };
+  }
+
+  async #getActivity(tasks: string[], projectId: string) {
+    const activity = await this._replica.$queryRaw<
+      {
+        taskIdentifier: string;
+        status: TaskRunStatus;
+        day: Date;
+        count: BigInt;
+      }[]
+    >`
+    SELECT 
+    tr."taskIdentifier", 
+    tr."status",
+    DATE(tr."createdAt") as day, 
+    COUNT(*) 
+  FROM 
+    ${sqlDatabaseSchema}."TaskRun" as tr
+  WHERE 
+    tr."taskIdentifier" IN (${Prisma.join(tasks)})
+    AND tr."projectId" = ${projectId}
+    AND tr."createdAt" >= (current_date - interval '6 days')
+  GROUP BY 
+    tr."taskIdentifier", 
+    tr."status", 
+    day
+  ORDER BY 
+    tr."taskIdentifier" ASC,
+    day ASC,
+    tr."status" ASC;`;
+
+    //today with no time
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    return activity.reduce((acc, a) => {
+      let existingTask = acc[a.taskIdentifier];
+
+      if (!existingTask) {
+        existingTask = [];
+        //populate the array with the past 7 days
+        for (let i = 6; i >= 0; i--) {
+          const day = new Date(today);
+          day.setUTCDate(today.getDate() - i);
+          day.setUTCHours(0, 0, 0, 0);
+
+          existingTask.push({
+            day: day.toISOString(),
+            [TaskRunStatus.COMPLETED_SUCCESSFULLY]: 0,
+          } as { day: string } & Record<TaskRunStatus, number>);
+        }
+
+        acc[a.taskIdentifier] = existingTask;
+      }
+
+      const dayString = a.day.toISOString();
+      const day = existingTask.find((d) => d.day === dayString);
+
+      if (!day) {
+        logger.warn(`Day not found for TaskRun`, {
+          day: dayString,
+          taskIdentifier: a.taskIdentifier,
+          existingTask,
+        });
+        return acc;
+      }
+
+      day[a.status] = Number(a.count);
+
+      return acc;
+    }, {} as Record<string, ({ day: string } & Record<TaskRunStatus, number>)[]>);
+  }
+
+  async #getRunningStats(tasks: string[], projectId: string) {
+    const statuses = await this._replica.$queryRaw<
+      {
+        taskIdentifier: string;
+        status: TaskRunStatus;
+        count: BigInt;
+      }[]
+    >`
+    SELECT 
+    tr."taskIdentifier", 
+    tr."status",
+    COUNT(*) 
+  FROM 
+    ${sqlDatabaseSchema}."TaskRun" as tr
+  WHERE 
+    tr."taskIdentifier" IN (${Prisma.join(tasks)})
+    AND tr."projectId" = ${projectId}
+    AND tr."status" IN ('PENDING', 'WAITING_FOR_DEPLOY', 'EXECUTING', 'RETRYING_AFTER_FAILURE', 'WAITING_TO_RESUME')
+  GROUP BY 
+    tr."taskIdentifier", 
+    tr."status"
+  ORDER BY 
+    tr."taskIdentifier" ASC,
+    tr."status" ASC;`;
+
+    return statuses.reduce((acc, a) => {
+      let existingTask = acc[a.taskIdentifier];
+
+      if (!existingTask) {
+        existingTask = {
+          queued: 0,
+          running: 0,
+        };
+
+        acc[a.taskIdentifier] = existingTask;
+      }
+
+      if (QUEUED_STATUSES.includes(a.status)) {
+        existingTask.queued += Number(a.count);
+      }
+      if (RUNNING_STATUSES.includes(a.status)) {
+        existingTask.running += Number(a.count);
+      }
+
+      return acc;
+    }, {} as Record<string, { queued: number; running: number }>);
+  }
+
+  async #getAverageDurations(tasks: string[], projectId: string) {
+    const durations = await this._replica.$queryRaw<
+      {
+        taskIdentifier: string;
+        duration: Number;
+      }[]
+    >`    
+    SELECT 
+      tr."taskIdentifier", 
+      AVG(EXTRACT(EPOCH FROM (tr."updatedAt" - tr."lockedAt"))) as duration
+      FROM 
+      ${sqlDatabaseSchema}."TaskRun" as tr
+    WHERE 
+      tr."taskIdentifier" IN (${Prisma.join(tasks)})
+      AND tr."projectId" = ${projectId}
+      AND tr."createdAt" >= (current_date - interval '6 days')
+      AND tr."status" IN ('COMPLETED_SUCCESSFULLY', 'COMPLETED_WITH_ERRORS')
+    GROUP BY 
+      tr."taskIdentifier";`;
+
+    return Object.fromEntries(durations.map((s) => [s.taskIdentifier, Number(s.duration)]));
   }
 }
