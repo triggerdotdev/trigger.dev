@@ -1,22 +1,27 @@
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 
-const EnvironmentVariable = z
+export const EnvironmentVariableKey = z
   .string()
-  .nonempty("Environment variable key is required")
-  .regex(/^\w+$/, "Environment variables can only contain alphanumeric characters and underscores");
+  .nonempty("Key is required")
+  .regex(/^\w+$/, "Keys can only use alphanumeric characters and underscores");
 
-export const CreateEnvironmentVariable = z.object({
-  key: EnvironmentVariable,
-  values: z.array(
-    z.object({
-      environmentId: z.string(),
-      value: z.string(),
-    })
-  ),
+export const CreateEnvironmentVariables = z.object({
+  environmentIds: z.array(z.string()),
+  variables: z.array(z.object({ key: EnvironmentVariableKey, value: z.string() })),
 });
 
-export type CreateEnvironmentVariable = z.infer<typeof CreateEnvironmentVariable>;
+export type CreateEnvironmentVariables = z.infer<typeof CreateEnvironmentVariables>;
+
+export type CreateResult =
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      error: string;
+      variableErrors?: { key: string; error: string }[];
+    };
 
 export const EditEnvironmentVariable = z.object({
   id: z.string(),
@@ -60,7 +65,11 @@ export type EnvironmentVariable = {
 };
 
 export interface Repository {
-  create(projectId: string, userId: string, options: CreateEnvironmentVariable): Promise<Result>;
+  create(
+    projectId: string,
+    userId: string,
+    options: CreateEnvironmentVariables
+  ): Promise<CreateResult>;
   edit(projectId: string, userId: string, options: EditEnvironmentVariable): Promise<Result>;
   getProject(projectId: string, userId: string): Promise<ProjectEnvironmentVariable[]>;
   getEnvironment(

@@ -3,7 +3,12 @@ import { z } from "zod";
 import { $transaction, prisma } from "~/db.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { EnvironmentVariable, ProjectEnvironmentVariable, Repository, Result } from "./repository";
+import {
+  EnvironmentVariableKey,
+  ProjectEnvironmentVariable,
+  Repository,
+  Result,
+} from "./repository";
 import { env } from "~/env.server";
 
 function secretKeyProjectPrefix(projectId: string) {
