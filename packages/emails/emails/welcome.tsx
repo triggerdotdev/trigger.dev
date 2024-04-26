@@ -1,10 +1,4 @@
-import { Head } from "@react-email/head";
-import { Html } from "@react-email/html";
-import { Link } from "@react-email/link";
-import { Preview } from "@react-email/preview";
-import { Section } from "@react-email/section";
-import { Text } from "@react-email/text";
-import * as React from "react";
+import { Head, Html, Link, Preview, Section, Text } from "@react-email/components";
 import { Footer } from "./components/Footer";
 import { anchor, bullets, footerItalic, main, paragraph } from "./components/styles";
 

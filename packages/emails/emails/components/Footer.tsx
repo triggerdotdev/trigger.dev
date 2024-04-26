@@ -1,6 +1,4 @@
-import { Hr } from "@react-email/hr";
-import { Link } from "@react-email/link";
-import { Text } from "@react-email/text";
+import { Hr, Link, Text } from "@react-email/components";
 import React from "react";
 import { footer, footerAnchor, hr } from "./styles";
 

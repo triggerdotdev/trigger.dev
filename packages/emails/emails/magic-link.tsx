@@ -1,14 +1,7 @@
-import { Container } from "@react-email/container";
-import { Head } from "@react-email/head";
-import { Html } from "@react-email/html";
-import { Image } from "./components/Image";
-import { Link } from "@react-email/link";
-import { Preview } from "@react-email/preview";
-import { Section } from "@react-email/section";
-import { Text } from "@react-email/text";
-import * as React from "react";
+import { Container, Head, Html, Link, Preview, Section, Text } from "@react-email/components";
 import { Footer } from "./components/Footer";
-import { main, anchor, h1, container, paragraphLight } from "./components/styles";
+import { Image } from "./components/Image";
+import { anchor, container, h1, main, paragraphLight } from "./components/styles";
 
 export default function Email({ magicLink }: { magicLink: string }) {
   return (

@@ -1,4 +1,4 @@
-import { Img } from "@react-email/img";
+import { Img } from "@react-email/components";
 import * as React from "react";
 import { getGlobalBasePath } from "./BasePath";
 
