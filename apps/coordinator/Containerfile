@@ -1,16 +1,16 @@
 # syntax=docker/dockerfile:labs
 
-FROM node:18-bullseye-slim@sha256:a4edd54dcfdcacc8a4100fee71498e8671d99556a1acf5614539214a70092426 AS node-18
+FROM node:20-bookworm-slim@sha256:72f2f046a5f8468db28730b990b37de63ce93fd1a72a40f531d6aa82afdf0d46 AS node-20
 
 WORKDIR /app
 
-FROM node-18 AS pruner
+FROM node-20 AS pruner
 
 COPY --chown=node:node . .
 RUN npx -q turbo@1.10.9 prune --scope=coordinator --docker
 RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 
-FROM node-18 AS base
+FROM node-20 AS base
 
 RUN apt-get update \
   && apt-get install -y buildah ca-certificates dumb-init docker.io \
