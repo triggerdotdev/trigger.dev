@@ -1,4 +1,4 @@
-import { Submission, conform, useForm } from "@conform-to/react";
+import { Submission, conform, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { Form, useActionData, useLocation, useNavigate, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
@@ -6,13 +6,19 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import {
+  EnvironmentLabel,
+  environmentTextClassName,
+  environmentTitle,
+} from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { Checkbox } from "~/components/primitives/Checkbox";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
+import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
@@ -23,13 +29,17 @@ import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
 import {
   ProjectParamSchema,
   v3EnvironmentVariablesPath,
   v3NewEnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
-import { CreateEnvironmentVariable } from "~/v3/environmentVariables/repository";
+import {
+  CreateEnvironmentVariables,
+  EnvironmentVariableKey,
+} from "~/v3/environmentVariables/repository";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -56,8 +66,34 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 const schema = z.object({
-  action: z.enum(["create", "create-more"]),
-  ...CreateEnvironmentVariable.shape,
+  environmentIds: z.array(z.string()),
+
+  keys: z.preprocess((i) => {
+    if (typeof i === "string") return [i];
+
+    if (Array.isArray(i)) {
+      const keys = i.filter((v) => typeof v === "string" && v !== "");
+      if (keys.length === 0) {
+        return [""];
+      }
+      return keys;
+    }
+
+    return [""];
+  }, EnvironmentVariableKey.array().nonempty("At least one key is required")),
+  values: z.preprocess((i) => {
+    if (typeof i === "string") return [i];
+
+    if (Array.isArray(i)) {
+      const values = i.filter((v) => typeof v === "string" && v !== "");
+      if (values.length === 0) {
+        return [""];
+      }
+      return values;
+    }
+
+    return [""];
+  }, z.string().array().nonempty("At least one value is required")),
 });
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -89,25 +125,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const repository = new EnvironmentVariablesRepository(prisma);
-  const result = await repository.create(project.id, userId, submission.value);
+  //todo implement
+  // const result = await repository.create(project.id, userId, submission.value);
 
-  if (!result.success) {
-    submission.error.key = result.error;
-    return json(submission);
-  }
+  // if (!result.success) {
+  //   submission.error.key = result.error;
+  //   return json(submission);
+  // }
 
-  switch (submission.value.action) {
-    case "create":
-      return redirect(
-        v3EnvironmentVariablesPath({ slug: organizationSlug }, { slug: projectParam })
-      );
-    case "create-more":
-      return redirectWithSuccessMessage(
-        v3NewEnvironmentVariablesPath({ slug: organizationSlug }, { slug: projectParam }),
-        request,
-        `Created ${submission.value.key} environment variable`
-      );
-  }
+  return redirect(v3EnvironmentVariablesPath({ slug: organizationSlug }, { slug: projectParam }));
 };
 
 export default function Page() {
@@ -118,15 +144,11 @@ export default function Page() {
   const navigate = useNavigate();
   const organization = useOrganization();
   const project = useProject();
-  const keyFieldRef = useRef<HTMLInputElement>(null);
 
-  const isLoading =
-    navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
-    navigation.formData?.get("action") === "create";
+  const isLoading = navigation.state !== "idle" && navigation.formMethod === "post";
 
-  const [form, { key }] = useForm({
-    id: "create-environment-variable",
+  const [form, { environmentIds, keys, values }] = useForm({
+    id: "create-environment-variables",
     // TODO: type this
     lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
@@ -141,13 +163,10 @@ export default function Page() {
     setIsOpen(true);
   }, []);
 
-  useEffect(() => {
-    if (navigation.state !== "idle") return;
-    if (lastSubmission !== undefined) return;
-
-    form.ref.current?.reset();
-    keyFieldRef.current?.focus();
-  }, [navigation.state, lastSubmission]);
+  const keyFieldValues = useRef<string[]>([""]);
+  const keyFields = useFieldList(form.ref, keys);
+  const valueFieldValues = useRef<string[]>([""]);
+  const valueFields = useFieldList(form.ref, values);
 
   return (
     <Dialog
@@ -159,17 +178,40 @@ export default function Page() {
       }}
     >
       <DialogContent>
-        <DialogHeader>New environment variable</DialogHeader>
+        <DialogHeader>New environment variables</DialogHeader>
         <Form method="post" {...form.props}>
           <Fieldset className="mt-2">
+            <InputGroup>
+              <Label>Environments</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                {environments.map((environment) => (
+                  <Checkbox
+                    key={environment.id}
+                    id={environment.id}
+                    value={environment.id}
+                    name="environmentIds"
+                    type="radio"
+                    label={
+                      <span
+                        className={cn("text-xs uppercase", environmentTextClassName(environment))}
+                      >
+                        {environmentTitle(environment)}
+                      </span>
+                    }
+                    variant="button"
+                  />
+                ))}
+              </div>
+              <Hint>
+                Dev environment variables specified here will be overridden by ones in your .env
+                file when running locally.
+              </Hint>
+              <FormError id={environmentIds.errorId}>{environmentIds.error}</FormError>
+            </InputGroup>
+
             <InputGroup fullWidth>
-              <Label>Key</Label>
-              <Input
-                {...conform.input(key)}
-                placeholder="e.g. CLIENT_KEY"
-                autoFocus
-                ref={keyFieldRef}
-              />
+              <Label>Keys</Label>
+              <Input {...conform.input(key)} placeholder="e.g. CLIENT_KEY" autoFocus />
             </InputGroup>
             <InputGroup fullWidth>
               <div className="flex items-center justify-between">
@@ -180,30 +222,6 @@ export default function Page() {
                   checked={revealAll}
                   onCheckedChange={(e) => setRevealAll(e.valueOf())}
                 />
-              </div>
-              <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2">
-                {environments.map((environment, index) => {
-                  return (
-                    <Fragment key={environment.id}>
-                      <input
-                        type="hidden"
-                        name={`values[${index}].environmentId`}
-                        value={environment.id}
-                      />
-                      <label
-                        className="flex items-center justify-end"
-                        htmlFor={`values[${index}].value`}
-                      >
-                        <EnvironmentLabel environment={environment} className="h-5 px-2" />
-                      </label>
-                      <Input
-                        type={revealAll ? "text" : "password"}
-                        name={`values[${index}].value`}
-                        placeholder="Not set"
-                      />
-                    </Fragment>
-                  );
-                })}
               </div>
             </InputGroup>
 
