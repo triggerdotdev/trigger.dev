@@ -1,5 +1,11 @@
 # @trigger.dev/nextjs
 
+## 3.0.0-beta.22
+
+### Patch Changes
+
+- @trigger.dev/sdk@3.0.0-beta.22
+
 ## 3.0.0-beta.21
 
 ### Patch Changes

@@ -1,5 +1,7 @@
 # @trigger.dev/core-apps
 
+## 3.0.0-beta.22
+
 ## 3.0.0-beta.21
 
 ## 3.0.0-beta.20
