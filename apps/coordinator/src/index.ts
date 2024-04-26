@@ -21,6 +21,10 @@ const NODE_NAME = process.env.NODE_NAME || "coordinator";
 const DEFAULT_RETRY_DELAY_THRESHOLD_IN_MS = 30_000;
 const CHAOS_MONKEY_ENABLED = !!process.env.CHAOS_MONKEY_ENABLED;
 
+const FORCE_CHECKPOINT_SIMULATION = ["1", "true"].includes(
+  process.env.FORCE_CHECKPOINT_SIMULATION ?? "true"
+);
+
 const REGISTRY_HOST = process.env.REGISTRY_HOST || "localhost:5000";
 const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
 const REGISTRY_TLS_VERIFY = process.env.REGISTRY_TLS_VERIFY === "false" ? "false" : "true";
@@ -382,7 +386,7 @@ class Checkpointer {
 
 class TaskCoordinator {
   #httpServer: ReturnType<typeof createServer>;
-  #checkpointer = new Checkpointer({ forceSimulate: true });
+  #checkpointer = new Checkpointer({ forceSimulate: FORCE_CHECKPOINT_SIMULATION });
 
   #prodWorkerNamespace: ZodNamespace<
     typeof ProdWorkerToCoordinatorMessages,
