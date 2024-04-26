@@ -1,8 +1,18 @@
-import { Submission, conform, useFieldList, useForm } from "@conform-to/react";
+import {
+  FieldConfig,
+  Submission,
+  conform,
+  list,
+  requestIntent,
+  useFieldList,
+  useFieldset,
+  useForm,
+} from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useLocation, useNavigate, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, RefObject, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -65,35 +75,51 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
+const Variable = z.object({
+  key: EnvironmentVariableKey,
+  value: z.string().nonempty("Value is required"),
+});
+
+type Variable = z.infer<typeof Variable>;
+
 const schema = z.object({
-  environmentIds: z.array(z.string()),
-
-  keys: z.preprocess((i) => {
+  environmentIds: z.preprocess((i) => {
     if (typeof i === "string") return [i];
 
     if (Array.isArray(i)) {
-      const keys = i.filter((v) => typeof v === "string" && v !== "");
-      if (keys.length === 0) {
-        return [""];
+      const ids = i.filter((v) => typeof v === "string" && v !== "");
+      if (ids.length === 0) {
+        return;
       }
-      return keys;
+      return ids;
     }
 
-    return [""];
-  }, EnvironmentVariableKey.array().nonempty("At least one key is required")),
-  values: z.preprocess((i) => {
-    if (typeof i === "string") return [i];
-
-    if (Array.isArray(i)) {
-      const values = i.filter((v) => typeof v === "string" && v !== "");
-      if (values.length === 0) {
-        return [""];
-      }
-      return values;
+    return;
+  }, z.array(z.string(), { required_error: "At least one environment is required" })),
+  variables: z.preprocess((i) => {
+    console.log(i);
+    if (!Array.isArray(i)) {
+      return [];
     }
 
-    return [""];
-  }, z.string().array().nonempty("At least one value is required")),
+    //remove empty variables (key and value are empty)
+    const filtered = i.filter((v: any) => {
+      if (!v) return false;
+      if (!v.key && !v.value) return false;
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      return [
+        {
+          key: "",
+          value: "",
+        },
+      ];
+    }
+
+    return filtered;
+  }, Variable.array().nonempty("At least one variable is required")),
 });
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -147,7 +173,7 @@ export default function Page() {
 
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "post";
 
-  const [form, { environmentIds, keys, values }] = useForm({
+  const [form, { environmentIds, variables }] = useForm({
     id: "create-environment-variables",
     // TODO: type this
     lastSubmission: lastSubmission as any,
@@ -163,10 +189,7 @@ export default function Page() {
     setIsOpen(true);
   }, []);
 
-  const keyFieldValues = useRef<string[]>([""]);
-  const keyFields = useFieldList(form.ref, keys);
-  const valueFieldValues = useRef<string[]>([""]);
-  const valueFields = useFieldList(form.ref, values);
+  const variableFields = useFieldList(form.ref, variables);
 
   return (
     <Dialog
@@ -202,57 +225,57 @@ export default function Page() {
                   />
                 ))}
               </div>
+              <FormError id={environmentIds.errorId}>{environmentIds.error}</FormError>
               <Hint>
                 Dev environment variables specified here will be overridden by ones in your .env
                 file when running locally.
               </Hint>
-              <FormError id={environmentIds.errorId}>{environmentIds.error}</FormError>
+            </InputGroup>
+            <InputGroup>
+              <FieldLayout>
+                <Label>Keys</Label>
+                <div className="flex justify-between gap-1">
+                  <Label>Values</Label>
+                  <Switch
+                    variant="small"
+                    label="Reveal"
+                    checked={revealAll}
+                    onCheckedChange={(e) => setRevealAll(e.valueOf())}
+                  />
+                </div>
+              </FieldLayout>
+              {variableFields.map((variable, index) => {
+                return (
+                  <Fragment key={variable.key}>
+                    <VariableFieldset
+                      config={variable}
+                      index={index}
+                      formRef={form.ref}
+                      variables={variables}
+                      revealAll={revealAll}
+                    />
+                  </Fragment>
+                );
+              })}
+              <FormError id={variables.errorId}>{variables.error}</FormError>
+              <Button
+                variant="tertiary/medium"
+                type="button"
+                onClick={() =>
+                  requestIntent(form.ref.current ?? undefined, list.append(variables.name))
+                }
+                LeadingIcon={PlusIcon}
+              >
+                Add another
+              </Button>
             </InputGroup>
 
-            <InputGroup fullWidth>
-              <Label>Keys</Label>
-              <Input {...conform.input(key)} placeholder="e.g. CLIENT_KEY" autoFocus />
-            </InputGroup>
-            <InputGroup fullWidth>
-              <div className="flex items-center justify-between">
-                <Label>Values</Label>
-                <Switch
-                  variant="small"
-                  label="Reveal values"
-                  checked={revealAll}
-                  onCheckedChange={(e) => setRevealAll(e.valueOf())}
-                />
-              </div>
-            </InputGroup>
-
-            <Callout variant="info" className="inline-flex">
-              Dev environment variables specified here will be overridden by ones in your{" "}
-              <InlineCode variant="extra-small">.env</InlineCode> file when running locally.
-            </Callout>
-
-            <FormError id={key.errorId}>{key.error}</FormError>
             <FormError>{form.error}</FormError>
             <FormButtons
               confirmButton={
-                <div className="flex flex-row-reverse items-center gap-2">
-                  <Button
-                    type="submit"
-                    variant="primary/small"
-                    disabled={isLoading}
-                    name="action"
-                    value="create-more"
-                  >
-                    {isLoading ? "Saving" : "Save and add another"}
-                  </Button>
-                  <Button
-                    variant="secondary/small"
-                    disabled={isLoading}
-                    name="action"
-                    value="create"
-                  >
-                    {isLoading ? "Saving" : "Save"}
-                  </Button>
-                </div>
+                <Button variant="primary/small" disabled={isLoading}>
+                  {isLoading ? "Saving" : "Save"}
+                </Button>
               }
               cancelButton={
                 <LinkButton
@@ -268,4 +291,52 @@ export default function Page() {
       </DialogContent>
     </Dialog>
   );
+}
+
+function VariableFieldset({
+  config,
+  index,
+  formRef,
+  variables,
+  revealAll,
+}: {
+  config: FieldConfig<Variable>;
+  index: number;
+  formRef: RefObject<HTMLFormElement>;
+  variables: FieldConfig<any>;
+  revealAll: boolean;
+}) {
+  const ref = useRef<HTMLFieldSetElement>(null);
+  // useFieldset / useFieldList accepts both form or fieldset ref
+  const { key, value } = useFieldset(ref, config);
+
+  return (
+    <fieldset ref={ref}>
+      <FieldLayout>
+        <Input {...conform.input(key)} placeholder="e.g. CLIENT_KEY" />
+        <Input
+          {...conform.input(value, { type: revealAll ? "text" : "password" })}
+          placeholder="Not set"
+        />
+        {index !== 0 && (
+          <Button
+            variant="minimal/medium"
+            type="button"
+            onClick={() =>
+              requestIntent(formRef.current ?? undefined, list.remove(variables.name, { index }))
+            }
+            LeadingIcon={XMarkIcon}
+          />
+        )}
+      </FieldLayout>
+      <div className="space-y-2">
+        <FormError id={key.errorId}>{key.error}</FormError>
+        <FormError id={value.errorId}>{value.error}</FormError>
+      </div>
+    </fieldset>
+  );
+}
+
+function FieldLayout({ children }: { children: React.ReactNode }) {
+  return <div className="grid w-full grid-cols-[1fr_1fr_3rem] gap-2">{children}</div>;
 }
