@@ -1,5 +1,15 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.21
+
+### Patch Changes
+
+- 9491a1649: Implement task.onSuccess/onFailure and config.onSuccess/onFailure
+- Updated dependencies [9491a1649]
+- Updated dependencies [9491a1649]
+  - @trigger.dev/core@3.0.0-beta.21
+  - @trigger.dev/core-backend@3.0.0-beta.21
+
 ## 3.0.0-beta.20
 
 ### Patch Changes

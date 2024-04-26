@@ -1,5 +1,13 @@
 # @trigger.dev/linear
 
+## 3.0.0-beta.21
+
+### Patch Changes
+
+- Updated dependencies [9491a1649]
+  - @trigger.dev/sdk@3.0.0-beta.21
+  - @trigger.dev/integration-kit@3.0.0-beta.21
+
 ## 3.0.0-beta.20
 
 ### Patch Changes
