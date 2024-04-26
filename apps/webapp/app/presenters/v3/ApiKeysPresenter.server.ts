@@ -74,6 +74,7 @@ export class ApiKeysPresenter {
           environmentVariableCount: environment._count.environmentVariableValues,
         }))
       ),
+      hasStaging: environments.some((environment) => environment.type === "STAGING"),
     };
   }
 }
