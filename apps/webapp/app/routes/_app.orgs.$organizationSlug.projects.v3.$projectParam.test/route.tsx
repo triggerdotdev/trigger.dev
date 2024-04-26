@@ -150,9 +150,6 @@ function TaskSelector({
   tasks: TaskListItem[];
   environmentSlug: string;
 }) {
-  const organization = useOrganization();
-  const project = useProject();
-
   return (
     <div className="divide-y divide-charcoal-800 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
       <Table>
@@ -166,42 +163,9 @@ function TaskSelector({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {tasks.map((t) => {
-            const path = v3TestTaskPath(organization, project, t, environmentSlug);
-            const { isActive, isPending } = useLinkStatus(path);
-            return (
-              <TableRow
-                key={t.taskIdentifier}
-                className={cn(
-                  (isActive || isPending) &&
-                    "z-20 rounded-sm outline outline-1 outline-offset-[-1px] outline-secondary"
-                )}
-              >
-                <TableCell to={path} actionClassName="pl-2.5 pr-1 py-1">
-                  <RadioButtonCircle checked={isActive || isPending} />
-                </TableCell>
-                <TableCell to={path} actionClassName="pl-1 pr-2 py-1">
-                  <div className="flex flex-col gap-0.5">
-                    <TaskFunctionName
-                      variant="extra-small"
-                      functionName={t.exportName}
-                      className="-ml-1 inline-flex"
-                    />
-                    <div className="flex items-start gap-1">
-                      <TaskTriggerSourceIcon source={t.triggerSource} className="size-3.5" />
-                      <Paragraph variant="extra-small" className="text-text-dimmed">
-                        {t.taskIdentifier}
-                      </Paragraph>
-                    </div>
-                  </div>
-                </TableCell>
-
-                <TableCell to={path} actionClassName="px-2 py-1">
-                  {t.filePath}
-                </TableCell>
-              </TableRow>
-            );
-          })}
+          {tasks.map((t) => (
+            <TaskRow key={t.friendlyId} task={t} environmentSlug={environmentSlug} />
+          ))}
         </TableBody>
       </Table>
     </div>
@@ -215,5 +179,45 @@ function NoTaskInstructions({ environment }: { environment?: SelectedEnvironment
         You have no tasks {environment ? `in ${environmentTitle(environment)}` : ""}.
       </Paragraph>
     </div>
+  );
+}
+
+function TaskRow({ task, environmentSlug }: { task: TaskListItem; environmentSlug: string }) {
+  const organization = useOrganization();
+  const project = useProject();
+
+  const path = v3TestTaskPath(organization, project, task, environmentSlug);
+  const { isActive, isPending } = useLinkStatus(path);
+  return (
+    <TableRow
+      key={task.taskIdentifier}
+      className={cn(
+        (isActive || isPending) &&
+          "z-20 rounded-sm outline outline-1 outline-offset-[-1px] outline-secondary"
+      )}
+    >
+      <TableCell to={path} actionClassName="pl-2.5 pr-1 py-1">
+        <RadioButtonCircle checked={isActive || isPending} />
+      </TableCell>
+      <TableCell to={path} actionClassName="pl-1 pr-2 py-1">
+        <div className="flex flex-col gap-0.5">
+          <TaskFunctionName
+            variant="extra-small"
+            functionName={task.exportName}
+            className="-ml-1 inline-flex"
+          />
+          <div className="flex items-start gap-1">
+            <TaskTriggerSourceIcon source={task.triggerSource} className="size-3.5" />
+            <Paragraph variant="extra-small" className="text-text-dimmed">
+              {task.taskIdentifier}
+            </Paragraph>
+          </div>
+        </div>
+      </TableCell>
+
+      <TableCell to={path} actionClassName="px-2 py-1">
+        {task.filePath}
+      </TableCell>
+    </TableRow>
   );
 }

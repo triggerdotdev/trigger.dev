@@ -101,7 +101,7 @@ export class TestPresenter {
       WHERE "runtimeEnvironmentId" = ${matchingEnvironment.id}
     ),
     latest_workers AS (SELECT * FROM workers WHERE rn = 1)
-    SELECT bwt.id, version, slug as "taskIdentifier", "filePath", "exportName", bwt."friendlyId" 
+    SELECT bwt.id, version, slug as "taskIdentifier", "filePath", "exportName", bwt."friendlyId", bwt."triggerSource"
     FROM latest_workers
     JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" bwt ON bwt."workerId" = latest_workers.id
     ORDER BY bwt."exportName" ASC;
