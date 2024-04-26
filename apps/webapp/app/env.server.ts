@@ -37,6 +37,7 @@ const EnvironmentSchema = z.object({
   POSTHOG_PROJECT_KEY: z.string().optional(),
   TELEMETRY_TRIGGER_API_KEY: z.string().optional(),
   TELEMETRY_TRIGGER_API_URL: z.string().optional(),
+  TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
   HIGHLIGHT_PROJECT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),

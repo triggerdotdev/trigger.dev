@@ -21,6 +21,11 @@ class Telemetry {
   #triggerClient: TriggerClient | undefined = undefined;
 
   constructor({ postHogApiKey, trigger }: Options) {
+    if (env.TRIGGER_TELEMETRY_DISABLED !== undefined) {
+      console.log("📉 Telemetry disabled");
+      return;
+    }
+
     if (postHogApiKey) {
       this.#posthogClient = new PostHog(postHogApiKey, { host: "https://eu.posthog.com" });
     } else {
