@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { readJSONFileSync } from "./fileSystem";
 import { logger } from "./logger";
 import { PackageManager, getUserPackageManager } from "./getUserPackageManager";
+import { PackageJson } from "type-fest";
+import { assertExhaustive } from "./assertExhaustive";
 
 export type ResolveOptions = { allowDev: boolean };
 
@@ -49,14 +51,14 @@ const BuiltInModules = new Set([
 ]);
 
 export class JavascriptProject {
-  private _packageJson?: any;
+  private _packageJson?: PackageJson;
   private _packageManager?: PackageManager;
 
   constructor(private projectPath: string) {}
 
   private get packageJson() {
     if (!this._packageJson) {
-      this._packageJson = readJSONFileSync(join(this.projectPath, "package.json"));
+      this._packageJson = readJSONFileSync(join(this.projectPath, "package.json")) as PackageJson;
     }
 
     return this._packageJson;
@@ -64,20 +66,28 @@ export class JavascriptProject {
 
   public get scripts(): Record<string, string> {
     return {
-      postinstall: this.packageJson.scripts?.postinstall,
+      postinstall: this.packageJson.scripts?.postinstall ?? "",
     };
+  }
+
+  async install(): Promise<void> {
+    const command = await this.#getCommand();
+
+    try {
+      await command.installDependencies({
+        cwd: this.projectPath,
+      });
+    } catch (error) {
+      logger.debug(`Failed to install dependencies using ${command.name}`, {
+        error,
+      });
+    }
   }
 
   async resolve(packageName: string, options?: ResolveOptions): Promise<string | undefined> {
     if (BuiltInModules.has(packageName)) {
       return undefined;
     }
-
-    if (!this._packageManager) {
-      this._packageManager = await getUserPackageManager(this.projectPath);
-    }
-
-    const packageManager = this._packageManager;
 
     const opts = { allowDev: false, ...options };
 
@@ -95,12 +105,7 @@ export class JavascriptProject {
       }
     }
 
-    const command =
-      packageManager === "npm"
-        ? new NPMCommands()
-        : packageManager === "pnpm"
-        ? new PNPMCommands()
-        : new YarnCommands();
+    const command = await this.#getCommand();
 
     try {
       const version = await command.resolveDependencyVersion(packageName, {
@@ -116,6 +121,29 @@ export class JavascriptProject {
         error,
       });
     }
+  }
+
+  async #getCommand(): Promise<PackageManagerCommands> {
+    const packageManager = await this.getPackageManager();
+
+    switch (packageManager) {
+      case "npm":
+        return new NPMCommands();
+      case "pnpm":
+        return new PNPMCommands();
+      case "yarn":
+        return new YarnCommands();
+      default:
+        assertExhaustive(packageManager);
+    }
+  }
+
+  async getPackageManager(): Promise<PackageManager> {
+    if (!this._packageManager) {
+      this._packageManager = await getUserPackageManager(this.projectPath);
+    }
+
+    return this._packageManager;
   }
 }
 
@@ -140,6 +168,10 @@ type PackageManagerOptions = {
 };
 
 interface PackageManagerCommands {
+  name: string;
+
+  installDependencies(options: PackageManagerOptions): Promise<void>;
+
   resolveDependencyVersion(
     packageName: string,
     options: PackageManagerOptions
@@ -151,15 +183,21 @@ class PNPMCommands implements PackageManagerCommands {
     return "pnpm";
   }
 
-  async resolveDependencyVersion(
-    packageName: string,
-    options: PackageManagerOptions
-  ): Promise<string | undefined> {
-    const cmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-    const { stdout } = await $({ cwd: options.cwd })`${cmd} list ${packageName} -r --json`;
+  private get cmd() {
+    return process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  }
+
+  async installDependencies(options: PackageManagerOptions) {
+    const { stdout, stderr } = await $({ cwd: options.cwd })`${this.cmd} install`;
+
+    logger.debug(`Installing dependencies using ${this.name}`, { stdout, stderr });
+  }
+
+  async resolveDependencyVersion(packageName: string, options: PackageManagerOptions) {
+    const { stdout } = await $({ cwd: options.cwd })`${this.cmd} list ${packageName} -r --json`;
     const result = JSON.parse(stdout) as PnpmList;
 
-    logger.debug(`Resolving ${packageName} version using pnpm`, { result });
+    logger.debug(`Resolving ${packageName} version using ${this.name}`, { result });
 
     // Return the first dependency version that matches the package name
     for (const dep of result) {
@@ -189,15 +227,21 @@ class NPMCommands implements PackageManagerCommands {
     return "npm";
   }
 
-  async resolveDependencyVersion(
-    packageName: string,
-    options: PackageManagerOptions
-  ): Promise<string | undefined> {
-    const cmd = process.platform === "win32" ? "npm.cmd" : "npm";
-    const { stdout } = await $({ cwd: options.cwd })`${cmd} list ${packageName} --json`;
+  private get cmd() {
+    return process.platform === "win32" ? "npm.cmd" : "npm";
+  }
+
+  async installDependencies(options: PackageManagerOptions) {
+    const { stdout, stderr } = await $({ cwd: options.cwd })`${this.cmd} install`;
+
+    logger.debug(`Installing dependencies using ${this.name}`, { stdout, stderr });
+  }
+
+  async resolveDependencyVersion(packageName: string, options: PackageManagerOptions) {
+    const { stdout } = await $({ cwd: options.cwd })`${this.cmd} list ${packageName} --json`;
     const output = JSON.parse(stdout) as NpmListOutput;
 
-    logger.debug(`Resolving ${packageName} version using npm`, { output });
+    logger.debug(`Resolving ${packageName} version using ${this.name}`, { output });
 
     return this.#recursivelySearchDependencies(output.dependencies, packageName);
   }
@@ -227,17 +271,22 @@ class YarnCommands implements PackageManagerCommands {
     return "yarn";
   }
 
-  async resolveDependencyVersion(
-    packageName: string,
-    options: PackageManagerOptions
-  ): Promise<string | undefined> {
-    const cmd = process.platform === "win32" ? "yarn.cmd" : "yarn";
+  private get cmd() {
+    return process.platform === "win32" ? "yarn.cmd" : "yarn";
+  }
 
-    const { stdout } = await $({ cwd: options.cwd })`${cmd} info ${packageName} --json`;
+  async installDependencies(options: PackageManagerOptions) {
+    const { stdout, stderr } = await $({ cwd: options.cwd })`${this.cmd} install`;
+
+    logger.debug(`Installing dependencies using ${this.name}`, { stdout, stderr });
+  }
+
+  async resolveDependencyVersion(packageName: string, options: PackageManagerOptions) {
+    const { stdout } = await $({ cwd: options.cwd })`${this.cmd} info ${packageName} --json`;
 
     const lines = stdout.split("\n");
 
-    logger.debug(`Resolving ${packageName} version using yarn`, { lines });
+    logger.debug(`Resolving ${packageName} version using ${this.name}`, { lines });
 
     for (const line of lines) {
       const json = JSON.parse(line);

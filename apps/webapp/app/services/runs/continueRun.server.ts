@@ -32,6 +32,14 @@ export class ContinueRunService {
           throw new Error("Run is not resumable");
         }
 
+        // Delete any tasks that are errored
+        const erroredTasks = await tx.task.findMany({
+          where: {
+            runId: runId,
+            status: "ERRORED",
+          },
+        });
+
         await tx.jobRun.update({
           where: { id: runId },
           data: {
@@ -45,9 +53,15 @@ export class ContinueRunService {
           },
         });
 
+        for (const task of erroredTasks) {
+          await tx.task.delete({
+            where: { id: task.id },
+          });
+        }
+
         await ResumeRunService.enqueue(run, tx);
       },
-      { timeout: 10000 }
+      { timeout: 30_000 }
     );
   }
 }

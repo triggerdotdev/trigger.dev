@@ -2,7 +2,6 @@ import {
   BackgroundWorkerProperties,
   Config,
   CreateBackgroundWorkerResponse,
-  InferSocketMessageSchema,
   ProdChildToWorkerMessages,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
@@ -14,9 +13,10 @@ import {
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
-  ZodIpcConnection,
   correctErrorStackTrace,
 } from "@trigger.dev/core/v3";
+import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
+import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
 import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors";

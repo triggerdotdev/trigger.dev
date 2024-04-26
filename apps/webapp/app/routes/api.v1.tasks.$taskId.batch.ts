@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { parseBatchTriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import { BatchTriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { MAX_BATCH_TRIGGER_ITEMS } from "~/consts";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -46,7 +46,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // Now parse the request body
   const anyBody = await request.json();
 
-  const body = parseBatchTriggerTaskRequestBody(anyBody);
+  const body = BatchTriggerTaskRequestBody.safeParse(anyBody);
 
   if (!body.success) {
     return json({ error: "Invalid request body" }, { status: 400 });

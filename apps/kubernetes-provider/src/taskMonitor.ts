@@ -408,7 +408,7 @@ export class TaskMonitor {
     const createNonZeroExitPod = async (name: string, labels?: Record<string, string>) => {
       const container = {
         name,
-        image: "busybox",
+        image: "docker.io/library/busybox",
         command: ["sh"],
         args: ["-c", "exit 1"],
       } satisfies k8s.V1Container;
@@ -419,7 +419,7 @@ export class TaskMonitor {
     const createOoDiskPod = async (name: string, labels?: Record<string, string>) => {
       const container = {
         name,
-        image: "busybox",
+        image: "docker.io/library/busybox",
         command: ["sh"],
         args: [
           "-c",

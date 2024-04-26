@@ -6,6 +6,7 @@ import {
 } from "@opentelemetry/semantic-conventions";
 import {
   BatchTaskRunExecutionResult,
+  FailureFnParams,
   HandleErrorFnParams,
   HandleErrorResult,
   InitFnParams,
@@ -17,6 +18,7 @@ import {
   RetryOptions,
   RunFnParams,
   SemanticInternalAttributes,
+  StartFnParams,
   SuccessFnParams,
   TaskRunContext,
   TaskRunExecutionResult,
@@ -30,7 +32,7 @@ import {
   runtime,
   stringifyIO,
   taskCatalog,
-  taskContextManager,
+  taskContext,
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../../package.json";
 import { tracer } from "./tracer";
@@ -143,15 +145,67 @@ export type TaskOptions<
    * @param params - Metadata about the run.
    */
   run: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<TOutput>;
+
+  /**
+   * init is called before the run function is called. It's useful for setting up any global state.
+   */
   init?: (payload: TPayload, params: InitFnParams) => Promise<TInitOutput>;
+
+  /**
+   * cleanup is called after the run function has completed.
+   */
+  cleanup?: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<void>;
+
+  /**
+   * handleError is called when the run function throws an error. It can be used to modify the error or return new retry options.
+   */
   handleError?: (
     payload: TPayload,
     error: unknown,
     params: HandleErrorFnParams<TInitOutput>
   ) => HandleErrorResult;
-  cleanup?: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<void>;
+
+  /**
+   * middleware allows you to run code "around" the run function. This can be useful for logging, metrics, or other cross-cutting concerns.
+   *
+   * When writing middleware, you should always call `next()` to continue the execution of the task:
+   *
+   * ```ts
+   * export const middlewareTask = task({
+   *  id: "middleware-task",
+   *  middleware: async (payload, { ctx, next }) => {
+   *   console.log("Before run");
+   *   await next();
+   *   console.log("After run");
+   *  },
+   *  run: async (payload, { ctx }) => {}
+   * });
+   * ```
+   */
   middleware?: (payload: TPayload, params: MiddlewareFnParams) => Promise<void>;
-  onSuccess?: (payload: TPayload, params: SuccessFnParams<TOutput, TInitOutput>) => Promise<void>;
+
+  /**
+   * onStart is called the first time a task is executed in a run (not before every retry)
+   */
+  onStart?: (payload: TPayload, params: StartFnParams) => Promise<void>;
+
+  /**
+   * onSuccess is called after the run function has successfully completed.
+   */
+  onSuccess?: (
+    payload: TPayload,
+    output: TOutput,
+    params: SuccessFnParams<TInitOutput>
+  ) => Promise<void>;
+
+  /**
+   * onFailure is called after a task run has failed (meaning the run function threw an error and won't be retried anymore)
+   */
+  onFailure?: (
+    payload: TPayload,
+    error: unknown,
+    params: FailureFnParams<TInitOutput>
+  ) => Promise<void>;
 };
 
 type InvokeHandle = {
@@ -248,6 +302,14 @@ export interface Task<TInput = void, TOutput = any> {
   batchTriggerAndWait: (items: Array<BatchItem<TInput>>) => Promise<BatchResult<TOutput>>;
 }
 
+export type TaskPayload<TTask extends Task> = TTask extends Task<infer TInput, any>
+  ? TInput
+  : never;
+
+export type TaskOutput<TTask extends Task> = TTask extends Task<any, infer TOutput>
+  ? TOutput
+  : never;
+
 type TaskRunOptions = {
   idempotencyKey?: string;
   maxAttempts?: number;
@@ -293,7 +355,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
               options: {
                 queue: params.queue,
                 concurrencyKey: options?.concurrencyKey,
-                test: taskContextManager.ctx?.run.isTest,
+                test: taskContext.ctx?.run.isTest,
                 payloadType: payloadPacket.dataType,
                 idempotencyKey: options?.idempotencyKey,
               },
@@ -310,7 +372,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
           attributes: {
             [SEMATTRS_MESSAGING_OPERATION]: "publish",
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
-            ["messaging.client_id"]: taskContextManager.worker?.id,
+            ["messaging.client_id"]: taskContext.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             ...(taskMetadata
@@ -354,7 +416,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
                     options: {
                       queue: item.options?.queue ?? params.queue,
                       concurrencyKey: item.options?.concurrencyKey,
-                      test: taskContextManager.ctx?.run.isTest,
+                      test: taskContext.ctx?.run.isTest,
                       payloadType: payloadPacket.dataType,
                       idempotencyKey: item.options?.idempotencyKey,
                     },
@@ -374,7 +436,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
           attributes: {
             [SEMATTRS_MESSAGING_OPERATION]: "publish",
             ["messaging.batch.message_count"]: items.length,
-            ["messaging.client_id"]: taskContextManager.worker?.id,
+            ["messaging.client_id"]: taskContext.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
@@ -396,7 +458,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
       return response;
     },
     triggerAndWait: async (payload, options) => {
-      const ctx = taskContextManager.ctx;
+      const ctx = taskContext.ctx;
 
       if (!ctx) {
         throw new Error("triggerAndWait can only be used from inside a task.run()");
@@ -419,10 +481,10 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
             payload: payloadPacket.data,
             options: {
               dependentAttempt: ctx.attempt.id,
-              lockToVersion: taskContextManager.worker?.version, // Lock to current version because we're waiting for it to finish
+              lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
               queue: params.queue,
               concurrencyKey: options?.concurrencyKey,
-              test: taskContextManager.ctx?.run.isTest,
+              test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
               idempotencyKey: options?.idempotencyKey,
             },
@@ -459,7 +521,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
           attributes: {
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
             [SEMATTRS_MESSAGING_OPERATION]: "publish",
-            ["messaging.client_id"]: taskContextManager.worker?.id,
+            ["messaging.client_id"]: taskContext.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             ...(taskMetadata
@@ -478,7 +540,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
       );
     },
     batchTriggerAndWait: async (items) => {
-      const ctx = taskContextManager.ctx;
+      const ctx = taskContext.ctx;
 
       if (!ctx) {
         throw new Error("batchTriggerAndWait can only be used from inside a task.run()");
@@ -503,10 +565,10 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
                 return {
                   payload: payloadPacket.data,
                   options: {
-                    lockToVersion: taskContextManager.worker?.version,
+                    lockToVersion: taskContext.worker?.version,
                     queue: item.options?.queue ?? params.queue,
                     concurrencyKey: item.options?.concurrencyKey,
-                    test: taskContextManager.ctx?.run.isTest,
+                    test: taskContext.ctx?.run.isTest,
                     payloadType: payloadPacket.dataType,
                     idempotencyKey: item.options?.idempotencyKey,
                   },
@@ -591,7 +653,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
           attributes: {
             [SEMATTRS_MESSAGING_OPERATION]: "publish",
             ["messaging.batch.message_count"]: items.length,
-            ["messaging.client_id"]: taskContextManager.worker?.id,
+            ["messaging.client_id"]: taskContext.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
@@ -624,6 +686,9 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
       cleanup: params.cleanup,
       middleware: params.middleware,
       handleError: params.handleError,
+      onSuccess: params.onSuccess,
+      onFailure: params.onFailure,
+      onStart: params.onStart,
     },
   });
 

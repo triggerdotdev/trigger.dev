@@ -1,8 +1,16 @@
 import { findUp } from "find-up";
+import { basename } from "path";
+import { logger } from "./logger";
 
 export type PackageManager = "npm" | "pnpm" | "yarn";
 
 export async function getUserPackageManager(path: string): Promise<PackageManager> {
+  const packageManager = await detectPackageManager(path);
+  logger.debug("Detected package manager", { packageManager });
+  return packageManager;
+}
+
+async function detectPackageManager(path: string): Promise<PackageManager> {
   try {
     return await detectPackageManagerFromArtifacts(path);
   } catch (error) {
@@ -29,19 +37,30 @@ function detectPackageManagerFromCurrentCommand(): PackageManager {
 }
 
 async function detectPackageManagerFromArtifacts(path: string): Promise<PackageManager> {
-  const packageFiles = [
-    { name: "yarn.lock", pm: "yarn" } as const,
-    { name: "pnpm-lock.yaml", pm: "pnpm" } as const,
-    { name: "package-lock.json", pm: "npm" } as const,
-    { name: "npm-shrinkwrap.json", pm: "npm" } as const,
-  ];
+  const artifacts = {
+    yarn: "yarn.lock",
+    pnpm: "pnpm-lock.yaml",
+    npm: "package-lock.json",
+    npmShrinkwrap: "npm-shrinkwrap.json",
+  };
 
-  for (const { name, pm } of packageFiles) {
-    const foundPath = await findUp(name, { cwd: path });
-    if (typeof foundPath === "string") {
-      return pm;
-    }
+  const foundPath = await findUp(Object.values(artifacts), { cwd: path });
+
+  if (!foundPath) {
+    throw new Error("Could not detect package manager from artifacts");
   }
 
-  throw new Error("Could not detect package manager from artifacts");
+  logger.debug("Found path from package manager artifacts", { foundPath });
+
+  switch (basename(foundPath)) {
+    case artifacts.yarn:
+      return "yarn";
+    case artifacts.pnpm:
+      return "pnpm";
+    case artifacts.npm:
+    case artifacts.npmShrinkwrap:
+      return "npm";
+    default:
+      throw new Error(`Unhandled package manager detection path: ${foundPath}`);
+  }
 }

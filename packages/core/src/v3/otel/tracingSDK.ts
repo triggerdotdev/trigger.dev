@@ -38,7 +38,7 @@ import {
   OTEL_SPAN_EVENT_COUNT_LIMIT,
 } from "../limits";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
-import { TaskContextLogProcessor, TaskContextSpanProcessor } from "../tasks/taskContextManager";
+import { TaskContextLogProcessor, TaskContextSpanProcessor } from "../taskContext/otelProcessors";
 import { getEnvVar } from "../utils/getEnv";
 
 class AsyncResourceDetector implements DetectorSync {

@@ -5,8 +5,8 @@ import {
   PlatformToProviderMessages,
   ProviderToPlatformMessages,
   SharedQueueToClientMessages,
-  ZodNamespace,
 } from "@trigger.dev/core/v3";
+import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { Server } from "socket.io";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
@@ -71,6 +71,7 @@ function initializeSocketIOServerInstance() {
 
 function createCoordinatorNamespace(io: Server) {
   const coordinator = new ZodNamespace({
+    // @ts-ignore - for some reason the built ZodNamespace Server type is not compatible with the Server type here, but only when doing typechecking
     io,
     name: "coordinator",
     authToken: env.COORDINATOR_SECRET,
@@ -147,6 +148,7 @@ function createCoordinatorNamespace(io: Server) {
 
 function createProviderNamespace(io: Server) {
   const provider = new ZodNamespace({
+    // @ts-ignore - for some reason the built ZodNamespace Server type is not compatible with the Server type here, but only when doing typechecking
     io,
     name: "provider",
     authToken: env.PROVIDER_SECRET,
@@ -181,6 +183,7 @@ function createProviderNamespace(io: Server) {
 
 function createSharedQueueConsumerNamespace(io: Server) {
   const sharedQueue = new ZodNamespace({
+    // @ts-ignore - for some reason the built ZodNamespace Server type is not compatible with the Server type here, but only when doing typechecking
     io,
     name: "shared-queue",
     authToken: env.PROVIDER_SECRET,
@@ -188,7 +191,9 @@ function createSharedQueueConsumerNamespace(io: Server) {
     serverMessages: SharedQueueToClientMessages,
     onConnection: async (socket, handler, sender, logger) => {
       const sharedSocketConnection = new SharedSocketConnection({
+        // @ts-ignore - for some reason the built ZodNamespace Server type is not compatible with the Server type here, but only when doing typechecking
         namespace: sharedQueue.namespace,
+        // @ts-ignore - for some reason the built ZodNamespace Server type is not compatible with the Server type here, but only when doing typechecking
         socket,
         logger,
         poolSize: env.SHARED_QUEUE_CONSUMER_POOL_SIZE,

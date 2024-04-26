@@ -10,6 +10,7 @@ import { createTempDir, readJSONFileSync } from "./fileSystem.js";
 import { logger } from "./logger.js";
 import { findTriggerDirectories, resolveTriggerDirectories } from "./taskFiles.js";
 import { build } from "esbuild";
+import { esbuildDecorators } from "@anatine/esbuild-decorators";
 
 function getGlobalConfigFolderPath() {
   const configDir = xdgAppPaths("trigger").config();
@@ -99,6 +100,18 @@ async function getConfigPath(dir: string, fileName?: string): Promise<string | u
   return await findUp(fileName ? [fileName] : CONFIG_FILES, { cwd: dir });
 }
 
+async function findFilePath(dir: string, fileName: string): Promise<string | undefined> {
+  const result = await findUp([fileName], { cwd: dir });
+
+  logger.debug("Searched for the file", {
+    dir,
+    fileName,
+    result,
+  });
+
+  return result;
+}
+
 export type ReadConfigOptions = {
   projectRef?: string;
   configFile?: string;
@@ -160,6 +173,13 @@ export async function readConfig(
     target: ["es2018", "node18"],
     outfile: builtConfigFilePath,
     logLevel: "silent",
+    plugins: [
+      esbuildDecorators({
+        cwd: absoluteDir,
+        tsx: false,
+        force: false,
+      }),
+    ],
   });
 
   // import the config file
@@ -187,6 +207,8 @@ export async function resolveConfig(path: string, config: Config): Promise<Resol
 
   config.triggerDirectories = resolveTriggerDirectories(config.triggerDirectories);
 
+  logger.debug("Resolved trigger directories", { triggerDirectories: config.triggerDirectories });
+
   if (!config.triggerUrl) {
     config.triggerUrl = CLOUD_API_URL;
   }
@@ -196,7 +218,7 @@ export async function resolveConfig(path: string, config: Config): Promise<Resol
   }
 
   if (!config.tsconfigPath) {
-    config.tsconfigPath = await getConfigPath(path, "tsconfig.json");
+    config.tsconfigPath = await findFilePath(path, "tsconfig.json");
   }
 
   return config as ResolvedConfig;

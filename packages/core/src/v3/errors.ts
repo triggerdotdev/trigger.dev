@@ -69,32 +69,27 @@ export function correctErrorStackTrace(
     .join("\n");
 }
 
+const LINES_TO_IGNORE = [
+  /ConsoleInterceptor/,
+  /TriggerTracer/,
+  /TaskExecutor/,
+  /EXECUTE_TASK_RUN/,
+  /@trigger.dev\/core/,
+  /safeJsonProcess/,
+  /__entryPoint.ts/,
+];
+
 function correctStackTraceLine(line: string, projectDir?: string) {
-  const regex = /at (.*?) \(?file:\/\/(\/.*?\.ts):(\d+):(\d+)\)?/;
-
-  const match = regex.exec(line);
-
-  if (!match) {
-    return;
-  }
-
-  const [_, identifier, path, lineNum, colNum] = match;
-
-  if (!path) {
-    return;
-  }
-
-  // Check to see if the file name is __entryPoint.ts, if it is we can remove it
-  if (nodePath.basename(path) === "__entryPoint.ts") {
+  if (LINES_TO_IGNORE.some((regex) => regex.test(line))) {
     return;
   }
 
   // Check to see if the path is inside the project directory
-  if (projectDir && !path.includes(projectDir)) {
+  if (projectDir && !line.includes(projectDir)) {
     return;
   }
 
-  return line;
+  return line.trim();
 }
 
 export function groupTaskMetadataIssuesByTask(tasks: any, issues: z.ZodIssue[]) {

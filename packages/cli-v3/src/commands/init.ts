@@ -1,10 +1,7 @@
 import { intro, isCancel, log, outro, select, text } from "@clack/prompts";
 import { context, trace } from "@opentelemetry/api";
-import {
-  GetProjectResponseBody,
-  flattenAttributes,
-  recordSpanException,
-} from "@trigger.dev/core/v3";
+import { GetProjectResponseBody, flattenAttributes } from "@trigger.dev/core/v3";
+import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import chalk from "chalk";
 import { Command } from "commander";
 import { execa } from "execa";

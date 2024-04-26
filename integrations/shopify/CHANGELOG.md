@@ -1,5 +1,37 @@
 # @trigger.dev/shopify
 
+## 3.0.0-beta.20
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.20
+- @trigger.dev/sdk@3.0.0-beta.20
+
+## 3.0.0-beta.19
+
+### Patch Changes
+
+- Updated dependencies [e9a63a486]
+  - @trigger.dev/sdk@3.0.0-beta.19
+  - @trigger.dev/integration-kit@3.0.0-beta.19
+
+## 3.0.0-beta.18
+
+### Patch Changes
+
+- Updated dependencies [b68012f81]
+- Updated dependencies [b68012f81]
+- Updated dependencies [b68012f81]
+  - @trigger.dev/sdk@3.0.0-beta.18
+  - @trigger.dev/integration-kit@3.0.0-beta.18
+
+## 3.0.0-beta.17
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.17
+- @trigger.dev/sdk@3.0.0-beta.17
+
 ## 3.0.0-beta.16
 
 ### Patch Changes

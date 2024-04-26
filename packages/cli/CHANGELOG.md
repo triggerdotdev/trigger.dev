@@ -1,5 +1,38 @@
 # create-trigger
 
+## 3.0.0-beta.20
+
+### Patch Changes
+
+- Updated dependencies [e3db25739]
+  - @trigger.dev/core@3.0.0-beta.20
+  - @trigger.dev/yalt@3.0.0-beta.20
+
+## 3.0.0-beta.19
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.19
+- @trigger.dev/yalt@3.0.0-beta.19
+
+## 3.0.0-beta.18
+
+### Patch Changes
+
+- b68012f81: Move to our global system from AsyncLocalStorage for the current task context storage
+- b68012f81: Add support for tasks located in subdirectories inside trigger dirs
+- Updated dependencies [b68012f81]
+- Updated dependencies [b68012f81]
+  - @trigger.dev/core@3.0.0-beta.18
+  - @trigger.dev/yalt@3.0.0-beta.18
+
+## 3.0.0-beta.17
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.17
+- @trigger.dev/yalt@3.0.0-beta.17
+
 ## 3.0.0-beta.16
 
 ### Patch Changes

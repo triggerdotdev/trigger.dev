@@ -25,17 +25,6 @@ export async function installPackages(
   );
 }
 
-async function getPackageVersion(path: string) {
-  try {
-    const packageJsonPath = join(path, "package.json");
-    const packageJson = await readJSONFile(packageJsonPath);
-
-    return packageJson.version;
-  } catch (error) {
-    return undefined;
-  }
-}
-
 // Expects path to be in the format:
 //  - source-map-support/register.js
 //  - @opentelemetry/api

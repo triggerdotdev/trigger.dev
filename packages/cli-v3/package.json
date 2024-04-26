@@ -1,6 +1,6 @@
 {
   "name": "trigger.dev",
-  "version": "3.0.0-beta.16",
+  "version": "3.0.0-beta.20",
   "description": "A Command-Line Interface for Trigger.dev (v3) projects",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -71,6 +71,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@anatine/esbuild-decorators": "^0.2.19",
     "@clack/prompts": "^0.7.0",
     "@depot/cli": "0.0.1-cli.2.55.0",
     "@opentelemetry/api": "^1.8.0",
@@ -85,7 +86,7 @@
     "@opentelemetry/sdk-trace-base": "^1.22.0",
     "@opentelemetry/sdk-trace-node": "^1.22.0",
     "@opentelemetry/semantic-conventions": "^1.22.0",
-    "@trigger.dev/core": "workspace:^3.0.0-beta.16",
+    "@trigger.dev/core": "workspace:3.0.0-beta.20",
     "@types/degit": "^2.8.3",
     "chalk": "^5.2.0",
     "chokidar": "^3.5.3",
@@ -106,7 +107,6 @@
     "mock-fs": "^5.2.0",
     "nanoid": "^4.0.2",
     "node-fetch": "^3.3.0",
-    "npm-check-updates": "^16.12.2",
     "object-hash": "^3.0.0",
     "p-debounce": "^4.0.0",
     "p-throttle": "^6.1.0",

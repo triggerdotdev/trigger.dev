@@ -27,6 +27,10 @@ export class NoopTaskCatalog implements TaskCatalog {
     return undefined;
   }
 
+  taskExists(id: string): boolean {
+    return false;
+  }
+
   disable() {
     // noop
   }

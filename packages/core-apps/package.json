@@ -1,7 +1,7 @@
 {
   "name": "@trigger.dev/core-apps",
   "description": "Backend core code used across apps",
-  "version": "3.0.0-beta.16",
+  "version": "3.0.0-beta.20",
   "private": true,
   "license": "MIT",
   "main": "./dist/index.js",
@@ -28,7 +28,8 @@
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "18",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "socket.io-client": "^4.7.4"
   },
   "engines": {
     "node": ">=18.0.0"

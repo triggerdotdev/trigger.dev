@@ -90,6 +90,10 @@ export class StandardTaskCatalog implements TaskCatalog {
     };
   }
 
+  taskExists(id: string): boolean {
+    return this._taskMetadata.has(id);
+  }
+
   disable() {
     // noop
   }

@@ -21,9 +21,27 @@ export async function gatherTaskFiles(config: ResolvedConfig): Promise<Array<Tas
   const taskFiles: Array<TaskFile> = [];
 
   for (const triggerDir of config.triggerDirectories) {
-    const files = await fs.promises.readdir(triggerDir, { withFileTypes: true });
-    for (const file of files) {
-      if (!file.isFile()) continue;
+    const files = await gatherTaskFilesFromDir(triggerDir, triggerDir, config);
+    taskFiles.push(...files);
+  }
+
+  return taskFiles;
+}
+
+async function gatherTaskFilesFromDir(
+  dirPath: string,
+  triggerDir: string,
+  config: ResolvedConfig
+): Promise<TaskFile[]> {
+  const taskFiles: TaskFile[] = [];
+
+  const files = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  for (const file of files) {
+    if (!file.isFile()) {
+      // Recurse into subdirectories
+      const fullPath = join(dirPath, file.name);
+      taskFiles.push(...(await gatherTaskFilesFromDir(fullPath, triggerDir, config)));
+    } else {
       if (
         !file.name.endsWith(".js") &&
         !file.name.endsWith(".ts") &&
@@ -33,7 +51,7 @@ export async function gatherTaskFiles(config: ResolvedConfig): Promise<Array<Tas
         continue;
       }
 
-      const fullPath = join(triggerDir, file.name);
+      const fullPath = join(dirPath, file.name);
       const filePath = relative(config.projectDir, fullPath);
 
       //remove the file extension and replace any invalid characters with underscores
@@ -64,9 +82,15 @@ async function getTriggerDirectories(dirPath: string): Promise<string[]> {
   const triggerDirectories: string[] = [];
 
   for (const entry of entries) {
-    if (!entry.isDirectory() || IGNORED_DIRS.includes(entry.name)) continue;
+    if (!entry.isDirectory() || IGNORED_DIRS.includes(entry.name) || entry.name.startsWith("."))
+      continue;
 
     const fullPath = join(dirPath, entry.name);
+
+    // Ignore the directory if it's <any>/app/api/trigger
+    if (fullPath.endsWith("app/api/trigger")) {
+      continue;
+    }
 
     if (entry.name === "trigger") {
       triggerDirectories.push(fullPath);

@@ -2,12 +2,11 @@ import {
   CreateBackgroundWorkerRequestBody,
   ResolvedConfig,
   TaskResource,
-  ZodMessageHandler,
-  ZodMessageSender,
   clientWebsocketMessages,
   detectDependencyVersion,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
+import { ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import { watch } from "chokidar";
 import { Command } from "commander";
 import { BuildContext, Metafile, context } from "esbuild";
@@ -53,6 +52,8 @@ import {
 import { findUp, pathExists } from "find-up";
 import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { escapeImportPath } from "../utilities/windows";
+import { updateTriggerPackages } from "./update";
+import { esbuildDecorators } from "@anatine/esbuild-decorators";
 
 let apiClient: CliApiClient | undefined;
 
@@ -61,6 +62,7 @@ const DevCommandOptions = CommonCommandOptions.extend({
   debugOtel: z.boolean().default(false),
   config: z.string().optional(),
   projectRef: z.string().optional(),
+  skipUpdateCheck: z.boolean().default(false),
 });
 
 type DevCommandOptions = z.infer<typeof DevCommandOptions>;
@@ -78,6 +80,7 @@ export function configureDevCommand(program: Command) {
       )
       .option("--debugger", "Enable the debugger")
       .option("--debug-otel", "Enable OpenTelemetry debugging")
+      .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
   ).action(async (path, options) => {
     wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
       await devCommand(path, opts);
@@ -132,7 +135,14 @@ async function startDev(
     }
 
     await printStandloneInitialBanner(true);
-    printDevBanner();
+
+    let displayedUpdateMessage = false;
+
+    if (!options.skipUpdateCheck) {
+      displayedUpdateMessage = await updateTriggerPackages(dir, { ...options }, true, true);
+    }
+
+    printDevBanner(displayedUpdateMessage);
 
     logger.debug("Starting dev session", { dir, options, authorization });
 
@@ -400,6 +410,11 @@ function useDev({
             config.tsconfigPath
           ),
           workerSetupImportConfigPlugin(configPath),
+          esbuildDecorators({
+            tsconfig: config.tsconfigPath,
+            tsx: true,
+            force: false,
+          }),
           {
             name: "trigger.dev v3",
             setup(build) {
@@ -415,10 +430,6 @@ function useDev({
                 }
 
                 const metaOutputKey = join("out", `stdin.js`).replace(/\\/g, "/");
-
-                logger.debug("Metafile", {
-                  metafileOutputs: JSON.stringify(result.metafile?.outputs),
-                });
 
                 const metaOutput = result.metafile!.outputs[metaOutputKey];
 
@@ -500,8 +511,15 @@ function useDev({
 
                   const taskResources: Array<TaskResource> = [];
 
-                  if (!backgroundWorker.tasks) {
-                    throw new Error(`Background Worker started without tasks`);
+                  if (!backgroundWorker.tasks || backgroundWorker.tasks.length === 0) {
+                    logger.log(
+                      `${chalkError(
+                        "X Error:"
+                      )} Worker failed to build: no tasks found. Searched in ${config.triggerDirectories.join(
+                        ", "
+                      )}`
+                    );
+                    return;
                   }
 
                   for (const task of backgroundWorker.tasks) {
@@ -526,6 +544,10 @@ function useDev({
                     );
                     return;
                   }
+
+                  logger.debug("Creating background worker with tasks", {
+                    tasks: taskResources,
+                  });
 
                   const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
                     localOnly: true,
@@ -629,7 +651,7 @@ function useDev({
     const throttledRebuild = pDebounce(runBuild, 250, { before: true });
 
     const taskFileWatcher = watch(
-      config.triggerDirectories.map((triggerDir) => `${triggerDir}/*.ts`),
+      config.triggerDirectories.map((triggerDir) => `${triggerDir}/**/*.ts`),
       {
         ignoreInitial: true,
       }

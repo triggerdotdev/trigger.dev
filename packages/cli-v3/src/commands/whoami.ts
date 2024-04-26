@@ -1,4 +1,4 @@
-import { intro, note } from "@clack/prompts";
+import { intro, note, outro } from "@clack/prompts";
 import { chalkLink } from "../utilities/cliOutput.js";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
@@ -66,11 +66,20 @@ export async function whoAmI(
     if (authentication.error === "fetch failed") {
       loadingSpinner.stop("Fetch failed. Platform down?");
     } else {
-      loadingSpinner.stop(
-        `You must login first. Use \`trigger.dev login --profile ${
-          options?.profile ?? "default"
-        }\` to login.`
-      );
+      if (embedded) {
+        loadingSpinner.stop(
+          `Failed to check account details. You may want to run \`trigger.dev logout --profile ${
+            options?.profile ?? "default"
+          }\` and try again.`
+        );
+      } else {
+        loadingSpinner.stop(
+          `You must login first. Use \`trigger.dev login --profile ${
+            options?.profile ?? "default"
+          }\` to login.`
+        );
+        outro("Whoami failed");
+      }
     }
 
     return {

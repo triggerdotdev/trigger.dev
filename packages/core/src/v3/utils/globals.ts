@@ -1,6 +1,7 @@
 import { Clock } from "../clock/clock";
 import type { RuntimeManager } from "../runtime/manager";
 import { TaskCatalog } from "../task-catalog/catalog";
+import { TaskContext } from "../taskContext/types";
 import { _globalThis } from "./platform";
 
 const GLOBAL_TRIGGER_DOT_DEV_KEY = Symbol.for(`dev.trigger.ts.api`);
@@ -48,4 +49,5 @@ type TriggerDotDevGlobalAPI = {
   logger?: any;
   clock?: Clock;
   ["task-catalog"]?: TaskCatalog;
+  ["task-context"]?: TaskContext;
 };

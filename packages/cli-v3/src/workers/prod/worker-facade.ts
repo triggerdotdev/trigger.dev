@@ -1,20 +1,24 @@
 import {
   Config,
-  DurableClock,
   HandleErrorFunction,
   LogLevel,
   ProdChildToWorkerMessages,
   ProdWorkerToChildMessages,
   ProjectConfig,
-  TaskExecutor,
-  ZodIpcConnection,
-  ZodSchemaParsedError,
   clock,
+  taskCatalog,
+} from "@trigger.dev/core/v3";
+import {
+  TaskExecutor,
+  DurableClock,
   getEnvVar,
   logLevels,
-  taskCatalog,
+  OtelTaskLogger,
+  ConsoleInterceptor,
   type TracingSDK,
-} from "@trigger.dev/core/v3";
+} from "@trigger.dev/core/v3/workers";
+import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
+import { ZodSchemaParsedError } from "@trigger.dev/core/v3/zodMessageHandler";
 import "source-map-support/register.js";
 
 __WORKER_SETUP__;
@@ -32,22 +36,20 @@ const otelTracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.versi
 const otelLogger = tracingSDK.getLogger("trigger-prod-worker", packageJson.version);
 
 import {
-  ConsoleInterceptor,
-  OtelTaskLogger,
-  ProdRuntimeManager,
   TaskRunErrorCodes,
   TaskRunExecution,
   TriggerTracer,
   logger,
   runtime,
 } from "@trigger.dev/core/v3";
+import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
 import * as packageJson from "../../../package.json";
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
-const consoleInterceptor = new ConsoleInterceptor(otelLogger, false);
+const consoleInterceptor = new ConsoleInterceptor(otelLogger, true);
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
 
@@ -85,10 +87,12 @@ declare const __TASKS__: Record<string, string>;
         "id" in task &&
         typeof task.id === "string"
       ) {
-        taskCatalog.registerTaskFileMetadata(task.id, {
-          exportName,
-          filePath: (taskFile as any).filePath,
-        });
+        if (taskCatalog.taskExists(task.id)) {
+          taskCatalog.registerTaskFileMetadata(task.id, {
+            exportName,
+            filePath: (taskFile as any).filePath,
+          });
+        }
       }
     }
   }

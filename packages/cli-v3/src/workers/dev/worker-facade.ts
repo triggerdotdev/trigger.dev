@@ -1,17 +1,20 @@
 import {
   Config,
-  DurableClock,
   LogLevel,
   ProjectConfig,
-  TaskExecutor,
-  ZodSchemaParsedError,
   clock,
-  getEnvVar,
-  logLevels,
   taskCatalog,
   type HandleErrorFunction,
-  type TracingSDK,
 } from "@trigger.dev/core/v3";
+import {
+  TaskExecutor,
+  DurableClock,
+  getEnvVar,
+  logLevels,
+  OtelTaskLogger,
+  ConsoleInterceptor,
+  type TracingSDK,
+} from "@trigger.dev/core/v3/workers";
 
 __WORKER_SETUP__;
 declare const __WORKER_SETUP__: unknown;
@@ -28,19 +31,20 @@ const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.versio
 const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.version);
 
 import {
-  ConsoleInterceptor,
-  DevRuntimeManager,
-  OtelTaskLogger,
   TaskRunErrorCodes,
   TaskRunExecution,
   TriggerTracer,
-  ZodMessageHandler,
-  ZodMessageSender,
   childToWorkerMessages,
   logger,
   runtime,
   workerToChildMessages,
 } from "@trigger.dev/core/v3";
+import { DevRuntimeManager } from "@trigger.dev/core/v3/dev";
+import {
+  ZodMessageHandler,
+  ZodMessageSender,
+  ZodSchemaParsedError,
+} from "@trigger.dev/core/v3/zodMessageHandler";
 import * as packageJson from "../../../package.json";
 
 declare const sender: ZodMessageSender<typeof childToWorkerMessages>;
@@ -94,10 +98,12 @@ declare const __TASKS__: Record<string, string>;
         "id" in task &&
         typeof task.id === "string"
       ) {
-        taskCatalog.registerTaskFileMetadata(task.id, {
-          exportName,
-          filePath: (taskFile as any).filePath,
-        });
+        if (taskCatalog.taskExists(task.id)) {
+          taskCatalog.registerTaskFileMetadata(task.id, {
+            exportName,
+            filePath: (taskFile as any).filePath,
+          });
+        }
       }
     }
   }

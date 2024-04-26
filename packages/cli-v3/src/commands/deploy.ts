@@ -6,16 +6,15 @@ import {
   TaskMetadataFailedToParseData,
   detectDependencyVersion,
   flattenAttributes,
-  recordSpanException,
 } from "@trigger.dev/core/v3";
-import chalk from "chalk";
+import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import { Command, Option as CommandOption } from "commander";
 import { Metafile, build } from "esbuild";
 import { execa } from "execa";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, relative, posix } from "node:path";
+import { dirname, join, posix, relative } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import terminalLink from "terminal-link";
 import invariant from "tiny-invariant";
@@ -32,7 +31,7 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { readConfig } from "../utilities/configFiles.js";
-import { createTempDir, readJSONFile, writeJSONFile } from "../utilities/fileSystem";
+import { createTempDir, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import {
   detectPackageNameFromImportPath,
@@ -43,6 +42,7 @@ import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
 
+import { esbuildDecorators } from "@anatine/esbuild-decorators";
 import { Glob, GlobOptions } from "glob";
 import type { SetOptional } from "type-fest";
 import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
@@ -53,16 +53,16 @@ import {
   parseBuildErrorStack,
   parseNpmInstallError,
 } from "../utilities/deployErrors";
-import { safeJsonParse } from "../utilities/safeJsonParse";
 import { JavascriptProject } from "../utilities/javascriptProject";
-import { cliRootPath } from "../utilities/resolveInternalFilePath";
-import { escapeImportPath, spinner } from "../utilities/windows";
 import { docs, getInTouch } from "../utilities/links";
+import { cliRootPath } from "../utilities/resolveInternalFilePath";
+import { safeJsonParse } from "../utilities/safeJsonParse";
+import { escapeImportPath, spinner } from "../utilities/windows";
+import { updateTriggerPackages } from "./update";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
   skipDeploy: z.boolean().default(false),
-  ignoreEnvVarCheck: z.boolean().default(false),
   env: z.enum(["prod", "staging"]),
   loadImage: z.boolean().default(false),
   buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
@@ -74,6 +74,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   outputMetafile: z.string().optional(),
   apiUrl: z.string().optional(),
   saveLogs: z.boolean().default(false),
+  skipUpdateCheck: z.boolean().default(false),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -90,10 +91,7 @@ export function configureDeployCommand(program: Command) {
         "prod"
       )
       .option("--skip-typecheck", "Whether to skip the pre-build typecheck")
-      .option(
-        "--ignore-env-var-check",
-        "Detected missing environment variables won't block deployment"
-      )
+      .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
       .option(
         "-p, --project-ref <project ref>",
@@ -122,6 +120,12 @@ export function configureDeployCommand(program: Command) {
       new CommandOption(
         "--tag <tag>",
         "(Coming soon) Specify the tag to use when pushing the image to the registry"
+      ).hideHelp()
+    )
+    .addOption(
+      new CommandOption(
+        "--ignore-env-var-check",
+        "(deprecated) Detected missing environment variables won't block deployment"
       ).hideHelp()
     )
     .addOption(new CommandOption("-D, --skip-deploy", "Skip deploying the image").hideHelp())
@@ -166,6 +170,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const span = trace.getSpan(context.active());
 
   intro("Deploying project");
+
+  if (!options.skipUpdateCheck) {
+    await updateTriggerPackages(dir, { ...options }, true, true);
+  }
 
   const authorization = await login({
     embedded: true,
@@ -231,16 +239,6 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   );
 
   logger.debug("Compilation result", { compilation });
-
-  if (compilation.envVars.length > 0) {
-    await checkEnvVars(
-      compilation.envVars ?? [],
-      resolvedConfig.config,
-      options,
-      environmentClient,
-      authorization.dashboardUrl
-    );
-  }
 
   // Step 2: Initialize a deployment on the server (response will have everything we need to build an image)
   const deploymentResponse = await environmentClient.initializeDeployment({
@@ -671,73 +669,6 @@ async function failDeploy(
   }
 
   // TODO: Let platform know so it can fail the deploy with an appropriate error
-}
-
-async function checkEnvVars(
-  envVars: string[],
-  config: ResolvedConfig,
-  options: DeployCommandOptions,
-  environmentClient: CliApiClient,
-  apiUrl: string
-) {
-  return await tracer.startActiveSpan("detectEnvVars", async (span) => {
-    try {
-      span.setAttribute("envVars.check", envVars);
-
-      const environmentVariablesSpinner = spinner();
-
-      environmentVariablesSpinner.start("Checking environment variables");
-
-      const environmentVariables = await environmentClient.getEnvironmentVariables(config.project);
-
-      if (!environmentVariables.success) {
-        environmentVariablesSpinner.stop(`Failed to fetch environment variables, skipping check`);
-      } else {
-        // Check to see if all the environment variables in the compilation exist
-        const missingEnvironmentVariables = envVars.filter(
-          (envVar) => environmentVariables.data.variables[envVar] === undefined
-        );
-
-        if (missingEnvironmentVariables.length > 0) {
-          environmentVariablesSpinner.stop(
-            `Found missing env vars in ${options.env}: ${arrayToSentence(
-              missingEnvironmentVariables
-            )}. ${
-              options.ignoreEnvVarCheck
-                ? "Continuing deployment because of --ignore-env-var-check. "
-                : "Aborting deployment. "
-            }${chalk.bgBlueBright(
-              terminalLink(
-                "Manage env vars",
-                `${apiUrl}/projects/v3/${config.project}/environment-variables`
-              )
-            )}`
-          );
-
-          span.setAttributes({
-            "envVars.missing": missingEnvironmentVariables,
-          });
-
-          if (!options.ignoreEnvVarCheck) {
-            throw new SkipLoggingError("Found missing environment variables");
-          } else {
-            span.end();
-            return;
-          }
-        }
-
-        environmentVariablesSpinner.stop(`Environment variable check passed`);
-      }
-
-      span.end();
-    } catch (e) {
-      recordSpanException(span, e);
-
-      span.end();
-
-      throw e;
-    }
-  });
 }
 
 // Poll every 1 second for the deployment to finish
@@ -1206,6 +1137,11 @@ async function compileProject(
             config.tsconfigPath
           ),
           workerSetupImportConfigPlugin(configPath),
+          esbuildDecorators({
+            tsconfig: config.tsconfigPath,
+            tsx: true,
+            force: false,
+          }),
         ],
       });
 
@@ -1389,25 +1325,13 @@ async function compileProject(
 
       const contentHash = contentHasher.digest("hex");
 
-      const workerSetupEnvVars = await findAllEnvironmentVariableReferencesInFile(workerSetupPath);
-
-      const workerFacadeEnvVars = findAllEnvironmentVariableReferences(workerContents);
-
-      const envVars = findAllEnvironmentVariableReferences(workerOutputFile.text);
-
-      // Remove workerFacadeEnvVars and workerSetupEnvVars from envVars
-      const finalEnvVars = envVars.filter(
-        (envVar) => !workerFacadeEnvVars.includes(envVar) && !workerSetupEnvVars.includes(envVar)
-      );
-
       span.setAttributes({
         contentHash: contentHash,
-        envVars: finalEnvVars,
       });
 
       span.end();
 
-      return { path: tempDir, contentHash, envVars: finalEnvVars };
+      return { path: tempDir, contentHash };
     } catch (e) {
       recordSpanException(span, e);
 
@@ -1800,37 +1724,4 @@ async function ensureLoggedIntoDockerRegistry(
   logger.debug(`Writing docker config to ${dockerConfigPath}`);
 
   return tmpDir;
-}
-
-async function findAllEnvironmentVariableReferencesInFile(filePath: string) {
-  const fileContents = await readFile(filePath, "utf-8");
-
-  return findAllEnvironmentVariableReferences(fileContents);
-}
-
-const IGNORED_ENV_VARS = ["NODE_ENV", "SHELL", "HOME", "PWD", "LOGNAME", "USER", "PATH", "DEBUG"];
-
-function findAllEnvironmentVariableReferences(code: string): string[] {
-  const regex = /\bprocess\.env\.([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
-
-  const matches = code.matchAll(regex);
-
-  const matchesArray = Array.from(matches, (match) => match[1]).filter(Boolean) as string[];
-
-  const filteredMatches = matchesArray.filter((match) => !IGNORED_ENV_VARS.includes(match));
-
-  // Make sure and remove duplicates
-  return Array.from(new Set(filteredMatches));
-}
-
-function arrayToSentence(items: string[]): string {
-  if (items.length === 1 && typeof items[0] === "string") {
-    return items[0];
-  }
-
-  if (items.length === 2) {
-    return `${items[0]} and ${items[1]}`;
-  }
-
-  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }

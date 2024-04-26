@@ -1,5 +1,5 @@
 import { intro, log, outro, select } from "@clack/prompts";
-import { recordSpanException } from "@trigger.dev/core/v3";
+import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import { Command } from "commander";
 import open from "open";
 import pRetry, { AbortError } from "p-retry";
@@ -13,7 +13,7 @@ import {
   tracer,
   wrapCommandAction,
 } from "../cli/common.js";
-import { chalkLink } from "../utilities/cliOutput.js";
+import { chalkLink, prettyError } from "../utilities/cliOutput.js";
 import { readAuthConfigProfile, writeAuthConfigProfile } from "../utilities/configFiles.js";
 import { getVersion } from "../utilities/getVersion.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";
@@ -109,11 +109,23 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
             skipTelemetry: !span.isRecording(),
             logLevel: logger.loggerLevel,
           },
-          opts.embedded
+          true
         );
 
         if (!whoAmIResult.success) {
-          throw new Error(whoAmIResult.error);
+          prettyError("Unable to validate existing personal access token", whoAmIResult.error);
+
+          if (!opts.embedded) {
+            outro(
+              `Login failed using stored token. To fix, first logout using \`trigger.dev logout${
+                options?.profile ? ` --profile ${options.profile}` : ""
+              }\` and then try again.`
+            );
+
+            throw new SkipLoggingError(whoAmIResult.error);
+          } else {
+            throw new Error(whoAmIResult.error);
+          }
         } else {
           if (!opts.embedded) {
             const continueOption = await select({

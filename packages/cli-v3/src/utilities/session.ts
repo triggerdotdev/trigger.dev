@@ -1,4 +1,4 @@
-import { recordSpanException } from "@trigger.dev/core/v3";
+import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import { CliApiClient } from "../apiClient.js";
 import { readAuthConfigProfile } from "./configFiles.js";
 import { getTracer } from "../telemetry/tracing.js";
@@ -7,24 +7,24 @@ const tracer = getTracer();
 
 export type LoginResult =
   | {
-    ok: true;
-    profile: string,
-    userId: string;
-    email: string;
-    dashboardUrl: string;
-    auth: {
-      apiUrl: string;
-      accessToken: string;
-    };
-  }
+      ok: true;
+      profile: string;
+      userId: string;
+      email: string;
+      dashboardUrl: string;
+      auth: {
+        apiUrl: string;
+        accessToken: string;
+      };
+    }
   | {
-    ok: false;
-    error: string;
-    auth?: {
-      apiUrl: string;
-      accessToken: string;
+      ok: false;
+      error: string;
+      auth?: {
+        apiUrl: string;
+        accessToken: string;
+      };
     };
-  };
 
 export async function isLoggedIn(profile: string = "default"): Promise<LoginResult> {
   return await tracer.startActiveSpan("isLoggedIn", async (span) => {

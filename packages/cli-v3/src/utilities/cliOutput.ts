@@ -1,3 +1,4 @@
+import { log } from "@clack/prompts";
 import chalk from "chalk";
 
 export const green = "#4FFF54";
@@ -62,4 +63,50 @@ export function prettyPrintDate(date: Date = new Date()) {
   formattedDate += "." + ("00" + date.getMilliseconds()).slice(-3);
 
   return formattedDate;
+}
+
+export function prettyError(header: string, body?: string, footer?: string) {
+  const prefix = "Error: ";
+  const indent = Array(prefix.length).fill(" ").join("");
+  const spacing = "\n\n";
+
+  const prettyPrefix = chalkError(prefix);
+
+  const withIndents = (text?: string) =>
+    text
+      ?.split("\n")
+      .map((line) => `${indent}${line}`)
+      .join("\n");
+
+  const prettyBody = withIndents(body);
+  const prettyFooter = withIndents(footer);
+
+  log.error(
+    `${prettyPrefix}${header}${prettyBody ? `${spacing}${prettyBody}` : ""}${
+      prettyFooter ? `${spacing}${prettyFooter}` : ""
+    }`
+  );
+}
+
+export function prettyWarning(header: string, body?: string, footer?: string) {
+  const prefix = "Warning: ";
+  const indent = Array(prefix.length).fill(" ").join("");
+  const spacing = "\n\n";
+
+  const prettyPrefix = chalkWarning(prefix);
+
+  const withIndents = (text?: string) =>
+    text
+      ?.split("\n")
+      .map((line) => `${indent}${line}`)
+      .join("\n");
+
+  const prettyBody = withIndents(body);
+  const prettyFooter = withIndents(footer);
+
+  log.warn(
+    `${prettyPrefix}${header}${prettyBody ? `${spacing}${prettyBody}` : ""}${
+      prettyFooter ? `${spacing}${prettyFooter}` : ""
+    }`
+  );
 }
