@@ -9,6 +9,7 @@ import {
 } from "@trigger.dev/core-apps";
 import { setTimeout } from "node:timers/promises";
 import { PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
+import { randomUUID } from "node:crypto";
 
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
 const COORDINATOR_PORT = process.env.COORDINATOR_PORT || 8020;
@@ -35,48 +36,62 @@ class DockerTaskOperations implements TaskOperations {
 
   async #initialize(): Promise<InitializeReturn> {
     if (this.#initialized) {
-      return this.#getInitializeReturn();
+      return this.#getInitializeReturn(this.#canCheckpoint);
     }
 
     logger.log("Initializing task operations");
 
-    if (this.opts.forceSimulate) {
-      logger.log("Forced simulation enabled. Will simulate regardless of checkpoint support.");
-    }
-
     try {
-      await $`criu --version`;
+      // Create a dummy container
+      const container =
+        await $`docker run -d --rm --name init-dummy-${randomUUID()} docker.io/library/busybox sleep 10`;
+
+      // Checkpoint it
+      await $`docker checkpoint create ${container} init-check`;
     } catch (error) {
-      logger.error("No checkpoint support: Missing CRIU binary. Will simulate instead.");
-      this.#canCheckpoint = false;
-      this.#initialized = true;
+      if (!isExecaChildProcess(error)) {
+        logger.error("No checkpoint support: Unknown error.", error);
+        return this.#getInitializeReturn(false);
+      }
 
-      return this.#getInitializeReturn();
-    }
+      if (error.stderr.includes("criu")) {
+        if (error.stderr.includes("executable file not found")) {
+          logger.error("No checkpoint support: Missing CRIU binary.");
+          return this.#getInitializeReturn(false);
+        }
 
-    try {
-      await $`docker checkpoint`;
-    } catch (error) {
-      logger.error("No checkpoint support: Docker needs to have experimental features enabled");
-      logger.error("Will simulate instead");
-      this.#canCheckpoint = false;
-      this.#initialized = true;
+        logger.error("No checkpoint support: Unknown CRIU error.", error);
+        return this.#getInitializeReturn(false);
+      }
 
-      return this.#getInitializeReturn();
+      if (error.stderr.includes("experimental features enabled")) {
+        logger.error("No checkpoint support: Please enable docker experimental features.");
+        return this.#getInitializeReturn(false);
+      }
+
+      logger.error("No checkpoint support: Unknown execa error.", error);
+      return this.#getInitializeReturn(false);
     }
 
     logger.log("Full checkpoint support!");
-
-    this.#initialized = true;
-    this.#canCheckpoint = true;
-
-    return this.#getInitializeReturn();
+    return this.#getInitializeReturn(true);
   }
 
-  #getInitializeReturn(): InitializeReturn {
+  #getInitializeReturn(canCheckpoint: boolean): InitializeReturn {
+    this.#initialized = true;
+    this.#canCheckpoint = canCheckpoint;
+
+    const willSimulate = !canCheckpoint || this.opts.forceSimulate;
+
+    if (willSimulate) {
+      logger.log("Simulation mode enabled. Containers will be paused, not checkpointed.", {
+        forceSimulate: this.opts.forceSimulate,
+      });
+    }
+
     return {
-      canCheckpoint: this.#canCheckpoint,
-      willSimulate: !this.#canCheckpoint || this.opts.forceSimulate,
+      canCheckpoint,
+      willSimulate,
     };
   }
 
