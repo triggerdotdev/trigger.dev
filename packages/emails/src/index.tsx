@@ -1,11 +1,18 @@
 import { ReactElement } from "react";
-import { BasePath } from "../emails/components/BasePath";
+import { setGlobalBasePath } from "../emails/components/BasePath";
 import WelcomeEmail from "../emails/welcome";
 import MagicLinkEmail from "../emails/magic-link";
 import ConnectIntegration from "../emails/connect-integration";
 import WorkflowFailed from "../emails/workflow-failed";
 import WorkflowIntegration from "../emails/workflow-integration";
 import InviteEmail, { InviteEmailSchema } from "../emails/invite";
+import AlertAttemptFailureEmail, { AlertAttemptEmailSchema } from "../emails/alert-attempt-failure";
+import AlertDeploymentFailureEmail, {
+  AlertDeploymentFailureEmailSchema,
+} from "../emails/deployment-failure";
+import AlertDeploymentSuccessEmail, {
+  AlertDeploymentSuccessEmailSchema,
+} from "../emails/deployment-success";
 import { render } from "@react-email/render";
 
 import { Resend } from "resend";
@@ -23,6 +30,9 @@ export const DeliverEmailSchema = z
       magicLink: z.string().url(),
     }),
     InviteEmailSchema,
+    AlertAttemptEmailSchema,
+    AlertDeploymentFailureEmailSchema,
+    AlertDeploymentSuccessEmailSchema,
     z.object({
       email: z.literal("connect_integration"),
       workflowId: z.string(),
@@ -61,10 +71,12 @@ export class EmailClient {
   async send(data: DeliverEmail) {
     const { subject, component } = this.#getTemplate(data);
 
+    setGlobalBasePath(this.#imagesBaseUrl);
+
     return this.#sendEmail({
       to: data.to,
       subject,
-      react: <BasePath basePath={this.#imagesBaseUrl}>{component}</BasePath>,
+      react: component,
     });
   }
 
@@ -121,6 +133,24 @@ export class EmailClient {
             <WorkflowIntegration workflowId={data.workflowId} integration={data.integration} />
           ),
         };
+      case "alert-attempt": {
+        return {
+          subject: `Error on ${data.taskIdentifier} [${data.version}.${data.environment}] ${data.error.message}`,
+          component: <AlertAttemptFailureEmail {...data} />,
+        };
+      }
+      case "alert-deployment-failure": {
+        return {
+          subject: `Deployment ${data.version} [${data.environment}] failed: ${data.error.name}`,
+          component: <AlertDeploymentFailureEmail {...data} />,
+        };
+      }
+      case "alert-deployment-success": {
+        return {
+          subject: `Deployment ${data.version} [${data.environment}] succeeded`,
+          component: <AlertDeploymentSuccessEmail {...data} />,
+        };
+      }
     }
   }
 

@@ -37,6 +37,9 @@ import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server
 import { eventRepository } from "~/v3/eventRepository.server";
 import { ExecuteTasksWaitingForDeployService } from "~/v3/services/executeTasksWaitingForDeploy";
 import { TriggerScheduledTaskService } from "~/v3/services/triggerScheduledTask.server";
+import { PerformTaskAttemptAlertsService } from "~/v3/services/alerts/performTaskAttemptAlerts.server";
+import { DeliverAlertService } from "~/v3/services/alerts/deliverAlert.server";
+import { PerformDeploymentAlertsService } from "~/v3/services/alerts/performDeploymentAlerts.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -135,6 +138,15 @@ const workerCatalog = {
   }),
   "v3.triggerScheduledTask": z.object({
     instanceId: z.string(),
+  }),
+  "v3.performTaskAttemptAlerts": z.object({
+    attemptId: z.string(),
+  }),
+  "v3.deliverAlert": z.object({
+    alertId: z.string(),
+  }),
+  "v3.performDeploymentAlerts": z.object({
+    deploymentId: z.string(),
   }),
 };
 
@@ -531,6 +543,33 @@ function getWorkerQueue() {
           const service = new TriggerScheduledTaskService();
 
           return await service.call(payload.instanceId);
+        },
+      },
+      "v3.performTaskAttemptAlerts": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PerformTaskAttemptAlertsService();
+
+          return await service.call(payload.attemptId);
+        },
+      },
+      "v3.deliverAlert": {
+        priority: 0,
+        maxAttempts: 8,
+        handler: async (payload, job) => {
+          const service = new DeliverAlertService();
+
+          return await service.call(payload.alertId);
+        },
+      },
+      "v3.performDeploymentAlerts": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PerformDeploymentAlertsService();
+
+          return await service.call(payload.deploymentId);
         },
       },
     },
