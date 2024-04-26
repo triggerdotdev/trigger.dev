@@ -1,17 +1,18 @@
-import { PrismaClientOrTransaction, prisma, Prisma } from "~/db.server";
-import { workerQueue } from "~/services/worker.server";
-import { BaseService } from "../baseService.server";
-import assertNever from "assert-never";
-import { sendEmail } from "~/services/email.server";
-import { env } from "~/env.server";
 import { TaskRunError, createJsonErrorObject } from "@trigger.dev/core/v3";
-import { logger } from "~/services/logger.server";
+import assertNever from "assert-never";
+import { subtle } from "crypto";
+import { Prisma, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { env } from "~/env.server";
 import {
   ProjectAlertEmailProperties,
   ProjectAlertWebhookProperties,
 } from "~/models/projectAlert.server";
-import { createHmac } from "crypto";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
+import { sendEmail } from "~/services/email.server";
+import { logger } from "~/services/logger.server";
+import { decryptSecret } from "~/services/secrets/secretStore.server";
+import { workerQueue } from "~/services/worker.server";
+import { BaseService } from "../baseService.server";
 
 type FoundAlert = Prisma.Result<
   typeof prisma.projectAlert,
@@ -396,22 +397,31 @@ export class DeliverAlertService extends BaseService {
   }
 
   async #deliverWebhook(payload: any, webhook: ProjectAlertWebhookProperties) {
-    const rawBody = JSON.stringify(payload);
+    const rawPayload = JSON.stringify(payload);
+    const hashPayload = Buffer.from(rawPayload, "utf-8");
 
-    // Sign the rawBody with the properties.secret using HMAC SHA256 and add a signature header to the request
-    const hmac = createHmac("sha256", webhook.secret);
-    hmac.update(rawBody);
-    const signature = hmac.digest("hex");
+    const secret = await decryptSecret(env.ENCRYPTION_KEY, webhook.secret);
+
+    const hmacSecret = Buffer.from(secret, "utf-8");
+    const key = await subtle.importKey(
+      "raw",
+      hmacSecret,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const signature = await subtle.sign("HMAC", key, hashPayload);
+    const signatureHex = Buffer.from(signature).toString("hex");
 
     // Send the webhook to the URL specified in webhook.url
     const response = await fetch(webhook.url, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "x-trigger-signature": signature,
+        "content-type": "application/json",
+        "x-trigger-signature-hmacsha256": signatureHex,
       },
-      body: rawBody,
-      signal: AbortSignal.timeout(2000),
+      body: rawPayload,
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!response.ok) {

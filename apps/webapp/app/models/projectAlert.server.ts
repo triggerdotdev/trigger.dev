@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { EncryptedSecretValueSchema } from "~/services/secrets/secretStore.server";
 
 export const ProjectAlertWebhookProperties = z.object({
-  secret: z.string(),
+  secret: EncryptedSecretValueSchema,
   url: z.string(),
 });
 

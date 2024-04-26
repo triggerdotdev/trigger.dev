@@ -56,12 +56,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
         deduplicationKey: body.data.deduplicationKey,
       });
 
-      return json(ApiAlertChannelPresenter.alertChannelToApi(alertChannel));
+      return json(await ApiAlertChannelPresenter.alertChannelToApi(alertChannel));
     }
 
     if (body.data.channel === "webhook") {
-      if (!body.data.channelData.url || !body.data.channelData.secret) {
-        return json({ error: "URL and Secret are required" }, { status: 422 });
+      if (!body.data.channelData.url) {
+        return json({ error: "webhook url is required" }, { status: 422 });
       }
 
       const alertChannel = await service.call(projectRef, authenticationResult.userId, {
@@ -77,7 +77,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         deduplicationKey: body.data.deduplicationKey,
       });
 
-      return json(ApiAlertChannelPresenter.alertChannelToApi(alertChannel));
+      return json(await ApiAlertChannelPresenter.alertChannelToApi(alertChannel));
     }
 
     return json({ error: "Invalid channel type" }, { status: 422 });

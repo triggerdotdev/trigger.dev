@@ -5,6 +5,12 @@ import {
 } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { z } from "zod";
+import { env } from "~/env.server";
+import {
+  ProjectAlertEmailProperties,
+  ProjectAlertWebhookProperties,
+} from "~/models/projectAlert.server";
+import { decryptSecret } from "~/services/secrets/secretStore.server";
 
 export const ApiAlertType = z.enum(["attempt_failure", "deployment_failure", "deployment_success"]);
 
@@ -44,13 +50,15 @@ export const ApiAlertChannelObject = z.object({
 export type ApiAlertChannelObject = z.infer<typeof ApiAlertChannelObject>;
 
 export class ApiAlertChannelPresenter {
-  public static alertChannelToApi(alertChannel: ProjectAlertChannel): ApiAlertChannelObject {
+  public static async alertChannelToApi(
+    alertChannel: ProjectAlertChannel
+  ): Promise<ApiAlertChannelObject> {
     return {
       id: alertChannel.friendlyId,
       name: alertChannel.name,
       alertTypes: alertChannel.alertTypes.map((type) => this.alertTypeToApi(type)),
       channel: this.alertChannelTypeToApi(alertChannel.type),
-      channelData: alertChannel.properties as ApiAlertChannelData,
+      channelData: await channelDataFromProperties(alertChannel.type, alertChannel.properties),
       deduplicationKey: alertChannel.userProvidedDeduplicationKey
         ? alertChannel.deduplicationKey
         : undefined,
@@ -94,5 +102,30 @@ export class ApiAlertChannelPresenter {
       default:
         assertNever(type);
     }
+  }
+}
+
+async function channelDataFromProperties(
+  type: ProjectAlertChannelType,
+  properties: ProjectAlertChannel["properties"]
+): Promise<ApiAlertChannelData> {
+  if (!properties) {
+    return {};
+  }
+
+  switch (type) {
+    case "EMAIL":
+      return ProjectAlertEmailProperties.parse(properties);
+    case "WEBHOOK":
+      const { url, secret } = ProjectAlertWebhookProperties.parse(properties);
+
+      return {
+        url,
+        secret: await decryptSecret(env.ENCRYPTION_KEY, secret),
+      };
+    case "SLACK":
+      throw new Error("Slack channels are not supported");
+    default:
+      assertNever(type);
   }
 }

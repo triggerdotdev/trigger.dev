@@ -3,6 +3,9 @@ import { findProjectByRef } from "~/models/project.server";
 import { omit } from "~/utils/objects";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { BaseService, ServiceValidationError } from "../baseService.server";
+import { encryptSecret } from "~/services/secrets/secretStore.server";
+import { env } from "~/env.server";
+import { nanoid } from "nanoid";
 
 export type CreateAlertChannelOptions = {
   name: string;
@@ -16,7 +19,7 @@ export type CreateAlertChannelOptions = {
     | {
         type: "WEBHOOK";
         url: string;
-        secret: string;
+        secret?: string;
       };
 };
 
@@ -50,7 +53,7 @@ export class CreateAlertChannelService extends BaseService {
           name: options.name,
           alertTypes: options.alertTypes,
           type: options.channel.type,
-          properties: omit(options.channel, ["type"]),
+          properties: await this.#createProperties(options.channel),
         },
       });
     }
@@ -62,7 +65,7 @@ export class CreateAlertChannelService extends BaseService {
         alertTypes: options.alertTypes,
         projectId: project.id,
         type: options.channel.type,
-        properties: omit(options.channel, ["type"]),
+        properties: await this.#createProperties(options.channel),
         enabled: true,
         deduplicationKey: options.deduplicationKey,
         userProvidedDeduplicationKey: options.deduplicationKey ? true : false,
@@ -70,5 +73,19 @@ export class CreateAlertChannelService extends BaseService {
     });
 
     return alertChannel;
+  }
+
+  async #createProperties(channel: CreateAlertChannelOptions["channel"]) {
+    switch (channel.type) {
+      case "EMAIL":
+        return {
+          email: channel.email,
+        };
+      case "WEBHOOK":
+        return {
+          url: channel.url,
+          secret: await encryptSecret(env.ENCRYPTION_KEY, channel.secret ?? nanoid()),
+        };
+    }
   }
 }
