@@ -1,15 +1,17 @@
-import { Prisma, PrismaClient } from "@trigger.dev/database";
+import { Prisma, PrismaClient, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 import { $transaction, prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
-  EnvironmentVariableKey,
+  CreateResult,
+  EnvironmentVariable,
   ProjectEnvironmentVariable,
   Repository,
   Result,
 } from "./repository";
-import { env } from "~/env.server";
+import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 
 function secretKeyProjectPrefix(projectId: string) {
   return `environmentvariable:${projectId}:`;
@@ -40,8 +42,14 @@ export class EnvironmentVariablesRepository implements Repository {
   async create(
     projectId: string,
     userId: string,
-    options: { key: string; values: { value: string; environmentId: string }[] }
-  ): Promise<Result> {
+    options: {
+      environmentIds: string[];
+      variables: {
+        key: string;
+        value: string;
+      }[];
+    }
+  ): Promise<CreateResult> {
     const project = await this.prismaClient.project.findUnique({
       where: {
         id: projectId,
@@ -60,6 +68,18 @@ export class EnvironmentVariablesRepository implements Repository {
             id: true,
           },
         },
+        environmentVariables: {
+          select: {
+            key: true,
+            values: {
+              select: {
+                environment: {
+                  select: { id: true, type: true },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -67,58 +87,107 @@ export class EnvironmentVariablesRepository implements Repository {
       return { success: false as const, error: "Project not found" };
     }
 
-    if (options.values.every((v) => !project.environments.some((e) => e.id === v.environmentId))) {
+    if (options.environmentIds.every((v) => !project.environments.some((e) => e.id === v))) {
       return { success: false as const, error: `Environment not found` };
     }
 
-    //get rid of empty strings
-    const values = options.values.filter((v) => v.value.trim() !== "");
-
+    //get rid of empty variables
+    const values = options.variables.filter((v) => v.key.trim() !== "" && v.value.trim() !== "");
     if (values.length === 0) {
       return { success: false as const, error: `You must set at least one value` };
     }
 
+    //check if any of them exist in an environment we're setting
+    const existingVariableKeys: { key: string; environments: RuntimeEnvironmentType[] }[] = [];
+    for (const variable of values) {
+      const existingVariable = project.environmentVariables.find((v) => v.key === variable.key);
+      if (
+        existingVariable &&
+        existingVariable.values.some((v) => options.environmentIds.includes(v.environment.id))
+      ) {
+        existingVariableKeys.push({
+          key: variable.key,
+          environments: existingVariable.values
+            .filter((v) => options.environmentIds.includes(v.environment.id))
+            .map((v) => v.environment.type),
+        });
+      }
+    }
+
+    if (existingVariableKeys.length > 0) {
+      return {
+        success: false as const,
+        error: `Some of the variables are already set for these environments`,
+        variableErrors: existingVariableKeys.map((val) => ({
+          key: val.key,
+          error: `Variable already set in ${val.environments
+            .map((e) => environmentTitle({ type: e }))
+            .join(", ")}.`,
+        })),
+      };
+    }
+
     try {
       const result = await $transaction(this.prismaClient, async (tx) => {
-        const environmentVariable = await tx.environmentVariable.create({
-          data: {
-            key: options.key,
-            friendlyId: generateFriendlyId("envvar"),
-            project: {
-              connect: {
-                id: projectId,
+        for (const variable of values) {
+          const environmentVariable = await tx.environmentVariable.upsert({
+            where: {
+              projectId_key: {
+                key: variable.key,
+                projectId,
               },
             },
-          },
-        });
-
-        const secretStore = getSecretStore("DATABASE", {
-          prismaClient: tx,
-        });
-
-        //create the secret values and references
-        for (const value of values) {
-          const key = secretKey(projectId, value.environmentId, options.key);
-
-          //create the secret reference
-          const secretReference = await tx.secretReference.create({
-            data: {
-              key,
-              provider: "DATABASE",
+            create: {
+              key: variable.key,
+              friendlyId: generateFriendlyId("envvar"),
+              project: {
+                connect: {
+                  id: projectId,
+                },
+              },
             },
+            update: {},
           });
 
-          const variableValue = await tx.environmentVariableValue.create({
-            data: {
-              variableId: environmentVariable.id,
-              environmentId: value.environmentId,
-              valueReferenceId: secretReference.id,
-            },
+          const secretStore = getSecretStore("DATABASE", {
+            prismaClient: tx,
           });
 
-          await secretStore.setSecret<{ secret: string }>(key, {
-            secret: value.value,
-          });
+          //set the secret values and references
+          for (const environmentId of options.environmentIds) {
+            const key = secretKey(projectId, environmentId, variable.key);
+
+            //create the secret reference
+            const secretReference = await tx.secretReference.upsert({
+              where: {
+                key,
+              },
+              create: {
+                key,
+                provider: "DATABASE",
+              },
+              update: {},
+            });
+
+            const variableValue = await tx.environmentVariableValue.upsert({
+              where: {
+                variableId_environmentId: {
+                  variableId: environmentVariable.id,
+                  environmentId,
+                },
+              },
+              create: {
+                variableId: environmentVariable.id,
+                environmentId: environmentId,
+                valueReferenceId: secretReference.id,
+              },
+              update: {},
+            });
+
+            await secretStore.setSecret<{ secret: string }>(key, {
+              secret: variable.value,
+            });
+          }
         }
       });
 
@@ -131,7 +200,7 @@ export class EnvironmentVariablesRepository implements Repository {
         if (error.code === "P2002") {
           return {
             success: false as const,
-            error: `There's already an environment variable called ${options.key}.`,
+            error: `There was already an existing field`,
           };
         }
       }

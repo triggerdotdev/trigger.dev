@@ -38,6 +38,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
@@ -67,7 +68,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       environments,
     });
   } catch (error) {
-    console.error(error);
     throw new Response(undefined, {
       status: 400,
       statusText: "Something went wrong, if this problem persists please contact support.",
@@ -97,7 +97,6 @@ const schema = z.object({
     return;
   }, z.array(z.string(), { required_error: "At least one environment is required" })),
   variables: z.preprocess((i) => {
-    console.log(i);
     if (!Array.isArray(i)) {
       return [];
     }
@@ -151,13 +150,23 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const repository = new EnvironmentVariablesRepository(prisma);
-  //todo implement
-  // const result = await repository.create(project.id, userId, submission.value);
+  const result = await repository.create(project.id, userId, submission.value);
 
-  // if (!result.success) {
-  //   submission.error.key = result.error;
-  //   return json(submission);
-  // }
+  if (!result.success) {
+    if (result.variableErrors) {
+      for (const { key, error } of result.variableErrors) {
+        const index = submission.value.variables.findIndex((v) => v.key === key);
+
+        if (index !== -1) {
+          submission.error[`variables[${index}].key`] = error;
+        }
+      }
+    } else {
+      submission.error.variables = result.error;
+    }
+
+    return json(submission);
+  }
 
   return redirect(v3EnvironmentVariablesPath({ slug: organizationSlug }, { slug: projectParam }));
 };
@@ -204,7 +213,7 @@ export default function Page() {
         <DialogHeader>New environment variables</DialogHeader>
         <Form method="post" {...form.props}>
           <Fieldset className="mt-2">
-            <InputGroup>
+            <InputGroup fullWidth>
               <Label>Environments</Label>
               <div className="flex flex-wrap items-center gap-2">
                 {environments.map((environment) => (
@@ -231,7 +240,8 @@ export default function Page() {
                 file when running locally.
               </Hint>
             </InputGroup>
-            <InputGroup>
+            <Hint>Tip: Paste your .env into this form to populate it:</Hint>
+            <InputGroup fullWidth>
               <FieldLayout>
                 <Label>Keys</Label>
                 <div className="flex justify-between gap-1">
@@ -250,6 +260,7 @@ export default function Page() {
                     <VariableFieldset
                       config={variable}
                       index={index}
+                      count={variableFields.length}
                       formRef={form.ref}
                       variables={variables}
                       revealAll={revealAll}
@@ -296,12 +307,14 @@ export default function Page() {
 function VariableFieldset({
   config,
   index,
+  count,
   formRef,
   variables,
   revealAll,
 }: {
   config: FieldConfig<Variable>;
   index: number;
+  count: number;
   formRef: RefObject<HTMLFormElement>;
   variables: FieldConfig<any>;
   revealAll: boolean;
@@ -318,7 +331,7 @@ function VariableFieldset({
           {...conform.input(value, { type: revealAll ? "text" : "password" })}
           placeholder="Not set"
         />
-        {index !== 0 && (
+        {count > 1 && (
           <Button
             variant="minimal/medium"
             type="button"
@@ -338,5 +351,5 @@ function VariableFieldset({
 }
 
 function FieldLayout({ children }: { children: React.ReactNode }) {
-  return <div className="grid w-full grid-cols-[1fr_1fr_3rem] gap-2">{children}</div>;
+  return <div className="grid w-full grid-cols-[1fr_1fr_2rem] gap-2">{children}</div>;
 }
