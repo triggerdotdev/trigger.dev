@@ -8,6 +8,7 @@ import {
 } from "./primitives/ClientTabs";
 import { ClipboardField } from "./primitives/ClipboardField";
 import { Paragraph } from "./primitives/Paragraph";
+import { useAppOrigin } from "~/hooks/useAppOrigin";
 
 export function InitCommand({ appOrigin, apiKey }: { appOrigin: string; apiKey: string }) {
   return (
@@ -133,9 +134,35 @@ export function TriggerDevStep({ extra }: { extra?: string }) {
 // Trigger.dev version 3 setup commands
 const v3PackageTag = "beta";
 
+function getApiUrlArg() {
+  const appOrigin = useAppOrigin();
+
+  let apiUrl: string | undefined = undefined;
+
+  switch (appOrigin) {
+    case "https://cloud.trigger.dev":
+      // don't display the arg, use the CLI default
+      break;
+    case "https://test-cloud.trigger.dev":
+      apiUrl = "https://test-api.trigger.dev";
+      break;
+    default:
+      apiUrl = appOrigin;
+      break;
+  }
+
+  return apiUrl ? `-a ${apiUrl}` : undefined;
+}
+
 export function InitCommandV3() {
   const project = useProject();
   const projectRef = project.ref;
+
+  const apiUrlArg = getApiUrlArg();
+
+  const initCommandParts = [`trigger.dev@${v3PackageTag}`, "init", `-p ${projectRef}`, apiUrlArg];
+  const initCommand = initCommandParts.filter(Boolean).join(" ");
+
   return (
     <ClientTabs defaultValue="npm">
       <ClientTabsList>
@@ -148,7 +175,7 @@ export function InitCommandV3() {
           variant="primary/medium"
           iconButton
           className="mb-4"
-          value={`npx trigger.dev@${v3PackageTag} init -p ${projectRef}`}
+          value={`npx ${initCommand}`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"pnpm"}>
@@ -156,7 +183,7 @@ export function InitCommandV3() {
           variant="primary/medium"
           iconButton
           className="mb-4"
-          value={`pnpm dlx trigger.dev@${v3PackageTag} init -p ${projectRef}`}
+          value={`pnpm dlx ${initCommand}`}
         />
       </ClientTabsContent>
       <ClientTabsContent value={"yarn"}>
@@ -164,7 +191,7 @@ export function InitCommandV3() {
           variant="primary/medium"
           iconButton
           className="mb-4"
-          value={`yarn dlx trigger.dev@${v3PackageTag} init -p ${projectRef}`}
+          value={`yarn dlx ${initCommand}`}
         />
       </ClientTabsContent>
     </ClientTabs>
