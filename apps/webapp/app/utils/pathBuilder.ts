@@ -325,6 +325,14 @@ export function v3NewEnvironmentVariablesPath(organization: OrgForPath, project:
   return `${v3EnvironmentVariablesPath(organization, project)}/new`;
 }
 
+export function v3ProjectAlertsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/alerts`;
+}
+
+export function v3NewProjectAlertPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectAlertsPath(organization, project)}/new`;
+}
+
 export function v3TestPath(
   organization: OrgForPath,
   project: ProjectForPath,

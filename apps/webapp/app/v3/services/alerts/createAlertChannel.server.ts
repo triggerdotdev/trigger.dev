@@ -1,11 +1,10 @@
 import { ProjectAlertChannel, ProjectAlertType } from "@trigger.dev/database";
+import { nanoid } from "nanoid";
+import { env } from "~/env.server";
 import { findProjectByRef } from "~/models/project.server";
-import { omit } from "~/utils/objects";
+import { encryptSecret } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { BaseService, ServiceValidationError } from "../baseService.server";
-import { encryptSecret } from "~/services/secrets/secretStore.server";
-import { env } from "~/env.server";
-import { nanoid } from "nanoid";
 
 export type CreateAlertChannelOptions = {
   name: string;

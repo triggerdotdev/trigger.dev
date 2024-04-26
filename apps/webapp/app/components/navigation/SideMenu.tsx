@@ -3,6 +3,7 @@ import {
   ArrowRightIcon,
   ArrowRightOnRectangleIcon,
   BeakerIcon,
+  BellAlertIcon,
   ChartBarIcon,
   ClockIcon,
   CursorArrowRaysIcon,
@@ -45,6 +46,7 @@ import {
   v3ApiKeysPath,
   v3DeploymentsPath,
   v3EnvironmentVariablesPath,
+  v3ProjectAlertsPath,
   v3ProjectPath,
   v3ProjectSettingsPath,
   v3RunsPath,
@@ -600,6 +602,13 @@ function V3ProjectSideMenu({
         iconColor="text-blue-500"
         to={v3DeploymentsPath(organization, project)}
         data-action="deployments"
+      />
+      <SideMenuItem
+        name="Alerts"
+        icon={BellAlertIcon}
+        iconColor="text-red-500"
+        to={v3ProjectAlertsPath(organization, project)}
+        data-action="alerts"
       />
       <SideMenuItem
         name="Project settings"
