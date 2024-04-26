@@ -1,10 +1,12 @@
 import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Form } from "@remix-run/react";
+import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
@@ -20,11 +22,15 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
+import { prisma } from "~/db.server";
+import { useFeatures } from "~/hooks/useFeatures";
 import { useProject } from "~/hooks/useProject";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { createEnvironment } from "~/models/organization.server";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, docsPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, docsPath, v3ApiKeysPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -32,13 +38,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new ApiKeysPresenter();
-    const { environments } = await presenter.call({
+    const { environments, hasStaging } = await presenter.call({
       userId,
       projectSlug: projectParam,
     });
 
     return typedjson({
       environments,
+      hasStaging,
     });
   } catch (error) {
     console.error(error);
@@ -49,9 +56,76 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+
+  if (request.method.toUpperCase() !== "POST") {
+    return { status: 405, body: "Method Not Allowed" };
+  }
+
+  const project = await prisma.project.findUnique({
+    where: {
+      slug: params.projectParam,
+      organization: {
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
+    },
+    select: {
+      id: true,
+      organizationId: true,
+      environments: {
+        select: {
+          type: true,
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    return redirectWithErrorMessage(
+      v3ApiKeysPath({ slug: organizationSlug }, { slug: projectParam }),
+      request,
+      "Project not found"
+    );
+  }
+
+  if (project.environments.some((env) => env.type === "STAGING")) {
+    return redirectWithErrorMessage(
+      v3ApiKeysPath({ slug: organizationSlug }, { slug: projectParam }),
+      request,
+      "You already have a staging environment"
+    );
+  }
+
+  const environment = await createEnvironment(
+    { id: project.organizationId },
+    { id: project.id },
+    "STAGING"
+  );
+
+  if (!environment) {
+    return redirectWithErrorMessage(
+      v3ApiKeysPath({ slug: organizationSlug }, { slug: projectParam }),
+      request,
+      "Failed to create staging environment"
+    );
+  }
+
+  return redirectWithSuccessMessage(
+    v3ApiKeysPath({ slug: organizationSlug }, { slug: projectParam }),
+    request,
+    "Staging environment created"
+  );
+};
+
 export default function Page() {
-  const { environments } = useTypedLoaderData<typeof loader>();
-  const project = useProject();
+  const { environments, hasStaging } = useTypedLoaderData<typeof loader>();
+  const { isManagedCloud } = useFeatures();
 
   return (
     <PageContainer>
@@ -127,6 +201,21 @@ export default function Page() {
                 ))}
               </TableBody>
             </Table>
+
+            {!hasStaging && (
+              <Callout
+                variant="info"
+                cta={
+                  <Form method="post">
+                    <Button variant="tertiary/small">Enable Staging</Button>
+                  </Form>
+                }
+              >
+                {isManagedCloud
+                  ? "The Staging environment will be a paid feature when we add billing. In the interim you can enable it for free."
+                  : "You can add a Staging environment to your project."}
+              </Callout>
+            )}
           </div>
         </div>
       </PageBody>
