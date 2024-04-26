@@ -39,9 +39,9 @@ class DockerTaskOperations implements TaskOperations {
 
   constructor(private opts = { forceSimulate: false }) {}
 
-  async #initialize(): Promise<InitializeReturn> {
+  async init(): Promise<InitializeReturn> {
     if (this.#initialized) {
-      return this.#getInitializeReturn(this.#canCheckpoint);
+      return this.#getInitReturn(this.#canCheckpoint);
     }
 
     logger.log("Initializing task operations");
@@ -56,33 +56,33 @@ class DockerTaskOperations implements TaskOperations {
     } catch (error) {
       if (!isExecaChildProcess(error)) {
         logger.error("No checkpoint support: Unknown error.", error);
-        return this.#getInitializeReturn(false);
+        return this.#getInitReturn(false);
       }
 
       if (error.stderr.includes("criu")) {
         if (error.stderr.includes("executable file not found")) {
           logger.error("No checkpoint support: Missing CRIU binary.");
-          return this.#getInitializeReturn(false);
+          return this.#getInitReturn(false);
         }
 
         logger.error("No checkpoint support: Unknown CRIU error.", error);
-        return this.#getInitializeReturn(false);
+        return this.#getInitReturn(false);
       }
 
       if (error.stderr.includes("experimental features enabled")) {
         logger.error("No checkpoint support: Please enable docker experimental features.");
-        return this.#getInitializeReturn(false);
+        return this.#getInitReturn(false);
       }
 
       logger.error("No checkpoint support: Unknown execa error.", error);
-      return this.#getInitializeReturn(false);
+      return this.#getInitReturn(false);
     }
 
     logger.log("Full checkpoint support!");
-    return this.#getInitializeReturn(true);
+    return this.#getInitReturn(true);
   }
 
-  #getInitializeReturn(canCheckpoint: boolean): InitializeReturn {
+  #getInitReturn(canCheckpoint: boolean): InitializeReturn {
     this.#initialized = true;
     this.#canCheckpoint = canCheckpoint;
 
@@ -101,7 +101,7 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   async index(opts: TaskOperationsIndexOptions) {
-    await this.#initialize();
+    await this.init();
 
     const containerName = this.#getIndexContainerName(opts.shortCode);
 
@@ -144,7 +144,7 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   async create(opts: TaskOperationsCreateOptions) {
-    await this.#initialize();
+    await this.init();
 
     const containerName = this.#getRunContainerName(opts.runId);
 
@@ -180,7 +180,7 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   async restore(opts: TaskOperationsRestoreOptions) {
-    await this.#initialize();
+    await this.init();
 
     const containerName = this.#getRunContainerName(opts.runId);
 
@@ -209,7 +209,7 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   async delete(opts: { runId: string }) {
-    await this.#initialize();
+    await this.init();
 
     const containerName = this.#getRunContainerName(opts.runId);
     await this.#sendPreStop(containerName);
@@ -218,7 +218,7 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   async get(opts: { runId: string }) {
-    await this.#initialize();
+    await this.init();
 
     logger.log("noop: get");
   }

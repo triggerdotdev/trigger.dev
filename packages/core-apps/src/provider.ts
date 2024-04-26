@@ -63,10 +63,14 @@ export interface TaskOperationsRestoreOptions {
 }
 
 export interface TaskOperations {
+  init: () => Promise<any>;
+
+  // CRUD
   index: (opts: TaskOperationsIndexOptions) => Promise<any>;
   create: (opts: TaskOperationsCreateOptions) => Promise<any>;
   restore: (opts: TaskOperationsRestoreOptions) => Promise<any>;
 
+  // unimplemented
   delete: (...args: any[]) => Promise<any>;
   get: (...args: any[]) => Promise<any>;
 }
@@ -305,7 +309,8 @@ export class ProviderShell implements Provider {
     return httpServer;
   }
 
-  listen() {
+  async listen() {
     this.#httpServer.listen(this.#httpPort, this.options.host ?? "0.0.0.0");
+    await this.tasks.init();
   }
 }
