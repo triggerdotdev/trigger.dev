@@ -12,7 +12,7 @@ import { parse } from "@conform-to/zod";
 import { PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useLocation, useNavigate, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { Fragment, RefObject, useEffect, useRef, useState } from "react";
+import { Fragment, RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -319,17 +319,73 @@ function VariableFieldset({
   variables: FieldConfig<any>;
   revealAll: boolean;
 }) {
+  const [keyText, setKeyText] = useState("");
+  const [valueText, setValueText] = useState("");
   const ref = useRef<HTMLFieldSetElement>(null);
   // useFieldset / useFieldList accepts both form or fieldset ref
   const { key, value } = useFieldset(ref, config);
 
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLInputElement>) => {
+      const clipboardData = e.clipboardData;
+      if (!clipboardData) return;
+
+      let text = clipboardData.getData("text");
+      console.log("1", { text });
+      //replace carriage returns
+      text = text.replace(/\r/g, "");
+      console.log("2", { text });
+      const lines = text.split("\n");
+
+      console.log("3", { lines });
+
+      const keyValuePairs = lines.flatMap((line) => {
+        if (line.trim().startsWith("#")) return [];
+
+        const split = line.split("=");
+        if (split.length === 2) {
+          return [{ key: split[0], value: split[1] }];
+        }
+        return [];
+      });
+
+      console.log("4", { keyValuePairs });
+
+      if (keyValuePairs.length === 0) return;
+
+      //prevent default pasting
+      e.preventDefault();
+
+      const [firstPair, ...rest] = keyValuePairs;
+      setKeyText(firstPair.key);
+      setValueText(firstPair.value);
+
+      for (const pair of rest.slice(0, 1)) {
+        requestIntent(
+          formRef.current ?? undefined,
+          list.append<Variable>(variables.name, { defaultValue: pair })
+        );
+      }
+    },
+    [formRef, variables]
+  );
+
   return (
     <fieldset ref={ref}>
       <FieldLayout>
-        <Input {...conform.input(key)} placeholder="e.g. CLIENT_KEY" />
+        <Input
+          {...conform.input(key)}
+          placeholder="e.g. CLIENT_KEY"
+          value={keyText}
+          onChange={(e) => setKeyText(e.currentTarget.value)}
+          autoFocus={index === 0}
+          onPaste={handlePaste}
+        />
         <Input
           {...conform.input(value, { type: revealAll ? "text" : "password" })}
           placeholder="Not set"
+          value={valueText}
+          onChange={(e) => setValueText(e.currentTarget.value)}
         />
         {count > 1 && (
           <Button
