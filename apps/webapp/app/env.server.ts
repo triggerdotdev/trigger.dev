@@ -27,6 +27,7 @@ const EnvironmentSchema = z.object({
     .string()
     .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
     .optional(),
+  ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
   REMIX_APP_PORT: z.string().optional(),
   LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ORIGIN: z.string().default("http://localhost:3030"),
