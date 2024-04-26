@@ -84,12 +84,9 @@ export async function createProject(
     },
   });
 
-  // Create the dev and prod environments
+  // Create the dev, staging and prod environments
   await createEnvironment(organization, project, "PRODUCTION");
-
-  if (project.version === "V2") {
-    await createEnvironment(organization, project, "STAGING");
-  }
+  await createEnvironment(organization, project, "STAGING");
 
   for (const member of project.organization.members) {
     await createEnvironment(organization, project, "DEVELOPMENT", member);
