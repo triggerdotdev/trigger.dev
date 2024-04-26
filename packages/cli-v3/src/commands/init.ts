@@ -380,7 +380,8 @@ async function installPackages(dir: string, options: InitCommandOptions) {
         case "npm": {
           installSpinner.start(`Running npm install @trigger.dev/sdk@${options.tag}`);
 
-          await execa("npm", ["install", `@trigger.dev/sdk@${options.tag}`], {
+          // --save-exact: pin version, e.g. 3.0.0-beta.20 instead of ^3.0.0-beta.20
+          await execa("npm", ["install", "--save-exact", `@trigger.dev/sdk@${options.tag}`], {
             cwd: projectDir,
             stdio: options.logLevel === "debug" ? "inherit" : "ignore",
           });
@@ -390,6 +391,7 @@ async function installPackages(dir: string, options: InitCommandOptions) {
         case "pnpm": {
           installSpinner.start(`Running pnpm add @trigger.dev/sdk@${options.tag}`);
 
+          // pins version by default
           await execa("pnpm", ["add", `@trigger.dev/sdk@${options.tag}`], {
             cwd: projectDir,
             stdio: options.logLevel === "debug" ? "inherit" : "ignore",
@@ -400,6 +402,7 @@ async function installPackages(dir: string, options: InitCommandOptions) {
         case "yarn": {
           installSpinner.start(`Running yarn add @trigger.dev/sdk@${options.tag}`);
 
+          // pins version by default
           await execa("yarn", ["add", `@trigger.dev/sdk@${options.tag}`], {
             cwd: projectDir,
             stdio: options.logLevel === "debug" ? "inherit" : "ignore",
