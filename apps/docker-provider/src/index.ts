@@ -14,8 +14,13 @@ import { randomUUID } from "node:crypto";
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
 const COORDINATOR_PORT = process.env.COORDINATOR_PORT || 8020;
 const COORDINATOR_HOST = process.env.COORDINATOR_HOST || "127.0.0.1";
+
 const OTEL_EXPORTER_OTLP_ENDPOINT =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://0.0.0.0:4318";
+
+const FORCE_CHECKPOINT_SIMULATION = ["1", "true"].includes(
+  process.env.FORCE_CHECKPOINT_SIMULATION ?? "true"
+);
 
 const logger = new SimpleLogger(`[${MACHINE_NAME}]`);
 
@@ -293,7 +298,7 @@ class DockerTaskOperations implements TaskOperations {
 }
 
 const provider = new ProviderShell({
-  tasks: new DockerTaskOperations({ forceSimulate: true }),
+  tasks: new DockerTaskOperations({ forceSimulate: FORCE_CHECKPOINT_SIMULATION }),
   type: "docker",
 });
 
