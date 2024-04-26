@@ -87,8 +87,8 @@ export async function createOrganization(
 }
 
 export async function createEnvironment(
-  organization: Organization,
-  project: Project,
+  organization: Pick<Organization, "id">,
+  project: Pick<Project, "id">,
   type: RuntimeEnvironment["type"],
   member?: OrgMember,
   prismaClient: PrismaClientOrTransaction = prisma

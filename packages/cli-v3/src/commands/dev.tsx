@@ -53,6 +53,7 @@ import { findUp, pathExists } from "find-up";
 import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { escapeImportPath } from "../utilities/windows";
 import { updateTriggerPackages } from "./update";
+import { esbuildDecorators } from "@anatine/esbuild-decorators";
 
 let apiClient: CliApiClient | undefined;
 
@@ -409,6 +410,11 @@ function useDev({
             config.tsconfigPath
           ),
           workerSetupImportConfigPlugin(configPath),
+          esbuildDecorators({
+            tsconfig: config.tsconfigPath,
+            tsx: true,
+            force: false,
+          }),
           {
             name: "trigger.dev v3",
             setup(build) {

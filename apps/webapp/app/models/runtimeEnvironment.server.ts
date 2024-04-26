@@ -1,5 +1,6 @@
-import type { RuntimeEnvironment } from "@trigger.dev/database";
+import type { Prisma, RuntimeEnvironment } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
+import { getUsername } from "~/utils/username";
 
 export type { RuntimeEnvironment };
 
@@ -117,4 +118,37 @@ export async function disconnectSession(environmentId: string) {
 
     return session;
   });
+}
+
+type DisplayableInputEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
+  select: {
+    id: true;
+    type: true;
+    orgMember: {
+      select: {
+        user: {
+          select: {
+            id: true;
+            name: true;
+            displayName: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+export function displayableEnvironments(
+  environment: DisplayableInputEnvironment,
+  userId: string | undefined
+) {
+  return {
+    id: environment.id,
+    type: environment.type,
+    userName: environment.orgMember
+      ? environment.orgMember.user.id === userId
+        ? undefined
+        : getUsername(environment.orgMember.user)
+      : undefined,
+  };
 }

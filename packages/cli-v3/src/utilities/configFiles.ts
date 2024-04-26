@@ -10,6 +10,7 @@ import { createTempDir, readJSONFileSync } from "./fileSystem.js";
 import { logger } from "./logger.js";
 import { findTriggerDirectories, resolveTriggerDirectories } from "./taskFiles.js";
 import { build } from "esbuild";
+import { esbuildDecorators } from "@anatine/esbuild-decorators";
 
 function getGlobalConfigFolderPath() {
   const configDir = xdgAppPaths("trigger").config();
@@ -172,6 +173,13 @@ export async function readConfig(
     target: ["es2018", "node18"],
     outfile: builtConfigFilePath,
     logLevel: "silent",
+    plugins: [
+      esbuildDecorators({
+        cwd: absoluteDir,
+        tsx: false,
+        force: false,
+      }),
+    ],
   });
 
   // import the config file

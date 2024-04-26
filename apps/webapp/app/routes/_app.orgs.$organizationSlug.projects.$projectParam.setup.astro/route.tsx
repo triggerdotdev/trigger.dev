@@ -1,5 +1,4 @@
 import { ChatBubbleLeftRightIcon, Squares2X2Icon } from "@heroicons/react/20/solid";
-import invariant from "tiny-invariant";
 import { AstroLogo } from "~/assets/logos/AstroLogo";
 import { Feedback } from "~/components/Feedback";
 import { InitCommand, RunDevCommand, TriggerDevStep } from "~/components/SetupCommands";
@@ -11,18 +10,17 @@ import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
-import { useDevEnvironment } from "~/hooks/useEnvironments";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useProjectSetupComplete } from "~/hooks/useProjectSetupComplete";
 import { projectSetupPath } from "~/utils/pathBuilder";
+import { useV2OnboardingApiKey } from "../_app.orgs.$organizationSlug.projects.$projectParam.setup/route";
 
 export default function SetUpAstro() {
   const organization = useOrganization();
   const project = useProject();
   useProjectSetupComplete();
-  const devEnvironment = useDevEnvironment();
-  invariant(devEnvironment, "Dev environment must be defined");
+  const { apiKey } = useV2OnboardingApiKey();
   const appOrigin = useAppOrigin();
 
   return (
@@ -67,7 +65,7 @@ export default function SetUpAstro() {
             title="Run the CLI 'init' command in an existing Astro project"
           />
           <StepContentContainer>
-            <InitCommand appOrigin={appOrigin} apiKey={devEnvironment.apiKey} />
+            <InitCommand appOrigin={appOrigin} apiKey={apiKey} />
 
             <Paragraph spacing variant="small">
               You’ll notice a new folder in your project called 'jobs'. We’ve added a very simple

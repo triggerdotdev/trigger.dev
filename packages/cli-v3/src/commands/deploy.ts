@@ -8,14 +8,13 @@ import {
   flattenAttributes,
 } from "@trigger.dev/core/v3";
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
-import chalk from "chalk";
 import { Command, Option as CommandOption } from "commander";
 import { Metafile, build } from "esbuild";
 import { execa } from "execa";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, relative, posix } from "node:path";
+import { dirname, join, posix, relative } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import terminalLink from "terminal-link";
 import invariant from "tiny-invariant";
@@ -32,7 +31,7 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { readConfig } from "../utilities/configFiles.js";
-import { createTempDir, readJSONFile, writeJSONFile } from "../utilities/fileSystem";
+import { createTempDir, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import {
   detectPackageNameFromImportPath,
@@ -43,6 +42,7 @@ import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
 
+import { esbuildDecorators } from "@anatine/esbuild-decorators";
 import { Glob, GlobOptions } from "glob";
 import type { SetOptional } from "type-fest";
 import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
@@ -53,12 +53,12 @@ import {
   parseBuildErrorStack,
   parseNpmInstallError,
 } from "../utilities/deployErrors";
-import { safeJsonParse } from "../utilities/safeJsonParse";
 import { JavascriptProject } from "../utilities/javascriptProject";
+import { docs, getInTouch } from "../utilities/links";
 import { cliRootPath } from "../utilities/resolveInternalFilePath";
+import { safeJsonParse } from "../utilities/safeJsonParse";
 import { escapeImportPath, spinner } from "../utilities/windows";
 import { updateTriggerPackages } from "./update";
-import { docs, getInTouch } from "../utilities/links";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -1137,6 +1137,11 @@ async function compileProject(
             config.tsconfigPath
           ),
           workerSetupImportConfigPlugin(configPath),
+          esbuildDecorators({
+            tsconfig: config.tsconfigPath,
+            tsx: true,
+            force: false,
+          }),
         ],
       });
 

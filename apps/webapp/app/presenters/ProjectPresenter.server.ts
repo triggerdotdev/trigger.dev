@@ -1,6 +1,8 @@
 import { PrismaClient, prisma } from "~/db.server";
 import { Project } from "~/models/project.server";
+import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
 import { User } from "~/models/user.server";
+import { sortEnvironments } from "~/services/environmentSort.server";
 
 export class ProjectPresenter {
   #prismaClient: PrismaClient;
@@ -49,7 +51,13 @@ export class ProjectPresenter {
             type: true,
             orgMember: {
               select: {
-                userId: true,
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    displayName: true,
+                  },
+                },
               },
             },
             apiKey: true,
@@ -76,13 +84,12 @@ export class ProjectPresenter {
       hasInactiveExternalTriggers: project._count.sources > 0,
       jobCount: project._count.jobs,
       httpEndpointCount: project._count.httpEndpoints,
-      environments: project.environments.map((environment) => ({
-        id: environment.id,
-        slug: environment.slug,
-        type: environment.type,
-        apiKey: environment.apiKey,
-        userId: environment.orgMember?.userId,
-      })),
+      environments: sortEnvironments(
+        project.environments.map((environment) => ({
+          ...displayableEnvironments(environment, userId),
+          userId: environment.orgMember?.user.id,
+        }))
+      ),
     };
   }
 }

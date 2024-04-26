@@ -70,23 +70,21 @@ export { Prisma };
 
 export const prisma = singleton("prisma", getClient);
 
+export const $replica: Omit<PrismaClient, "$transaction"> = singleton(
+  "replica",
+  () => getReplicaClient() ?? prisma
+);
+
 function getClient() {
   const { DATABASE_URL } = process.env;
   invariant(typeof DATABASE_URL === "string", "DATABASE_URL env var not set");
 
-  const databaseUrl = new URL(DATABASE_URL);
+  const databaseUrl = extendQueryParams(DATABASE_URL, {
+    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
+  });
 
-  // We need to add the connection_limit and pool_timeout query params to the url, in a way that works if the DATABASE_URL already has query params
-  const query = databaseUrl.searchParams;
-  query.set("connection_limit", env.DATABASE_CONNECTION_LIMIT.toString());
-  query.set("pool_timeout", env.DATABASE_POOL_TIMEOUT.toString());
-  databaseUrl.search = query.toString();
-
-  // Remove the username:password in the url and print that to the console
-  const urlWithoutCredentials = new URL(databaseUrl.href);
-  urlWithoutCredentials.password = "";
-
-  console.log(`🔌 setting up prisma client to ${urlWithoutCredentials.toString()}`);
+  console.log(`🔌 setting up prisma client to ${redactUrlSecrets(databaseUrl)}`);
 
   const client = new PrismaClient({
     datasources: {
@@ -132,6 +130,68 @@ function getClient() {
   console.log(`🔌 prisma client connected`);
 
   return client;
+}
+
+function getReplicaClient() {
+  if (!env.DATABASE_READ_REPLICA_URL) {
+    console.log(`🔌 No database replica, using the regular client`);
+    return;
+  }
+
+  const replicaUrl = extendQueryParams(env.DATABASE_READ_REPLICA_URL, {
+    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
+  });
+
+  console.log(`🔌 setting up read replica connection to ${redactUrlSecrets(replicaUrl)}`);
+
+  const replicaClient = new PrismaClient({
+    datasources: {
+      db: {
+        url: replicaUrl.href,
+      },
+    },
+    log: [
+      {
+        emit: "stdout",
+        level: "error",
+      },
+      {
+        emit: "stdout",
+        level: "info",
+      },
+      {
+        emit: "stdout",
+        level: "warn",
+      },
+    ],
+  });
+
+  // connect eagerly
+  replicaClient.$connect();
+
+  console.log(`🔌 read replica connected`);
+
+  return replicaClient;
+}
+
+function extendQueryParams(hrefOrUrl: string | URL, queryParams: Record<string, string>) {
+  const url = new URL(hrefOrUrl);
+  const query = url.searchParams;
+
+  for (const [key, val] of Object.entries(queryParams)) {
+    query.set(key, val);
+  }
+
+  url.search = query.toString();
+
+  return url;
+}
+
+function redactUrlSecrets(hrefOrUrl: string | URL) {
+  const url = new URL(hrefOrUrl);
+  url.password = "";
+  return url.href;
 }
 
 export type { PrismaClient } from "@trigger.dev/database";
