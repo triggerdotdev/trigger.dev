@@ -195,7 +195,12 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
             {environment ? (
               <>
                 {" "}
-                in <EnvironmentLabel environment={environment} size="large" />
+                in{" "}
+                <EnvironmentLabel
+                  environment={environment}
+                  userName={environment.userName}
+                  size="large"
+                />
               </>
             ) : null}
           </Paragraph>

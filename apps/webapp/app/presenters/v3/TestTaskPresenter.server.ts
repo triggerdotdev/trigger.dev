@@ -171,17 +171,23 @@ export class TestTaskPresenter {
         return {
           triggerSource: "SCHEDULED",
           task: taskWithEnvironment,
-          runs: await Promise.all(
-            latestRuns.map(async (r) => {
-              const number = Number(r.number);
+          runs: (
+            await Promise.all(
+              latestRuns.map(async (r) => {
+                const number = Number(r.number);
 
-              return {
-                ...r,
-                number,
-                payload: await getScheduleTaskRunPayload(r),
-              };
-            })
-          ),
+                const payload = await getScheduleTaskRunPayload(r);
+
+                if (payload.success) {
+                  return {
+                    ...r,
+                    number,
+                    payload: payload.data,
+                  };
+                }
+              })
+            )
+          ).filter(Boolean),
         };
     }
   }
@@ -189,6 +195,6 @@ export class TestTaskPresenter {
 
 async function getScheduleTaskRunPayload(run: RawRun) {
   const payload = await parsePacket({ data: run.payload, dataType: run.payloadType });
-  const parsed = ScheduledTaskPayload.parse(payload);
+  const parsed = ScheduledTaskPayload.safeParse(payload);
   return parsed;
 }
