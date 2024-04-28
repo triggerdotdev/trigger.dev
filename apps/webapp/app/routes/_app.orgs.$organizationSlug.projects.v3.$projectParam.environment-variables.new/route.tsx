@@ -185,7 +185,11 @@ export default function Page() {
     >
       <DialogContent>
         <DialogHeader>New environment variables</DialogHeader>
-        <Form method="post" {...form.props}>
+        <Form
+          method="post"
+          {...form.props}
+          className="max-h-[70vh] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        >
           <Fieldset className="mt-2">
             <InputGroup fullWidth>
               <Label>Environments</Label>
