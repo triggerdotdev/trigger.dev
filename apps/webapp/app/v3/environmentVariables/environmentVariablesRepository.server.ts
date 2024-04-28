@@ -1,5 +1,6 @@
 import { Prisma, PrismaClient, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
+import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { $transaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
@@ -11,7 +12,6 @@ import {
   Repository,
   Result,
 } from "./repository";
-import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 
 function secretKeyProjectPrefix(projectId: string) {
   return `environmentvariable:${projectId}:`;
@@ -43,6 +43,7 @@ export class EnvironmentVariablesRepository implements Repository {
     projectId: string,
     userId: string,
     options: {
+      overwrite: boolean;
       environmentIds: string[];
       variables: {
         key: string;
@@ -98,33 +99,35 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     //check if any of them exist in an environment we're setting
-    const existingVariableKeys: { key: string; environments: RuntimeEnvironmentType[] }[] = [];
-    for (const variable of values) {
-      const existingVariable = project.environmentVariables.find((v) => v.key === variable.key);
-      if (
-        existingVariable &&
-        existingVariable.values.some((v) => options.environmentIds.includes(v.environment.id))
-      ) {
-        existingVariableKeys.push({
-          key: variable.key,
-          environments: existingVariable.values
-            .filter((v) => options.environmentIds.includes(v.environment.id))
-            .map((v) => v.environment.type),
-        });
+    if (!options.overwrite) {
+      const existingVariableKeys: { key: string; environments: RuntimeEnvironmentType[] }[] = [];
+      for (const variable of values) {
+        const existingVariable = project.environmentVariables.find((v) => v.key === variable.key);
+        if (
+          existingVariable &&
+          existingVariable.values.some((v) => options.environmentIds.includes(v.environment.id))
+        ) {
+          existingVariableKeys.push({
+            key: variable.key,
+            environments: existingVariable.values
+              .filter((v) => options.environmentIds.includes(v.environment.id))
+              .map((v) => v.environment.type),
+          });
+        }
       }
-    }
 
-    if (existingVariableKeys.length > 0) {
-      return {
-        success: false as const,
-        error: `Some of the variables are already set for these environments`,
-        variableErrors: existingVariableKeys.map((val) => ({
-          key: val.key,
-          error: `Variable already set in ${val.environments
-            .map((e) => environmentTitle({ type: e }))
-            .join(", ")}.`,
-        })),
-      };
+      if (existingVariableKeys.length > 0) {
+        return {
+          success: false as const,
+          error: `Some of the variables are already set for these environments`,
+          variableErrors: existingVariableKeys.map((val) => ({
+            key: val.key,
+            error: `Variable already set in ${val.environments
+              .map((e) => environmentTitle({ type: e }))
+              .join(", ")}.`,
+          })),
+        };
+      }
     }
 
     try {

@@ -1,7 +1,5 @@
 import {
   FieldConfig,
-  Submission,
-  conform,
   list,
   requestIntent,
   useFieldList,
@@ -10,20 +8,16 @@ import {
 } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useLocation, useNavigate, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { error } from "console";
-import { Fragment, RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { InlineCode } from "~/components/code/InlineCode";
 import {
-  EnvironmentLabel,
   environmentTextClassName,
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -38,21 +32,12 @@ import { prisma } from "~/db.server";
 import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { redirectWithSuccessMessage } from "~/models/message.server";
 import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
-import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import {
-  ProjectParamSchema,
-  v3EnvironmentVariablesPath,
-  v3NewEnvironmentVariablesPath,
-} from "~/utils/pathBuilder";
+import { ProjectParamSchema, v3EnvironmentVariablesPath } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
-import {
-  CreateEnvironmentVariables,
-  EnvironmentVariableKey,
-} from "~/v3/environmentVariables/repository";
+import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -85,6 +70,11 @@ const Variable = z.object({
 type Variable = z.infer<typeof Variable>;
 
 const schema = z.object({
+  overwrite: z.preprocess((i) => {
+    if (i === "true") return true;
+    if (i === "false") return false;
+    return;
+  }, z.boolean()),
   environmentIds: z.preprocess((i) => {
     if (typeof i === "string") return [i];
 
@@ -250,9 +240,25 @@ export default function Page() {
             <FormError>{form.error}</FormError>
             <FormButtons
               confirmButton={
-                <Button variant="primary/small" disabled={isLoading}>
-                  {isLoading ? "Saving" : "Save"}
-                </Button>
+                <div className="flex flex-row-reverse items-center gap-2">
+                  <Button
+                    type="submit"
+                    variant="primary/small"
+                    disabled={isLoading}
+                    name="overwrite"
+                    value="false"
+                  >
+                    {isLoading ? "Saving" : "Save"}
+                  </Button>
+                  <Button
+                    variant="secondary/small"
+                    disabled={isLoading}
+                    name="overwrite"
+                    value="true"
+                  >
+                    {isLoading ? "Overwriting" : "Overwrite"}
+                  </Button>
+                </div>
               }
               cancelButton={
                 <LinkButton
