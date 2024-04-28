@@ -187,8 +187,9 @@ export default function Page() {
               to={v3NewEnvironmentVariablesPath(organization, project)}
               variant="primary/small"
               LeadingIcon={PlusIcon}
+              shortcut={{ key: "n" }}
             >
-              New environment variable
+              Add new
             </LinkButton>
           </div>
           <Table>
