@@ -67,7 +67,7 @@ export default function Page() {
 
   //get optimistic location for the segment control
   const optimisticLocation = useOptimisticLocation();
-  const environment = new URLSearchParams(optimisticLocation.search).get("environment");
+  const environment = new URLSearchParams(optimisticLocation.search).get("environment") ?? "dev";
 
   const navigation = useNavigation();
 

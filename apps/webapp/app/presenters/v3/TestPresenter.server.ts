@@ -63,17 +63,18 @@ export class TestPresenter {
     const searchParams = createSearchParams(url, TestSearchParams);
 
     //no environmentId
-    if (!searchParams.success || !searchParams.params.get("environment")) {
+    if (!searchParams.success) {
       return {
         hasSelectedEnvironment: false as const,
         environments,
       };
     }
 
+    //default to dev environment
+    const environment = searchParams.params.get("environment") ?? "dev";
+
     //is the environmentId valid?
-    const matchingEnvironment = project.environments.find(
-      (env) => env.slug === searchParams.params.get("environment")
-    );
+    const matchingEnvironment = project.environments.find((env) => env.slug === environment);
     if (!matchingEnvironment) {
       return {
         hasSelectedEnvironment: false as const,
