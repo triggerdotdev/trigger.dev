@@ -30,9 +30,6 @@ permissions:
   packages: write
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-
 env:
   AWS_REGION: us-east-1
 
