@@ -64,10 +64,10 @@ jobs:
               ts=$(date +%s)
               image_tag=${env}-${sha}-${ts}
             elif [[ "${{ github.ref_name }}" == v.docker.* ]]; then
-              version="${${{ github.ref_name }}#v.docker.}"
+              version="${GITHUB_REF_NAME#v.docker.}"
               image_tag="v${version}"
             elif [[ "${{ github.ref_name }}" == build-* ]]; then
-              image_tag="${${{ github.ref_name }}#build-}"
+              image_tag="${GITHUB_REF_NAME#build-}"
             else
               echo "Invalid tag: ${{ github.ref_name }}"
               exit 1
