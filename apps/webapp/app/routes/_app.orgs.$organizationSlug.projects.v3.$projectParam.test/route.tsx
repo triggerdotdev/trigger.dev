@@ -9,6 +9,7 @@ import {
 } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Header2 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
@@ -20,6 +21,7 @@ import {
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
+  TableBlankRow,
   TableBody,
   TableCell,
   TableHeader,
@@ -32,6 +34,7 @@ import { useLinkStatus } from "~/hooks/useLinkStatus";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useTextFilter } from "~/hooks/useTextFilter";
 import {
   SelectedEnvironment,
   TaskListItem,
@@ -150,8 +153,50 @@ function TaskSelector({
   tasks: TaskListItem[];
   environmentSlug: string;
 }) {
+  const { filterText, setFilterText, filteredItems } = useTextFilter<TaskListItem>({
+    items: tasks,
+    filter: (task, text) => {
+      if (task.taskIdentifier.toLowerCase().includes(text.toLowerCase())) {
+        return true;
+      }
+
+      if (task.exportName.toLowerCase().includes(text.toLowerCase())) {
+        return true;
+      }
+
+      if (task.filePath.toLowerCase().includes(text.toLowerCase())) {
+        return true;
+      }
+
+      if (task.id.toLowerCase().includes(text.toLowerCase())) {
+        return true;
+      }
+
+      if (task.friendlyId.toLowerCase().includes(text.toLowerCase())) {
+        return true;
+      }
+
+      if (task.triggerSource === "SCHEDULED" && "scheduled".includes(text.toLowerCase())) {
+        return true;
+      }
+
+      return false;
+    },
+  });
+
   return (
     <div className="divide-y divide-charcoal-800 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="px-2 pb-2">
+        <Input
+          placeholder="Search tasks"
+          variant="medium"
+          icon="search"
+          fullWidth={true}
+          value={filterText}
+          autoFocus
+          onChange={(e) => setFilterText(e.target.value)}
+        />
+      </div>
       <Table>
         <TableHeader>
           <TableRow>
@@ -163,9 +208,17 @@ function TaskSelector({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {tasks.map((t) => (
-            <TaskRow key={t.friendlyId} task={t} environmentSlug={environmentSlug} />
-          ))}
+          {filteredItems.length > 0 ? (
+            filteredItems.map((t) => (
+              <TaskRow key={t.friendlyId} task={t} environmentSlug={environmentSlug} />
+            ))
+          ) : (
+            <TableBlankRow colSpan={3}>
+              <Paragraph spacing variant="small">
+                No tasks match "{filterText}"
+              </Paragraph>
+            </TableBlankRow>
+          )}
         </TableBody>
       </Table>
     </div>
