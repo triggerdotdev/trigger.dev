@@ -76,6 +76,15 @@ export class TriggerTaskService extends BaseService {
           immediate: true,
         },
         async (event, traceContext) => {
+          const runFriendlyId = generateFriendlyId("run");
+
+          const payloadPacket = await this.#handlePayloadPacket(
+            body.payload,
+            body.options?.payloadType ?? "application/json",
+            runFriendlyId,
+            environment
+          );
+
           const lockId = taskIdentifierToLockId(taskId);
 
           const run = await $transaction(this._prisma, async (tx) => {
@@ -104,15 +113,6 @@ export class TriggerTaskService extends BaseService {
 
             event.setAttribute("queueName", queueName);
             span.setAttribute("queueName", queueName);
-
-            const runFriendlyId = generateFriendlyId("run");
-
-            const payloadPacket = await this.#handlePayloadPacket(
-              body.payload,
-              body.options?.payloadType ?? "application/json",
-              runFriendlyId,
-              environment
-            );
 
             const taskRun = await tx.taskRun.create({
               data: {
