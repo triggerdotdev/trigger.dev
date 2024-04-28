@@ -24,7 +24,7 @@ export function useRunDetails(
 
   const { refreshIntervalMs: refreshInterval, ...otherOptions } = options || {};
 
-  const url = urlWithSearchParams(`${apiUrl}/api/v2/runs/${runId}`, otherOptions);
+  const url = urlWithSearchParams(`${apiUrl}/api/v3/runs/${runId}`, otherOptions);
 
   return useQuery(
     {
