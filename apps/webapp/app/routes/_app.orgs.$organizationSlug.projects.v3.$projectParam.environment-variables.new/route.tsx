@@ -12,6 +12,7 @@ import { parse } from "@conform-to/zod";
 import { PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useLocation, useNavigate, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { error } from "console";
 import { Fragment, RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -34,6 +35,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Switch } from "~/components/primitives/Switch";
 import { prisma } from "~/db.server";
+import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -101,23 +103,7 @@ const schema = z.object({
       return [];
     }
 
-    //remove empty variables (key and value are empty)
-    const filtered = i.filter((v: any) => {
-      if (!v) return false;
-      if (!v.key && !v.value) return false;
-      return true;
-    });
-
-    if (filtered.length === 0) {
-      return [
-        {
-          key: "",
-          value: "",
-        },
-      ];
-    }
-
-    return filtered;
+    return i;
   }, Variable.array().nonempty("At least one variable is required")),
 });
 
@@ -198,8 +184,6 @@ export default function Page() {
     setIsOpen(true);
   }, []);
 
-  const variableFields = useFieldList(form.ref, variables);
-
   return (
     <Dialog
       open={isOpen}
@@ -254,31 +238,13 @@ export default function Page() {
                   />
                 </div>
               </FieldLayout>
-              {variableFields.map((variable, index) => {
-                return (
-                  <Fragment key={variable.key}>
-                    <VariableFieldset
-                      config={variable}
-                      index={index}
-                      count={variableFields.length}
-                      formRef={form.ref}
-                      variables={variables}
-                      revealAll={revealAll}
-                    />
-                  </Fragment>
-                );
-              })}
+              <VariableFields
+                revealValues={revealAll}
+                formId={form.id}
+                formRef={form.ref}
+                variablesFields={variables}
+              />
               <FormError id={variables.errorId}>{variables.error}</FormError>
-              <Button
-                variant="tertiary/medium"
-                type="button"
-                onClick={() =>
-                  requestIntent(form.ref.current ?? undefined, list.append(variables.name))
-                }
-                LeadingIcon={PlusIcon}
-              >
-                Add another
-              </Button>
             </InputGroup>
 
             <FormError>{form.error}</FormError>
@@ -304,108 +270,163 @@ export default function Page() {
   );
 }
 
-function VariableFieldset({
-  config,
-  index,
-  count,
+function FieldLayout({ children }: { children: React.ReactNode }) {
+  return <div className="grid w-full grid-cols-[1fr_1fr_2rem] gap-2">{children}</div>;
+}
+
+function VariableFields({
+  revealValues,
+  formId,
+  variablesFields,
   formRef,
-  variables,
-  revealAll,
 }: {
-  config: FieldConfig<Variable>;
-  index: number;
-  count: number;
+  revealValues: boolean;
+  formId?: string;
+  variablesFields: FieldConfig<any>;
   formRef: RefObject<HTMLFormElement>;
-  variables: FieldConfig<any>;
-  revealAll: boolean;
 }) {
-  const [keyText, setKeyText] = useState("");
-  const [valueText, setValueText] = useState("");
-  const ref = useRef<HTMLFieldSetElement>(null);
-  // useFieldset / useFieldList accepts both form or fieldset ref
-  const { key, value } = useFieldset(ref, config);
+  const {
+    items,
+    append,
+    update,
+    delete: remove,
+    insertAfter,
+  } = useList<Variable>([{ key: "", value: "" }]);
 
-  const handlePaste = useCallback(
-    (e: React.ClipboardEvent<HTMLInputElement>) => {
-      const clipboardData = e.clipboardData;
-      if (!clipboardData) return;
+  const handlePaste = useCallback((index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
 
-      let text = clipboardData.getData("text");
-      console.log("1", { text });
-      //replace carriage returns
-      text = text.replace(/\r/g, "");
-      console.log("2", { text });
-      const lines = text.split("\n");
+    let text = clipboardData.getData("text");
+    //replace carriage returns
+    text = text.replace(/\r/g, "");
+    const lines = text.split("\n");
 
-      console.log("3", { lines });
+    const keyValuePairs = lines.flatMap((line) => {
+      if (line.trim().startsWith("#")) return [];
 
-      const keyValuePairs = lines.flatMap((line) => {
-        if (line.trim().startsWith("#")) return [];
-
-        const split = line.split("=");
-        if (split.length === 2) {
-          return [{ key: split[0], value: split[1] }];
-        }
-        return [];
-      });
-
-      console.log("4", { keyValuePairs });
-
-      if (keyValuePairs.length === 0) return;
-
-      //prevent default pasting
-      e.preventDefault();
-
-      const [firstPair, ...rest] = keyValuePairs;
-      setKeyText(firstPair.key);
-      setValueText(firstPair.value);
-
-      for (const pair of rest.slice(0, 1)) {
-        requestIntent(
-          formRef.current ?? undefined,
-          list.append<Variable>(variables.name, { defaultValue: pair })
-        );
+      const split = line.split("=");
+      if (split.length === 2) {
+        return [{ key: split[0], value: split[1] }];
       }
-    },
-    [formRef, variables]
+      return [];
+    });
+
+    if (keyValuePairs.length === 0) return;
+
+    //prevent default pasting
+    e.preventDefault();
+
+    const [firstPair, ...rest] = keyValuePairs;
+    update(index, firstPair);
+
+    for (const pair of rest) {
+      requestIntent(formRef.current ?? undefined, list.append(variablesFields.name));
+    }
+    insertAfter(index, rest);
+  }, []);
+
+  const fields = useFieldList(formRef, variablesFields);
+
+  return (
+    <>
+      {fields.map((field, index) => {
+        const item = items[index];
+
+        return (
+          <VariableField
+            formId={formId}
+            key={index}
+            index={index}
+            value={item}
+            onChange={(value) => update(index, value)}
+            onPaste={(e) => handlePaste(index, e)}
+            onDelete={() => {
+              requestIntent(
+                formRef.current ?? undefined,
+                list.remove(variablesFields.name, { index })
+              );
+              remove(index);
+            }}
+            showDeleteButton={items.length > 1}
+            showValue={revealValues}
+            config={field}
+          />
+        );
+      })}
+      <Button
+        variant="tertiary/medium"
+        type="button"
+        onClick={() => {
+          requestIntent(formRef.current ?? undefined, list.append(variablesFields.name));
+          append([{ key: "", value: "" }]);
+        }}
+        LeadingIcon={PlusIcon}
+      >
+        Add another
+      </Button>
+    </>
   );
+}
+
+function VariableField({
+  formId,
+  index,
+  value,
+  onChange,
+  onPaste,
+  onDelete,
+  showDeleteButton,
+  showValue,
+  config,
+}: {
+  formId?: string;
+  index: number;
+  value: Variable;
+  onChange: (value: Variable) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => void;
+  onDelete: () => void;
+  showDeleteButton: boolean;
+  showValue: boolean;
+  config: FieldConfig<Variable>;
+}) {
+  const ref = useRef<HTMLFieldSetElement>(null);
+  const fields = useFieldset(ref, config);
+  const baseFieldName = `variables[${index}]`;
 
   return (
     <fieldset ref={ref}>
       <FieldLayout>
         <Input
-          {...conform.input(key)}
+          id={`${formId}-${baseFieldName}.key`}
+          name={`${baseFieldName}.key`}
           placeholder="e.g. CLIENT_KEY"
-          value={keyText}
-          onChange={(e) => setKeyText(e.currentTarget.value)}
+          value={value.key}
+          onChange={(e) => onChange({ ...value, key: e.currentTarget.value })}
           autoFocus={index === 0}
-          onPaste={handlePaste}
+          onPaste={onPaste}
         />
         <Input
-          {...conform.input(value, { type: revealAll ? "text" : "password" })}
+          id={`${formId}-${baseFieldName}.value`}
+          name={`${baseFieldName}.value`}
+          type={showValue ? "text" : "password"}
           placeholder="Not set"
-          value={valueText}
-          onChange={(e) => setValueText(e.currentTarget.value)}
+          value={value.value}
+          onChange={(e) => onChange({ ...value, value: e.currentTarget.value })}
         />
-        {count > 1 && (
+        {showDeleteButton && (
           <Button
             variant="minimal/medium"
             type="button"
-            onClick={() =>
-              requestIntent(formRef.current ?? undefined, list.remove(variables.name, { index }))
-            }
+            onClick={() => onDelete()}
             LeadingIcon={XMarkIcon}
           />
         )}
       </FieldLayout>
       <div className="space-y-2">
-        <FormError id={key.errorId}>{key.error}</FormError>
-        <FormError id={value.errorId}>{value.error}</FormError>
+        <FormError id={fields.key.errorId}>{fields.key.error}</FormError>
+        <FormError id={fields.value.errorId}>{fields.value.error}</FormError>
       </div>
     </fieldset>
   );
-}
-
-function FieldLayout({ children }: { children: React.ReactNode }) {
-  return <div className="grid w-full grid-cols-[1fr_1fr_2rem] gap-2">{children}</div>;
 }
