@@ -38,6 +38,7 @@ import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3EnvironmentVariablesPath } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
+import dotenv from "dotenv";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -183,7 +184,7 @@ export default function Page() {
         }
       }}
     >
-      <DialogContent>
+      <DialogContent className="md:max-w-2xl lg:max-w-3xl">
         <DialogHeader>New environment variables</DialogHeader>
         <Form
           method="post"
@@ -308,20 +309,12 @@ function VariableFields({
     if (!clipboardData) return;
 
     let text = clipboardData.getData("text");
-    //replace carriage returns
-    text = text.replace(/\r/g, "");
-    const lines = text.split("\n");
+    if (!text) return;
 
-    const keyValuePairs = lines.flatMap((line) => {
-      if (line.trim().startsWith("#")) return [];
+    const variables = dotenv.parse(text);
+    const keyValuePairs = Object.entries(variables).map(([key, value]) => ({ key, value }));
 
-      const split = line.split("=");
-      if (split.length === 2) {
-        return [{ key: split[0], value: split[1] }];
-      }
-      return [];
-    });
-
+    //do the default paste
     if (keyValuePairs.length === 0) return;
 
     //prevent default pasting
