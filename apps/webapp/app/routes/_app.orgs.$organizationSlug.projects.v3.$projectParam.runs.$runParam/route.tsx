@@ -1,6 +1,4 @@
 import {
-  ArrowsPointingInIcon,
-  ArrowsPointingOutIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   MagnifyingGlassMinusIcon,
@@ -17,7 +15,8 @@ import {
 } from "@trigger.dev/core/v3";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
@@ -26,11 +25,13 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -66,10 +67,6 @@ import {
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
-import { number } from "zod";
-import { useHotkeys } from "react-hotkeys-hook";
-import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
-import { Header3 } from "~/components/primitives/Headers";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -268,29 +265,25 @@ function TasksTreeView({
     onSelectedIdChanged,
     estimatedRowHeight: () => 32,
     parentRef,
-    filter: (node) => {
-      const nodePassesErrorTest = (errorsOnly && node.data.isError) || !errorsOnly;
-      if (!nodePassesErrorTest) return false;
+    filter: {
+      text: filterText,
+      fn: (text, node) => {
+        const nodePassesErrorTest = (errorsOnly && node.data.isError) || !errorsOnly;
+        if (!nodePassesErrorTest) return false;
 
-      if (filterText === "") return true;
-      if (node.data.message.toLowerCase().includes(filterText.toLowerCase())) {
-        return true;
-      }
-      return false;
+        if (text === "") return true;
+        if (node.data.message.toLowerCase().includes(text.toLowerCase())) {
+          return true;
+        }
+        return false;
+      },
     },
   });
 
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
-        <Input
-          placeholder="Search log"
-          variant="tertiary"
-          icon="search"
-          fullWidth={true}
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-        />
+        <SearchField onChange={setFilterText} />
         <div className="flex items-center gap-2">
           <Switch
             variant="small"
@@ -1002,5 +995,29 @@ function NumberShortcuts({ toggleLevel }: { toggleLevel: (depth: number) => void
         Toggle level
       </Paragraph>
     </div>
+  );
+}
+
+function SearchField({ onChange }: { onChange: (value: string) => void }) {
+  const [value, setValue] = useState("");
+
+  const updateFilterText = useDebounce((text: string) => {
+    onChange(text);
+  }, 250);
+
+  const updateValue = useCallback((value: string) => {
+    setValue(value);
+    updateFilterText(value);
+  }, []);
+
+  return (
+    <Input
+      placeholder="Search log"
+      variant="tertiary"
+      icon="search"
+      fullWidth={true}
+      value={value}
+      onChange={(e) => updateValue(e.target.value)}
+    />
   );
 }

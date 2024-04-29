@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { MutableRefObject, RefObject, useCallback, useEffect, useReducer, useRef } from "react";
 import { cn } from "~/utils/cn";
 import { NodeState, NodesState, reducer } from "./reducer";
-import { applyFilterToState, concreteStateFromInput, selectedIdFromState } from "./utils";
+import { concreteStateFromInput, selectedIdFromState } from "./utils";
 
 export type TreeViewProps<TData> = {
   tree: FlatTree<TData>;
@@ -128,6 +128,11 @@ export function TreeView<TData>({
   );
 }
 
+export type Filter<TData> = {
+  text?: string;
+  fn: (text: string, node: FlatTreeItem<TData>) => boolean;
+};
+
 type TreeStateHookProps<TData> = {
   tree: FlatTree<TData>;
   selectedId?: string;
@@ -139,7 +144,7 @@ type TreeStateHookProps<TData> = {
     index: number;
   }) => number;
   parentRef: RefObject<any>;
-  filter?: (node: FlatTreeItem<TData>) => boolean;
+  filter?: Filter<TData>;
 };
 
 //this is so Framer Motion can be used to render the components
@@ -189,7 +194,7 @@ export function useTree<TData>({
 
   const [state, dispatch] = useReducer(
     reducer,
-    concreteStateFromInput({ tree, selectedId, collapsedIds })
+    concreteStateFromInput({ tree, selectedId, collapsedIds, filter })
   );
 
   useEffect(() => {
@@ -208,8 +213,8 @@ export function useTree<TData>({
   }, [previousNodeCount.current, tree.length]);
 
   const virtualizer = useVirtualizer({
-    count: tree.length,
-    getItemKey: (index) => tree[index].id,
+    count: state.visibleNodeIds.length,
+    getItemKey: (index) => state.visibleNodeIds[index],
     getScrollElement: () => parentRef.current,
     estimateSize: (index: number) => {
       return estimatedRowHeight({
@@ -259,21 +264,21 @@ export function useTree<TData>({
 
   const expandNode = useCallback(
     (id: string, scrollToNode = true) => {
-      dispatch({ type: "EXPAND_NODE", payload: { id, tree, scrollToNode, scrollToNodeFn } });
+      dispatch({ type: "EXPAND_NODE", payload: { id, scrollToNode, scrollToNodeFn } });
     },
     [state]
   );
 
   const collapseNode = useCallback(
     (id: string) => {
-      dispatch({ type: "COLLAPSE_NODE", payload: { id, tree } });
+      dispatch({ type: "COLLAPSE_NODE", payload: { id } });
     },
     [state]
   );
 
   const toggleExpandNode = useCallback(
     (id: string, scrollToNode = true) => {
-      dispatch({ type: "TOGGLE_EXPAND_NODE", payload: { id, tree, scrollToNode, scrollToNodeFn } });
+      dispatch({ type: "TOGGLE_EXPAND_NODE", payload: { id, scrollToNode, scrollToNodeFn } });
     },
     [state]
   );
@@ -282,7 +287,7 @@ export function useTree<TData>({
     (scrollToNode = true) => {
       dispatch({
         type: "SELECT_FIRST_VISIBLE_NODE",
-        payload: { tree, scrollToNode, scrollToNodeFn },
+        payload: { scrollToNode, scrollToNodeFn },
       });
     },
     [tree, state]
@@ -292,7 +297,7 @@ export function useTree<TData>({
     (scrollToNode = true) => {
       dispatch({
         type: "SELECT_LAST_VISIBLE_NODE",
-        payload: { tree, scrollToNode, scrollToNodeFn },
+        payload: { scrollToNode, scrollToNodeFn },
       });
     },
     [tree, state]
@@ -302,7 +307,7 @@ export function useTree<TData>({
     (scrollToNode = true) => {
       dispatch({
         type: "SELECT_NEXT_VISIBLE_NODE",
-        payload: { tree, scrollToNode, scrollToNodeFn },
+        payload: { scrollToNode, scrollToNodeFn },
       });
     },
     [state]
@@ -312,7 +317,7 @@ export function useTree<TData>({
     (scrollToNode = true) => {
       dispatch({
         type: "SELECT_PREVIOUS_VISIBLE_NODE",
-        payload: { tree, scrollToNode, scrollToNodeFn },
+        payload: { scrollToNode, scrollToNodeFn },
       });
     },
     [state]
@@ -322,7 +327,7 @@ export function useTree<TData>({
     (scrollToNode = true) => {
       dispatch({
         type: "SELECT_PARENT_NODE",
-        payload: { tree, scrollToNode, scrollToNodeFn },
+        payload: { scrollToNode, scrollToNodeFn },
       });
     },
     [state]
@@ -330,35 +335,35 @@ export function useTree<TData>({
 
   const expandAllBelowDepth = useCallback(
     (depth: number) => {
-      dispatch({ type: "EXPAND_ALL_BELOW_DEPTH", payload: { tree, depth } });
+      dispatch({ type: "EXPAND_ALL_BELOW_DEPTH", payload: { depth } });
     },
     [state]
   );
 
   const collapseAllBelowDepth = useCallback(
     (depth: number) => {
-      dispatch({ type: "COLLAPSE_ALL_BELOW_DEPTH", payload: { tree, depth } });
+      dispatch({ type: "COLLAPSE_ALL_BELOW_DEPTH", payload: { depth } });
     },
     [state]
   );
 
   const expandLevel = useCallback(
     (level: number) => {
-      dispatch({ type: "EXPAND_LEVEL", payload: { tree, level } });
+      dispatch({ type: "EXPAND_LEVEL", payload: { level } });
     },
     [state]
   );
 
   const collapseLevel = useCallback(
     (level: number) => {
-      dispatch({ type: "COLLAPSE_LEVEL", payload: { tree, level } });
+      dispatch({ type: "COLLAPSE_LEVEL", payload: { level } });
     },
     [state]
   );
 
   const toggleExpandLevel = useCallback(
     (level: number) => {
-      dispatch({ type: "TOGGLE_EXPAND_LEVEL", payload: { tree, level } });
+      dispatch({ type: "TOGGLE_EXPAND_LEVEL", payload: { level } });
     },
     [state]
   );
@@ -470,7 +475,7 @@ export function useTree<TData>({
 
   return {
     selected: selectedIdFromState(state.nodes),
-    nodes: filter ? applyFilterToState(tree, state.nodes, filter) : state.nodes,
+    nodes: state.nodes,
     getTreeProps,
     getNodeProps,
     selectNode,

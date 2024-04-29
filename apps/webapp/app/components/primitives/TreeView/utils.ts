@@ -1,4 +1,4 @@
-import { FlatTree, FlatTreeItem } from "./TreeView";
+import { Filter, FlatTree, FlatTreeItem } from "./TreeView";
 import { Changes, NodeState, NodesState, TreeState } from "./reducer";
 
 type PartialNodeState = Record<string, Partial<NodeState>>;
@@ -8,10 +8,12 @@ const defaultExpanded = true;
 
 export function concreteStateFromInput({
   tree,
+  filter,
   selectedId,
   collapsedIds,
 }: {
   tree: FlatTree<any>;
+  filter: Filter<any> | undefined;
   selectedId: string | undefined;
   collapsedIds: string[] | undefined;
 }): TreeState {
@@ -35,10 +37,15 @@ export function concreteStateFromInput({
       }
     }
   }
+  const nodes = concreteStateFromPartialState(tree, state);
 
   return {
-    nodes: concreteStateFromPartialState(tree, state),
-    changes: { selectedId, collapsedIds: [] },
+    tree,
+    nodes,
+    changes: { selectedId },
+    filter,
+    filteredNodes: nodes,
+    visibleNodeIds: visibleNodes(tree, nodes).map((node) => node.id),
   };
 }
 
@@ -82,28 +89,48 @@ export function selectedIdFromState(state: NodesState): string | undefined {
   return selected?.[0];
 }
 
-export function applyFilterToState<TData>(
-  tree: FlatTree<TData>,
-  inputNodes: NodesState,
-  filter: (node: FlatTreeItem<TData>) => boolean
-): NodesState {
+export function applyFilterToState<TData>({
+  tree,
+  nodes,
+  filter,
+  visibleNodeIds,
+  changes,
+}: TreeState): TreeState {
+  if (!filter || !filter.text?.trim()) {
+    return {
+      tree,
+      nodes,
+      filteredNodes: nodes,
+      changes,
+      filter,
+      visibleNodeIds: visibleNodes(tree, nodes).map((node) => node.id),
+    };
+  }
+
   //we need to do two passes, first collect all the nodes that are results
   const newFilteredOut = new Set<string>();
   for (const node of tree) {
-    if (!filter(node)) {
+    if (!filter.fn(filter.text, node)) {
       newFilteredOut.add(node.id);
     }
   }
 
   //nothing is filtered out
   if (newFilteredOut.size === 0) {
-    return inputNodes;
+    return {
+      tree,
+      nodes,
+      filteredNodes: nodes,
+      changes,
+      filter,
+      visibleNodeIds: visibleNodes(tree, nodes).map((node) => node.id),
+    };
   }
 
   //copy of nodes
-  const nodes = { ...inputNodes };
+  const filteredNodes = { ...nodes };
 
-  const selected = selectedIdFromState(nodes);
+  const selected = selectedIdFromState(filteredNodes);
 
   const visible = new Set<string>();
   const expanded = new Set<string>();
@@ -148,28 +175,35 @@ export function applyFilterToState<TData>(
 
   //now set the visibility and expanded state
   for (const id of hidden) {
-    nodes[id] = { ...nodes[id], visible: false };
+    filteredNodes[id] = { ...filteredNodes[id], visible: false };
   }
   for (const id of visible) {
-    nodes[id] = { ...nodes[id], visible: true };
+    filteredNodes[id] = { ...filteredNodes[id], visible: true };
   }
 
   for (const id of collapsed) {
-    nodes[id] = { ...nodes[id], expanded: false };
+    filteredNodes[id] = { ...filteredNodes[id], expanded: false };
   }
   for (const id of expanded) {
-    nodes[id] = { ...nodes[id], expanded: true };
+    filteredNodes[id] = { ...filteredNodes[id], expanded: true };
   }
 
   if (selected) {
     if (visible.has(selected)) {
-      nodes[selected] = { ...nodes[selected], selected: true };
+      filteredNodes[selected] = { ...filteredNodes[selected], selected: true };
     } else {
-      nodes[selected] = { ...nodes[selected], selected: false };
+      filteredNodes[selected] = { ...filteredNodes[selected], selected: false };
     }
   }
 
-  return nodes;
+  return {
+    tree,
+    nodes,
+    filteredNodes,
+    changes,
+    filter,
+    visibleNodeIds: visibleNodes(tree, filteredNodes).map((node) => node.id),
+  };
 }
 
 export function visibleNodes(tree: FlatTree<any>, nodes: NodesState) {
@@ -215,6 +249,5 @@ export function generateChanges(a: NodesState, b: NodesState): Changes {
 
   return {
     selectedId: selectedIdA !== selectedIdB ? selectedIdB : undefined,
-    collapsedIds: collapsedChanges.length > 0 ? collapsedChanges : undefined,
   };
 }

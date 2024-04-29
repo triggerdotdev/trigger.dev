@@ -159,12 +159,15 @@ function TreeViewParent({
     },
     estimatedRowHeight: () => 32,
     parentRef,
-    filter: (node) => {
-      if (filterText === "") return true;
-      if (node.data.title.toLowerCase().includes(filterText.toLowerCase())) {
-        return true;
-      }
-      return false;
+    filter: {
+      text: filterText,
+      fn: (text, node) => {
+        if (text === "") return true;
+        if (node.data.title.toLowerCase().includes(text.toLowerCase())) {
+          return true;
+        }
+        return false;
+      },
     },
   });
 
