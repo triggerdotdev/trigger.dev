@@ -1,5 +1,7 @@
 # @trigger.dev/core-backend
 
+## 3.0.0-beta.23
+
 ## 3.0.0-beta.22
 
 ## 3.0.0-beta.21

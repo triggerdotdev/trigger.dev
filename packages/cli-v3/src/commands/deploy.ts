@@ -202,6 +202,13 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     projectRef: options.projectRef,
   });
 
+  if (resolvedConfig.status === "error") {
+    logger.error("Failed to read config:", resolvedConfig.error);
+    span && recordSpanException(span, resolvedConfig.error);
+
+    throw new SkipLoggingError("Failed to read config");
+  }
+
   logger.debug("Resolved config", { resolvedConfig });
 
   span?.setAttributes({
@@ -1126,6 +1133,9 @@ async function compileProject(
         format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
         target: ["node18", "es2020"],
         outdir: "out",
+        banner: {
+          js: `process.on("uncaughtException", function(error, origin) { if (error instanceof Error) { process.send && process.send({ type: "EVENT", message: { type: "UNCAUGHT_EXCEPTION", payload: { error: { name: error.name, message: error.message, stack: error.stack }, origin }, version: "v1" } }); } else { process.send && process.send({ type: "EVENT", message: { type: "UNCAUGHT_EXCEPTION", payload: { error: { name: "Error", message: typeof error === "string" ? error : JSON.stringify(error) }, origin }, version: "v1" } }); } });`,
+        },
         define: {
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
           __PROJECT_CONFIG__: JSON.stringify(config),
