@@ -19,22 +19,4 @@ export const tracingSDK = new TracingSDK({
   diagLogLevel: (process.env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
 });
 
-process.on("uncaughtException", (error, origin) => {
-  process.send?.({
-    type: "EVENT",
-    message: {
-      type: "UNCAUGHT_EXCEPTION",
-      payload: {
-        error: {
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-        },
-        origin,
-      },
-      version: "v1",
-    },
-  });
-});
-
 taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());

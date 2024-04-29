@@ -126,6 +126,10 @@ export type ReadConfigResult =
   | {
       status: "in-memory";
       config: ResolvedConfig;
+    }
+  | {
+      status: "error";
+      error: unknown;
     };
 
 export async function readConfig(
@@ -182,22 +186,29 @@ export async function readConfig(
     ],
   });
 
-  // import the config file
-  const userConfigModule = await import(builtConfigFileHref);
+  try {
+    // import the config file
+    const userConfigModule = await import(builtConfigFileHref);
 
-  // The --project-ref CLI arg will always override the project specified in the config file
-  const rawConfig = await normalizeConfig(
-    userConfigModule?.config,
-    options?.projectRef ? { project: options?.projectRef } : undefined
-  );
+    // The --project-ref CLI arg will always override the project specified in the config file
+    const rawConfig = await normalizeConfig(
+      userConfigModule?.config,
+      options?.projectRef ? { project: options?.projectRef } : undefined
+    );
 
-  const config = Config.parse(rawConfig);
+    const config = Config.parse(rawConfig);
 
-  return {
-    status: "file",
-    config: await resolveConfig(absoluteDir, config),
-    path: configPath,
-  };
+    return {
+      status: "file",
+      config: await resolveConfig(absoluteDir, config),
+      path: configPath,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      error,
+    };
+  }
 }
 
 export async function resolveConfig(path: string, config: Config): Promise<ResolvedConfig> {

@@ -33,19 +33,4 @@ export const sender = new ZodMessageSender({
   },
 });
 
-process.on("uncaughtException", (error, origin) => {
-  sender
-    .send("UNCAUGHT_EXCEPTION", {
-      error: {
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
-      },
-      origin,
-    })
-    .catch((err) => {
-      console.error("Failed to send UNCAUGHT_EXCEPTION message", err);
-    });
-});
-
 taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());
