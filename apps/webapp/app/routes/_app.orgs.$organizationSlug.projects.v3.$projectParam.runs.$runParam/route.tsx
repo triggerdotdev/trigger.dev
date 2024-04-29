@@ -266,13 +266,13 @@ function TasksTreeView({
     estimatedRowHeight: () => 32,
     parentRef,
     filter: {
-      text: filterText,
-      fn: (text, node) => {
-        const nodePassesErrorTest = (errorsOnly && node.data.isError) || !errorsOnly;
+      value: { text: filterText, errorsOnly },
+      fn: (value, node) => {
+        const nodePassesErrorTest = (value.errorsOnly && node.data.isError) || !value.errorsOnly;
         if (!nodePassesErrorTest) return false;
 
-        if (text === "") return true;
-        if (node.data.message.toLowerCase().includes(text.toLowerCase())) {
+        if (value.text === "") return true;
+        if (node.data.message.toLowerCase().includes(value.text.toLowerCase())) {
           return true;
         }
         return false;

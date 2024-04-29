@@ -128,12 +128,12 @@ export function TreeView<TData>({
   );
 }
 
-export type Filter<TData> = {
-  text?: string;
-  fn: (text: string, node: FlatTreeItem<TData>) => boolean;
+export type Filter<TData, TFilterValue> = {
+  value?: TFilterValue;
+  fn: (value: TFilterValue, node: FlatTreeItem<TData>) => boolean;
 };
 
-type TreeStateHookProps<TData> = {
+type TreeStateHookProps<TData, TFilterValue> = {
   tree: FlatTree<TData>;
   selectedId?: string;
   collapsedIds?: string[];
@@ -144,7 +144,7 @@ type TreeStateHookProps<TData> = {
     index: number;
   }) => number;
   parentRef: RefObject<any>;
-  filter?: Filter<TData>;
+  filter?: Filter<TData, TFilterValue>;
 };
 
 //this is so Framer Motion can be used to render the components
@@ -180,7 +180,7 @@ export type UseTreeStateOutput = {
   scrollToNode: (id: string) => void;
 };
 
-export function useTree<TData>({
+export function useTree<TData, TFilterValue>({
   tree,
   selectedId,
   collapsedIds,
@@ -188,7 +188,7 @@ export function useTree<TData>({
   parentRef,
   estimatedRowHeight,
   filter,
-}: TreeStateHookProps<TData>): UseTreeStateOutput {
+}: TreeStateHookProps<TData, TFilterValue>): UseTreeStateOutput {
   const previousNodeCount = useRef(tree.length);
   const previousSelectedId = useRef<string | undefined>(selectedId);
 
@@ -197,6 +197,7 @@ export function useTree<TData>({
     concreteStateFromInput({ tree, selectedId, collapsedIds, filter })
   );
 
+  //fire onSelectedIdChanged()
   useEffect(() => {
     const selectedId = selectedIdFromState(state.nodes);
     if (selectedId !== previousSelectedId.current) {
@@ -205,12 +206,29 @@ export function useTree<TData>({
     }
   }, [state.changes.selectedId]);
 
+  //update tree when the number of nodes changes
   useEffect(() => {
     if (tree.length !== previousNodeCount.current) {
       previousNodeCount.current = tree.length;
       dispatch({ type: "UPDATE_TREE", payload: { tree } });
     }
   }, [previousNodeCount.current, tree.length]);
+
+  //update the filter, if it's changed
+  const previousFilter = useRef(filter);
+  useEffect(() => {
+    //check if the value (not reference) of the filter is the same
+    const previousValue = previousFilter.current
+      ? JSON.stringify(previousFilter.current.value)
+      : undefined;
+    const newValue = filter ? JSON.stringify(filter.value) : undefined;
+
+    previousFilter.current = filter;
+
+    if (previousValue !== newValue) {
+      dispatch({ type: "UPDATE_FILTER", payload: { filter } });
+    }
+  }, [filter?.value]);
 
   const virtualizer = useVirtualizer({
     count: state.visibleNodeIds.length,

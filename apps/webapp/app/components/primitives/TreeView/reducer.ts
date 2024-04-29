@@ -26,7 +26,7 @@ export type TreeState = {
   nodes: NodesState;
   filteredNodes: NodesState;
   changes: Changes;
-  filter: Filter<any> | undefined;
+  filter: Filter<any, any> | undefined;
   visibleNodeIds: string[];
 };
 
@@ -155,7 +155,7 @@ type SelectParentNodeAction = {
 type UpdateFilterAction = {
   type: "UPDATE_FILTER";
   payload: {
-    filter: Filter<any>;
+    filter: Filter<any, any> | undefined;
   };
 };
 
@@ -181,8 +181,6 @@ export type Action =
   | UpdateFilterAction;
 
 export function reducer(state: TreeState, action: Action): TreeState {
-  console.log(`reducer: ${action.type}`);
-
   switch (action.type) {
     case "SELECT_NODE": {
       //if the node was already selected, do nothing. The user needs to use deselectNode to deselect
@@ -529,6 +527,13 @@ export function reducer(state: TreeState, action: Action): TreeState {
         tree: action.payload.tree,
         selectedId,
         collapsedIds,
+      });
+      return newState;
+    }
+    case "UPDATE_FILTER": {
+      const newState = applyFilterToState({
+        ...state,
+        filter: action.payload.filter,
       });
       return newState;
     }

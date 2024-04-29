@@ -13,7 +13,7 @@ export function concreteStateFromInput({
   collapsedIds,
 }: {
   tree: FlatTree<any>;
-  filter: Filter<any> | undefined;
+  filter: Filter<any, any> | undefined;
   selectedId: string | undefined;
   collapsedIds: string[] | undefined;
 }): TreeState {
@@ -96,7 +96,7 @@ export function applyFilterToState<TData>({
   visibleNodeIds,
   changes,
 }: TreeState): TreeState {
-  if (!filter || !filter.text?.trim()) {
+  if (!filter || !filter.value) {
     return {
       tree,
       nodes,
@@ -110,7 +110,7 @@ export function applyFilterToState<TData>({
   //we need to do two passes, first collect all the nodes that are results
   const newFilteredOut = new Set<string>();
   for (const node of tree) {
-    if (!filter.fn(filter.text, node)) {
+    if (!filter.fn(filter.value, node)) {
       newFilteredOut.add(node.id);
     }
   }

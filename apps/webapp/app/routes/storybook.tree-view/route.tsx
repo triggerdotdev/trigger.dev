@@ -160,7 +160,7 @@ function TreeViewParent({
     estimatedRowHeight: () => 32,
     parentRef,
     filter: {
-      text: filterText,
+      value: filterText,
       fn: (text, node) => {
         if (text === "") return true;
         if (node.data.title.toLowerCase().includes(text.toLowerCase())) {
