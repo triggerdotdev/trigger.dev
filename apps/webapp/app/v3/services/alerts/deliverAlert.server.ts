@@ -5,6 +5,7 @@ import { Prisma, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import {
   ProjectAlertEmailProperties,
+  ProjectAlertSlackProperties,
   ProjectAlertWebhookProperties,
 } from "~/models/projectAlert.server";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
@@ -13,6 +14,7 @@ import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { workerQueue } from "~/services/worker.server";
 import { BaseService } from "../baseService.server";
+import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 
 type FoundAlert = Prisma.Result<
   typeof prisma.projectAlert,
@@ -218,10 +220,6 @@ export class DeliverAlertService extends BaseService {
     }
   }
 
-  async #sendSlack(alert: FoundAlert) {
-    // TODO: Implement
-  }
-
   async #sendWebhook(alert: FoundAlert) {
     const webhookProperties = ProjectAlertWebhookProperties.safeParse(alert.channel.properties);
 
@@ -392,6 +390,213 @@ export class DeliverAlertService extends BaseService {
       }
       default: {
         assertNever(alert.type);
+      }
+    }
+  }
+
+  async #sendSlack(alert: FoundAlert) {
+    const slackProperties = ProjectAlertSlackProperties.safeParse(alert.channel.properties);
+
+    if (!slackProperties.success) {
+      logger.error("[DeliverAlert] Failed to parse slack properties", {
+        issues: slackProperties.error.issues,
+        properties: alert.channel.properties,
+      });
+
+      return;
+    }
+
+    // Get the org integration
+    const integration = slackProperties.data.integrationId
+      ? await this._prisma.organizationIntegration.findUnique({
+          where: {
+            id: slackProperties.data.integrationId,
+            organizationId: alert.project.organizationId,
+          },
+          include: {
+            tokenReference: true,
+          },
+        })
+      : await this._prisma.organizationIntegration.findFirst({
+          where: {
+            service: "SLACK",
+            organizationId: alert.project.organizationId,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          include: {
+            tokenReference: true,
+          },
+        });
+
+    if (!integration) {
+      logger.error("[DeliverAlert] Slack integration not found", {
+        alert,
+      });
+
+      return;
+    }
+
+    // Get the client
+    const client = await OrgIntegrationRepository.getAuthenticatedClientForIntegration(
+      integration,
+      { forceBotToken: true }
+    );
+
+    switch (alert.type) {
+      case "TASK_RUN_ATTEMPT": {
+        if (alert.taskRunAttempt) {
+          const taskRunError = TaskRunError.safeParse(alert.taskRunAttempt.error);
+
+          if (!taskRunError.success) {
+            logger.error("[DeliverAlert] Failed to parse task run error", {
+              issues: taskRunError.error.issues,
+              taskAttemptError: alert.taskRunAttempt.error,
+            });
+
+            return;
+          }
+
+          const error = createJsonErrorObject(taskRunError.data);
+
+          const message = await client.chat.postMessage({
+            channel: slackProperties.data.channelId,
+            text: `Error on ${alert.taskRunAttempt.backgroundWorkerTask.exportName} [${alert.taskRunAttempt.backgroundWorker.version}.${alert.environment.slug}] ${error.message}`,
+            blocks: [
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `:bug: ${error.message}`,
+                },
+              },
+              {
+                type: "context",
+                elements: [
+                  {
+                    type: "mrkdwn",
+                    text: `${alert.project.name} | ${alert.taskRunAttempt.backgroundWorker.version} ${alert.environment.slug} | ${alert.taskRunAttempt.backgroundWorkerTask.exportName}`,
+                  },
+                ],
+              },
+              {
+                type: "actions",
+                elements: [
+                  {
+                    type: "button",
+                    text: {
+                      type: "plain_text",
+                      text: "Investigate",
+                    },
+                    action_id: "action_investigate",
+                  },
+                ],
+              },
+            ],
+          });
+        } else {
+          logger.error("[DeliverAlert] Task run attempt not found", {
+            alert,
+          });
+        }
+      }
+      case "DEPLOYMENT_FAILURE": {
+        if (alert.workerDeployment) {
+          const preparedError = DeploymentPresenter.prepareErrorData(
+            alert.workerDeployment.errorData
+          );
+
+          if (!preparedError) {
+            logger.error("[DeliverAlert] Failed to prepare deployment error data", {
+              errorData: alert.workerDeployment.errorData,
+            });
+
+            return;
+          }
+
+          const message = await client.chat.postMessage({
+            channel: slackProperties.data.channelId,
+            blocks: [
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `:x: ${preparedError.message}`,
+                },
+              },
+              {
+                type: "context",
+                elements: [
+                  {
+                    type: "mrkdwn",
+                    text: `${alert.project.name} | ${alert.workerDeployment.version} ${alert.environment.slug} | ${alert.workerDeployment.shortCode}`,
+                  },
+                ],
+              },
+              {
+                type: "actions",
+                elements: [
+                  {
+                    type: "button",
+                    text: {
+                      type: "plain_text",
+                      text: "Investigate",
+                    },
+                    action_id: "action_investigate",
+                  },
+                ],
+              },
+            ],
+          });
+        } else {
+          logger.error("[DeliverAlert] Worker deployment not found", {
+            alert,
+          });
+        }
+      }
+      case "DEPLOYMENT_SUCCESS": {
+        if (alert.workerDeployment) {
+          const message = await client.chat.postMessage({
+            channel: slackProperties.data.channelId,
+            text: `Deployment ${alert.workerDeployment.version} [${alert.environment.slug}] succeeded`,
+            blocks: [
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `:white_check_mark: Deployment successful`,
+                },
+              },
+              {
+                type: "context",
+                elements: [
+                  {
+                    type: "mrkdwn",
+                    text: `${alert.project.name} | ${alert.workerDeployment.version} ${alert.environment.slug} | ${alert.workerDeployment.shortCode}`,
+                  },
+                ],
+              },
+              {
+                type: "actions",
+                elements: [
+                  {
+                    type: "button",
+                    text: {
+                      type: "plain_text",
+                      text: "View Deployment",
+                    },
+                    action_id: "action_view_deployment",
+                  },
+                ],
+              },
+            ],
+          });
+        } else {
+          logger.error("[DeliverAlert] Worker deployment not found", {
+            alert,
+          });
+        }
       }
     }
   }

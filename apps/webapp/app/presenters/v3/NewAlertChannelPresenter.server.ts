@@ -36,6 +36,7 @@ export class NewAlertChannelPresenter extends BasePresenter {
         slack: {
           status: "READY" as const,
           channels,
+          integrationId: slackIntegration.id,
         },
       };
     } else {

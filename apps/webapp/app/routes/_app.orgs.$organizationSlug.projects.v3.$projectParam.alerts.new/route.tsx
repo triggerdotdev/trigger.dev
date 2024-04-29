@@ -44,8 +44,9 @@ const FormSchema = z
       .array(z.enum(["TASK_RUN_ATTEMPT", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"]))
       .min(1)
       .or(z.enum(["TASK_RUN_ATTEMPT", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"])),
-    type: z.enum(["WEBHOOK", "EMAIL"]).default("EMAIL"),
+    type: z.enum(["WEBHOOK", "SLACK", "EMAIL"]).default("EMAIL"),
     channelValue: z.string().nonempty(),
+    integrationId: z.string().optional(),
   })
   .refine(
     (value) =>
@@ -62,34 +63,62 @@ const FormSchema = z
       message: "Must be a valid URL",
       path: ["channelValue"],
     }
+  )
+  .refine(
+    (value) =>
+      value.type === "SLACK"
+        ? typeof value.channelValue === "string" && value.channelValue.startsWith("C")
+        : true,
+    {
+      message: "Must select a Slack channel",
+      path: ["channelValue"],
+    }
   );
 
 function formDataToCreateAlertChannelOptions(
   formData: z.infer<typeof FormSchema>
 ): CreateAlertChannelOptions {
-  const name =
-    formData.type === "WEBHOOK"
-      ? `Webhook to ${new URL(formData.channelValue).hostname}`
-      : `Email to ${formData.channelValue}`;
+  switch (formData.type) {
+    case "WEBHOOK": {
+      return {
+        name: `Webhook to ${new URL(formData.channelValue).hostname}`,
+        alertTypes: Array.isArray(formData.alertTypes)
+          ? formData.alertTypes
+          : [formData.alertTypes],
+        channel: {
+          type: "WEBHOOK",
+          url: formData.channelValue,
+        },
+      };
+    }
+    case "EMAIL": {
+      return {
+        name: `Email to ${formData.channelValue}`,
+        alertTypes: Array.isArray(formData.alertTypes)
+          ? formData.alertTypes
+          : [formData.alertTypes],
+        channel: {
+          type: "EMAIL",
+          email: formData.channelValue,
+        },
+      };
+    }
+    case "SLACK": {
+      const [channelId, channelName] = formData.channelValue.split("/");
 
-  if (formData.type === "WEBHOOK") {
-    return {
-      name,
-      alertTypes: Array.isArray(formData.alertTypes) ? formData.alertTypes : [formData.alertTypes],
-      channel: {
-        type: "WEBHOOK",
-        url: formData.channelValue,
-      },
-    };
-  } else {
-    return {
-      name,
-      alertTypes: Array.isArray(formData.alertTypes) ? formData.alertTypes : [formData.alertTypes],
-      channel: {
-        type: "EMAIL",
-        email: formData.channelValue,
-      },
-    };
+      return {
+        name: `Slack message to ${channelName}`,
+        alertTypes: Array.isArray(formData.alertTypes)
+          ? formData.alertTypes
+          : [formData.alertTypes],
+        channel: {
+          type: "SLACK",
+          channelId,
+          channelName,
+          integrationId: formData.integrationId,
+        },
+      };
+    }
   }
 }
 
@@ -173,7 +202,7 @@ export default function Page() {
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "create";
 
-  const [form, { channelValue: channelValue, alertTypes, type }] = useForm({
+  const [form, { channelValue: channelValue, alertTypes, type, integrationId }] = useForm({
     id: "create-alert",
     // TODO: type this
     lastSubmission: lastSubmission as any,
@@ -245,7 +274,7 @@ export default function Page() {
                         <SelectContent>
                           {slack.channels.map((channel) =>
                             channel.id ? (
-                              <SelectItem key={channel.id} value={channel.id}>
+                              <SelectItem key={channel.id} value={`${channel.id}/${channel.name}`}>
                                 {channel.name}
                               </SelectItem>
                             ) : null
@@ -254,6 +283,7 @@ export default function Page() {
                       </Select>
                     </SelectGroup>
                     <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
+                    <input type="hidden" name="integrationId" value={slack.integrationId} />
                   </>
                 ) : slack.status === "NOT_CONFIGURED" ? (
                   <LinkButton

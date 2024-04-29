@@ -19,6 +19,12 @@ export type CreateAlertChannelOptions = {
         type: "WEBHOOK";
         url: string;
         secret?: string;
+      }
+    | {
+        type: "SLACK";
+        channelId: string;
+        channelName: string;
+        integrationId: string | undefined;
       };
 };
 
@@ -84,6 +90,12 @@ export class CreateAlertChannelService extends BaseService {
         return {
           url: channel.url,
           secret: await encryptSecret(env.ENCRYPTION_KEY, channel.secret ?? nanoid()),
+        };
+      case "SLACK":
+        return {
+          channelId: channel.channelId,
+          channelName: channel.channelName,
+          integrationId: channel.integrationId,
         };
     }
   }

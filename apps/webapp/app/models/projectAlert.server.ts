@@ -17,3 +17,11 @@ export type ProjectAlertEmailProperties = z.infer<typeof ProjectAlertEmailProper
 export const DeleteProjectAlertChannel = z.object({
   id: z.string(),
 });
+
+export const ProjectAlertSlackProperties = z.object({
+  channelId: z.string(),
+  channelName: z.string(),
+  integrationId: z.string().nullish(),
+});
+
+export type ProjectAlertSlackProperties = z.infer<typeof ProjectAlertSlackProperties>;

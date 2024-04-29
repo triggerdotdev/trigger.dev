@@ -5,6 +5,7 @@ import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { env } from "~/env.server";
 import {
   ProjectAlertEmailProperties,
+  ProjectAlertSlackProperties,
   ProjectAlertWebhookProperties,
 } from "~/models/projectAlert.server";
 
@@ -59,6 +60,12 @@ export class AlertChannelListPresenter extends BasePresenter {
           type: "EMAIL" as const,
           ...ProjectAlertEmailProperties.parse(alertChannel.properties),
         };
+      case "SLACK": {
+        return {
+          type: "SLACK" as const,
+          ...ProjectAlertSlackProperties.parse(alertChannel.properties),
+        };
+      }
       default:
         throw new Error(`Unsupported alert channel type: ${alertChannel.type}`);
     }

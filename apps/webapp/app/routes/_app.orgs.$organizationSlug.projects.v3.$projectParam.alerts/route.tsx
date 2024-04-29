@@ -393,6 +393,21 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
         />
       );
     }
+    case "SLACK": {
+      return (
+        <DetailCell
+          leadingIcon={
+            <AlertChannelTypeIcon
+              channelType={alertChannel.type}
+              className="h-4 w-4 text-charcoal-400"
+            />
+          }
+          leadingIconClassName="text-charcoal-400"
+          label={"Slack"}
+          description={alertChannel.properties.channelName}
+        />
+      );
+    }
   }
 
   return null;

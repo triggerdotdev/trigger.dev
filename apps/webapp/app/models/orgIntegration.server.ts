@@ -34,6 +34,12 @@ type OrganizationIntegrationForService<TService extends IntegrationService> = Om
   service: TService;
 };
 
+type AuthenticatedClientOptions<TService extends IntegrationService> = TService extends "SLACK"
+  ? {
+      forceBotToken?: boolean;
+    }
+  : undefined;
+
 type AuthenticatedClientForIntegration<TService extends IntegrationService> =
   TService extends "SLACK" ? InstanceType<typeof WebClient> : never;
 
@@ -43,7 +49,8 @@ export type AuthenticatableIntegration = OrganizationIntegration & {
 
 export class OrgIntegrationRepository {
   static async getAuthenticatedClientForIntegration<TService extends IntegrationService>(
-    integration: OrganizationIntegrationForService<TService>
+    integration: OrganizationIntegrationForService<TService>,
+    options?: AuthenticatedClientOptions<TService>
   ): Promise<AuthenticatedClientForIntegration<TService>> {
     const secretStore = getSecretStore(integration.tokenReference.provider);
 
@@ -60,7 +67,9 @@ export class OrgIntegrationRepository {
 
         // TODO refresh access token here
         return new WebClient(
-          secret.userAccessToken ?? secret.botAccessToken
+          options?.forceBotToken
+            ? secret.botAccessToken
+            : secret.userAccessToken ?? secret.botAccessToken
         ) as AuthenticatedClientForIntegration<TService>;
       }
       default: {
