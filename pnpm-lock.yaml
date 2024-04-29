@@ -357,6 +357,9 @@ importers:
       '@remix-run/v1-meta':
         specifier: ^0.1.3
         version: 0.1.3(@remix-run/react@2.1.0)(@remix-run/server-runtime@2.1.0)
+      '@slack/web-api':
+        specifier: ^6.8.1
+        version: 6.8.1
       '@socket.io/redis-adapter':
         specifier: ^8.3.0
         version: 8.3.0(socket.io-adapter@2.5.4)

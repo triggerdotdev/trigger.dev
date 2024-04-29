@@ -130,12 +130,13 @@ model Organization {
   events       EventRecord[]
   jobRuns      JobRun[]
 
-  projects         Project[]
-  members          OrgMember[]
-  invites          OrgMemberInvite[]
-  externalAccounts ExternalAccount[]
-  integrations     Integration[]
-  sources          TriggerSource[]
+  projects                 Project[]
+  members                  OrgMember[]
+  invites                  OrgMemberInvite[]
+  externalAccounts         ExternalAccount[]
+  integrations             Integration[]
+  sources                  TriggerSource[]
+  organizationIntegrations OrganizationIntegration[]
 }
 
 model ExternalAccount {
@@ -1132,8 +1133,9 @@ model SecretReference {
   httpEndpoints             TriggerHttpEndpoint[]
   environmentVariableValues EnvironmentVariableValue[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  OrganizationIntegration OrganizationIntegration[]
 }
 
 enum SecretStoreProvider {
@@ -2233,6 +2235,9 @@ model ProjectAlertChannel {
   deduplicationKey             String  @default(cuid())
   userProvidedDeduplicationKey Boolean @default(false)
 
+  integration   OrganizationIntegration? @relation(fields: [integrationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  integrationId String?
+
   enabled Boolean @default(true)
 
   type       ProjectAlertChannelType
@@ -2294,4 +2299,29 @@ enum ProjectAlertStatus {
   PENDING
   SENT
   FAILED
+}
+
+model OrganizationIntegration {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  service IntegrationService
+
+  integrationData Json
+
+  tokenReference   SecretReference @relation(fields: [tokenReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  tokenReferenceId String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  alertChannels ProjectAlertChannel[]
+}
+
+enum IntegrationService {
+  SLACK
 }

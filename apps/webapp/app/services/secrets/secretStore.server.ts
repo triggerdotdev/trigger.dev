@@ -107,6 +107,8 @@ class PrismaSecretStore implements SecretStoreProvider {
       return;
     }
 
+    logger.debug("Decrypted secret", { key, value: parsedDecrypted });
+
     return schema.parse(parsedDecrypted);
   }
 

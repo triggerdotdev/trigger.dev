@@ -333,6 +333,13 @@ export function v3NewProjectAlertPath(organization: OrgForPath, project: Project
   return `${v3ProjectAlertsPath(organization, project)}/new`;
 }
 
+export function v3NewProjectAlertPathConnectToSlackPath(
+  organization: OrgForPath,
+  project: ProjectForPath
+) {
+  return `${v3ProjectAlertsPath(organization, project)}/new/connect-to-slack`;
+}
+
 export function v3TestPath(
   organization: OrgForPath,
   project: ProjectForPath,

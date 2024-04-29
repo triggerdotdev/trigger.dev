@@ -1,8 +1,11 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
+import { LoaderFunctionArgs } from "@remix-run/router";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { SlackIcon } from "@trigger.dev/companyicons";
 import { useEffect, useState } from "react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -15,10 +18,19 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/primitives/Select";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
+import { NewAlertChannelPresenter } from "~/presenters/v3/NewAlertChannelPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema, v3ProjectAlertsPath } from "~/utils/pathBuilder";
 import {
@@ -33,22 +45,22 @@ const FormSchema = z
       .min(1)
       .or(z.enum(["TASK_RUN_ATTEMPT", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"])),
     type: z.enum(["WEBHOOK", "EMAIL"]).default("EMAIL"),
-    urlOrEmail: z.string().nonempty(),
+    channelValue: z.string().nonempty(),
   })
   .refine(
     (value) =>
-      value.type === "EMAIL" ? z.string().email().safeParse(value.urlOrEmail).success : true,
+      value.type === "EMAIL" ? z.string().email().safeParse(value.channelValue).success : true,
     {
       message: "Must be a valid email address",
-      path: ["urlOrEmail"],
+      path: ["channelValue"],
     }
   )
   .refine(
     (value) =>
-      value.type === "WEBHOOK" ? z.string().url().safeParse(value.urlOrEmail).success : true,
+      value.type === "WEBHOOK" ? z.string().url().safeParse(value.channelValue).success : true,
     {
       message: "Must be a valid URL",
-      path: ["urlOrEmail"],
+      path: ["channelValue"],
     }
   );
 
@@ -57,8 +69,8 @@ function formDataToCreateAlertChannelOptions(
 ): CreateAlertChannelOptions {
   const name =
     formData.type === "WEBHOOK"
-      ? `Webhook to ${new URL(formData.urlOrEmail).hostname}`
-      : `Email to ${formData.urlOrEmail}`;
+      ? `Webhook to ${new URL(formData.channelValue).hostname}`
+      : `Email to ${formData.channelValue}`;
 
   if (formData.type === "WEBHOOK") {
     return {
@@ -66,7 +78,7 @@ function formDataToCreateAlertChannelOptions(
       alertTypes: Array.isArray(formData.alertTypes) ? formData.alertTypes : [formData.alertTypes],
       channel: {
         type: "WEBHOOK",
-        url: formData.urlOrEmail,
+        url: formData.channelValue,
       },
     };
   } else {
@@ -75,10 +87,33 @@ function formDataToCreateAlertChannelOptions(
       alertTypes: Array.isArray(formData.alertTypes) ? formData.alertTypes : [formData.alertTypes],
       channel: {
         type: "EMAIL",
-        email: formData.urlOrEmail,
+        email: formData.channelValue,
       },
     };
   }
+}
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const userId = await requireUserId(request);
+  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+
+  if (!project) {
+    throw new Response("Project not found", { status: 404 });
+  }
+
+  const presenter = new NewAlertChannelPresenter();
+
+  const results = await presenter.call(project.id);
+
+  const url = new URL(request.url);
+  const option = url.searchParams.get("option");
+
+  return typedjson({
+    ...results,
+    option: option === "slack" ? ("SLACK" as const) : undefined,
+  });
 }
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -125,19 +160,20 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 export default function Page() {
   const [isOpen, setIsOpen] = useState(false);
+  const { slack, option } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
   const navigate = useNavigate();
   const organization = useOrganization();
   const project = useProject();
-  const [currentAlertChannel, setCurrentAlertChannel] = useState<string | null>("EMAIL");
+  const [currentAlertChannel, setCurrentAlertChannel] = useState<string | null>(option ?? "EMAIL");
 
   const isLoading =
     navigation.state !== "idle" &&
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "create";
 
-  const [form, { urlOrEmail, alertTypes, type }] = useForm({
+  const [form, { channelValue: channelValue, alertTypes, type }] = useForm({
     id: "create-alert",
     // TODO: type this
     lastSubmission: lastSubmission as any,
@@ -176,11 +212,13 @@ export default function Page() {
                 {...conform.input(type)}
                 options={[
                   { label: "Email", value: "EMAIL" },
+                  { label: "Slack", value: "SLACK" },
                   { label: "Webhook", value: "WEBHOOK" },
                 ]}
                 onChange={(value) => {
                   setCurrentAlertChannel(value);
                 }}
+                defaultValue={currentAlertChannel ?? undefined}
               />
             </InputGroup>
 
@@ -188,23 +226,60 @@ export default function Page() {
               <InputGroup fullWidth>
                 <Label>Email</Label>
                 <Input
-                  {...conform.input(urlOrEmail)}
+                  {...conform.input(channelValue)}
                   placeholder="email@youremail.com"
                   type="email"
                   autoFocus
                 />
-                <FormError id={urlOrEmail.errorId}>{urlOrEmail.error}</FormError>
+                <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
+              </InputGroup>
+            ) : currentAlertChannel === "SLACK" ? (
+              <InputGroup fullWidth>
+                {slack.status === "READY" ? (
+                  <>
+                    <SelectGroup>
+                      <Select {...conform.input(channelValue, { type: "select" })}>
+                        <SelectTrigger width="full" size="medium">
+                          <SelectValue placeholder="Slack channel" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {slack.channels.map((channel) =>
+                            channel.id ? (
+                              <SelectItem key={channel.id} value={channel.id}>
+                                {channel.name}
+                              </SelectItem>
+                            ) : null
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </SelectGroup>
+                    <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
+                  </>
+                ) : slack.status === "NOT_CONFIGURED" ? (
+                  <LinkButton
+                    TrailingIcon={SlackIcon}
+                    variant="secondary/small"
+                    to="connect-to-slack"
+                  >
+                    Connect to Slack
+                  </LinkButton>
+                ) : (
+                  <Callout variant="warning">
+                    Slack integration is not available. Please contact your organization
+                    administrator.
+                  </Callout>
+                )}
               </InputGroup>
             ) : (
               <InputGroup fullWidth>
                 <Label>URL</Label>
                 <Input
-                  {...conform.input(urlOrEmail)}
+                  {...conform.input(channelValue)}
                   placeholder="https://foobar.com/webhooks"
                   type="url"
                   autoFocus
                 />
-                <FormError id={urlOrEmail.errorId}>{urlOrEmail.error}</FormError>
+                <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
                 <Callout variant="info" className="inline-flex">
                   We'll issue POST requests to this URL with a JSON payload.
                 </Callout>
