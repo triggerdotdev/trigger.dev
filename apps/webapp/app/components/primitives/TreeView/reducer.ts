@@ -231,16 +231,16 @@ export function reducer(state: TreeState, action: Action): TreeState {
       const currentlySelected = state.nodes[action.payload.id]?.selected ?? false;
       if (currentlySelected) {
         return reducer(state, { type: "DESELECT_NODE", payload: { id: action.payload.id } });
-      } else {
-        return reducer(state, {
-          type: "SELECT_NODE",
-          payload: {
-            id: action.payload.id,
-            scrollToNode: action.payload.scrollToNode,
-            scrollToNodeFn: action.payload.scrollToNodeFn,
-          },
-        });
       }
+
+      return reducer(state, {
+        type: "SELECT_NODE",
+        payload: {
+          id: action.payload.id,
+          scrollToNode: action.payload.scrollToNode,
+          scrollToNodeFn: action.payload.scrollToNodeFn,
+        },
+      });
     }
     case "EXPAND_NODE": {
       const newNodes = {
@@ -277,16 +277,16 @@ export function reducer(state: TreeState, action: Action): TreeState {
           type: "COLLAPSE_NODE",
           payload: { id: action.payload.id },
         });
-      } else {
-        return reducer(state, {
-          type: "EXPAND_NODE",
-          payload: {
-            id: action.payload.id,
-            scrollToNode: action.payload.scrollToNode,
-            scrollToNodeFn: action.payload.scrollToNodeFn,
-          },
-        });
       }
+
+      return reducer(state, {
+        type: "EXPAND_NODE",
+        payload: {
+          id: action.payload.id,
+          scrollToNode: action.payload.scrollToNode,
+          scrollToNodeFn: action.payload.scrollToNodeFn,
+        },
+      });
     }
     case "EXPAND_ALL_BELOW_DEPTH": {
       const nodesToExpand = state.tree.filter(
@@ -396,17 +396,17 @@ export function reducer(state: TreeState, action: Action): TreeState {
             level: action.payload.level,
           },
         });
-      } else {
-        return reducer(state, {
-          type: "EXPAND_LEVEL",
-          payload: {
-            level: action.payload.level,
-          },
-        });
       }
+
+      return reducer(state, {
+        type: "EXPAND_LEVEL",
+        payload: {
+          level: action.payload.level,
+        },
+      });
     }
     case "SELECT_FIRST_VISIBLE_NODE": {
-      const node = firstVisibleNode(state.tree, state.nodes);
+      const node = firstVisibleNode(state.tree, state.filteredNodes);
       if (node) {
         return reducer(state, {
           type: "SELECT_NODE",
@@ -417,6 +417,8 @@ export function reducer(state: TreeState, action: Action): TreeState {
           },
         });
       }
+
+      return state;
     }
     case "SELECT_LAST_VISIBLE_NODE": {
       const node = lastVisibleNode(state.tree, state.nodes);
@@ -430,6 +432,8 @@ export function reducer(state: TreeState, action: Action): TreeState {
           },
         });
       }
+
+      return state;
     }
     case "SELECT_NEXT_VISIBLE_NODE": {
       const selected = selectedIdFromState(state.nodes);
@@ -456,6 +460,8 @@ export function reducer(state: TreeState, action: Action): TreeState {
           },
         });
       }
+
+      return state;
     }
     case "SELECT_PREVIOUS_VISIBLE_NODE": {
       const selected = selectedIdFromState(state.nodes);
