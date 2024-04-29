@@ -157,9 +157,6 @@ function TreeViewParent({
     onSelectedIdChanged: (id) => {
       console.log("onSelectedIdChanged", id);
     },
-    onCollapsedIdsChanged: (ids) => {
-      console.log("onCollapsedIdsChanged", ids);
-    },
     estimatedRowHeight: () => 32,
     parentRef,
     filter: (node) => {

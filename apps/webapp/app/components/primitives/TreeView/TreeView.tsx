@@ -1,7 +1,6 @@
 import { VirtualItem, Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
 import { motion } from "framer-motion";
 import { MutableRefObject, RefObject, useCallback, useEffect, useReducer, useRef } from "react";
-import { UnmountClosed } from "react-collapse";
 import { cn } from "~/utils/cn";
 import { NodeState, NodesState, reducer } from "./reducer";
 import { applyFilterToState, concreteStateFromInput, selectedIdFromState } from "./utils";
@@ -104,23 +103,22 @@ export function TreeView<TData>({
             if (!node) return null;
             const state = nodes[node.id];
             if (!state) return null;
+            if (!state.visible) return null;
             return (
               <div
                 key={node.id}
                 data-index={virtualItem.index}
                 ref={virtualizer.measureElement}
-                className="overflow-clip [&_.ReactCollapse--collapse]:transition-all"
+                className="overflow-clip"
                 {...getNodeProps(node.id)}
               >
-                <UnmountClosed key={node.id} isOpened={state.visible}>
-                  {renderNode({
-                    node,
-                    state,
-                    index: virtualItem.index,
-                    virtualizer: virtualizer,
-                    virtualItem,
-                  })}
-                </UnmountClosed>
+                {renderNode({
+                  node,
+                  state,
+                  index: virtualItem.index,
+                  virtualizer: virtualizer,
+                  virtualItem,
+                })}
               </div>
             );
           })}
@@ -135,7 +133,6 @@ type TreeStateHookProps<TData> = {
   selectedId?: string;
   collapsedIds?: string[];
   onSelectedIdChanged?: (selectedId: string | undefined) => void;
-  onCollapsedIdsChanged?: (collapsedIds: string[]) => void;
   estimatedRowHeight: (params: {
     node: FlatTreeItem<TData>;
     state: NodeState;
@@ -183,7 +180,6 @@ export function useTree<TData>({
   selectedId,
   collapsedIds,
   onSelectedIdChanged,
-  onCollapsedIdsChanged,
   parentRef,
   estimatedRowHeight,
   filter,
@@ -203,12 +199,6 @@ export function useTree<TData>({
       onSelectedIdChanged?.(selectedId);
     }
   }, [state.changes.selectedId]);
-
-  useEffect(() => {
-    if (state.changes.collapsedIds) {
-      onCollapsedIdsChanged?.(state.changes.collapsedIds);
-    }
-  }, [state.changes.collapsedIds]);
 
   useEffect(() => {
     if (tree.length !== previousNodeCount.current) {
