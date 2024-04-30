@@ -78,6 +78,8 @@ class ProdWorker {
     });
 
     this.#backgroundWorker.onReadyForCheckpoint.attach(async (message) => {
+      // Flush before checkpointing so we don't flush the same spans again after restore
+      await this.#backgroundWorker.flushTelemetry();
       this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
     });
 
@@ -228,6 +230,12 @@ class ProdWorker {
     if (willCheckpointAndRestore) {
       this.paused = true;
       this.nextResumeAfter = reason;
+
+      if (reason === "WAIT_FOR_TASK" || reason === "WAIT_FOR_BATCH") {
+        // Flush before checkpointing so we don't flush the same spans again after restore
+        // Duration waits do this via the "ready for checkpoint" event instead
+        await this.#backgroundWorker.flushTelemetry();
+      }
     }
   }
 
