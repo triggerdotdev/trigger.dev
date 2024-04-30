@@ -16,6 +16,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -41,7 +42,8 @@ import {
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { TaskActivity, TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
+import { useTextFilter } from "~/hooks/useTextFilter";
+import { Task, TaskActivity, TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3RunsPath, v3TasksStreamingPath } from "~/utils/pathBuilder";
@@ -79,6 +81,31 @@ export default function Page() {
   const project = useProject();
   const { tasks, userHasTasks, activity, runningStats, durations } =
     useTypedLoaderData<typeof loader>();
+  const { filterText, setFilterText, filteredItems } = useTextFilter<Task>({
+    items: tasks,
+    filter: (task, text) => {
+      if (task.slug.toLowerCase().includes(text.toLowerCase())) {
+        return true;
+      }
+
+      if (
+        task.exportName.toLowerCase().includes(text.toLowerCase().replace("(", "").replace(")", ""))
+      ) {
+        return true;
+      }
+
+      if (task.filePath.toLowerCase().includes(text.toLowerCase())) {
+        return true;
+      }
+
+      if (task.triggerSource === "SCHEDULED" && "scheduled".includes(text.toLowerCase())) {
+        return true;
+      }
+
+      return false;
+    },
+  });
+
   const hasTasks = tasks.length > 0;
 
   //live reload the page when the tasks change
@@ -100,11 +127,22 @@ export default function Page() {
         <PageTitle title="Tasks" />
       </NavBar>
       <PageBody>
-        <div className={cn("grid h-full grid-cols-1 gap-4")}>
-          <div className="h-full">
-            {hasTasks ? (
-              <div className="flex flex-col gap-4 pb-4">
-                {!userHasTasks && <UserHasNoTasks />}
+        <div className={cn("grid h-full grid-rows-1")}>
+          {hasTasks ? (
+            <div className="flex flex-col gap-4 pb-4">
+              {!userHasTasks && <UserHasNoTasks />}
+              <div>
+                <div className="h-8">
+                  <Input
+                    placeholder="Search tasks"
+                    variant="tertiary"
+                    icon="search"
+                    fullWidth={true}
+                    value={filterText}
+                    onChange={(e) => setFilterText(e.target.value)}
+                    autoFocus
+                  />
+                </div>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -119,8 +157,8 @@ export default function Page() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {tasks.length > 0 ? (
-                      tasks.map((task) => {
+                    {filteredItems.length > 0 ? (
+                      filteredItems.map((task) => {
                         const path = v3RunsPath(organization, project, {
                           tasks: [task.slug],
                         });
@@ -217,7 +255,7 @@ export default function Page() {
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={6}>
+                      <TableBlankRow colSpan={8}>
                         <Paragraph variant="small" className="flex items-center justify-center">
                           No tasks match your filters
                         </Paragraph>
@@ -226,12 +264,12 @@ export default function Page() {
                   </TableBody>
                 </Table>
               </div>
-            ) : (
-              <MainCenteredContainer className="max-w-prose">
-                <CreateTaskInstructions />
-              </MainCenteredContainer>
-            )}
-          </div>
+            </div>
+          ) : (
+            <MainCenteredContainer className="max-w-prose">
+              <CreateTaskInstructions />
+            </MainCenteredContainer>
+          )}
         </div>
       </PageBody>
     </PageContainer>
