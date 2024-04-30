@@ -131,7 +131,7 @@ export default function Page() {
           {hasTasks ? (
             <div className="flex flex-col gap-4 pb-4">
               {!userHasTasks && <UserHasNoTasks />}
-              <div>
+              <div className="pb-4">
                 <div className="h-8">
                   <Input
                     placeholder="Search tasks"
