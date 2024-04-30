@@ -1,4 +1,5 @@
 import {
+  APIError,
   BackgroundWorkerProperties,
   BackgroundWorkerServerMessages,
   CreateBackgroundWorkerResponse,
@@ -12,6 +13,7 @@ import {
   TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
+  TaskRunFailedExecutionResult,
   childToWorkerMessages,
   correctErrorStackTrace,
   formatDurationMilliseconds,
@@ -48,6 +50,11 @@ export class BackgroundWorkerCoordinator {
     worker: BackgroundWorker;
     execution: TaskRunExecution;
   }> = new Evt();
+  public onTaskFailedToRun: Evt<{
+    backgroundWorkerId: string;
+    worker: BackgroundWorker;
+    completion: TaskRunFailedExecutionResult;
+  }> = new Evt();
   public onWorkerRegistered: Evt<{
     worker: BackgroundWorker;
     id: string;
@@ -73,21 +80,22 @@ export class BackgroundWorkerCoordinator {
   private _deprecatedWorkers: Set<string> = new Set();
 
   constructor(private baseURL: string) {
-    this.onTaskCompleted.attach(async ({ completion, execution }) => {
+    this.onTaskCompleted.attach(async ({ completion }) => {
       if (!completion.ok && typeof completion.retry !== "undefined") {
         return;
       }
 
-      await this.#notifyWorkersOfTaskCompletion(completion, execution);
+      await this.#notifyWorkersOfTaskCompletion(completion);
+    });
+
+    this.onTaskFailedToRun.attach(async ({ completion }) => {
+      await this.#notifyWorkersOfTaskCompletion(completion);
     });
   }
 
-  async #notifyWorkersOfTaskCompletion(
-    completion: TaskRunExecutionResult,
-    execution: TaskRunExecution
-  ) {
+  async #notifyWorkersOfTaskCompletion(completion: TaskRunExecutionResult) {
     for (const worker of this._backgroundWorkers.values()) {
-      await worker.taskRunCompletedNotification(completion, execution);
+      await worker.taskRunCompletedNotification(completion);
     }
   }
 
@@ -173,14 +181,43 @@ export class BackgroundWorkerCoordinator {
       return;
     }
 
-    const { completion, execution } = await worker.executeTaskRunLazyAttempt(payload, this.baseURL);
+    try {
+      const { completion, execution } = await worker.executeTaskRunLazyAttempt(
+        payload,
+        this.baseURL
+      );
 
-    this.onTaskCompleted.post({
-      completion,
-      execution,
-      worker,
-      backgroundWorkerId: id,
-    });
+      this.onTaskCompleted.post({
+        completion,
+        execution,
+        worker,
+        backgroundWorkerId: id,
+      });
+    } catch (error) {
+      this.onTaskFailedToRun.post({
+        backgroundWorkerId: id,
+        worker,
+        completion: {
+          ok: false,
+          id: payload.runId,
+          retry: undefined,
+          error:
+            error instanceof Error
+              ? {
+                  type: "BUILT_IN_ERROR",
+                  name: error.name,
+                  message: error.message,
+                  stackTrace: error.stack ?? "",
+                }
+              : {
+                  type: "BUILT_IN_ERROR",
+                  name: "UnknownError",
+                  message: String(error),
+                  stackTrace: "",
+                },
+        },
+      });
+    }
   }
 
   async #executeTaskRun(id: string, payload: TaskRunExecutionPayload) {
@@ -371,12 +408,9 @@ export class BackgroundWorker {
 
   // We need to notify all the task run processes that a task run has completed,
   // in case they are waiting for it through triggerAndWait
-  async taskRunCompletedNotification(
-    completion: TaskRunExecutionResult,
-    execution: TaskRunExecution
-  ) {
+  async taskRunCompletedNotification(completion: TaskRunExecutionResult) {
     for (const taskRunProcess of this._taskRunProcesses.values()) {
-      taskRunProcess.taskRunCompletedNotification(completion, execution);
+      taskRunProcess.taskRunCompletedNotification(completion);
     }
   }
 
@@ -764,24 +798,23 @@ class TaskRunProcess {
     return result;
   }
 
-  taskRunCompletedNotification(completion: TaskRunExecutionResult, execution: TaskRunExecution) {
+  taskRunCompletedNotification(completion: TaskRunExecutionResult) {
     if (!completion.ok && typeof completion.retry !== "undefined") {
       return;
     }
 
-    if (execution.run.id === this.runId) {
+    if (completion.id === this.runId) {
       // We don't need to notify the task run process if it's the same as the one we're running
       return;
     }
 
     logger.debug(`[${this.runId}] task run completed notification`, {
       completion,
-      execution,
     });
 
     this._sender.send("TASK_RUN_COMPLETED_NOTIFICATION", {
+      version: "v2",
       completion,
-      execution,
     });
   }
 

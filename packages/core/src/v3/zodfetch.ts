@@ -16,12 +16,12 @@ export type ZodFetchOptions = {
   retry?: RetryOptions;
 };
 
-export async function zodfetch<TResponseBody extends any>(
-  schema: z.Schema<TResponseBody>,
+export async function zodfetch<T extends z.ZodTypeAny>(
+  schema: T,
   url: string,
   requestInit?: RequestInit,
   options?: ZodFetchOptions
-): Promise<TResponseBody> {
+): Promise<z.infer<T>> {
   return await _doZodFetch(schema, url, requestInit, options);
 }
 

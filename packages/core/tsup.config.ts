@@ -15,5 +15,6 @@ export default defineConfig({
     "./src/v3/dev/index.ts",
     "./src/v3/prod/index.ts",
     "./src/v3/workers/index.ts",
+    "./src/v3/zodfetch.ts",
   ],
 });

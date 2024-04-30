@@ -4,6 +4,7 @@ import {
   TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
+  TaskRunFailedExecutionResult,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
 import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
@@ -24,6 +25,7 @@ import {
   tracer,
 } from "../tracer.server";
 import { DevSubscriber, devPubSub } from "./devPubSub.server";
+import { FailedTaskRunService } from "../failedTaskRun.server";
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
@@ -141,6 +143,22 @@ export class DevQueueConsumer {
     if (result === "COMPLETED") {
       this._inProgressRuns.delete(execution.run.id);
     }
+  }
+
+  public async taskRunFailed(workerId: string, completion: TaskRunFailedExecutionResult) {
+    this._taskFailures++;
+
+    logger.debug("[DevQueueConsumer] taskRunFailed()", { completion });
+
+    this._inProgressRuns.delete(completion.id);
+
+    const service = new FailedTaskRunService();
+
+    await service.call({
+      runFriendlyId: completion.id,
+      completion,
+      env: this.env,
+    });
   }
 
   /**

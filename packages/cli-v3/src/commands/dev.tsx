@@ -110,7 +110,11 @@ export async function devCommand(dir: string, options: DevCommandOptions) {
         )} Connecting to the server failed. Please check your internet connection or contact eric@trigger.dev for help.`
       );
     } else {
-      logger.log(`${chalkError("X Error:")} You must login first. Use the \`login\` CLI command.`);
+      logger.log(
+        `${chalkError("X Error:")} You must login first. Use the \`login\` CLI command.\n\n${
+          authorization.error
+        }`
+      );
     }
     process.exitCode = 1;
     return;
@@ -312,6 +316,18 @@ function useDev({
             type: "TASK_RUN_COMPLETED",
             completion,
             execution,
+          },
+        });
+      }
+    );
+
+    backgroundWorkerCoordinator.onTaskFailedToRun.attach(
+      async ({ backgroundWorkerId, completion }) => {
+        await sender.send("BACKGROUND_WORKER_MESSAGE", {
+          backgroundWorkerId,
+          data: {
+            type: "TASK_RUN_FAILED_TO_RUN",
+            completion,
           },
         });
       }

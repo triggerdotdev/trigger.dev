@@ -187,7 +187,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         `Failed to connect to ${authorization.auth?.apiUrl}. Are you sure it's the correct URL?`
       );
     } else {
-      throw new Error("You must login first. Use `trigger.dev login` to login.");
+      throw new Error(
+        `You must login first. Use the \`login\` CLI command.\n\n${authorization.error}`
+      );
     }
   }
 

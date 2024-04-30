@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TaskRunExecution, TaskRunExecutionResult } from "./common";
+import { TaskRunExecution, TaskRunExecutionResult, TaskRunFailedExecutionResult } from "./common";
 
 import {
   EnvironmentType,
@@ -65,6 +65,11 @@ export const BackgroundWorkerClientMessages = z.discriminatedUnion("type", [
   }),
   z.object({
     version: z.literal("v1").default("v1"),
+    type: z.literal("TASK_RUN_FAILED_TO_RUN"),
+    completion: TaskRunFailedExecutionResult,
+  }),
+  z.object({
+    version: z.literal("v1").default("v1"),
     type: z.literal("TASK_HEARTBEAT"),
     id: z.string(),
   }),
@@ -109,11 +114,17 @@ export const workerToChildMessages = {
     traceContext: z.record(z.unknown()),
     metadata: BackgroundWorkerProperties,
   }),
-  TASK_RUN_COMPLETED_NOTIFICATION: z.object({
-    version: z.literal("v1").default("v1"),
-    completion: TaskRunExecutionResult,
-    execution: TaskRunExecution,
-  }),
+  TASK_RUN_COMPLETED_NOTIFICATION: z.discriminatedUnion("version", [
+    z.object({
+      version: z.literal("v1"),
+      completion: TaskRunExecutionResult,
+      execution: TaskRunExecution,
+    }),
+    z.object({
+      version: z.literal("v2"),
+      completion: TaskRunExecutionResult,
+    }),
+  ]),
   CLEANUP: z.object({
     version: z.literal("v1").default("v1"),
     flush: z.boolean().default(false),

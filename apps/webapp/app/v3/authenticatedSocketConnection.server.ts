@@ -72,6 +72,14 @@ export class AuthenticatedSocketConnection {
               );
               break;
             }
+            case "TASK_RUN_FAILED_TO_RUN": {
+              await this._consumer.taskRunFailed(
+                payload.backgroundWorkerId,
+                payload.data.completion
+              );
+
+              break;
+            }
             case "TASK_HEARTBEAT": {
               await this._consumer.taskHeartbeat(payload.backgroundWorkerId, payload.data.id);
               break;

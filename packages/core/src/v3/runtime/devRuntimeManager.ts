@@ -80,18 +80,18 @@ export class DevRuntimeManager implements RuntimeManager {
     };
   }
 
-  resumeTask(completion: TaskRunExecutionResult, execution: TaskRunExecution): void {
-    const wait = this._taskWaits.get(execution.run.id);
+  resumeTask(completion: TaskRunExecutionResult, runId: string): void {
+    const wait = this._taskWaits.get(runId);
 
     if (!wait) {
       // We need to store the completion in case the task is awaited later
-      this._pendingCompletionNotifications.set(execution.run.id, completion);
+      this._pendingCompletionNotifications.set(runId, completion);
 
       return;
     }
 
     wait.resolve(completion);
 
-    this._taskWaits.delete(execution.run.id);
+    this._taskWaits.delete(runId);
   }
 }
