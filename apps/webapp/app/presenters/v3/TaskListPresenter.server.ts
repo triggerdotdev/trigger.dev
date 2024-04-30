@@ -186,6 +186,10 @@ export class TaskListPresenter extends BasePresenter {
   }
 
   async #getActivity(tasks: string[], projectId: string) {
+    if (tasks.length === 0) {
+      return {};
+    }
+
     const activity = await this._replica.$queryRaw<
       {
         taskIdentifier: string;
@@ -257,6 +261,10 @@ export class TaskListPresenter extends BasePresenter {
   }
 
   async #getRunningStats(tasks: string[], projectId: string) {
+    if (tasks.length === 0) {
+      return {};
+    }
+
     const statuses = await this._replica.$queryRaw<
       {
         taskIdentifier: string;
@@ -305,6 +313,10 @@ export class TaskListPresenter extends BasePresenter {
   }
 
   async #getAverageDurations(tasks: string[], projectId: string) {
+    if (tasks.length === 0) {
+      return {};
+    }
+
     const durations = await this._replica.$queryRaw<
       {
         taskIdentifier: string;
