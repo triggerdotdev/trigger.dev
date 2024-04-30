@@ -418,11 +418,21 @@ export class SharedQueueConsumer {
         });
 
         if (!queue) {
+          logger.debug("SharedQueueConsumer queue not found, so nacking message", {
+            queueMessage: message,
+            taskRunQueue: lockedTaskRun.queue,
+            runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
+          });
+
           await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
           return;
         }
 
         if (!this._enabled) {
+          logger.debug("SharedQueueConsumer not enabled, so nacking message", {
+            queueMessage: message,
+          });
+
           await marqs?.nackMessage(message.messageId);
           return;
         }
@@ -527,6 +537,11 @@ export class SharedQueueConsumer {
               },
             }),
           ]);
+
+          logger.error("SharedQueueConsumer errored, so nacking message", {
+            queueMessage: message,
+            error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : e,
+          });
 
           await this.#nackAndDoMoreWork(message.messageId);
           return;

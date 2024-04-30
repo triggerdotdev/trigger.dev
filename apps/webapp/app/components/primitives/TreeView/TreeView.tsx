@@ -246,7 +246,7 @@ export function useTree<TData, TFilterValue>({
 
   const scrollToNodeFn = useCallback(
     (id: string) => {
-      const itemIndex = tree.findIndex((node) => node.id === id);
+      const itemIndex = state.visibleNodeIds.findIndex((n) => n === id);
 
       if (itemIndex !== -1) {
         virtualizer.scrollToIndex(itemIndex, { align: "auto" });
