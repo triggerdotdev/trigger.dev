@@ -28,6 +28,7 @@ import {
 import { CancelRunDialog } from "./CancelRunDialog";
 import { ReplayRunDialog } from "./ReplayRunDialog";
 import { TaskRunStatusCombo } from "./TaskRunStatus";
+import { LiveTimer } from "./LiveTimer";
 
 type RunsTableProps = {
   total: number;
@@ -94,9 +95,11 @@ export function TaskRunsTable({
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}
                 </TableCell>
                 <TableCell to={path}>
-                  {formatDuration(run.startedAt, run.completedAt, {
-                    style: "short",
-                  })}
+                  {run.startedAt ? (
+                    <LiveTimer startTime={run.startedAt} endTime={run.finishedAt} />
+                  ) : (
+                    "–"
+                  )}
                 </TableCell>
                 <TableCell to={path}>
                   {run.isTest ? (

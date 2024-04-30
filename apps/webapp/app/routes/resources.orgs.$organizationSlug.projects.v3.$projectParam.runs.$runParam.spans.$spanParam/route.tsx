@@ -342,7 +342,9 @@ function Timeline({ startTime, duration, inProgress, isError }: TimelineProps) {
           <DateTimeAccurate date={startTime} />
         </Paragraph>
         {state === "pending" ? (
-          <LiveTimer startTime={startTime} className="" />
+          <Paragraph variant="extra-small" className={cn("whitespace-nowrap tabular-nums")}>
+            <LiveTimer startTime={startTime} />
+          </Paragraph>
         ) : (
           <Paragraph variant="small">
             <DateTimeAccurate

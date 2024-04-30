@@ -5,6 +5,7 @@ import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
 import { getUsername } from "~/utils/username";
 import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 import { BasePresenter } from "./basePresenter.server";
+import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 
 type RunListOptions = {
   userId?: string;
@@ -102,10 +103,9 @@ export class RunListPresenter extends BasePresenter {
         status: TaskRunStatus;
         createdAt: Date;
         lockedAt: Date | null;
-        completedAt: Date | null;
+        updatedAt: Date;
         isTest: boolean;
         spanId: string;
-        attempts: BigInt;
       }[]
     >`
     SELECT
@@ -118,20 +118,13 @@ export class RunListPresenter extends BasePresenter {
     tr.status AS status,
     tr."createdAt" AS "createdAt",
     tr."lockedAt" AS "lockedAt",
-    tra."completedAt" AS "completedAt",
+    tr."updatedAt" AS "updatedAt",
     tr."isTest" AS "isTest",
-    tr."spanId" AS "spanId",
-    COUNT(tra.id) AS attempts
+    tr."spanId" AS "spanId"
   FROM
     ${sqlDatabaseSchema}."TaskRun" tr
   LEFT JOIN
-    (
-      SELECT *,
-        ROW_NUMBER() OVER (PARTITION BY "taskRunId" ORDER BY "createdAt" DESC) rn
-      FROM ${sqlDatabaseSchema}."TaskRunAttempt"
-    ) tra ON tr.id = tra."taskRunId" AND tra.rn = 1
-  LEFT JOIN
-    ${sqlDatabaseSchema}."BackgroundWorker" bw ON tra."backgroundWorkerId" = bw.id
+    ${sqlDatabaseSchema}."BackgroundWorker" bw ON tr."lockedToVersionId" = bw.id
   WHERE
       -- project
       tr."projectId" = ${project.id}
@@ -174,8 +167,6 @@ export class RunListPresenter extends BasePresenter {
           ? Prisma.sql`AND tr."createdAt" <= ${new Date(to).toISOString()}::timestamp`
           : Prisma.empty
       } 
-  GROUP BY
-    tr."friendlyId", tr."taskIdentifier", tr."runtimeEnvironmentId", tr.id, bw.version, tra.status, tr."createdAt", tra."startedAt", tra."completedAt"
   ORDER BY
     ${direction === "forward" ? Prisma.sql`tr.id DESC` : Prisma.sql`tr.id ASC`}
   LIMIT ${pageSize + 1}`;
@@ -214,19 +205,21 @@ export class RunListPresenter extends BasePresenter {
           throw new Error(`Environment not found for TaskRun ${run.id}`);
         }
 
+        const hasFinished = FINISHED_STATUSES.includes(run.status);
+
         return {
           id: run.id,
           friendlyId: run.runFriendlyId,
           number: Number(run.number),
           createdAt: run.createdAt,
           startedAt: run.lockedAt,
-          completedAt: run.completedAt,
+          hasFinished,
+          finishedAt: hasFinished ? run.updatedAt : undefined,
           isTest: run.isTest,
           status: run.status,
           version: run.version,
           taskIdentifier: run.taskIdentifier,
           spanId: run.spanId,
-          attempts: Number(run.attempts),
           isReplayable: true,
           isCancellable: CANCELLABLE_STATUSES.includes(run.status),
           environment: displayableEnvironments(environment, userId),
