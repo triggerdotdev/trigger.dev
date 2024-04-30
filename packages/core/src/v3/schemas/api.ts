@@ -41,6 +41,7 @@ export type GetProjectEnvResponse = z.infer<typeof GetProjectEnvResponse>;
 export const CreateBackgroundWorkerRequestBody = z.object({
   localOnly: z.boolean(),
   metadata: BackgroundWorkerMetadata,
+  supportsLazyAttempts: z.boolean().optional(),
 });
 
 export type CreateBackgroundWorkerRequestBody = z.infer<typeof CreateBackgroundWorkerRequestBody>;

@@ -19,10 +19,11 @@ export const longRunningParent = task({
   run: async (payload: { message: string }) => {
     logger.info("Long running parent", { payload });
 
-    await longRunning.triggerAndWait({ message: "child" });
+    const result = await longRunning.triggerAndWait({ message: "child" });
 
     return {
       finished: new Date().toISOString(),
+      result,
     };
   },
 });

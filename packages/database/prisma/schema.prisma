@@ -1539,6 +1539,8 @@ model BackgroundWorker {
 
   deployment WorkerDeployment?
 
+  supportsLazyAttempts Boolean @default(false)
+
   @@unique([projectId, runtimeEnvironmentId, version])
 }
 

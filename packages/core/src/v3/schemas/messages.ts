@@ -1,11 +1,13 @@
 import { z } from "zod";
 import { TaskRunExecution, TaskRunExecutionResult } from "./common";
+
 import {
   EnvironmentType,
   Machine,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   TaskMetadataWithFilePath,
+  TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionPayload,
   WaitReason,
 } from "./schemas";
@@ -33,6 +35,10 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     orgId: z.string(),
     projectId: z.string(),
     runId: z.string(),
+  }),
+  z.object({
+    type: z.literal("EXECUTE_RUN_LAZY_ATTEMPT"),
+    payload: TaskRunExecutionLazyAttemptPayload,
   }),
 ]);
 
@@ -62,6 +68,11 @@ export const BackgroundWorkerClientMessages = z.discriminatedUnion("type", [
     type: z.literal("TASK_HEARTBEAT"),
     id: z.string(),
   }),
+  z.object({
+    version: z.literal("v1").default("v1"),
+    type: z.literal("TASK_RUN_HEARTBEAT"),
+    id: z.string(),
+  }),
 ]);
 
 export type BackgroundWorkerClientMessages = z.infer<typeof BackgroundWorkerClientMessages>;
@@ -78,6 +89,7 @@ export const clientWebsocketMessages = {
   READY_FOR_TASKS: z.object({
     version: z.literal("v1").default("v1"),
     backgroundWorkerId: z.string(),
+    inProgressRuns: z.string().array().optional(),
   }),
   BACKGROUND_WORKER_DEPRECATED: z.object({
     version: z.literal("v1").default("v1"),

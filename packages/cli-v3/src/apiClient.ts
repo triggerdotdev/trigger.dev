@@ -14,6 +14,7 @@ import {
   GetDeploymentResponseBody,
   GetProjectsResponseBody,
   GetProjectResponseBody,
+  TaskRunExecution,
 } from "@trigger.dev/core/v3";
 
 export class CliApiClient {
@@ -101,6 +102,20 @@ export class CliApiClient {
         body: JSON.stringify(body),
       }
     );
+  }
+
+  async createTaskRunAttempt(runFriendlyId: string) {
+    if (!this.accessToken) {
+      throw new Error("creatTaskRunAttempt: No access token");
+    }
+
+    return zodfetch(TaskRunExecution, `${this.apiURL}/api/v1/runs/${runFriendlyId}/attempts`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
   }
 
   async getProjectEnv({
@@ -198,11 +213,11 @@ type ApiResult<TSuccessResult> =
       error: string;
     };
 
-async function zodfetch<TResponseBody extends any>(
-  schema: z.Schema<TResponseBody>,
+async function zodfetch<T extends z.ZodTypeAny>(
+  schema: T,
   url: string,
   requestInit?: RequestInit
-): Promise<ApiResult<TResponseBody>> {
+): Promise<ApiResult<z.infer<T>>> {
   try {
     const response = await fetch(url, requestInit);
 

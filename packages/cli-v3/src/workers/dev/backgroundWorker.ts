@@ -9,6 +9,7 @@ import {
   TaskRunError,
   TaskRunErrorCodes,
   TaskRunExecution,
+  TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
   childToWorkerMessages,
@@ -37,6 +38,7 @@ import { safeDeleteFileSync } from "../../utilities/fileSystem.js";
 import { installPackages } from "../../utilities/installPackages.js";
 import { logger } from "../../utilities/logger.js";
 import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors.js";
+import { CliApiClient } from "../../apiClient.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -51,7 +53,16 @@ export class BackgroundWorkerCoordinator {
     id: string;
     record: CreateBackgroundWorkerResponse;
   }> = new Evt();
+
+  /**
+   * @deprecated use onWorkerTaskRunHeartbeat instead
+   */
   public onWorkerTaskHeartbeat: Evt<{
+    id: string;
+    backgroundWorkerId: string;
+    worker: BackgroundWorker;
+  }> = new Evt();
+  public onWorkerTaskRunHeartbeat: Evt<{
     id: string;
     backgroundWorkerId: string;
     worker: BackgroundWorker;
@@ -106,6 +117,10 @@ export class BackgroundWorkerCoordinator {
     worker.onTaskHeartbeat.attach((id) => {
       this.onWorkerTaskHeartbeat.post({ id, backgroundWorkerId: record.id, worker });
     });
+
+    worker.onTaskRunHeartbeat.attach((id) => {
+      this.onWorkerTaskRunHeartbeat.post({ id, backgroundWorkerId: record.id, worker });
+    });
   }
 
   close() {
@@ -135,8 +150,37 @@ export class BackgroundWorkerCoordinator {
         }
 
         await worker.cancelRun(message.taskRunId);
+        break;
+      }
+      case "EXECUTE_RUN_LAZY_ATTEMPT": {
+        await this.#executeTaskRunLazyAttempt(id, message.payload);
       }
     }
+  }
+
+  async #executeTaskRunLazyAttempt(id: string, payload: TaskRunExecutionLazyAttemptPayload) {
+    const worker = this._backgroundWorkers.get(id);
+
+    if (!worker) {
+      logger.error(`Could not find worker ${id}`);
+      return;
+    }
+
+    const record = this._records.get(id);
+
+    if (!record) {
+      logger.error(`Could not find worker record ${id}`);
+      return;
+    }
+
+    const { completion, execution } = await worker.executeTaskRunLazyAttempt(payload, this.baseURL);
+
+    this.onTaskCompleted.post({
+      completion,
+      execution,
+      worker,
+      backgroundWorkerId: id,
+    });
   }
 
   async #executeTaskRun(id: string, payload: TaskRunExecutionPayload) {
@@ -154,82 +198,14 @@ export class BackgroundWorkerCoordinator {
       return;
     }
 
-    const { execution } = payload;
+    const completion = await worker.executeTaskRun(payload, this.baseURL);
 
-    // ○ Mar 27 09:17:25.653 -> View logs | 20240326.20 | create-avatar | run_slufhjdfiv8ejnrkw9dsj.1
-
-    const logsUrl = `${this.baseURL}/runs/${execution.run.id}`;
-
-    const pipe = chalkGrey("|");
-    const bullet = chalkGrey("○");
-    const link = chalkLink(terminalLink("View logs", logsUrl));
-    let timestampPrefix = chalkGrey(prettyPrintDate(payload.execution.attempt.startedAt));
-    const workerPrefix = chalkWorker(record.version);
-    const taskPrefix = chalkTask(execution.task.id);
-    const runId = chalkRun(`${execution.run.id}.${execution.attempt.number}`);
-
-    logger.log(
-      `${bullet} ${timestampPrefix} ${chalkGrey(
-        "->"
-      )} ${link} ${pipe} ${workerPrefix} ${pipe} ${taskPrefix} ${pipe} ${runId}`
-    );
-
-    const now = performance.now();
-
-    const completion = await worker.executeTaskRun(payload);
-
-    const elapsed = performance.now() - now;
-
-    const retryingText = chalkGrey(
-      !completion.ok && completion.skippedRetrying
-        ? " (retrying skipped)"
-        : !completion.ok && completion.retry !== undefined
-        ? ` (retrying in ${completion.retry.delay}ms)`
-        : ""
-    );
-
-    const resultText = !completion.ok
-      ? completion.error.type === "INTERNAL_ERROR" &&
-        (completion.error.code === TaskRunErrorCodes.TASK_EXECUTION_ABORTED ||
-          completion.error.code === TaskRunErrorCodes.TASK_RUN_CANCELLED)
-        ? chalkWarning("Cancelled")
-        : `${chalkError("Error")}${retryingText}`
-      : chalkSuccess("Success");
-
-    const errorText = !completion.ok
-      ? this.#formatErrorLog(completion.error)
-      : "retry" in completion
-      ? `retry in ${completion.retry}ms`
-      : "";
-
-    const elapsedText = chalkGrey(`(${formatDurationMilliseconds(elapsed, { style: "short" })})`);
-
-    timestampPrefix = chalkGrey(prettyPrintDate());
-
-    logger.log(
-      `${bullet} ${timestampPrefix} ${chalkGrey(
-        "->"
-      )} ${link} ${pipe} ${workerPrefix} ${pipe} ${taskPrefix} ${pipe} ${runId} ${pipe} ${resultText} ${elapsedText}${errorText}`
-    );
-
-    this.onTaskCompleted.post({ completion, execution, worker, backgroundWorkerId: id });
-  }
-
-  #formatErrorLog(error: TaskRunError) {
-    switch (error.type) {
-      case "INTERNAL_ERROR": {
-        return "";
-      }
-      case "STRING_ERROR": {
-        return `\n\n${chalkError("X Error:")} ${error.raw}\n`;
-      }
-      case "CUSTOM_ERROR": {
-        return `\n\n${chalkError("X Error:")} ${error.raw}\n`;
-      }
-      case "BUILT_IN_ERROR": {
-        return `\n\n${error.stackTrace.replace(/^Error: /, chalkError("X Error: "))}\n`;
-      }
-    }
+    this.onTaskCompleted.post({
+      completion,
+      execution: payload.execution,
+      worker,
+      backgroundWorkerId: id,
+    });
   }
 }
 
@@ -264,13 +240,18 @@ export type BackgroundWorkerParams = {
   debuggerOn: boolean;
   debugOtel?: boolean;
 };
+
 export class BackgroundWorker {
   private _initialized: boolean = false;
   private _handler = new ZodMessageHandler({
     schema: childToWorkerMessages,
   });
 
+  /**
+   * @deprecated use onTaskRunHeartbeat instead
+   */
   public onTaskHeartbeat: Evt<string> = new Evt();
+  public onTaskRunHeartbeat: Evt<string> = new Evt();
   private _onClose: Evt<void> = new Evt();
 
   public tasks: Array<TaskMetadataWithFilePath> = [];
@@ -282,7 +263,8 @@ export class BackgroundWorker {
 
   constructor(
     public path: string,
-    private params: BackgroundWorkerParams
+    private params: BackgroundWorkerParams,
+    private apiClient: CliApiClient
   ) {}
 
   close() {
@@ -293,6 +275,7 @@ export class BackgroundWorker {
     this._closed = true;
 
     this.onTaskHeartbeat.detach();
+    this.onTaskRunHeartbeat.detach();
 
     // We need to close all the task run processes
     for (const taskRunProcess of this._taskRunProcesses.values()) {
@@ -304,6 +287,10 @@ export class BackgroundWorker {
 
     safeDeleteFileSync(this.path);
     safeDeleteFileSync(`${this.path}.map`);
+  }
+
+  get inProgressRuns(): Array<string> {
+    return Array.from(this._taskRunProcesses.keys());
   }
 
   async initialize() {
@@ -393,14 +380,18 @@ export class BackgroundWorker {
     }
   }
 
-  async #initializeTaskRunProcess(payload: TaskRunExecutionPayload): Promise<TaskRunProcess> {
+  async #initializeTaskRunProcess(
+    payload: TaskRunExecutionPayload,
+    messageId?: string
+  ): Promise<TaskRunProcess> {
     if (!this.metadata) {
       throw new Error("Worker not registered");
     }
 
     if (!this._taskRunProcesses.has(payload.execution.run.id)) {
       const taskRunProcess = new TaskRunProcess(
-        payload.execution,
+        payload.execution.run.id,
+        payload.execution.run.isTest,
         this.path,
         {
           ...this.params.env,
@@ -408,7 +399,8 @@ export class BackgroundWorker {
           ...this.#readEnvVars(),
         },
         this.metadata,
-        this.params
+        this.params,
+        messageId
       );
 
       taskRunProcess.onExit.attach(() => {
@@ -417,6 +409,10 @@ export class BackgroundWorker {
 
       taskRunProcess.onTaskHeartbeat.attach((id) => {
         this.onTaskHeartbeat.post(id);
+      });
+
+      taskRunProcess.onTaskRunHeartbeat.attach((id) => {
+        this.onTaskRunHeartbeat.post(id);
       });
 
       await taskRunProcess.initialize();
@@ -437,10 +433,104 @@ export class BackgroundWorker {
     await taskRunProcess.cancel();
   }
 
+  async executeTaskRunLazyAttempt(payload: TaskRunExecutionLazyAttemptPayload, baseURL: string) {
+    const attemptResponse = await this.apiClient.createTaskRunAttempt(payload.runId);
+
+    if (!attemptResponse.success) {
+      throw new Error(`Failed to create task run attempt: ${attemptResponse.error}`);
+    }
+
+    const execution = attemptResponse.data;
+
+    const completion = await this.executeTaskRun(
+      { execution, traceContext: payload.traceContext, environment: payload.environment },
+      baseURL,
+      payload.messageId
+    );
+
+    return { execution, completion };
+  }
+
   // We need to fork the process before we can execute any tasks
-  async executeTaskRun(payload: TaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
+  async executeTaskRun(
+    payload: TaskRunExecutionPayload,
+    baseURL: string,
+    messageId?: string
+  ): Promise<TaskRunExecutionResult> {
+    if (this._closed) {
+      throw new Error("Worker is closed");
+    }
+
+    if (!this.metadata) {
+      throw new Error("Worker not registered");
+    }
+
+    const { execution } = payload;
+    // ○ Mar 27 09:17:25.653 -> View logs | 20240326.20 | create-avatar | run_slufhjdfiv8ejnrkw9dsj.1
+
+    const logsUrl = `${baseURL}/runs/${execution.run.id}`;
+
+    const pipe = chalkGrey("|");
+    const bullet = chalkGrey("○");
+    const link = chalkLink(terminalLink("View logs", logsUrl));
+    let timestampPrefix = chalkGrey(prettyPrintDate(payload.execution.attempt.startedAt));
+    const workerPrefix = chalkWorker(this.metadata.version);
+    const taskPrefix = chalkTask(execution.task.id);
+    const runId = chalkRun(`${execution.run.id}.${execution.attempt.number}`);
+
+    logger.log(
+      `${bullet} ${timestampPrefix} ${chalkGrey(
+        "->"
+      )} ${link} ${pipe} ${workerPrefix} ${pipe} ${taskPrefix} ${pipe} ${runId}`
+    );
+
+    const now = performance.now();
+
+    const completion = await this.#doExecuteTaskRun(payload, messageId);
+
+    const elapsed = performance.now() - now;
+
+    const retryingText = chalkGrey(
+      !completion.ok && completion.skippedRetrying
+        ? " (retrying skipped)"
+        : !completion.ok && completion.retry !== undefined
+        ? ` (retrying in ${completion.retry.delay}ms)`
+        : ""
+    );
+
+    const resultText = !completion.ok
+      ? completion.error.type === "INTERNAL_ERROR" &&
+        (completion.error.code === TaskRunErrorCodes.TASK_EXECUTION_ABORTED ||
+          completion.error.code === TaskRunErrorCodes.TASK_RUN_CANCELLED)
+        ? chalkWarning("Cancelled")
+        : `${chalkError("Error")}${retryingText}`
+      : chalkSuccess("Success");
+
+    const errorText = !completion.ok
+      ? formatErrorLog(completion.error)
+      : "retry" in completion
+      ? `retry in ${completion.retry}ms`
+      : "";
+
+    const elapsedText = chalkGrey(`(${formatDurationMilliseconds(elapsed, { style: "short" })})`);
+
+    timestampPrefix = chalkGrey(prettyPrintDate());
+
+    logger.log(
+      `${bullet} ${timestampPrefix} ${chalkGrey(
+        "->"
+      )} ${link} ${pipe} ${workerPrefix} ${pipe} ${taskPrefix} ${pipe} ${runId} ${pipe} ${resultText} ${elapsedText}${errorText}`
+    );
+
+    return completion;
+  }
+
+  async #doExecuteTaskRun(
+    payload: TaskRunExecutionPayload,
+    messageId?: string
+  ): Promise<TaskRunExecutionResult> {
     try {
-      const taskRunProcess = await this.#initializeTaskRunProcess(payload);
+      const taskRunProcess = await this.#initializeTaskRunProcess(payload, messageId);
       const result = await taskRunProcess.executeTaskRun(payload);
 
       // Kill the worker if the task was successful or if it's not going to be retried);
@@ -553,15 +643,21 @@ class TaskRunProcess {
   private _currentExecution: TaskRunExecution | undefined;
   private _isBeingKilled: boolean = false;
   private _isBeingCancelled: boolean = false;
+  /**
+   * @deprecated use onTaskRunHeartbeat instead
+   */
   public onTaskHeartbeat: Evt<string> = new Evt();
+  public onTaskRunHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<number> = new Evt();
 
   constructor(
-    private execution: TaskRunExecution,
+    private runId: string,
+    private isTest: boolean,
     private path: string,
     private env: NodeJS.ProcessEnv,
     private metadata: BackgroundWorkerProperties,
-    private worker: BackgroundWorkerParams
+    private worker: BackgroundWorkerParams,
+    private messageId?: string
   ) {
     this._sender = new ZodMessageSender({
       schema: workerToChildMessages,
@@ -581,7 +677,7 @@ class TaskRunProcess {
 
   async initialize() {
     const fullEnv = {
-      ...(this.execution.run.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
+      ...(this.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
       ...this.env,
       OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
         [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectConfig.projectDir,
@@ -592,7 +688,7 @@ class TaskRunProcess {
 
     const cwd = dirname(this.path);
 
-    logger.debug(`[${this.execution.run.id}] initializing task run process`, {
+    logger.debug(`[${this.runId}] initializing task run process`, {
       env: fullEnv,
       path: this.path,
       cwd,
@@ -618,7 +714,7 @@ class TaskRunProcess {
       return;
     }
 
-    logger.debug(`[${this.execution.run.id}] cleaning up task run process`, { kill });
+    logger.debug(`[${this.runId}] cleaning up task run process`, { kill });
 
     await this._sender.send("CLEANUP", {
       flush: true,
@@ -630,7 +726,7 @@ class TaskRunProcess {
     // Set a timeout to kill the child process if it hasn't been killed within 5 seconds
     setTimeout(() => {
       if (this._child && !this._child.killed) {
-        logger.debug(`[${this.execution.run.id}] killing task run process after timeout`);
+        logger.debug(`[${this.runId}] killing task run process after timeout`);
 
         this._child.kill();
       }
@@ -673,12 +769,12 @@ class TaskRunProcess {
       return;
     }
 
-    if (execution.run.id === this.execution.run.id) {
+    if (execution.run.id === this.runId) {
       // We don't need to notify the task run process if it's the same as the one we're running
       return;
     }
 
-    logger.debug(`[${this.execution.run.id}] task run completed notification`, {
+    logger.debug(`[${this.runId}] task run completed notification`, {
       completion,
       execution,
     });
@@ -717,14 +813,18 @@ class TaskRunProcess {
         break;
       }
       case "READY_TO_DISPOSE": {
-        logger.debug(`[${this.execution.run.id}] task run process is ready to dispose`);
+        logger.debug(`[${this.runId}] task run process is ready to dispose`);
 
         this.#kill();
 
         break;
       }
       case "TASK_HEARTBEAT": {
-        this.onTaskHeartbeat.post(message.payload.id);
+        if (this.messageId) {
+          this.onTaskRunHeartbeat.post(this.messageId);
+        } else {
+          this.onTaskHeartbeat.post(message.payload.id);
+        }
 
         break;
       }
@@ -735,7 +835,7 @@ class TaskRunProcess {
   }
 
   async #handleExit(code: number) {
-    logger.debug(`[${this.execution.run.id}] task run process exiting`, { code });
+    logger.debug(`[${this.runId}] task run process exiting`, { code });
 
     // Go through all the attempts currently pending and reject them
     for (const [id, status] of this._attemptStatuses.entries()) {
@@ -801,9 +901,26 @@ class TaskRunProcess {
 
   #kill() {
     if (this._child && !this._child.killed) {
-      logger.debug(`[${this.execution.run.id}] killing task run process`);
+      logger.debug(`[${this.runId}] killing task run process`);
 
       this._child?.kill();
+    }
+  }
+}
+
+function formatErrorLog(error: TaskRunError) {
+  switch (error.type) {
+    case "INTERNAL_ERROR": {
+      return "";
+    }
+    case "STRING_ERROR": {
+      return `\n\n${chalkError("X Error:")} ${error.raw}\n`;
+    }
+    case "CUSTOM_ERROR": {
+      return `\n\n${chalkError("X Error:")} ${error.raw}\n`;
+    }
+    case "BUILT_IN_ERROR": {
+      return `\n\n${error.stackTrace.replace(/^Error: /, chalkError("X Error: "))}\n`;
     }
   }
 }
