@@ -1,9 +1,10 @@
 import { Prisma, TaskRunStatus } from "@trigger.dev/database";
 import { Direction } from "~/components/runs/RunStatuses";
-import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
+import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
-import { getUsername } from "~/utils/username";
 import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
+import { BasePresenter } from "./basePresenter.server";
 
 type RunListOptions = {
   userId?: string;
@@ -28,13 +29,7 @@ export type RunList = Awaited<ReturnType<RunListPresenter["call"]>>;
 export type RunListItem = RunList["runs"][0];
 export type RunListAppliedFilters = RunList["filters"];
 
-export class RunListPresenter {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
+export class RunListPresenter extends BasePresenter {
   public async call({
     userId,
     projectSlug,
@@ -60,7 +55,7 @@ export class RunListPresenter {
       to !== undefined;
 
     // Find the project scoped to the organization
-    const project = await this.#prismaClient.project.findFirstOrThrow({
+    const project = await this._replica.project.findFirstOrThrow({
       select: {
         id: true,
         environments: {
@@ -88,7 +83,7 @@ export class RunListPresenter {
     });
 
     //get all possible tasks
-    const possibleTasks = await this.#prismaClient.backgroundWorkerTask.findMany({
+    const possibleTasks = await this._replica.backgroundWorkerTask.findMany({
       distinct: ["slug"],
       where: {
         projectId: project.id,
@@ -96,7 +91,7 @@ export class RunListPresenter {
     });
 
     //get the runs
-    let runs = await this.#prismaClient.$queryRaw<
+    let runs = await this._replica.$queryRaw<
       {
         id: string;
         number: BigInt;
@@ -107,10 +102,9 @@ export class RunListPresenter {
         status: TaskRunStatus;
         createdAt: Date;
         lockedAt: Date | null;
-        completedAt: Date | null;
+        updatedAt: Date;
         isTest: boolean;
         spanId: string;
-        attempts: BigInt;
       }[]
     >`
     SELECT
@@ -123,20 +117,13 @@ export class RunListPresenter {
     tr.status AS status,
     tr."createdAt" AS "createdAt",
     tr."lockedAt" AS "lockedAt",
-    tra."completedAt" AS "completedAt",
+    tr."updatedAt" AS "updatedAt",
     tr."isTest" AS "isTest",
-    tr."spanId" AS "spanId",
-    COUNT(tra.id) AS attempts
+    tr."spanId" AS "spanId"
   FROM
     ${sqlDatabaseSchema}."TaskRun" tr
   LEFT JOIN
-    (
-      SELECT *,
-        ROW_NUMBER() OVER (PARTITION BY "taskRunId" ORDER BY "createdAt" DESC) rn
-      FROM ${sqlDatabaseSchema}."TaskRunAttempt"
-    ) tra ON tr.id = tra."taskRunId" AND tra.rn = 1
-  LEFT JOIN
-    ${sqlDatabaseSchema}."BackgroundWorker" bw ON tra."backgroundWorkerId" = bw.id
+    ${sqlDatabaseSchema}."BackgroundWorker" bw ON tr."lockedToVersionId" = bw.id
   WHERE
       -- project
       tr."projectId" = ${project.id}
@@ -154,15 +141,11 @@ export class RunListPresenter {
           ? Prisma.sql`AND tr."taskIdentifier" IN (${Prisma.join(tasks)})`
           : Prisma.empty
       }
-      ${hasStatusFilters ? Prisma.sql`AND (` : Prisma.empty}
       ${
         statuses && statuses.length > 0
-          ? Prisma.sql`tr.status = ANY(ARRAY[${Prisma.join(statuses)}]::"TaskRunStatus"[])`
+          ? Prisma.sql`AND tr.status = ANY(ARRAY[${Prisma.join(statuses)}]::"TaskRunStatus"[])`
           : Prisma.empty
       }
-      ${statuses && statuses.length > 0 && hasStatusFilters ? Prisma.sql` OR ` : Prisma.empty}
-      ${hasStatusFilters ? Prisma.sql`tr.status IS NULL` : Prisma.empty}
-      ${hasStatusFilters ? Prisma.sql`) ` : Prisma.empty}
       ${
         environments && environments.length > 0
           ? Prisma.sql`AND tr."runtimeEnvironmentId" IN (${Prisma.join(environments)})`
@@ -179,8 +162,6 @@ export class RunListPresenter {
           ? Prisma.sql`AND tr."createdAt" <= ${new Date(to).toISOString()}::timestamp`
           : Prisma.empty
       } 
-  GROUP BY
-    tr."friendlyId", tr."taskIdentifier", tr."runtimeEnvironmentId", tr.id, bw.version, tra.status, tr."createdAt", tra."startedAt", tra."completedAt"
   ORDER BY
     ${direction === "forward" ? Prisma.sql`tr.id DESC` : Prisma.sql`tr.id ASC`}
   LIMIT ${pageSize + 1}`;
@@ -219,19 +200,21 @@ export class RunListPresenter {
           throw new Error(`Environment not found for TaskRun ${run.id}`);
         }
 
+        const hasFinished = FINISHED_STATUSES.includes(run.status);
+
         return {
           id: run.id,
           friendlyId: run.runFriendlyId,
           number: Number(run.number),
-          createdAt: run.createdAt,
-          startedAt: run.lockedAt,
-          completedAt: run.completedAt,
+          createdAt: run.createdAt.toISOString(),
+          startedAt: run.lockedAt ? run.lockedAt.toISOString() : undefined,
+          hasFinished,
+          finishedAt: hasFinished ? run.updatedAt.toISOString() : undefined,
           isTest: run.isTest,
           status: run.status,
           version: run.version,
           taskIdentifier: run.taskIdentifier,
           spanId: run.spanId,
-          attempts: Number(run.attempts),
           isReplayable: true,
           isCancellable: CANCELLABLE_STATUSES.includes(run.status),
           environment: displayableEnvironments(environment, userId),
