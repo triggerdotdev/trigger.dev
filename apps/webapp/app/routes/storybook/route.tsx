@@ -135,6 +135,10 @@ const stories: Story[] = [
     slug: "select",
   },
   {
+    name: "Listbox",
+    slug: "listbox",
+  },
+  {
     name: "Popover",
     slug: "popover",
   },
