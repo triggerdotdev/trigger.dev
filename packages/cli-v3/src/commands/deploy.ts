@@ -387,6 +387,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     deploymentResponse.data.id,
     {
       imageReference,
+      selfHosted: options.selfHosted,
     }
   );
 
