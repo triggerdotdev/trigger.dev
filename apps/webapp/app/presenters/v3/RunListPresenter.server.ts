@@ -4,6 +4,7 @@ import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
 import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
 import { getUsername } from "~/utils/username";
 import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
+import { BasePresenter } from "./basePresenter.server";
 
 type RunListOptions = {
   userId?: string;
@@ -28,13 +29,7 @@ export type RunList = Awaited<ReturnType<RunListPresenter["call"]>>;
 export type RunListItem = RunList["runs"][0];
 export type RunListAppliedFilters = RunList["filters"];
 
-export class RunListPresenter {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
+export class RunListPresenter extends BasePresenter {
   public async call({
     userId,
     projectSlug,
@@ -60,7 +55,7 @@ export class RunListPresenter {
       to !== undefined;
 
     // Find the project scoped to the organization
-    const project = await this.#prismaClient.project.findFirstOrThrow({
+    const project = await this._replica.project.findFirstOrThrow({
       select: {
         id: true,
         environments: {
@@ -88,7 +83,7 @@ export class RunListPresenter {
     });
 
     //get all possible tasks
-    const possibleTasks = await this.#prismaClient.backgroundWorkerTask.findMany({
+    const possibleTasks = await this._replica.backgroundWorkerTask.findMany({
       distinct: ["slug"],
       where: {
         projectId: project.id,
@@ -96,7 +91,7 @@ export class RunListPresenter {
     });
 
     //get the runs
-    let runs = await this.#prismaClient.$queryRaw<
+    let runs = await this._replica.$queryRaw<
       {
         id: string;
         number: BigInt;
