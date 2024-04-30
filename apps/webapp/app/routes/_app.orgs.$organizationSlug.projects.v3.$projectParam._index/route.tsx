@@ -14,7 +14,7 @@ import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
-import { DateTime, formatDateTime } from "~/components/primitives/DateTime";
+import { formatDateTime } from "~/components/primitives/DateTime";
 import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -31,12 +31,9 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
-import {
-  TaskRunStatusCombo,
-  TaskRunStatusIcon,
-  runStatusClassNameColor,
-} from "~/components/runs/v3/TaskRunStatus";
+import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import {
   TaskTriggerSourceIcon,
   taskTriggerSourceDescription,
@@ -341,7 +338,9 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
           content={<CustomTooltip />}
           allowEscapeViewBox={{ x: true, y: true }}
           wrapperStyle={{ zIndex: 1000 }}
+          animationDuration={0}
         />
+
         {/* The background */}
         <Bar
           dataKey="bg"
@@ -404,18 +403,21 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
     }));
     const title = payload[0].payload.day as string;
     const formattedDate = formatDateTime(new Date(title), "UTC", [], false, false);
+
     return (
-      <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-        <Header3 className="border-b-charcoal-650 border-b pb-2">{formattedDate}</Header3>
-        <div className="mt-2 grid grid-cols-[1fr_auto] gap-2 text-xs text-text-bright">
-          {items.map((item) => (
-            <Fragment key={item.status}>
-              <TaskRunStatusCombo status={item.status} />
-              <p>{item.value}</p>
-            </Fragment>
-          ))}
+      <TooltipPortal active={active}>
+        <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
+          <Header3 className="border-b-charcoal-650 border-b pb-2">{formattedDate}</Header3>
+          <div className="mt-2 grid grid-cols-[1fr_auto] gap-2 text-xs text-text-bright">
+            {items.map((item) => (
+              <Fragment key={item.status}>
+                <TaskRunStatusCombo status={item.status} />
+                <p>{item.value}</p>
+              </Fragment>
+            ))}
+          </div>
         </div>
-      </div>
+      </TooltipPortal>
     );
   }
 
