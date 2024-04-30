@@ -3,7 +3,6 @@ import { StopIcon } from "@heroicons/react/24/outline";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
 import { formatDuration } from "@trigger.dev/core/v3";
-import { User } from "@trigger.dev/database";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { useEnvironments } from "~/hooks/useEnvironments";
@@ -95,8 +94,12 @@ export function TaskRunsTable({
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}
                 </TableCell>
                 <TableCell to={path}>
-                  {run.startedAt ? (
-                    <LiveTimer startTime={run.startedAt} endTime={run.finishedAt} />
+                  {run.startedAt && run.finishedAt ? (
+                    formatDuration(new Date(run.startedAt), new Date(run.finishedAt), {
+                      style: "short",
+                    })
+                  ) : run.startedAt ? (
+                    <LiveTimer startTime={new Date(run.startedAt)} />
                   ) : (
                     "–"
                   )}

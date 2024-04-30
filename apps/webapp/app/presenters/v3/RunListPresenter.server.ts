@@ -207,10 +207,10 @@ export class RunListPresenter extends BasePresenter {
           id: run.id,
           friendlyId: run.runFriendlyId,
           number: Number(run.number),
-          createdAt: run.createdAt,
-          startedAt: run.lockedAt,
+          createdAt: run.createdAt.toISOString(),
+          startedAt: run.lockedAt ? run.lockedAt.toISOString() : undefined,
           hasFinished,
-          finishedAt: hasFinished ? run.updatedAt : undefined,
+          finishedAt: hasFinished ? run.updatedAt.toISOString() : undefined,
           isTest: run.isTest,
           status: run.status,
           version: run.version,
@@ -237,4 +237,6 @@ export class RunListPresenter extends BasePresenter {
       hasFilters,
     };
   }
+
+  async #getRuns() {}
 }

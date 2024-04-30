@@ -1,7 +1,7 @@
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { TypedAwait, typeddefer, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 import { StepContentContainer } from "~/components/StepContentContainer";
@@ -22,6 +22,8 @@ import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3ProjectPath, v3TestPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
 import { TextLink } from "~/components/primitives/TextLink";
+import { Spinner } from "~/components/primitives/Spinner";
+import { Suspense } from "react";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -33,7 +35,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     TaskRunListSearchFilters.parse(s);
 
   const presenter = new RunListPresenter();
-  const list = await presenter.call({
+  const list = presenter.call({
     userId,
     projectSlug: projectParam,
     tasks,
@@ -46,13 +48,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     cursor: cursor,
   });
 
-  return typedjson({
-    list,
+  return typeddefer({
+    data: list,
   });
 };
 
 export default function Page() {
-  const { list } = useTypedLoaderData<typeof loader>();
+  const { data } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
   const project = useProject();
@@ -64,36 +66,53 @@ export default function Page() {
         <PageTitle title="Runs" />
       </NavBar>
       <PageBody>
-        {list.runs.length === 0 && !list.hasFilters ? (
-          list.possibleTasks.length === 0 ? (
-            <CreateFirstTaskInstructions />
-          ) : (
-            <RunTaskInstructions />
-          )
-        ) : (
-          <div className={cn("grid h-fit grid-cols-1 gap-4")}>
-            <div>
-              <div className="mb-2 flex items-center justify-between gap-x-2">
-                <RunsFilters
-                  possibleEnvironments={project.environments}
-                  possibleTasks={list.possibleTasks}
-                />
-                <div className="flex items-center justify-end gap-x-2">
-                  <ListPagination list={list} />
-                </div>
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center py-4">
+              <div className="mx-auto flex items-center gap-2">
+                <Spinner />
+                <Paragraph variant="small">Loading runs</Paragraph>
               </div>
-
-              <TaskRunsTable
-                total={list.runs.length}
-                hasFilters={list.hasFilters}
-                filters={list.filters}
-                runs={list.runs}
-                isLoading={isLoading}
-              />
-              <ListPagination list={list} className="mt-2 justify-end" />
             </div>
-          </div>
-        )}
+          }
+        >
+          <TypedAwait resolve={data}>
+            {(list) => (
+              <>
+                {list.runs.length === 0 && !list.hasFilters ? (
+                  list.possibleTasks.length === 0 ? (
+                    <CreateFirstTaskInstructions />
+                  ) : (
+                    <RunTaskInstructions />
+                  )
+                ) : (
+                  <div className={cn("grid h-fit grid-cols-1 gap-4")}>
+                    <div>
+                      <div className="mb-2 flex items-center justify-between gap-x-2">
+                        <RunsFilters
+                          possibleEnvironments={project.environments}
+                          possibleTasks={list.possibleTasks}
+                        />
+                        <div className="flex items-center justify-end gap-x-2">
+                          <ListPagination list={list} />
+                        </div>
+                      </div>
+
+                      <TaskRunsTable
+                        total={list.runs.length}
+                        hasFilters={list.hasFilters}
+                        filters={list.filters}
+                        runs={list.runs}
+                        isLoading={isLoading}
+                      />
+                      <ListPagination list={list} className="mt-2 justify-end" />
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </TypedAwait>
+        </Suspense>
       </PageBody>
     </>
   );
