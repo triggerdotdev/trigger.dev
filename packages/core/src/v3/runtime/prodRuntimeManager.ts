@@ -8,7 +8,7 @@ import {
   TaskRunExecution,
   TaskRunExecutionResult,
 } from "../schemas";
-import { unboundedTimeout } from "../utils/timers";
+import { checkpointSafeTimeout, unboundedTimeout } from "../utils/timers";
 import { ZodIpcConnection } from "../zodIpc";
 import { RuntimeManager } from "./manager";
 
@@ -44,6 +44,7 @@ export class ProdRuntimeManager implements RuntimeManager {
     const now = Date.now();
 
     const internalTimeout = unboundedTimeout(ms, "internal" as const);
+    const checkpointSafeInternalTimeout = checkpointSafeTimeout(ms);
 
     if (ms <= this.waitThresholdInMs) {
       await internalTimeout;
@@ -76,7 +77,9 @@ export class ProdRuntimeManager implements RuntimeManager {
 
     this.ipc.send("READY_FOR_CHECKPOINT", {});
 
-    await internalTimeout;
+    // internalTimeout acts as a backup and will be accurate if the checkpoint never happens
+    // checkpointSafeInternalTimeout is accurate even after non-simulated restores
+    await Promise.race([internalTimeout, checkpointSafeInternalTimeout]);
 
     // The internal timer is up, let's check for missing time
     const postWait = getTimes();
