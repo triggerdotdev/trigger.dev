@@ -1,15 +1,17 @@
 import { Listbox as HeadlessListbox, Transition } from "@headlessui/react";
-import { ChevronDown } from "lucide-react";
-import { Fragment, createContext, forwardRef, useContext } from "react";
+import { Check, ChevronDown } from "lucide-react";
+import React, { Fragment, createContext, forwardRef, useContext } from "react";
 import { cn } from "~/utils/cn";
 
 const variants = {
   "secondary/small": {
     root: "",
     button:
-      "text-xs h-6 bg-tertiary border border-tertiary group-hover:text-text-bright hover:border-charcoal-600 pr-1.5 pl-1.5 rounded-sm",
-    options: "",
-    option: "",
+      "text-xs h-6 bg-tertiary border border-tertiary group-hover:text-text-bright text-text-dimmed hover:border-charcoal-600 pr-1.5 pl-1.5 rounded-sm",
+    options:
+      "mt-1 max-h-60 rounded-md py-1 text-xs shadow-lg ring-1 ring-black/5 focus:outline-none bg-tertiary border border-tertiary",
+    option:
+      "text-xs select-none items-center rounded-sm py-1.5 pl-2 pr-0.5 outline-none transition data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-charcoal-750 focus:bg-charcoal-750/50",
   },
 };
 
@@ -30,7 +32,7 @@ const Root = forwardRef<React.ElementRef<typeof HeadlessListbox>, ListboxProps>(
     return (
       <ListboxContext.Provider value={{ variant, width }}>
         <HeadlessListbox {...props}>
-          <div className="relative">{children}</div>
+          <div className={cn("group relative", className)}>{children}</div>
         </HeadlessListbox>
       </ListboxContext.Provider>
     );
@@ -88,12 +90,7 @@ const Options = forwardRef<
       leaveTo="opacity-0"
     >
       <HeadlessListbox.Options
-        className={cn(
-          "absolute w-full overflow-auto",
-          "mt-1 max-h-60 rounded-md bg-white py-1 text-xs shadow-lg ring-1 ring-black/5 focus:outline-none",
-          variantClassName.options,
-          className
-        )}
+        className={cn("absolute w-full overflow-y-auto", variantClassName.options, className)}
         {...props}
         ref={ref}
       >
@@ -103,24 +100,34 @@ const Options = forwardRef<
   );
 });
 
-function Option({
-  className,
-  value,
-  children,
-  ...props
-}: React.ComponentPropsWithRef<typeof HeadlessListbox.Option> & { value: string }) {
-  const context = useContext(ListboxContext);
-  const variantClassName = variants[context.variant];
+type OptionProps = Omit<React.ComponentPropsWithRef<typeof HeadlessListbox.Option>, "children"> & {
+  value: string;
+  children: React.ReactNode;
+};
 
-  return (
-    <HeadlessListbox.Option
-      value={value}
-      className={cn(variantClassName.option, className)}
-      {...props}
-    >
-      {children}
-    </HeadlessListbox.Option>
-  );
-}
+const Option = forwardRef<React.ElementRef<typeof HeadlessListbox.Option>, OptionProps>(
+  ({ className, value, children, ...props }, ref) => {
+    const context = useContext(ListboxContext);
+    const variantClassName = variants[context.variant];
+
+    return (
+      <HeadlessListbox.Option value={value} className={"w-full"} {...props}>
+        {({ selected, active, disabled }) => {
+          return (
+            <div
+              data-disabled={disabled || undefined}
+              data-active={active || undefined}
+              data-selected={selected || undefined}
+              className={cn("flex w-full items-center", variantClassName.option, className)}
+            >
+              <div className="flex-1">{children}</div>
+              {selected && <Check className="h-4 w-4 flex-none" />}
+            </div>
+          );
+        }}
+      </HeadlessListbox.Option>
+    );
+  }
+);
 
 export const Listbox = { Root, Button, Options, Option };

@@ -36,12 +36,7 @@ export default function Story() {
             <Listbox.Options>
               {people.map((person) => (
                 <Listbox.Option key={person.id} value={person.id} disabled={person.unavailable}>
-                  {({ active, selected }) => (
-                    <li className={`${active ? "bg-blue-500 text-white" : "bg-white text-black"}`}>
-                      {selected && <CheckIcon />}
-                      {person.name}
-                    </li>
-                  )}
+                  {person.name}
                 </Listbox.Option>
               ))}
             </Listbox.Options>
