@@ -142,15 +142,11 @@ export class RunListPresenter extends BasePresenter {
           ? Prisma.sql`AND tr."taskIdentifier" IN (${Prisma.join(tasks)})`
           : Prisma.empty
       }
-      ${hasStatusFilters ? Prisma.sql`AND (` : Prisma.empty}
       ${
         statuses && statuses.length > 0
-          ? Prisma.sql`tr.status = ANY(ARRAY[${Prisma.join(statuses)}]::"TaskRunStatus"[])`
+          ? Prisma.sql`AND tr.status = ANY(ARRAY[${Prisma.join(statuses)}]::"TaskRunStatus"[])`
           : Prisma.empty
       }
-      ${statuses && statuses.length > 0 && hasStatusFilters ? Prisma.sql` OR ` : Prisma.empty}
-      ${hasStatusFilters ? Prisma.sql`tr.status IS NULL` : Prisma.empty}
-      ${hasStatusFilters ? Prisma.sql`) ` : Prisma.empty}
       ${
         environments && environments.length > 0
           ? Prisma.sql`AND tr."runtimeEnvironmentId" IN (${Prisma.join(environments)})`
