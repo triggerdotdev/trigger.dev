@@ -1,35 +1,44 @@
-import { Submission, conform, useForm } from "@conform-to/react";
+import {
+  FieldConfig,
+  list,
+  requestIntent,
+  useFieldList,
+  useFieldset,
+  useForm,
+} from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { Form, useActionData, useLocation, useNavigate, useNavigation } from "@remix-run/react";
+import { PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import {
+  environmentTextClassName,
+  environmentTitle,
+} from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
+import { Checkbox } from "~/components/primitives/Checkbox";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
+import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Switch } from "~/components/primitives/Switch";
 import { prisma } from "~/db.server";
+import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { redirectWithSuccessMessage } from "~/models/message.server";
 import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import {
-  ProjectParamSchema,
-  v3EnvironmentVariablesPath,
-  v3NewEnvironmentVariablesPath,
-} from "~/utils/pathBuilder";
+import { cn } from "~/utils/cn";
+import { ProjectParamSchema, v3EnvironmentVariablesPath } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
-import { CreateEnvironmentVariable } from "~/v3/environmentVariables/repository";
+import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
+import dotenv from "dotenv";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -47,7 +56,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       environments,
     });
   } catch (error) {
-    console.error(error);
     throw new Response(undefined, {
       status: 400,
       statusText: "Something went wrong, if this problem persists please contact support.",
@@ -55,9 +63,39 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
+const Variable = z.object({
+  key: EnvironmentVariableKey,
+  value: z.string().nonempty("Value is required"),
+});
+
+type Variable = z.infer<typeof Variable>;
+
 const schema = z.object({
-  action: z.enum(["create", "create-more"]),
-  ...CreateEnvironmentVariable.shape,
+  overwrite: z.preprocess((i) => {
+    if (i === "true") return true;
+    if (i === "false") return false;
+    return;
+  }, z.boolean()),
+  environmentIds: z.preprocess((i) => {
+    if (typeof i === "string") return [i];
+
+    if (Array.isArray(i)) {
+      const ids = i.filter((v) => typeof v === "string" && v !== "");
+      if (ids.length === 0) {
+        return;
+      }
+      return ids;
+    }
+
+    return;
+  }, z.array(z.string(), { required_error: "At least one environment is required" })),
+  variables: z.preprocess((i) => {
+    if (!Array.isArray(i)) {
+      return [];
+    }
+
+    return i;
+  }, Variable.array().nonempty("At least one variable is required")),
 });
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -92,22 +130,22 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const result = await repository.create(project.id, userId, submission.value);
 
   if (!result.success) {
-    submission.error.key = result.error;
+    if (result.variableErrors) {
+      for (const { key, error } of result.variableErrors) {
+        const index = submission.value.variables.findIndex((v) => v.key === key);
+
+        if (index !== -1) {
+          submission.error[`variables[${index}].key`] = error;
+        }
+      }
+    } else {
+      submission.error.variables = result.error;
+    }
+
     return json(submission);
   }
 
-  switch (submission.value.action) {
-    case "create":
-      return redirect(
-        v3EnvironmentVariablesPath({ slug: organizationSlug }, { slug: projectParam })
-      );
-    case "create-more":
-      return redirectWithSuccessMessage(
-        v3NewEnvironmentVariablesPath({ slug: organizationSlug }, { slug: projectParam }),
-        request,
-        `Created ${submission.value.key} environment variable`
-      );
-  }
+  return redirect(v3EnvironmentVariablesPath({ slug: organizationSlug }, { slug: projectParam }));
 };
 
 export default function Page() {
@@ -118,15 +156,11 @@ export default function Page() {
   const navigate = useNavigate();
   const organization = useOrganization();
   const project = useProject();
-  const keyFieldRef = useRef<HTMLInputElement>(null);
 
-  const isLoading =
-    navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
-    navigation.formData?.get("action") === "create";
+  const isLoading = navigation.state !== "idle" && navigation.formMethod === "post";
 
-  const [form, { key }] = useForm({
-    id: "create-environment-variable",
+  const [form, { environmentIds, variables }] = useForm({
+    id: "create-environment-variables",
     // TODO: type this
     lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
@@ -141,14 +175,6 @@ export default function Page() {
     setIsOpen(true);
   }, []);
 
-  useEffect(() => {
-    if (navigation.state !== "idle") return;
-    if (lastSubmission !== undefined) return;
-
-    form.ref.current?.reset();
-    keyFieldRef.current?.focus();
-  }, [navigation.state, lastSubmission]);
-
   return (
     <Dialog
       open={isOpen}
@@ -158,61 +184,64 @@ export default function Page() {
         }
       }}
     >
-      <DialogContent>
-        <DialogHeader>New environment variable</DialogHeader>
-        <Form method="post" {...form.props}>
+      <DialogContent className="md:max-w-2xl lg:max-w-3xl">
+        <DialogHeader>New environment variables</DialogHeader>
+        <Form
+          method="post"
+          {...form.props}
+          className="max-h-[70vh] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        >
           <Fieldset className="mt-2">
             <InputGroup fullWidth>
-              <Label>Key</Label>
-              <Input
-                {...conform.input(key)}
-                placeholder="e.g. CLIENT_KEY"
-                autoFocus
-                ref={keyFieldRef}
-              />
-            </InputGroup>
-            <InputGroup fullWidth>
-              <div className="flex items-center justify-between">
-                <Label>Values</Label>
-                <Switch
-                  variant="small"
-                  label="Reveal values"
-                  checked={revealAll}
-                  onCheckedChange={(e) => setRevealAll(e.valueOf())}
-                />
-              </div>
-              <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2">
-                {environments.map((environment, index) => {
-                  return (
-                    <Fragment key={environment.id}>
-                      <input
-                        type="hidden"
-                        name={`values[${index}].environmentId`}
-                        value={environment.id}
-                      />
-                      <label
-                        className="flex items-center justify-end"
-                        htmlFor={`values[${index}].value`}
+              <Label>Environments</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                {environments.map((environment) => (
+                  <Checkbox
+                    key={environment.id}
+                    id={environment.id}
+                    value={environment.id}
+                    name="environmentIds"
+                    type="radio"
+                    label={
+                      <span
+                        className={cn("text-xs uppercase", environmentTextClassName(environment))}
                       >
-                        <EnvironmentLabel environment={environment} className="h-5 px-2" />
-                      </label>
-                      <Input
-                        type={revealAll ? "text" : "password"}
-                        name={`values[${index}].value`}
-                        placeholder="Not set"
-                      />
-                    </Fragment>
-                  );
-                })}
+                        {environmentTitle(environment)}
+                      </span>
+                    }
+                    variant="button"
+                  />
+                ))}
               </div>
+              <FormError id={environmentIds.errorId}>{environmentIds.error}</FormError>
+              <Hint>
+                Dev environment variables specified here will be overridden by ones in your .env
+                file when running locally.
+              </Hint>
+            </InputGroup>
+            <Hint>Tip: Paste your .env into this form to populate it:</Hint>
+            <InputGroup fullWidth>
+              <FieldLayout>
+                <Label>Keys</Label>
+                <div className="flex justify-between gap-1">
+                  <Label>Values</Label>
+                  <Switch
+                    variant="small"
+                    label="Reveal"
+                    checked={revealAll}
+                    onCheckedChange={(e) => setRevealAll(e.valueOf())}
+                  />
+                </div>
+              </FieldLayout>
+              <VariableFields
+                revealValues={revealAll}
+                formId={form.id}
+                formRef={form.ref}
+                variablesFields={variables}
+              />
+              <FormError id={variables.errorId}>{variables.error}</FormError>
             </InputGroup>
 
-            <Callout variant="info" className="inline-flex">
-              Dev environment variables specified here will be overridden by ones in your{" "}
-              <InlineCode variant="extra-small">.env</InlineCode> file when running locally.
-            </Callout>
-
-            <FormError id={key.errorId}>{key.error}</FormError>
             <FormError>{form.error}</FormError>
             <FormButtons
               confirmButton={
@@ -221,18 +250,18 @@ export default function Page() {
                     type="submit"
                     variant="primary/small"
                     disabled={isLoading}
-                    name="action"
-                    value="create-more"
+                    name="overwrite"
+                    value="false"
                   >
-                    {isLoading ? "Saving" : "Save and add another"}
+                    {isLoading ? "Saving" : "Save"}
                   </Button>
                   <Button
                     variant="secondary/small"
                     disabled={isLoading}
-                    name="action"
-                    value="create"
+                    name="overwrite"
+                    value="true"
                   >
-                    {isLoading ? "Saving" : "Save"}
+                    {isLoading ? "Overwriting" : "Overwrite"}
                   </Button>
                 </div>
               }
@@ -249,5 +278,158 @@ export default function Page() {
         </Form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function FieldLayout({ children }: { children: React.ReactNode }) {
+  return <div className="grid w-full grid-cols-[1fr_1fr_2rem] gap-2">{children}</div>;
+}
+
+function VariableFields({
+  revealValues,
+  formId,
+  variablesFields,
+  formRef,
+}: {
+  revealValues: boolean;
+  formId?: string;
+  variablesFields: FieldConfig<any>;
+  formRef: RefObject<HTMLFormElement>;
+}) {
+  const {
+    items,
+    append,
+    update,
+    delete: remove,
+    insertAfter,
+  } = useList<Variable>([{ key: "", value: "" }]);
+
+  const handlePaste = useCallback((index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+
+    let text = clipboardData.getData("text");
+    if (!text) return;
+
+    const variables = dotenv.parse(text);
+    const keyValuePairs = Object.entries(variables).map(([key, value]) => ({ key, value }));
+
+    //do the default paste
+    if (keyValuePairs.length === 0) return;
+
+    //prevent default pasting
+    e.preventDefault();
+
+    const [firstPair, ...rest] = keyValuePairs;
+    update(index, firstPair);
+
+    for (const pair of rest) {
+      requestIntent(formRef.current ?? undefined, list.append(variablesFields.name));
+    }
+    insertAfter(index, rest);
+  }, []);
+
+  const fields = useFieldList(formRef, variablesFields);
+
+  return (
+    <>
+      {fields.map((field, index) => {
+        const item = items[index];
+
+        return (
+          <VariableField
+            formId={formId}
+            key={index}
+            index={index}
+            value={item}
+            onChange={(value) => update(index, value)}
+            onPaste={(e) => handlePaste(index, e)}
+            onDelete={() => {
+              requestIntent(
+                formRef.current ?? undefined,
+                list.remove(variablesFields.name, { index })
+              );
+              remove(index);
+            }}
+            showDeleteButton={items.length > 1}
+            showValue={revealValues}
+            config={field}
+          />
+        );
+      })}
+      <Button
+        variant="tertiary/medium"
+        type="button"
+        onClick={() => {
+          requestIntent(formRef.current ?? undefined, list.append(variablesFields.name));
+          append([{ key: "", value: "" }]);
+        }}
+        LeadingIcon={PlusIcon}
+      >
+        Add another
+      </Button>
+    </>
+  );
+}
+
+function VariableField({
+  formId,
+  index,
+  value,
+  onChange,
+  onPaste,
+  onDelete,
+  showDeleteButton,
+  showValue,
+  config,
+}: {
+  formId?: string;
+  index: number;
+  value: Variable;
+  onChange: (value: Variable) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => void;
+  onDelete: () => void;
+  showDeleteButton: boolean;
+  showValue: boolean;
+  config: FieldConfig<Variable>;
+}) {
+  const ref = useRef<HTMLFieldSetElement>(null);
+  const fields = useFieldset(ref, config);
+  const baseFieldName = `variables[${index}]`;
+
+  return (
+    <fieldset ref={ref}>
+      <FieldLayout>
+        <Input
+          id={`${formId}-${baseFieldName}.key`}
+          name={`${baseFieldName}.key`}
+          placeholder="e.g. CLIENT_KEY"
+          value={value.key}
+          onChange={(e) => onChange({ ...value, key: e.currentTarget.value })}
+          autoFocus={index === 0}
+          onPaste={onPaste}
+        />
+        <Input
+          id={`${formId}-${baseFieldName}.value`}
+          name={`${baseFieldName}.value`}
+          type={showValue ? "text" : "password"}
+          placeholder="Not set"
+          value={value.value}
+          onChange={(e) => onChange({ ...value, value: e.currentTarget.value })}
+        />
+        {showDeleteButton && (
+          <Button
+            variant="minimal/medium"
+            type="button"
+            onClick={() => onDelete()}
+            LeadingIcon={XMarkIcon}
+          />
+        )}
+      </FieldLayout>
+      <div className="space-y-2">
+        <FormError id={fields.key.errorId}>{fields.key.error}</FormError>
+        <FormError id={fields.value.errorId}>{fields.value.error}</FormError>
+      </div>
+    </fieldset>
   );
 }

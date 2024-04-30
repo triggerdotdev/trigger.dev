@@ -3,7 +3,6 @@ import { StopIcon } from "@heroicons/react/24/outline";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
 import { formatDuration } from "@trigger.dev/core/v3";
-import { User } from "@trigger.dev/database";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { useEnvironments } from "~/hooks/useEnvironments";
@@ -28,6 +27,7 @@ import {
 import { CancelRunDialog } from "./CancelRunDialog";
 import { ReplayRunDialog } from "./ReplayRunDialog";
 import { TaskRunStatusCombo } from "./TaskRunStatus";
+import { LiveTimer } from "./LiveTimer";
 
 type RunsTableProps = {
   total: number;
@@ -94,9 +94,15 @@ export function TaskRunsTable({
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}
                 </TableCell>
                 <TableCell to={path}>
-                  {formatDuration(run.startedAt, run.completedAt, {
-                    style: "short",
-                  })}
+                  {run.startedAt && run.finishedAt ? (
+                    formatDuration(new Date(run.startedAt), new Date(run.finishedAt), {
+                      style: "short",
+                    })
+                  ) : run.startedAt ? (
+                    <LiveTimer startTime={new Date(run.startedAt)} />
+                  ) : (
+                    "–"
+                  )}
                 </TableCell>
                 <TableCell to={path}>
                   {run.isTest ? (
@@ -195,7 +201,12 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
             {environment ? (
               <>
                 {" "}
-                in <EnvironmentLabel environment={environment} size="large" />
+                in{" "}
+                <EnvironmentLabel
+                  environment={environment}
+                  userName={environment.userName}
+                  size="large"
+                />
               </>
             ) : null}
           </Paragraph>

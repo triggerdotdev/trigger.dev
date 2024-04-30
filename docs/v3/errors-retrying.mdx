@@ -66,6 +66,8 @@ We provide some useful functions that you can use to retry smaller parts of a ta
 You can retry a block of code that can throw an error, with the same retry settings as a task.
 
 ```ts /trigger/retry-on-throw.ts
+import { task, logger, retry } from "@trigger.dev/sdk/v3"
+
 export const retryOnThrow = task({
   id: "retry-on-throw",
   run: async (payload: any) => {

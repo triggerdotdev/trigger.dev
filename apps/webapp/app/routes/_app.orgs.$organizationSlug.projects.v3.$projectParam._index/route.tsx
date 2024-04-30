@@ -1,10 +1,10 @@
 import { ChatBubbleLeftRightIcon, ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { TaskRunStatus } from "@trigger.dev/database";
 import { Fragment, Suspense, useEffect, useState } from "react";
-import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
 import { InitCommandV3, TriggerDevStepV3, TriggerLoginStepV3 } from "~/components/SetupCommands";
@@ -14,8 +14,9 @@ import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
-import { DateTime, formatDateTime } from "~/components/primitives/DateTime";
+import { formatDateTime } from "~/components/primitives/DateTime";
 import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -31,13 +32,9 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
-import {
-  TaskRunStatusCombo,
-  TaskRunStatusIcon,
-  runStatusClassNameColor,
-  runStatusTitle,
-} from "~/components/runs/v3/TaskRunStatus";
+import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import {
   TaskTriggerSourceIcon,
   taskTriggerSourceDescription,
@@ -45,8 +42,8 @@ import {
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
-import { TaskActivity, TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
+import { useTextFilter } from "~/hooks/useTextFilter";
+import { Task, TaskActivity, TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3RunsPath, v3TasksStreamingPath } from "~/utils/pathBuilder";
@@ -84,6 +81,31 @@ export default function Page() {
   const project = useProject();
   const { tasks, userHasTasks, activity, runningStats, durations } =
     useTypedLoaderData<typeof loader>();
+  const { filterText, setFilterText, filteredItems } = useTextFilter<Task>({
+    items: tasks,
+    filter: (task, text) => {
+      if (task.slug.toLowerCase().includes(text.toLowerCase())) {
+        return true;
+      }
+
+      if (
+        task.exportName.toLowerCase().includes(text.toLowerCase().replace("(", "").replace(")", ""))
+      ) {
+        return true;
+      }
+
+      if (task.filePath.toLowerCase().includes(text.toLowerCase())) {
+        return true;
+      }
+
+      if (task.triggerSource === "SCHEDULED" && "scheduled".includes(text.toLowerCase())) {
+        return true;
+      }
+
+      return false;
+    },
+  });
+
   const hasTasks = tasks.length > 0;
 
   //live reload the page when the tasks change
@@ -105,11 +127,22 @@ export default function Page() {
         <PageTitle title="Tasks" />
       </NavBar>
       <PageBody>
-        <div className={cn("grid h-full grid-cols-1 gap-4")}>
-          <div className="h-full">
-            {hasTasks ? (
-              <div className="flex flex-col gap-4 pb-4">
-                {!userHasTasks && <UserHasNoTasks />}
+        <div className={cn("grid h-full grid-rows-1")}>
+          {hasTasks ? (
+            <div className="flex flex-col gap-4 pb-4">
+              {!userHasTasks && <UserHasNoTasks />}
+              <div className="pb-4">
+                <div className="h-8">
+                  <Input
+                    placeholder="Search tasks"
+                    variant="tertiary"
+                    icon="search"
+                    fullWidth={true}
+                    value={filterText}
+                    onChange={(e) => setFilterText(e.target.value)}
+                    autoFocus
+                  />
+                </div>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -120,13 +153,12 @@ export default function Page() {
                       <TableHeaderCell>Activity (7d)</TableHeaderCell>
                       <TableHeaderCell>Avg. duration</TableHeaderCell>
                       <TableHeaderCell>Environments</TableHeaderCell>
-                      <TableHeaderCell>Last run</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {tasks.length > 0 ? (
-                      tasks.map((task) => {
+                    {filteredItems.length > 0 ? (
+                      filteredItems.map((task) => {
                         const path = v3RunsPath(organization, project, {
                           tasks: [task.slug],
                         });
@@ -218,30 +250,12 @@ export default function Page() {
                                 ))}
                               </div>
                             </TableCell>
-                            <TableCell to={path}>
-                              {task.latestRun ? (
-                                <div
-                                  className={cn(
-                                    "flex items-center gap-1",
-                                    runStatusClassNameColor(task.latestRun.status)
-                                  )}
-                                >
-                                  <TaskRunStatusIcon
-                                    status={task.latestRun.status}
-                                    className="h-4 w-4"
-                                  />
-                                  <DateTime date={task.latestRun.createdAt} />
-                                </div>
-                              ) : (
-                                "Never run"
-                              )}
-                            </TableCell>
                             <TableCellChevron to={path} />
                           </TableRow>
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={6}>
+                      <TableBlankRow colSpan={8}>
                         <Paragraph variant="small" className="flex items-center justify-center">
                           No tasks match your filters
                         </Paragraph>
@@ -250,12 +264,12 @@ export default function Page() {
                   </TableBody>
                 </Table>
               </div>
-            ) : (
-              <MainCenteredContainer className="max-w-prose">
-                <CreateTaskInstructions />
-              </MainCenteredContainer>
-            )}
-          </div>
+            </div>
+          ) : (
+            <MainCenteredContainer className="max-w-prose">
+              <CreateTaskInstructions />
+            </MainCenteredContainer>
+          )}
         </div>
       </PageBody>
     </PageContainer>
@@ -362,7 +376,9 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
           content={<CustomTooltip />}
           allowEscapeViewBox={{ x: true, y: true }}
           wrapperStyle={{ zIndex: 1000 }}
+          animationDuration={0}
         />
+
         {/* The background */}
         <Bar
           dataKey="bg"
@@ -425,18 +441,21 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
     }));
     const title = payload[0].payload.day as string;
     const formattedDate = formatDateTime(new Date(title), "UTC", [], false, false);
+
     return (
-      <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-        <Header3 className="border-b-charcoal-650 border-b pb-2">{formattedDate}</Header3>
-        <div className="mt-2 grid grid-cols-[1fr_auto] gap-2 text-xs text-text-bright">
-          {items.map((item) => (
-            <Fragment key={item.status}>
-              <TaskRunStatusCombo status={item.status} />
-              <p>{item.value}</p>
-            </Fragment>
-          ))}
+      <TooltipPortal active={active}>
+        <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
+          <Header3 className="border-b-charcoal-650 border-b pb-2">{formattedDate}</Header3>
+          <div className="mt-2 grid grid-cols-[1fr_auto] gap-2 text-xs text-text-bright">
+            {items.map((item) => (
+              <Fragment key={item.status}>
+                <TaskRunStatusCombo status={item.status} />
+                <p>{item.value}</p>
+              </Fragment>
+            ))}
+          </div>
         </div>
-      </div>
+      </TooltipPortal>
     );
   }
 

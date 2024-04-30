@@ -153,6 +153,11 @@ async function startDev(
 
     logger.debug("Initial config", { config });
 
+    if (config.status === "error") {
+      logger.error("Failed to read config", config.error);
+      process.exit(1);
+    }
+
     async function getDevReactElement(
       configParam: ResolvedConfig,
       authorization: { apiUrl: string; accessToken: string },
@@ -164,18 +169,18 @@ async function startDev(
       apiClient = new CliApiClient(apiUrl, accessToken);
 
       const devEnv = await apiClient.getProjectEnv({
-        projectRef: config.config.project,
+        projectRef: configParam.project,
         env: "dev",
       });
 
       if (!devEnv.success) {
         if (devEnv.error === "Project not found") {
           logger.error(
-            `Project not found: ${config.config.project}. Ensure you are using the correct project ref and CLI profile (use --profile). Currently using the "${options.profile}" profile, which points to ${authorization.apiUrl}`
+            `Project not found: ${configParam.project}. Ensure you are using the correct project ref and CLI profile (use --profile). Currently using the "${options.profile}" profile, which points to ${authorization.apiUrl}`
           );
         } else {
           logger.error(
-            `Failed to initialize dev environment: ${devEnv.error}. Using project ref ${config.config.project}`
+            `Failed to initialize dev environment: ${devEnv.error}. Using project ref ${configParam.project}`
           );
         }
 
@@ -387,6 +392,9 @@ function useDev({
           contents: entryPointContents,
           resolveDir: process.cwd(),
           sourcefile: "__entryPoint.ts",
+        },
+        banner: {
+          js: `process.on("uncaughtException", function(error, origin) { if (error instanceof Error) { process.send && process.send({ type: "UNCAUGHT_EXCEPTION", payload: { error: { name: error.name, message: error.message, stack: error.stack }, origin }, version: "v1" }); } else { process.send && process.send({ type: "UNCAUGHT_EXCEPTION", payload: { error: { name: "Error", message: typeof error === "string" ? error : JSON.stringify(error) }, origin }, version: "v1" }); } });`,
         },
         bundle: true,
         metafile: true,
@@ -602,10 +610,10 @@ function useDev({
                     } else {
                     }
 
-                    if (e.originalError.stack) {
+                    if (e.originalError.message || e.originalError.stack) {
                       logger.log(
                         `${chalkError("X Error:")} Worker failed to start`,
-                        e.originalError.stack
+                        e.originalError.stack ?? e.originalError.message
                       );
                     }
 

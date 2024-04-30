@@ -29,6 +29,9 @@
     "db:studio": {
       "cache": false
     },
+    "db:populate": {
+      "cache": false
+    },
     "dev": {
       "cache": false
     },

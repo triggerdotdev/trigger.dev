@@ -1,5 +1,12 @@
 # trigger.dev
 
+## 3.0.0-beta.23
+
+### Patch Changes
+
+- 43bc7ed94: Hoist uncaughtException handler to the top of workers to better report error messages
+  - @trigger.dev/core@3.0.0-beta.23
+
 ## 3.0.0-beta.22
 
 ### Patch Changes
