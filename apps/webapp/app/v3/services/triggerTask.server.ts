@@ -10,7 +10,7 @@ import { $transaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { uploadToObjectStore } from "../r2.server";
 import { BaseService } from "./baseService.server";
 
@@ -109,7 +109,7 @@ export class TriggerTaskService extends BaseService {
               select: { lastNumber: true },
             });
 
-            const queueName = body.options?.queue?.name ?? `task/${taskId}`;
+            const queueName = sanitizeQueueName(body.options?.queue?.name ?? `task/${taskId}`);
 
             event.setAttribute("queueName", queueName);
             span.setAttribute("queueName", queueName);
