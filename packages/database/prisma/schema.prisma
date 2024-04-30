@@ -1638,6 +1638,11 @@ model TaskRun {
   @@unique([runtimeEnvironmentId, idempotencyKey])
   // Task activity graph
   @@index([projectId, createdAt, taskIdentifier])
+  //Runs list
+  @@index([projectId])
+  @@index([projectId, taskIdentifier])
+  @@index([projectId, status])
+  @@index([projectId, taskIdentifier, status])
 }
 
 enum TaskRunStatus {

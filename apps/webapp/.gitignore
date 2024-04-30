@@ -18,3 +18,4 @@ build-storybook.log
 storybook-static
 
 /prisma/seed.js
+/prisma/populate.js

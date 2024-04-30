@@ -261,10 +261,10 @@ function SchedulesTable({
                   {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  <DateTime date={schedule.nextRun} />
+                  <DateTime date={schedule.nextRun} timeZone="utc" />
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  {schedule.lastRun ? <DateTime date={schedule.lastRun} /> : "–"}
+                  {schedule.lastRun ? <DateTime date={schedule.lastRun} timeZone="utc" /> : "–"}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
                   <div className="flex gap-1">

@@ -21,6 +21,7 @@ module.exports = {
     "random-words",
     "superjson",
   ],
+  browserNodeBuiltinsPolyfill: { modules: { path: true, os: true, crypto: true } },
   watchPaths: async () => {
     return [
       "../../packages/core/src/**/*",

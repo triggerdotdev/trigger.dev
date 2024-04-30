@@ -38,6 +38,15 @@ export const RUNNING_STATUSES: TaskRunStatus[] = [
   "WAITING_TO_RESUME",
 ];
 
+export const FINISHED_STATUSES: TaskRunStatus[] = [
+  "COMPLETED_SUCCESSFULLY",
+  "CANCELED",
+  "COMPLETED_WITH_ERRORS",
+  "INTERRUPTED",
+  "SYSTEM_FAILURE",
+  "CRASHED",
+];
+
 export function descriptionForTaskRunStatus(status: TaskRunStatus): string {
   return taskRunStatusDescriptions[status];
 }
