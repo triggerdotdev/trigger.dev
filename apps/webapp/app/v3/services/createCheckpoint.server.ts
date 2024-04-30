@@ -10,6 +10,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "~/v3/marqs/index.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { BaseService } from "./baseService.server";
+import { CrashTaskRunService } from "./crashTaskRun.server";
 
 const FREEZABLE_RUN_STATUSES: TaskRunStatus[] = ["EXECUTING", "RETRYING_AFTER_FAILURE"];
 const FREEZABLE_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["EXECUTING", "FAILED"];
@@ -61,6 +62,14 @@ export class CreateCheckpointService extends BaseService {
           status: attempt.taskRun.status,
         },
       });
+
+      // This should only affect CLIs < beta.24, in very limited scenarios
+      const service = new CrashTaskRunService(this._prisma);
+      await service.call(attempt.taskRunId, {
+        crashAttempts: true,
+        reason: "Unfreezable state: Please upgrade your CLI",
+      });
+
       return;
     }
 
