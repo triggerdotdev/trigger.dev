@@ -222,7 +222,7 @@ sender.send("TASKS_READY", { tasks: TASK_METADATA }).catch((err) => {
 
 process.title = "trigger-dev-worker";
 
-async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 5) {
+async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 30) {
   async function _doHeartbeat() {
     while (true) {
       if (_isRunning && _execution) {

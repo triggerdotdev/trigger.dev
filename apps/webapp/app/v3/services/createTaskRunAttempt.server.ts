@@ -1,9 +1,9 @@
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TaskRunExecution } from "@trigger.dev/core/v3";
-import { prisma } from "~/db.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
+import { $transaction } from "~/db.server";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { generateFriendlyId } from "../friendlyIdentifiers";
+import { BaseService, ServiceValidationError } from "./baseService.server";
 
 export class CreateTaskRunAttemptService extends BaseService {
   public async call(
@@ -61,19 +61,36 @@ export class CreateTaskRunAttemptService extends BaseService {
         throw new ServiceValidationError("Queue not found", 404);
       }
 
-      const taskRunAttempt = await prisma.taskRunAttempt.create({
-        data: {
-          number: taskRun.attempts[0] ? taskRun.attempts[0].number + 1 : 1,
-          friendlyId: generateFriendlyId("attempt"),
-          taskRunId: taskRun.id,
-          startedAt: new Date(),
-          backgroundWorkerId: taskRun.lockedBy.worker.id,
-          backgroundWorkerTaskId: taskRun.lockedBy.id,
-          status: "EXECUTING" as const,
-          queueId: queue.id,
-          runtimeEnvironmentId: environment.id,
-        },
+      const taskRunAttempt = await $transaction(this._prisma, async (tx) => {
+        const taskRunAttempt = await tx.taskRunAttempt.create({
+          data: {
+            number: taskRun.attempts[0] ? taskRun.attempts[0].number + 1 : 1,
+            friendlyId: generateFriendlyId("attempt"),
+            taskRunId: taskRun.id,
+            startedAt: new Date(),
+            backgroundWorkerId: taskRun.lockedBy!.worker.id,
+            backgroundWorkerTaskId: taskRun.lockedBy!.id,
+            status: "EXECUTING" as const,
+            queueId: queue.id,
+            runtimeEnvironmentId: environment.id,
+          },
+        });
+
+        await tx.taskRun.update({
+          where: {
+            id: taskRun.id,
+          },
+          data: {
+            status: "EXECUTING",
+          },
+        });
+
+        return taskRunAttempt;
       });
+
+      if (!taskRunAttempt) {
+        throw new ServiceValidationError("Failed to create task run attempt", 500);
+      }
 
       const execution: TaskRunExecution = {
         task: {

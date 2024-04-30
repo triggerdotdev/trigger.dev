@@ -3,26 +3,17 @@ import {
   TaskRunError,
   TaskRunFailedExecutionResult,
 } from "@trigger.dev/core/v3";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 
+import { TaskRunStatus } from "@trigger.dev/database";
 import { eventRepository } from "./eventRepository.server";
 import { BaseService } from "./services/baseService.server";
-import { TaskRunStatus } from "@trigger.dev/database";
 
 const FAILABLE_TASK_RUN_STATUSES: TaskRunStatus[] = ["EXECUTING", "PENDING", "WAITING_FOR_DEPLOY"];
 
 export class FailedTaskRunService extends BaseService {
-  public async call({
-    runFriendlyId,
-    completion,
-    env,
-  }: {
-    runFriendlyId: string;
-    completion: TaskRunFailedExecutionResult;
-    env: AuthenticatedEnvironment;
-  }) {
+  public async call(runFriendlyId: string, completion: TaskRunFailedExecutionResult) {
     const taskRun = await this._prisma.taskRun.findUnique({
       where: { friendlyId: runFriendlyId },
     });

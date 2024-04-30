@@ -154,11 +154,7 @@ export class DevQueueConsumer {
 
     const service = new FailedTaskRunService();
 
-    await service.call({
-      runFriendlyId: completion.id,
-      completion,
-      env: this.env,
-    });
+    await service.call(completion.id, completion);
   }
 
   /**
@@ -413,7 +409,6 @@ export class DevQueueConsumer {
       data: {
         lockedAt: new Date(),
         lockedById: backgroundTask.id,
-        status: "EXECUTING",
       },
       include: {
         attempts: {
