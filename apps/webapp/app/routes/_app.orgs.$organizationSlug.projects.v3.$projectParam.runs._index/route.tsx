@@ -68,7 +68,7 @@ export default function Page() {
       <PageBody>
         <Suspense
           fallback={
-            <div className="flex items-center justify-center py-4">
+            <div className="flex items-center justify-center py-2">
               <div className="mx-auto flex items-center gap-2">
                 <Spinner />
                 <Paragraph variant="small">Loading runs</Paragraph>
