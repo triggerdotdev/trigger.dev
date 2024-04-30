@@ -4,16 +4,15 @@ import {
   TaskRunStatus,
   TaskTriggerSource,
 } from "@trigger.dev/database";
-import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
+import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { sqlDatabaseSchema } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
+import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
 import { User } from "~/models/user.server";
 import { sortEnvironments } from "~/services/environmentSort.server";
 import { logger } from "~/services/logger.server";
-import { getUsername } from "~/utils/username";
 import { BasePresenter } from "./basePresenter.server";
-import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
-import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
 
 export type Task = {
   slug: string;
@@ -26,10 +25,6 @@ export type Task = {
     type: RuntimeEnvironmentType;
     userName?: string;
   }[];
-  latestRun?: {
-    createdAt: Date;
-    status: TaskRunStatus;
-  };
 };
 
 type Return = Awaited<ReturnType<TaskListPresenter["call"]>>;
@@ -98,39 +93,8 @@ export class TaskListPresenter extends BasePresenter {
     JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" tasks ON tasks."workerId" = workers.id
     ORDER BY slug ASC;`;
 
-    let latestRuns = [] as {
-      createdAt: Date;
-      status: TaskRunStatus;
-      taskIdentifier: string;
-    }[];
-
-    if (tasks.length > 0) {
-      const uniqueTaskSlugs = new Set(tasks.map((t) => t.slug));
-      latestRuns = await this._replica.$queryRaw<
-        {
-          createdAt: Date;
-          status: TaskRunStatus;
-          taskIdentifier: string;
-        }[]
-      >`
-      SELECT * FROM (
-        SELECT
-          "createdAt",
-          "status",
-          "taskIdentifier",
-          ROW_NUMBER() OVER (PARTITION BY "taskIdentifier" ORDER BY "updatedAt" DESC) AS rn
-        FROM
-          ${sqlDatabaseSchema}."TaskRun"
-        WHERE
-          "taskIdentifier" IN(${Prisma.join(Array.from(uniqueTaskSlugs))})
-          AND "projectId" = ${project.id}
-      ) t
-      WHERE rn = 1;`;
-    }
-
     //group by the task identifier (task.slug). Add the latestRun and add all the environments.
     const outputTasks = tasks.reduce((acc, task) => {
-      const latestRun = latestRuns.find((r) => r.taskIdentifier === task.slug);
       const environment = project.environments.find((env) => env.id === task.runtimeEnvironmentId);
       if (!environment) {
         throw new Error(`Environment not found for TaskRun ${task.id}`);
@@ -150,13 +114,6 @@ export class TaskListPresenter extends BasePresenter {
 
       //order the environments
       existingTask.environments = sortEnvironments(existingTask.environments);
-
-      existingTask.latestRun = latestRun
-        ? {
-            createdAt: latestRun.createdAt,
-            status: latestRun.status,
-          }
-        : undefined;
 
       return acc;
     }, [] as Task[]);

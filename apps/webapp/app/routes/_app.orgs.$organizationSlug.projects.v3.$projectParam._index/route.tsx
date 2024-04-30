@@ -1,10 +1,10 @@
 import { ChatBubbleLeftRightIcon, ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { TaskRunStatus } from "@trigger.dev/database";
 import { Fragment, Suspense, useEffect, useState } from "react";
-import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
 import { InitCommandV3, TriggerDevStepV3, TriggerLoginStepV3 } from "~/components/SetupCommands";
@@ -36,7 +36,6 @@ import {
   TaskRunStatusCombo,
   TaskRunStatusIcon,
   runStatusClassNameColor,
-  runStatusTitle,
 } from "~/components/runs/v3/TaskRunStatus";
 import {
   TaskTriggerSourceIcon,
@@ -45,7 +44,6 @@ import {
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
 import { TaskActivity, TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -120,7 +118,6 @@ export default function Page() {
                       <TableHeaderCell>Activity (7d)</TableHeaderCell>
                       <TableHeaderCell>Avg. duration</TableHeaderCell>
                       <TableHeaderCell>Environments</TableHeaderCell>
-                      <TableHeaderCell>Last run</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
@@ -217,24 +214,6 @@ export default function Page() {
                                   />
                                 ))}
                               </div>
-                            </TableCell>
-                            <TableCell to={path}>
-                              {task.latestRun ? (
-                                <div
-                                  className={cn(
-                                    "flex items-center gap-1",
-                                    runStatusClassNameColor(task.latestRun.status)
-                                  )}
-                                >
-                                  <TaskRunStatusIcon
-                                    status={task.latestRun.status}
-                                    className="h-4 w-4"
-                                  />
-                                  <DateTime date={task.latestRun.createdAt} />
-                                </div>
-                              ) : (
-                                "Never run"
-                              )}
                             </TableCell>
                             <TableCellChevron to={path} />
                           </TableRow>

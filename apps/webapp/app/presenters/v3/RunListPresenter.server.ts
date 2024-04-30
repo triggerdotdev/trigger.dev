@@ -1,11 +1,10 @@
 import { Prisma, TaskRunStatus } from "@trigger.dev/database";
 import { Direction } from "~/components/runs/RunStatuses";
-import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
+import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
-import { getUsername } from "~/utils/username";
 import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 import { BasePresenter } from "./basePresenter.server";
-import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 
 type RunListOptions = {
   userId?: string;
