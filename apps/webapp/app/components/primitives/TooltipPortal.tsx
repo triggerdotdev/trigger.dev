@@ -5,6 +5,9 @@ import { usePopper } from "react-popper";
 import { useEvent } from "react-use";
 import useLazyRef from "~/hooks/useLazyRef";
 
+// Recharts 3.x will have portal support, but until then we're using this:
+//https://github.com/recharts/recharts/issues/2458#issuecomment-1063463873
+
 export interface PopperPortalProps {
   active?: boolean;
   children: ReactNode;
