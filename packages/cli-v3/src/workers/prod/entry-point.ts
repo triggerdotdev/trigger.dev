@@ -43,6 +43,7 @@ class ProdWorker {
   private attemptFriendlyId?: string;
 
   private nextResumeAfter?: WaitReason;
+  private waitForPostStart = false;
 
   #httpPort: number;
   #backgroundWorker: ProdBackgroundWorker;
@@ -100,6 +101,7 @@ class ProdWorker {
           // Worker will resume immediately
           this.paused = false;
           this.nextResumeAfter = undefined;
+          this.waitForPostStart = false;
         }
       }
 
@@ -192,6 +194,10 @@ class ProdWorker {
   }
 
   async #reconnect(isPostStart = false, reconnectImmediately = false) {
+    if (isPostStart) {
+      this.waitForPostStart = false;
+    }
+
     this.#coordinatorSocket.close();
 
     if (!reconnectImmediately) {
@@ -222,7 +228,7 @@ class ProdWorker {
     }
   }
 
-  #prepareForWait(reason: WaitReason, willCheckpointAndRestore: boolean) {
+  async #prepareForWait(reason: WaitReason, willCheckpointAndRestore: boolean) {
     logger.log(`prepare for ${reason}`, { willCheckpointAndRestore });
 
     this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
@@ -230,6 +236,7 @@ class ProdWorker {
     if (willCheckpointAndRestore) {
       this.paused = true;
       this.nextResumeAfter = reason;
+      this.waitForPostStart = true;
 
       if (reason === "WAIT_FOR_TASK" || reason === "WAIT_FOR_BATCH") {
         // Flush before checkpointing so we don't flush the same spans again after restore
@@ -255,6 +262,7 @@ class ProdWorker {
     this.attemptFriendlyId = undefined;
 
     if (willCheckpointAndRestore) {
+      this.waitForPostStart = true;
       this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
       return;
     }
@@ -263,6 +271,7 @@ class ProdWorker {
   #resumeAfterDuration() {
     this.paused = false;
     this.nextResumeAfter = undefined;
+    this.waitForPostStart = false;
 
     this.#backgroundWorker.waitCompletedNotification();
   }
@@ -353,6 +362,7 @@ class ProdWorker {
 
           this.paused = false;
           this.nextResumeAfter = undefined;
+          this.waitForPostStart = false;
 
           for (let i = 0; i < message.completions.length; i++) {
             const completion = message.completions[i];
@@ -434,6 +444,11 @@ class ProdWorker {
         },
       },
       onConnection: async (socket, handler, sender, logger) => {
+        if (this.waitForPostStart) {
+          logger.log("skip connection handler, waiting for post start hook");
+          return;
+        }
+
         if (this.paused) {
           if (!this.nextResumeAfter) {
             return;

@@ -442,6 +442,9 @@ class TaskRunProcess {
           this.onTaskHeartbeat.post(message.id);
         },
         TASKS_READY: async (message) => {},
+        WAIT_FOR_TASK: async (message) => {
+          this.onWaitForTask.post(message);
+        },
         WAIT_FOR_BATCH: async (message) => {
           this.onWaitForBatch.post(message);
         },
@@ -466,9 +469,6 @@ class TaskRunProcess {
               willCheckpointAndRestore: false,
             };
           }
-        },
-        WAIT_FOR_TASK: async (message) => {
-          this.onWaitForTask.post(message);
         },
         READY_FOR_CHECKPOINT: async (message) => {
           this.onReadyForCheckpoint.post(message);
