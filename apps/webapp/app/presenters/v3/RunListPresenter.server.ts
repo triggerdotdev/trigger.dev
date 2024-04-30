@@ -236,6 +236,4 @@ export class RunListPresenter extends BasePresenter {
       hasFilters,
     };
   }
-
-  async #getRuns() {}
 }
