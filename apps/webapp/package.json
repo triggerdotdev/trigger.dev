@@ -16,6 +16,8 @@
     "typecheck": "tsc -p ./tsconfig.check.json",
     "db:seed": "node prisma/seed.js",
     "db:seed:local": "ts-node prisma/seed.ts",
+    "build:db:populate": "esbuild --platform=node --bundle --minify --format=cjs ./prisma/populate.ts --outdir=prisma",
+    "db:populate": "node prisma/populate.js --",
     "generate:sourcemaps": "remix build --sourcemap",
     "clean:sourcemaps": "run-s clean:sourcemaps:*",
     "clean:sourcemaps:public": "rimraf ./build/**/*.map",
