@@ -1325,8 +1325,19 @@ async function compileProject(
 
       // Write the Containerfile to /tmp/dir/Containerfile
       const containerFilePath = join(cliRootPath(), "Containerfile.prod");
-      // Copy the Containerfile to /tmp/dir/Containerfile
-      await copyFile(containerFilePath, join(tempDir, "Containerfile"));
+
+      let containerFileContents = readFileSync(containerFilePath, "utf-8");
+
+      if (config.postInstall) {
+        containerFileContents = containerFileContents.replace(
+          "__POST_INSTALL__",
+          `RUN ${config.postInstall}`
+        );
+      } else {
+        containerFileContents = containerFileContents.replace("__POST_INSTALL__", "");
+      }
+
+      await writeFile(join(tempDir, "Containerfile"), containerFileContents);
 
       const contentHasher = createHash("sha256");
       contentHasher.update(Buffer.from(entryPointOutputFile.text));

@@ -16,8 +16,8 @@ export const config: TriggerConfig = {
       randomize: true,
     },
   },
-  additionalPackages: ["wrangler@3.35.0", "pg@8.11.5"],
-  additionalFiles: ["./wrangler/wrangler.toml"],
+  additionalPackages: ["wrangler@3.35.0", "pg@8.11.5", "prisma@5.11.0"],
+  additionalFiles: ["./wrangler/wrangler.toml", "./prisma/schema.prisma"],
   dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp"],
   instrumentations: [new OpenAIInstrumentation()],
   logLevel: "log",
@@ -34,4 +34,5 @@ export const config: TriggerConfig = {
 
     throw error;
   },
+  postInstall: "npm exec --package prisma -- prisma generate",
 };
