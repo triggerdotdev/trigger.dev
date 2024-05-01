@@ -86,7 +86,7 @@ class ProdWorker {
 
     // Currently, this is only used for duration waits. Might need adjusting for other use cases.
     this.#backgroundWorker.onCancelCheckpoint.attach(async (message) => {
-      logger.log("onCancelCheckpoint()", { message });
+      logger.log("onCancelCheckpoint", { message });
 
       const { checkpointCanceled } = await this.#coordinatorSocket.socket.emitWithAck(
         "CANCEL_CHECKPOINT",
