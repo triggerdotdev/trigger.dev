@@ -1,8 +1,44 @@
 import * as Ariakit from "@ariakit/react";
 import { SelectValue } from "@ariakit/react-core/select/select-value";
+import { ChevronDown } from "lucide-react";
 import * as React from "react";
 import { useMemo, useState } from "react";
+import { T } from "vitest/dist/reporters-P7C2ytIv.js";
 import { cn } from "~/utils/cn";
+
+const sizes = {
+  small: {
+    button:
+      "h-6 rounded text-xs bg-tertiary border border-tertiary hover:text-text-bright hover:border-charcoal-600 pr-2 pl-1.5",
+  },
+  medium: {
+    button: "h-8",
+  },
+};
+
+const variants = {
+  "tertiary/small": {
+    button: cn(sizes.small.button, ""),
+  },
+};
+
+type Variant = keyof typeof variants;
+
+type Section<TItem> = {
+  title: string;
+  items: TItem[];
+};
+
+function isSection<TItem>(data: TItem[] | Section<TItem>[]): data is Section<TItem>[] {
+  const firstItem = data[0];
+  return (
+    (firstItem as Section<TItem>).title !== undefined &&
+    (firstItem as Section<TItem>).items !== undefined &&
+    Array.isArray((firstItem as Section<TItem>).items)
+  );
+}
+
+type TItemFromSection<TItem> = TItem extends Section<infer U> ? U : TItem;
 
 export interface SelectProps<TValue extends string | string[], TItem>
   extends Omit<Ariakit.SelectProps, "children"> {
@@ -17,13 +53,14 @@ export interface SelectProps<TValue extends string | string[], TItem>
   selectTabOnMove?: boolean;
   label?: string | Ariakit.SelectLabelProps["render"];
   heading?: string;
-  items: TItem[];
+  items: TItem[] | Section<TItem>[];
   empty?: React.ReactNode;
-  filter?: (item: TItem, search: string) => boolean;
-  children: (items: TItem[]) => React.ReactNode;
+  filter?: (item: TItemFromSection<TItem>, search: string) => boolean;
+  children: (items: TItemFromSection<TItem>[], title?: string) => React.ReactNode;
+  variant?: Variant;
 }
 
-export function Select<TValue extends string | string[], TItem = any>({
+export function Select<TValue extends string | string[], TItem>({
   children,
   icon,
   text,
@@ -39,6 +76,7 @@ export function Select<TValue extends string | string[], TItem = any>({
   items,
   filter,
   empty = "No items",
+  variant = "tertiary/small",
   ...props
 }: SelectProps<TValue, TItem>) {
   const [searchValue, setSearchValue] = useState("");
@@ -47,8 +85,18 @@ export function Select<TValue extends string | string[], TItem = any>({
   const matches = useMemo(() => {
     if (!items) return [];
     if (!searchValue || !filter) return items;
-    return items.filter((item) => filter(item, searchValue));
+
+    if (isSection(items)) {
+      return items.map((section) => ({
+        ...section,
+        items: section.items.filter((item) => filter(item as TItemFromSection<TItem>, searchValue)),
+      }));
+    }
+
+    return items.filter((item) => filter(item as TItemFromSection<TItem>, searchValue));
   }, [searchValue, items]);
+
+  const variantClasses = variants[variant];
 
   const select = (
     <Ariakit.SelectProvider
@@ -62,11 +110,19 @@ export function Select<TValue extends string | string[], TItem = any>({
       )}
       <Ariakit.Select
         {...props}
-        className={cn("focusable clickable button button-default", props.className)}
+        className={cn(
+          "group flex items-center gap-2 outline-offset-0 outline-secondary disabled:cursor-not-allowed disabled:opacity-50",
+          variantClasses.button,
+          props.className
+        )}
       >
         {icon}
         <div className="truncate">{text || <SelectValue />}</div>
-        <Ariakit.SelectArrow />
+        <Ariakit.SelectArrow
+          className={cn(
+            "size-5 text-text-dimmed transition group-hover:text-text-bright group-focus:text-text-bright"
+          )}
+        />
       </Ariakit.Select>
       <Ariakit.SelectPopover
         gutter={5}
@@ -80,14 +136,14 @@ export function Select<TValue extends string | string[], TItem = any>({
               className="cursor-default font-medium opacity-80"
               render={<>{heading}</>}
             />
-            <Ariakit.SelectDismiss className="focusable clickable rounded-item button button-secondary button-flat button-icon button-small opacity-70" />
+            <Ariakit.SelectDismiss className="rounded-item button-secondary button-flat button-icon button-small opacity-70 outline-offset-0 outline-secondary" />
           </div>
         )}
         {searchable && (
           <Ariakit.Combobox
             autoSelect
             render={<input placeholder={heading ?? "Filter options"} />}
-            className="focusable combobox input rounded-item -mb-1 h-10 w-full px-[13px]"
+            className="combobox input rounded-item -mb-1 h-10 w-full px-[13px] outline-offset-0 outline-secondary"
           />
         )}
         <Ariakit.TabProvider
@@ -97,7 +153,15 @@ export function Select<TValue extends string | string[], TItem = any>({
           selectOnMove={selectTabOnMove}
         >
           <div className="tabs-border popup-cover flex flex-col">
-            <SelectList>{matches.length > 0 ? children(matches) : empty}</SelectList>
+            <SelectList>
+              {matches.length > 0
+                ? isSection(matches)
+                  ? matches.map((section) =>
+                      children(section.items as TItemFromSection<TItem>[], section.title)
+                    )
+                  : children(matches as TItemFromSection<TItem>[])
+                : empty}
+            </SelectList>
           </div>
         </Ariakit.TabProvider>
       </Ariakit.SelectPopover>
@@ -135,7 +199,7 @@ export function SelectTab(props: SelectTabProps) {
     <Ariakit.Tab
       {...props}
       render={<Ariakit.Role.div render={props.render} />}
-      className={cn("clickable tab tab-default", props.className)}
+      className={cn("tab tab-default", props.className)}
     />
   );
 }
@@ -189,7 +253,7 @@ export function SelectItem({ icon = <Ariakit.SelectItemCheck />, ...props }: Sel
       render={render}
       blurOnHoverEnd={false}
       className={cn(
-        "option clickable [--padding-block:0.5rem] sm:[--padding-block:0.25rem]",
+        "option [--padding-block:0.5rem] sm:[--padding-block:0.25rem]",
         props.className
       )}
     >
@@ -208,4 +272,16 @@ export function SelectSeparator(props: SelectSeparatorProps) {
       className={cn("popup-cover my-[--padding] h-px bg-[--border] p-0", props.className)}
     />
   );
+}
+
+export interface SelectGroupProps extends Ariakit.SelectGroupProps {}
+
+export function SelectGroup(props: SelectGroupProps) {
+  return <Ariakit.SelectGroup {...props} />;
+}
+
+export interface SelectGroupLabelProps extends Ariakit.SelectGroupLabelProps {}
+
+export function SelectGroupLabel(props: SelectGroupLabelProps) {
+  return <Ariakit.SelectGroupLabel {...props} />;
 }

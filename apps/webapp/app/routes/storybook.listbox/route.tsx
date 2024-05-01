@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { matchSorter } from "match-sorter";
 import { ComponentProps, useMemo, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
-import { Select, SelectItem } from "~/components/primitives/Listbox";
+import { Select, SelectGroup, SelectGroupLabel, SelectItem } from "~/components/primitives/Listbox";
 
 export const branches = [
   "main",
@@ -32,13 +32,40 @@ export const branches = [
   "rsckeys",
 ];
 
+export const grouped = [
+  {
+    title: "My org",
+    items: [
+      {
+        title: "My repo",
+        value: "main",
+      },
+      {
+        title: "My fork",
+        value: "fork",
+      },
+    ],
+  },
+  {
+    title: "Other org",
+    items: [
+      {
+        title: "Other repo",
+        value: "other",
+      },
+      {
+        title: "Other fork",
+        value: "fork",
+      },
+    ],
+  },
+];
+
 export default function Story() {
-  const [data, setData] = useState(branches);
   const [value, setValue] = useState(["main"]);
-  const values = data;
 
   return (
-    <div className="flex max-w-full flex-wrap justify-center gap-2 p-4">
+    <div className="flex h-full max-w-full flex-wrap items-center justify-center gap-2 p-4">
       {/* <Select
         label={<div hidden>Select</div>}
         icon={<BranchIcon />}
@@ -51,8 +78,8 @@ export default function Story() {
           ))}
         </SelectList>
       </Select> */}
-      <Form>
-        <div className="flex gap-8">
+      <Form className="space-y-4">
+        <div className="flex gap-4">
           <Select
             name="branch"
             icon={<BranchIcon />}
@@ -60,10 +87,10 @@ export default function Story() {
             // setValue={setValue}
             defaultValue={["main"]}
             heading={"Filter by status..."}
-            items={values}
+            items={branches}
             filter={(item, search) => item.toLowerCase().includes(search.toLowerCase())}
           >
-            {(matches) => (
+            {(matches, title) => (
               <>
                 {matches?.map((value) => (
                   <SelectItem key={value} value={value} />
@@ -73,18 +100,32 @@ export default function Story() {
           </Select>
           <Select
             name="branch2"
-            icon={<BranchIcon />}
+            // icon={<BranchIcon />}
             value={value}
             setValue={setValue}
             heading={"Filter by status..."}
-            items={values}
+            items={branches}
           >
-            {(matches) => (
-              <>
-                {matches?.map((value) => (
-                  <SelectItem key={value} value={value} />
+            {(matches) => matches?.map((value) => <SelectItem key={value} value={value} />)}
+          </Select>
+
+          <Select
+            name="grouped"
+            icon={<BranchIcon />}
+            // value={value}
+            // setValue={setValue}
+            defaultValue={["main"]}
+            heading={"Filter by status..."}
+            items={grouped}
+            filter={(item, search) => item.title.toLowerCase().includes(search.toLowerCase())}
+          >
+            {(matches, title) => (
+              <SelectGroup>
+                {title && <SelectGroupLabel>{title}</SelectGroupLabel>}
+                {matches?.map((match) => (
+                  <SelectItem key={match.value} value={match.title} />
                 ))}
-              </>
+              </SelectGroup>
             )}
           </Select>
         </div>
