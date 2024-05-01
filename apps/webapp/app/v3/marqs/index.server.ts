@@ -584,9 +584,10 @@ export class MarQS {
         span.setAttributes({
           ...flattenAttributes(queuesWithScores, "marqs.queuesWithScores"),
         });
-        span.setAttribute("marqs.nextRange", range);
-        span.setAttribute("marqs.queueCount", queues.length);
-        span.setAttribute("marqs.queueChoice", choice);
+        span.setAttribute("nextRange.start", range[0]);
+        span.setAttribute("nextRange.end", range[1]);
+        span.setAttribute("queueCount", queues.length);
+        span.setAttribute("queueChoice", choice);
 
         return choice;
       },

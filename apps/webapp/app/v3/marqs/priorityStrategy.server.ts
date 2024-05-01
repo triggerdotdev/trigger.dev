@@ -45,7 +45,9 @@ export class SimpleWeightedChoiceStrategy implements MarQSQueuePriorityStrategy 
   constructor(private options: SimpleWeightedChoiceStrategyOptions) {}
 
   private nextRangeForParentQueue(parentQueue: string) {
-    return this._nextRangesByParentQueue.get(parentQueue) ?? [0, this.options.queueSelectionCount];
+    return (
+      this._nextRangesByParentQueue.get(parentQueue) ?? [0, this.options.queueSelectionCount - 1]
+    );
   }
 
   chooseQueue(
@@ -61,9 +63,9 @@ export class SimpleWeightedChoiceStrategy implements MarQSQueuePriorityStrategy 
         const nextRange: [number, number] = nextRangeForParentQueue
           ? [
               nextRangeForParentQueue[1],
-              nextRangeForParentQueue[1] + this.options.queueSelectionCount,
+              nextRangeForParentQueue[1] + this.options.queueSelectionCount - 1,
             ]
-          : [this.options.queueSelectionCount, this.options.queueSelectionCount * 2];
+          : [this.options.queueSelectionCount, this.options.queueSelectionCount * 2 - 1];
         // If all queues are at capacity, and we were passed the max number of queues, then we will slide the window "to the right"
         this._nextRangesByParentQueue.set(parentQueue, nextRange);
       } else {
