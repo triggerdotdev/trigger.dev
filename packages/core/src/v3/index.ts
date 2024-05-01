@@ -28,6 +28,7 @@ export {
   flattenAttributes,
   primitiveValueOrflattenedAttributes,
   unflattenAttributes,
+  NULL_SENTINEL,
 } from "./utils/flattenAttributes";
 export { omit } from "./utils/omit";
 export {

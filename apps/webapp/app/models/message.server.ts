@@ -1,5 +1,4 @@
-import { json, Session } from "@remix-run/node";
-import { redirect } from "remix-typedjson";
+import { json, redirect, Session } from "@remix-run/node";
 import { createCookieSessionStorage } from "@remix-run/node";
 import { env } from "~/env.server";
 

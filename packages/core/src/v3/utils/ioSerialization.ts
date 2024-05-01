@@ -216,11 +216,13 @@ export async function createPacketAttributes(
         const parsed = parse(packet.data) as any;
         const jsonified = JSON.parse(JSON.stringify(parsed, safeReplacer));
 
-        return {
+        const result = {
           ...flattenAttributes(jsonified, dataKey),
           [dataTypeKey]: "application/json",
         };
-      } catch {
+
+        return result;
+      } catch (e) {
         return;
       }
 

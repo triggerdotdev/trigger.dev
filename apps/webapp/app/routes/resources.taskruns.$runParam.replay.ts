@@ -63,6 +63,14 @@ export const action: ActionFunction = async ({ request, params }) => {
       { spanId: newRun.spanId }
     );
 
+    logger.debug("Replayed run", {
+      taskRunId: taskRun.id,
+      taskRunFriendlyId: taskRun.friendlyId,
+      newRunId: newRun.id,
+      newRunFriendlyId: newRun.friendlyId,
+      runPath,
+    });
+
     return redirectWithSuccessMessage(runPath, request, `Replaying run`);
   } catch (error) {
     if (error instanceof Error) {
