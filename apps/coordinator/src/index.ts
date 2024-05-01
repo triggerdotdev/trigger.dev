@@ -890,7 +890,7 @@ class TaskCoordinator {
           logger.log("[INDEX_TASKS]", message);
 
           const workerAck = await this.#platformSocket?.sendWithAck("CREATE_WORKER", {
-            version: "v1",
+            version: "v2",
             projectRef: socket.data.projectRef,
             envId: socket.data.envId,
             deploymentId: message.deploymentId,
@@ -899,6 +899,7 @@ class TaskCoordinator {
               packageVersion: message.packageVersion,
               tasks: message.tasks,
             },
+            supportsLazyAttempts: message.version !== "v1" && message.supportsLazyAttempts,
           });
 
           if (!workerAck) {

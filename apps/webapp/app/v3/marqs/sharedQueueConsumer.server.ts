@@ -1,6 +1,5 @@
 import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
 import {
-  Machine,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   TaskRunError,
@@ -29,6 +28,8 @@ import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
 import { tracer } from "../tracer.server";
 import { CrashTaskRunService } from "../services/crashTaskRun.server";
+import { FailedTaskRunService } from "../failedTaskRun.server";
+import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -408,26 +409,6 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const queue = await prisma.taskQueue.findUnique({
-          where: {
-            runtimeEnvironmentId_name: {
-              runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
-              name: lockedTaskRun.queue,
-            },
-          },
-        });
-
-        if (!queue) {
-          logger.debug("SharedQueueConsumer queue not found, so nacking message", {
-            queueMessage: message,
-            taskRunQueue: lockedTaskRun.queue,
-            runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
-          });
-
-          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
-          return;
-        }
-
         if (!this._enabled) {
           logger.debug("SharedQueueConsumer not enabled, so nacking message", {
             queueMessage: message,
@@ -437,39 +418,12 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const taskRunAttempt = await prisma.taskRunAttempt.create({
-          data: {
-            number: lockedTaskRun.attempts[0] ? lockedTaskRun.attempts[0].number + 1 : 1,
-            friendlyId: generateFriendlyId("attempt"),
-            taskRunId: lockedTaskRun.id,
-            startedAt: new Date(),
-            backgroundWorkerId: backgroundTask.workerId,
-            backgroundWorkerTaskId: backgroundTask.id,
-            status: "PENDING" as const,
-            queueId: queue.id,
-            runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
-          },
-          include: {
-            backgroundWorkerTask: true,
-          },
-        });
+        const nextAttemptNumber = lockedTaskRun.attempts[0]
+          ? lockedTaskRun.attempts[0].number + 1
+          : 1;
 
-        const isRetry = taskRunAttempt.number > 1;
+        const isRetry = nextAttemptNumber > 1;
 
-        const { machineConfig } = taskRunAttempt.backgroundWorkerTask;
-        const machine = Machine.safeParse(machineConfig ?? {});
-
-        if (!machine.success) {
-          logger.error("Failed to parse machine config", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-            attemptId: taskRunAttempt.id,
-            machineConfig,
-          });
-
-          await this.#ackAndDoMoreWork(message.messageId);
-          return;
-        }
         try {
           if (messageBody.data.checkpointEventId) {
             const restoreService = new RestoreCheckpointService();
@@ -491,23 +445,51 @@ export class SharedQueueConsumer {
           } else if (isRetry) {
             socketIo.coordinatorNamespace.emit("READY_FOR_RETRY", {
               version: "v1",
-              runId: taskRunAttempt.taskRunId,
+              runId: lockedTaskRun.id,
             });
           } else {
+            const environment = await prisma.runtimeEnvironment.findUniqueOrThrow({
+              where: {
+                id: lockedTaskRun.runtimeEnvironmentId,
+              },
+              include: {
+                project: true,
+                organization: true,
+              },
+            });
+
+            const service = new CreateTaskRunAttemptService();
+            const { attempt, machine } = await service.call(
+              lockedTaskRun.friendlyId,
+              environment,
+              false
+            );
+
+            if (!machine) {
+              logger.error("Missing machine config", {
+                queueMessage: message.data,
+                messageId: message.messageId,
+                attemptId: attempt.id,
+              });
+
+              await this.#ackAndDoMoreWork(message.messageId);
+              return;
+            }
+
             await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
               backgroundWorkerId: deployment.worker.friendlyId,
               data: {
                 type: "SCHEDULE_ATTEMPT",
                 image: deployment.imageReference,
                 version: deployment.version,
-                machine: machine.data,
+                machine: machine,
                 // identifiers
-                id: taskRunAttempt.id,
+                id: attempt.id,
                 envId: lockedTaskRun.runtimeEnvironment.id,
                 envType: lockedTaskRun.runtimeEnvironment.type,
                 orgId: lockedTaskRun.runtimeEnvironment.organizationId,
                 projectId: lockedTaskRun.runtimeEnvironment.projectId,
-                runId: taskRunAttempt.taskRunId,
+                runId: lockedTaskRun.id,
               },
             });
           }
@@ -529,11 +511,7 @@ export class SharedQueueConsumer {
               data: {
                 lockedAt: null,
                 lockedById: null,
-              },
-            }),
-            prisma.taskRunAttempt.delete({
-              where: {
-                id: taskRunAttempt.id,
+                status: lockedTaskRun.status,
               },
             }),
           ]);
@@ -1086,6 +1064,8 @@ class SharedQueueTasks {
   }
 
   async taskHeartbeat(attemptFriendlyId: string, seconds: number = 60) {
+    logger.debug("[SharedQueueConsumer] taskHeartbeat()", { id: attemptFriendlyId, seconds });
+
     const taskRunAttempt = await prisma.taskRunAttempt.findUnique({
       where: { friendlyId: attemptFriendlyId },
     });
@@ -1095,6 +1075,20 @@ class SharedQueueTasks {
     }
 
     await marqs?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
+  }
+
+  async taskRunHeartbeat(runId: string, seconds: number = 60) {
+    logger.debug("[SharedQueueConsumer] taskRunHeartbeat()", { runId, seconds });
+
+    await marqs?.heartbeatMessage(runId, seconds);
+  }
+
+  public async taskRunFailed(completion: TaskRunFailedExecutionResult) {
+    logger.debug("[SharedQueueConsumer] taskRunFailed()", { completion });
+
+    const service = new FailedTaskRunService();
+
+    await service.call(completion.id, completion);
   }
 }
 

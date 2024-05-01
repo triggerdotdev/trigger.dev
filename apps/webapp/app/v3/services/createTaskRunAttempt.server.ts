@@ -1,15 +1,22 @@
-import { TaskRunExecution } from "@trigger.dev/core/v3";
+import { Machine, TaskRunExecution } from "@trigger.dev/core/v3";
 import { $transaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { BaseService, ServiceValidationError } from "./baseService.server";
+import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
 
 export class CreateTaskRunAttemptService extends BaseService {
   public async call(
     runFriendlyId: string,
-    environment: AuthenticatedEnvironment
-  ): Promise<TaskRunExecution> {
+    environment: AuthenticatedEnvironment,
+    setToExecuting = true
+  ): Promise<{
+    execution: TaskRunExecution;
+    run: TaskRun;
+    attempt: TaskRunAttempt;
+    machine?: Machine;
+  }> {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskRunId", runFriendlyId);
 
@@ -70,20 +77,25 @@ export class CreateTaskRunAttemptService extends BaseService {
             startedAt: new Date(),
             backgroundWorkerId: taskRun.lockedBy!.worker.id,
             backgroundWorkerTaskId: taskRun.lockedBy!.id,
-            status: "EXECUTING" as const,
+            status: setToExecuting ? "EXECUTING" : "PENDING",
             queueId: queue.id,
             runtimeEnvironmentId: environment.id,
           },
+          include: {
+            backgroundWorkerTask: true,
+          },
         });
 
-        await tx.taskRun.update({
-          where: {
-            id: taskRun.id,
-          },
-          data: {
-            status: "EXECUTING",
-          },
-        });
+        if (setToExecuting) {
+          await tx.taskRun.update({
+            where: {
+              id: taskRun.id,
+            },
+            data: {
+              status: "EXECUTING",
+            },
+          });
+        }
 
         return taskRunAttempt;
       });
@@ -142,7 +154,24 @@ export class CreateTaskRunAttemptService extends BaseService {
             : undefined,
       };
 
-      return execution;
+      const { machineConfig } = taskRunAttempt.backgroundWorkerTask;
+      const machine = Machine.safeParse(machineConfig ?? {});
+
+      if (!machine.success) {
+        logger.error("Failed to parse machine config", {
+          run: taskRun.id,
+          attempt: taskRunAttempt.id,
+          backgroundWorkerTask: taskRunAttempt.backgroundWorkerTask.id,
+          machineConfig,
+        });
+      }
+
+      return {
+        execution,
+        run: taskRun,
+        attempt: taskRunAttempt,
+        machine: machine.success ? machine.data : undefined,
+      };
     });
   }
 }

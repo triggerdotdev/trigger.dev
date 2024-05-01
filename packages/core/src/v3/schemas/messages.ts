@@ -165,6 +165,10 @@ export const childToWorkerMessages = {
     version: z.literal("v1").default("v1"),
     id: z.string(),
   }),
+  TASK_RUN_HEARTBEAT: z.object({
+    version: z.literal("v1").default("v1"),
+    id: z.string(),
+  }),
   READY_TO_DISPOSE: z.undefined(),
   WAIT_FOR_DURATION: z.object({
     version: z.literal("v1").default("v1"),
@@ -200,6 +204,12 @@ export const ProdChildToWorkerMessages = {
     message: TaskMetadataFailedToParseData,
   },
   TASK_HEARTBEAT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      id: z.string(),
+    }),
+  },
+  TASK_RUN_HEARTBEAT: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       id: z.string(),
@@ -402,6 +412,18 @@ export const PlatformToProviderMessages = {
   },
 };
 
+const CreateWorkerMessage = z.object({
+  projectRef: z.string(),
+  envId: z.string(),
+  deploymentId: z.string(),
+  metadata: z.object({
+    cliPackageVersion: z.string().optional(),
+    contentHash: z.string(),
+    packageVersion: z.string(),
+    tasks: TaskResource.array(),
+  }),
+});
+
 export const CoordinatorToPlatformMessages = {
   LOG: {
     message: z.object({
@@ -411,18 +433,15 @@ export const CoordinatorToPlatformMessages = {
     }),
   },
   CREATE_WORKER: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      projectRef: z.string(),
-      envId: z.string(),
-      deploymentId: z.string(),
-      metadata: z.object({
-        cliPackageVersion: z.string().optional(),
-        contentHash: z.string(),
-        packageVersion: z.string(),
-        tasks: TaskResource.array(),
+    message: z.discriminatedUnion("version", [
+      CreateWorkerMessage.extend({
+        version: z.literal("v1"),
       }),
-    }),
+      CreateWorkerMessage.extend({
+        version: z.literal("v2"),
+        supportsLazyAttempts: z.boolean(),
+      }),
+    ]),
     callback: z.discriminatedUnion("success", [
       z.object({
         success: z.literal(false),
@@ -472,6 +491,12 @@ export const CoordinatorToPlatformMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptFriendlyId: z.string(),
+    }),
+  },
+  TASK_RUN_HEARTBEAT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
     }),
   },
   CHECKPOINT_CREATED: {
@@ -586,6 +611,13 @@ export const SharedQueueToClientMessages = {
   },
 };
 
+const IndexTasksMessage = z.object({
+  version: z.literal("v1"),
+  deploymentId: z.string(),
+  tasks: TaskResource.array(),
+  packageVersion: z.string(),
+});
+
 export const ProdWorkerToCoordinatorMessages = {
   LOG: {
     message: z.object({
@@ -595,12 +627,15 @@ export const ProdWorkerToCoordinatorMessages = {
     callback: z.void(),
   },
   INDEX_TASKS: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      deploymentId: z.string(),
-      tasks: TaskResource.array(),
-      packageVersion: z.string(),
-    }),
+    message: z.discriminatedUnion("version", [
+      IndexTasksMessage.extend({
+        version: z.literal("v1"),
+      }),
+      IndexTasksMessage.extend({
+        version: z.literal("v2"),
+        supportsLazyAttempts: z.boolean(),
+      }),
+    ]),
     callback: z.discriminatedUnion("success", [
       z.object({
         success: z.literal(false),

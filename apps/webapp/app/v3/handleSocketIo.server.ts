@@ -106,6 +106,9 @@ function createCoordinatorNamespace(io: Server) {
       TASK_HEARTBEAT: async (message) => {
         await sharedQueueTasks.taskHeartbeat(message.attemptFriendlyId);
       },
+      TASK_RUN_HEARTBEAT: async (message) => {
+        await sharedQueueTasks.taskRunHeartbeat(message.runId);
+      },
       CHECKPOINT_CREATED: async (message) => {
         const createCheckpoint = new CreateCheckpointService();
         await createCheckpoint.call(message);
@@ -123,6 +126,7 @@ function createCoordinatorNamespace(io: Server) {
           const worker = await service.call(message.projectRef, environment, message.deploymentId, {
             localOnly: false,
             metadata: message.metadata,
+            supportsLazyAttempts: message.version !== "v1" && message.supportsLazyAttempts,
           });
 
           return { success: !!worker };

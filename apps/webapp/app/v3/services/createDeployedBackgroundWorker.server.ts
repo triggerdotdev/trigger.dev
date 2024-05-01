@@ -44,6 +44,7 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
           contentHash: body.metadata.contentHash,
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
+          supportsLazyAttempts: body.supportsLazyAttempts,
         },
       });
 

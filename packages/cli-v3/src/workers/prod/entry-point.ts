@@ -473,9 +473,10 @@ class ProdWorker {
             const taskResources = await this.#initializeWorker();
 
             const { success } = await socket.emitWithAck("INDEX_TASKS", {
-              version: "v1",
+              version: "v2",
               deploymentId: this.deploymentId,
               ...taskResources,
+              supportsLazyAttempts: true,
             });
 
             if (success) {

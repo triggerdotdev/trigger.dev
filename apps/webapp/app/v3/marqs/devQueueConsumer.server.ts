@@ -509,7 +509,7 @@ export class DevQueueConsumer {
       }
     } else {
       const service = new CreateTaskRunAttemptService();
-      const execution = await service.call(lockedTaskRun.friendlyId, this.env);
+      const { execution } = await service.call(lockedTaskRun.friendlyId, this.env);
 
       const payload: TaskRunExecutionPayload = {
         traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
