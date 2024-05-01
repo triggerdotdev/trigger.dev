@@ -20,21 +20,40 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const validatedParams = ParamsSchema.parse(params);
 
-  const project = await prisma.project.findFirst({
+  const user = await prisma.user.findUnique({
     where: {
-      externalRef: validatedParams.projectRef,
-      organization: {
-        members: {
-          some: {
-            userId: authenticationResult.userId,
-          },
-        },
-      },
-    },
-    include: {
-      organization: true,
+      id: authenticationResult.userId,
     },
   });
+
+  if (!user) {
+    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+  }
+
+  const project = user.admin
+    ? await prisma.project.findFirst({
+        where: {
+          externalRef: validatedParams.projectRef,
+        },
+        include: {
+          organization: true,
+        },
+      })
+    : await prisma.project.findFirst({
+        where: {
+          externalRef: validatedParams.projectRef,
+          organization: {
+            members: {
+              some: {
+                userId: authenticationResult.userId,
+              },
+            },
+          },
+        },
+        include: {
+          organization: true,
+        },
+      });
 
   if (!project) {
     return new Response("Not found", { status: 404 });
