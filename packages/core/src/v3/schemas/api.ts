@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BackgroundWorkerMetadata, ImageDetailsMetadata } from "./resources";
-import { QueueOptions } from "./messages";
+import { QueueOptions } from "./schemas";
 
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),

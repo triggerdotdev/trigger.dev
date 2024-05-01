@@ -239,7 +239,7 @@ export default function Page() {
                   <FormError id={organizationSlug.errorId}>{organizationSlug.error}</FormError>
                   <FormError>{deleteForm.error}</FormError>
                   <Hint>
-                    This change is irreversible, so please be certain. Type in the Organization slug
+                    This change is irreversible, so please be certain. Type in the Organization slug{" "}
                     <InlineCode variant="extra-small">{organization.slug}</InlineCode> and then
                     press Delete.
                   </Hint>

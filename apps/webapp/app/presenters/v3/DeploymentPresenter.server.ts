@@ -103,6 +103,7 @@ export class DeploymentPresenter {
                 exportName: "asc",
               },
             },
+            sdkVersion: true,
           },
         },
         triggeredBy: {
@@ -135,6 +136,7 @@ export class DeploymentPresenter {
         },
         deployedBy: deployment.triggeredBy,
         errorData: this.#prepareErrorData(deployment.errorData),
+        sdkVersion: deployment.worker?.sdkVersion,
       },
     };
   }

@@ -174,7 +174,7 @@ const zodIpc = new ZodIpcConnection({
       prodRuntimeManager.resumeTask(completion, execution);
     },
     WAIT_COMPLETED_NOTIFICATION: async () => {
-      prodRuntimeManager.resumeAfterRestore();
+      prodRuntimeManager.resumeAfterDuration();
     },
     CLEANUP: async ({ flush, kill }, sender) => {
       if (kill) {

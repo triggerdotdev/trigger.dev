@@ -92,6 +92,9 @@ export default function Page() {
               <DeploymentStatus status={deployment.status} className="text-sm" />
             </Property>
             <Property label="Tasks">{deployment.tasks ? deployment.tasks.length : "–"}</Property>
+            <Property label="SDK Version">
+              {deployment.sdkVersion ? deployment.sdkVersion : "–"}
+            </Property>
             <Property label="Started at">
               <Paragraph variant="small/bright">
                 <DateTimeAccurate date={deployment.createdAt} /> UTC

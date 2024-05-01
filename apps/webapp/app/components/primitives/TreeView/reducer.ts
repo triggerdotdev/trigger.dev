@@ -1,3 +1,4 @@
+import assertNever from "assert-never";
 import { Filter, FlatTree } from "./TreeView";
 import {
   applyFilterToState,
@@ -542,6 +543,9 @@ export function reducer(state: TreeState, action: Action): TreeState {
         filter: action.payload.filter,
       });
       return newState;
+    }
+    default: {
+      assertNever(action);
     }
   }
 

@@ -1,4 +1,5 @@
 import { clock } from "../clock-api";
+import { logger } from "../logger-api";
 import {
   BatchTaskRunExecutionResult,
   ProdChildToWorkerMessages,
@@ -7,7 +8,7 @@ import {
   TaskRunExecution,
   TaskRunExecutionResult,
 } from "../schemas";
-import { unboundedTimeout } from "../utils/timers";
+import { checkpointSafeTimeout, unboundedTimeout } from "../utils/timers";
 import { ZodIpcConnection } from "../zodIpc";
 import { RuntimeManager } from "./manager";
 
@@ -23,7 +24,9 @@ export class ProdRuntimeManager implements RuntimeManager {
     { resolve: (value: BatchTaskRunExecutionResult) => void; reject: (err?: any) => void }
   > = new Map();
 
-  _waitForRestore: { resolve: (value: "restore") => void; reject: (err?: any) => void } | undefined;
+  _waitForDuration:
+    | { resolve: (value: "external") => void; reject: (err?: any) => void }
+    | undefined;
 
   constructor(
     private ipc: ZodIpcConnection<
@@ -40,15 +43,16 @@ export class ProdRuntimeManager implements RuntimeManager {
   async waitForDuration(ms: number): Promise<void> {
     const now = Date.now();
 
-    const resolveAfterDuration = unboundedTimeout(ms, "duration" as const);
+    const internalTimeout = unboundedTimeout(ms, "internal" as const);
+    const checkpointSafeInternalTimeout = checkpointSafeTimeout(ms);
 
     if (ms <= this.waitThresholdInMs) {
-      await resolveAfterDuration;
+      await internalTimeout;
       return;
     }
 
-    const waitForRestore = new Promise<"restore">((resolve, reject) => {
-      this._waitForRestore = { resolve, reject };
+    const externalResume = new Promise<"external">((resolve, reject) => {
+      this._waitForDuration = { resolve, reject };
     });
 
     const { willCheckpointAndRestore } = await this.ipc.sendWithAck("WAIT_FOR_DURATION", {
@@ -57,29 +61,54 @@ export class ProdRuntimeManager implements RuntimeManager {
     });
 
     if (!willCheckpointAndRestore) {
-      await resolveAfterDuration;
+      await internalTimeout;
       return;
     }
 
     this.ipc.send("READY_FOR_CHECKPOINT", {});
 
-    // Don't wait for checkpoint beyond the requested wait duration
-    await Promise.race([waitForRestore, resolveAfterDuration]);
-
-    // The coordinator can then cancel any in-progress checkpoints
-    this.ipc.send("CANCEL_CHECKPOINT", {});
-  }
-
-  resumeAfterRestore(): void {
-    if (!this._waitForRestore) {
-      return;
-    }
+    // internalTimeout acts as a backup and will be accurate if the checkpoint never happens
+    // checkpointSafeInternalTimeout is accurate even after non-simulated restores
+    await Promise.race([internalTimeout, checkpointSafeInternalTimeout]);
 
     // Resets the clock to the current time
     clock.reset();
 
-    this._waitForRestore.resolve("restore");
-    this._waitForRestore = undefined;
+    // The coordinator should cancel any in-progress checkpoints
+    const { checkpointCanceled, version } = await this.ipc.sendWithAck("CANCEL_CHECKPOINT", {
+      version: "v2",
+      reason: "WAIT_FOR_DURATION",
+    });
+
+    if (checkpointCanceled) {
+      // There won't be a checkpoint or external resume and we've already completed our internal timeout
+      return;
+    }
+
+    // No checkpoint was canceled, so we were checkpointed. We need to wait for the external resume message.
+    await externalResume;
+  }
+
+  resumeAfterDuration(): void {
+    if (!this._waitForDuration) {
+      return;
+    }
+
+    process.stdout.write("pre");
+    process.stdout.write(JSON.stringify(clock.preciseNow()));
+
+    console.log("pre", clock.preciseNow());
+
+    // Resets the clock to the current time
+    clock.reset();
+
+    console.log("post", clock.preciseNow());
+
+    process.stdout.write("post");
+    process.stdout.write(JSON.stringify(clock.preciseNow()));
+
+    this._waitForDuration.resolve("external");
+    this._waitForDuration = undefined;
   }
 
   async waitUntil(date: Date): Promise<void> {

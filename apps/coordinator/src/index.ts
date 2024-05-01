@@ -157,16 +157,18 @@ class Checkpointer {
     return this.#abortControllers.has(runId);
   }
 
-  cancelCheckpoint(runId: string) {
+  cancelCheckpoint(runId: string): boolean {
     const controller = this.#abortControllers.get(runId);
 
     if (!controller) {
       logger.debug("Nothing to cancel", { runId });
-      return;
+      return false;
     }
 
     controller.abort("cancelCheckpointing()");
     this.#abortControllers.delete(runId);
+
+    return true;
   }
 
   async #checkpointAndPush({
@@ -725,10 +727,18 @@ class TaskCoordinator {
           checkpointable.resolve();
         });
 
-        socket.on("CANCEL_CHECKPOINT", async (message) => {
+        socket.on("CANCEL_CHECKPOINT", async (message, callback) => {
           logger.log("[CANCEL_CHECKPOINT]", message);
 
-          this.#cancelCheckpoint(socket.data.runId);
+          if (message.version === "v1") {
+            this.#cancelCheckpoint(socket.data.runId);
+            // v1 has no callback
+            return;
+          }
+
+          const checkpointCanceled = this.#cancelCheckpoint(socket.data.runId);
+
+          callback({ version: "v2", checkpointCanceled });
         });
 
         socket.on("WAIT_FOR_DURATION", async (message, callback) => {
@@ -933,7 +943,9 @@ class TaskCoordinator {
     }
 
     // Cancel checkpointing procedure
-    this.#checkpointer.cancelCheckpoint(runId);
+    const checkpointCanceled = this.#checkpointer.cancelCheckpoint(runId);
+
+    return checkpointCanceled;
   }
 
   #createHttpServer() {
