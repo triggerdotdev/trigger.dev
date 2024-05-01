@@ -76,7 +76,7 @@ export function Select<TValue extends string | string[], TItem>({
   heading,
   items,
   filter,
-  empty = "No items",
+  empty = null,
   variant = "tertiary/small",
   open,
   setOpen,
@@ -126,7 +126,15 @@ export function Select<TValue extends string | string[], TItem>({
         )}
       >
         {icon}
-        <div className="truncate">{text || <SelectValue />}</div>
+        <div className="truncate">
+          {text || (
+            <SelectValue>
+              {(value) => (
+                <>{typeof value === "object" && Array.isArray(value) ? value.join(", ") : value}</>
+              )}
+            </SelectValue>
+          )}
+        </div>
         <Ariakit.SelectArrow
           className={cn(
             "size-5 text-text-dimmed transition group-hover:text-text-bright group-focus:text-text-bright"

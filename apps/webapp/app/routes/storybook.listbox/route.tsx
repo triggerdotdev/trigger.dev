@@ -70,6 +70,7 @@ export default function Story() {
         <div className="flex gap-4">
           <Select
             name="branch"
+            text="Branches"
             icon={<BranchIcon />}
             // value={value}
             // setValue={setValue}
