@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.0.0-beta.24
+
+### Patch Changes
+
+- 83dc87155: Fix issues with consecutive waits
+
 ## 3.0.0-beta.23
 
 ## 3.0.0-beta.22
