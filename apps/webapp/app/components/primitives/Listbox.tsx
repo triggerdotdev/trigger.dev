@@ -3,7 +3,7 @@ import { SelectValue } from "@ariakit/react-core/select/select-value";
 import * as React from "react";
 import { cn } from "~/utils/cn";
 
-export interface SelectProps<TValue extends string | string[]> extends Ariakit.SelectProps {
+export interface SelectProps<TValue extends string | string[], TItem> extends Ariakit.SelectProps {
   icon?: React.ReactNode;
   text?: React.ReactNode;
   value?: Ariakit.SelectProviderProps<TValue>["value"];
@@ -14,12 +14,11 @@ export interface SelectProps<TValue extends string | string[]> extends Ariakit.S
   defaultTab?: Ariakit.TabProviderProps["defaultSelectedId"];
   selectTabOnMove?: boolean;
   label?: string | Ariakit.SelectLabelProps["render"];
-  heading?: string | Ariakit.PopoverHeadingProps["render"];
-  combobox?: Ariakit.ComboboxProps["render"];
-  onSearch?: (value: string) => void;
+  heading?: string;
+  filter?: { items: TItem[]; fn: (item: TItem, search: string) => boolean };
 }
 
-export function Select<TValue extends string | string[]>({
+export function Select<TValue extends string | string[], TItem = any>({
   children,
   icon,
   text,
@@ -32,11 +31,10 @@ export function Select<TValue extends string | string[]>({
   selectTabOnMove,
   label,
   heading,
-  combobox,
-  onSearch,
+  filter,
   ...props
-}: SelectProps<TValue>) {
-  const searchable = !!combobox || !!onSearch;
+}: SelectProps<TValue, TItem>) {
+  const searchable = filter !== undefined;
 
   const select = (
     <Ariakit.SelectProvider
@@ -62,11 +60,11 @@ export function Select<TValue extends string | string[]>({
         unmountOnHide
         className="popup elevation-1 popover popover-enter flex flex-col gap-[9px] overflow-clip"
       >
-        {heading && (
+        {!searchable && heading && (
           <div className="grid grid-cols-[auto_max-content] items-center gap-2 ps-[13px]">
             <Ariakit.SelectHeading
               className="cursor-default font-medium opacity-80"
-              render={typeof heading === "string" ? <div>{heading}</div> : heading}
+              render={<>{heading}</>}
             />
             <Ariakit.SelectDismiss className="focusable clickable rounded-item button button-secondary button-flat button-icon button-small opacity-70" />
           </div>
@@ -74,7 +72,7 @@ export function Select<TValue extends string | string[]>({
         {searchable && (
           <Ariakit.Combobox
             autoSelect
-            render={combobox}
+            render={<input placeholder={heading ?? "Filter options"} />}
             className="focusable combobox input rounded-item -mb-1 h-10 w-full px-[13px]"
           />
         )}
@@ -96,11 +94,11 @@ export function Select<TValue extends string | string[]>({
         resetValueOnHide
         setValue={(value) => {
           React.startTransition(() => {
-            onSearch?.(value);
+            // onSearch?.(value);
           });
         }}
       >
-        {select}
+        <SelectList>{select}</SelectList>
       </Ariakit.ComboboxProvider>
     );
   }
@@ -145,9 +143,9 @@ export function SelectTabPanel(props: SelectTabPanelProps) {
   );
 }
 
-export interface SelectListProps extends Omit<Ariakit.SelectListProps, "store"> {}
+interface SelectListProps extends Omit<Ariakit.SelectListProps, "store"> {}
 
-export function SelectList(props: SelectListProps) {
+function SelectList(props: SelectListProps) {
   const combobox = Ariakit.useComboboxContext();
   const Component = combobox ? Ariakit.ComboboxList : Ariakit.SelectList;
   return (

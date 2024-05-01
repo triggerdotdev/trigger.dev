@@ -3,15 +3,7 @@ import clsx from "clsx";
 import { matchSorter } from "match-sorter";
 import { ComponentProps, useMemo, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
-import {
-  Select,
-  SelectItem,
-  SelectList,
-  SelectSeparator,
-  SelectTab,
-  SelectTabList,
-  SelectTabPanel,
-} from "~/components/primitives/Listbox";
+import { Select, SelectItem } from "~/components/primitives/Listbox";
 
 export const branches = [
   "main",
@@ -57,24 +49,6 @@ export default function Story() {
 
   const canAddBranch = !!searchValue && !matches.includes(searchValue);
 
-  const customItem = canAddBranch && (
-    <>
-      {!!matches.length && <SelectSeparator />}
-      <SelectItem
-        icon={<BranchIcon />}
-        value={searchValue}
-        onClick={() => {
-          setData((data) => ({
-            ...data,
-            branches: [...data, searchValue],
-          }));
-        }}
-      >
-        Create branch <strong>{searchValue}</strong> from <strong>{value}</strong>
-      </SelectItem>
-    </>
-  );
-
   const empty = !matches.length && <div className="py-6 text-center">No matches found</div>;
 
   return (
@@ -95,17 +69,18 @@ export default function Story() {
         <Select
           name="branch"
           icon={<BranchIcon />}
-          combobox={<input placeholder={placeholder} />}
           value={value}
           setValue={setValue}
-          onSearch={setSearchValue}
+          heading={"Why hello there"}
+          // filter={{
+          //   items: values,
+          //   fn: (item, search) => item.toLowerCase().includes(search.toLowerCase()),
+          // }}
         >
-          <SelectList>
-            {matches?.map((value) => (
-              <SelectItem key={value} value={value} />
-            ))}
-            {customItem || empty}
-          </SelectList>
+          {matches?.map((value) => (
+            <SelectItem key={value} value={value} />
+          ))}
+          {matches.length === 0 ? empty : null}
         </Select>
 
         <Button variant="tertiary/medium">Submit</Button>
