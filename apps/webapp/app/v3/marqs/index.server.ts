@@ -283,6 +283,35 @@ export class MarQS {
     );
   }
 
+  public async getSharedQueueDetails() {
+    const parentQueue = constants.SHARED_QUEUE;
+
+    const { range, selectionId } = await this.queuePriorityStrategy.nextCandidateSelection(
+      parentQueue
+    );
+    const queues = await this.#zrangeWithScores(parentQueue, range[0], range[1]);
+
+    const queuesWithScores = await this.#calculateQueueScores(queues, (queue) =>
+      this.#calculateMessageQueueCapacities(queue)
+    );
+
+    // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
+    const choice = this.queuePriorityStrategy.chooseQueue(
+      queuesWithScores,
+      parentQueue,
+      selectionId
+    );
+
+    return {
+      selectionId,
+      queues,
+      queuesWithScores,
+      nextRange: range,
+      queueCount: queues.length,
+      queueChoice: choice,
+    };
+  }
+
   /**
    * Dequeue a message from the shared queue (this should be used in production environments)
    */
