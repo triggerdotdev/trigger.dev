@@ -5,7 +5,7 @@
   <img alt="Trigger.dev logo" src="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/a45d1fa2-0ae8-4a39-4409-f4f934bfae00/public">
 </picture>
   
-### The open source background jobs framework
+### The open source background jobs platform
 
 [Discord](https://trigger.dev/discord) | [Website](https://trigger.dev) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Docs](https://trigger.dev/docs)
 
@@ -14,7 +14,9 @@
 
 </div>
 
-# About Trigger.dev
+> The Trigger.dev v3 developer preview is now open. For more information and to get early access, check out our [developer preview launch post](https://trigger.dev/blog/v3-developer-preview-launch/).
+
+## About Trigger.dev
 
 Create long-running jobs directly in your codebase with features like API integrations, webhooks, scheduling and delays.
 
