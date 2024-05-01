@@ -65,56 +65,14 @@ export class ProdRuntimeManager implements RuntimeManager {
       return;
     }
 
-    const getTimes = () => {
-      return {
-        date: Date.now(), // ms
-        clock: clock.preciseNow()[0] * 1000, // seconds
-        perf: performance.now(), // ms
-      };
-    };
-
-    const preWait = getTimes();
-
     this.ipc.send("READY_FOR_CHECKPOINT", {});
 
     // internalTimeout acts as a backup and will be accurate if the checkpoint never happens
     // checkpointSafeInternalTimeout is accurate even after non-simulated restores
     await Promise.race([internalTimeout, checkpointSafeInternalTimeout]);
 
-    // The internal timer is up, let's check for missing time
-    const postWait = getTimes();
-
     // Resets the clock to the current time
     clock.reset();
-
-    const postReset = getTimes();
-
-    const diffs = {
-      t1: {
-        date: postWait.date - preWait.date,
-        clock: postWait.clock - preWait.clock,
-        perf: postWait.perf - preWait.perf,
-      },
-      t2: {
-        date: postReset.date - postWait.date,
-        clock: postReset.clock - postWait.clock,
-        perf: postReset.perf - postWait.perf,
-      },
-    };
-
-    console.log({
-      preWait,
-      postWait,
-      postReset,
-      diffs,
-    });
-
-    logger.debug("diffs", {
-      preWait,
-      postWait,
-      postReset,
-      diffs,
-    });
 
     // The coordinator should cancel any in-progress checkpoints
     const { checkpointCanceled, version } = await this.ipc.sendWithAck("CANCEL_CHECKPOINT", {
@@ -122,20 +80,13 @@ export class ProdRuntimeManager implements RuntimeManager {
       reason: "WAIT_FOR_DURATION",
     });
 
-    console.log({ checkpointCanceled, version });
-    logger.debug("cancel checkpoint", { checkpointCanceled, version });
-
     if (checkpointCanceled) {
       // There won't be a checkpoint or external resume and we've already completed our internal timeout
       return;
     }
 
-    console.log("Waiting for external resume");
-
     // No checkpoint was canceled, so we were checkpointed. We need to wait for the external resume message.
     await externalResume;
-
-    console.log("Done waiting for external resume");
   }
 
   resumeAfterDuration(): void {
