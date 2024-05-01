@@ -1,5 +1,13 @@
 # trigger.dev
 
+## 3.0.0-beta.24
+
+### Patch Changes
+
+- 83dc87155: Fix issues with consecutive waits
+- Updated dependencies [83dc87155]
+  - @trigger.dev/core@3.0.0-beta.24
+
 ## 3.0.0-beta.23
 
 ### Patch Changes
