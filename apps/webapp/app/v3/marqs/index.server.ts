@@ -1538,7 +1538,7 @@ function getMarQSClient() {
 
       return new MarQS({
         keysProducer: new MarQSShortKeyProducer(KEY_PREFIX),
-        queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
+        queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 36 }),
         envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
         workers: 1,
         redis: redisOptions,
