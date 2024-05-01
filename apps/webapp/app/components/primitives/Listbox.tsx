@@ -1,6 +1,7 @@
 import { Listbox as HeadlessListbox, Transition } from "@headlessui/react";
 import { Check, ChevronDown } from "lucide-react";
-import React, { Fragment, createContext, forwardRef, useContext } from "react";
+import React, { Fragment, createContext, forwardRef, useContext, useMemo, useState } from "react";
+import { T } from "vitest/dist/reporters-P7C2ytIv.js";
 import { cn } from "~/utils/cn";
 
 const variants = {
@@ -26,18 +27,23 @@ type ListboxProps = Omit<React.ComponentPropsWithRef<typeof HeadlessListbox>, "c
 type ContextState = Pick<Required<ListboxProps>, "variant" | "width">;
 const ListboxContext = createContext<ContextState>({} as ContextState);
 
-const Root = forwardRef<React.ElementRef<typeof HeadlessListbox>, ListboxProps>(
-  ({ className, children, width = "content", variant = "secondary/small", ...props }, ref) => {
-    const variantClassName = variants[variant];
-    return (
-      <ListboxContext.Provider value={{ variant, width }}>
-        <HeadlessListbox {...props}>
-          <div className={cn("group relative", className)}>{children}</div>
-        </HeadlessListbox>
-      </ListboxContext.Provider>
-    );
-  }
-);
+function Root({
+  className,
+  children,
+  width = "content",
+  variant = "secondary/small",
+  filter,
+  ...props
+}: ListboxProps) {
+  const variantClassName = variants[variant];
+  return (
+    <ListboxContext.Provider value={{ variant, width }}>
+      <HeadlessListbox {...props}>
+        <div className={cn("group relative", variantClassName.root, className)}>{children}</div>
+      </HeadlessListbox>
+    </ListboxContext.Provider>
+  );
+}
 
 type ButtonProps = Omit<React.ComponentPropsWithRef<typeof HeadlessListbox.Button>, "children"> & {
   children: React.ReactNode;
@@ -90,7 +96,11 @@ const Options = forwardRef<
       leaveTo="opacity-0"
     >
       <HeadlessListbox.Options
-        className={cn("absolute w-full overflow-y-auto", variantClassName.options, className)}
+        className={cn(
+          "absolute w-full overflow-y-auto overflow-x-hidden",
+          variantClassName.options,
+          className
+        )}
         {...props}
         ref={ref}
       >
@@ -99,6 +109,35 @@ const Options = forwardRef<
     </Transition>
   );
 });
+
+function Filter<T>({
+  items,
+  children,
+  filter,
+}: {
+  items: T[];
+  children: (item: T) => React.ReactNode;
+  filter: (item: T, search: string) => boolean;
+}) {
+  const [search, setSearch] = useState("");
+
+  const filteredItems = useMemo(() => {
+    return items.filter((item) => filter(item, search));
+  }, [items, filter, search]);
+
+  return (
+    <div>
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => setSearch(e.currentTarget.value)}
+        autoFocus
+        className="w-full border-b border-grid-dimmed bg-transparent p-1.5 text-xs text-text-dimmed focus:outline-none"
+      />
+      {filteredItems.map(children)}
+    </div>
+  );
+}
 
 type OptionProps = Omit<React.ComponentPropsWithRef<typeof HeadlessListbox.Option>, "children"> & {
   value: string;
@@ -130,4 +169,4 @@ const Option = forwardRef<React.ElementRef<typeof HeadlessListbox.Option>, Optio
   }
 );
 
-export const Listbox = { Root, Button, Options, Option };
+export const Listbox = { Root, Button, Options, Option, Filter };

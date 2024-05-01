@@ -41,6 +41,23 @@ export default function Story() {
               ))}
             </Listbox.Options>
           </Listbox.Root>
+          <Listbox.Root value={selectedPersonId} onChange={setSelectedPersonId}>
+            <Listbox.Button>{people.find((p) => p.id === selectedPersonId)?.name}</Listbox.Button>
+            <Listbox.Options>
+              <Listbox.Filter
+                items={people}
+                filter={(person, search) => {
+                  return person.name.toLowerCase().includes(search.toLowerCase());
+                }}
+              >
+                {(person) => (
+                  <Listbox.Option key={person.id} value={person.id} disabled={person.unavailable}>
+                    {person.name}
+                  </Listbox.Option>
+                )}
+              </Listbox.Filter>
+            </Listbox.Options>
+          </Listbox.Root>
           <SelectGroup>
             <Select name="colorScheme" defaultValue="dark">
               <SelectTrigger>
