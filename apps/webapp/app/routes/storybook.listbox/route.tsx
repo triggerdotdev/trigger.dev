@@ -51,11 +51,11 @@ export const grouped = [
     items: [
       {
         title: "Other repo",
-        value: "other",
+        value: "other2",
       },
       {
         title: "Other fork",
-        value: "fork",
+        value: "fork2",
       },
     ],
   },
@@ -65,19 +65,7 @@ export default function Story() {
   const [value, setValue] = useState(["main"]);
 
   return (
-    <div className="flex h-full max-w-full flex-wrap items-center justify-center gap-2 p-4">
-      {/* <Select
-        label={<div hidden>Select</div>}
-        icon={<BranchIcon />}
-        value={value}
-        setValue={setValue}
-      >
-        <SelectList>
-          {values?.map((value) => (
-            <SelectItem key={value} value={value} />
-          ))}
-        </SelectList>
-      </Select> */}
+    <div className="flex h-full max-w-full flex-wrap items-start justify-start gap-2 p-4">
       <Form className="space-y-4">
         <div className="flex gap-4">
           <Select
@@ -111,6 +99,7 @@ export default function Story() {
 
           <Select
             name="grouped"
+            open={true}
             icon={<BranchIcon />}
             // value={value}
             // setValue={setValue}
@@ -123,7 +112,7 @@ export default function Story() {
               <SelectGroup>
                 {title && <SelectGroupLabel>{title}</SelectGroupLabel>}
                 {matches?.map((match) => (
-                  <SelectItem key={match.value} value={match.title} />
+                  <SelectItem key={match.value} value={match.value} title={match.title} />
                 ))}
               </SelectGroup>
             )}
