@@ -1,5 +1,6 @@
-import { json, redirect, Session } from "@remix-run/node";
+import { json, Session } from "@remix-run/node";
 import { createCookieSessionStorage } from "@remix-run/node";
+import { redirect } from "remix-typedjson";
 import { env } from "~/env.server";
 
 export type ToastMessage = {

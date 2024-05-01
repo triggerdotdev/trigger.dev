@@ -88,7 +88,7 @@ describe("SimpleWeightedChoiceStrategy", () => {
 
     const nextSelection = await stategy.nextCandidateSelection("parentQueue");
 
-    expect(nextSelection).toEqual({ range: [3, 6], selectionId: expect.any(String) });
+    expect(nextSelection).toEqual({ range: [2, 4], selectionId: expect.any(String) });
 
     // Now pass some queues that have some capacity
     const chosenQueue2 = stategy.chooseQueue(
@@ -129,7 +129,7 @@ describe("SimpleWeightedChoiceStrategy", () => {
 
     const nextSelection2 = await stategy.nextCandidateSelection("parentQueue");
 
-    expect(nextSelection2).toEqual({ range: [0, 3], selectionId: expect.any(String) });
+    expect(nextSelection2).toEqual({ range: [0, 2], selectionId: expect.any(String) });
   });
 
   it("should adjust the next filter range only if passed the maximum number of queues", async () => {
@@ -167,7 +167,7 @@ describe("SimpleWeightedChoiceStrategy", () => {
 
     const nextSelection = await stategy.nextCandidateSelection("parentQueue");
 
-    expect(nextSelection).toEqual({ range: [0, 3], selectionId: expect.any(String) });
+    expect(nextSelection).toEqual({ range: [0, 2], selectionId: expect.any(String) });
   });
 
   it("should adjust the next candidate range ONLY for the matching parent queue", async () => {
@@ -214,11 +214,11 @@ describe("SimpleWeightedChoiceStrategy", () => {
 
     const nextSelection = await stategy.nextCandidateSelection("parentQueue2");
 
-    expect(nextSelection).toEqual({ range: [0, 3], selectionId: expect.any(String) });
+    expect(nextSelection).toEqual({ range: [0, 2], selectionId: expect.any(String) });
 
     const nextSelection2 = await stategy.nextCandidateSelection("parentQueue");
 
-    expect(nextSelection2).toEqual({ range: [3, 6], selectionId: expect.any(String) });
+    expect(nextSelection2).toEqual({ range: [2, 4], selectionId: expect.any(String) });
 
     const chosenQueue2 = stategy.chooseQueue(
       [
@@ -258,6 +258,6 @@ describe("SimpleWeightedChoiceStrategy", () => {
 
     const nextSelection3 = await stategy.nextCandidateSelection("parentQueue2");
 
-    expect(nextSelection3).toEqual({ range: [0, 3], selectionId: expect.any(String) });
+    expect(nextSelection3).toEqual({ range: [0, 2], selectionId: expect.any(String) });
   });
 });
