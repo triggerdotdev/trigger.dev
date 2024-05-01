@@ -1283,6 +1283,8 @@ async function compileProject(
 
       const dependencies = await gatherRequiredDependencies(allImports, config, javascriptProject);
 
+      logger.debug("gatherRequiredDependencies()", { dependencies });
+
       const packageJsonContents = {
         name: "trigger-worker",
         version: "0.0.0",
@@ -1547,6 +1549,7 @@ async function gatherRequiredDependencies(
   project: JavascriptProject
 ) {
   const dependencies: Record<string, string> = {};
+  const resolvablePackageNames = new Set<string>();
 
   for (const file of imports) {
     if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
@@ -1555,24 +1558,30 @@ async function gatherRequiredDependencies(
 
     const packageName = detectPackageNameFromImportPath(file.path);
 
-    if (dependencies[packageName]) {
+    if (!packageName) {
       continue;
     }
 
-    const externalDependencyVersion = await project.resolve(packageName);
+    resolvablePackageNames.add(packageName);
+  }
 
-    if (externalDependencyVersion) {
-      dependencies[packageName] = stripWorkspaceFromVersion(externalDependencyVersion);
-      continue;
-    }
+  const resolvedPackageVersions = await project.resolveAll(Array.from(resolvablePackageNames));
+  const missingPackages = Array.from(resolvablePackageNames).filter(
+    (packageName) => !resolvedPackageVersions[packageName]
+  );
 
+  for (const missingPackage of missingPackages) {
     const internalDependencyVersion =
-      (packageJson.dependencies as Record<string, string>)[packageName] ??
-      detectDependencyVersion(packageName);
+      (packageJson.dependencies as Record<string, string>)[missingPackage] ??
+      detectDependencyVersion(missingPackage);
 
     if (internalDependencyVersion) {
-      dependencies[packageName] = stripWorkspaceFromVersion(internalDependencyVersion);
+      dependencies[missingPackage] = stripWorkspaceFromVersion(internalDependencyVersion);
     }
+  }
+
+  for (const [packageName, version] of Object.entries(resolvedPackageVersions)) {
+    dependencies[packageName] = version;
   }
 
   if (config.additionalPackages) {
