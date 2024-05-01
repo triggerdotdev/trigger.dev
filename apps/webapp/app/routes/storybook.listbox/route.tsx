@@ -42,13 +42,14 @@ export const branches = [
 
 export default function Story() {
   const [data, setData] = useState(branches);
-  const [value, setValue] = useState("main");
+  const [value, setValue] = useState(["main"]);
   const [searchValue, setSearchValue] = useState("");
   const values = data;
 
   const matches = useMemo(() => {
     if (!values) return [];
     if (!searchValue) return values;
+    console.log("values", values);
     return matchSorter(values, searchValue);
   }, [values, searchValue]);
 
@@ -93,7 +94,6 @@ export default function Story() {
       <Form>
         <Select
           name="branch"
-          label={<div hidden>Select with Combobox</div>}
           icon={<BranchIcon />}
           combobox={<input placeholder={placeholder} />}
           value={value}

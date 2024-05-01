@@ -3,12 +3,12 @@ import { SelectValue } from "@ariakit/react-core/select/select-value";
 import * as React from "react";
 import { cn } from "~/utils/cn";
 
-export interface SelectProps extends Ariakit.SelectProps {
+export interface SelectProps<TValue extends string | string[]> extends Ariakit.SelectProps {
   icon?: React.ReactNode;
   text?: React.ReactNode;
-  value?: Ariakit.SelectProviderProps<string>["value"];
-  setValue?: Ariakit.SelectProviderProps<string>["setValue"];
-  defaultValue?: Ariakit.SelectProviderProps<string>["defaultValue"];
+  value?: Ariakit.SelectProviderProps<TValue>["value"];
+  setValue?: Ariakit.SelectProviderProps<TValue>["setValue"];
+  defaultValue?: Ariakit.SelectProviderProps<TValue>["defaultValue"];
   tab?: Ariakit.TabProviderProps["selectedId"];
   setTab?: Ariakit.TabProviderProps["setSelectedId"];
   defaultTab?: Ariakit.TabProviderProps["defaultSelectedId"];
@@ -19,7 +19,7 @@ export interface SelectProps extends Ariakit.SelectProps {
   onSearch?: (value: string) => void;
 }
 
-export function Select({
+export function Select<TValue extends string | string[]>({
   children,
   icon,
   text,
@@ -35,7 +35,7 @@ export function Select({
   combobox,
   onSearch,
   ...props
-}: SelectProps) {
+}: SelectProps<TValue>) {
   const searchable = !!combobox || !!onSearch;
 
   const select = (
