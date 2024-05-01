@@ -1,83 +1,134 @@
-import { CheckIcon } from "@heroicons/react/20/solid";
-import { useState } from "react";
-import { Header1, Header2 } from "~/components/primitives/Headers";
-import { Listbox } from "~/components/primitives/Listbox";
+import { Form } from "@remix-run/react";
+import clsx from "clsx";
+import { matchSorter } from "match-sorter";
+import { ComponentProps, useMemo, useState } from "react";
+import { Button } from "~/components/primitives/Buttons";
 import {
   Select,
-  SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
+  SelectList,
   SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/primitives/Select";
+  SelectTab,
+  SelectTabList,
+  SelectTabPanel,
+} from "~/components/primitives/Listbox";
 
-const people = [
-  { id: "1", name: "Durward Reynolds", unavailable: false },
-  { id: "2", name: "Kenton Towne", unavailable: false },
-  { id: "3", name: "Therese Wunsch", unavailable: false },
-  { id: "4", name: "Benedict Kessler", unavailable: true },
-  { id: "5", name: "Katelyn Rohan", unavailable: false },
+export const branches = [
+  "main",
+  "0.10-stable",
+  "0.11-stable",
+  "0.12-stable",
+  "0.13-stable",
+  "0.14-stable",
+  "15-stable",
+  "15.6-dev",
+  "16.3-dev",
+  "16.4.2-dev",
+  "16.8.3",
+  "16.8.4",
+  "16.8.5",
+  "16.8.6",
+  "17.0.0-dev",
+  "builds/facebook-www",
+  "devtools-v4-merge",
+  "fabric-cleanup",
+  "fabric-focus-blur",
+  "gh-pages",
+  "leg",
+  "nativefb-enable-cache",
+  "nov-main-trigger",
+  "rsckeys",
 ];
 
 export default function Story() {
-  const [selectedPersonId, setSelectedPersonId] = useState(people[0].id);
+  const [data, setData] = useState(branches);
+  const [value, setValue] = useState("main");
+  const [searchValue, setSearchValue] = useState("");
+  const values = data;
+
+  const matches = useMemo(() => {
+    if (!values) return [];
+    if (!searchValue) return values;
+    return matchSorter(values, searchValue);
+  }, [values, searchValue]);
+
+  const placeholder = "Find or create a branch...";
+
+  const canAddBranch = !!searchValue && !matches.includes(searchValue);
+
+  const customItem = canAddBranch && (
+    <>
+      {!!matches.length && <SelectSeparator />}
+      <SelectItem
+        icon={<BranchIcon />}
+        value={searchValue}
+        onClick={() => {
+          setData((data) => ({
+            ...data,
+            branches: [...data, searchValue],
+          }));
+        }}
+      >
+        Create branch <strong>{searchValue}</strong> from <strong>{value}</strong>
+      </SelectItem>
+    </>
+  );
+
+  const empty = !matches.length && <div className="py-6 text-center">No matches found</div>;
 
   return (
-    <div className="p-20">
-      <div className="flex flex-col">
-        <Header1 className="mb-4">Variants</Header1>
-        <Header2 className="my-4">size=small width=content</Header2>
+    <div className="flex max-w-full flex-wrap justify-center gap-2 p-4">
+      {/* <Select
+        label={<div hidden>Select</div>}
+        icon={<BranchIcon />}
+        value={value}
+        setValue={setValue}
+      >
+        <SelectList>
+          {values?.map((value) => (
+            <SelectItem key={value} value={value} />
+          ))}
+        </SelectList>
+      </Select> */}
+      <Form>
+        <Select
+          name="branch"
+          label={<div hidden>Select with Combobox</div>}
+          icon={<BranchIcon />}
+          combobox={<input placeholder={placeholder} />}
+          value={value}
+          setValue={setValue}
+          onSearch={setSearchValue}
+        >
+          <SelectList>
+            {matches?.map((value) => (
+              <SelectItem key={value} value={value} />
+            ))}
+            {customItem || empty}
+          </SelectList>
+        </Select>
 
-        <div className="flex gap-8">
-          <Listbox.Root value={selectedPersonId} onChange={setSelectedPersonId}>
-            <Listbox.Button>{people.find((p) => p.id === selectedPersonId)?.name}</Listbox.Button>
-            <Listbox.Options>
-              {people.map((person) => (
-                <Listbox.Option key={person.id} value={person.id} disabled={person.unavailable}>
-                  {person.name}
-                </Listbox.Option>
-              ))}
-            </Listbox.Options>
-          </Listbox.Root>
-          <Listbox.Root value={selectedPersonId} onChange={setSelectedPersonId}>
-            <Listbox.Button>{people.find((p) => p.id === selectedPersonId)?.name}</Listbox.Button>
-            <Listbox.Options>
-              <Listbox.Filter
-                items={people}
-                filter={(person, search) => {
-                  return person.name.toLowerCase().includes(search.toLowerCase());
-                }}
-              >
-                {(person) => (
-                  <Listbox.Option key={person.id} value={person.id} disabled={person.unavailable}>
-                    {person.name}
-                  </Listbox.Option>
-                )}
-              </Listbox.Filter>
-            </Listbox.Options>
-          </Listbox.Root>
-          <SelectGroup>
-            <Select name="colorScheme" defaultValue="dark">
-              <SelectTrigger>
-                <SelectValue placeholder="Theme" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectLabel>Color Scheme</SelectLabel>
-                <SelectItem value="light">Light</SelectItem>
-                <SelectItem value="dark">Dark</SelectItem>
-                <SelectItem value="system">System</SelectItem>
-                <SelectLabel>Other themes</SelectLabel>
-                <SelectItem value="sunset">Sunset</SelectItem>
-                <SelectItem value="midnight">Midnight</SelectItem>
-                <SelectSeparator />
-                <SelectItem value="lunar">Lunar</SelectItem>
-              </SelectContent>
-            </Select>
-          </SelectGroup>
-        </div>
-      </div>
+        <Button variant="tertiary/medium">Submit</Button>
+      </Form>
     </div>
+  );
+}
+
+function BranchIcon(props: ComponentProps<"svg">) {
+  return (
+    <svg
+      fill="currentColor"
+      strokeWidth="0"
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      aria-hidden
+      {...props}
+      className={clsx("flex-none opacity-70 [[data-active-item]>&]:opacity-100", props.className)}
+    >
+      <path d="M15 4.75a3.25 3.25 0 1 1 6.5 0 3.25 3.25 0 0 1-6.5 0ZM2.5 19.25a3.25 3.25 0 1 1 6.5 0 3.25 3.25 0 0 1-6.5 0Zm0-14.5a3.25 3.25 0 1 1 6.5 0 3.25 3.25 0 0 1-6.5 0ZM5.75 6.5a1.75 1.75 0 1 0-.001-3.501A1.75 1.75 0 0 0 5.75 6.5Zm0 14.5a1.75 1.75 0 1 0-.001-3.501A1.75 1.75 0 0 0 5.75 21Zm12.5-14.5a1.75 1.75 0 1 0-.001-3.501A1.75 1.75 0 0 0 18.25 6.5Z" />
+      <path d="M5.75 16.75A.75.75 0 0 1 5 16V8a.75.75 0 0 1 1.5 0v8a.75.75 0 0 1-.75.75Z" />
+      <path d="M17.5 8.75v-1H19v1a3.75 3.75 0 0 1-3.75 3.75h-7a1.75 1.75 0 0 0-1.75 1.75H5A3.25 3.25 0 0 1 8.25 11h7a2.25 2.25 0 0 0 2.25-2.25Z" />
+    </svg>
   );
 }

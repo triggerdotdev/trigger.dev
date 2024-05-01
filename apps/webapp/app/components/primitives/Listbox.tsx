@@ -1,172 +1,196 @@
-import { Listbox as HeadlessListbox, Transition } from "@headlessui/react";
-import { Check, ChevronDown } from "lucide-react";
-import React, { Fragment, createContext, forwardRef, useContext, useMemo, useState } from "react";
-import { T } from "vitest/dist/reporters-P7C2ytIv.js";
+import * as Ariakit from "@ariakit/react";
+import { SelectValue } from "@ariakit/react-core/select/select-value";
+import * as React from "react";
 import { cn } from "~/utils/cn";
 
-const variants = {
-  "secondary/small": {
-    root: "",
-    button:
-      "text-xs h-6 bg-tertiary border border-tertiary group-hover:text-text-bright text-text-dimmed hover:border-charcoal-600 pr-1.5 pl-1.5 rounded-sm",
-    options:
-      "mt-1 max-h-60 rounded-md py-1 text-xs shadow-lg ring-1 ring-black/5 focus:outline-none bg-tertiary border border-tertiary",
-    option:
-      "text-xs select-none items-center rounded-sm py-1.5 pl-2 pr-0.5 outline-none transition data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-charcoal-750 focus:bg-charcoal-750/50",
-  },
-};
+export interface SelectProps extends Ariakit.SelectProps {
+  icon?: React.ReactNode;
+  text?: React.ReactNode;
+  value?: Ariakit.SelectProviderProps<string>["value"];
+  setValue?: Ariakit.SelectProviderProps<string>["setValue"];
+  defaultValue?: Ariakit.SelectProviderProps<string>["defaultValue"];
+  tab?: Ariakit.TabProviderProps["selectedId"];
+  setTab?: Ariakit.TabProviderProps["setSelectedId"];
+  defaultTab?: Ariakit.TabProviderProps["defaultSelectedId"];
+  selectTabOnMove?: boolean;
+  label?: string | Ariakit.SelectLabelProps["render"];
+  heading?: string | Ariakit.PopoverHeadingProps["render"];
+  combobox?: Ariakit.ComboboxProps["render"];
+  onSearch?: (value: string) => void;
+}
 
-type Variant = keyof typeof variants;
-
-type ListboxProps = Omit<React.ComponentPropsWithRef<typeof HeadlessListbox>, "children"> & {
-  variant?: Variant;
-  width?: "content" | "full";
-  children: React.ReactNode;
-};
-
-type ContextState = Pick<Required<ListboxProps>, "variant" | "width">;
-const ListboxContext = createContext<ContextState>({} as ContextState);
-
-function Root({
-  className,
+export function Select({
   children,
-  width = "content",
-  variant = "secondary/small",
-  filter,
+  icon,
+  text,
+  value,
+  setValue,
+  defaultValue,
+  tab,
+  setTab,
+  defaultTab,
+  selectTabOnMove,
+  label,
+  heading,
+  combobox,
+  onSearch,
   ...props
-}: ListboxProps) {
-  const variantClassName = variants[variant];
-  return (
-    <ListboxContext.Provider value={{ variant, width }}>
-      <HeadlessListbox {...props}>
-        <div className={cn("group relative", variantClassName.root, className)}>{children}</div>
-      </HeadlessListbox>
-    </ListboxContext.Provider>
-  );
-}
+}: SelectProps) {
+  const searchable = !!combobox || !!onSearch;
 
-type ButtonProps = Omit<React.ComponentPropsWithRef<typeof HeadlessListbox.Button>, "children"> & {
-  children: React.ReactNode;
-};
-
-const Button = forwardRef<React.ElementRef<typeof HeadlessListbox.Button>, ButtonProps>(
-  ({ className, children, ...props }, ref) => {
-    const context = useContext(ListboxContext);
-    const variantClassName = variants[context.variant];
-
-    return (
-      <HeadlessListbox.Button
-        className={cn(
-          "flex items-center gap-1 whitespace-nowrap",
-          variantClassName.button,
-          context.width === "full" ? "w-full" : "w-min",
-          className
-        )}
-        {...props}
-      >
-        {(data) => {
-          return (
-            <>
-              {children}
-              <ChevronDown
-                className={cn(
-                  "size-4 text-text-dimmed transition group-hover:text-text-bright group-focus:text-text-bright"
-                )}
-              />
-            </>
-          );
-        }}
-      </HeadlessListbox.Button>
-    );
-  }
-);
-
-const Options = forwardRef<
-  React.ElementRef<typeof HeadlessListbox.Options>,
-  React.ComponentPropsWithRef<typeof HeadlessListbox.Options>
->(({ className, children, ...props }, ref) => {
-  const context = useContext(ListboxContext);
-  const variantClassName = variants[context.variant];
-
-  return (
-    <Transition
-      as={Fragment}
-      leave="transition ease-in duration-100"
-      leaveFrom="opacity-100"
-      leaveTo="opacity-0"
+  const select = (
+    <Ariakit.SelectProvider
+      virtualFocus={searchable}
+      value={value}
+      setValue={setValue}
+      defaultValue={defaultValue}
     >
-      <HeadlessListbox.Options
-        className={cn(
-          "absolute w-full overflow-y-auto overflow-x-hidden",
-          variantClassName.options,
-          className
-        )}
+      {label && (
+        <Ariakit.SelectLabel render={typeof label === "string" ? <div>{label}</div> : label} />
+      )}
+      <Ariakit.Select
         {...props}
-        ref={ref}
+        className={cn("focusable clickable button button-default", props.className)}
       >
-        {children}
-      </HeadlessListbox.Options>
-    </Transition>
+        {icon}
+        <div className="truncate">{text || <SelectValue />}</div>
+        <Ariakit.SelectArrow />
+      </Ariakit.Select>
+      <Ariakit.SelectPopover
+        gutter={5}
+        shift={-4}
+        unmountOnHide
+        className="popup elevation-1 popover popover-enter flex flex-col gap-[9px] overflow-clip"
+      >
+        {heading && (
+          <div className="grid grid-cols-[auto_max-content] items-center gap-2 ps-[13px]">
+            <Ariakit.SelectHeading
+              className="cursor-default font-medium opacity-80"
+              render={typeof heading === "string" ? <div>{heading}</div> : heading}
+            />
+            <Ariakit.SelectDismiss className="focusable clickable rounded-item button button-secondary button-flat button-icon button-small opacity-70" />
+          </div>
+        )}
+        {searchable && (
+          <Ariakit.Combobox
+            autoSelect
+            render={combobox}
+            className="focusable combobox input rounded-item -mb-1 h-10 w-full px-[13px]"
+          />
+        )}
+        <Ariakit.TabProvider
+          selectedId={tab}
+          setSelectedId={setTab}
+          defaultSelectedId={defaultTab}
+          selectOnMove={selectTabOnMove}
+        >
+          <div className="tabs-border popup-cover flex flex-col">{children}</div>
+        </Ariakit.TabProvider>
+      </Ariakit.SelectPopover>
+    </Ariakit.SelectProvider>
   );
-});
 
-function Filter<T>({
-  items,
-  children,
-  filter,
-}: {
-  items: T[];
-  children: (item: T) => React.ReactNode;
-  filter: (item: T, search: string) => boolean;
-}) {
-  const [search, setSearch] = useState("");
+  if (searchable) {
+    return (
+      <Ariakit.ComboboxProvider
+        resetValueOnHide
+        setValue={(value) => {
+          React.startTransition(() => {
+            onSearch?.(value);
+          });
+        }}
+      >
+        {select}
+      </Ariakit.ComboboxProvider>
+    );
+  }
 
-  const filteredItems = useMemo(() => {
-    return items.filter((item) => filter(item, search));
-  }, [items, filter, search]);
+  return select;
+}
 
+export interface SelectTabListProps extends Ariakit.TabListProps {}
+
+export function SelectTabList(props: SelectTabListProps) {
+  return <Ariakit.TabList {...props} />;
+}
+
+export interface SelectTabProps extends Ariakit.TabProps {}
+
+export function SelectTab(props: SelectTabProps) {
   return (
-    <div>
-      <input
-        type="text"
-        value={search}
-        onChange={(e) => setSearch(e.currentTarget.value)}
-        autoFocus
-        className="w-full border-b border-grid-dimmed bg-transparent p-1.5 text-xs text-text-dimmed focus:outline-none"
-      />
-      {filteredItems.map(children)}
-    </div>
+    <Ariakit.Tab
+      {...props}
+      render={<Ariakit.Role.div render={props.render} />}
+      className={cn("clickable tab tab-default", props.className)}
+    />
   );
 }
 
-type OptionProps = Omit<React.ComponentPropsWithRef<typeof HeadlessListbox.Option>, "children"> & {
-  value: string;
-  children: React.ReactNode;
-};
+export interface SelectTabPanelProps extends Ariakit.TabPanelProps {}
 
-const Option = forwardRef<React.ElementRef<typeof HeadlessListbox.Option>, OptionProps>(
-  ({ className, value, children, ...props }, ref) => {
-    const context = useContext(ListboxContext);
-    const variantClassName = variants[context.variant];
+export function SelectTabPanel(props: SelectTabPanelProps) {
+  const tab = Ariakit.useTabContext()!;
+  const tabId = tab.useState((state) => props.tabId || state.selectedId);
+  return (
+    <Ariakit.TabPanel
+      key={tabId}
+      tabId={tabId}
+      unmountOnHide
+      {...props}
+      className={cn(
+        "popup-layer popup-cover flex flex-col pt-[calc(var(--padding)*2)]",
+        props.className
+      )}
+    />
+  );
+}
 
-    return (
-      <HeadlessListbox.Option value={value} className={"w-full"} {...props}>
-        {({ selected, active, disabled }) => {
-          return (
-            <div
-              data-disabled={disabled || undefined}
-              data-active={active || undefined}
-              data-selected={selected || undefined}
-              className={cn("flex w-full items-center", variantClassName.option, className)}
-            >
-              <div className="flex-1">{children}</div>
-              {selected && <Check className="h-4 w-4 flex-none" />}
-            </div>
-          );
-        }}
-      </HeadlessListbox.Option>
-    );
-  }
-);
+export interface SelectListProps extends Omit<Ariakit.SelectListProps, "store"> {}
 
-export const Listbox = { Root, Button, Options, Option, Filter };
+export function SelectList(props: SelectListProps) {
+  const combobox = Ariakit.useComboboxContext();
+  const Component = combobox ? Ariakit.ComboboxList : Ariakit.SelectList;
+  return (
+    <Component
+      {...props}
+      className={cn(
+        "tab-panel popup-cover overflow-auto overscroll-contain outline-none",
+        props.className
+      )}
+    />
+  );
+}
+
+export interface SelectItemProps extends Ariakit.SelectItemProps {
+  icon?: React.ReactNode;
+}
+
+export function SelectItem({ icon = <Ariakit.SelectItemCheck />, ...props }: SelectItemProps) {
+  const combobox = Ariakit.useComboboxContext();
+  const render = combobox ? <Ariakit.ComboboxItem render={props.render} /> : undefined;
+  return (
+    <Ariakit.SelectItem
+      {...props}
+      render={render}
+      blurOnHoverEnd={false}
+      className={cn(
+        "option clickable [--padding-block:0.5rem] sm:[--padding-block:0.25rem]",
+        props.className
+      )}
+    >
+      {icon}
+      <div className="truncate">{props.children || props.value}</div>
+    </Ariakit.SelectItem>
+  );
+}
+
+export interface SelectSeparatorProps extends React.ComponentProps<"div"> {}
+
+export function SelectSeparator(props: SelectSeparatorProps) {
+  return (
+    <div
+      {...props}
+      className={cn("popup-cover my-[--padding] h-px bg-[--border] p-0", props.className)}
+    />
+  );
+}
