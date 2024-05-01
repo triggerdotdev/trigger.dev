@@ -48,30 +48,6 @@ View every Task in every Run so you can tell exactly what happened.
 
 Easily integrate with hundreds of third-party APIs – including your own. Use API keys (which never leave your server) or let us handle OAuth for you. Install our integration packages and easily subscribe to webhooks and perform common tasks, or you can easily use your existing favorite Node.JS SDKs and get resumability and idempotency through our `runTask` function.
 
-## Our progress
-
-We’re building the most comprehensive and easy-to-use background jobs framework for developers.
-
-Click the links to join the discussions about our upcoming features.
-
-| Feature                                                                              | What it does                                        | Status |
-| ------------------------------------------------------------------------------------ | --------------------------------------------------- | ------ |
-| Integration kit                                                                      | Official Trigger.dev integrations or build your own | ✅     |
-| Self-hosting                                                                         | Host the platform yourself                          | ✅     |
-| Cloud                                                                                | Just write code, no deployment required             | ✅     |
-| Dashboard                                                                            | View every Task in every Run                        | ✅     |
-| Serverless                                                                           | Long-running Jobs on your serverless backend        | ✅     |
-| React hooks                                                                          | Easily update your UI with Job progress             | ✅     |
-| React frameworks                                                                     | Support for Remix, Astro, RedwoodJS & more          | ✅     |
-| [Background tasks](https://github.com/triggerdotdev/trigger.dev/discussions/400)     | Offload long or intense Tasks to our infrastructure | 🛠️     |
-| [Long-running servers](https://github.com/triggerdotdev/trigger.dev/discussions/430) | Run Jobs on your long-running backend               | 🛠️     |
-| Polling Triggers                                                                     | Subscribe to changes without webhooks               | 🕝     |
-| Vercel integration                                                                   | Easy deploy and preview environment support         | 🕝     |
-| Streaming                                                                            | Receive data from your Jobs in realtime             | 🕝     |
-| 100+ integrations                                                                    | Comprehensive support for popular APIs              | 🕝     |
-| [Trigger.dev Connect](https://github.com/triggerdotdev/trigger.dev/discussions/441)  | Use integrations signed in as your users            | 🕝     |
-| File IO                                                                              | Create Tasks that have file outputs                 | 🕝     |
-
 # Getting started
 
 Visit our docs [here](https://trigger.dev/docs).
