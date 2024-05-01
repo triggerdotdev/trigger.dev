@@ -35,21 +35,7 @@ export const branches = [
 export default function Story() {
   const [data, setData] = useState(branches);
   const [value, setValue] = useState(["main"]);
-  const [searchValue, setSearchValue] = useState("");
   const values = data;
-
-  const matches = useMemo(() => {
-    if (!values) return [];
-    if (!searchValue) return values;
-    console.log("values", values);
-    return matchSorter(values, searchValue);
-  }, [values, searchValue]);
-
-  const placeholder = "Find or create a branch...";
-
-  const canAddBranch = !!searchValue && !matches.includes(searchValue);
-
-  const empty = !matches.length && <div className="py-6 text-center">No matches found</div>;
 
   return (
     <div className="flex max-w-full flex-wrap justify-center gap-2 p-4">
@@ -66,22 +52,42 @@ export default function Story() {
         </SelectList>
       </Select> */}
       <Form>
-        <Select
-          name="branch"
-          icon={<BranchIcon />}
-          value={value}
-          setValue={setValue}
-          heading={"Why hello there"}
-          // filter={{
-          //   items: values,
-          //   fn: (item, search) => item.toLowerCase().includes(search.toLowerCase()),
-          // }}
-        >
-          {matches?.map((value) => (
-            <SelectItem key={value} value={value} />
-          ))}
-          {matches.length === 0 ? empty : null}
-        </Select>
+        <div className="flex gap-8">
+          <Select
+            name="branch"
+            icon={<BranchIcon />}
+            // value={value}
+            // setValue={setValue}
+            defaultValue={["main"]}
+            heading={"Filter by status..."}
+            items={values}
+            filter={(item, search) => item.toLowerCase().includes(search.toLowerCase())}
+          >
+            {(matches) => (
+              <>
+                {matches?.map((value) => (
+                  <SelectItem key={value} value={value} />
+                ))}
+              </>
+            )}
+          </Select>
+          <Select
+            name="branch2"
+            icon={<BranchIcon />}
+            value={value}
+            setValue={setValue}
+            heading={"Filter by status..."}
+            items={values}
+          >
+            {(matches) => (
+              <>
+                {matches?.map((value) => (
+                  <SelectItem key={value} value={value} />
+                ))}
+              </>
+            )}
+          </Select>
+        </div>
 
         <Button variant="tertiary/medium">Submit</Button>
       </Form>

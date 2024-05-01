@@ -1,9 +1,11 @@
 import * as Ariakit from "@ariakit/react";
 import { SelectValue } from "@ariakit/react-core/select/select-value";
 import * as React from "react";
+import { useMemo, useState } from "react";
 import { cn } from "~/utils/cn";
 
-export interface SelectProps<TValue extends string | string[], TItem> extends Ariakit.SelectProps {
+export interface SelectProps<TValue extends string | string[], TItem>
+  extends Omit<Ariakit.SelectProps, "children"> {
   icon?: React.ReactNode;
   text?: React.ReactNode;
   value?: Ariakit.SelectProviderProps<TValue>["value"];
@@ -15,7 +17,10 @@ export interface SelectProps<TValue extends string | string[], TItem> extends Ar
   selectTabOnMove?: boolean;
   label?: string | Ariakit.SelectLabelProps["render"];
   heading?: string;
-  filter?: { items: TItem[]; fn: (item: TItem, search: string) => boolean };
+  items: TItem[];
+  empty?: React.ReactNode;
+  filter?: (item: TItem, search: string) => boolean;
+  children: (items: TItem[]) => React.ReactNode;
 }
 
 export function Select<TValue extends string | string[], TItem = any>({
@@ -31,10 +36,19 @@ export function Select<TValue extends string | string[], TItem = any>({
   selectTabOnMove,
   label,
   heading,
+  items,
   filter,
+  empty = "No items",
   ...props
 }: SelectProps<TValue, TItem>) {
+  const [searchValue, setSearchValue] = useState("");
   const searchable = filter !== undefined;
+
+  const matches = useMemo(() => {
+    if (!items) return [];
+    if (!searchValue || !filter) return items;
+    return items.filter((item) => filter(item, searchValue));
+  }, [searchValue, items]);
 
   const select = (
     <Ariakit.SelectProvider
@@ -82,7 +96,9 @@ export function Select<TValue extends string | string[], TItem = any>({
           defaultSelectedId={defaultTab}
           selectOnMove={selectTabOnMove}
         >
-          <div className="tabs-border popup-cover flex flex-col">{children}</div>
+          <div className="tabs-border popup-cover flex flex-col">
+            <SelectList>{matches.length > 0 ? children(matches) : empty}</SelectList>
+          </div>
         </Ariakit.TabProvider>
       </Ariakit.SelectPopover>
     </Ariakit.SelectProvider>
@@ -94,11 +110,11 @@ export function Select<TValue extends string | string[], TItem = any>({
         resetValueOnHide
         setValue={(value) => {
           React.startTransition(() => {
-            // onSearch?.(value);
+            setSearchValue(value);
           });
         }}
       >
-        <SelectList>{select}</SelectList>
+        {select}
       </Ariakit.ComboboxProvider>
     );
   }
@@ -148,6 +164,7 @@ interface SelectListProps extends Omit<Ariakit.SelectListProps, "store"> {}
 function SelectList(props: SelectListProps) {
   const combobox = Ariakit.useComboboxContext();
   const Component = combobox ? Ariakit.ComboboxList : Ariakit.SelectList;
+
   return (
     <Component
       {...props}
