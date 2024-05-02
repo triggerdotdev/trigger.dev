@@ -77,6 +77,7 @@ export default function Story() {
             defaultValue={["main"]}
             heading={"Filter by status..."}
             items={branches}
+            shortcut={{ key: "b" }}
             filter={(item, search) => item.toLowerCase().includes(search.toLowerCase())}
           >
             {(matches, title) => (
@@ -100,14 +101,16 @@ export default function Story() {
 
           <Select
             name="grouped"
-            open={true}
             icon={<BranchIcon />}
             // value={value}
             // setValue={setValue}
             defaultValue={["main"]}
             heading={"Filter by status..."}
             items={grouped}
-            filter={(item, search) => item.title.toLowerCase().includes(search.toLowerCase())}
+            filter={(item, search, sectionTitle) =>
+              sectionTitle?.toLowerCase().includes(search.toLowerCase()) ||
+              item.title.toLowerCase().includes(search.toLowerCase())
+            }
           >
             {(matches, title) => (
               <SelectGroup>

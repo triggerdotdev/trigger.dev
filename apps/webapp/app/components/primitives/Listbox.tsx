@@ -3,7 +3,9 @@ import { SelectValue } from "@ariakit/react-core/select/select-value";
 import { Check, CheckIcon } from "lucide-react";
 import * as React from "react";
 import { Fragment, useMemo, useState } from "react";
+import { Shortcut, ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
+import { ShortcutKey } from "./ShortcutKey";
 
 const sizes = {
   small: {
@@ -37,7 +39,7 @@ function isSection<TItem>(data: TItem[] | Section<TItem>[]): data is Section<TIt
   );
 }
 
-type TItemFromSection<TItem> = TItem extends Section<infer U> ? U : TItem;
+type ItemFromSection<TItem> = TItem extends Section<infer U> ? U : TItem;
 
 export interface SelectProps<TValue extends string | string[], TItem>
   extends Omit<Ariakit.SelectProps, "children"> {
@@ -54,11 +56,12 @@ export interface SelectProps<TValue extends string | string[], TItem>
   heading?: string;
   items: TItem[] | Section<TItem>[];
   empty?: React.ReactNode;
-  filter?: (item: TItemFromSection<TItem>, search: string) => boolean;
-  children: (items: TItemFromSection<TItem>[], title?: string) => React.ReactNode;
+  filter?: (item: ItemFromSection<TItem>, search: string, title?: string) => boolean;
+  children: (items: ItemFromSection<TItem>[], title?: string) => React.ReactNode;
   variant?: Variant;
   open?: boolean;
   setOpen?: (open: boolean) => void;
+  shortcut?: ShortcutDefinition;
 }
 
 export function Select<TValue extends string | string[], TItem>({
@@ -80,10 +83,12 @@ export function Select<TValue extends string | string[], TItem>({
   variant = "tertiary/small",
   open,
   setOpen,
+  shortcut,
   ...props
 }: SelectProps<TValue, TItem>) {
   const [searchValue, setSearchValue] = useState("");
   const searchable = filter !== undefined;
+  const ref = React.useRef<HTMLButtonElement>(null);
 
   const matches = useMemo(() => {
     if (!items) return [];
@@ -94,14 +99,26 @@ export function Select<TValue extends string | string[], TItem>({
         .map((section) => ({
           ...section,
           items: section.items.filter((item) =>
-            filter(item as TItemFromSection<TItem>, searchValue)
+            filter(item as ItemFromSection<TItem>, searchValue, section.title)
           ),
         }))
         .filter((section) => section.items.length > 0);
     }
 
-    return items.filter((item) => filter(item as TItemFromSection<TItem>, searchValue));
+    return items.filter((item) => filter(item as ItemFromSection<TItem>, searchValue));
   }, [searchValue, items]);
+
+  if (shortcut) {
+    useShortcutKeys({
+      shortcut: shortcut,
+      action: () => {
+        if (ref.current) {
+          ref.current.click();
+        }
+      },
+      disabled: props.disabled,
+    });
+  }
 
   const variantClasses = variants[variant];
 
@@ -124,6 +141,7 @@ export function Select<TValue extends string | string[], TItem>({
           variantClasses.button,
           props.className
         )}
+        ref={ref}
       >
         {icon}
         <div className="truncate">
@@ -135,11 +153,6 @@ export function Select<TValue extends string | string[], TItem>({
             </SelectValue>
           )}
         </div>
-        <Ariakit.SelectArrow
-          className={cn(
-            "size-5 text-text-dimmed transition group-hover:text-text-bright group-focus:text-text-bright"
-          )}
-        />
       </Ariakit.Select>
       <Ariakit.SelectPopover
         gutter={5}
@@ -154,20 +167,24 @@ export function Select<TValue extends string | string[], TItem>({
         )}
       >
         {!searchable && heading && (
-          <div className="grid flex-none grid-cols-[auto_max-content] items-center gap-2 ps-[13px]">
+          <div className=" flex-none items-center gap-2 ps-[13px]">
             <Ariakit.SelectHeading
               className="cursor-default font-medium opacity-80"
               render={<>{heading}</>}
             />
-            <Ariakit.SelectDismiss className="rounded-item button-secondary button-flat button-icon button-small opacity-70 outline-offset-0 outline-secondary" />
           </div>
         )}
         {searchable && (
-          <Ariakit.Combobox
-            autoSelect
-            render={<input placeholder={heading ?? "Filter options"} />}
-            className="h-9 w-full flex-none border-b border-grid-dimmed bg-transparent px-2 text-xs text-text-dimmed outline-none"
-          />
+          <div className="h-9 w-full flex-none border-b border-grid-dimmed bg-transparent px-2 text-xs text-text-dimmed outline-none">
+            <Ariakit.Combobox
+              autoSelect
+              render={<input placeholder={heading ?? "Filter options"} />}
+              className="h-9 w-full flex-none border-b border-grid-dimmed bg-transparent px-2 text-xs text-text-dimmed outline-none"
+            />
+            {shortcut && (
+              <ShortcutKey className={cn("size-4")} shortcut={shortcut} variant={"small"} />
+            )}
+          </div>
         )}
         <Ariakit.TabProvider
           selectedId={tab}
@@ -181,10 +198,10 @@ export function Select<TValue extends string | string[], TItem>({
                 ? isSection(matches)
                   ? matches.map((section, index) => (
                       <Fragment key={index}>
-                        {children(section.items as TItemFromSection<TItem>[], section.title)}
+                        {children(section.items as ItemFromSection<TItem>[], section.title)}
                       </Fragment>
                     ))
-                  : children(matches as TItemFromSection<TItem>[])
+                  : children(matches as ItemFromSection<TItem>[])
                 : empty}
             </SelectList>
           </div>
