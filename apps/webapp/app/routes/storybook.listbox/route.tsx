@@ -1,11 +1,6 @@
-import { SelectItemCheck } from "@ariakit/react";
 import { CircleStackIcon } from "@heroicons/react/20/solid";
-import { Form, Link, useNavigate } from "@remix-run/react";
-import { TriggerDotDevDarkIcon } from "@trigger.dev/companyicons";
-import clsx from "clsx";
-import e from "express";
-import { matchSorter } from "match-sorter";
-import { ComponentProps, useCallback, useMemo, useState } from "react";
+import { Form, useNavigate } from "@remix-run/react";
+import { useCallback, useState } from "react";
 import { LogoIcon } from "~/components/LogoIcon";
 import { Button } from "~/components/primitives/Buttons";
 import {
@@ -14,7 +9,6 @@ import {
   SelectGroupLabel,
   SelectItem,
   SelectLinkItem,
-  SelectSeparator,
   shortcutFromIndex,
 } from "~/components/primitives/Listbox";
 import {
@@ -146,13 +140,13 @@ function Statuses() {
       shortcut={{ key: "s" }}
       filter={(item, search) => item.title.toLowerCase().includes(search.toLowerCase())}
     >
-      {(matches, showShortcut, title) => (
+      {(matches, { shortcutsEnabled }) => (
         <>
           {matches?.map((item, index) => (
             <SelectItem
               key={item.value}
               value={item.value}
-              shortcut={shortcutFromIndex(index, showShortcut)}
+              shortcut={shortcutFromIndex(index, shortcutsEnabled)}
             >
               <TaskRunStatusCombo status={item.value} iconClassName="animate-none" />
             </SelectItem>
@@ -234,15 +228,16 @@ function ProjectSelector() {
         item.title.toLowerCase().includes(search.toLowerCase())
       }
     >
-      {(matches, _, title) => (
+      {(matches, { shortcutsEnabled, section }) => (
         <SelectGroup>
-          {title && <SelectGroupLabel>{title}</SelectGroupLabel>}
-          {matches?.map((match) => (
+          {section && <SelectGroupLabel>{section.title}</SelectGroupLabel>}
+          {matches?.map((match, index) => (
             <SelectLinkItem
               icon={<CircleStackIcon className="size-3" />}
               key={match.value}
               value={match.value}
               to={`?project=${match.value}`}
+              shortcut={shortcutFromIndex((section?.startIndex ?? 0) + index, shortcutsEnabled)}
             >
               {match.title}
             </SelectLinkItem>

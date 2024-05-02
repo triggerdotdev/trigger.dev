@@ -65,8 +65,14 @@ export interface SelectProps<TValue extends string | string[], TItem>
     | React.ReactNode
     | ((
         items: ItemFromSection<TItem>[],
-        showShortcut?: boolean,
-        title?: string
+        meta: {
+          shortcutsEnabled?: boolean;
+          section?: {
+            title?: string;
+            startIndex: number;
+            count: number;
+          };
+        }
       ) => React.ReactNode);
   variant?: Variant;
   open?: boolean;
@@ -233,21 +239,25 @@ export function Select<TValue extends string | string[], TItem>({
         >
           <div className="flex flex-col overflow-hidden">
             <SelectList>
-              {typeof children === "function"
-                ? matches.length > 0
-                  ? isSection(matches)
-                    ? matches.map((section, index) => (
-                        <Fragment key={index}>
-                          {children(
-                            section.items as ItemFromSection<TItem>[],
-                            enableItemShortcuts,
-                            section.title
-                          )}
-                        </Fragment>
-                      ))
-                    : children(matches as ItemFromSection<TItem>[], enableItemShortcuts, undefined)
-                  : empty
-                : children}
+              {typeof children === "function" ? (
+                matches.length > 0 ? (
+                  isSection(matches) ? (
+                    <SelectGroupedRenderer
+                      items={matches}
+                      children={children}
+                      enableItemShortcuts={enableItemShortcuts}
+                    />
+                  ) : (
+                    children(matches as ItemFromSection<TItem>[], {
+                      shortcutsEnabled: enableItemShortcuts,
+                    })
+                  )
+                ) : (
+                  empty
+                )
+              ) : (
+                children
+              )}
             </SelectList>
           </div>
         </Ariakit.TabProvider>
@@ -271,6 +281,44 @@ export function Select<TValue extends string | string[], TItem>({
   }
 
   return select;
+}
+
+function SelectGroupedRenderer<TItem>({
+  items,
+  children,
+  enableItemShortcuts,
+}: {
+  items: Section<TItem>[];
+  children: (
+    items: ItemFromSection<TItem>[],
+    meta: {
+      shortcutsEnabled?: boolean;
+      section?: { title?: string; startIndex: number; count: number };
+    }
+  ) => React.ReactNode;
+  enableItemShortcuts: boolean;
+}) {
+  let count = 0;
+  return (
+    <>
+      {items.map((section, index) => {
+        const previousItem = items.at(index - 1);
+        count += previousItem ? previousItem.items.length : 0;
+        return (
+          <Fragment key={index}>
+            {children(section.items as ItemFromSection<TItem>[], {
+              shortcutsEnabled: enableItemShortcuts,
+              section: {
+                title: section.title,
+                startIndex: count - 1,
+                count: section.items.length,
+              },
+            })}
+          </Fragment>
+        );
+      })}
+    </>
+  );
 }
 
 export interface SelectTabListProps extends Ariakit.TabListProps {}
@@ -395,7 +443,13 @@ export function SelectLinkItem({
   const combobox = Ariakit.useComboboxContext();
   const link = (
     <Link to={to} className={cn("block", selectItemClasses, props.className)}>
-      {props.children || props.value}
+      <div className="flex h-7 w-full items-center gap-1 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
+        {icon}
+        <div className="grow truncate">{props.children || props.value}</div>
+        {shortcut && (
+          <ShortcutKey className={cn("size-4 flex-none")} shortcut={shortcut} variant={"small"} />
+        )}
+      </div>
     </Link>
   );
   const render = combobox ? <Ariakit.ComboboxItem render={link} /> : link;
@@ -421,15 +475,7 @@ export function SelectLinkItem({
       blurOnHoverEnd={false}
       className={cn(selectItemClasses, props.className)}
       ref={ref}
-    >
-      <div className="flex h-7 w-full items-center gap-1 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
-        <div className="grow truncate">{props.children || props.value}</div>
-        {icon}
-        {shortcut && (
-          <ShortcutKey className={cn("size-4 flex-none")} shortcut={shortcut} variant={"small"} />
-        )}
-      </div>
-    </Ariakit.SelectItem>
+    />
   );
 }
 
