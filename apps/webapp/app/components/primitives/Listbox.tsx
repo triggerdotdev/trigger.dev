@@ -1,25 +1,26 @@
 import * as Ariakit from "@ariakit/react";
 import { SelectValue } from "@ariakit/react-core/select/select-value";
-import { Check, CheckIcon } from "lucide-react";
 import * as React from "react";
 import { Fragment, useMemo, useState } from "react";
-import { Shortcut, ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { ShortcutKey } from "./ShortcutKey";
 
 const sizes = {
   small: {
-    button:
-      "h-6 rounded text-xs bg-tertiary border border-tertiary hover:text-text-bright hover:border-charcoal-600 pr-2 pl-1.5",
+    button: "h-6 rounded text-xs pr-2 pl-1.5",
   },
   medium: {
-    button: "h-8",
+    button: "h-8 rounded text-xs pr-2 pl-1.5",
   },
 };
 
 const variants = {
   "tertiary/small": {
-    button: cn(sizes.small.button, ""),
+    button: cn(
+      sizes.small.button,
+      "bg-tertiary focus-within:ring-charcoal-500 border border-tertiary hover:text-text-bright hover:border-charcoal-600"
+    ),
   },
 };
 
@@ -55,7 +56,7 @@ export interface SelectProps<TValue extends string | string[], TItem>
   selectTabOnMove?: boolean;
   label?: string | Ariakit.SelectLabelProps["render"];
   heading?: string;
-  items: TItem[] | Section<TItem>[];
+  items?: TItem[] | Section<TItem>[];
   empty?: React.ReactNode;
   filter?: (item: ItemFromSection<TItem>, search: string, title?: string) => boolean;
   children:
@@ -90,7 +91,7 @@ export function Select<TValue extends string | string[], TItem>({
   ...props
 }: SelectProps<TValue, TItem>) {
   const [searchValue, setSearchValue] = useState("");
-  const searchable = filter !== undefined;
+  const searchable = items !== undefined && filter !== undefined;
   const ref = React.useRef<HTMLButtonElement>(null);
 
   const matches = useMemo(() => {
@@ -140,7 +141,7 @@ export function Select<TValue extends string | string[], TItem>({
       <Ariakit.Select
         {...props}
         className={cn(
-          "group flex items-center gap-1 outline-offset-0 focus-within:outline-none focus-within:ring-1 focus-within:ring-charcoal-500 disabled:cursor-not-allowed disabled:opacity-50",
+          "group flex items-center gap-1 outline-offset-0 focus-within:outline-none focus-within:ring-1 disabled:cursor-not-allowed disabled:opacity-50",
           variantClasses.button,
           props.className
         )}
