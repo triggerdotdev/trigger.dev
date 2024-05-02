@@ -1,5 +1,7 @@
 # internal-platform
 
+## 3.0.0-beta.26
+
 ## 3.0.0-beta.25
 
 ### Patch Changes
