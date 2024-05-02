@@ -1,7 +1,9 @@
-import { Form } from "@remix-run/react";
+import { CircleStackIcon } from "@heroicons/react/20/solid";
+import { Form, useNavigate } from "@remix-run/react";
 import clsx from "clsx";
+import e from "express";
 import { matchSorter } from "match-sorter";
-import { ComponentProps, useMemo, useState } from "react";
+import { ComponentProps, useCallback, useMemo, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import {
   Select,
@@ -11,6 +13,12 @@ import {
   SelectSeparator,
   shortcutFromIndex,
 } from "~/components/primitives/Listbox";
+import {
+  TaskRunStatusCombo,
+  allTaskRunStatuses,
+  runStatusTitle,
+} from "~/components/runs/v3/TaskRunStatus";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 
 export const branches = [
   "main",
@@ -104,10 +112,12 @@ export default function Story() {
   const [value, setValue] = useState(["main"]);
 
   return (
-    <div className="flex h-full max-w-full flex-wrap items-start justify-start gap-2 p-4">
+    <div className="flex h-full max-w-full flex-wrap items-start justify-start gap-2 px-4 py-16">
       <Form className="space-y-4">
-        <div className="flex gap-4">
-          <Select name="static" text="Static" defaultValue={[]} shortcut={{ key: "s" }}>
+        <div className="flex gap-16">
+          <Statuses />
+
+          <Select name="static" text="Static" defaultValue={[]} shortcut={{ key: "e" }}>
             <SelectItem value={"value"} shortcut={{ key: "1" }}>
               Item 1
             </SelectItem>
@@ -117,33 +127,7 @@ export default function Story() {
           </Select>
 
           <Select
-            name="branch"
-            text="Branches"
-            icon={<BranchIcon />}
-            // value={value}
-            // setValue={setValue}
-            defaultValue={["main"]}
-            heading={"Filter by status..."}
-            items={branches}
-            shortcut={{ key: "b" }}
-            filter={(item, search) => item.toLowerCase().includes(search.toLowerCase())}
-          >
-            {(matches, showShortcut, title) => (
-              <>
-                {matches?.map((value, index) => (
-                  <SelectItem
-                    key={value}
-                    value={value}
-                    shortcut={shortcutFromIndex(index, showShortcut)}
-                  />
-                ))}
-              </>
-            )}
-          </Select>
-
-          <Select
             name="branch2"
-            // icon={<BranchIcon />}
             value={value}
             setValue={setValue}
             heading={"Filter by status..."}
@@ -154,9 +138,6 @@ export default function Story() {
 
           <Select
             name="grouped"
-            icon={<BranchIcon />}
-            // value={value}
-            // setValue={setValue}
             defaultValue={["main"]}
             heading={"Filter by status..."}
             items={grouped}
@@ -179,9 +160,6 @@ export default function Story() {
 
           <Select
             name="grouped"
-            icon={<BranchIcon />}
-            // value={value}
-            // setValue={setValue}
             defaultValue={["main"]}
             text="No titles"
             heading={"Filter by status..."}
@@ -202,29 +180,55 @@ export default function Story() {
               </SelectGroup>
             )}
           </Select>
+          <Button variant="tertiary/small">Submit</Button>
         </div>
-
-        <Button variant="tertiary/medium">Submit</Button>
       </Form>
     </div>
   );
 }
 
-function BranchIcon(props: ComponentProps<"svg">) {
+const statuses = allTaskRunStatuses.map((status) => ({
+  title: runStatusTitle(status),
+  value: status,
+}));
+
+function Statuses() {
+  const navigate = useNavigate();
+  const location = useOptimisticLocation();
+  const search = new URLSearchParams(location.search);
+
+  const handleChange = useCallback((values: string[]) => {
+    search.delete("status");
+    for (const value of values) {
+      search.append("status", value);
+    }
+    navigate(`${location.pathname}?${search.toString()}`, { replace: true });
+  }, []);
+
   return (
-    <svg
-      fill="currentColor"
-      strokeWidth="0"
-      viewBox="0 0 24 24"
-      width="1em"
-      height="1em"
-      aria-hidden
-      {...props}
-      className={clsx("flex-none opacity-70 [[data-active-item]>&]:opacity-100", props.className)}
+    <Select
+      name="status"
+      text="Status"
+      value={search.getAll("status")}
+      setValue={handleChange}
+      heading={"Filter by status..."}
+      items={statuses}
+      shortcut={{ key: "s" }}
+      filter={(item, search) => item.title.toLowerCase().includes(search.toLowerCase())}
     >
-      <path d="M15 4.75a3.25 3.25 0 1 1 6.5 0 3.25 3.25 0 0 1-6.5 0ZM2.5 19.25a3.25 3.25 0 1 1 6.5 0 3.25 3.25 0 0 1-6.5 0Zm0-14.5a3.25 3.25 0 1 1 6.5 0 3.25 3.25 0 0 1-6.5 0ZM5.75 6.5a1.75 1.75 0 1 0-.001-3.501A1.75 1.75 0 0 0 5.75 6.5Zm0 14.5a1.75 1.75 0 1 0-.001-3.501A1.75 1.75 0 0 0 5.75 21Zm12.5-14.5a1.75 1.75 0 1 0-.001-3.501A1.75 1.75 0 0 0 18.25 6.5Z" />
-      <path d="M5.75 16.75A.75.75 0 0 1 5 16V8a.75.75 0 0 1 1.5 0v8a.75.75 0 0 1-.75.75Z" />
-      <path d="M17.5 8.75v-1H19v1a3.75 3.75 0 0 1-3.75 3.75h-7a1.75 1.75 0 0 0-1.75 1.75H5A3.25 3.25 0 0 1 8.25 11h7a2.25 2.25 0 0 0 2.25-2.25Z" />
-    </svg>
+      {(matches, showShortcut, title) => (
+        <>
+          {matches?.map((item, index) => (
+            <SelectItem
+              key={item.value}
+              value={item.value}
+              shortcut={shortcutFromIndex(index, showShortcut)}
+            >
+              <TaskRunStatusCombo status={item.value} iconClassName="animate-none" />
+            </SelectItem>
+          ))}
+        </>
+      )}
+    </Select>
   );
 }

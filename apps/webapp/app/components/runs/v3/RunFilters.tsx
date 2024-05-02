@@ -1,6 +1,5 @@
 import { XMarkIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
-import type { TaskRunStatus as TaskRunStatusType } from "@trigger.dev/database";
 import { RuntimeEnvironment, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import { useCallback } from "react";
 import { z } from "zod";
@@ -23,21 +22,11 @@ import {
   SelectValue,
 } from "../../primitives/Select";
 import { TimeFrameFilter } from "../TimeFrameFilter";
-import { TaskRunStatusCombo, descriptionForTaskRunStatus } from "./TaskRunStatus";
-
-export const allTaskRunStatuses = [
-  "PENDING",
-  "WAITING_FOR_DEPLOY",
-  "EXECUTING",
-  "RETRYING_AFTER_FAILURE",
-  "WAITING_TO_RESUME",
-  "COMPLETED_SUCCESSFULLY",
-  "CANCELED",
-  "COMPLETED_WITH_ERRORS",
-  "INTERRUPTED",
-  "SYSTEM_FAILURE",
-  "CRASHED",
-] as TaskRunStatusType[];
+import {
+  TaskRunStatusCombo,
+  allTaskRunStatuses,
+  descriptionForTaskRunStatus,
+} from "./TaskRunStatus";
 
 export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);
 
