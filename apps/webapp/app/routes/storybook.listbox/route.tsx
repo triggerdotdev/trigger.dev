@@ -1,15 +1,19 @@
+import { SelectItemCheck } from "@ariakit/react";
 import { CircleStackIcon } from "@heroicons/react/20/solid";
-import { Form, useNavigate } from "@remix-run/react";
+import { Form, Link, useNavigate } from "@remix-run/react";
+import { TriggerDotDevDarkIcon } from "@trigger.dev/companyicons";
 import clsx from "clsx";
 import e from "express";
 import { matchSorter } from "match-sorter";
 import { ComponentProps, useCallback, useMemo, useState } from "react";
+import { LogoIcon } from "~/components/LogoIcon";
 import { Button } from "~/components/primitives/Buttons";
 import {
   Select,
   SelectGroup,
   SelectGroupLabel,
   SelectItem,
+  SelectLinkItem,
   SelectSeparator,
   shortcutFromIndex,
 } from "~/components/primitives/Listbox";
@@ -45,37 +49,6 @@ export const branches = [
   "nativefb-enable-cache",
   "nov-main-trigger",
   "rsckeys",
-];
-
-export const grouped = [
-  {
-    type: "section" as const,
-    title: "My org",
-    items: [
-      {
-        title: "My repo",
-        value: "main",
-      },
-      {
-        title: "My fork",
-        value: "fork",
-      },
-    ],
-  },
-  {
-    type: "section" as const,
-    title: "Other org",
-    items: [
-      {
-        title: "Other repo",
-        value: "other2",
-      },
-      {
-        title: "Other fork",
-        value: "fork2",
-      },
-    ],
-  },
 ];
 
 export const groupedNoTitles = [
@@ -115,6 +88,7 @@ export default function Story() {
     <div className="flex h-full max-w-full flex-wrap items-start justify-start gap-2 px-4 py-16">
       <Form className="space-y-4">
         <div className="flex gap-16">
+          <ProjectSelector />
           <Statuses />
 
           <Select name="static" text="Static" defaultValue={[]} shortcut={{ key: "e" }}>
@@ -136,50 +110,6 @@ export default function Story() {
             {(matches) => matches?.map((value) => <SelectItem key={value} value={value} />)}
           </Select>
 
-          <Select
-            name="grouped"
-            defaultValue={["main"]}
-            heading={"Filter by status..."}
-            items={grouped}
-            filter={(item, search, sectionTitle) =>
-              sectionTitle?.toLowerCase().includes(search.toLowerCase()) ||
-              item.title.toLowerCase().includes(search.toLowerCase())
-            }
-          >
-            {(matches, showShortcut, title) => (
-              <SelectGroup>
-                {title && <SelectGroupLabel>{title}</SelectGroupLabel>}
-                {matches?.map((match) => (
-                  <SelectItem key={match.value} value={match.value}>
-                    {match.title}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            )}
-          </Select>
-
-          <Select
-            name="grouped"
-            defaultValue={["main"]}
-            text="No titles"
-            heading={"Filter by status..."}
-            items={groupedNoTitles}
-            filter={(item, search, sectionTitle) =>
-              sectionTitle?.toLowerCase().includes(search.toLowerCase()) ||
-              item.title.toLowerCase().includes(search.toLowerCase())
-            }
-          >
-            {(matches, showShortcut, title) => (
-              <SelectGroup>
-                {title ? <SelectGroupLabel>{title}</SelectGroupLabel> : <SelectSeparator />}
-                {matches?.map((match) => (
-                  <SelectItem key={match.value} value={match.value}>
-                    {match.title}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            )}
-          </Select>
           <Button variant="tertiary/small">Submit</Button>
         </div>
       </Form>
@@ -228,6 +158,96 @@ function Statuses() {
             </SelectItem>
           ))}
         </>
+      )}
+    </Select>
+  );
+}
+
+export const projects = [
+  {
+    type: "section" as const,
+    title: "Apple",
+    items: [
+      {
+        title: "iTunes",
+        value: "itunes",
+      },
+      {
+        title: "App Store",
+        value: "appstore",
+      },
+    ],
+  },
+  {
+    type: "section" as const,
+    title: "Google",
+    items: [
+      {
+        title: "Maps",
+        value: "maps",
+      },
+      {
+        title: "Gmail",
+        value: "gmail",
+      },
+      {
+        title: "Waymo",
+        value: "waymo",
+      },
+      {
+        title: "Android",
+        value: "android",
+      },
+    ],
+  },
+  {
+    type: "section" as const,
+    title: "Uber",
+    items: [
+      {
+        title: "Planner",
+        value: "planner",
+      },
+    ],
+  },
+];
+
+function ProjectSelector() {
+  const location = useOptimisticLocation();
+  const search = new URLSearchParams(location.search);
+
+  const selected = projects
+    .find((p) => p.items.some((i) => i.value === search.get("project")))
+    ?.items.find((i) => i.value === search.get("project"));
+
+  return (
+    <Select
+      name="project"
+      defaultValue={selected?.value}
+      text={selected?.title}
+      heading="Find project..."
+      icon={<LogoIcon className="h-3 w-3" />}
+      items={projects}
+      shortcut={{ key: "p", modifiers: ["alt"] }}
+      filter={(item, search, sectionTitle) =>
+        sectionTitle?.toLowerCase().includes(search.toLowerCase()) ||
+        item.title.toLowerCase().includes(search.toLowerCase())
+      }
+    >
+      {(matches, _, title) => (
+        <SelectGroup>
+          {title && <SelectGroupLabel>{title}</SelectGroupLabel>}
+          {matches?.map((match) => (
+            <SelectLinkItem
+              icon={<CircleStackIcon className="size-3" />}
+              key={match.value}
+              value={match.value}
+              to={`?project=${match.value}`}
+            >
+              {match.title}
+            </SelectLinkItem>
+          ))}
+        </SelectGroup>
       )}
     </Select>
   );

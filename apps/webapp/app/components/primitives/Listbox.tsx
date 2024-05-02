@@ -5,6 +5,7 @@ import { Fragment, useMemo, useState } from "react";
 import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { ShortcutKey } from "./ShortcutKey";
+import { Link } from "@remix-run/react";
 
 const sizes = {
   small: {
@@ -331,6 +332,9 @@ export interface SelectItemProps extends Ariakit.SelectItemProps {
   shortcut?: ShortcutDefinition;
 }
 
+const selectItemClasses =
+  "group cursor-pointer px-1 pt-1 text-xs text-text-dimmed outline-none last:pb-1";
+
 export function SelectItem({
   icon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
   shortcut,
@@ -359,10 +363,63 @@ export function SelectItem({
       render={render}
       blurOnHoverEnd={false}
       className={cn(
-        "group cursor-pointer px-1 pt-1 text-xs text-text-dimmed outline-none last:pb-1",
+        selectItemClasses,
         "[--padding-block:0.5rem] sm:[--padding-block:0.25rem]",
         props.className
       )}
+      ref={ref}
+    >
+      <div className="flex h-7 w-full items-center gap-1 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
+        <div className="grow truncate">{props.children || props.value}</div>
+        {icon}
+        {shortcut && (
+          <ShortcutKey className={cn("size-4 flex-none")} shortcut={shortcut} variant={"small"} />
+        )}
+      </div>
+    </Ariakit.SelectItem>
+  );
+}
+
+export interface SelectLinkItemProps extends Ariakit.SelectItemProps {
+  icon?: React.ReactNode;
+  shortcut?: ShortcutDefinition;
+  to: string;
+}
+
+export function SelectLinkItem({
+  icon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
+  shortcut,
+  to,
+  ...props
+}: SelectLinkItemProps) {
+  const combobox = Ariakit.useComboboxContext();
+  const link = (
+    <Link to={to} className={cn("block", selectItemClasses, props.className)}>
+      {props.children || props.value}
+    </Link>
+  );
+  const render = combobox ? <Ariakit.ComboboxItem render={link} /> : link;
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  useShortcutKeys({
+    shortcut: shortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (ref.current) {
+        ref.current.click();
+      }
+    },
+    disabled: props.disabled,
+    enabledOnInputElements: true,
+  });
+
+  return (
+    <Ariakit.SelectItem
+      {...props}
+      render={render}
+      blurOnHoverEnd={false}
+      className={cn(selectItemClasses, props.className)}
       ref={ref}
     >
       <div className="flex h-7 w-full items-center gap-1 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
