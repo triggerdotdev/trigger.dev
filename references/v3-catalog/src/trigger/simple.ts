@@ -1,3 +1,4 @@
+import "server-only";
 import { logger, task, wait } from "@trigger.dev/sdk/v3";
 
 export const simplestTask = task({
