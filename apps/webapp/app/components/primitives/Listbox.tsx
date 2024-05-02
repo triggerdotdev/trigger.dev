@@ -140,7 +140,7 @@ export function Select<TValue extends string | string[], TItem>({
       <Ariakit.Select
         {...props}
         className={cn(
-          "group flex items-center gap-1 outline-offset-0 outline-secondary focus-within:outline-none focus-within:ring-0 disabled:cursor-not-allowed disabled:opacity-50",
+          "group flex items-center gap-1 outline-offset-0 focus-within:outline-none focus-within:ring-1 focus-within:ring-charcoal-500 disabled:cursor-not-allowed disabled:opacity-50",
           variantClasses.button,
           props.className
         )}

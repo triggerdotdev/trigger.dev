@@ -106,6 +106,11 @@ export default function Story() {
     <div className="flex h-full max-w-full flex-wrap items-start justify-start gap-2 p-4">
       <Form className="space-y-4">
         <div className="flex gap-4">
+          <Select name="static" text="Static" items={branches}>
+            <SelectItem value={"value"}>Item 1</SelectItem>
+            <SelectItem value={"value2"}>Item 2</SelectItem>
+          </Select>
+
           <Select
             name="branch"
             text="Branches"
@@ -126,6 +131,7 @@ export default function Story() {
               </>
             )}
           </Select>
+
           <Select
             name="branch2"
             // icon={<BranchIcon />}
