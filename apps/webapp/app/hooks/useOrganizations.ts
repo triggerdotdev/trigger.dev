@@ -53,3 +53,11 @@ export function useIsNewOrganizationPage(matches?: UIMatch[]): boolean {
 export const useOrganizationChanged = (action: (org: MatchedOrganization | undefined) => void) => {
   useChanged(useOptionalOrganization, action);
 };
+
+export function useIsImpersonating(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof orgLoader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+  return data?.isImpersonating === true;
+}

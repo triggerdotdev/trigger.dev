@@ -5,12 +5,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+import { useIsImpersonating } from "~/hooks/useOrganizations";
 import { useHasAdminAccess } from "~/hooks/useUser";
 
 export function AdminDebugTooltip({ children }: { children: React.ReactNode }) {
   const hasAdminAccess = useHasAdminAccess();
+  const isImpersonating = useIsImpersonating();
 
-  if (!hasAdminAccess) {
+  if (!hasAdminAccess && !isImpersonating) {
     return null;
   }
 
