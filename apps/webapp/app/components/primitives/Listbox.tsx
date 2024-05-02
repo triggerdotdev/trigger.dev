@@ -167,22 +167,23 @@ export function Select<TValue extends string | string[], TItem>({
         )}
       >
         {!searchable && heading && (
-          <div className=" flex-none items-center gap-2 ps-[13px]">
-            <Ariakit.SelectHeading
-              className="cursor-default font-medium opacity-80"
-              render={<>{heading}</>}
-            />
+          <div className="flex h-8 flex-none items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xs text-text-bright">
+            <Ariakit.SelectHeading render={<>{heading}</>} />
           </div>
         )}
         {searchable && (
-          <div className="h-9 w-full flex-none border-b border-grid-dimmed bg-transparent px-2 text-xs text-text-dimmed outline-none">
+          <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-none">
             <Ariakit.Combobox
               autoSelect
               render={<input placeholder={heading ?? "Filter options"} />}
-              className="h-9 w-full flex-none border-b border-grid-dimmed bg-transparent px-2 text-xs text-text-dimmed outline-none"
+              className="flex-1 bg-transparent text-xs text-text-dimmed outline-none"
             />
             {shortcut && (
-              <ShortcutKey className={cn("size-4")} shortcut={shortcut} variant={"small"} />
+              <ShortcutKey
+                className={cn("size-4 flex-none")}
+                shortcut={shortcut}
+                variant={"small"}
+              />
             )}
           </div>
         )}
