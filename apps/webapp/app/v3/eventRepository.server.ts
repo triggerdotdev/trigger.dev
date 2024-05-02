@@ -14,6 +14,7 @@ import {
   correctErrorStackTrace,
   createPacketAttributesAsJson,
   flattenAttributes,
+  NULL_SENTINEL,
   isExceptionSpanEvent,
   omit,
   unflattenAttributes,
@@ -441,21 +442,10 @@ export class EventRepository {
       return;
     }
 
-    const output = isEmptyJson(fullEvent.output)
-      ? null
-      : unflattenAttributes(fullEvent.output as Attributes);
+    const output = rehydrateJson(fullEvent.output);
+    const payload = rehydrateJson(fullEvent.payload);
 
-    const payload = isEmptyJson(fullEvent.payload)
-      ? null
-      : unflattenAttributes(fullEvent.payload as Attributes);
-
-    const show = unflattenAttributes(
-      filteredAttributes(fullEvent.properties as Attributes, SemanticInternalAttributes.SHOW)
-    )[SemanticInternalAttributes.SHOW] as
-      | {
-          actions?: boolean;
-        }
-      | undefined;
+    const show = rehydrateShow(fullEvent.properties);
 
     const properties = sanitizedAttributes(fullEvent.properties);
 
@@ -1083,7 +1073,7 @@ function isEmptyJson(json: Prisma.JsonValue) {
   return false;
 }
 
-function sanitizedAttributes(json: Prisma.JsonValue): Record<string, unknown> | undefined {
+function sanitizedAttributes(json: Prisma.JsonValue) {
   if (json === null || json === undefined) {
     return;
   }
@@ -1181,4 +1171,58 @@ function getNowInNanoseconds(): bigint {
 
 function getDateFromNanoseconds(nanoseconds: bigint) {
   return new Date(Number(nanoseconds) / 1_000_000);
+}
+
+function rehydrateJson(json: Prisma.JsonValue): any {
+  if (json === null) {
+    return undefined;
+  }
+
+  if (json === NULL_SENTINEL) {
+    return null;
+  }
+
+  if (typeof json === "string") {
+    return json;
+  }
+
+  if (typeof json === "number") {
+    return json;
+  }
+
+  if (typeof json === "boolean") {
+    return json;
+  }
+
+  if (Array.isArray(json)) {
+    return json.map((item) => rehydrateJson(item));
+  }
+
+  if (typeof json === "object") {
+    return unflattenAttributes(json as Attributes);
+  }
+
+  return null;
+}
+
+function rehydrateShow(properties: Prisma.JsonValue): { actions?: boolean } | undefined {
+  if (properties === null || properties === undefined) {
+    return;
+  }
+
+  if (typeof properties !== "object") {
+    return;
+  }
+
+  if (Array.isArray(properties)) {
+    return;
+  }
+
+  const actions = properties[SemanticInternalAttributes.SHOW_ACTIONS];
+
+  if (typeof actions === "boolean") {
+    return { actions };
+  }
+
+  return;
 }

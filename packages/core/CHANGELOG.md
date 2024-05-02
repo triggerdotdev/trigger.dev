@@ -1,5 +1,18 @@
 # internal-platform
 
+## 3.0.0-beta.25
+
+### Patch Changes
+
+- e337b2165: Add a postInstall option to allow running scripts after dependencies have been installed in deployed images
+- 9e5382951: Improve the display of non-object return types in the run trace viewer
+
+## 3.0.0-beta.24
+
+### Patch Changes
+
+- 83dc87155: Fix issues with consecutive waits
+
 ## 3.0.0-beta.23
 
 ## 3.0.0-beta.22

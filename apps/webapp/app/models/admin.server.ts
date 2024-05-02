@@ -168,6 +168,12 @@ export async function adminGetOrganizations(userId: string, { page, search }: Se
                 mode: "insensitive",
               },
             },
+            {
+              id: {
+                contains: search,
+                mode: "insensitive",
+              },
+            },
           ],
         }
       : undefined,

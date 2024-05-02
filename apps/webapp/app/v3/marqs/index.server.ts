@@ -19,6 +19,7 @@ import {
   MarQSQueuePriorityStrategy,
   MessagePayload,
   QueueCapacities,
+  QueueRange,
 } from "./types";
 import { workerQueue } from "~/services/worker.server";
 
@@ -618,7 +619,7 @@ export class MarQS {
           parentQueue
         );
 
-        const queues = await this.#zrangeWithScores(parentQueue, range[0], range[1]);
+        const queues = await this.#getChildQueuesWithScores(parentQueue, range);
 
         const queuesWithScores = await this.#calculateQueueScores(queues, calculateCapacities);
 
@@ -629,21 +630,25 @@ export class MarQS {
           selectionId
         );
 
-        if (typeof choice !== "string") {
-          return;
-        }
-
         span.setAttributes({
           ...flattenAttributes(queues, "marqs.queues"),
         });
         span.setAttributes({
           ...flattenAttributes(queuesWithScores, "marqs.queuesWithScores"),
         });
-        span.setAttribute("marqs.nextRange", range);
-        span.setAttribute("marqs.queueCount", queues.length);
-        span.setAttribute("marqs.queueChoice", choice);
+        span.setAttribute("nextRange.offset", range.offset);
+        span.setAttribute("nextRange.count", range.count);
+        span.setAttribute("queueCount", queues.length);
 
-        return choice;
+        if (typeof choice !== "string") {
+          span.setAttribute("noQueueChoice", true);
+
+          return;
+        } else {
+          span.setAttribute("queueChoice", choice);
+
+          return choice;
+        }
       },
       {
         kind: SpanKind.CONSUMER,
@@ -687,12 +692,19 @@ export class MarQS {
     });
   }
 
-  async #zrangeWithScores(
+  async #getChildQueuesWithScores(
     key: string,
-    min: number,
-    max: number
+    range: QueueRange
   ): Promise<Array<{ value: string; score: number }>> {
-    const valuesWithScores = await this.redis.zrange(key, min, max, "WITHSCORES");
+    const valuesWithScores = await this.redis.zrangebyscore(
+      key,
+      "-inf",
+      Date.now(),
+      "WITHSCORES",
+      "LIMIT",
+      range.offset,
+      range.count
+    );
     const result: Array<{ value: string; score: number }> = [];
 
     for (let i = 0; i < valuesWithScores.length; i += 2) {
@@ -1591,7 +1603,7 @@ function getMarQSClient() {
 
       return new MarQS({
         keysProducer: new MarQSShortKeyProducer(KEY_PREFIX),
-        queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
+        queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 36 }),
         envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
         workers: 1,
         redis: redisOptions,

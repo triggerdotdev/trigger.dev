@@ -69,4 +69,11 @@ export interface ProjectConfig {
    * onStart is called the first time a task is executed in a run (not before every retry)
    */
   onStart?: (payload: unknown, params: StartFnParams) => Promise<void>;
+
+  /**
+   * postInstall will run during the deploy build step, after all the dependencies have been installed.
+   *
+   * @example "prisma generate"
+   */
+  postInstall?: string;
 }

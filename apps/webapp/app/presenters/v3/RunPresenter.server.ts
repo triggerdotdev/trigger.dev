@@ -38,6 +38,7 @@ export class RunPresenter {
             id: true,
             type: true,
             slug: true,
+            organizationId: true,
             orgMember: {
               select: {
                 user: {
@@ -66,9 +67,13 @@ export class RunPresenter {
     if (!traceSummary) {
       return {
         run: {
+          id: run.id,
           number: run.number,
           friendlyId: run.friendlyId,
+          traceId: run.traceId,
           environment: {
+            id: run.runtimeEnvironment.id,
+            organizationId: run.runtimeEnvironment.organizationId,
             type: run.runtimeEnvironment.type,
             slug: run.runtimeEnvironment.slug,
             userId: run.runtimeEnvironment.orgMember?.user.id,
@@ -118,9 +123,13 @@ export class RunPresenter {
 
     return {
       run: {
+        id: run.id,
         number: run.number,
         friendlyId: run.friendlyId,
+        traceId: run.traceId,
         environment: {
+          id: run.runtimeEnvironment.id,
+          organizationId: run.runtimeEnvironment.organizationId,
           type: run.runtimeEnvironment.type,
           slug: run.runtimeEnvironment.slug,
           userId: run.runtimeEnvironment.orgMember?.user.id,

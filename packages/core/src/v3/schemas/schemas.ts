@@ -212,6 +212,7 @@ export const Config = z.object({
   dependenciesToBundle: z.array(z.union([z.string(), RegexSchema])).optional(),
   logLevel: z.string().optional(),
   enableConsoleLogging: z.boolean().optional(),
+  postInstall: z.string().optional(),
 });
 
 export type Config = z.infer<typeof Config>;

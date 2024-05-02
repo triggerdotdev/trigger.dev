@@ -18,6 +18,8 @@ export type QueueWithScores = {
   age: number;
 };
 
+export type QueueRange = { offset: number; count: number };
+
 export interface MarQSKeyProducer {
   queueConcurrencyLimitKey(env: AuthenticatedEnvironment, queue: string): string;
   envConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
@@ -69,9 +71,7 @@ export interface MarQSQueuePriorityStrategy {
    *
    * @returns The scores and the selectionId for the next candidate selection
    */
-  nextCandidateSelection(
-    parentQueue: string
-  ): Promise<{ range: [number, number]; selectionId: string }>;
+  nextCandidateSelection(parentQueue: string): Promise<{ range: QueueRange; selectionId: string }>;
 }
 
 export const MessagePayload = z.object({

@@ -1,5 +1,19 @@
 # @trigger.dev/airtable
 
+## 3.0.0-beta.25
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.25
+- @trigger.dev/sdk@3.0.0-beta.25
+
+## 3.0.0-beta.24
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.24
+- @trigger.dev/sdk@3.0.0-beta.24
+
 ## 3.0.0-beta.23
 
 ### Patch Changes

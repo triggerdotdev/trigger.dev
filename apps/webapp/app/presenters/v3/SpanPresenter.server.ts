@@ -42,7 +42,7 @@ export class SpanPresenter {
     const output =
       span.outputType === "application/store"
         ? `/resources/packets/${span.environmentId}/${span.output}`
-        : typeof span.output !== "undefined" && span.output !== null
+        : typeof span.output !== "undefined"
         ? await prettyPrintPacket(span.output, span.outputType ?? undefined)
         : undefined;
 

@@ -1286,6 +1286,8 @@ async function compileProject(
 
       const dependencies = await gatherRequiredDependencies(allImports, config, javascriptProject);
 
+      logger.debug("gatherRequiredDependencies()", { dependencies });
+
       const packageJsonContents = {
         name: "trigger-worker",
         version: "0.0.0",
@@ -1328,8 +1330,19 @@ async function compileProject(
 
       // Write the Containerfile to /tmp/dir/Containerfile
       const containerFilePath = join(cliRootPath(), "Containerfile.prod");
-      // Copy the Containerfile to /tmp/dir/Containerfile
-      await copyFile(containerFilePath, join(tempDir, "Containerfile"));
+
+      let containerFileContents = readFileSync(containerFilePath, "utf-8");
+
+      if (config.postInstall) {
+        containerFileContents = containerFileContents.replace(
+          "__POST_INSTALL__",
+          `RUN ${config.postInstall}`
+        );
+      } else {
+        containerFileContents = containerFileContents.replace("__POST_INSTALL__", "");
+      }
+
+      await writeFile(join(tempDir, "Containerfile"), containerFileContents);
 
       const contentHasher = createHash("sha256");
       contentHasher.update(Buffer.from(entryPointOutputFile.text));
@@ -1539,6 +1552,7 @@ async function gatherRequiredDependencies(
   project: JavascriptProject
 ) {
   const dependencies: Record<string, string> = {};
+  const resolvablePackageNames = new Set<string>();
 
   for (const file of imports) {
     if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
@@ -1547,24 +1561,30 @@ async function gatherRequiredDependencies(
 
     const packageName = detectPackageNameFromImportPath(file.path);
 
-    if (dependencies[packageName]) {
+    if (!packageName) {
       continue;
     }
 
-    const externalDependencyVersion = await project.resolve(packageName);
+    resolvablePackageNames.add(packageName);
+  }
 
-    if (externalDependencyVersion) {
-      dependencies[packageName] = stripWorkspaceFromVersion(externalDependencyVersion);
-      continue;
-    }
+  const resolvedPackageVersions = await project.resolveAll(Array.from(resolvablePackageNames));
+  const missingPackages = Array.from(resolvablePackageNames).filter(
+    (packageName) => !resolvedPackageVersions[packageName]
+  );
 
+  for (const missingPackage of missingPackages) {
     const internalDependencyVersion =
-      (packageJson.dependencies as Record<string, string>)[packageName] ??
-      detectDependencyVersion(packageName);
+      (packageJson.dependencies as Record<string, string>)[missingPackage] ??
+      detectDependencyVersion(missingPackage);
 
     if (internalDependencyVersion) {
-      dependencies[packageName] = stripWorkspaceFromVersion(internalDependencyVersion);
+      dependencies[missingPackage] = stripWorkspaceFromVersion(internalDependencyVersion);
     }
+  }
+
+  for (const [packageName, version] of Object.entries(resolvedPackageVersions)) {
+    dependencies[packageName] = version;
   }
 
   if (config.additionalPackages) {

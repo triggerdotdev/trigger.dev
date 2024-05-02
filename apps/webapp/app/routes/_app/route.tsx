@@ -15,9 +15,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return redirect(confirmBasicDetailsPath());
   }
 
-  return typedjson({
-    headers: [["Set-Cookie", await commitSession(await clearRedirectTo(request))]],
-  });
+  return typedjson(
+    {},
+    {
+      headers: { "Set-Cookie": await commitSession(await clearRedirectTo(request)) },
+    }
+  );
 };
 
 export default function App() {

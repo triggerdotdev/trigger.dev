@@ -1,5 +1,30 @@
 import { task } from "@trigger.dev/sdk/v3";
 
+export const returnAllTypes = task({
+  id: "return-all-types",
+  run: async () => {
+    const resultString = await returnString.triggerAndWait();
+    const resultNumber = await returnNumber.triggerAndWait();
+    const resultTrue = await returnTrue.triggerAndWait();
+    const resultFalse = await returnFalse.triggerAndWait();
+    const resultNull = await returnNull.triggerAndWait();
+    const resultUndefined = await returnUndefined.triggerAndWait();
+    const resultObject = await returnObject.triggerAndWait();
+    const resultArray = await returnArray.triggerAndWait();
+
+    return {
+      resultString,
+      resultNumber,
+      resultTrue,
+      resultFalse,
+      resultNull,
+      resultUndefined,
+      resultObject,
+      resultArray,
+    };
+  },
+});
+
 export const returnString = task({
   id: "return-string",
   run: async () => {

@@ -28,7 +28,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
 import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
-import { tracer } from "../tracer.server";
+import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
 import { CrashTaskRunService } from "../services/crashTaskRun.server";
 import { FailedTaskRunService } from "../failedTaskRun.server";
 import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
@@ -71,7 +71,6 @@ export type SharedQueueConsumerOptions = {
   traceTimeoutSeconds?: number;
   nextTickInterval?: number;
   interval?: number;
-  parentContext?: Context;
 };
 
 export class SharedQueueConsumer {
@@ -97,7 +96,6 @@ export class SharedQueueConsumer {
       traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
       nextTickInterval: options.nextTickInterval ?? 1000, // 1 second
       interval: options.interval ?? 100, // 100ms
-      parentContext: options.parentContext ?? ROOT_CONTEXT,
     };
   }
 
@@ -197,19 +195,17 @@ export class SharedQueueConsumer {
     ) {
       this.#endCurrentSpan();
 
-      const parentContext = this._options.parentContext ?? ROOT_CONTEXT;
-
       // Create a new trace
       this._currentSpan = tracer.startSpan(
         "SharedQueueConsumer.doWork()",
         {
           kind: SpanKind.CONSUMER,
         },
-        parentContext
+        ROOT_CONTEXT
       );
 
       // Get the span trace context
-      this._currentSpanContext = trace.setSpan(parentContext, this._currentSpan);
+      this._currentSpanContext = trace.setSpan(ROOT_CONTEXT, this._currentSpan);
 
       this._perTraceCountdown = this._options.maximumItemsPerTrace;
       this._lastNewTrace = new Date();
