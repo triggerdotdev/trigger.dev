@@ -22,6 +22,7 @@ import { DeploymentIndexFailed } from "./services/deploymentIndexFailed.server";
 import { Redis } from "ioredis";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { CrashTaskRunService } from "./services/crashTaskRun.server";
+import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -91,6 +92,23 @@ function createCoordinatorNamespace(io: Server) {
           return { success: true, payload };
         }
       },
+      READY_FOR_LAZY_ATTEMPT: async (message) => {
+        try {
+          const payload = await sharedQueueTasks.getLazyAttemptPayload(
+            message.envId,
+            message.runId
+          );
+
+          if (!payload) {
+            logger.error("Failed to retrieve lazy attempt payload", message);
+            return { success: false, reason: "Failed to retrieve payload" };
+          }
+
+          return { success: true, lazyPayload: payload };
+        } catch (error) {
+          return { success: false };
+        }
+      },
       READY_FOR_RESUME: async (message) => {
         const resumeAttempt = new ResumeAttemptService();
         await resumeAttempt.call(message);
@@ -102,6 +120,9 @@ function createCoordinatorNamespace(io: Server) {
           execution: message.execution,
           checkpoint: message.checkpoint,
         });
+      },
+      TASK_RUN_FAILED_TO_RUN: async (message) => {
+        await sharedQueueTasks.taskRunFailed(message.completion);
       },
       TASK_HEARTBEAT: async (message) => {
         await sharedQueueTasks.taskHeartbeat(message.attemptFriendlyId);
@@ -132,6 +153,33 @@ function createCoordinatorNamespace(io: Server) {
           return { success: !!worker };
         } catch (error) {
           logger.error("Error while creating worker", { error });
+          return { success: false };
+        }
+      },
+      CREATE_TASK_RUN_ATTEMPT: async (message) => {
+        try {
+          const environment = await findEnvironmentById(message.envId);
+
+          if (!environment) {
+            logger.error("Environment not found", { id: message.envId });
+            return { success: false, reason: "Environment not found" };
+          }
+
+          const service = new CreateTaskRunAttemptService();
+          const { attempt } = await service.call(message.runId, environment, false);
+
+          const payload = await sharedQueueTasks.getExecutionPayloadFromAttempt(attempt.id, true);
+
+          if (!payload) {
+            logger.error("Failed to retrieve payload after attempt creation", {
+              id: message.envId,
+            });
+            return { success: false, reason: "Failed to retrieve payload" };
+          }
+
+          return { success: true, executionPayload: payload };
+        } catch (error) {
+          logger.error("Error while creating attempt", { error });
           return { success: false };
         }
       },

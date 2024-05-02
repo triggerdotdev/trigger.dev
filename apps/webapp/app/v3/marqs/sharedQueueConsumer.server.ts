@@ -1,9 +1,11 @@
 import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
 import {
+  Machine,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   TaskRunError,
   TaskRunExecution,
+  TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
@@ -30,6 +32,7 @@ import { tracer } from "../tracer.server";
 import { CrashTaskRunService } from "../services/crashTaskRun.server";
 import { FailedTaskRunService } from "../failedTaskRun.server";
 import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
+import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -393,6 +396,7 @@ export class SharedQueueConsumer {
                 createdAt: "desc",
               },
             },
+            lockedBy: true,
           },
         });
 
@@ -442,34 +446,29 @@ export class SharedQueueConsumer {
               await this.#ackAndDoMoreWork(message.messageId);
               return;
             }
-          } else if (isRetry) {
+
+            break;
+          }
+
+          if (!deployment.worker.supportsLazyAttempts) {
+            const service = new CreateTaskRunAttemptService();
+            await service.call(lockedTaskRun.friendlyId, undefined, false);
+          }
+
+          if (isRetry) {
             socketIo.coordinatorNamespace.emit("READY_FOR_RETRY", {
               version: "v1",
               runId: lockedTaskRun.id,
             });
           } else {
-            const environment = await prisma.runtimeEnvironment.findUniqueOrThrow({
-              where: {
-                id: lockedTaskRun.runtimeEnvironmentId,
-              },
-              include: {
-                project: true,
-                organization: true,
-              },
-            });
+            const machineConfig = lockedTaskRun.lockedBy?.machineConfig;
+            const machine = Machine.safeParse(machineConfig ?? {});
 
-            const service = new CreateTaskRunAttemptService();
-            const { attempt, machine } = await service.call(
-              lockedTaskRun.friendlyId,
-              environment,
-              false
-            );
-
-            if (!machine) {
-              logger.error("Missing machine config", {
+            if (!machine.success) {
+              logger.error("Failed to parse machine config", {
                 queueMessage: message.data,
                 messageId: message.messageId,
-                attemptId: attempt.id,
+                machineConfig,
               });
 
               await this.#ackAndDoMoreWork(message.messageId);
@@ -482,9 +481,9 @@ export class SharedQueueConsumer {
                 type: "SCHEDULE_ATTEMPT",
                 image: deployment.imageReference,
                 version: deployment.version,
-                machine: machine,
+                machine: machine.data,
                 // identifiers
-                id: attempt.id,
+                id: "placeholder", // TODO: Remove this completely in a future release
                 envId: lockedTaskRun.runtimeEnvironment.id,
                 envType: lockedTaskRun.runtimeEnvironment.type,
                 orgId: lockedTaskRun.runtimeEnvironment.organizationId,
@@ -1061,6 +1060,47 @@ class SharedQueueTasks {
     }
 
     return this.getExecutionPayloadFromAttempt(latestAttempt.id, setToExecuting, isRetrying);
+  }
+
+  async getLazyAttemptPayload(
+    envId: string,
+    runId: string
+  ): Promise<TaskRunExecutionLazyAttemptPayload | undefined> {
+    const environment = await findEnvironmentById(envId);
+
+    if (!environment) {
+      logger.error("Environment not found", { id: envId });
+      return;
+    }
+
+    const run = await prisma.taskRun.findUnique({
+      where: {
+        id: runId,
+        runtimeEnvironmentId: environment.id,
+      },
+    });
+
+    if (!run) {
+      logger.error("Run not found", { id: runId, envId });
+      return;
+    }
+
+    const environmentRepository = new EnvironmentVariablesRepository();
+    const variables = await environmentRepository.getEnvironmentVariables(
+      environment.projectId,
+      environment.id
+    );
+
+    return {
+      traceContext: run.traceContext as Record<string, unknown>,
+      environment: variables.reduce((acc: Record<string, string>, curr) => {
+        acc[curr.key] = curr.value;
+        return acc;
+      }, {}),
+      runId: run.friendlyId,
+      messageId: run.id,
+      isTest: run.isTest,
+    } satisfies TaskRunExecutionLazyAttemptPayload;
   }
 
   async taskHeartbeat(attemptFriendlyId: string, seconds: number = 60) {

@@ -624,6 +624,44 @@ class TaskCoordinator {
           }
         });
 
+        socket.on("READY_FOR_LAZY_ATTEMPT", async (message) => {
+          logger.log("[READY_FOR_LAZY_ATTEMPT]", message);
+
+          try {
+            const lazyAttempt = await this.#platformSocket?.sendWithAck("READY_FOR_LAZY_ATTEMPT", {
+              ...message,
+              envId: socket.data.envId,
+            });
+
+            if (!lazyAttempt) {
+              logger.error("no lazy attempt ack", { runId: socket.data.runId });
+
+              socket.emit("REQUEST_EXIT", {
+                version: "v1",
+              });
+
+              return;
+            }
+
+            if (!lazyAttempt.success) {
+              logger.error("failed to get lazy attempt payload", { runId: socket.data.runId });
+
+              socket.emit("REQUEST_EXIT", {
+                version: "v1",
+              });
+
+              return;
+            }
+
+            socket.emit("EXECUTE_TASK_RUN_LAZY_ATTEMPT", {
+              version: "v1",
+              lazyPayload: lazyAttempt.lazyPayload,
+            });
+          } catch (error) {
+            logger.error("Error", { error });
+          }
+        });
+
         socket.on("READY_FOR_RESUME", async (message) => {
           logger.log("[READY_FOR_RESUME]", message);
 
@@ -712,6 +750,19 @@ class TaskCoordinator {
               version: "v1",
             });
           }
+        });
+
+        socket.on("TASK_RUN_FAILED_TO_RUN", async ({ completion }) => {
+          logger.log("completed task", { completionId: completion.id });
+
+          this.#platformSocket?.send("TASK_RUN_FAILED_TO_RUN", {
+            version: "v1",
+            completion,
+          });
+
+          socket.emit("REQUEST_EXIT", {
+            version: "v1",
+          });
         });
 
         socket.on("READY_FOR_CHECKPOINT", async (message) => {
@@ -918,6 +969,28 @@ class TaskCoordinator {
             error: message.error,
           });
         });
+
+        socket.on("CREATE_TASK_RUN_ATTEMPT", async (message, callback) => {
+          logger.log("[CREATE_TASK_RUN_ATTEMPT]", message);
+
+          const createAttempt = await this.#platformSocket?.sendWithAck("CREATE_TASK_RUN_ATTEMPT", {
+            runId: message.runId,
+            envId: socket.data.envId,
+          });
+
+          if (!createAttempt?.success) {
+            logger.debug("no ack while creating attempt", message);
+            callback({ success: false });
+            return;
+          }
+
+          socket.data.attemptFriendlyId = createAttempt.executionPayload.execution.attempt.id;
+
+          callback({
+            success: true,
+            executionPayload: createAttempt.executionPayload,
+          });
+        });
       },
       onDisconnect: async (socket, handler, sender, logger) => {
         this.#platformSocket?.send("LOG", {
@@ -928,6 +1001,9 @@ class TaskCoordinator {
       handlers: {
         TASK_HEARTBEAT: async (message) => {
           this.#platformSocket?.send("TASK_HEARTBEAT", message);
+        },
+        TASK_RUN_HEARTBEAT: async (message) => {
+          this.#platformSocket?.send("TASK_RUN_HEARTBEAT", message);
         },
       },
     });

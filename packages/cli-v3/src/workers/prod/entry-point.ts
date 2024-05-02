@@ -5,6 +5,7 @@ import {
   PreStopCauses,
   ProdWorkerToCoordinatorMessages,
   TaskResource,
+  TaskRunFailedExecutionResult,
   WaitReason,
 } from "@trigger.dev/core/v3";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
@@ -78,6 +79,10 @@ class ProdWorker {
       this.#coordinatorSocket.socket.emit("TASK_HEARTBEAT", { version: "v1", attemptFriendlyId });
     });
 
+    this.#backgroundWorker.onTaskRunHeartbeat.attach((runId) => {
+      this.#coordinatorSocket.socket.emit("TASK_RUN_HEARTBEAT", { version: "v1", runId });
+    });
+
     this.#backgroundWorker.onReadyForCheckpoint.attach(async (message) => {
       // Flush before checkpointing so we don't flush the same spans again after restore
       await this.#backgroundWorker.flushTelemetry();
@@ -106,6 +111,40 @@ class ProdWorker {
       }
 
       this.#backgroundWorker.checkpointCanceledNotification.post({ checkpointCanceled });
+    });
+
+    this.#backgroundWorker.onCreateTaskRunAttempt.attach(async (message) => {
+      logger.log("onCreateTaskRunAttempt()", { message });
+
+      const createAttempt = await this.#coordinatorSocket.socket.emitWithAck(
+        "CREATE_TASK_RUN_ATTEMPT",
+        {
+          version: "v1",
+          runId: message.runId,
+        }
+      );
+
+      if (!createAttempt.success) {
+        this.#backgroundWorker.attemptCreatedNotification.post({
+          success: false,
+          reason: createAttempt.reason,
+        });
+        return;
+      }
+
+      this.#backgroundWorker.attemptCreatedNotification.post({
+        success: true,
+        execution: createAttempt.executionPayload.execution,
+      });
+    });
+
+    this.#backgroundWorker.attemptCreatedNotification.attach((message) => {
+      if (!message.success) {
+        return;
+      }
+
+      // Workers with lazy attempt support set their friendly ID here
+      this.attemptFriendlyId = message.execution.attempt.id;
     });
 
     this.#backgroundWorker.onWaitForDuration.attach(async (message) => {
@@ -420,6 +459,59 @@ class ProdWorker {
 
           this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
         },
+        EXECUTE_TASK_RUN_LAZY_ATTEMPT: async (message) => {
+          if (this.executing) {
+            logger.error("dropping execute request, already executing");
+            return;
+          }
+
+          this.executing = true;
+
+          try {
+            const { completion, execution } =
+              await this.#backgroundWorker.executeTaskRunLazyAttempt(message.lazyPayload);
+
+            logger.log("completed", completion);
+
+            this.completed.add(execution.attempt.id);
+
+            const { willCheckpointAndRestore, shouldExit } =
+              await this.#coordinatorSocket.socket.emitWithAck("TASK_RUN_COMPLETED", {
+                version: "v1",
+                execution,
+                completion,
+              });
+
+            logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
+
+            this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
+          } catch (error) {
+            const completion: TaskRunFailedExecutionResult = {
+              ok: false,
+              id: message.lazyPayload.runId,
+              retry: undefined,
+              error:
+                error instanceof Error
+                  ? {
+                      type: "BUILT_IN_ERROR",
+                      name: error.name,
+                      message: error.message,
+                      stackTrace: error.stack ?? "",
+                    }
+                  : {
+                      type: "BUILT_IN_ERROR",
+                      name: "UnknownError",
+                      message: String(error),
+                      stackTrace: "",
+                    },
+            };
+
+            this.#coordinatorSocket.socket.emit("TASK_RUN_FAILED_TO_RUN", {
+              version: "v1",
+              completion,
+            });
+          }
+        },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
           if (!this.executing) {
             return;
@@ -436,7 +528,7 @@ class ProdWorker {
             return;
           }
 
-          this.#coordinatorSocket.socket.emit("READY_FOR_EXECUTION", {
+          this.#coordinatorSocket.socket.emit("READY_FOR_LAZY_ATTEMPT", {
             version: "v1",
             runId: this.runId,
             totalCompletions: this.completed.size,
@@ -564,7 +656,7 @@ class ProdWorker {
           return;
         }
 
-        socket.emit("READY_FOR_EXECUTION", {
+        socket.emit("READY_FOR_LAZY_ATTEMPT", {
           version: "v1",
           runId: this.runId,
           totalCompletions: this.completed.size,

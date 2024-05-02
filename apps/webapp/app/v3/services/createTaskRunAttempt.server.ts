@@ -1,5 +1,5 @@
-import { Machine, TaskRunExecution } from "@trigger.dev/core/v3";
-import { $transaction } from "~/db.server";
+import { TaskRunExecution } from "@trigger.dev/core/v3";
+import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
@@ -8,26 +8,47 @@ import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
 
 export class CreateTaskRunAttemptService extends BaseService {
   public async call(
-    runFriendlyId: string,
-    environment: AuthenticatedEnvironment,
+    runId: string,
+    env?: AuthenticatedEnvironment,
     setToExecuting = true
   ): Promise<{
     execution: TaskRunExecution;
     run: TaskRun;
     attempt: TaskRunAttempt;
-    machine?: Machine;
   }> {
+    let environment: AuthenticatedEnvironment | undefined = env;
+
+    if (!environment) {
+      environment = await getAuthenticatedEnvironmentFromRun(runId, this._prisma);
+
+      if (!environment) {
+        throw new ServiceValidationError("Environment not found", 404);
+      }
+    }
+
+    const isFriendlyId = runId.startsWith("run_");
+
     return await this.traceWithEnv("call()", environment, async (span) => {
-      span.setAttribute("taskRunId", runFriendlyId);
+      if (isFriendlyId) {
+        span.setAttribute("taskRunFriendlyId", runId);
+      } else {
+        span.setAttribute("taskRunId", runId);
+      }
 
       const taskRun = await this._prisma.taskRun.findUnique({
         where: {
-          friendlyId: runFriendlyId,
+          id: !isFriendlyId ? runId : undefined,
+          friendlyId: isFriendlyId ? runId : undefined,
           runtimeEnvironmentId: environment.id,
         },
         include: {
           tags: true,
-          attempts: true,
+          attempts: {
+            take: 1,
+            orderBy: {
+              number: "desc",
+            },
+          },
           lockedBy: {
             include: {
               worker: true,
@@ -46,6 +67,9 @@ export class CreateTaskRunAttemptService extends BaseService {
       if (!taskRun) {
         throw new ServiceValidationError("Task run not found", 404);
       }
+
+      span.setAttribute("taskRunId", taskRun.id);
+      span.setAttribute("taskRunFriendlyId", taskRun.friendlyId);
 
       if (taskRun.status === "CANCELED") {
         throw new ServiceValidationError("Task run is cancelled", 400);
@@ -68,10 +92,12 @@ export class CreateTaskRunAttemptService extends BaseService {
         throw new ServiceValidationError("Queue not found", 404);
       }
 
+      const nextAttemptNumber = taskRun.attempts[0] ? taskRun.attempts[0].number + 1 : 1;
+
       const taskRunAttempt = await $transaction(this._prisma, async (tx) => {
         const taskRunAttempt = await tx.taskRunAttempt.create({
           data: {
-            number: taskRun.attempts[0] ? taskRun.attempts[0].number + 1 : 1,
+            number: nextAttemptNumber,
             friendlyId: generateFriendlyId("attempt"),
             taskRunId: taskRun.id,
             startedAt: new Date(),
@@ -82,6 +108,7 @@ export class CreateTaskRunAttemptService extends BaseService {
             runtimeEnvironmentId: environment.id,
           },
           include: {
+            backgroundWorker: true,
             backgroundWorkerTask: true,
           },
         });
@@ -101,6 +128,7 @@ export class CreateTaskRunAttemptService extends BaseService {
       });
 
       if (!taskRunAttempt) {
+        logger.error("Failed to create task run attempt", { runId: taskRun.id, nextAttemptNumber });
         throw new ServiceValidationError("Failed to create task run attempt", 500);
       }
 
@@ -154,24 +182,36 @@ export class CreateTaskRunAttemptService extends BaseService {
             : undefined,
       };
 
-      const { machineConfig } = taskRunAttempt.backgroundWorkerTask;
-      const machine = Machine.safeParse(machineConfig ?? {});
-
-      if (!machine.success) {
-        logger.error("Failed to parse machine config", {
-          run: taskRun.id,
-          attempt: taskRunAttempt.id,
-          backgroundWorkerTask: taskRunAttempt.backgroundWorkerTask.id,
-          machineConfig,
-        });
-      }
-
       return {
         execution,
         run: taskRun,
         attempt: taskRunAttempt,
-        machine: machine.success ? machine.data : undefined,
       };
     });
   }
+}
+
+async function getAuthenticatedEnvironmentFromRun(
+  friendlyId: string,
+  prismaClient?: PrismaClientOrTransaction
+) {
+  const taskRun = await (prismaClient ?? prisma).taskRun.findUnique({
+    where: {
+      friendlyId,
+    },
+    include: {
+      runtimeEnvironment: {
+        include: {
+          organization: true,
+          project: true,
+        },
+      },
+    },
+  });
+
+  if (!taskRun) {
+    return;
+  }
+
+  return taskRun?.runtimeEnvironment;
 }

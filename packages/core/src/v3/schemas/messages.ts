@@ -29,7 +29,7 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     version: z.string(),
     machine: Machine,
     // identifiers
-    id: z.string(), // attempt
+    id: z.string().optional(), // TODO: Remove this completely in a future release
     envId: z.string(),
     envType: EnvironmentType,
     orgId: z.string(),
@@ -451,6 +451,23 @@ export const CoordinatorToPlatformMessages = {
       }),
     ]),
   },
+  CREATE_TASK_RUN_ATTEMPT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+      envId: z.string(),
+    }),
+    callback: z.discriminatedUnion("success", [
+      z.object({
+        success: z.literal(false),
+        reason: z.string().optional(),
+      }),
+      z.object({
+        success: z.literal(true),
+        executionPayload: ProdTaskRunExecutionPayload,
+      }),
+    ]),
+  },
   READY_FOR_EXECUTION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -464,6 +481,24 @@ export const CoordinatorToPlatformMessages = {
       z.object({
         success: z.literal(true),
         payload: ProdTaskRunExecutionPayload,
+      }),
+    ]),
+  },
+  READY_FOR_LAZY_ATTEMPT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+      envId: z.string(),
+      totalCompletions: z.number(),
+    }),
+    callback: z.discriminatedUnion("success", [
+      z.object({
+        success: z.literal(false),
+        reason: z.string().optional(),
+      }),
+      z.object({
+        success: z.literal(true),
+        lazyPayload: TaskRunExecutionLazyAttemptPayload,
       }),
     ]),
   },
@@ -485,6 +520,12 @@ export const CoordinatorToPlatformMessages = {
           location: z.string(),
         })
         .optional(),
+    }),
+  },
+  TASK_RUN_FAILED_TO_RUN: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      completion: TaskRunFailedExecutionResult,
     }),
   },
   TASK_HEARTBEAT: {
@@ -652,6 +693,13 @@ export const ProdWorkerToCoordinatorMessages = {
       totalCompletions: z.number(),
     }),
   },
+  READY_FOR_LAZY_ATTEMPT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+      totalCompletions: z.number(),
+    }),
+  },
   READY_FOR_RESUME: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -688,6 +736,12 @@ export const ProdWorkerToCoordinatorMessages = {
       attemptFriendlyId: z.string(),
     }),
   },
+  TASK_RUN_HEARTBEAT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+    }),
+  },
   TASK_RUN_COMPLETED: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -697,6 +751,12 @@ export const ProdWorkerToCoordinatorMessages = {
     callback: z.object({
       willCheckpointAndRestore: z.boolean(),
       shouldExit: z.boolean(),
+    }),
+  },
+  TASK_RUN_FAILED_TO_RUN: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      completion: TaskRunFailedExecutionResult,
     }),
   },
   WAIT_FOR_DURATION: {
@@ -744,6 +804,22 @@ export const ProdWorkerToCoordinatorMessages = {
       }),
     }),
   },
+  CREATE_TASK_RUN_ATTEMPT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+    }),
+    callback: z.discriminatedUnion("success", [
+      z.object({
+        success: z.literal(false),
+        reason: z.string().optional(),
+      }),
+      z.object({
+        success: z.literal(true),
+        executionPayload: ProdTaskRunExecutionPayload,
+      }),
+    ]),
+  },
 };
 
 export const CoordinatorToProdWorkerMessages = {
@@ -765,6 +841,12 @@ export const CoordinatorToProdWorkerMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       executionPayload: ProdTaskRunExecutionPayload,
+    }),
+  },
+  EXECUTE_TASK_RUN_LAZY_ATTEMPT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      lazyPayload: TaskRunExecutionLazyAttemptPayload,
     }),
   },
   REQUEST_ATTEMPT_CANCELLATION: {

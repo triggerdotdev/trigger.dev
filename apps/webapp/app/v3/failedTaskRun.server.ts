@@ -1,13 +1,9 @@
-import {
-  ExceptionEventProperties,
-  TaskRunError,
-  TaskRunFailedExecutionResult,
-} from "@trigger.dev/core/v3";
+import { TaskRunFailedExecutionResult } from "@trigger.dev/core/v3";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 
 import { TaskRunStatus } from "@trigger.dev/database";
-import { eventRepository } from "./eventRepository.server";
+import { createExceptionPropertiesFromError, eventRepository } from "./eventRepository.server";
 import { BaseService } from "./services/baseService.server";
 
 const FAILABLE_TASK_RUN_STATUSES: TaskRunStatus[] = ["EXECUTING", "PENDING", "WAITING_FOR_DEPLOY"];
@@ -66,35 +62,5 @@ export class FailedTaskRunService extends BaseService {
         status: "SYSTEM_FAILURE",
       },
     });
-  }
-}
-
-function createExceptionPropertiesFromError(error: TaskRunError): ExceptionEventProperties {
-  switch (error.type) {
-    case "BUILT_IN_ERROR": {
-      return {
-        type: error.name,
-        message: error.message,
-        stacktrace: error.stackTrace,
-      };
-    }
-    case "CUSTOM_ERROR": {
-      return {
-        type: "Error",
-        message: error.raw,
-      };
-    }
-    case "INTERNAL_ERROR": {
-      return {
-        type: "Internal error",
-        message: [error.code, error.message].filter(Boolean).join(": "),
-      };
-    }
-    case "STRING_ERROR": {
-      return {
-        type: "Error",
-        message: error.raw,
-      };
-    }
   }
 }

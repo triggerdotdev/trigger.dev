@@ -10,6 +10,7 @@ import {
   SpanEvents,
   SpanMessagingEvent,
   TaskEventStyle,
+  TaskRunError,
   correctErrorStackTrace,
   createPacketAttributesAsJson,
   flattenAttributes,
@@ -862,6 +863,36 @@ export function stripAttributePrefix(attributes: Attributes, prefix: string) {
     }
   }
   return result;
+}
+
+export function createExceptionPropertiesFromError(error: TaskRunError): ExceptionEventProperties {
+  switch (error.type) {
+    case "BUILT_IN_ERROR": {
+      return {
+        type: error.name,
+        message: error.message,
+        stacktrace: error.stackTrace,
+      };
+    }
+    case "CUSTOM_ERROR": {
+      return {
+        type: "Error",
+        message: error.raw,
+      };
+    }
+    case "INTERNAL_ERROR": {
+      return {
+        type: "Internal error",
+        message: [error.code, error.message].filter(Boolean).join(": "),
+      };
+    }
+    case "STRING_ERROR": {
+      return {
+        type: "Error",
+        message: error.raw,
+      };
+    }
+  }
 }
 
 /**

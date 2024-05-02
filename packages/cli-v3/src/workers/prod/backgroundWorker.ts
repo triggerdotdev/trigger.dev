@@ -11,6 +11,7 @@ import {
   TaskRunBuiltInError,
   TaskRunErrorCodes,
   TaskRunExecution,
+  TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
   WaitReason,
@@ -56,7 +57,11 @@ type BackgroundWorkerParams = {
 export class ProdBackgroundWorker {
   private _initialized: boolean = false;
 
+  /**
+   * @deprecated use onTaskRunHeartbeat instead
+   */
   public onTaskHeartbeat: Evt<string> = new Evt();
+  public onTaskRunHeartbeat: Evt<string> = new Evt();
 
   public onWaitForBatch: Evt<
     InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_BATCH">
@@ -73,6 +78,18 @@ export class ProdBackgroundWorker {
 
   public onReadyForCheckpoint = Evt.create<{ version?: "v1" }>();
   public onCancelCheckpoint = Evt.create<{ version?: "v1" | "v2"; reason?: WaitReason }>();
+
+  public onCreateTaskRunAttempt = Evt.create<{ version?: "v1"; runId: string }>();
+  public attemptCreatedNotification = Evt.create<
+    | {
+        success: false;
+        reason?: string;
+      }
+    | {
+        success: true;
+        execution: ProdTaskRunExecution;
+      }
+  >();
 
   private _onClose: Evt<void> = new Evt();
 
@@ -95,6 +112,7 @@ export class ProdBackgroundWorker {
     this._closed = true;
 
     this.onTaskHeartbeat.detach();
+    this.onTaskRunHeartbeat.detach();
 
     // We need to close the task run process
     await this._taskRunProcess?.cleanup(true);
@@ -204,7 +222,10 @@ export class ProdBackgroundWorker {
     this._taskRunProcess?.waitCompletedNotification();
   }
 
-  async #initializeTaskRunProcess(payload: ProdTaskRunExecutionPayload): Promise<TaskRunProcess> {
+  async #initializeTaskRunProcess(
+    payload: ProdTaskRunExecutionPayload,
+    messageId?: string
+  ): Promise<TaskRunProcess> {
     const metadata = this.getMetadata(
       payload.execution.worker.id,
       payload.execution.worker.version
@@ -219,7 +240,8 @@ export class ProdBackgroundWorker {
           ...(payload.environment ?? {}),
         },
         metadata,
-        this.params
+        this.params,
+        messageId
       );
 
       taskRunProcess.onExit.attach(() => {
@@ -228,6 +250,10 @@ export class ProdBackgroundWorker {
 
       taskRunProcess.onTaskHeartbeat.attach((id) => {
         this.onTaskHeartbeat.post(id);
+      });
+
+      taskRunProcess.onTaskRunHeartbeat.attach((id) => {
+        this.onTaskRunHeartbeat.post(id);
       });
 
       taskRunProcess.onWaitForBatch.attach((message) => {
@@ -267,9 +293,12 @@ export class ProdBackgroundWorker {
   }
 
   // We need to fork the process before we can execute any tasks
-  async executeTaskRun(payload: ProdTaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
+  async executeTaskRun(
+    payload: ProdTaskRunExecutionPayload,
+    messageId?: string
+  ): Promise<TaskRunExecutionResult> {
     try {
-      const taskRunProcess = await this.#initializeTaskRunProcess(payload);
+      const taskRunProcess = await this.#initializeTaskRunProcess(payload, messageId);
 
       const result = await taskRunProcess.executeTaskRun(payload);
 
@@ -342,6 +371,40 @@ export class ProdBackgroundWorker {
     await this._taskRunProcess?.cancel();
   }
 
+  async executeTaskRunLazyAttempt(payload: TaskRunExecutionLazyAttemptPayload) {
+    // Post to coordinator
+    this.onCreateTaskRunAttempt.post({ runId: payload.runId });
+
+    let execution: ProdTaskRunExecution;
+
+    try {
+      // ..and wait for response
+      const attemptCreated = await this.attemptCreatedNotification.waitFor(30_000);
+
+      if (!attemptCreated.success) {
+        throw new Error(
+          `Failed to create attempt${attemptCreated.reason ? `: ${attemptCreated.reason}` : ""}`
+        );
+      }
+
+      execution = attemptCreated.execution;
+    } catch (error) {
+      console.error("Error while creating attempt", error);
+      throw new Error(`Failed to create task run attempt: ${error}`);
+    }
+
+    const completion = await this.executeTaskRun(
+      {
+        execution,
+        traceContext: payload.traceContext,
+        environment: payload.environment,
+      },
+      payload.messageId
+    );
+
+    return { execution, completion };
+  }
+
   async #correctError(
     error: TaskRunBuiltInError,
     execution: TaskRunExecution
@@ -369,7 +432,11 @@ class TaskRunProcess {
   private _isBeingKilled: boolean = false;
   private _isBeingCancelled: boolean = false;
 
+  /**
+   * @deprecated use onTaskRunHeartbeat instead
+   */
   public onTaskHeartbeat: Evt<string> = new Evt();
+  public onTaskRunHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<number> = new Evt();
 
   public onWaitForBatch: Evt<
@@ -393,7 +460,8 @@ class TaskRunProcess {
     private path: string,
     private env: NodeJS.ProcessEnv,
     private metadata: BackgroundWorkerProperties,
-    private worker: BackgroundWorkerParams
+    private worker: BackgroundWorkerParams,
+    private messageId?: string
   ) {}
 
   async initialize() {
@@ -439,7 +507,11 @@ class TaskRunProcess {
           process.exit(0);
         },
         TASK_HEARTBEAT: async (message) => {
-          this.onTaskHeartbeat.post(message.id);
+          if (this.messageId) {
+            this.onTaskRunHeartbeat.post(this.messageId);
+          } else {
+            this.onTaskHeartbeat.post(message.id);
+          }
         },
         TASKS_READY: async (message) => {},
         WAIT_FOR_TASK: async (message) => {
