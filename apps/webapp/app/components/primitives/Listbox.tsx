@@ -140,26 +140,50 @@ export function Select<TValue extends string | string[], TItem>({
       {label && (
         <Ariakit.SelectLabel render={typeof label === "string" ? <div>{label}</div> : label} />
       )}
-      <Ariakit.Select
-        {...props}
-        className={cn(
-          "group flex items-center gap-1 outline-offset-0 focus-within:outline-none focus-within:ring-1 disabled:cursor-not-allowed disabled:opacity-50",
-          variantClasses.button,
-          props.className
-        )}
-        ref={ref}
-      >
-        {icon}
-        <div className="truncate">
-          {text || (
-            <SelectValue>
-              {(value) => (
-                <>{typeof value === "object" && Array.isArray(value) ? value.join(", ") : value}</>
+      <Ariakit.TooltipProvider timeout={200}>
+        <Ariakit.TooltipAnchor
+          className="button"
+          render={
+            <Ariakit.Select
+              {...props}
+              className={cn(
+                "group flex items-center gap-1 outline-offset-0 focus-within:outline-none focus-within:ring-1 disabled:cursor-not-allowed disabled:opacity-50",
+                variantClasses.button,
+                props.className
               )}
-            </SelectValue>
-          )}
-        </div>
-      </Ariakit.Select>
+              ref={ref}
+            ></Ariakit.Select>
+          }
+        >
+          {icon}
+          <div className="truncate">
+            {text || (
+              <SelectValue>
+                {(value) => (
+                  <>
+                    {typeof value === "object" && Array.isArray(value) ? value.join(", ") : value}
+                  </>
+                )}
+              </SelectValue>
+            )}
+          </div>
+        </Ariakit.TooltipAnchor>
+        {shortcut && (
+          <Ariakit.Tooltip
+            disabled={shortcut === undefined}
+            className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs"
+          >
+            <div className="flex items-center gap-2">
+              <span>{heading ?? "Open menu"}</span>
+              <ShortcutKey
+                className={cn("size-4 flex-none")}
+                shortcut={shortcut}
+                variant={"small"}
+              />
+            </div>
+          </Ariakit.Tooltip>
+        )}
+      </Ariakit.TooltipProvider>
       <Ariakit.SelectPopover
         gutter={5}
         shift={0}
