@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 3.0.0-beta.25
+
+### Patch Changes
+
+- e337b2165: Add a postInstall option to allow running scripts after dependencies have been installed in deployed images
+- c37c82231: Use locked package versions when resolving dependencies in deployed workers
+- Updated dependencies [e337b2165]
+- Updated dependencies [9e5382951]
+  - @trigger.dev/core@3.0.0-beta.25
+
 ## 3.0.0-beta.24
 
 ### Patch Changes
