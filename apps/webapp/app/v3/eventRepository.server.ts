@@ -414,6 +414,7 @@ export class EventRepository {
       },
       select: {
         traceId: true,
+        environmentType: true,
       },
     });
 
@@ -481,7 +482,11 @@ export class EventRepository {
       });
     }
 
-    const events = transformEvents(span.data.events, fullEvent.metadata as Attributes);
+    const events = transformEvents(
+      span.data.events,
+      fullEvent.metadata as Attributes,
+      traceSearch.environmentType === "DEVELOPMENT"
+    );
 
     return {
       ...fullEvent,
@@ -1073,16 +1078,16 @@ function removePrivateProperties(
   return result;
 }
 
-function transformEvents(events: SpanEvents, properties: Attributes): SpanEvents {
-  return (events ?? []).map((event) => transformEvent(event, properties));
+function transformEvents(events: SpanEvents, properties: Attributes, isDev: boolean): SpanEvents {
+  return (events ?? []).map((event) => transformEvent(event, properties, isDev));
 }
 
-function transformEvent(event: SpanEvent, properties: Attributes): SpanEvent {
+function transformEvent(event: SpanEvent, properties: Attributes, isDev: boolean): SpanEvent {
   if (isExceptionSpanEvent(event)) {
     return {
       ...event,
       properties: {
-        exception: transformException(event.properties.exception, properties),
+        exception: transformException(event.properties.exception, properties, isDev),
       },
     };
   }
@@ -1092,11 +1097,12 @@ function transformEvent(event: SpanEvent, properties: Attributes): SpanEvent {
 
 function transformException(
   exception: ExceptionEventProperties,
-  properties: Attributes
+  properties: Attributes,
+  isDev: boolean
 ): ExceptionEventProperties {
   const projectDirAttributeValue = properties[SemanticInternalAttributes.PROJECT_DIR];
 
-  if (typeof projectDirAttributeValue !== "string") {
+  if (projectDirAttributeValue !== undefined && typeof projectDirAttributeValue !== "string") {
     return exception;
   }
 
@@ -1105,6 +1111,7 @@ function transformException(
     stacktrace: exception.stacktrace
       ? correctErrorStackTrace(exception.stacktrace, projectDirAttributeValue, {
           removeFirstLine: true,
+          isDev,
         })
       : undefined,
   };
