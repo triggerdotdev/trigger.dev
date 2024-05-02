@@ -290,7 +290,7 @@ export class MarQS {
     const { range, selectionId } = await this.queuePriorityStrategy.nextCandidateSelection(
       parentQueue
     );
-    const queues = await this.#zrangeWithScores(parentQueue, range[0], range[1]);
+    const queues = await this.#getChildQueuesWithScores(parentQueue, range);
 
     const queuesWithScores = await this.#calculateQueueScores(queues, (queue) =>
       this.#calculateMessageQueueCapacities(queue)
