@@ -4,6 +4,7 @@ import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -12,6 +13,7 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -93,6 +95,18 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Schedules" />
         <PageAccessories>
+          <AdminDebugTooltip>
+            <PropertyTable>
+              {schedules.map((schedule) => (
+                <Property label={schedule.friendlyId} key={schedule.id}>
+                  <div className="flex items-center gap-2">
+                    <Paragraph variant="extra-small/bright/mono">{schedule.id}</Paragraph>
+                  </div>
+                </Property>
+              ))}
+            </PropertyTable>
+          </AdminDebugTooltip>
+
           <LinkButton
             LeadingIcon={PlusIcon}
             to={`${v3NewSchedulePath(organization, project)}${location.search}`}

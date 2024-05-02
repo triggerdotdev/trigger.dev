@@ -67,6 +67,8 @@ import {
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -116,6 +118,33 @@ export default function Page() {
             title={`Run #${run.number}`}
           />
           <PageAccessories>
+            <AdminDebugTooltip>
+              <PropertyTable>
+                <Property label="ID">
+                  <div className="flex items-center gap-2">
+                    <Paragraph variant="extra-small/bright/mono">{run.id}</Paragraph>
+                  </div>
+                </Property>
+                <Property label="Trace ID">
+                  <div className="flex items-center gap-2">
+                    <Paragraph variant="extra-small/bright/mono">{run.traceId}</Paragraph>
+                  </div>
+                </Property>
+                <Property label="Env ID">
+                  <div className="flex items-center gap-2">
+                    <Paragraph variant="extra-small/bright/mono">{run.environment.id}</Paragraph>
+                  </div>
+                </Property>
+                <Property label="Org ID">
+                  <div className="flex items-center gap-2">
+                    <Paragraph variant="extra-small/bright/mono">
+                      {run.environment.organizationId}
+                    </Paragraph>
+                  </div>
+                </Property>
+              </PropertyTable>
+            </AdminDebugTooltip>
+
             <EnvironmentLabel
               size="large"
               environment={run.environment}
@@ -165,6 +194,33 @@ export default function Page() {
           title={`Run #${run.number}`}
         />
         <PageAccessories>
+          <AdminDebugTooltip>
+            <PropertyTable>
+              <Property label="ID">
+                <div className="flex items-center gap-2">
+                  <Paragraph variant="extra-small/bright/mono">{run.id}</Paragraph>
+                </div>
+              </Property>
+              <Property label="Trace ID">
+                <div className="flex items-center gap-2">
+                  <Paragraph variant="extra-small/bright/mono">{run.traceId}</Paragraph>
+                </div>
+              </Property>
+              <Property label="Env ID">
+                <div className="flex items-center gap-2">
+                  <Paragraph variant="extra-small/bright/mono">{run.environment.id}</Paragraph>
+                </div>
+              </Property>
+              <Property label="Org ID">
+                <div className="flex items-center gap-2">
+                  <Paragraph variant="extra-small/bright/mono">
+                    {run.environment.organizationId}
+                  </Paragraph>
+                </div>
+              </Property>
+            </PropertyTable>
+          </AdminDebugTooltip>
+
           <EnvironmentLabel size="large" environment={run.environment} userName={usernameForEnv} />
         </PageAccessories>
       </NavBar>

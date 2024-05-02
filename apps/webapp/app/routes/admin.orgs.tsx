@@ -1,11 +1,9 @@
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Header1 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -18,10 +16,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { useUser } from "~/hooks/useUser";
-import { adminGetOrganizations, adminGetUsers, setV3Enabled } from "~/models/admin.server";
+import { adminGetOrganizations, setV3Enabled } from "~/models/admin.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { commitImpersonationSession, setImpersonationId } from "~/services/impersonation.server";
 import { requireUserId } from "~/services/session.server";
 import { createSearchParams } from "~/utils/searchParams";
 
