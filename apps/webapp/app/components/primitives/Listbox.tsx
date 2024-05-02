@@ -62,11 +62,16 @@ export interface SelectProps<TValue extends string | string[], TItem>
   filter?: (item: ItemFromSection<TItem>, search: string, title?: string) => boolean;
   children:
     | React.ReactNode
-    | ((items: ItemFromSection<TItem>[], title?: string) => React.ReactNode);
+    | ((
+        items: ItemFromSection<TItem>[],
+        showShortcut?: boolean,
+        title?: string
+      ) => React.ReactNode);
   variant?: Variant;
   open?: boolean;
   setOpen?: (open: boolean) => void;
   shortcut?: ShortcutDefinition;
+  allowItemShortcuts?: boolean;
 }
 
 export function Select<TValue extends string | string[], TItem>({
@@ -90,6 +95,7 @@ export function Select<TValue extends string | string[], TItem>({
   open,
   setOpen,
   shortcut,
+  allowItemShortcuts = true,
   ...props
 }: SelectProps<TValue, TItem>) {
   const [searchValue, setSearchValue] = useState("");
@@ -114,18 +120,19 @@ export function Select<TValue extends string | string[], TItem>({
     return items.filter((item) => filter(item as ItemFromSection<TItem>, searchValue));
   }, [searchValue, items]);
 
-  if (shortcut) {
-    useShortcutKeys({
-      shortcut: shortcut,
-      action: () => {
-        if (ref.current) {
-          ref.current.click();
-        }
-      },
-      disabled: props.disabled,
-    });
-  }
+  useShortcutKeys({
+    shortcut: shortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (ref.current) {
+        ref.current.click();
+      }
+    },
+    disabled: props.disabled,
+  });
 
+  const enableItemShortcuts = allowItemShortcuts && matches.length === items?.length;
   const variantClasses = variants[variant];
 
   const select = (
@@ -230,10 +237,14 @@ export function Select<TValue extends string | string[], TItem>({
                   ? isSection(matches)
                     ? matches.map((section, index) => (
                         <Fragment key={index}>
-                          {children(section.items as ItemFromSection<TItem>[], section.title)}
+                          {children(
+                            section.items as ItemFromSection<TItem>[],
+                            enableItemShortcuts,
+                            section.title
+                          )}
                         </Fragment>
                       ))
-                    : children(matches as ItemFromSection<TItem>[])
+                    : children(matches as ItemFromSection<TItem>[], enableItemShortcuts, undefined)
                   : empty
                 : children}
             </SelectList>
@@ -329,17 +340,18 @@ export function SelectItem({
   const render = combobox ? <Ariakit.ComboboxItem render={props.render} /> : undefined;
   const ref = React.useRef<HTMLDivElement>(null);
 
-  if (shortcut) {
-    useShortcutKeys({
-      shortcut: shortcut,
-      action: () => {
-        if (ref.current) {
-          ref.current.click();
-        }
-      },
-      disabled: props.disabled,
-    });
-  }
+  useShortcutKeys({
+    shortcut: shortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (ref.current) {
+        ref.current.click();
+      }
+    },
+    disabled: props.disabled,
+    enabledOnInputElements: true,
+  });
 
   return (
     <Ariakit.SelectItem
@@ -362,6 +374,14 @@ export function SelectItem({
       </div>
     </Ariakit.SelectItem>
   );
+}
+
+export function shortcutFromIndex(
+  index: number,
+  showShortcut = true
+): ShortcutDefinition | undefined {
+  if (!showShortcut) return undefined;
+  return { key: String(index + 1) };
 }
 
 export interface SelectSeparatorProps extends React.ComponentProps<"div"> {}

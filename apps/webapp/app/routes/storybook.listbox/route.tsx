@@ -9,6 +9,7 @@ import {
   SelectGroupLabel,
   SelectItem,
   SelectSeparator,
+  shortcutFromIndex,
 } from "~/components/primitives/Listbox";
 
 export const branches = [
@@ -127,10 +128,14 @@ export default function Story() {
             shortcut={{ key: "b" }}
             filter={(item, search) => item.toLowerCase().includes(search.toLowerCase())}
           >
-            {(matches, title) => (
+            {(matches, showShortcut, title) => (
               <>
-                {matches?.map((value) => (
-                  <SelectItem key={value} value={value} />
+                {matches?.map((value, index) => (
+                  <SelectItem
+                    key={value}
+                    value={value}
+                    shortcut={shortcutFromIndex(index, showShortcut)}
+                  />
                 ))}
               </>
             )}
@@ -160,7 +165,7 @@ export default function Story() {
               item.title.toLowerCase().includes(search.toLowerCase())
             }
           >
-            {(matches, title) => (
+            {(matches, showShortcut, title) => (
               <SelectGroup>
                 {title && <SelectGroupLabel>{title}</SelectGroupLabel>}
                 {matches?.map((match) => (
@@ -186,7 +191,7 @@ export default function Story() {
               item.title.toLowerCase().includes(search.toLowerCase())
             }
           >
-            {(matches, title) => (
+            {(matches, showShortcut, title) => (
               <SelectGroup>
                 {title ? <SelectGroupLabel>{title}</SelectGroupLabel> : <SelectSeparator />}
                 {matches?.map((match) => (
