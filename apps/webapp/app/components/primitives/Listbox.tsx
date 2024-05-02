@@ -365,7 +365,7 @@ export function SelectItem({
       )}
       ref={ref}
     >
-      <div className="flex h-7 w-full items-center gap-2 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
+      <div className="flex h-7 w-full items-center gap-1 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
         <div className="grow truncate">{props.children || props.value}</div>
         {icon}
         {shortcut && (
@@ -380,7 +380,12 @@ export function shortcutFromIndex(
   index: number,
   showShortcut = true
 ): ShortcutDefinition | undefined {
-  if (!showShortcut) return undefined;
+  if (!showShortcut) return;
+  if (index > 9) return;
+  if (index === 9) {
+    index = -1;
+  }
+
   return { key: String(index + 1) };
 }
 
