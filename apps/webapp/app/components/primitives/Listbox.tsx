@@ -26,20 +26,21 @@ const variants = {
 type Variant = keyof typeof variants;
 
 type Section<TItem> = {
-  title: string;
+  type: "section";
+  title?: string;
   items: TItem[];
 };
 
 function isSection<TItem>(data: TItem[] | Section<TItem>[]): data is Section<TItem>[] {
   const firstItem = data[0];
   return (
-    (firstItem as Section<TItem>).title !== undefined &&
+    (firstItem as Section<TItem>).type === "section" &&
     (firstItem as Section<TItem>).items !== undefined &&
     Array.isArray((firstItem as Section<TItem>).items)
   );
 }
 
-type ItemFromSection<TItem> = TItem extends Section<infer U> ? U : TItem;
+type ItemFromSection<TItemOrSection> = TItemOrSection extends Section<infer U> ? U : TItemOrSection;
 
 export interface SelectProps<TValue extends string | string[], TItem>
   extends Omit<Ariakit.SelectProps, "children"> {
@@ -57,7 +58,9 @@ export interface SelectProps<TValue extends string | string[], TItem>
   items: TItem[] | Section<TItem>[];
   empty?: React.ReactNode;
   filter?: (item: ItemFromSection<TItem>, search: string, title?: string) => boolean;
-  children: (items: ItemFromSection<TItem>[], title?: string) => React.ReactNode;
+  children:
+    | React.ReactNode
+    | ((items: ItemFromSection<TItem>[], title?: string) => React.ReactNode);
   variant?: Variant;
   open?: boolean;
   setOpen?: (open: boolean) => void;
@@ -167,7 +170,7 @@ export function Select<TValue extends string | string[], TItem>({
         )}
       >
         {!searchable && heading && (
-          <div className="flex h-8 flex-none items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xs text-text-bright">
+          <div className="flex h-8 flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xs text-text-bright">
             <Ariakit.SelectHeading render={<>{heading}</>} />
           </div>
         )}
@@ -195,15 +198,17 @@ export function Select<TValue extends string | string[], TItem>({
         >
           <div className="flex flex-col overflow-hidden">
             <SelectList>
-              {matches.length > 0
-                ? isSection(matches)
-                  ? matches.map((section, index) => (
-                      <Fragment key={index}>
-                        {children(section.items as ItemFromSection<TItem>[], section.title)}
-                      </Fragment>
-                    ))
-                  : children(matches as ItemFromSection<TItem>[])
-                : empty}
+              {typeof children === "function"
+                ? matches.length > 0
+                  ? isSection(matches)
+                    ? matches.map((section, index) => (
+                        <Fragment key={index}>
+                          {children(section.items as ItemFromSection<TItem>[], section.title)}
+                        </Fragment>
+                      ))
+                    : children(matches as ItemFromSection<TItem>[])
+                  : empty
+                : children}
             </SelectList>
           </div>
         </Ariakit.TabProvider>
@@ -315,12 +320,7 @@ export function SelectItem({
 export interface SelectSeparatorProps extends React.ComponentProps<"div"> {}
 
 export function SelectSeparator(props: SelectSeparatorProps) {
-  return (
-    <div
-      {...props}
-      className={cn("popup-cover my-[--padding] h-px bg-[--border] p-0", props.className)}
-    />
-  );
+  return <div {...props} className={cn("h-px bg-charcoal-700", props.className)} />;
 }
 
 export interface SelectGroupProps extends Ariakit.SelectGroupProps {}

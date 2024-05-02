@@ -3,7 +3,13 @@ import clsx from "clsx";
 import { matchSorter } from "match-sorter";
 import { ComponentProps, useMemo, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
-import { Select, SelectGroup, SelectGroupLabel, SelectItem } from "~/components/primitives/Listbox";
+import {
+  Select,
+  SelectGroup,
+  SelectGroupLabel,
+  SelectItem,
+  SelectSeparator,
+} from "~/components/primitives/Listbox";
 
 export const branches = [
   "main",
@@ -34,6 +40,7 @@ export const branches = [
 
 export const grouped = [
   {
+    type: "section" as const,
     title: "My org",
     items: [
       {
@@ -47,7 +54,38 @@ export const grouped = [
     ],
   },
   {
+    type: "section" as const,
     title: "Other org",
+    items: [
+      {
+        title: "Other repo",
+        value: "other2",
+      },
+      {
+        title: "Other fork",
+        value: "fork2",
+      },
+    ],
+  },
+];
+
+export const groupedNoTitles = [
+  {
+    type: "section" as const,
+    title: "My org",
+    items: [
+      {
+        title: "My repo",
+        value: "main",
+      },
+      {
+        title: "My fork",
+        value: "fork",
+      },
+    ],
+  },
+  {
+    type: "section" as const,
     items: [
       {
         title: "Other repo",
@@ -116,7 +154,35 @@ export default function Story() {
               <SelectGroup>
                 {title && <SelectGroupLabel>{title}</SelectGroupLabel>}
                 {matches?.map((match) => (
-                  <SelectItem key={match.value} value={match.value} title={match.title} />
+                  <SelectItem key={match.value} value={match.value}>
+                    {match.title}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            )}
+          </Select>
+
+          <Select
+            name="grouped"
+            icon={<BranchIcon />}
+            // value={value}
+            // setValue={setValue}
+            defaultValue={["main"]}
+            text="No titles"
+            heading={"Filter by status..."}
+            items={groupedNoTitles}
+            filter={(item, search, sectionTitle) =>
+              sectionTitle?.toLowerCase().includes(search.toLowerCase()) ||
+              item.title.toLowerCase().includes(search.toLowerCase())
+            }
+          >
+            {(matches, title) => (
+              <SelectGroup>
+                {title ? <SelectGroupLabel>{title}</SelectGroupLabel> : <SelectSeparator />}
+                {matches?.map((match) => (
+                  <SelectItem key={match.value} value={match.value}>
+                    {match.title}
+                  </SelectItem>
                 ))}
               </SelectGroup>
             )}
