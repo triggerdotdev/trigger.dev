@@ -56,6 +56,7 @@ export interface SelectProps<TValue extends string | string[], TItem>
   selectTabOnMove?: boolean;
   label?: string | Ariakit.SelectLabelProps["render"];
   heading?: string;
+  showHeading?: boolean;
   items?: TItem[] | Section<TItem>[];
   empty?: React.ReactNode;
   filter?: (item: ItemFromSection<TItem>, search: string, title?: string) => boolean;
@@ -81,6 +82,7 @@ export function Select<TValue extends string | string[], TItem>({
   selectTabOnMove,
   label,
   heading,
+  showHeading = false,
   items,
   filter,
   empty = null,
@@ -170,8 +172,8 @@ export function Select<TValue extends string | string[], TItem>({
           "origin-[var(--popover-transform-origin)]"
         )}
       >
-        {!searchable && heading && (
-          <div className="flex h-8 flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xs text-text-bright">
+        {!searchable && showHeading && heading && (
+          <div className="flex h-[1.375rem] flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright">
             <Ariakit.SelectHeading render={<>{heading}</>} />
           </div>
         )}
