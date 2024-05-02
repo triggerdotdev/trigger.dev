@@ -11,7 +11,7 @@ import { PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
-import { eventRepository } from "../eventRepository.server";
+import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
@@ -248,6 +248,15 @@ export class CompleteAttemptService extends BaseService {
         attributes: {
           isError: true,
         },
+        events: [
+          {
+            name: "exception",
+            time: new Date(),
+            properties: {
+              exception: createExceptionPropertiesFromError(completion.error),
+            },
+          },
+        ],
       });
 
       if (
