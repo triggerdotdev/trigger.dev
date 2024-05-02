@@ -291,14 +291,30 @@ function SelectList(props: SelectListProps) {
 
 export interface SelectItemProps extends Ariakit.SelectItemProps {
   icon?: React.ReactNode;
+  shortcut?: ShortcutDefinition;
 }
 
 export function SelectItem({
   icon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
+  shortcut,
   ...props
 }: SelectItemProps) {
   const combobox = Ariakit.useComboboxContext();
   const render = combobox ? <Ariakit.ComboboxItem render={props.render} /> : undefined;
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  if (shortcut) {
+    useShortcutKeys({
+      shortcut: shortcut,
+      action: () => {
+        if (ref.current) {
+          ref.current.click();
+        }
+      },
+      disabled: props.disabled,
+    });
+  }
+
   return (
     <Ariakit.SelectItem
       {...props}
@@ -309,10 +325,14 @@ export function SelectItem({
         "[--padding-block:0.5rem] sm:[--padding-block:0.25rem]",
         props.className
       )}
+      ref={ref}
     >
       <div className="flex h-7 w-full items-center gap-2 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
         <div className="grow truncate">{props.children || props.value}</div>
         {icon}
+        {shortcut && (
+          <ShortcutKey className={cn("size-4 flex-none")} shortcut={shortcut} variant={"small"} />
+        )}
       </div>
     </Ariakit.SelectItem>
   );
