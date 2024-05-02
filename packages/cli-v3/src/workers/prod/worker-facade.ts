@@ -170,8 +170,8 @@ const zodIpc = new ZodIpcConnection({
         _isRunning = false;
       }
     },
-    TASK_RUN_COMPLETED_NOTIFICATION: async ({ completion, execution }) => {
-      prodRuntimeManager.resumeTask(completion, execution);
+    TASK_RUN_COMPLETED_NOTIFICATION: async ({ completion }) => {
+      prodRuntimeManager.resumeTask(completion);
     },
     WAIT_COMPLETED_NOTIFICATION: async () => {
       prodRuntimeManager.resumeAfterDuration();
@@ -228,7 +228,7 @@ zodIpc.send("TASKS_READY", { tasks: TASK_METADATA }).catch((err) => {
 
 process.title = "trigger-prod-worker";
 
-async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 5) {
+async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 20) {
   async function _doHeartbeat() {
     while (true) {
       if (_isRunning && _execution) {

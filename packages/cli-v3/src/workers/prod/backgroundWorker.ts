@@ -211,11 +211,8 @@ export class ProdBackgroundWorker {
 
   // We need to notify all the task run processes that a task run has completed,
   // in case they are waiting for it through triggerAndWait
-  async taskRunCompletedNotification(
-    completion: TaskRunExecutionResult,
-    execution: TaskRunExecution
-  ) {
-    this._taskRunProcess?.taskRunCompletedNotification(completion, execution);
+  async taskRunCompletedNotification(completion: TaskRunExecutionResult) {
+    this._taskRunProcess?.taskRunCompletedNotification(completion);
   }
 
   async waitCompletedNotification() {
@@ -233,7 +230,8 @@ export class ProdBackgroundWorker {
 
     if (!this._taskRunProcess) {
       const taskRunProcess = new TaskRunProcess(
-        payload.execution,
+        payload.execution.run.id,
+        payload.execution.run.isTest,
         this.path,
         {
           ...this.params.env,
@@ -456,7 +454,8 @@ class TaskRunProcess {
   public onCancelCheckpoint = Evt.create<{ version?: "v1" | "v2"; reason?: WaitReason }>();
 
   constructor(
-    private execution: ProdTaskRunExecution,
+    private runId: string,
+    private isTest: boolean,
     private path: string,
     private env: NodeJS.ProcessEnv,
     private metadata: BackgroundWorkerProperties,
@@ -468,7 +467,7 @@ class TaskRunProcess {
     this._child = fork(this.path, {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
       env: {
-        ...(this.execution.run.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
+        ...(this.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
         ...this.env,
         OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
           [SemanticInternalAttributes.PROJECT_DIR]: this.worker.projectConfig.projectDir,
@@ -631,15 +630,15 @@ class TaskRunProcess {
     return result;
   }
 
-  taskRunCompletedNotification(completion: TaskRunExecutionResult, execution: TaskRunExecution) {
+  taskRunCompletedNotification(completion: TaskRunExecutionResult) {
     if (!completion.ok && typeof completion.retry !== "undefined") {
       return;
     }
 
     if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
       this._ipc?.send("TASK_RUN_COMPLETED_NOTIFICATION", {
+        version: "v2",
         completion,
-        execution,
       });
     }
   }

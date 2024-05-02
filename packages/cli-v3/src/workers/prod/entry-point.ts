@@ -356,28 +356,14 @@ class ProdWorker {
       serverMessages: CoordinatorToProdWorkerMessages,
       extraHeaders,
       handlers: {
-        RESUME_AFTER_DEPENDENCY: async (message) => {
+        RESUME_AFTER_DEPENDENCY: async ({ completions }) => {
           if (!this.paused) {
-            logger.error("worker not paused", {
-              completions: message.completions,
-              executions: message.executions,
-            });
+            logger.error("Failed to resume after dependency: Worker not paused");
             return;
           }
 
-          if (message.completions.length !== message.executions.length) {
-            logger.error("did not receive the same number of completions and executions", {
-              completions: message.completions,
-              executions: message.executions,
-            });
-            return;
-          }
-
-          if (message.completions.length === 0 || message.executions.length === 0) {
-            logger.error("no completions or executions", {
-              completions: message.completions,
-              executions: message.executions,
-            });
+          if (completions.length === 0) {
+            logger.error("Failed to resume after dependency: No completions");
             return;
           }
 
@@ -385,17 +371,19 @@ class ProdWorker {
             this.nextResumeAfter !== "WAIT_FOR_TASK" &&
             this.nextResumeAfter !== "WAIT_FOR_BATCH"
           ) {
-            logger.error("not waiting to resume after dependency", {
+            logger.error("Failed to resume after dependency: Invalid next resume", {
               nextResumeAfter: this.nextResumeAfter,
             });
             return;
           }
 
-          if (this.nextResumeAfter === "WAIT_FOR_TASK" && message.completions.length > 1) {
-            logger.error("waiting for single task but got multiple completions", {
-              completions: message.completions,
-              executions: message.executions,
-            });
+          if (this.nextResumeAfter === "WAIT_FOR_TASK" && completions.length > 1) {
+            logger.error(
+              "Failed to resume after dependency: Waiting for single task but got multiple completions",
+              {
+                completions: completions,
+              }
+            );
             return;
           }
 
@@ -403,13 +391,12 @@ class ProdWorker {
           this.nextResumeAfter = undefined;
           this.waitForPostStart = false;
 
-          for (let i = 0; i < message.completions.length; i++) {
-            const completion = message.completions[i];
-            const execution = message.executions[i];
+          for (let i = 0; i < completions.length; i++) {
+            const completion = completions[i];
 
-            if (!completion || !execution) continue;
+            if (!completion) continue;
 
-            this.#backgroundWorker.taskRunCompletedNotification(completion, execution);
+            this.#backgroundWorker.taskRunCompletedNotification(completion);
           }
         },
         RESUME_AFTER_DURATION: async (message) => {

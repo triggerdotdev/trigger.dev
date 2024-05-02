@@ -163,8 +163,8 @@ export class ProdRuntimeManager implements RuntimeManager {
     };
   }
 
-  resumeTask(completion: TaskRunExecutionResult, execution: TaskRunExecution): void {
-    const wait = this._taskWaits.get(execution.run.id);
+  resumeTask(completion: TaskRunExecutionResult): void {
+    const wait = this._taskWaits.get(completion.id);
 
     if (!wait) {
       return;
@@ -172,7 +172,7 @@ export class ProdRuntimeManager implements RuntimeManager {
 
     wait.resolve(completion);
 
-    this._taskWaits.delete(execution.run.id);
+    this._taskWaits.delete(completion.id);
   }
 
   private get waitThresholdInMs(): number {

@@ -280,11 +280,17 @@ export const ProdWorkerToChildMessages = {
     }),
   },
   TASK_RUN_COMPLETED_NOTIFICATION: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      completion: TaskRunExecutionResult,
-      execution: TaskRunExecution,
-    }),
+    message: z.discriminatedUnion("version", [
+      z.object({
+        version: z.literal("v1"),
+        completion: TaskRunExecutionResult,
+        execution: TaskRunExecution,
+      }),
+      z.object({
+        version: z.literal("v2"),
+        completion: TaskRunExecutionResult,
+      }),
+    ]),
   },
   CLEANUP: {
     message: z.object({
