@@ -481,15 +481,21 @@ export function SelectLinkItem({
 
 export function shortcutFromIndex(
   index: number,
-  showShortcut = true
+  meta: {
+    shortcutsEnabled?: boolean;
+    section?: { startIndex: number };
+  }
 ): ShortcutDefinition | undefined {
-  if (!showShortcut) return;
-  if (index > 9) return;
-  if (index === 9) {
-    index = -1;
+  if (!meta.shortcutsEnabled) return;
+
+  let adjustedIndex = index + (meta.section?.startIndex ?? 0);
+
+  if (adjustedIndex > 9) return;
+  if (adjustedIndex === 9) {
+    adjustedIndex = -1;
   }
 
-  return { key: String(index + 1) };
+  return { key: String(adjustedIndex + 1) };
 }
 
 export interface SelectSeparatorProps extends React.ComponentProps<"div"> {}

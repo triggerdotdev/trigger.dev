@@ -146,7 +146,7 @@ function Statuses() {
             <SelectItem
               key={item.value}
               value={item.value}
-              shortcut={shortcutFromIndex(index, shortcutsEnabled)}
+              shortcut={shortcutFromIndex(index, { shortcutsEnabled })}
             >
               <TaskRunStatusCombo status={item.value} iconClassName="animate-none" />
             </SelectItem>
@@ -237,7 +237,7 @@ function ProjectSelector() {
               key={match.value}
               value={match.value}
               to={`?project=${match.value}`}
-              shortcut={shortcutFromIndex((section?.startIndex ?? 0) + index, shortcutsEnabled)}
+              shortcut={shortcutFromIndex(index, { shortcutsEnabled, section })}
             >
               {match.title}
             </SelectLinkItem>
