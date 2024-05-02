@@ -16,14 +16,10 @@ export class CreateTaskRunAttemptService extends BaseService {
     run: TaskRun;
     attempt: TaskRunAttempt;
   }> {
-    let environment: AuthenticatedEnvironment | undefined = env;
+    const environment = env ?? (await getAuthenticatedEnvironmentFromRun(runId, this._prisma));
 
     if (!environment) {
-      environment = await getAuthenticatedEnvironmentFromRun(runId, this._prisma);
-
-      if (!environment) {
-        throw new ServiceValidationError("Environment not found", 404);
-      }
+      throw new ServiceValidationError("Environment not found", 404);
     }
 
     const isFriendlyId = runId.startsWith("run_");
