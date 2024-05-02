@@ -19,6 +19,7 @@ import {
   MarQSQueuePriorityStrategy,
   MessagePayload,
   QueueCapacities,
+  QueueRange,
 } from "./types";
 
 const tracer = trace.getTracer("marqs");
@@ -563,7 +564,7 @@ export class MarQS {
           parentQueue
         );
 
-        const queues = await this.#zrangeWithScores(parentQueue, range[0], range[1]);
+        const queues = await this.#getChildQueuesWithScores(parentQueue, range);
 
         const queuesWithScores = await this.#calculateQueueScores(queues, calculateCapacities);
 
@@ -574,22 +575,25 @@ export class MarQS {
           selectionId
         );
 
-        if (typeof choice !== "string") {
-          return;
-        }
-
         span.setAttributes({
           ...flattenAttributes(queues, "marqs.queues"),
         });
         span.setAttributes({
           ...flattenAttributes(queuesWithScores, "marqs.queuesWithScores"),
         });
-        span.setAttribute("nextRange.start", range[0]);
-        span.setAttribute("nextRange.end", range[1]);
+        span.setAttribute("nextRange.offset", range.offset);
+        span.setAttribute("nextRange.count", range.count);
         span.setAttribute("queueCount", queues.length);
-        span.setAttribute("queueChoice", choice);
 
-        return choice;
+        if (typeof choice !== "string") {
+          span.setAttribute("noQueueChoice", true);
+
+          return;
+        } else {
+          span.setAttribute("queueChoice", choice);
+
+          return choice;
+        }
       },
       {
         kind: SpanKind.CONSUMER,
@@ -633,12 +637,19 @@ export class MarQS {
     });
   }
 
-  async #zrangeWithScores(
+  async #getChildQueuesWithScores(
     key: string,
-    min: number,
-    max: number
+    range: QueueRange
   ): Promise<Array<{ value: string; score: number }>> {
-    const valuesWithScores = await this.redis.zrange(key, min, max, "WITHSCORES");
+    const valuesWithScores = await this.redis.zrangebyscore(
+      key,
+      "-inf",
+      Date.now(),
+      "WITHSCORES",
+      "LIMIT",
+      range.offset,
+      range.count
+    );
     const result: Array<{ value: string; score: number }> = [];
 
     for (let i = 0; i < valuesWithScores.length; i += 2) {

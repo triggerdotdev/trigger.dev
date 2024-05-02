@@ -100,7 +100,7 @@ export class SharedSocketConnection {
       },
     });
 
-    logger.log("Starting SharedQueueConsumer pool", {
+    logger.debug("Starting SharedQueueConsumer pool", {
       poolSize: opts.poolSize ?? this._defaultPoolSize,
     });
 

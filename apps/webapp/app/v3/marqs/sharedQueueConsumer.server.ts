@@ -27,7 +27,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
 import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
-import { tracer } from "../tracer.server";
+import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
 import { CrashTaskRunService } from "../services/crashTaskRun.server";
 
 const WithTraceContext = z.object({
@@ -200,6 +200,9 @@ export class SharedQueueConsumer {
         "SharedQueueConsumer.doWork()",
         {
           kind: SpanKind.CONSUMER,
+          attributes: {
+            [SEMINTATTRS_FORCE_RECORDING]: true,
+          },
         },
         parentContext
       );
