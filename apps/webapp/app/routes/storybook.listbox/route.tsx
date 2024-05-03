@@ -95,6 +95,22 @@ export default function Story() {
           </Select>
 
           <Select
+            name="static"
+            text="Heading"
+            defaultValue={[]}
+            showHeading={true}
+            heading="A heading"
+            shortcut={{ key: "h" }}
+          >
+            <SelectItem value={"value"} shortcut={{ key: "1" }}>
+              Item 1
+            </SelectItem>
+            <SelectItem value={"value2"} shortcut={{ key: "2" }}>
+              Item 2
+            </SelectItem>
+          </Select>
+
+          <Select
             name="branch2"
             value={value}
             setValue={setValue}

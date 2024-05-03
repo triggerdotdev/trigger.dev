@@ -129,7 +129,6 @@ export function Select<TValue extends string | string[], TItem>({
   }, [searchValue, items]);
 
   const enableItemShortcuts = allowItemShortcuts && matches.length === items?.length;
-  const variantClasses = variants[variant];
 
   const select = (
     <Ariakit.SelectProvider
@@ -163,11 +162,7 @@ export function Select<TValue extends string | string[], TItem>({
           "origin-[var(--popover-transform-origin)]"
         )}
       >
-        {!searchable && showHeading && heading && (
-          <div className="flex h-[1.375rem] flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright">
-            <Ariakit.SelectHeading render={<>{heading}</>} />
-          </div>
-        )}
+        {!searchable && showHeading && heading && <SelectHeading render={<>{heading}</>} />}
         {searchable && (
           <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-none">
             <Ariakit.Combobox
@@ -555,5 +550,15 @@ export function SelectGroupLabel(props: SelectGroupLabelProps) {
         props.className
       )}
     />
+  );
+}
+
+export interface SelectHeadingProps extends Ariakit.SelectHeadingProps {}
+
+export function SelectHeading({ render, ...props }: SelectHeadingProps) {
+  return (
+    <div className="flex h-[1.375rem] flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright">
+      <Ariakit.SelectHeading render={<>{render}</>} />
+    </div>
   );
 }
