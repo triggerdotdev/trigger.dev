@@ -407,7 +407,6 @@ export interface SelectLinkItemProps extends Ariakit.SelectItemProps {
 
 export function SelectLinkItem({
   icon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
-  shortcut,
   to,
   ...props
 }: SelectLinkItemProps) {
@@ -431,7 +430,6 @@ export interface SelectButtonItemProps extends Omit<Ariakit.SelectItemProps, "on
 
 export function SelectButtonItem({
   icon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
-  shortcut,
   onClick,
   ...props
 }: SelectButtonItemProps) {
