@@ -157,29 +157,27 @@ export function Select<TValue extends string | string[], TItem>({
           defaultSelectedId={defaultTab}
           selectOnMove={selectTabOnMove}
         >
-          <div className="flex flex-col overflow-hidden">
-            <SelectList>
-              {typeof children === "function" ? (
-                matches.length > 0 ? (
-                  isSection(matches) ? (
-                    <SelectGroupedRenderer
-                      items={matches}
-                      children={children}
-                      enableItemShortcuts={enableItemShortcuts}
-                    />
-                  ) : (
-                    children(matches as ItemFromSection<TItem>[], {
-                      shortcutsEnabled: enableItemShortcuts,
-                    })
-                  )
+          <SelectList>
+            {typeof children === "function" ? (
+              matches.length > 0 ? (
+                isSection(matches) ? (
+                  <SelectGroupedRenderer
+                    items={matches}
+                    children={children}
+                    enableItemShortcuts={enableItemShortcuts}
+                  />
                 ) : (
-                  empty
+                  children(matches as ItemFromSection<TItem>[], {
+                    shortcutsEnabled: enableItemShortcuts,
+                  })
                 )
               ) : (
-                children
-              )}
-            </SelectList>
-          </div>
+                empty
+              )
+            ) : (
+              children
+            )}
+          </SelectList>
         </Ariakit.TabProvider>
       </SelectPopover>
     </Ariakit.SelectProvider>
