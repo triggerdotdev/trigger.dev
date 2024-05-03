@@ -20,6 +20,7 @@ import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { TaskRun } from "@trigger.dev/database";
 import { socketIo } from "../handleSocketIo.server";
+import { RetryAttemptService } from "./retryAttempt.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -335,10 +336,7 @@ export class CompleteAttemptService extends BaseService {
       );
     } else {
       // There's no checkpoint so the worker is still running and waiting for this retry message
-      return socketIo.coordinatorNamespace.emit("READY_FOR_RETRY", {
-        version: "v1",
-        runId: run.id,
-      });
+      RetryAttemptService.enqueue(run.id, this._prisma, new Date(retryTimestamp));
     }
   }
 

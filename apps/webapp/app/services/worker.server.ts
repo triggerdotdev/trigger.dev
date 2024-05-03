@@ -38,6 +38,7 @@ import { eventRepository } from "~/v3/eventRepository.server";
 import { ExecuteTasksWaitingForDeployService } from "~/v3/services/executeTasksWaitingForDeploy";
 import { TriggerScheduledTaskService } from "~/v3/services/triggerScheduledTask.server";
 import { RequeueTaskRunService } from "~/v3/requeueTaskRun.server";
+import { RetryAttemptService } from "~/v3/services/retryAttempt.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -138,6 +139,9 @@ const workerCatalog = {
     instanceId: z.string(),
   }),
   "v3.requeueTaskRun": z.object({
+    runId: z.string(),
+  }),
+  "v3.retryAttempt": z.object({
     runId: z.string(),
   }),
 };
@@ -544,6 +548,15 @@ function getWorkerQueue() {
           const service = new RequeueTaskRunService();
 
           await service.call(payload.runId);
+        },
+      },
+      "v3.retryAttempt": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new RetryAttemptService();
+
+          return await service.call(payload.runId);
         },
       },
     },
