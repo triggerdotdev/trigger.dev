@@ -56,6 +56,8 @@ export class CompleteAttemptService extends BaseService {
         },
       });
 
+      // No attempt, so there's no message to ACK
+
       return "COMPLETED";
     }
 
@@ -142,6 +144,8 @@ export class CompleteAttemptService extends BaseService {
         env
       );
 
+      // The cancel service handles ACK
+
       return "COMPLETED";
     }
 
@@ -225,6 +229,8 @@ export class CompleteAttemptService extends BaseService {
             status: "SYSTEM_FAILURE",
           },
         });
+
+        await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
         return "COMPLETED";
       }
