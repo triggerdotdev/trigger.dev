@@ -3,7 +3,6 @@ import { CircleStackIcon } from "@heroicons/react/24/outline";
 import { Form, useNavigate } from "@remix-run/react";
 import { startTransition, useCallback, useMemo, useState } from "react";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { Button } from "~/components/primitives/Buttons";
 import {
   ComboBox,
   ComboboxProvider,
@@ -21,6 +20,7 @@ import {
   runStatusTitle,
 } from "~/components/runs/v3/TaskRunStatus";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useSearchParam } from "~/hooks/useSearchParam";
 import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
 
 export default function Story() {
@@ -159,18 +159,11 @@ const statuses = allTaskRunStatuses.map((status) => ({
 }));
 
 function Statuses({ trigger, clearSearchValue, shortcut, searchValue }: MenuProps) {
-  const navigate = useNavigate();
-  const location = useOptimisticLocation();
-  const search = new URLSearchParams(location.search);
+  const { values, replace } = useSearchParam("status");
 
   const handleChange = useCallback((values: string[]) => {
     clearSearchValue();
-
-    search.delete("status");
-    for (const value of values) {
-      search.append("status", value);
-    }
-    navigate(`${location.pathname}?${search.toString()}`, { replace: true });
+    replace(values);
   }, []);
 
   const filtered = useMemo(() => {
@@ -178,7 +171,7 @@ function Statuses({ trigger, clearSearchValue, shortcut, searchValue }: MenuProp
   }, [searchValue]);
 
   return (
-    <SelectProvider value={search.getAll("status")} setValue={handleChange} virtualFocus={true}>
+    <SelectProvider value={values} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover>
         <ComboBox placeholder={"Filter by status..."} shortcut={shortcut} value={searchValue} />
@@ -211,18 +204,11 @@ const environments = [
 ];
 
 function Environments({ trigger, clearSearchValue, shortcut, searchValue }: MenuProps) {
-  const navigate = useNavigate();
-  const location = useOptimisticLocation();
-  const search = new URLSearchParams(location.search);
+  const { values, replace } = useSearchParam("environment");
 
   const handleChange = useCallback((values: string[]) => {
     clearSearchValue();
-
-    search.delete("environment");
-    for (const value of values) {
-      search.append("environment", value);
-    }
-    navigate(`${location.pathname}?${search.toString()}`, { replace: true });
+    replace(values);
   }, []);
 
   const filtered = useMemo(() => {
@@ -232,11 +218,7 @@ function Environments({ trigger, clearSearchValue, shortcut, searchValue }: Menu
   }, [searchValue]);
 
   return (
-    <SelectProvider
-      value={search.getAll("environment")}
-      setValue={handleChange}
-      virtualFocus={true}
-    >
+    <SelectProvider value={values} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover>
         <ComboBox
