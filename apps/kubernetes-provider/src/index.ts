@@ -80,8 +80,8 @@ class KubernetesTaskOperations implements TaskOperations {
                   ],
                   resources: {
                     limits: {
-                      cpu: "250m",
-                      memory: "0.5G",
+                      cpu: "1",
+                      memory: "1G",
                       "ephemeral-storage": "2Gi",
                     },
                   },
