@@ -458,6 +458,8 @@ export class MarQS {
           return;
         }
 
+        workerQueue.dequeue(`requeueTaskRun:${messageId}`);
+
         await this.#callAcknowledgeMessage({
           parentQueue: oldMessage.parentQueue,
           messageKey: this.keys.messageKey(messageId),
