@@ -210,7 +210,7 @@ export function Select<TValue extends string | string[], TItem>({
         searchValue={searchValue}
         setSearchValue={setSearchValue}
       >
-        <Ariakit.ComboboxProvider
+        <ComboboxProvider
           resetValueOnHide
           setValue={(value) => {
             React.startTransition(() => {
@@ -219,7 +219,7 @@ export function Select<TValue extends string | string[], TItem>({
           }}
         >
           {select}
-        </Ariakit.ComboboxProvider>
+        </ComboboxProvider>
       </SearchProvider>
     );
   }
@@ -310,11 +310,15 @@ export function SelectTrigger({
 
 export interface SelectProviderProps<TValue extends string | string[]>
   extends Ariakit.SelectProviderProps<TValue> {}
-
 export function SelectProvider<TValue extends string | string[]>(
   props: SelectProviderProps<TValue>
 ) {
   return <Ariakit.SelectProvider {...props} />;
+}
+
+export interface ComboboxProviderProps extends Ariakit.ComboboxProviderProps {}
+export function ComboboxProvider(props: ComboboxProviderProps) {
+  return <Ariakit.ComboboxProvider {...props} />;
 }
 
 function SelectGroupedRenderer<TItem>({
