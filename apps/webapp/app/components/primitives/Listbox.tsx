@@ -44,29 +44,6 @@ function isSection<TItem>(data: TItem[] | Section<TItem>[]): data is Section<TIt
 }
 
 type ItemFromSection<TItemOrSection> = TItemOrSection extends Section<infer U> ? U : TItemOrSection;
-
-type SearchContext = {
-  enabled: boolean;
-  searchValue: string;
-  setSearchValue: (value: string) => void;
-};
-const SearchContext = React.createContext<SearchContext | undefined>(undefined);
-function SearchProvider({
-  children,
-  enabled,
-  searchValue,
-  setSearchValue,
-}: SearchContext & { children: React.ReactNode }) {
-  return (
-    <SearchContext.Provider value={{ enabled, searchValue, setSearchValue }}>
-      {children}
-    </SearchContext.Provider>
-  );
-}
-function useSearchContext() {
-  return React.useContext(SearchContext);
-}
-
 export interface SelectProps<TValue extends string | string[], TItem>
   extends Omit<Ariakit.SelectProps, "children"> {
   icon?: React.ReactNode;
@@ -99,7 +76,7 @@ export interface SelectProps<TValue extends string | string[], TItem>
   setOpen?: (open: boolean) => void;
   shortcut?: ShortcutDefinition;
   allowItemShortcuts?: boolean;
-  clearSearchOnSection?: boolean;
+  clearSearchOnSelection?: boolean;
 }
 
 export function Select<TValue extends string | string[], TItem>({
@@ -121,7 +98,7 @@ export function Select<TValue extends string | string[], TItem>({
   shortcut,
   allowItemShortcuts = true,
   disabled,
-  clearSearchOnSection = true,
+  clearSearchOnSelection = true,
   ...props
 }: SelectProps<TValue, TItem>) {
   const [searchValue, setSearchValue] = useState("");
@@ -154,7 +131,7 @@ export function Select<TValue extends string | string[], TItem>({
       virtualFocus={searchable}
       value={value}
       setValue={(v) => {
-        if (clearSearchOnSection) {
+        if (clearSearchOnSelection) {
           setSearchValue("");
         }
 
@@ -205,22 +182,16 @@ export function Select<TValue extends string | string[], TItem>({
 
   if (searchable) {
     return (
-      <SearchProvider
-        enabled={searchable}
-        searchValue={searchValue}
-        setSearchValue={setSearchValue}
+      <ComboboxProvider
+        resetValueOnHide
+        setValue={(value) => {
+          React.startTransition(() => {
+            setSearchValue(value);
+          });
+        }}
       >
-        <ComboboxProvider
-          resetValueOnHide
-          setValue={(value) => {
-            React.startTransition(() => {
-              setSearchValue(value);
-            });
-          }}
-        >
-          {select}
-        </ComboboxProvider>
-      </SearchProvider>
+        {select}
+      </ComboboxProvider>
     );
   }
 
@@ -359,9 +330,8 @@ function SelectGroupedRenderer<TItem>({
   );
 }
 
-interface SelectListProps extends Omit<Ariakit.SelectListProps, "store"> {}
-
-function SelectList(props: SelectListProps) {
+export interface SelectListProps extends Omit<Ariakit.SelectListProps, "store"> {}
+export function SelectList(props: SelectListProps) {
   const combobox = Ariakit.useComboboxContext();
   const Component = combobox ? Ariakit.ComboboxList : Ariakit.SelectList;
 
@@ -442,40 +412,15 @@ export function SelectLinkItem({
   ...props
 }: SelectLinkItemProps) {
   const combobox = Ariakit.useComboboxContext();
-  const link = (
-    <Link to={to} className={cn("block", selectItemClasses, props.className)}>
-      <div className="flex h-7 w-full items-center gap-1 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
-        {icon}
-        <div className="grow truncate">{props.children || props.value}</div>
-        {shortcut && (
-          <ShortcutKey className={cn("size-4 flex-none")} shortcut={shortcut} variant={"small"} />
-        )}
-      </div>
-    </Link>
-  );
+  const link = <Link to={to} className={cn("block", selectItemClasses, props.className)} />;
   const render = combobox ? <Ariakit.ComboboxItem render={link} /> : link;
-  const ref = React.useRef<HTMLDivElement>(null);
-
-  useShortcutKeys({
-    shortcut: shortcut,
-    action: (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (ref.current) {
-        ref.current.click();
-      }
-    },
-    disabled: props.disabled,
-    enabledOnInputElements: true,
-  });
 
   return (
-    <Ariakit.SelectItem
+    <SelectItem
       {...props}
       render={render}
       blurOnHoverEnd={false}
       className={cn(selectItemClasses, props.className)}
-      ref={ref}
     />
   );
 }
