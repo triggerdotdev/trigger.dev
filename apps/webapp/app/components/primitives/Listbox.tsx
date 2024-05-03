@@ -139,9 +139,7 @@ export function Select<TValue extends string | string[], TItem>({
       setValue={setValue}
       defaultValue={defaultValue}
     >
-      {label && (
-        <Ariakit.SelectLabel render={typeof label === "string" ? <div>{label}</div> : label} />
-      )}
+      {label && <SelectLabel render={typeof label === "string" ? <div>{label}</div> : label} />}
       <SelectTrigger
         icon={icon}
         variant={variant}
@@ -150,35 +148,9 @@ export function Select<TValue extends string | string[], TItem>({
         tooltipTitle={heading}
         disabled={disabled}
       />
-      <Ariakit.SelectPopover
-        gutter={5}
-        shift={0}
-        unmountOnHide
-        className={cn(
-          "z-50 flex flex-col overflow-clip rounded border border-charcoal-700 bg-background-bright shadow-md outline-none animate-in fade-in-40",
-          "min-w-[max(180px,calc(var(--popover-anchor-width)+0.5rem))]",
-          "max-w-[min(480px,var(--popover-available-width))]",
-          "max-h-[min(480px,var(--popover-available-height))]",
-          "origin-[var(--popover-transform-origin)]"
-        )}
-      >
+      <SelectPopover>
         {!searchable && showHeading && heading && <SelectHeading render={<>{heading}</>} />}
-        {searchable && (
-          <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-none">
-            <Ariakit.Combobox
-              autoSelect
-              render={<input placeholder={heading ?? "Filter options"} />}
-              className="flex-1 bg-transparent text-xs text-text-dimmed outline-none"
-            />
-            {shortcut && (
-              <ShortcutKey
-                className={cn("size-4 flex-none")}
-                shortcut={shortcut}
-                variant={"small"}
-              />
-            )}
-          </div>
-        )}
+        {searchable && <ComboBox placeholder={heading} shortcut={shortcut} />}
         <Ariakit.TabProvider
           selectedId={tab}
           setSelectedId={setTab}
@@ -209,7 +181,7 @@ export function Select<TValue extends string | string[], TItem>({
             </SelectList>
           </div>
         </Ariakit.TabProvider>
-      </Ariakit.SelectPopover>
+      </SelectPopover>
     </Ariakit.SelectProvider>
   );
 
@@ -554,11 +526,67 @@ export function SelectGroupLabel(props: SelectGroupLabelProps) {
 }
 
 export interface SelectHeadingProps extends Ariakit.SelectHeadingProps {}
-
 export function SelectHeading({ render, ...props }: SelectHeadingProps) {
   return (
     <div className="flex h-[1.375rem] flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright">
       <Ariakit.SelectHeading render={<>{render}</>} />
+    </div>
+  );
+}
+
+export interface SelectPopoverProps extends Ariakit.SelectPopoverProps {}
+export function SelectPopover({
+  gutter = 5,
+  shift = 0,
+  unmountOnHide = true,
+  className,
+  ...props
+}: SelectPopoverProps) {
+  return (
+    <Ariakit.SelectPopover
+      gutter={gutter}
+      shift={shift}
+      unmountOnHide={unmountOnHide}
+      className={cn(
+        "z-50 flex flex-col overflow-clip rounded border border-charcoal-700 bg-background-bright shadow-md outline-none animate-in fade-in-40",
+        "min-w-[max(180px,calc(var(--popover-anchor-width)+0.5rem))]",
+        "max-w-[min(480px,var(--popover-available-width))]",
+        "max-h-[min(480px,var(--popover-available-height))]",
+        "origin-[var(--popover-transform-origin)]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+export interface SelectLabelProps extends Ariakit.SelectLabelProps {}
+//currently unstyled
+export function SelectLabel(props: SelectLabelProps) {
+  return <Ariakit.SelectLabel {...props} />;
+}
+
+export interface ComboBoxProps extends Ariakit.ComboboxProps {
+  shortcut?: ShortcutDefinition;
+}
+
+export function ComboBox({
+  autoSelect = true,
+  placeholder = "Filter options",
+  shortcut,
+  ...props
+}: ComboBoxProps) {
+  return (
+    <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-none">
+      <Ariakit.Combobox
+        autoSelect={autoSelect}
+        render={<input placeholder={placeholder} />}
+        className="flex-1 bg-transparent text-xs text-text-dimmed outline-none"
+        {...props}
+      />
+      {shortcut && (
+        <ShortcutKey className={cn("size-4 flex-none")} shortcut={shortcut} variant={"small"} />
+      )}
     </div>
   );
 }

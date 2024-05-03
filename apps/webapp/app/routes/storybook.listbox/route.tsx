@@ -230,6 +230,9 @@ function ProjectSelector() {
     .find((p) => p.items.some((i) => i.value === search.get("project")))
     ?.items.find((i) => i.value === search.get("project"));
 
+  const searchParams = new URLSearchParams(location.search);
+  searchParams.delete("project");
+
   return (
     <Select
       name="project"
@@ -252,7 +255,7 @@ function ProjectSelector() {
               icon={<CircleStackIcon className="size-3" />}
               key={match.value}
               value={match.value}
-              to={`?project=${match.value}`}
+              to={`?${searchParams.toString()}&project=${match.value}`}
               shortcut={shortcutFromIndex(index, { shortcutsEnabled, section })}
             >
               {match.title}
