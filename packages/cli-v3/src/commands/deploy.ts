@@ -45,7 +45,11 @@ import { login } from "./login";
 import { esbuildDecorators } from "@anatine/esbuild-decorators";
 import { Glob, GlobOptions } from "glob";
 import type { SetOptional } from "type-fest";
-import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
+import {
+  bundleDependenciesPlugin,
+  mockServerOnlyPlugin,
+  workerSetupImportConfigPlugin,
+} from "../utilities/build";
 import { chalkError, chalkPurple, chalkWarning } from "../utilities/cliOutput";
 import {
   logESMRequireError,
@@ -1144,6 +1148,7 @@ async function compileProject(
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
         plugins: [
+          mockServerOnlyPlugin(),
           bundleDependenciesPlugin(
             "workerFacade",
             config.dependenciesToBundle,

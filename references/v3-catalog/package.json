@@ -24,6 +24,7 @@
     "react": "^18.2.0",
     "react-email": "^1.6.1",
     "reflect-metadata": "^0.1.13",
+    "server-only": "^0.0.1",
     "stripe": "^12.14.0",
     "typeorm": "^0.3.20",
     "yt-dlp-wrap": "^2.3.12"

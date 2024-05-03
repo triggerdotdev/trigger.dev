@@ -26,6 +26,7 @@ import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/c
 import {
   bundleDependenciesPlugin,
   bundleTriggerDevCore,
+  mockServerOnlyPlugin,
   workerSetupImportConfigPlugin,
 } from "../utilities/build";
 import { chalkError, chalkGrey, chalkPurple, chalkTask, chalkWorker } from "../utilities/cliOutput";
@@ -442,6 +443,7 @@ function useDev({
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
         plugins: [
+          mockServerOnlyPlugin(),
           bundleTriggerDevCore("workerFacade", config.tsconfigPath),
           bundleDependenciesPlugin(
             "workerFacade",
