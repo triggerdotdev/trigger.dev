@@ -1,14 +1,12 @@
 import * as Ariakit from "@ariakit/react";
 import { SelectProps as AriaSelectProps } from "@ariakit/react";
 import { SelectValue } from "@ariakit/react-core/select/select-value";
+import { Link } from "@remix-run/react";
 import * as React from "react";
 import { Fragment, useMemo, useState } from "react";
 import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { ShortcutKey } from "./ShortcutKey";
-import { Link } from "@remix-run/react";
-import { Mutable } from "@internationalized/date";
-import { useCombobox } from "@ariakit/react-core/combobox/combobox";
 
 const sizes = {
   small: {
@@ -76,10 +74,7 @@ export interface SelectProps<TValue extends string | string[], TItem>
   value?: Ariakit.SelectProviderProps<TValue>["value"];
   setValue?: Ariakit.SelectProviderProps<TValue>["setValue"];
   defaultValue?: Ariakit.SelectProviderProps<TValue>["defaultValue"];
-  tab?: Ariakit.TabProviderProps["selectedId"];
-  setTab?: Ariakit.TabProviderProps["setSelectedId"];
-  defaultTab?: Ariakit.TabProviderProps["defaultSelectedId"];
-  selectTabOnMove?: boolean;
+
   label?: string | Ariakit.SelectLabelProps["render"];
   heading?: string;
   showHeading?: boolean;
@@ -114,10 +109,6 @@ export function Select<TValue extends string | string[], TItem>({
   value,
   setValue,
   defaultValue,
-  tab,
-  setTab,
-  defaultTab,
-  selectTabOnMove,
   label,
   heading,
   showHeading = false,
@@ -157,7 +148,7 @@ export function Select<TValue extends string | string[], TItem>({
   const enableItemShortcuts = allowItemShortcuts && matches.length === items?.length;
 
   const select = (
-    <Ariakit.SelectProvider
+    <SelectProvider
       open={open}
       setOpen={setOpen}
       virtualFocus={searchable}
@@ -186,36 +177,30 @@ export function Select<TValue extends string | string[], TItem>({
       <SelectPopover>
         {!searchable && showHeading && heading && <SelectHeading render={<>{heading}</>} />}
         {searchable && <ComboBox placeholder={heading} shortcut={shortcut} value={searchValue} />}
-        <Ariakit.TabProvider
-          selectedId={tab}
-          setSelectedId={setTab}
-          defaultSelectedId={defaultTab}
-          selectOnMove={selectTabOnMove}
-        >
-          <SelectList>
-            {typeof children === "function" ? (
-              matches.length > 0 ? (
-                isSection(matches) ? (
-                  <SelectGroupedRenderer
-                    items={matches}
-                    children={children}
-                    enableItemShortcuts={enableItemShortcuts}
-                  />
-                ) : (
-                  children(matches as ItemFromSection<TItem>[], {
-                    shortcutsEnabled: enableItemShortcuts,
-                  })
-                )
+
+        <SelectList>
+          {typeof children === "function" ? (
+            matches.length > 0 ? (
+              isSection(matches) ? (
+                <SelectGroupedRenderer
+                  items={matches}
+                  children={children}
+                  enableItemShortcuts={enableItemShortcuts}
+                />
               ) : (
-                empty
+                children(matches as ItemFromSection<TItem>[], {
+                  shortcutsEnabled: enableItemShortcuts,
+                })
               )
             ) : (
-              children
-            )}
-          </SelectList>
-        </Ariakit.TabProvider>
+              empty
+            )
+          ) : (
+            children
+          )}
+        </SelectList>
       </SelectPopover>
-    </Ariakit.SelectProvider>
+    </SelectProvider>
   );
 
   if (searchable) {
@@ -323,6 +308,15 @@ export function SelectTrigger({
   );
 }
 
+export interface SelectProviderProps<TValue extends string | string[]>
+  extends Ariakit.SelectProviderProps<TValue> {}
+
+export function SelectProvider<TValue extends string | string[]>(
+  props: SelectProviderProps<TValue>
+) {
+  return <Ariakit.SelectProvider {...props} />;
+}
+
 function SelectGroupedRenderer<TItem>({
   items,
   children,
@@ -358,43 +352,6 @@ function SelectGroupedRenderer<TItem>({
         );
       })}
     </>
-  );
-}
-
-export interface SelectTabListProps extends Ariakit.TabListProps {}
-
-export function SelectTabList(props: SelectTabListProps) {
-  return <Ariakit.TabList {...props} />;
-}
-
-export interface SelectTabProps extends Ariakit.TabProps {}
-
-export function SelectTab(props: SelectTabProps) {
-  return (
-    <Ariakit.Tab
-      {...props}
-      render={<Ariakit.Role.div render={props.render} />}
-      className={cn("", props.className)}
-    />
-  );
-}
-
-export interface SelectTabPanelProps extends Ariakit.TabPanelProps {}
-
-export function SelectTabPanel(props: SelectTabPanelProps) {
-  const tab = Ariakit.useTabContext()!;
-  const tabId = tab.useState((state) => props.tabId || state.selectedId);
-  return (
-    <Ariakit.TabPanel
-      key={tabId}
-      tabId={tabId}
-      unmountOnHide
-      {...props}
-      className={cn(
-        "popup-layer popup-cover flex flex-col pt-[calc(var(--padding)*2)]",
-        props.className
-      )}
-    />
   );
 }
 
