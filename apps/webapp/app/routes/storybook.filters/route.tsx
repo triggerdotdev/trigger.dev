@@ -1,6 +1,6 @@
 import { CpuChipIcon } from "@heroicons/react/20/solid";
 import { CircleStackIcon } from "@heroicons/react/24/outline";
-import { Form, useNavigate } from "@remix-run/react";
+import { Form } from "@remix-run/react";
 import { startTransition, useCallback, useMemo, useState } from "react";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import {
@@ -19,7 +19,6 @@ import {
   allTaskRunStatuses,
   runStatusTitle,
 } from "~/components/runs/v3/TaskRunStatus";
-import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParam } from "~/hooks/useSearchParam";
 import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
 
@@ -92,19 +91,14 @@ type MenuProps = {
   clearSearchValue: () => void;
   shortcut: ShortcutDefinition;
   trigger: React.ReactNode;
+  filterType: FilterType | undefined;
+  setFilterType: (filterType: FilterType | undefined) => void;
 };
 
-function Menu({
-  filterType,
-  setFilterType,
-  ...props
-}: MenuProps & {
-  filterType: FilterType | undefined;
-  setFilterType: (filterType: FilterType) => void;
-}) {
-  switch (filterType) {
+function Menu(props: MenuProps) {
+  switch (props.filterType) {
     case undefined:
-      return <MainMenu {...props} onSelected={setFilterType} />;
+      return <MainMenu {...props} />;
     case "status":
       return <Statuses {...props} />;
     case "environment":
@@ -113,15 +107,7 @@ function Menu({
   return <></>;
 }
 
-function MainMenu({
-  searchValue,
-  clearSearchValue,
-  onSelected,
-  trigger,
-  shortcut,
-}: {
-  onSelected: (filterType: FilterType) => void;
-} & MenuProps) {
+function MainMenu({ searchValue, clearSearchValue, setFilterType, trigger, shortcut }: MenuProps) {
   const filtered = useMemo(() => {
     return filterTypes.filter((item) =>
       item.title.toLowerCase().includes(searchValue.toLowerCase())
@@ -139,7 +125,7 @@ function MainMenu({
               key={type.name}
               onClick={() => {
                 clearSearchValue();
-                onSelected(type.name);
+                setFilterType(type.name);
               }}
               icon={type.icon}
               shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
@@ -158,7 +144,7 @@ const statuses = allTaskRunStatuses.map((status) => ({
   value: status,
 }));
 
-function Statuses({ trigger, clearSearchValue, shortcut, searchValue }: MenuProps) {
+function Statuses({ trigger, clearSearchValue, shortcut, searchValue, setFilterType }: MenuProps) {
   const { values, replace } = useSearchParam("status");
 
   const handleChange = useCallback((values: string[]) => {
@@ -173,7 +159,12 @@ function Statuses({ trigger, clearSearchValue, shortcut, searchValue }: MenuProp
   return (
     <SelectProvider value={values} setValue={handleChange} virtualFocus={true}>
       {trigger}
-      <SelectPopover>
+      <SelectPopover
+        hideOnEscape={() => {
+          setFilterType(undefined);
+          return false;
+        }}
+      >
         <ComboBox placeholder={"Filter by status..."} shortcut={shortcut} value={searchValue} />
         <SelectList>
           {filtered.map((item, index) => (
@@ -203,7 +194,13 @@ const environments = [
   },
 ];
 
-function Environments({ trigger, clearSearchValue, shortcut, searchValue }: MenuProps) {
+function Environments({
+  trigger,
+  clearSearchValue,
+  shortcut,
+  searchValue,
+  setFilterType,
+}: MenuProps) {
   const { values, replace } = useSearchParam("environment");
 
   const handleChange = useCallback((values: string[]) => {
@@ -220,7 +217,12 @@ function Environments({ trigger, clearSearchValue, shortcut, searchValue }: Menu
   return (
     <SelectProvider value={values} setValue={handleChange} virtualFocus={true}>
       {trigger}
-      <SelectPopover>
+      <SelectPopover
+        hideOnEscape={() => {
+          setFilterType(undefined);
+          return false;
+        }}
+      >
         <ComboBox
           placeholder={"Filter by environment..."}
           shortcut={shortcut}
