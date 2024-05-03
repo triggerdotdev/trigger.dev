@@ -1,4 +1,5 @@
 import * as Ariakit from "@ariakit/react";
+import { SelectProps as AriaSelectProps } from "@ariakit/react";
 import { SelectValue } from "@ariakit/react-core/select/select-value";
 import * as React from "react";
 import { Fragment, useMemo, useState } from "react";
@@ -103,11 +104,11 @@ export function Select<TValue extends string | string[], TItem>({
   setOpen,
   shortcut,
   allowItemShortcuts = true,
+  disabled,
   ...props
 }: SelectProps<TValue, TItem>) {
   const [searchValue, setSearchValue] = useState("");
   const searchable = items !== undefined && filter !== undefined;
-  const ref = React.useRef<HTMLButtonElement>(null);
 
   const matches = useMemo(() => {
     if (!items) return [];
@@ -127,18 +128,6 @@ export function Select<TValue extends string | string[], TItem>({
     return items.filter((item) => filter(item as ItemFromSection<TItem>, searchValue));
   }, [searchValue, items]);
 
-  useShortcutKeys({
-    shortcut: shortcut,
-    action: (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (ref.current) {
-        ref.current.click();
-      }
-    },
-    disabled: props.disabled,
-  });
-
   const enableItemShortcuts = allowItemShortcuts && matches.length === items?.length;
   const variantClasses = variants[variant];
 
@@ -154,50 +143,14 @@ export function Select<TValue extends string | string[], TItem>({
       {label && (
         <Ariakit.SelectLabel render={typeof label === "string" ? <div>{label}</div> : label} />
       )}
-      <Ariakit.TooltipProvider timeout={200}>
-        <Ariakit.TooltipAnchor
-          className="button"
-          render={
-            <Ariakit.Select
-              {...props}
-              className={cn(
-                "group flex items-center gap-1 outline-offset-0 focus-within:outline-none focus-within:ring-1 disabled:cursor-not-allowed disabled:opacity-50",
-                variantClasses.button,
-                props.className
-              )}
-              ref={ref}
-            ></Ariakit.Select>
-          }
-        >
-          {icon}
-          <div className="truncate">
-            {text || (
-              <SelectValue>
-                {(value) => (
-                  <>
-                    {typeof value === "object" && Array.isArray(value) ? value.join(", ") : value}
-                  </>
-                )}
-              </SelectValue>
-            )}
-          </div>
-        </Ariakit.TooltipAnchor>
-        {shortcut && (
-          <Ariakit.Tooltip
-            disabled={shortcut === undefined}
-            className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs"
-          >
-            <div className="flex items-center gap-2">
-              <span>{heading ?? "Open menu"}</span>
-              <ShortcutKey
-                className={cn("size-4 flex-none")}
-                shortcut={shortcut}
-                variant={"small"}
-              />
-            </div>
-          </Ariakit.Tooltip>
-        )}
-      </Ariakit.TooltipProvider>
+      <SelectTrigger
+        icon={icon}
+        variant={variant}
+        text={text}
+        shortcut={shortcut}
+        tooltipTitle={heading}
+        disabled={disabled}
+      />
       <Ariakit.SelectPopover
         gutter={5}
         shift={0}
@@ -281,6 +234,87 @@ export function Select<TValue extends string | string[], TItem>({
   }
 
   return select;
+}
+
+export interface SelectTriggerProps extends AriaSelectProps {
+  icon?: React.ReactNode;
+  text?: React.ReactNode;
+  variant?: Variant;
+  shortcut?: ShortcutDefinition;
+  tooltipTitle?: string;
+}
+
+export function SelectTrigger({
+  icon,
+  variant = "tertiary/small",
+  text,
+  shortcut,
+  tooltipTitle,
+  disabled,
+  ...props
+}: SelectTriggerProps) {
+  const ref = React.useRef<HTMLButtonElement>(null);
+  useShortcutKeys({
+    shortcut: shortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (ref.current) {
+        ref.current.click();
+      }
+    },
+    disabled,
+  });
+
+  const showTooltip = tooltipTitle || shortcut;
+  const variantClasses = variants[variant];
+
+  return (
+    <Ariakit.TooltipProvider timeout={200}>
+      <Ariakit.TooltipAnchor
+        className="button"
+        render={
+          <Ariakit.Select
+            {...props}
+            className={cn(
+              "group flex items-center gap-1 outline-offset-0 focus-within:outline-none focus-within:ring-1 disabled:cursor-not-allowed disabled:opacity-50",
+              variantClasses.button,
+              props.className
+            )}
+            ref={ref}
+          ></Ariakit.Select>
+        }
+      >
+        {icon}
+        <div className="truncate">
+          {text || (
+            <SelectValue>
+              {(value) => (
+                <>{typeof value === "object" && Array.isArray(value) ? value.join(", ") : value}</>
+              )}
+            </SelectValue>
+          )}
+        </div>
+      </Ariakit.TooltipAnchor>
+      {showTooltip && (
+        <Ariakit.Tooltip
+          disabled={shortcut === undefined}
+          className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs"
+        >
+          <div className="flex items-center gap-2">
+            <span>{tooltipTitle ?? "Open menu"}</span>
+            {shortcut && (
+              <ShortcutKey
+                className={cn("size-4 flex-none")}
+                shortcut={shortcut}
+                variant={"small"}
+              />
+            )}
+          </div>
+        </Ariakit.Tooltip>
+      )}
+    </Ariakit.TooltipProvider>
+  );
 }
 
 function SelectGroupedRenderer<TItem>({
