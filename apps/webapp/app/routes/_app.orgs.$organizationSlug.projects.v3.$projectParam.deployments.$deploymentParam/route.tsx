@@ -1,8 +1,9 @@
-import { useLocation } from "@remix-run/react";
+import { Link, useLocation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { UserAvatar } from "~/components/UserProfilePhoto";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
@@ -68,6 +69,48 @@ export default function Page() {
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Header2 className={cn("whitespace-nowrap")}>Deploy: {deployment.shortCode}</Header2>
+
+        <AdminDebugTooltip>
+          <PropertyTable>
+            <Property label="ID">
+              <div className="flex items-center gap-2">
+                <Paragraph variant="extra-small/bright/mono">{deployment.id}</Paragraph>
+              </div>
+            </Property>
+            <Property label="Project ID">
+              <div className="flex items-center gap-2">
+                <Paragraph variant="extra-small/bright/mono">{deployment.projectId}</Paragraph>
+              </div>
+            </Property>
+            <Property label="Org ID">
+              <div className="flex items-center gap-2">
+                <Paragraph variant="extra-small/bright/mono">{deployment.organizationId}</Paragraph>
+              </div>
+            </Property>
+            {deployment.imageReference && (
+              <Property label="Image">
+                <div className="flex items-center gap-2">
+                  <Paragraph variant="extra-small/bright/mono">
+                    {deployment.imageReference}
+                  </Paragraph>
+                </div>
+              </Property>
+            )}
+            {deployment.externalBuildData && (
+              <Property label="Build Server">
+                <div className="flex items-center gap-2">
+                  <Link
+                    to={`/resources/${deployment.projectId}/deployments/${deployment.id}/logs`}
+                    className="extra-small/bright/mono underline"
+                  >
+                    {deployment.externalBuildData.buildId}
+                  </Link>
+                </div>
+              </Property>
+            )}
+          </PropertyTable>
+        </AdminDebugTooltip>
+
         <LinkButton
           to={`${v3DeploymentsPath(organization, project)}${page ? `?page=${page}` : ""}`}
           variant="minimal/medium"
