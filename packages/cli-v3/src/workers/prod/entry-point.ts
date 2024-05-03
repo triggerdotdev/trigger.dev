@@ -61,142 +61,7 @@ class ProdWorker {
     process.on("SIGTERM", this.#handleSignal.bind(this, "SIGTERM"));
 
     this.#coordinatorSocket = this.#createCoordinatorSocket(COORDINATOR_HOST);
-
-    this.#backgroundWorker = new ProdBackgroundWorker("worker.js", {
-      projectConfig: __PROJECT_CONFIG__,
-      env: {
-        ...gatherProcessEnv(),
-        TRIGGER_API_URL: this.apiUrl,
-        TRIGGER_SECRET_KEY: this.apiKey,
-        OTEL_EXPORTER_OTLP_ENDPOINT:
-          process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
-      },
-      contentHash: this.contentHash,
-    });
-
-    this.#backgroundWorker.onTaskHeartbeat.attach((attemptFriendlyId) => {
-      // TODO: Switch to .send() once coordinator uses zod handler for all messages
-      this.#coordinatorSocket.socket.emit("TASK_HEARTBEAT", { version: "v1", attemptFriendlyId });
-    });
-
-    this.#backgroundWorker.onTaskRunHeartbeat.attach((runId) => {
-      this.#coordinatorSocket.socket.emit("TASK_RUN_HEARTBEAT", { version: "v1", runId });
-    });
-
-    this.#backgroundWorker.onReadyForCheckpoint.attach(async (message) => {
-      // Flush before checkpointing so we don't flush the same spans again after restore
-      await this.#backgroundWorker.flushTelemetry();
-      this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
-    });
-
-    // Currently, this is only used for duration waits. Might need adjusting for other use cases.
-    this.#backgroundWorker.onCancelCheckpoint.attach(async (message) => {
-      logger.log("onCancelCheckpoint", { message });
-
-      const { checkpointCanceled } = await this.#coordinatorSocket.socket.emitWithAck(
-        "CANCEL_CHECKPOINT",
-        {
-          version: "v2",
-          reason: message.reason,
-        }
-      );
-
-      if (checkpointCanceled) {
-        if (message.reason === "WAIT_FOR_DURATION") {
-          // Worker will resume immediately
-          this.paused = false;
-          this.nextResumeAfter = undefined;
-          this.waitForPostStart = false;
-        }
-      }
-
-      this.#backgroundWorker.checkpointCanceledNotification.post({ checkpointCanceled });
-    });
-
-    this.#backgroundWorker.onCreateTaskRunAttempt.attach(async (message) => {
-      logger.log("onCreateTaskRunAttempt()", { message });
-
-      const createAttempt = await this.#coordinatorSocket.socket.emitWithAck(
-        "CREATE_TASK_RUN_ATTEMPT",
-        {
-          version: "v1",
-          runId: message.runId,
-        }
-      );
-
-      if (!createAttempt.success) {
-        this.#backgroundWorker.attemptCreatedNotification.post({
-          success: false,
-          reason: createAttempt.reason,
-        });
-        return;
-      }
-
-      this.#backgroundWorker.attemptCreatedNotification.post({
-        success: true,
-        execution: createAttempt.executionPayload.execution,
-      });
-    });
-
-    this.#backgroundWorker.attemptCreatedNotification.attach((message) => {
-      if (!message.success) {
-        return;
-      }
-
-      // Workers with lazy attempt support set their friendly ID here
-      this.attemptFriendlyId = message.execution.attempt.id;
-    });
-
-    this.#backgroundWorker.onWaitForDuration.attach(async (message) => {
-      if (!this.attemptFriendlyId) {
-        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
-        return;
-      }
-
-      const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
-        "WAIT_FOR_DURATION",
-        {
-          ...message,
-          attemptFriendlyId: this.attemptFriendlyId,
-        }
-      );
-
-      this.#prepareForWait("WAIT_FOR_DURATION", willCheckpointAndRestore);
-    });
-
-    this.#backgroundWorker.onWaitForTask.attach(async (message) => {
-      if (!this.attemptFriendlyId) {
-        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
-        return;
-      }
-
-      const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
-        "WAIT_FOR_TASK",
-        {
-          ...message,
-          attemptFriendlyId: this.attemptFriendlyId,
-        }
-      );
-
-      this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
-    });
-
-    this.#backgroundWorker.onWaitForBatch.attach(async (message) => {
-      if (!this.attemptFriendlyId) {
-        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
-        return;
-      }
-
-      const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
-        "WAIT_FOR_BATCH",
-        {
-          ...message,
-          attemptFriendlyId: this.attemptFriendlyId,
-        }
-      );
-
-      this.#prepareForWait("WAIT_FOR_BATCH", willCheckpointAndRestore);
-    });
+    this.#backgroundWorker = this.#createBackgroundWorker();
 
     this.#httpPort = port;
     this.#httpServer = this.#createHttpServer();
@@ -267,6 +132,146 @@ class ProdWorker {
     }
   }
 
+  #createBackgroundWorker() {
+    const backgroundWorker = new ProdBackgroundWorker("worker.js", {
+      projectConfig: __PROJECT_CONFIG__,
+      env: {
+        ...gatherProcessEnv(),
+        TRIGGER_API_URL: this.apiUrl,
+        TRIGGER_SECRET_KEY: this.apiKey,
+        OTEL_EXPORTER_OTLP_ENDPOINT:
+          process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
+      },
+      contentHash: this.contentHash,
+    });
+
+    backgroundWorker.onTaskHeartbeat.attach((attemptFriendlyId) => {
+      // TODO: Switch to .send() once coordinator uses zod handler for all messages
+      this.#coordinatorSocket.socket.emit("TASK_HEARTBEAT", { version: "v1", attemptFriendlyId });
+    });
+
+    backgroundWorker.onTaskRunHeartbeat.attach((runId) => {
+      this.#coordinatorSocket.socket.emit("TASK_RUN_HEARTBEAT", { version: "v1", runId });
+    });
+
+    backgroundWorker.onReadyForCheckpoint.attach(async (message) => {
+      // Flush before checkpointing so we don't flush the same spans again after restore
+      await backgroundWorker.flushTelemetry();
+      this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
+    });
+
+    // Currently, this is only used for duration waits. Might need adjusting for other use cases.
+    backgroundWorker.onCancelCheckpoint.attach(async (message) => {
+      logger.log("onCancelCheckpoint", { message });
+
+      const { checkpointCanceled } = await this.#coordinatorSocket.socket.emitWithAck(
+        "CANCEL_CHECKPOINT",
+        {
+          version: "v2",
+          reason: message.reason,
+        }
+      );
+
+      if (checkpointCanceled) {
+        if (message.reason === "WAIT_FOR_DURATION") {
+          // Worker will resume immediately
+          this.paused = false;
+          this.nextResumeAfter = undefined;
+          this.waitForPostStart = false;
+        }
+      }
+
+      backgroundWorker.checkpointCanceledNotification.post({ checkpointCanceled });
+    });
+
+    backgroundWorker.onCreateTaskRunAttempt.attach(async (message) => {
+      logger.log("onCreateTaskRunAttempt()", { message });
+
+      const createAttempt = await this.#coordinatorSocket.socket.emitWithAck(
+        "CREATE_TASK_RUN_ATTEMPT",
+        {
+          version: "v1",
+          runId: message.runId,
+        }
+      );
+
+      if (!createAttempt.success) {
+        backgroundWorker.attemptCreatedNotification.post({
+          success: false,
+          reason: createAttempt.reason,
+        });
+        return;
+      }
+
+      backgroundWorker.attemptCreatedNotification.post({
+        success: true,
+        execution: createAttempt.executionPayload.execution,
+      });
+    });
+
+    backgroundWorker.attemptCreatedNotification.attach((message) => {
+      if (!message.success) {
+        return;
+      }
+
+      // Workers with lazy attempt support set their friendly ID here
+      this.attemptFriendlyId = message.execution.attempt.id;
+    });
+
+    backgroundWorker.onWaitForDuration.attach(async (message) => {
+      if (!this.attemptFriendlyId) {
+        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+        return;
+      }
+
+      const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
+        "WAIT_FOR_DURATION",
+        {
+          ...message,
+          attemptFriendlyId: this.attemptFriendlyId,
+        }
+      );
+
+      this.#prepareForWait("WAIT_FOR_DURATION", willCheckpointAndRestore);
+    });
+
+    backgroundWorker.onWaitForTask.attach(async (message) => {
+      if (!this.attemptFriendlyId) {
+        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+        return;
+      }
+
+      const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
+        "WAIT_FOR_TASK",
+        {
+          ...message,
+          attemptFriendlyId: this.attemptFriendlyId,
+        }
+      );
+
+      this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
+    });
+
+    backgroundWorker.onWaitForBatch.attach(async (message) => {
+      if (!this.attemptFriendlyId) {
+        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+        return;
+      }
+
+      const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
+        "WAIT_FOR_BATCH",
+        {
+          ...message,
+          attemptFriendlyId: this.attemptFriendlyId,
+        }
+      );
+
+      this.#prepareForWait("WAIT_FOR_BATCH", willCheckpointAndRestore);
+    });
+
+    return backgroundWorker;
+  }
+
   async #prepareForWait(reason: WaitReason, willCheckpointAndRestore: boolean) {
     logger.log(`prepare for ${reason}`, { willCheckpointAndRestore });
 
@@ -295,10 +300,14 @@ class ProdWorker {
       }
 
       await this.#exitGracefully();
+      return;
     }
 
     this.executing = false;
     this.attemptFriendlyId = undefined;
+
+    // Every retry gets a fresh process
+    await this.#backgroundWorker.killTaskRunProcess();
 
     if (willCheckpointAndRestore) {
       this.waitForPostStart = true;
@@ -686,6 +695,7 @@ class ProdWorker {
               paused: this.paused,
               completed: this.completed.size,
               nextResumeAfter: this.nextResumeAfter,
+              waitForPostStart: this.waitForPostStart,
             });
           }
 

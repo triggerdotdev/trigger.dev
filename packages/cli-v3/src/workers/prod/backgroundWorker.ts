@@ -47,6 +47,14 @@ class CancelledProcessError extends Error {
   }
 }
 
+class SigKillTimeoutProcessError extends Error {
+  constructor() {
+    super("Process kill timeout");
+
+    this.name = "SigKillTimeoutProcessError";
+  }
+}
+
 type BackgroundWorkerParams = {
   env: Record<string, string>;
   projectConfig: Config;
@@ -116,6 +124,25 @@ export class ProdBackgroundWorker {
 
     // We need to close the task run process
     await this._taskRunProcess?.cleanup(true);
+  }
+
+  async killTaskRunProcess(flush = true, signal: number | NodeJS.Signals = "SIGKILL") {
+    if (this._closed || !this._taskRunProcess) {
+      return;
+    }
+
+    if (flush) {
+      await this.flushTelemetry();
+    }
+
+    const onExit = this._taskRunProcess.onExit.waitFor(5_000);
+
+    this._taskRunProcess.kill(signal);
+
+    // Wait until the process has been killed
+    await onExit;
+
+    this._closed = true;
   }
 
   async flushTelemetry() {
@@ -227,6 +254,26 @@ export class ProdBackgroundWorker {
       payload.execution.worker.id,
       payload.execution.worker.version
     );
+
+    this._closed = false;
+
+    // If the child process is currently being killed, we should wait for it to be dead before creating a fresh one (with a sensible timeout)
+    if (this._taskRunProcess?.isBeingKilled) {
+      try {
+        await this._taskRunProcess.onExit.waitFor(5_000);
+      } catch (error) {
+        console.error("TaskRunProcess graceful kill timeout exceeded", error);
+
+        try {
+          const forcedKill = this._taskRunProcess.onExit.waitFor(5_000);
+          this._taskRunProcess.kill("SIGKILL");
+          await forcedKill;
+        } catch (error) {
+          console.error("TaskRunProcess forced kill timeout exceeded", error);
+          throw new SigKillTimeoutProcessError();
+        }
+      }
+    }
 
     if (!this._taskRunProcess) {
       const taskRunProcess = new TaskRunProcess(
@@ -353,6 +400,18 @@ export class ProdBackgroundWorker {
         };
       }
 
+      if (e instanceof SigKillTimeoutProcessError) {
+        return {
+          id: payload.execution.attempt.id,
+          ok: false,
+          retry: undefined,
+          error: {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.TASK_PROCESS_SIGKILL_TIMEOUT,
+          },
+        };
+      }
+
       return {
         id: payload.execution.attempt.id,
         ok: false,
@@ -435,7 +494,7 @@ class TaskRunProcess {
    */
   public onTaskHeartbeat: Evt<string> = new Evt();
   public onTaskRunHeartbeat: Evt<string> = new Evt();
-  public onExit: Evt<number> = new Evt();
+  public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null }> = new Evt();
 
   public onWaitForBatch: Evt<
     InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_BATCH">
@@ -649,7 +708,7 @@ class TaskRunProcess {
     }
   }
 
-  async #handleExit(code: number) {
+  async #handleExit(code: number | null, signal: NodeJS.Signals | null) {
     // Go through all the attempts currently pending and reject them
     for (const [id, status] of this._attemptStatuses.entries()) {
       if (status === "PENDING") {
@@ -668,12 +727,12 @@ class TaskRunProcess {
         } else if (this._isBeingKilled) {
           rejecter(new CleanupProcessError());
         } else {
-          rejecter(new UnexpectedExitError(code));
+          rejecter(new UnexpectedExitError(code ?? -1));
         }
       }
     }
 
-    this.onExit.post(code);
+    this.onExit.post({ code, signal });
   }
 
   #handleLog(data: Buffer) {
@@ -706,9 +765,11 @@ class TaskRunProcess {
     );
   }
 
-  #kill() {
-    if (this._child && !this._child.killed) {
-      this._child?.kill();
-    }
+  kill(signal?: number | NodeJS.Signals) {
+    this._child?.kill(signal);
+  }
+
+  get isBeingKilled() {
+    return this._isBeingKilled || this._child?.killed;
   }
 }
