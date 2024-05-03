@@ -7,6 +7,8 @@ import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { ShortcutKey } from "./ShortcutKey";
 import { Link } from "@remix-run/react";
+import { Mutable } from "@internationalized/date";
+import { useCombobox } from "@ariakit/react-core/combobox/combobox";
 
 const sizes = {
   small: {
@@ -102,6 +104,7 @@ export interface SelectProps<TValue extends string | string[], TItem>
   setOpen?: (open: boolean) => void;
   shortcut?: ShortcutDefinition;
   allowItemShortcuts?: boolean;
+  clearSearchOnSection?: boolean;
 }
 
 export function Select<TValue extends string | string[], TItem>({
@@ -127,6 +130,7 @@ export function Select<TValue extends string | string[], TItem>({
   shortcut,
   allowItemShortcuts = true,
   disabled,
+  clearSearchOnSection = true,
   ...props
 }: SelectProps<TValue, TItem>) {
   const [searchValue, setSearchValue] = useState("");
@@ -158,7 +162,15 @@ export function Select<TValue extends string | string[], TItem>({
       setOpen={setOpen}
       virtualFocus={searchable}
       value={value}
-      setValue={setValue}
+      setValue={(v) => {
+        if (clearSearchOnSection) {
+          setSearchValue("");
+        }
+
+        if (setValue) {
+          setValue(v as any);
+        }
+      }}
       defaultValue={defaultValue}
     >
       {label && <SelectLabel render={typeof label === "string" ? <div>{label}</div> : label} />}
@@ -169,10 +181,11 @@ export function Select<TValue extends string | string[], TItem>({
         shortcut={shortcut}
         tooltipTitle={heading}
         disabled={disabled}
+        {...props}
       />
       <SelectPopover>
         {!searchable && showHeading && heading && <SelectHeading render={<>{heading}</>} />}
-        {searchable && <ComboBox placeholder={heading} shortcut={shortcut} />}
+        {searchable && <ComboBox placeholder={heading} shortcut={shortcut} value={searchValue} />}
         <Ariakit.TabProvider
           selectedId={tab}
           setSelectedId={setTab}
@@ -207,16 +220,22 @@ export function Select<TValue extends string | string[], TItem>({
 
   if (searchable) {
     return (
-      <Ariakit.ComboboxProvider
-        resetValueOnHide
-        setValue={(value) => {
-          React.startTransition(() => {
-            setSearchValue(value);
-          });
-        }}
+      <SearchProvider
+        enabled={searchable}
+        searchValue={searchValue}
+        setSearchValue={setSearchValue}
       >
-        {select}
-      </Ariakit.ComboboxProvider>
+        <Ariakit.ComboboxProvider
+          resetValueOnHide
+          setValue={(value) => {
+            React.startTransition(() => {
+              setSearchValue(value);
+            });
+          }}
+        >
+          {select}
+        </Ariakit.ComboboxProvider>
+      </SearchProvider>
     );
   }
 

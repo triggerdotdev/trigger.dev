@@ -18,7 +18,7 @@ import {
 } from "~/components/runs/v3/TaskRunStatus";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 
-export const branches = [
+const branches = [
   "main",
   "0.10-stable",
   "0.11-stable",
@@ -45,39 +45,7 @@ export const branches = [
   "rsckeys",
 ];
 
-export const groupedNoTitles = [
-  {
-    type: "section" as const,
-    title: "My org",
-    items: [
-      {
-        title: "My repo",
-        value: "main",
-      },
-      {
-        title: "My fork",
-        value: "fork",
-      },
-    ],
-  },
-  {
-    type: "section" as const,
-    items: [
-      {
-        title: "Other repo",
-        value: "other2",
-      },
-      {
-        title: "Other fork",
-        value: "fork2",
-      },
-    ],
-  },
-];
-
 export default function Story() {
-  const [value, setValue] = useState(["main"]);
-
   return (
     <div className="flex h-full max-w-full flex-wrap items-start justify-start gap-2 px-4 py-16">
       <Form className="space-y-4">
@@ -112,9 +80,8 @@ export default function Story() {
 
           <Select
             name="branch2"
-            value={value}
-            setValue={setValue}
             heading={"Filter by status..."}
+            defaultValue={"main"}
             items={branches}
           >
             {(matches) => matches?.map((value) => <SelectItem key={value} value={value} />)}
