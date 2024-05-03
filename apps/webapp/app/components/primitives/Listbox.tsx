@@ -411,9 +411,36 @@ export function SelectLinkItem({
   to,
   ...props
 }: SelectLinkItemProps) {
-  const combobox = Ariakit.useComboboxContext();
-  const link = <Link to={to} className={cn("block", selectItemClasses, props.className)} />;
-  const render = combobox ? <Ariakit.ComboboxItem render={link} /> : link;
+  const render = <Link to={to} className={cn("block", selectItemClasses, props.className)} />;
+
+  return (
+    <SelectItem
+      {...props}
+      render={render}
+      blurOnHoverEnd={false}
+      className={cn(selectItemClasses, props.className)}
+    />
+  );
+}
+
+export interface SelectButtonItemProps extends Omit<Ariakit.SelectItemProps, "onClick"> {
+  icon?: React.ReactNode;
+  shortcut?: ShortcutDefinition;
+  onClick: React.ComponentProps<"button">["onClick"];
+}
+
+export function SelectButtonItem({
+  icon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
+  shortcut,
+  onClick,
+  ...props
+}: SelectButtonItemProps) {
+  const render = (
+    <button
+      onClick={onClick}
+      className={cn("block w-full text-left", selectItemClasses, props.className)}
+    />
+  );
 
   return (
     <SelectItem

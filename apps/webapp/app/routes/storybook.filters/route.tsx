@@ -1,9 +1,10 @@
-import { Form } from "@remix-run/react";
-import { startTransition, useState } from "react";
+import { Form, useNavigate } from "@remix-run/react";
+import { startTransition, useCallback, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import {
   ComboBox,
   ComboboxProvider,
+  SelectButtonItem,
   SelectItem,
   SelectList,
   SelectPopover,
@@ -11,6 +12,7 @@ import {
   SelectTrigger,
 } from "~/components/primitives/Listbox";
 import { allTaskRunStatuses, runStatusTitle } from "~/components/runs/v3/TaskRunStatus";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 
 export default function Story() {
   return (
@@ -95,14 +97,15 @@ function MainMenu({
   return (
     <SelectList>
       {filterTypes.map((type, index) => (
-        <SelectItem
+        <SelectButtonItem
           key={type.name}
-          onClick={(e) => {
-            console.log("click", e);
+          onClick={() => {
+            console.log("selected", type.name);
+            onSelected(type.name);
           }}
         >
           {type.title}
-        </SelectItem>
+        </SelectButtonItem>
       ))}
     </SelectList>
   );
