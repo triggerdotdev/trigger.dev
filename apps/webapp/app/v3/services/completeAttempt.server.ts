@@ -19,6 +19,7 @@ import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.se
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { TaskRun } from "@trigger.dev/database";
+import { socketIo } from "../handleSocketIo.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -202,7 +203,7 @@ export class CompleteAttemptService extends BaseService {
       }
 
       if (!checkpoint) {
-        await this.#enqueueRetry(taskRunAttempt.taskRun, completion.retry.timestamp);
+        await this.#retryAttempt(taskRunAttempt.taskRun, completion.retry.timestamp);
         return "RETRIED";
       }
 
@@ -235,7 +236,7 @@ export class CompleteAttemptService extends BaseService {
         return "COMPLETED";
       }
 
-      await this.#enqueueRetry(
+      await this.#retryAttempt(
         taskRunAttempt.taskRun,
         completion.retry.timestamp,
         checkpointCreateResult.event.id
@@ -320,17 +321,25 @@ export class CompleteAttemptService extends BaseService {
     }
   }
 
-  async #enqueueRetry(run: TaskRun, retryTimestamp: number, checkpointEventId?: string) {
-    // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
-    return await marqs?.replaceMessage(
-      run.id,
-      {
-        type: "EXECUTE",
-        taskIdentifier: run.taskIdentifier,
-        checkpointEventId: checkpointEventId,
-      },
-      retryTimestamp
-    );
+  async #retryAttempt(run: TaskRun, retryTimestamp: number, checkpointEventId?: string) {
+    if (checkpointEventId) {
+      // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
+      return await marqs?.replaceMessage(
+        run.id,
+        {
+          type: "EXECUTE",
+          taskIdentifier: run.taskIdentifier,
+          checkpointEventId: checkpointEventId,
+        },
+        retryTimestamp
+      );
+    } else {
+      // There's no checkpoint so the worker is still running and waiting for this retry message
+      return socketIo.coordinatorNamespace.emit("READY_FOR_RETRY", {
+        version: "v1",
+        runId: run.id,
+      });
+    }
   }
 
   #generateMetadataAttributesForNextAttempt(execution: TaskRunExecution) {
