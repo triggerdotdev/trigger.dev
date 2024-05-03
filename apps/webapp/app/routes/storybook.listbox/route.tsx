@@ -153,8 +153,8 @@ function Statuses() {
       setValue={handleChange}
       heading={"Filter by status..."}
       items={statuses}
-      shortcut={{ key: "s" }}
       filter={(item, search) => item.title.toLowerCase().includes(search.toLowerCase())}
+      shortcut={{ key: "s" }}
     >
       {(matches, { shortcutsEnabled }) => (
         <>

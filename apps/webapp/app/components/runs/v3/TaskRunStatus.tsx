@@ -16,17 +16,17 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
 export const allTaskRunStatuses = [
-  "PENDING",
   "WAITING_FOR_DEPLOY",
+  "PENDING",
   "EXECUTING",
   "RETRYING_AFTER_FAILURE",
   "WAITING_TO_RESUME",
   "COMPLETED_SUCCESSFULLY",
   "CANCELED",
   "COMPLETED_WITH_ERRORS",
+  "CRASHED",
   "INTERRUPTED",
   "SYSTEM_FAILURE",
-  "CRASHED",
 ] as TaskRunStatus[];
 
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
