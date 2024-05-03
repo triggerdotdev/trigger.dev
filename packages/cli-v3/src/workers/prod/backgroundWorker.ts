@@ -126,7 +126,7 @@ export class ProdBackgroundWorker {
     await this._taskRunProcess?.cleanup(true);
   }
 
-  async killTaskRunProcess(flush = true, signal: number | NodeJS.Signals = "SIGKILL") {
+  async killTaskRunProcess(flush = true, initialSignal: number | NodeJS.Signals = "SIGTERM") {
     if (this._closed || !this._taskRunProcess) {
       return;
     }
@@ -135,12 +135,16 @@ export class ProdBackgroundWorker {
       await this.flushTelemetry();
     }
 
-    const onExit = this._taskRunProcess.onExit.waitFor(5_000);
-
-    this._taskRunProcess.kill(signal);
-
-    // Wait until the process has been killed
-    await onExit;
+    try {
+      const initialExit = this._taskRunProcess.onExit.waitFor(5_000);
+      this._taskRunProcess.kill(initialSignal);
+      await initialExit;
+    } catch (error) {
+      // Try again with SIGKILL
+      const forcedExit = this._taskRunProcess.onExit.waitFor(5_000);
+      this._taskRunProcess.kill("SIGKILL");
+      await forcedExit;
+    }
 
     this._closed = true;
   }
