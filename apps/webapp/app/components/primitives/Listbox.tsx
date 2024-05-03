@@ -45,6 +45,28 @@ function isSection<TItem>(data: TItem[] | Section<TItem>[]): data is Section<TIt
 
 type ItemFromSection<TItemOrSection> = TItemOrSection extends Section<infer U> ? U : TItemOrSection;
 
+type SearchContext = {
+  enabled: boolean;
+  searchValue: string;
+  setSearchValue: (value: string) => void;
+};
+const SearchContext = React.createContext<SearchContext | undefined>(undefined);
+function SearchProvider({
+  children,
+  enabled,
+  searchValue,
+  setSearchValue,
+}: SearchContext & { children: React.ReactNode }) {
+  return (
+    <SearchContext.Provider value={{ enabled, searchValue, setSearchValue }}>
+      {children}
+    </SearchContext.Provider>
+  );
+}
+function useSearchContext() {
+  return React.useContext(SearchContext);
+}
+
 export interface SelectProps<TValue extends string | string[], TItem>
   extends Omit<Ariakit.SelectProps, "children"> {
   icon?: React.ReactNode;
