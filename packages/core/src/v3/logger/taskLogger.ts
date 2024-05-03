@@ -7,9 +7,9 @@ import { flattenAttributes } from "../utils/flattenAttributes";
 import { ClockTime } from "../clock/clock";
 import { clock } from "../clock-api";
 
-export type LogLevel = "none" | "log" | "error" | "warn" | "info" | "debug";
+export type LogLevel = "none" | "error" | "warn" | "info" | "debug";
 
-export const logLevels: Array<LogLevel> = ["none", "error", "warn", "log", "info", "debug"];
+export const logLevels: Array<LogLevel> = ["none", "error", "warn", "info", "debug"];
 
 export type TaskLoggerConfig = {
   logger: Logger;
@@ -34,31 +34,31 @@ export class OtelTaskLogger implements TaskLogger {
   }
 
   debug(message: string, properties?: Record<string, unknown>) {
-    if (this._level < 5) return;
+    if (this._level < 4) return; // ["none", "error", "warn", "info", "debug"];
 
     this.#emitLog(message, this.#getTimestampInHrTime(), "debug", SeverityNumber.DEBUG, properties);
   }
 
   log(message: string, properties?: Record<string, unknown>) {
-    if (this._level < 3) return;
+    if (this._level < 3) return; // ["none", "error", "warn", "info", "debug"];
 
     this.#emitLog(message, this.#getTimestampInHrTime(), "log", SeverityNumber.INFO, properties);
   }
 
   info(message: string, properties?: Record<string, unknown>) {
-    if (this._level < 4) return;
+    if (this._level < 3) return; // ["none", "error", "warn", "info", "debug"];
 
     this.#emitLog(message, this.#getTimestampInHrTime(), "info", SeverityNumber.INFO, properties);
   }
 
   warn(message: string, properties?: Record<string, unknown>) {
-    if (this._level < 2) return;
+    if (this._level < 2) return; // ["none", "error", "warn", "info", "debug"];
 
     this.#emitLog(message, this.#getTimestampInHrTime(), "warn", SeverityNumber.WARN, properties);
   }
 
   error(message: string, properties?: Record<string, unknown>) {
-    if (this._level < 1) return;
+    if (this._level < 1) return; // ["none", "error", "warn", "info", "debug"];
 
     this.#emitLog(message, this.#getTimestampInHrTime(), "error", SeverityNumber.ERROR, properties);
   }

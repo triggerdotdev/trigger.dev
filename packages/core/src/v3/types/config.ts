@@ -37,11 +37,11 @@ export interface ProjectConfig {
   instrumentations?: InstrumentationOption[];
 
   /**
-   * Set the log level for the logger. Defaults to "log", so you will see "log", "warn", and "error" messages, but not "info", or "debug" messages.
+   * Set the log level for the logger. Defaults to "info", so you will see "log", "info", "warn", and "error" messages, but not "debug" messages.
    *
    * We automatically set the logLevel to "debug" during test runs
    *
-   * @default "log"
+   * @default "info"
    */
   logLevel?: LogLevel;
 
