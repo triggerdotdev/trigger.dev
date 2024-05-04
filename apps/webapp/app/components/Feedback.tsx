@@ -13,20 +13,13 @@ import { Header1, Header2 } from "./primitives/Headers";
 import { InputGroup } from "./primitives/InputGroup";
 import { Label } from "./primitives/Label";
 import { Paragraph } from "./primitives/Paragraph";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./primitives/Select";
 import { Sheet, SheetBody, SheetContent, SheetTrigger } from "./primitives/Sheet";
 import { TextArea } from "./primitives/TextArea";
 import { cn } from "~/utils/cn";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { ActivityIcon, HeartPulseIcon } from "lucide-react";
 import { docsPath } from "~/utils/pathBuilder";
+import { Select, SelectItem } from "./primitives/Select";
 
 type FeedbackProps = {
   button: ReactNode;
@@ -78,20 +71,25 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
             <Fieldset className="max-w-full gap-y-3">
               <input value={location.pathname} {...conform.input(path, { type: "hidden" })} />
               <InputGroup className="max-w-full">
-                <SelectGroup>
-                  <Select {...conform.input(feedbackType)} defaultValue={defaultValue}>
-                    <SelectTrigger size="medium" width="full">
-                      <SelectValue placeholder="Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(feedbackTypeLabel).map(([key, value]) => (
-                        <SelectItem key={key} value={key}>
-                          {value}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </SelectGroup>
+                <Select
+                  {...conform.select(feedbackType)}
+                  variant="tertiary/medium"
+                  defaultValue={defaultValue}
+                  heading={"Filter..."}
+                  text={(value) => feedbackTypeLabel[value]}
+                  items={Object.entries(feedbackTypeLabel).map(([name, title]) => ({
+                    name,
+                    title,
+                  }))}
+                >
+                  {(matches) =>
+                    matches?.map(({ name, title }) => (
+                      <SelectItem key={name} value={name}>
+                        {title}
+                      </SelectItem>
+                    ))
+                  }
+                </Select>
                 <FormError id={feedbackType.errorId}>{feedbackType.error}</FormError>
               </InputGroup>
               <InputGroup className="max-w-full">

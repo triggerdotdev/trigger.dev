@@ -20,7 +20,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../../primitives/Select";
+} from "../../primitives/OldSelect";
 import { TimeFrameFilter } from "../TimeFrameFilter";
 import {
   TaskRunStatusCombo,

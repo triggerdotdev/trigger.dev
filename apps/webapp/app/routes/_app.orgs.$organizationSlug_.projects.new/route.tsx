@@ -23,7 +23,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "~/components/primitives/Select";
+} from "~/components/primitives/OldSelect";
 import { prisma } from "~/db.server";
 import { useFeatures } from "~/hooks/useFeatures";
 import { redirectWithSuccessMessage } from "~/models/message.server";

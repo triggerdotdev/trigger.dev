@@ -10,7 +10,7 @@ import {
   SelectItem,
   SelectLinkItem,
   shortcutFromIndex,
-} from "~/components/primitives/Listbox";
+} from "~/components/primitives/Select";
 import {
   TaskRunStatusCombo,
   allTaskRunStatuses,

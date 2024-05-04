@@ -20,7 +20,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/Select";
+} from "../primitives/OldSelect";
 import { Spinner } from "../primitives/Spinner";
 import {
   FilterableEnvironment,

@@ -24,7 +24,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "~/components/primitives/Select";
+} from "~/components/primitives/OldSelect";
 import { featuresForRequest } from "~/features.server";
 import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";

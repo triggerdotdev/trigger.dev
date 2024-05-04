@@ -13,7 +13,7 @@ import {
   SelectProvider,
   SelectTrigger,
   shortcutFromIndex,
-} from "~/components/primitives/Listbox";
+} from "~/components/primitives/Select";
 import {
   TaskRunStatusCombo,
   allTaskRunStatuses,

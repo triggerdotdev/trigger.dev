@@ -25,7 +25,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "~/components/primitives/Select";
+} from "~/components/primitives/OldSelect";
 import { TextLink } from "~/components/primitives/TextLink";
 import { runStatusClassNameColor, runStatusTitle } from "~/components/runs/RunStatuses";
 import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";

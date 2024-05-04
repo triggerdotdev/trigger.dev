@@ -8,7 +8,7 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-} from "~/components/primitives/Select";
+} from "~/components/primitives/OldSelect";
 
 export default function Story() {
   return (

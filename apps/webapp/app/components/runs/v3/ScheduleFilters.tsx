@@ -14,7 +14,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../../primitives/Select";
+} from "../../primitives/OldSelect";
 import { Input } from "~/components/primitives/Input";
 import { useDebounce } from "~/hooks/useDebounce";
 import { useThrottle } from "~/hooks/useThrottle";
