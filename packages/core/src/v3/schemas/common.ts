@@ -50,7 +50,7 @@ export const TaskRunInternalError = z.object({
     "TASK_RUN_CANCELLED",
     "TASK_OUTPUT_ERROR",
     "HANDLE_ERROR_ERROR",
-    "GRACEFUL_EXIT_TIMEOUT"
+    "GRACEFUL_EXIT_TIMEOUT",
   ]),
   message: z.string().optional(),
 });

@@ -316,3 +316,49 @@ export const ListScheduleOptions = z.object({
 });
 
 export type ListScheduleOptions = z.infer<typeof ListScheduleOptions>;
+
+export const RunStatus = z.enum([
+  "PENDING",
+  "EXECUTING",
+  "PAUSED",
+  "COMPLETED",
+  "FAILED",
+  "CANCELED",
+]);
+
+export type RunStatus = z.infer<typeof RunStatus>;
+
+export const AttemptStatus = z.enum([
+  "PENDING",
+  "EXECUTING",
+  "PAUSED",
+  "COMPLETED",
+  "FAILED",
+  "CANCELED",
+]);
+
+export type AttemptStatus = z.infer<typeof AttemptStatus>;
+
+export const RetrieveRunResponse = z.object({
+  id: z.string(),
+  status: RunStatus,
+  taskIdentifier: z.string(),
+  idempotencyKey: z.string().optional(),
+  version: z.string().optional(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  attempts: z.array(
+    z
+      .object({
+        id: z.string(),
+        status: AttemptStatus,
+        createdAt: z.coerce.date(),
+        updatedAt: z.coerce.date(),
+        startedAt: z.coerce.date().optional(),
+        completedAt: z.coerce.date().optional(),
+      })
+      .optional()
+  ),
+});
+
+export type RetrieveRunResponse = z.infer<typeof RetrieveRunResponse>;

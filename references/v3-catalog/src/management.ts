@@ -8,6 +8,10 @@ dotenv.config();
 export async function run() {
   try {
     const run = await simpleChildTask.trigger({ message: "Hello, World!" });
+
+    const retrievedRun = await runs.retrieve(run.id);
+    console.log("retrieved run", retrievedRun);
+
     const canceled = await runs.cancel(run.id);
     console.log("canceled run", canceled);
 

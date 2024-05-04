@@ -11,6 +11,7 @@ import {
   ListScheduleOptions,
   ListSchedulesResult,
   ReplayRunResponse,
+  RetrieveRunResponse,
   ScheduleObject,
   TaskRunExecutionResult,
   TriggerTaskRequestBody,
@@ -125,6 +126,18 @@ export class ApiClient {
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
       `${this.baseUrl}/api/v1/packets/${filename}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      zodFetchOptions
+    );
+  }
+
+  retrieveRun(runId: string) {
+    return zodfetch(
+      RetrieveRunResponse,
+      `${this.baseUrl}/api/v3/runs/${runId}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
