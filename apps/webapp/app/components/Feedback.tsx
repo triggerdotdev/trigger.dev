@@ -1,10 +1,14 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
 import { DiscordIcon, GitHubLightIcon } from "@trigger.dev/companyicons";
+import { ActivityIcon } from "lucide-react";
 import { ReactNode, useState } from "react";
 import { FeedbackType, feedbackTypeLabel, schema } from "~/routes/resources.feedback";
+import { cn } from "~/utils/cn";
+import { docsPath } from "~/utils/pathBuilder";
 import { Button, LinkButton } from "./primitives/Buttons";
 import { Fieldset } from "./primitives/Fieldset";
 import { FormButtons } from "./primitives/FormButtons";
@@ -13,13 +17,9 @@ import { Header1, Header2 } from "./primitives/Headers";
 import { InputGroup } from "./primitives/InputGroup";
 import { Label } from "./primitives/Label";
 import { Paragraph } from "./primitives/Paragraph";
+import { Select, SelectItem } from "./primitives/Select";
 import { Sheet, SheetBody, SheetContent, SheetTrigger } from "./primitives/Sheet";
 import { TextArea } from "./primitives/TextArea";
-import { cn } from "~/utils/cn";
-import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { ActivityIcon, HeartPulseIcon } from "lucide-react";
-import { docsPath } from "~/utils/pathBuilder";
-import { Select, SelectItem } from "./primitives/Select";
 
 type FeedbackProps = {
   button: ReactNode;

@@ -65,10 +65,10 @@ export interface SelectProps<TValue extends string | string[], TItem>
   extends Omit<Ariakit.SelectProps, "children"> {
   icon?: React.ReactNode;
   text?: React.ReactNode | ((value: TValue) => React.ReactNode);
+  placeholder?: React.ReactNode;
   value?: Ariakit.SelectProviderProps<TValue>["value"];
   setValue?: Ariakit.SelectProviderProps<TValue>["setValue"];
   defaultValue?: Ariakit.SelectProviderProps<TValue>["defaultValue"];
-
   label?: string | Ariakit.SelectLabelProps["render"];
   heading?: string;
   showHeading?: boolean;
@@ -100,6 +100,7 @@ export function Select<TValue extends string | string[], TItem>({
   children,
   icon,
   text,
+  placeholder,
   value,
   setValue,
   defaultValue,
@@ -163,6 +164,7 @@ export function Select<TValue extends string | string[], TItem>({
         icon={icon}
         variant={variant}
         text={text}
+        placeholder={placeholder}
         shortcut={shortcut}
         tooltipTitle={heading}
         disabled={disabled}
@@ -218,6 +220,7 @@ export function Select<TValue extends string | string[], TItem>({
 export interface SelectTriggerProps<TValue = any> extends AriaSelectProps {
   icon?: React.ReactNode;
   text?: React.ReactNode | ((value: TValue) => React.ReactNode);
+  placeholder?: React.ReactNode;
   variant?: Variant;
   shortcut?: ShortcutDefinition;
   tooltipTitle?: string;
@@ -230,6 +233,7 @@ export function SelectTrigger({
   shortcut,
   tooltipTitle,
   disabled,
+  placeholder,
   ...props
 }: SelectTriggerProps) {
   const ref = React.useRef<HTMLButtonElement>(null);
@@ -248,6 +252,29 @@ export function SelectTrigger({
   const showTooltip = tooltipTitle || shortcut;
   const variantClasses = variants[variant];
 
+  let content: React.ReactNode = "";
+  if (text !== undefined) {
+    if (typeof text === "function") {
+      content = <SelectValue>{(value) => <>{text(value) ?? placeholder}</>}</SelectValue>;
+    } else {
+      content = text;
+    }
+  } else {
+    content = (
+      <SelectValue>
+        {(value) => (
+          <>
+            {typeof value === "string"
+              ? value ?? placeholder
+              : value.length === 0
+              ? placeholder
+              : value.join(", ")}
+          </>
+        )}
+      </SelectValue>
+    );
+  }
+
   return (
     <Ariakit.TooltipProvider timeout={200}>
       <Ariakit.TooltipAnchor
@@ -265,21 +292,7 @@ export function SelectTrigger({
         }
       >
         {icon}
-        <div className="truncate">
-          {text !== undefined ? (
-            typeof text === "function" ? (
-              <SelectValue>{(value) => <>{text(value)}</>}</SelectValue>
-            ) : (
-              text
-            )
-          ) : (
-            <SelectValue>
-              {(value) => (
-                <>{typeof value === "object" && Array.isArray(value) ? value.join(", ") : value}</>
-              )}
-            </SelectValue>
-          )}
-        </div>
+        <div className="truncate">{content}</div>
       </Ariakit.TooltipAnchor>
       {showTooltip && (
         <Ariakit.Tooltip
