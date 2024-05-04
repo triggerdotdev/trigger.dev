@@ -7,6 +7,7 @@ import { Fragment, useMemo, useState } from "react";
 import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { ShortcutKey } from "./ShortcutKey";
+import { ChevronDown } from "lucide-react";
 
 const sizes = {
   small: {
@@ -94,6 +95,7 @@ export interface SelectProps<TValue extends string | string[], TItem>
   shortcut?: ShortcutDefinition;
   allowItemShortcuts?: boolean;
   clearSearchOnSelection?: boolean;
+  dropdownIcon?: boolean | React.ReactNode;
 }
 
 export function Select<TValue extends string | string[], TItem>({
@@ -117,6 +119,7 @@ export function Select<TValue extends string | string[], TItem>({
   allowItemShortcuts = true,
   disabled,
   clearSearchOnSelection = true,
+  dropdownIcon,
   ...props
 }: SelectProps<TValue, TItem>) {
   const [searchValue, setSearchValue] = useState("");
@@ -168,6 +171,7 @@ export function Select<TValue extends string | string[], TItem>({
         shortcut={shortcut}
         tooltipTitle={heading}
         disabled={disabled}
+        dropdownIcon={dropdownIcon}
         {...props}
       />
       <SelectPopover>
@@ -224,6 +228,7 @@ export interface SelectTriggerProps<TValue = any> extends AriaSelectProps {
   variant?: Variant;
   shortcut?: ShortcutDefinition;
   tooltipTitle?: string;
+  dropdownIcon?: boolean | React.ReactNode;
 }
 
 export function SelectTrigger({
@@ -234,6 +239,7 @@ export function SelectTrigger({
   tooltipTitle,
   disabled,
   placeholder,
+  dropdownIcon = false,
   ...props
 }: SelectTriggerProps) {
   const ref = React.useRef<HTMLButtonElement>(null);
@@ -291,8 +297,19 @@ export function SelectTrigger({
           ></Ariakit.Select>
         }
       >
-        {icon}
-        <div className="truncate">{content}</div>
+        <div className="flex grow items-center gap-1">
+          {icon}
+          <div className="truncate">{content}</div>
+        </div>
+        {dropdownIcon === true ? (
+          <ChevronDown
+            className={cn(
+              "size-4 flex-none text-text-dimmed transition group-hover:text-text-bright group-focus:text-text-bright"
+            )}
+          />
+        ) : !dropdownIcon ? null : (
+          dropdownIcon
+        )}
       </Ariakit.TooltipAnchor>
       {showTooltip && (
         <Ariakit.Tooltip
