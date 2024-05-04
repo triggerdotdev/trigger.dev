@@ -10,19 +10,36 @@ import { ShortcutKey } from "./ShortcutKey";
 
 const sizes = {
   small: {
-    button: "h-6 rounded text-xs pr-2 pl-1.5",
+    button: "h-6 rounded text-xs px-2 ",
   },
   medium: {
-    button: "h-8 rounded text-xs pr-2 pl-1.5",
+    button: "h-8 rounded text-xs px-3 text-sm",
+  },
+};
+
+const style = {
+  tertiary: {
+    button:
+      "bg-tertiary focus-within:ring-charcoal-500 border border-tertiary hover:text-text-bright hover:border-charcoal-600",
+  },
+  minimal: {
+    button:
+      "bg-transparent focus-within:ring-charcoal-500 hover:bg-tertiary disabled:bg-transparent disabled:pointer-events-none",
   },
 };
 
 const variants = {
   "tertiary/small": {
-    button: cn(
-      sizes.small.button,
-      "bg-tertiary focus-within:ring-charcoal-500 border border-tertiary hover:text-text-bright hover:border-charcoal-600"
-    ),
+    button: cn(sizes.small.button, style.tertiary.button),
+  },
+  "tertiary/medium": {
+    button: cn(sizes.medium.button, style.tertiary.button),
+  },
+  "minimal/small": {
+    button: cn(sizes.small.button, style.minimal.button),
+  },
+  "minimal/medium": {
+    button: cn(sizes.medium.button, style.minimal.button),
   },
 };
 

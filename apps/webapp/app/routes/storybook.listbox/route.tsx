@@ -63,6 +63,43 @@ export default function Story() {
           </Select>
 
           <Select
+            variant="tertiary/medium"
+            text="Tertiary medium"
+            defaultValue={[]}
+            shortcut={{ key: "e" }}
+          >
+            <SelectItem value={"value"} shortcut={{ key: "1" }}>
+              Item 1
+            </SelectItem>
+            <SelectItem value={"value2"} shortcut={{ key: "2" }}>
+              Item 2
+            </SelectItem>
+          </Select>
+
+          <Select variant="minimal/small" text="Minimal" defaultValue={[]} shortcut={{ key: "e" }}>
+            <SelectItem value={"value"} shortcut={{ key: "1" }}>
+              Item 1
+            </SelectItem>
+            <SelectItem value={"value2"} shortcut={{ key: "2" }}>
+              Item 2
+            </SelectItem>
+          </Select>
+
+          <Select
+            variant="minimal/medium"
+            text="Tertiary medium"
+            defaultValue={[]}
+            shortcut={{ key: "e" }}
+          >
+            <SelectItem value={"value"} shortcut={{ key: "1" }}>
+              Item 1
+            </SelectItem>
+            <SelectItem value={"value2"} shortcut={{ key: "2" }}>
+              Item 2
+            </SelectItem>
+          </Select>
+
+          <Select
             name="static"
             text="Heading"
             defaultValue={[]}

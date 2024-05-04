@@ -45,6 +45,7 @@ const filterTypes = [
 
 type FilterType = (typeof filterTypes)[number]["name"];
 
+//todo what if we had shortcut keys that would deeplink you to the appropriate filter?
 function Filter() {
   const [filterType, setFilterType] = useState<FilterType | undefined>();
   const [searchValue, setSearchValue] = useState("");
