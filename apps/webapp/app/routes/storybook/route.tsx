@@ -135,10 +135,6 @@ const stories: Story[] = [
     slug: "select",
   },
   {
-    name: "Listbox",
-    slug: "listbox",
-  },
-  {
     name: "Filter",
     slug: "filter",
   },
