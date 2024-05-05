@@ -75,20 +75,15 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
                   {...conform.select(feedbackType)}
                   variant="tertiary/medium"
                   defaultValue={defaultValue}
-                  heading={"Filter..."}
+                  placeholder="Select type"
                   text={(value) => feedbackTypeLabel[value]}
-                  items={Object.entries(feedbackTypeLabel).map(([name, title]) => ({
-                    name,
-                    title,
-                  }))}
+                  dropdownIcon
                 >
-                  {(matches) =>
-                    matches?.map(({ name, title }) => (
-                      <SelectItem key={name} value={name}>
-                        {title}
-                      </SelectItem>
-                    ))
-                  }
+                  {Object.entries(feedbackTypeLabel).map(([name, title]) => (
+                    <SelectItem key={name} value={name}>
+                      {title}
+                    </SelectItem>
+                  ))}
                 </Select>
                 <FormError id={feedbackType.errorId}>{feedbackType.error}</FormError>
               </InputGroup>
