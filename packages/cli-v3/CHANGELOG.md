@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 3.0.0-beta.27
+
+### Patch Changes
+
+- 1670c4c41: Remove "log" Log Level, unify log and info messages under the "info" log level
+- Updated dependencies [1670c4c41]
+- Updated dependencies [203e00208]
+  - @trigger.dev/core@3.0.0-beta.27
+
 ## 3.0.0-beta.26
 
 ### Patch Changes

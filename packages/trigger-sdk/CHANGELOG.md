@@ -1,5 +1,15 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.27
+
+### Patch Changes
+
+- 203e00208: Add runs.retrieve management API method to get info about a run by run ID
+- Updated dependencies [1670c4c41]
+- Updated dependencies [203e00208]
+  - @trigger.dev/core@3.0.0-beta.27
+  - @trigger.dev/core-backend@3.0.0-beta.27
+
 ## 3.0.0-beta.26
 
 ### Patch Changes
