@@ -30,7 +30,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug } = ProjectParamSchema.parse(params);
 
   const url = new URL(request.url);
-  const s = Object.fromEntries(url.searchParams.entries());
+  const s = {
+    cursor: url.searchParams.get("cursor") ?? undefined,
+    direction: url.searchParams.get("direction") ?? undefined,
+    statuses: url.searchParams.getAll("statuses"),
+    environments: url.searchParams.getAll("environments"),
+    tasks: url.searchParams.getAll("tasks"),
+  };
   const { tasks, versions, statuses, environments, from, to, cursor, direction } =
     TaskRunListSearchFilters.parse(s);
 

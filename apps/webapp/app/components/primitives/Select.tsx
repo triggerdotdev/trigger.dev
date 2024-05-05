@@ -259,7 +259,9 @@ export function SelectTrigger({
   const variantClasses = variants[variant];
 
   let content: React.ReactNode = "";
-  if (text !== undefined) {
+  if (props.children) {
+    content = props.children;
+  } else if (text !== undefined) {
     if (typeof text === "function") {
       content = <SelectValue>{(value) => <>{text(value) ?? placeholder}</>}</SelectValue>;
     } else {
@@ -287,18 +289,17 @@ export function SelectTrigger({
         className="button"
         render={
           <Ariakit.Select
-            {...props}
             className={cn(
               "group flex items-center gap-1 outline-offset-0 focus-within:outline-none focus-within:ring-1 disabled:cursor-not-allowed disabled:opacity-50",
               variantClasses.button,
               props.className
             )}
             ref={ref}
-          ></Ariakit.Select>
+          />
         }
       >
-        <div className="flex grow items-center gap-1">
-          {icon}
+        <div className="flex grow items-center gap-0.5">
+          {icon && <div className="-ml-1.5 flex-none">{icon}</div>}
           <div className="truncate">{content}</div>
         </div>
         {dropdownIcon === true ? (
@@ -401,6 +402,7 @@ export function SelectList(props: SelectListProps) {
 
 export interface SelectItemProps extends Ariakit.SelectItemProps {
   icon?: React.ReactNode;
+  checkIcon?: React.ReactNode;
   shortcut?: ShortcutDefinition;
 }
 
@@ -408,7 +410,8 @@ const selectItemClasses =
   "group cursor-pointer px-1 pt-1 text-xs text-text-dimmed outline-none last:pb-1";
 
 export function SelectItem({
-  icon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
+  icon,
+  checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
   shortcut,
   ...props
 }: SelectItemProps) {
@@ -442,8 +445,9 @@ export function SelectItem({
       ref={ref}
     >
       <div className="flex h-7 w-full items-center gap-1 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
-        <div className="grow truncate">{props.children || props.value}</div>
         {icon}
+        <div className="grow truncate">{props.children || props.value}</div>
+        {checkIcon}
         {shortcut && (
           <ShortcutKey className={cn("size-4 flex-none")} shortcut={shortcut} variant={"small"} />
         )}
@@ -454,12 +458,13 @@ export function SelectItem({
 
 export interface SelectLinkItemProps extends Ariakit.SelectItemProps {
   icon?: React.ReactNode;
+  checkIcon?: React.ReactNode;
   shortcut?: ShortcutDefinition;
   to: string;
 }
 
 export function SelectLinkItem({
-  icon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
+  checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
   to,
   ...props
 }: SelectLinkItemProps) {
@@ -477,12 +482,13 @@ export function SelectLinkItem({
 
 export interface SelectButtonItemProps extends Omit<Ariakit.SelectItemProps, "onClick"> {
   icon?: React.ReactNode;
+  checkIcon?: React.ReactNode;
   shortcut?: ShortcutDefinition;
   onClick: React.ComponentProps<"button">["onClick"];
 }
 
 export function SelectButtonItem({
-  icon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
+  checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
   onClick,
   ...props
 }: SelectButtonItemProps) {

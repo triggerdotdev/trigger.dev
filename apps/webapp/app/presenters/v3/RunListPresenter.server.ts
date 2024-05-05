@@ -224,7 +224,11 @@ export class RunListPresenter extends BasePresenter {
         next,
         previous,
       },
-      possibleTasks: possibleTasks.map((task) => task.slug),
+      possibleTasks: possibleTasks
+        .map((task) => ({ slug: task.slug, triggerSource: task.triggerSource }))
+        .sort((a, b) => {
+          return a.slug.localeCompare(b.slug);
+        }),
       filters: {
         tasks: tasks || [],
         versions: versions || [],
