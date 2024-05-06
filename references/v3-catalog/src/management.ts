@@ -1,4 +1,4 @@
-import { APIError, runs, schedules } from "@trigger.dev/sdk/v3";
+import { APIError, configure, runs, schedules } from "@trigger.dev/sdk/v3";
 import { simpleChildTask } from "./trigger/subtasks";
 import dotenv from "dotenv";
 import { firstScheduledTask } from "./trigger/scheduled";
