@@ -1636,6 +1636,26 @@ async function resolveRequiredDependencies(
       }
     }
 
+    if (!dependencies["@trigger.dev/sdk"]) {
+      logger.debug("Adding missing @trigger.dev/sdk dependency", {
+        version: packageJson.version,
+      });
+
+      span.setAttribute("addingMissingSDK", packageJson.version);
+
+      dependencies["@trigger.dev/sdk"] = packageJson.version;
+    }
+
+    if (!dependencies["@trigger.dev/core"]) {
+      logger.debug("Adding missing @trigger.dev/core dependency", {
+        version: packageJson.version,
+      });
+
+      span.setAttribute("addingMissingCore", packageJson.version);
+
+      dependencies["@trigger.dev/core"] = packageJson.version;
+    }
+
     // Make sure we sort the dependencies by key to ensure consistent hashing
     const result = Object.fromEntries(
       Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b))
