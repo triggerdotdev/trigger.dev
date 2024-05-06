@@ -7,7 +7,7 @@ import { flattenAttributes } from "../utils/flattenAttributes";
 import { ClockTime } from "../clock/clock";
 import { clock } from "../clock-api";
 
-export type LogLevel = "none" | "error" | "warn" | "info" | "debug";
+export type LogLevel = "none" | "error" | "warn" | "info" | "debug" | "log";
 
 export const logLevels: Array<LogLevel> = ["none", "error", "warn", "info", "debug"];
 
