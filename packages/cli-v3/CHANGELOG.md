@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 3.0.0-beta.28
+
+### Patch Changes
+
+- 2156e1526: Adding some additional telemetry during deploy to help debug issues
+- 6406924b0: Ensure @trigger.dev/sdk and @trigger.dev/core are always in the list of deployed dependencies
+- Updated dependencies [d490bc5cb]
+- Updated dependencies [6d9dfbc75]
+  - @trigger.dev/core@3.0.0-beta.28
+
 ## 3.0.0-beta.27
 
 ### Patch Changes

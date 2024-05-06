@@ -1,5 +1,12 @@
 # internal-platform
 
+## 3.0.0-beta.28
+
+### Patch Changes
+
+- d490bc5cb: Add the "log" level back in as an alias to "info"
+- 6d9dfbc75: Add configure function to be able to configure the SDK manually
+
 ## 3.0.0-beta.27
 
 ### Patch Changes
