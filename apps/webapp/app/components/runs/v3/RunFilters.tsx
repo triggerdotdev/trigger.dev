@@ -73,38 +73,7 @@ export function RunsFilters(props: RunFiltersProps) {
   return (
     <div className="flex flex-row justify-between">
       <FilterMenu {...props} />
-      {/* 
-      <SelectGroup>
-        <Select name="tasks" value={tasks?.at(0) ?? "ALL"} onValueChange={handleTaskChange}>
-          <SelectTrigger size="minimal" width="full">
-            <SelectValue placeholder="Select task" className="ml-2 p-0" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={"ALL"}>
-              <Paragraph
-                variant="extra-small"
-                className="pl-0.5 transition group-hover:text-text-bright"
-              >
-                All tasks
-              </Paragraph>
-            </SelectItem>
-            {possibleTasks
-              .sort((a, b) => a.localeCompare(b)) // 🔤
-              .map((task) => (
-                <SelectItem key={task} value={task}>
-                  <Paragraph
-                    variant="extra-small"
-                    className="pl-0.5 transition group-hover:text-text-bright"
-                  >
-                    {task}
-                  </Paragraph>
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-      </SelectGroup>
-
-      <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} /> */}
+      {/* <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} /> */}
       <Form>
         <Button variant="minimal/small" LeadingIcon={XMarkIcon} />
       </Form>
@@ -125,6 +94,11 @@ const filterTypes = [
   { name: "environments", title: "Environment", icon: <CpuChipIcon className="size-4" /> },
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
 ];
+
+//todo add created from
+//todo add created to
+//todo show the filter lozenges
+//todo update the style of the clear button
 
 type FilterType = (typeof filterTypes)[number]["name"];
 
