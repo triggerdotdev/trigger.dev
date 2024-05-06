@@ -334,6 +334,7 @@ function EditEnvironmentVariablePanel({
                         name={`values[${index}].value`}
                         placeholder="Not set"
                         defaultValue={value}
+                        type="password"
                       />
                     </Fragment>
                   );

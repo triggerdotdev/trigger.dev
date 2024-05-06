@@ -363,3 +363,20 @@ export const RetrieveRunResponse = z.object({
 });
 
 export type RetrieveRunResponse = z.infer<typeof RetrieveRunResponse>;
+
+export const CreateEnvironmentVariableRequestBody = z.object({
+  name: z.string(),
+  value: z.string(),
+});
+
+export type CreateEnvironmentVariableRequestBody = z.infer<
+  typeof CreateEnvironmentVariableRequestBody
+>;
+
+export const UpdateEnvironmentVariableRequestBody = z.object({
+  value: z.string(),
+});
+
+export type UpdateEnvironmentVariableRequestBody = z.infer<
+  typeof UpdateEnvironmentVariableRequestBody
+>;
