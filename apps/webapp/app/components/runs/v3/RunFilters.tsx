@@ -443,6 +443,7 @@ function Created({ trigger, clearSearchValue, searchValue, setFilterType }: Menu
           setFilterType(undefined);
           return false;
         }}
+        resetOnEscape={false}
       >
         <ComboBox placeholder={"Filter by period..."} value={searchValue} />
         <SelectList>
