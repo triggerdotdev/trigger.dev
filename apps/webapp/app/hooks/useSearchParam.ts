@@ -2,41 +2,73 @@ import { useNavigate } from "@remix-run/react";
 import { useOptimisticLocation } from "./useOptimisticLocation";
 import { useCallback } from "react";
 
-export function useSearchParam(param: string) {
+type Values = Record<string, string | string[] | undefined>;
+
+export function useSearchParams() {
   const navigate = useNavigate();
   const location = useOptimisticLocation();
   const search = new URLSearchParams(location.search);
 
   const set = useCallback(
-    (value: string | string[]) => {
-      if (typeof value === "string") {
-        search.set(param, value);
-      } else {
+    (values: Values) => {
+      for (const [param, value] of Object.entries(values)) {
+        if (value === undefined) {
+          search.delete(param);
+          continue;
+        }
+
+        if (typeof value === "string") {
+          search.set(param, value);
+          continue;
+        }
+
         search.delete(param);
         for (const v of value) {
           search.append(param, v);
         }
       }
     },
-    [location, search, param]
+    [location, search]
   );
 
   const replace = useCallback(
-    (value: string | string[]) => {
-      set(value);
+    (values: Values) => {
+      set(values);
       navigate(`${location.pathname}?${search.toString()}`, { replace: true });
     },
-    [location, search, param]
+    [location, search]
   );
 
-  const del = useCallback(() => {
-    search.delete(param);
-    navigate(`${location.pathname}?${search.toString()}`, { replace: true });
-  }, [location, search, param]);
+  const del = useCallback(
+    (keys: string | string[]) => {
+      if (!Array.isArray(keys)) {
+        keys = [keys];
+      }
+      for (const key of keys) {
+        search.delete(key);
+      }
+      navigate(`${location.pathname}?${search.toString()}`, { replace: true });
+    },
+    [location, search]
+  );
+
+  const value = useCallback(
+    (param: string) => {
+      return search.get(param) ?? undefined;
+    },
+    [search]
+  );
+
+  const values = useCallback(
+    (param: string) => {
+      return search.getAll(param);
+    },
+    [search]
+  );
 
   return {
-    value: search.get(param) ?? undefined,
-    values: search.getAll(param),
+    value,
+    values,
     set,
     replace,
     del,

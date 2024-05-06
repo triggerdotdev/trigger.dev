@@ -19,7 +19,7 @@ import {
   allTaskRunStatuses,
   runStatusTitle,
 } from "~/components/runs/v3/TaskRunStatus";
-import { useSearchParam } from "~/hooks/useSearchParam";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
 
 export default function Story() {
@@ -146,11 +146,11 @@ const statuses = allTaskRunStatuses.map((status) => ({
 }));
 
 function Statuses({ trigger, clearSearchValue, shortcut, searchValue, setFilterType }: MenuProps) {
-  const { values, replace } = useSearchParam("status");
+  const { values, replace } = useSearchParams();
 
   const handleChange = useCallback((values: string[]) => {
     clearSearchValue();
-    replace(values);
+    replace({ status: values });
   }, []);
 
   const filtered = useMemo(() => {
@@ -158,7 +158,7 @@ function Statuses({ trigger, clearSearchValue, shortcut, searchValue, setFilterT
   }, [searchValue]);
 
   return (
-    <SelectProvider value={values} setValue={handleChange} virtualFocus={true}>
+    <SelectProvider value={values("status")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
         hideOnEscape={() => {
@@ -202,11 +202,11 @@ function Environments({
   searchValue,
   setFilterType,
 }: MenuProps) {
-  const { values, replace } = useSearchParam("environment");
+  const { values, replace } = useSearchParams();
 
   const handleChange = useCallback((values: string[]) => {
     clearSearchValue();
-    replace(values);
+    replace({ environment: values });
   }, []);
 
   const filtered = useMemo(() => {
@@ -216,7 +216,7 @@ function Environments({
   }, [searchValue]);
 
   return (
-    <SelectProvider value={values} setValue={handleChange} virtualFocus={true}>
+    <SelectProvider value={values("environment")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
         hideOnEscape={() => {

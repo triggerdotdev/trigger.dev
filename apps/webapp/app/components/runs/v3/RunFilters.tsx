@@ -24,7 +24,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
-import { useSearchParam } from "~/hooks/useSearchParam";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { Button } from "../../primitives/Buttons";
 import {
   TaskRunStatusCombo,
@@ -223,11 +223,11 @@ const statuses = allTaskRunStatuses.map((status) => ({
 }));
 
 function Statuses({ trigger, clearSearchValue, searchValue, setFilterType }: MenuProps) {
-  const { values, replace } = useSearchParam("statuses");
+  const { values, replace } = useSearchParams();
 
   const handleChange = useCallback((values: string[]) => {
     clearSearchValue();
-    replace(values);
+    replace({ statuses: values, cursor: undefined, direction: undefined });
   }, []);
 
   const filtered = useMemo(() => {
@@ -235,7 +235,7 @@ function Statuses({ trigger, clearSearchValue, searchValue, setFilterType }: Men
   }, [searchValue]);
 
   return (
-    <SelectProvider value={values} setValue={handleChange} virtualFocus={true}>
+    <SelectProvider value={values("statuses")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
         hideOnEscape={() => {
@@ -278,11 +278,11 @@ function Environments({
   setFilterType,
   possibleEnvironments,
 }: MenuProps) {
-  const { values, replace } = useSearchParam("environments");
+  const { values, replace } = useSearchParams();
 
   const handleChange = useCallback((values: string[]) => {
     clearSearchValue();
-    replace(values);
+    replace({ environments: values, cursor: undefined, direction: undefined });
   }, []);
 
   const filtered = useMemo(() => {
@@ -293,7 +293,7 @@ function Environments({
   }, [searchValue, possibleEnvironments]);
 
   return (
-    <SelectProvider value={values} setValue={handleChange} virtualFocus={true}>
+    <SelectProvider value={values("environments")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
         hideOnEscape={() => {
@@ -325,11 +325,11 @@ function Tasks({
   setFilterType,
   possibleTasks,
 }: MenuProps) {
-  const { values, replace } = useSearchParam("tasks");
+  const { values, replace } = useSearchParams();
 
   const handleChange = useCallback((values: string[]) => {
     clearSearchValue();
-    replace(values);
+    replace({ tasks: values, cursor: undefined, direction: undefined });
   }, []);
 
   const filtered = useMemo(() => {
@@ -339,7 +339,7 @@ function Tasks({
   }, [searchValue, possibleTasks]);
 
   return (
-    <SelectProvider value={values} setValue={handleChange} virtualFocus={true}>
+    <SelectProvider value={values("tasks")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
         hideOnEscape={() => {
@@ -420,17 +420,16 @@ const timePeriods = [
 ];
 
 function Created({ trigger, clearSearchValue, searchValue, setFilterType }: MenuProps) {
-  const { value, replace } = useSearchParam("period");
+  const { value, replace } = useSearchParams();
 
   const handleChange = useCallback(
     (newValue: string) => {
       clearSearchValue();
       if (newValue === "all") {
         if (!value) return;
-        replace(newValue);
-      } else {
-        replace(newValue);
       }
+
+      replace({ period: newValue, cursor: undefined, direction: undefined });
     },
     [value]
   );
@@ -442,7 +441,7 @@ function Created({ trigger, clearSearchValue, searchValue, setFilterType }: Menu
   }, [searchValue]);
 
   return (
-    <SelectProvider value={value} setValue={handleChange} virtualFocus={true}>
+    <SelectProvider value={value("period")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
         hideOnEnter={false}
@@ -477,17 +476,19 @@ function AppliedFilters({ possibleEnvironments, possibleTasks }: RunFiltersProps
 }
 
 function AppliedStatusFilter() {
-  const { values, del } = useSearchParam("statuses");
+  const { values, del } = useSearchParams();
 
-  if (values.length === 0) {
+  if (values("statuses").length === 0) {
     return null;
   }
 
   return (
     <AppliedFilter
       label="Status"
-      value={values.map((v) => runStatusTitle(v as TaskRunStatus)).join(", ")}
-      onRemove={() => del()}
+      value={values("statuses")
+        .map((v) => runStatusTitle(v as TaskRunStatus))
+        .join(", ")}
+      onRemove={() => del(["statuses", "cursor", "direction"])}
     />
   );
 }
@@ -495,59 +496,59 @@ function AppliedStatusFilter() {
 function AppliedEnvironmentFilter({
   possibleEnvironments,
 }: Pick<RunFiltersProps, "possibleEnvironments">) {
-  const { values, del } = useSearchParam("environments");
+  const { values, del } = useSearchParams();
 
-  if (values.length === 0) {
+  if (values("environments").length === 0) {
     return null;
   }
 
   return (
     <AppliedFilter
       label="Environment"
-      value={values
+      value={values("environments")
         .map((v) => {
           const environment = possibleEnvironments.find((env) => env.id === v);
           return environment ? environmentTitle(environment, environment.userName) : v;
         })
         .join(", ")}
-      onRemove={() => del()}
+      onRemove={() => del(["environments", "cursor", "direction"])}
     />
   );
 }
 
 function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTasks">) {
-  const { values, del } = useSearchParam("tasks");
+  const { values, del } = useSearchParams();
 
-  if (values.length === 0) {
+  if (values("tasks").length === 0) {
     return null;
   }
 
   return (
     <AppliedFilter
       label="Task"
-      value={values
+      value={values("tasks")
         .map((v) => {
           const task = possibleTasks.find((task) => task.slug === v);
           return task ? task.slug : v;
         })
         .join(", ")}
-      onRemove={() => del()}
+      onRemove={() => del(["tasks", "cursor", "direction"])}
     />
   );
 }
 
 function AppliedPeriodFilter() {
-  const { value, del } = useSearchParam("period");
+  const { value, del } = useSearchParams();
 
-  if (value === undefined || value === "all") {
+  if (value("period") === undefined || value("period") === "all") {
     return null;
   }
 
   return (
     <AppliedFilter
       label="Period"
-      value={timePeriods.find((t) => t.value === value)?.label ?? value}
-      onRemove={() => del()}
+      value={timePeriods.find((t) => t.value === value("period"))?.label ?? value("period")}
+      onRemove={() => del(["period", "cursor", "direction"])}
     />
   );
 }
