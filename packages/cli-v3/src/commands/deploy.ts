@@ -1286,7 +1286,7 @@ async function compileProject(
 
       const javascriptProject = new JavascriptProject(config.projectDir);
 
-      const dependencies = await gatherRequiredDependencies(allImports, config, javascriptProject);
+      const dependencies = await resolveRequiredDependencies(allImports, config, javascriptProject);
 
       logger.debug("gatherRequiredDependencies()", { dependencies });
 
@@ -1299,6 +1299,10 @@ async function compileProject(
           ...javascriptProject.scripts,
         },
       };
+
+      span.setAttributes({
+        ...flattenAttributes(packageJsonContents, "packageJson.contents"),
+      });
 
       await writeJSONFile(join(tempDir, "package.json"), packageJsonContents);
 
@@ -1548,81 +1552,103 @@ async function typecheckProject(config: ResolvedConfig, options: DeployCommandOp
 
 // Returns the dependencies that are required by the output that are found in output and the CLI package dependencies
 // Returns the dependency names and the version to use (taken from the CLI deps package.json)
-async function gatherRequiredDependencies(
+async function resolveRequiredDependencies(
   imports: Metafile["outputs"][string]["imports"],
   config: ResolvedConfig,
   project: JavascriptProject
 ) {
-  const dependencies: Record<string, string> = {};
-  const resolvablePackageNames = new Set<string>();
+  return await tracer.startActiveSpan("resolveRequiredDependencies", async (span) => {
+    const resolvablePackageNames = new Set<string>();
 
-  for (const file of imports) {
-    if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
-      continue;
-    }
-
-    const packageName = detectPackageNameFromImportPath(file.path);
-
-    if (!packageName) {
-      continue;
-    }
-
-    resolvablePackageNames.add(packageName);
-  }
-
-  const resolvedPackageVersions = await project.resolveAll(Array.from(resolvablePackageNames));
-  const missingPackages = Array.from(resolvablePackageNames).filter(
-    (packageName) => !resolvedPackageVersions[packageName]
-  );
-
-  for (const missingPackage of missingPackages) {
-    const internalDependencyVersion =
-      (packageJson.dependencies as Record<string, string>)[missingPackage] ??
-      detectDependencyVersion(missingPackage);
-
-    if (internalDependencyVersion) {
-      dependencies[missingPackage] = stripWorkspaceFromVersion(internalDependencyVersion);
-    }
-  }
-
-  for (const [packageName, version] of Object.entries(resolvedPackageVersions)) {
-    dependencies[packageName] = version;
-  }
-
-  if (config.additionalPackages) {
-    for (const packageName of config.additionalPackages) {
-      if (dependencies[packageName]) {
+    for (const file of imports) {
+      if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
         continue;
       }
 
-      const packageParts = parsePackageName(packageName);
+      const packageName = detectPackageNameFromImportPath(file.path);
 
-      if (packageParts.version) {
-        dependencies[packageParts.name] = packageParts.version;
+      if (!packageName) {
         continue;
-      } else {
-        const externalDependencyVersion = await project.resolve(packageParts.name, {
-          allowDev: true,
-        });
+      }
 
-        if (externalDependencyVersion) {
-          dependencies[packageParts.name] = externalDependencyVersion;
+      resolvablePackageNames.add(packageName);
+    }
+
+    span.setAttribute("resolvablePackageNames", Array.from(resolvablePackageNames));
+
+    const resolvedPackageVersions = await project.resolveAll(Array.from(resolvablePackageNames));
+    const missingPackages = Array.from(resolvablePackageNames).filter(
+      (packageName) => !resolvedPackageVersions[packageName]
+    );
+
+    span.setAttributes({
+      ...flattenAttributes(resolvedPackageVersions, "resolvedPackageVersions"),
+    });
+    span.setAttribute("missingPackages", missingPackages);
+
+    const dependencies: Record<string, string> = {};
+
+    for (const missingPackage of missingPackages) {
+      const internalDependencyVersion =
+        (packageJson.dependencies as Record<string, string>)[missingPackage] ??
+        detectDependencyVersion(missingPackage);
+
+      if (internalDependencyVersion) {
+        dependencies[missingPackage] = stripWorkspaceFromVersion(internalDependencyVersion);
+      }
+    }
+
+    for (const [packageName, version] of Object.entries(resolvedPackageVersions)) {
+      dependencies[packageName] = version;
+    }
+
+    if (config.additionalPackages) {
+      span.setAttribute("additionalPackages", config.additionalPackages);
+
+      for (const packageName of config.additionalPackages) {
+        if (dependencies[packageName]) {
+          continue;
+        }
+
+        const packageParts = parsePackageName(packageName);
+
+        if (packageParts.version) {
+          dependencies[packageParts.name] = packageParts.version;
           continue;
         } else {
-          logger.log(
-            `${chalkWarning("X Warning:")} Could not find version for package ${chalkPurple(
-              packageName
-            )}, add a version specifier to the package name (e.g. ${
-              packageParts.name
-            }@latest) or add it to your project's package.json`
-          );
+          const externalDependencyVersion = await project.resolve(packageParts.name, {
+            allowDev: true,
+          });
+
+          if (externalDependencyVersion) {
+            dependencies[packageParts.name] = externalDependencyVersion;
+            continue;
+          } else {
+            logger.log(
+              `${chalkWarning("X Warning:")} Could not find version for package ${chalkPurple(
+                packageName
+              )}, add a version specifier to the package name (e.g. ${
+                packageParts.name
+              }@latest) or add it to your project's package.json`
+            );
+          }
         }
       }
     }
-  }
 
-  // Make sure we sort the dependencies by key to ensure consistent hashing
-  return Object.fromEntries(Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b)));
+    // Make sure we sort the dependencies by key to ensure consistent hashing
+    const result = Object.fromEntries(
+      Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b))
+    );
+
+    span.setAttributes({
+      ...flattenAttributes(result, "dependencies"),
+    });
+
+    span.end();
+
+    return result;
+  });
 }
 
 type AdditionalFilesReturn =

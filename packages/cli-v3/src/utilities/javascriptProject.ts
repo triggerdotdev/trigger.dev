@@ -6,6 +6,9 @@ import { PackageManager, getUserPackageManager } from "./getUserPackageManager";
 import { PackageJson } from "type-fest";
 import { assertExhaustive } from "./assertExhaustive";
 import { builtinModules } from "node:module";
+import { tracer } from "../cli/common";
+import { recordSpanException } from "@trigger.dev/core/v3/otel";
+import { flattenAttributes } from "@trigger.dev/core/v3";
 
 export type ResolveOptions = { allowDev: boolean };
 
@@ -47,60 +50,81 @@ export class JavascriptProject {
     packageNames: string[],
     options?: ResolveOptions
   ): Promise<Record<string, string>> {
-    const externalPackages = packageNames.filter((packageName) => !isBuiltInModule(packageName));
+    return tracer.startActiveSpan("JavascriptProject.resolveAll", async (span) => {
+      const externalPackages = packageNames.filter((packageName) => !isBuiltInModule(packageName));
 
-    const opts = { allowDev: false, ...options };
+      const opts = { allowDev: false, ...options };
 
-    const command = await this.#getCommand();
+      const command = await this.#getCommand();
 
-    try {
-      const versions = await command.resolveDependencyVersions(externalPackages, {
-        cwd: this.projectPath,
+      span.setAttributes({
+        externalPackages,
+        packageManager: command.name,
       });
 
-      if (versions) {
-        logger.debug(`Resolved [${externalPackages.join(", ")}] version using ${command.name}`, {
-          versions,
+      try {
+        const versions = await command.resolveDependencyVersions(externalPackages, {
+          cwd: this.projectPath,
         });
-      }
 
-      // Merge the resolved versions with the package.json dependencies
-      const missingPackages = externalPackages.filter((packageName) => !versions[packageName]);
-      const missingPackageVersions: Record<string, string> = {};
-
-      for (const packageName of missingPackages) {
-        const packageJsonVersion = this.packageJson.dependencies?.[packageName];
-
-        if (typeof packageJsonVersion === "string") {
-          logger.debug(`Resolved ${packageName} version using package.json`, {
-            packageJsonVersion,
+        if (versions) {
+          logger.debug(`Resolved [${externalPackages.join(", ")}] version using ${command.name}`, {
+            versions,
           });
 
-          missingPackageVersions[packageName] = packageJsonVersion;
+          span.setAttributes({
+            ...flattenAttributes(versions, "versions"),
+          });
         }
 
-        if (opts.allowDev) {
-          const devPackageJsonVersion = this.packageJson.devDependencies?.[packageName];
+        // Merge the resolved versions with the package.json dependencies
+        const missingPackages = externalPackages.filter((packageName) => !versions[packageName]);
+        const missingPackageVersions: Record<string, string> = {};
 
-          if (typeof devPackageJsonVersion === "string") {
-            logger.debug(`Resolved ${packageName} version using devDependencies`, {
-              devPackageJsonVersion,
+        for (const packageName of missingPackages) {
+          const packageJsonVersion = this.packageJson.dependencies?.[packageName];
+
+          if (typeof packageJsonVersion === "string") {
+            logger.debug(`Resolved ${packageName} version using package.json`, {
+              packageJsonVersion,
             });
 
-            missingPackageVersions[packageName] = devPackageJsonVersion;
+            missingPackageVersions[packageName] = packageJsonVersion;
+          }
+
+          if (opts.allowDev) {
+            const devPackageJsonVersion = this.packageJson.devDependencies?.[packageName];
+
+            if (typeof devPackageJsonVersion === "string") {
+              logger.debug(`Resolved ${packageName} version using devDependencies`, {
+                devPackageJsonVersion,
+              });
+
+              missingPackageVersions[packageName] = devPackageJsonVersion;
+            }
           }
         }
+
+        span.setAttributes({
+          ...flattenAttributes(missingPackageVersions, "missingPackageVersions"),
+          missingPackages,
+        });
+
+        span.end();
+
+        return { ...versions, ...missingPackageVersions };
+      } catch (error) {
+        recordSpanException(span, error);
+        span.end();
+
+        logger.debug(`Failed to resolve dependency versions using ${command.name}`, {
+          packageNames,
+          error,
+        });
+
+        return {};
       }
-
-      return { ...versions, ...missingPackageVersions };
-    } catch (error) {
-      logger.debug(`Failed to resolve dependency versions using ${command.name}`, {
-        packageNames,
-        error,
-      });
-
-      return {};
-    }
+    });
   }
 
   async resolve(packageName: string, options?: ResolveOptions): Promise<string | undefined> {
