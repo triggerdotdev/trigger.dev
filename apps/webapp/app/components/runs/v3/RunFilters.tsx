@@ -33,6 +33,7 @@ import {
   runStatusTitle,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 
 export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);
 
@@ -73,12 +74,20 @@ type RunFiltersProps = {
 };
 
 export function RunsFilters(props: RunFiltersProps) {
+  const location = useOptimisticLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const hasFilters =
+    searchParams.has("statuses") ||
+    searchParams.has("environments") ||
+    searchParams.has("tasks") ||
+    searchParams.has("period");
+
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu {...props} />
       {/* <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} /> */}
       <AppliedFilters {...props} />
-      {props.hasFilters && (
+      {hasFilters && (
         <Form>
           <Button variant="minimal/small" LeadingIcon={XMarkIcon}>
             Clear all
@@ -103,8 +112,6 @@ const filterTypes = [
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
   { name: "created", title: "Created", icon: <CalendarIcon className="size-4" /> },
 ];
-
-//todo add created to
 
 type FilterType = (typeof filterTypes)[number]["name"];
 
