@@ -1,5 +1,15 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.28
+
+### Patch Changes
+
+- 6d9dfbc75: Add configure function to be able to configure the SDK manually
+- Updated dependencies [d490bc5cb]
+- Updated dependencies [6d9dfbc75]
+  - @trigger.dev/core@3.0.0-beta.28
+  - @trigger.dev/core-backend@3.0.0-beta.28
+
 ## 3.0.0-beta.27
 
 ### Patch Changes

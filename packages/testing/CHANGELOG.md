@@ -1,5 +1,14 @@
 # @trigger.dev/testing
 
+## 3.0.0-beta.28
+
+### Patch Changes
+
+- Updated dependencies [d490bc5cb]
+- Updated dependencies [6d9dfbc75]
+  - @trigger.dev/core@3.0.0-beta.28
+  - @trigger.dev/sdk@3.0.0-beta.28
+
 ## 3.0.0-beta.27
 
 ### Patch Changes
