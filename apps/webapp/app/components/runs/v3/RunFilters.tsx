@@ -1,10 +1,11 @@
-import { CpuChipIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { CalendarIcon, CpuChipIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { RuntimeEnvironment, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { startTransition, useCallback, useMemo, useState } from "react";
 import { z } from "zod";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
+import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ComboBox,
@@ -32,7 +33,6 @@ import {
   runStatusTitle,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
-import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 
 export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);
 
@@ -55,6 +55,7 @@ export const TaskRunListSearchFilters = z.object({
     (value) => (typeof value === "string" ? [value] : value),
     TaskAttemptStatus.array().optional()
   ),
+  period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
   from: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
 });
@@ -100,12 +101,10 @@ const filterTypes = [
   },
   { name: "environments", title: "Environment", icon: <CpuChipIcon className="size-4" /> },
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
+  { name: "created", title: "Created", icon: <CalendarIcon className="size-4" /> },
 ];
 
-//todo add created from
 //todo add created to
-//todo show the filter lozenges
-//todo update the style of the clear button
 
 type FilterType = (typeof filterTypes)[number]["name"];
 
@@ -122,7 +121,7 @@ function FilterMenu(props: RunFiltersProps) {
   const filterTrigger = (
     <SelectTrigger
       icon={<PlusIcon className="h-4 w-4" />}
-      variant={"tertiary/small"}
+      variant={"minimal/small"}
       shortcut={shortcut}
       tooltipTitle={"Filter runs"}
     >
@@ -174,6 +173,8 @@ function Menu(props: MenuProps) {
       return <Environments {...props} />;
     case "tasks":
       return <Tasks {...props} />;
+    case "created":
+      return <Created {...props} />;
   }
 }
 
@@ -188,7 +189,7 @@ function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: Men
     <SelectProvider virtualFocus={true}>
       {trigger}
       <SelectPopover>
-        <ComboBox placeholder={"Filter..."} shortcut={shortcut} value={searchValue} />
+        <ComboBox placeholder={"Filter by..."} shortcut={shortcut} value={searchValue} />
         <SelectList>
           {filtered.map((type, index) => (
             <SelectButtonItem
@@ -356,12 +357,113 @@ function Tasks({
   );
 }
 
+const timePeriods = [
+  {
+    label: "All periods",
+    value: "all",
+  },
+  {
+    label: "5 mins",
+    value: "5m",
+  },
+  {
+    label: "15 mins",
+    value: "15m",
+  },
+  {
+    label: "30 mins",
+    value: "30m",
+  },
+  {
+    label: "1 hour",
+    value: "1h",
+  },
+  {
+    label: "3 hours",
+    value: "3h",
+  },
+  {
+    label: "6 hours",
+    value: "6h",
+  },
+  {
+    label: "1 day",
+    value: "1d",
+  },
+  {
+    label: "3 days",
+    value: "3d",
+  },
+  {
+    label: "7 days",
+    value: "7d",
+  },
+  {
+    label: "10 days",
+    value: "10d",
+  },
+  {
+    label: "14 days",
+    value: "14d",
+  },
+  {
+    label: "30 days",
+    value: "30d",
+  },
+];
+
+function Created({ trigger, clearSearchValue, searchValue, setFilterType }: MenuProps) {
+  const { value, replace, del } = useSearchParam("period");
+
+  const handleChange = useCallback(
+    (newValue: string) => {
+      clearSearchValue();
+      if (newValue === "all") {
+        if (!value) return;
+        replace(newValue);
+      } else {
+        replace(newValue);
+      }
+    },
+    [value]
+  );
+
+  const filtered = useMemo(() => {
+    return timePeriods.filter((item) =>
+      item.label.toLowerCase().includes(searchValue.toLowerCase())
+    );
+  }, [searchValue]);
+
+  return (
+    <SelectProvider value={value} setValue={handleChange} virtualFocus={true}>
+      {trigger}
+      <SelectPopover
+        hideOnEnter={false}
+        hideOnEscape={() => {
+          setFilterType(undefined);
+          return false;
+        }}
+      >
+        <ComboBox placeholder={"Filter by period..."} value={searchValue} />
+        <SelectList>
+          {filtered.map((item) => (
+            <SelectItem key={item.value} value={item.value} hideOnClick={false}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
 function AppliedFilters({ possibleEnvironments, possibleTasks }: RunFiltersProps) {
   return (
     <>
       <AppliedStatusFilter />
       <AppliedEnvironmentFilter possibleEnvironments={possibleEnvironments} />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
+      <AppliedPeriodFilter />
     </>
   );
 }
@@ -421,6 +523,22 @@ function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTas
           return task ? task.slug : v;
         })
         .join(", ")}
+      onRemove={() => del()}
+    />
+  );
+}
+
+function AppliedPeriodFilter() {
+  const { value, del } = useSearchParam("period");
+
+  if (value === undefined || value === "all") {
+    return null;
+  }
+
+  return (
+    <AppliedFilter
+      label="Period"
+      value={timePeriods.find((t) => t.value === value)?.label ?? value}
       onRemove={() => del()}
     />
   );

@@ -1,4 +1,5 @@
 import { Prisma, TaskRunStatus } from "@trigger.dev/database";
+import parse from "parse-duration";
 import { Direction } from "~/components/runs/RunStatuses";
 import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
@@ -15,6 +16,7 @@ type RunListOptions = {
   statuses?: TaskRunStatus[];
   environments?: string[];
   scheduleId?: string;
+  period?: string;
   from?: number;
   to?: number;
   //pagination
@@ -38,6 +40,7 @@ export class RunListPresenter extends BasePresenter {
     statuses,
     environments,
     scheduleId,
+    period,
     from,
     to,
     direction = "forward",
@@ -51,6 +54,7 @@ export class RunListPresenter extends BasePresenter {
       (versions !== undefined && versions.length > 0) ||
       hasStatusFilters ||
       (environments !== undefined && environments.length > 0) ||
+      (period !== undefined && period !== "all") ||
       from !== undefined ||
       to !== undefined;
 
@@ -89,6 +93,8 @@ export class RunListPresenter extends BasePresenter {
         projectId: project.id,
       },
     });
+
+    const periodMs = period ? parse(period) : undefined;
 
     //get the runs
     let runs = await this._replica.$queryRaw<
@@ -152,6 +158,11 @@ export class RunListPresenter extends BasePresenter {
           : Prisma.empty
       }
       ${scheduleId ? Prisma.sql`AND tr."scheduleId" = ${scheduleId}` : Prisma.empty}
+      ${
+        periodMs
+          ? Prisma.sql`AND tr."createdAt" >= NOW() - INTERVAL '1 millisecond' * ${periodMs}`
+          : Prisma.empty
+      }
       ${
         from
           ? Prisma.sql`AND tr."createdAt" >= ${new Date(from).toISOString()}::timestamp`

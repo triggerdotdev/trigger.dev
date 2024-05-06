@@ -35,7 +35,7 @@ export function useSearchParam(param: string) {
   }, [location, search, param]);
 
   return {
-    value: search.get(param),
+    value: search.get(param) ?? undefined,
     values: search.getAll(param),
     set,
     replace,

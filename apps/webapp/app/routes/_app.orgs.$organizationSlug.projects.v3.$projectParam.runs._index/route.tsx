@@ -36,8 +36,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     statuses: url.searchParams.getAll("statuses"),
     environments: url.searchParams.getAll("environments"),
     tasks: url.searchParams.getAll("tasks"),
+    period: url.searchParams.get("period") ?? undefined,
   };
-  const { tasks, versions, statuses, environments, from, to, cursor, direction } =
+  const { tasks, versions, statuses, environments, period, from, to, cursor, direction } =
     TaskRunListSearchFilters.parse(s);
 
   const presenter = new RunListPresenter();
@@ -48,6 +49,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     versions,
     statuses,
     environments,
+    period,
     from,
     to,
     direction: direction,
