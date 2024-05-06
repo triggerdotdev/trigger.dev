@@ -47,10 +47,10 @@ export class RunListPresenter extends BasePresenter {
     const hasStatusFilters = statuses && statuses.length > 0;
 
     const hasFilters =
-      tasks !== undefined ||
-      versions !== undefined ||
+      (tasks !== undefined && tasks.length > 0) ||
+      (versions !== undefined && versions.length > 0) ||
       hasStatusFilters ||
-      environments !== undefined ||
+      (environments !== undefined && environments.length > 0) ||
       from !== undefined ||
       to !== undefined;
 

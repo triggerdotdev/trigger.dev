@@ -32,6 +32,7 @@ import {
   runStatusTitle,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
+import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 
 export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);
 
@@ -67,16 +68,22 @@ type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
 type RunFiltersProps = {
   possibleEnvironments: DisplayableEnvironment[];
   possibleTasks: { slug: string; triggerSource: TaskTriggerSource }[];
+  hasFilters: boolean;
 };
 
 export function RunsFilters(props: RunFiltersProps) {
   return (
-    <div className="flex flex-row justify-between">
+    <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu {...props} />
       {/* <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} /> */}
-      <Form>
-        <Button variant="minimal/small" LeadingIcon={XMarkIcon} />
-      </Form>
+      <AppliedFilters {...props} />
+      {props.hasFilters && (
+        <Form>
+          <Button variant="minimal/small" LeadingIcon={XMarkIcon}>
+            Clear all
+          </Button>
+        </Form>
+      )}
     </div>
   );
 }
@@ -346,5 +353,75 @@ function Tasks({
         </SelectList>
       </SelectPopover>
     </SelectProvider>
+  );
+}
+
+function AppliedFilters({ possibleEnvironments, possibleTasks }: RunFiltersProps) {
+  return (
+    <>
+      <AppliedStatusFilter />
+      <AppliedEnvironmentFilter possibleEnvironments={possibleEnvironments} />
+      <AppliedTaskFilter possibleTasks={possibleTasks} />
+    </>
+  );
+}
+
+function AppliedStatusFilter() {
+  const { values, del } = useSearchParam("statuses");
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  return (
+    <AppliedFilter
+      label="Status"
+      value={values.map((v) => runStatusTitle(v as TaskRunStatus)).join(", ")}
+      onRemove={() => del()}
+    />
+  );
+}
+
+function AppliedEnvironmentFilter({
+  possibleEnvironments,
+}: Pick<RunFiltersProps, "possibleEnvironments">) {
+  const { values, del } = useSearchParam("environments");
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  return (
+    <AppliedFilter
+      label="Environment"
+      value={values
+        .map((v) => {
+          const environment = possibleEnvironments.find((env) => env.id === v);
+          return environment ? environmentTitle(environment, environment.userName) : v;
+        })
+        .join(", ")}
+      onRemove={() => del()}
+    />
+  );
+}
+
+function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTasks">) {
+  const { values, del } = useSearchParam("tasks");
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  return (
+    <AppliedFilter
+      label="Task"
+      value={values
+        .map((v) => {
+          const task = possibleTasks.find((task) => task.slug === v);
+          return task ? task.slug : v;
+        })
+        .join(", ")}
+      onRemove={() => del()}
+    />
   );
 }
