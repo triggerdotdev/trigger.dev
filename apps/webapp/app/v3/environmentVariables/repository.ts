@@ -31,13 +31,21 @@ export const EditEnvironmentVariable = z.object({
       value: z.string(),
     })
   ),
+  keepEmptyValues: z.boolean().optional(),
 });
 export type EditEnvironmentVariable = z.infer<typeof EditEnvironmentVariable>;
 
 export const DeleteEnvironmentVariable = z.object({
   id: z.string(),
+  environmentId: z.string().optional(),
 });
 export type DeleteEnvironmentVariable = z.infer<typeof DeleteEnvironmentVariable>;
+
+export const DeleteEnvironmentVariableValue = z.object({
+  id: z.string(),
+  environmentId: z.string(),
+});
+export type DeleteEnvironmentVariableValue = z.infer<typeof DeleteEnvironmentVariableValue>;
 
 export type Result =
   | {
@@ -75,8 +83,18 @@ export interface Repository {
   getEnvironment(
     projectId: string,
     userId: string,
-    environmentId: string
+    environmentId: string,
+    excludeInternalVariables?: boolean
   ): Promise<EnvironmentVariable[]>;
-  getEnvironmentVariables(projectId: string, environmentId: string): Promise<EnvironmentVariable[]>;
+  getEnvironmentVariables(
+    projectId: string,
+    environmentId: string,
+    excludeInternalVariables?: boolean
+  ): Promise<EnvironmentVariable[]>;
   delete(projectId: string, userId: string, options: DeleteEnvironmentVariable): Promise<Result>;
+  deleteValue(
+    projectId: string,
+    userId: string,
+    options: DeleteEnvironmentVariableValue
+  ): Promise<Result>;
 }
