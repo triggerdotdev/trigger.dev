@@ -420,7 +420,7 @@ const timePeriods = [
 ];
 
 function Created({ trigger, clearSearchValue, searchValue, setFilterType }: MenuProps) {
-  const { value, replace, del } = useSearchParam("period");
+  const { value, replace } = useSearchParam("period");
 
   const handleChange = useCallback(
     (newValue: string) => {
