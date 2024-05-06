@@ -380,3 +380,12 @@ export const UpdateEnvironmentVariableRequestBody = z.object({
 export type UpdateEnvironmentVariableRequestBody = z.infer<
   typeof UpdateEnvironmentVariableRequestBody
 >;
+
+export const ImportEnvironmentVariablesRequestBody = z.object({
+  variables: z.record(z.string()),
+  overwrite: z.boolean().optional(),
+});
+
+export type ImportEnvironmentVariablesRequestBody = z.infer<
+  typeof ImportEnvironmentVariablesRequestBody
+>;
