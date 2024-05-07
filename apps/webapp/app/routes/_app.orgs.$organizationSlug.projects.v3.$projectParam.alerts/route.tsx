@@ -7,10 +7,8 @@ import {
   EnvelopeIcon,
   GlobeAltIcon,
   LockClosedIcon,
-  PlayIcon,
   PlusIcon,
   TrashIcon,
-  XCircleIcon,
 } from "@heroicons/react/20/solid";
 import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
@@ -48,7 +46,6 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import {
   AlertChannelListPresenter,
-  AlertChannelListPresenterAlertProperties,
   AlertChannelListPresenterRecord,
 } from "~/presenters/v3/AlertChannelListPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -404,7 +401,7 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
           }
           leadingIconClassName="text-charcoal-400"
           label={"Slack"}
-          description={alertChannel.properties.channelName}
+          description={`#${alertChannel.properties.channelName}`}
         />
       );
     }

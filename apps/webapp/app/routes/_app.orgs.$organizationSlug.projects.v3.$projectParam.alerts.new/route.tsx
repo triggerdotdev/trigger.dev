@@ -7,6 +7,7 @@ import { SlackIcon } from "@trigger.dev/companyicons";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { InlineCode } from "~/components/code/InlineCode";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Checkbox } from "~/components/primitives/Checkbox";
@@ -282,6 +283,10 @@ export default function Page() {
                         </SelectContent>
                       </Select>
                     </SelectGroup>
+                    <Callout variant="info" className="inline-flex">
+                      If selecting a private channel, you will need to invite the bot to the channel
+                      using <InlineCode>/invite @Trigger.dev</InlineCode>
+                    </Callout>
                     <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
                     <input type="hidden" name="integrationId" value={slack.integrationId} />
                   </>

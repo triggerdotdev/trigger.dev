@@ -456,6 +456,7 @@ model Project {
   taskSchedules          TaskSchedule[]
   alertChannels          ProjectAlertChannel[]
   alerts                 ProjectAlert[]
+  alertStorages          ProjectAlertStorage[]
 }
 
 enum ProjectVersion {
@@ -2251,7 +2252,8 @@ model ProjectAlertChannel {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  alerts ProjectAlert[]
+  alerts        ProjectAlert[]
+  alertStorages ProjectAlertStorage[]
 
   @@unique([projectId, deduplicationKey])
 }
@@ -2299,6 +2301,24 @@ enum ProjectAlertStatus {
   PENDING
   SENT
   FAILED
+}
+
+model ProjectAlertStorage {
+  id String @id @default(cuid())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  alertChannel   ProjectAlertChannel @relation(fields: [alertChannelId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  alertChannelId String
+
+  alertType ProjectAlertType
+
+  storageId   String
+  storageData Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model OrganizationIntegration {

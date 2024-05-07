@@ -84,7 +84,7 @@ export class OrgIntegrationRepository {
   static slackAuthorizationUrl(
     state: string,
     scopes: string[] = ["channels:read", "groups:read", "im:read", "mpim:read", "chat:write"],
-    userScopes: string[] = ["channels:read", "groups:read", "im:read", "mpim:read"]
+    userScopes: string[] = ["channels:read", "groups:read", "im:read", "mpim:read", "chat:write"]
   ) {
     return `https://slack.com/oauth/v2/authorize?client_id=${
       env.ORG_SLACK_INTEGRATION_CLIENT_ID
@@ -108,6 +108,12 @@ export class OrgIntegrationRepository {
       throw new Response("Unsupported service", { status: 400 });
     }
 
+    logger.debug("Redirecting to auth service", {
+      service,
+      authUrl,
+      redirectTo,
+    });
+
     return new Response(null, {
       status: 302,
       headers: {
@@ -119,6 +125,11 @@ export class OrgIntegrationRepository {
 
   static async redirectAfterAuth(request: Request) {
     const session = await getUserSession(request);
+
+    logger.debug("Redirecting back after auth", {
+      sessionData: session.data,
+    });
+
     const redirectTo = session.get(REDIRECT_AFTER_AUTH_KEY);
 
     if (!redirectTo) {

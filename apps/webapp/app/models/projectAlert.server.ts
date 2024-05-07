@@ -25,3 +25,9 @@ export const ProjectAlertSlackProperties = z.object({
 });
 
 export type ProjectAlertSlackProperties = z.infer<typeof ProjectAlertSlackProperties>;
+
+export const ProjectAlertSlackStorage = z.object({
+  message_ts: z.string(),
+});
+
+export type ProjectAlertSlackStorage = z.infer<typeof ProjectAlertSlackStorage>;

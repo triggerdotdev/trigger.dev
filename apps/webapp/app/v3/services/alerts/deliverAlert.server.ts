@@ -6,6 +6,7 @@ import { env } from "~/env.server";
 import {
   ProjectAlertEmailProperties,
   ProjectAlertSlackProperties,
+  ProjectAlertSlackStorage,
   ProjectAlertWebhookProperties,
 } from "~/models/projectAlert.server";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
@@ -447,6 +448,22 @@ export class DeliverAlertService extends BaseService {
     switch (alert.type) {
       case "TASK_RUN_ATTEMPT": {
         if (alert.taskRunAttempt) {
+          // Find existing storage by the run ID
+          const storage = await this._prisma.projectAlertStorage.findFirst({
+            where: {
+              alertChannelId: alert.channel.id,
+              alertType: alert.type,
+              storageId: alert.taskRunAttempt.taskRunId,
+            },
+          });
+
+          const storageData = storage
+            ? ProjectAlertSlackStorage.safeParse(storage.storageData)
+            : undefined;
+
+          const thread_ts =
+            storageData && storageData.success ? storageData.data.message_ts : undefined;
+
           const taskRunError = TaskRunError.safeParse(alert.taskRunAttempt.error);
 
           if (!taskRunError.success) {
@@ -460,46 +477,106 @@ export class DeliverAlertService extends BaseService {
 
           const error = createJsonErrorObject(taskRunError.data);
 
-          const message = await client.chat.postMessage({
-            channel: slackProperties.data.channelId,
-            text: `Error on ${alert.taskRunAttempt.backgroundWorkerTask.exportName} [${alert.taskRunAttempt.backgroundWorker.version}.${alert.environment.slug}] ${error.message}`,
-            blocks: [
-              {
-                type: "section",
-                text: {
-                  type: "mrkdwn",
-                  text: `:bug: ${error.message}`,
-                },
-              },
-              {
-                type: "context",
-                elements: [
-                  {
+          const exportName = alert.taskRunAttempt.backgroundWorkerTask.exportName;
+          const version = alert.taskRunAttempt.backgroundWorker.version;
+          const environment = alert.environment.slug;
+          const taskIdentifier = alert.taskRunAttempt.backgroundWorkerTask.slug;
+          const timestamp = alert.taskRunAttempt.completedAt ?? new Date();
+          const runId = alert.taskRunAttempt.taskRun.friendlyId;
+          const attemptNumber = alert.taskRunAttempt.number;
+
+          try {
+            const message = await client.chat.postMessage({
+              thread_ts,
+              channel: slackProperties.data.channelId,
+              text: `:warning: Task error in ${alert.taskRunAttempt.backgroundWorkerTask.exportName} [${alert.taskRunAttempt.backgroundWorker.version}.${alert.environment.slug}]`,
+              blocks: [
+                {
+                  type: "section",
+                  text: {
                     type: "mrkdwn",
-                    text: `${alert.project.name} | ${alert.taskRunAttempt.backgroundWorker.version} ${alert.environment.slug} | ${alert.taskRunAttempt.backgroundWorkerTask.exportName}`,
+                    text: `:warning: Error in *${exportName}* _<!date^${Math.round(
+                      timestamp.getTime() / 1000
+                    )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
                   },
-                ],
-              },
-              {
-                type: "actions",
-                elements: [
-                  {
-                    type: "button",
-                    text: {
-                      type: "plain_text",
-                      text: "Investigate",
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: `\`\`\`${error.stackTrace ?? error.message}\`\`\``,
+                  },
+                },
+                {
+                  type: "context",
+                  elements: [
+                    {
+                      type: "mrkdwn",
+                      text: `${runId}.${attemptNumber} | ${taskIdentifier} | ${version}.${environment} | ${alert.project.name}`,
                     },
-                    action_id: "action_investigate",
+                  ],
+                },
+                {
+                  type: "divider",
+                },
+                {
+                  type: "actions",
+                  elements: [
+                    {
+                      type: "button",
+                      text: {
+                        type: "plain_text",
+                        text: "Investigate",
+                      },
+                      url: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/runs/${alert.taskRunAttempt.taskRun.friendlyId}`,
+                    },
+                  ],
+                },
+              ],
+            });
+
+            // Upsert the storage
+            if (message.ts) {
+              if (storage) {
+                await this._prisma.projectAlertStorage.update({
+                  where: {
+                    id: storage.id,
                   },
-                ],
-              },
-            ],
-          });
+                  data: {
+                    storageData: {
+                      message_ts: message.ts,
+                    },
+                  },
+                });
+              } else {
+                await this._prisma.projectAlertStorage.create({
+                  data: {
+                    alertChannelId: alert.channel.id,
+                    alertType: alert.type,
+                    storageId: alert.taskRunAttempt.taskRunId,
+                    storageData: {
+                      message_ts: message.ts,
+                    },
+                    projectId: alert.project.id,
+                  },
+                });
+              }
+            }
+          } catch (error) {
+            logger.error("[DeliverAlert] Failed to send slack message", {
+              error,
+              alert,
+            });
+
+            throw error;
+          }
         } else {
           logger.error("[DeliverAlert] Task run attempt not found", {
             alert,
           });
         }
+
+        break;
       }
       case "DEPLOYMENT_FAILURE": {
         if (alert.workerDeployment) {
@@ -515,49 +592,78 @@ export class DeliverAlertService extends BaseService {
             return;
           }
 
-          const message = await client.chat.postMessage({
-            channel: slackProperties.data.channelId,
-            blocks: [
-              {
-                type: "section",
-                text: {
-                  type: "mrkdwn",
-                  text: `:x: ${preparedError.message}`,
-                },
-              },
-              {
-                type: "context",
-                elements: [
-                  {
+          const version = alert.workerDeployment.version;
+          const environment = alert.environment.slug;
+          const timestamp = alert.workerDeployment.failedAt ?? new Date();
+
+          try {
+            await client.chat.postMessage({
+              channel: slackProperties.data.channelId,
+              blocks: [
+                {
+                  type: "section",
+                  text: {
                     type: "mrkdwn",
-                    text: `${alert.project.name} | ${alert.workerDeployment.version} ${alert.environment.slug} | ${alert.workerDeployment.shortCode}`,
+                    text: `:warning: Deployment failed *${version}.${environment}* _<!date^${Math.round(
+                      timestamp.getTime() / 1000
+                    )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
                   },
-                ],
-              },
-              {
-                type: "actions",
-                elements: [
-                  {
-                    type: "button",
-                    text: {
-                      type: "plain_text",
-                      text: "Investigate",
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: `\`\`\`${preparedError.stack ?? preparedError.message}\`\`\``,
+                  },
+                },
+                {
+                  type: "context",
+                  elements: [
+                    {
+                      type: "mrkdwn",
+                      text: `${alert.workerDeployment.shortCode} | ${version}.${environment} | ${alert.project.name}`,
                     },
-                    action_id: "action_investigate",
-                  },
-                ],
-              },
-            ],
-          });
+                  ],
+                },
+                {
+                  type: "actions",
+                  elements: [
+                    {
+                      type: "button",
+                      text: {
+                        type: "plain_text",
+                        text: "View Deployment",
+                      },
+                      url: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/deployments/${alert.workerDeployment.shortCode}`,
+                    },
+                  ],
+                },
+              ],
+            });
+          } catch (error) {
+            logger.error("[DeliverAlert] Failed to send slack message", {
+              error,
+              alert,
+            });
+
+            throw error;
+          }
         } else {
           logger.error("[DeliverAlert] Worker deployment not found", {
             alert,
           });
         }
+
+        break;
       }
       case "DEPLOYMENT_SUCCESS": {
         if (alert.workerDeployment) {
-          const message = await client.chat.postMessage({
+          const version = alert.workerDeployment.version;
+          const environment = alert.environment.slug;
+          const numberOfTasks = alert.workerDeployment.worker?.tasks.length ?? 0;
+          const timestamp = alert.workerDeployment.deployedAt ?? new Date();
+
+          await client.chat.postMessage({
             channel: slackProperties.data.channelId,
             text: `Deployment ${alert.workerDeployment.version} [${alert.environment.slug}] succeeded`,
             blocks: [
@@ -565,7 +671,9 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `:white_check_mark: Deployment successful`,
+                  text: `:rocket: Deployed *${version}.${environment}* successfully _<!date^${Math.round(
+                    timestamp.getTime() / 1000
+                  )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
                 },
               },
               {
@@ -573,7 +681,7 @@ export class DeliverAlertService extends BaseService {
                 elements: [
                   {
                     type: "mrkdwn",
-                    text: `${alert.project.name} | ${alert.workerDeployment.version} ${alert.environment.slug} | ${alert.workerDeployment.shortCode}`,
+                    text: `${numberOfTasks} tasks | ${alert.workerDeployment.shortCode} | ${version}.${environment} | ${alert.project.name}`,
                   },
                 ],
               },
@@ -586,16 +694,20 @@ export class DeliverAlertService extends BaseService {
                       type: "plain_text",
                       text: "View Deployment",
                     },
-                    action_id: "action_view_deployment",
+                    url: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/deployments/${alert.workerDeployment.shortCode}`,
                   },
                 ],
               },
             ],
           });
+
+          return;
         } else {
           logger.error("[DeliverAlert] Worker deployment not found", {
             alert,
           });
+
+          return;
         }
       }
     }
@@ -642,7 +754,11 @@ export class DeliverAlertService extends BaseService {
     }
   }
 
-  static async enqueue(alertId: string, tx: PrismaClientOrTransaction, runAt?: Date) {
+  static async enqueue(
+    alertId: string,
+    tx: PrismaClientOrTransaction,
+    options?: { runAt?: Date; queueName?: string }
+  ) {
     return await workerQueue.enqueue(
       "v3.deliverAlert",
       {
@@ -650,8 +766,9 @@ export class DeliverAlertService extends BaseService {
       },
       {
         tx,
-        runAt,
+        runAt: options?.runAt,
         jobKey: `deliverAlert:${alertId}`,
+        queueName: options?.queueName,
       }
     );
   }
