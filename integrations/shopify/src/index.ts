@@ -63,6 +63,26 @@ export class Shopify implements TriggerIntegration {
       throw `Can't create Shopify integration (${options.id}) as apiKey was undefined`;
     }
 
+    if (Object.keys(options).includes("apiSecretKey") && !options.apiSecretKey) {
+      throw `Can't create Shopify integration (${options.id}) as apiSecretKey was undefined`;
+    }
+
+    if (Object.keys(options).includes("adminAccessToken") && !options.adminAccessToken) {
+      throw `Can't create Shopify integration (${options.id}) as adminAccessToken was undefined`;
+    }
+
+    if (Object.keys(options).includes("hostName") && !options.hostName) {
+      throw `Can't create Shopify integration (${options.id}) as hostName was undefined`;
+    }
+
+    // Regular expression to ensure the hostname ends with `.myshopify.com`
+    const shopifyDomainPattern = /^[a-zA-Z0-9-]+\.myshopify\.com$/;
+
+    // Verify that the user has entered the .myshopify.com domain and not a custom primary domain
+    if (!shopifyDomainPattern.test(options.hostName)) {
+      throw `Can't create Shopify integration (${options.id}) because hostName should be a ".myshopify.com" domain, not a custom primary domain.`;
+    }
+
     this._options = options;
     this._shopDomain = this._options.hostName.replace("http://", "").replace("https://", "");
   }

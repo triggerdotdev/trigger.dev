@@ -35,12 +35,32 @@ client.defineJob({
 });
 
 client.defineJob({
-  id: "shopify-products-delete",
-  name: "Shopify: products/delete",
+  id: "shopify-locations-create",
+  name: "Shopify: locations/create",
   version: "0.1.0",
-  trigger: shopify.on("products/delete"),
+  trigger: shopify.on("locations/create"),
   run: async (payload, io, ctx) => {
-    await io.logger.log(`product deleted: ${payload.id}`);
+    await io.logger.log(`location created: ${payload.id}`);
+  },
+});
+
+client.defineJob({
+  id: "shopify-locations-update",
+  name: "Shopify: locations/update",
+  version: "0.1.0",
+  trigger: shopify.on("locations/update"),
+  run: async (payload, io, ctx) => {
+    await io.logger.log(`location updated: ${payload.id}`);
+  },
+});
+
+client.defineJob({
+  id: "shopify-locations-delete",
+  name: "Shopify: locations/delete",
+  version: "0.1.0",
+  trigger: shopify.on("locations/delete"),
+  run: async (payload, io, ctx) => {
+    await io.logger.log(`location updated: ${payload.id}`);
   },
 });
 
