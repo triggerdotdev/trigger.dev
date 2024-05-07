@@ -45,7 +45,11 @@ import { login } from "./login";
 import { esbuildDecorators } from "@anatine/esbuild-decorators";
 import { Glob, GlobOptions } from "glob";
 import type { SetOptional } from "type-fest";
-import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
+import {
+  bundleDependenciesPlugin,
+  mockServerOnlyPlugin,
+  workerSetupImportConfigPlugin,
+} from "../utilities/build";
 import { chalkError, chalkPurple, chalkWarning } from "../utilities/cliOutput";
 import {
   logESMRequireError,
@@ -1141,6 +1145,7 @@ async function compileProject(
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
         plugins: [
+          mockServerOnlyPlugin(),
           bundleDependenciesPlugin(
             "workerFacade",
             config.dependenciesToBundle,
@@ -1281,7 +1286,9 @@ async function compileProject(
 
       const javascriptProject = new JavascriptProject(config.projectDir);
 
-      const dependencies = await gatherRequiredDependencies(allImports, config, javascriptProject);
+      const dependencies = await resolveRequiredDependencies(allImports, config, javascriptProject);
+
+      logger.debug("gatherRequiredDependencies()", { dependencies });
 
       const packageJsonContents = {
         name: "trigger-worker",
@@ -1292,6 +1299,10 @@ async function compileProject(
           ...javascriptProject.scripts,
         },
       };
+
+      span.setAttributes({
+        ...flattenAttributes(packageJsonContents, "packageJson.contents"),
+      });
 
       await writeJSONFile(join(tempDir, "package.json"), packageJsonContents);
 
@@ -1325,8 +1336,19 @@ async function compileProject(
 
       // Write the Containerfile to /tmp/dir/Containerfile
       const containerFilePath = join(cliRootPath(), "Containerfile.prod");
-      // Copy the Containerfile to /tmp/dir/Containerfile
-      await copyFile(containerFilePath, join(tempDir, "Containerfile"));
+
+      let containerFileContents = readFileSync(containerFilePath, "utf-8");
+
+      if (config.postInstall) {
+        containerFileContents = containerFileContents.replace(
+          "__POST_INSTALL__",
+          `RUN ${config.postInstall}`
+        );
+      } else {
+        containerFileContents = containerFileContents.replace("__POST_INSTALL__", "");
+      }
+
+      await writeFile(join(tempDir, "Containerfile"), containerFileContents);
 
       const contentHasher = createHash("sha256");
       contentHasher.update(Buffer.from(entryPointOutputFile.text));
@@ -1530,74 +1552,123 @@ async function typecheckProject(config: ResolvedConfig, options: DeployCommandOp
 
 // Returns the dependencies that are required by the output that are found in output and the CLI package dependencies
 // Returns the dependency names and the version to use (taken from the CLI deps package.json)
-async function gatherRequiredDependencies(
+async function resolveRequiredDependencies(
   imports: Metafile["outputs"][string]["imports"],
   config: ResolvedConfig,
   project: JavascriptProject
 ) {
-  const dependencies: Record<string, string> = {};
+  return await tracer.startActiveSpan("resolveRequiredDependencies", async (span) => {
+    const resolvablePackageNames = new Set<string>();
 
-  for (const file of imports) {
-    if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
-      continue;
-    }
-
-    const packageName = detectPackageNameFromImportPath(file.path);
-
-    if (dependencies[packageName]) {
-      continue;
-    }
-
-    const externalDependencyVersion = await project.resolve(packageName);
-
-    if (externalDependencyVersion) {
-      dependencies[packageName] = stripWorkspaceFromVersion(externalDependencyVersion);
-      continue;
-    }
-
-    const internalDependencyVersion =
-      (packageJson.dependencies as Record<string, string>)[packageName] ??
-      detectDependencyVersion(packageName);
-
-    if (internalDependencyVersion) {
-      dependencies[packageName] = stripWorkspaceFromVersion(internalDependencyVersion);
-    }
-  }
-
-  if (config.additionalPackages) {
-    for (const packageName of config.additionalPackages) {
-      if (dependencies[packageName]) {
+    for (const file of imports) {
+      if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
         continue;
       }
 
-      const packageParts = parsePackageName(packageName);
+      const packageName = detectPackageNameFromImportPath(file.path);
 
-      if (packageParts.version) {
-        dependencies[packageParts.name] = packageParts.version;
+      if (!packageName) {
         continue;
-      } else {
-        const externalDependencyVersion = await project.resolve(packageParts.name, {
-          allowDev: true,
-        });
+      }
 
-        if (externalDependencyVersion) {
-          dependencies[packageParts.name] = externalDependencyVersion;
+      resolvablePackageNames.add(packageName);
+    }
+
+    span.setAttribute("resolvablePackageNames", Array.from(resolvablePackageNames));
+
+    const resolvedPackageVersions = await project.resolveAll(Array.from(resolvablePackageNames));
+    const missingPackages = Array.from(resolvablePackageNames).filter(
+      (packageName) => !resolvedPackageVersions[packageName]
+    );
+
+    span.setAttributes({
+      ...flattenAttributes(resolvedPackageVersions, "resolvedPackageVersions"),
+    });
+    span.setAttribute("missingPackages", missingPackages);
+
+    const dependencies: Record<string, string> = {};
+
+    for (const missingPackage of missingPackages) {
+      const internalDependencyVersion =
+        (packageJson.dependencies as Record<string, string>)[missingPackage] ??
+        detectDependencyVersion(missingPackage);
+
+      if (internalDependencyVersion) {
+        dependencies[missingPackage] = stripWorkspaceFromVersion(internalDependencyVersion);
+      }
+    }
+
+    for (const [packageName, version] of Object.entries(resolvedPackageVersions)) {
+      dependencies[packageName] = version;
+    }
+
+    if (config.additionalPackages) {
+      span.setAttribute("additionalPackages", config.additionalPackages);
+
+      for (const packageName of config.additionalPackages) {
+        if (dependencies[packageName]) {
+          continue;
+        }
+
+        const packageParts = parsePackageName(packageName);
+
+        if (packageParts.version) {
+          dependencies[packageParts.name] = packageParts.version;
           continue;
         } else {
-          logger.log(
-            `${chalkWarning("X Warning:")} Could not find version for package ${chalkPurple(
-              packageName
-            )}, add a version specifier to the package name (e.g. ${
-              packageParts.name
-            }@latest) or add it to your project's package.json`
-          );
+          const externalDependencyVersion = await project.resolve(packageParts.name, {
+            allowDev: true,
+          });
+
+          if (externalDependencyVersion) {
+            dependencies[packageParts.name] = externalDependencyVersion;
+            continue;
+          } else {
+            logger.log(
+              `${chalkWarning("X Warning:")} Could not find version for package ${chalkPurple(
+                packageName
+              )}, add a version specifier to the package name (e.g. ${
+                packageParts.name
+              }@latest) or add it to your project's package.json`
+            );
+          }
         }
       }
     }
-  }
 
-  // Make sure we sort the dependencies by key to ensure consistent hashing
-  return Object.fromEntries(Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b)));
+    if (!dependencies["@trigger.dev/sdk"]) {
+      logger.debug("Adding missing @trigger.dev/sdk dependency", {
+        version: packageJson.version,
+      });
+
+      span.setAttribute("addingMissingSDK", packageJson.version);
+
+      dependencies["@trigger.dev/sdk"] = packageJson.version;
+    }
+
+    if (!dependencies["@trigger.dev/core"]) {
+      logger.debug("Adding missing @trigger.dev/core dependency", {
+        version: packageJson.version,
+      });
+
+      span.setAttribute("addingMissingCore", packageJson.version);
+
+      dependencies["@trigger.dev/core"] = packageJson.version;
+    }
+
+    // Make sure we sort the dependencies by key to ensure consistent hashing
+    const result = Object.fromEntries(
+      Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b))
+    );
+
+    span.setAttributes({
+      ...flattenAttributes(result, "dependencies"),
+    });
+
+    span.end();
+
+    return result;
+  });
 }
 
 type AdditionalFilesReturn =

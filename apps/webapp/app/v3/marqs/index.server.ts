@@ -19,6 +19,7 @@ import {
   MarQSQueuePriorityStrategy,
   MessagePayload,
   QueueCapacities,
+  QueueRange,
 } from "./types";
 
 const tracer = trace.getTracer("marqs");
@@ -231,7 +232,7 @@ export class MarQS {
           return;
         }
 
-        const message = await this.#readMessage(messageData.messageId);
+        const message = await this.readMessage(messageData.messageId);
 
         if (message) {
           span.setAttributes({
@@ -308,7 +309,7 @@ export class MarQS {
           return;
         }
 
-        const message = await this.#readMessage(messageData.messageId);
+        const message = await this.readMessage(messageData.messageId);
 
         if (message) {
           span.setAttributes({
@@ -336,7 +337,7 @@ export class MarQS {
     return this.#trace(
       "acknowledgeMessage",
       async (span) => {
-        const message = await this.#readMessage(messageId);
+        const message = await this.readMessage(messageId);
 
         if (!message) {
           return;
@@ -374,12 +375,13 @@ export class MarQS {
   public async replaceMessage(
     messageId: string,
     messageData: Record<string, unknown>,
-    timestamp?: number
+    timestamp?: number,
+    inplace?: boolean
   ) {
     return this.#trace(
       "replaceMessage",
       async (span) => {
-        const oldMessage = await this.#readMessage(messageId);
+        const oldMessage = await this.readMessage(messageId);
 
         if (!oldMessage) {
           return;
@@ -392,6 +394,27 @@ export class MarQS {
           [SemanticAttributes.PARENT_QUEUE]: oldMessage.parentQueue,
         });
 
+        const traceContext = {
+          traceparent: oldMessage.data.traceparent,
+          tracestate: oldMessage.data.tracestate,
+        };
+
+        const newMessage: MessagePayload = {
+          version: "1",
+          // preserve original trace context
+          data: { ...messageData, ...traceContext },
+          queue: oldMessage.queue,
+          concurrencyKey: oldMessage.concurrencyKey,
+          timestamp: timestamp ?? Date.now(),
+          messageId,
+          parentQueue: oldMessage.parentQueue,
+        };
+
+        if (inplace) {
+          await this.#callReplaceMessage(newMessage);
+          return;
+        }
+
         await this.#callAcknowledgeMessage({
           parentQueue: oldMessage.parentQueue,
           messageKey: this.keys.messageKey(messageId),
@@ -402,16 +425,6 @@ export class MarQS {
           orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(oldMessage.queue),
           messageId,
         });
-
-        const newMessage: MessagePayload = {
-          version: "1",
-          data: messageData,
-          queue: oldMessage.queue,
-          concurrencyKey: oldMessage.concurrencyKey,
-          timestamp: timestamp ?? Date.now(),
-          messageId,
-          parentQueue: oldMessage.parentQueue,
-        };
 
         await this.#callEnqueueMessage(newMessage);
       },
@@ -455,7 +468,7 @@ export class MarQS {
     return this.#trace(
       "nackMessage",
       async (span) => {
-        const message = await this.#readMessage(messageId);
+        const message = await this.readMessage(messageId);
 
         if (!message) {
           return;
@@ -505,7 +518,7 @@ export class MarQS {
     return this.options.visibilityTimeoutInMs ?? 300000;
   }
 
-  async #readMessage(messageId: string) {
+  async readMessage(messageId: string) {
     return this.#trace(
       "readMessage",
       async (span) => {
@@ -551,7 +564,7 @@ export class MarQS {
           parentQueue
         );
 
-        const queues = await this.#zrangeWithScores(parentQueue, range[0], range[1]);
+        const queues = await this.#getChildQueuesWithScores(parentQueue, range);
 
         const queuesWithScores = await this.#calculateQueueScores(queues, calculateCapacities);
 
@@ -562,21 +575,25 @@ export class MarQS {
           selectionId
         );
 
-        if (typeof choice !== "string") {
-          return;
-        }
-
         span.setAttributes({
           ...flattenAttributes(queues, "marqs.queues"),
         });
         span.setAttributes({
           ...flattenAttributes(queuesWithScores, "marqs.queuesWithScores"),
         });
-        span.setAttribute("marqs.nextRange", range);
-        span.setAttribute("marqs.queueCount", queues.length);
-        span.setAttribute("marqs.queueChoice", choice);
+        span.setAttribute("nextRange.offset", range.offset);
+        span.setAttribute("nextRange.count", range.count);
+        span.setAttribute("queueCount", queues.length);
 
-        return choice;
+        if (typeof choice !== "string") {
+          span.setAttribute("noQueueChoice", true);
+
+          return;
+        } else {
+          span.setAttribute("queueChoice", choice);
+
+          return choice;
+        }
       },
       {
         kind: SpanKind.CONSUMER,
@@ -620,12 +637,19 @@ export class MarQS {
     });
   }
 
-  async #zrangeWithScores(
+  async #getChildQueuesWithScores(
     key: string,
-    min: number,
-    max: number
+    range: QueueRange
   ): Promise<Array<{ value: string; score: number }>> {
-    const valuesWithScores = await this.redis.zrange(key, min, max, "WITHSCORES");
+    const valuesWithScores = await this.redis.zrangebyscore(
+      key,
+      "-inf",
+      Date.now(),
+      "WITHSCORES",
+      "LIMIT",
+      range.offset,
+      range.count
+    );
     const result: Array<{ value: string; score: number }> = [];
 
     for (let i = 0; i < valuesWithScores.length; i += 2) {
@@ -879,6 +903,17 @@ export class MarQS {
       messageId: result[0],
       messageScore: result[1],
     };
+  }
+
+  async #callReplaceMessage(message: MessagePayload) {
+    logger.debug("Calling replaceMessage", {
+      messagePayload: message,
+    });
+
+    return this.redis.replaceMessage(
+      this.keys.messageKey(message.messageId),
+      JSON.stringify(message)
+    );
   }
 
   async #callAcknowledgeMessage({
@@ -1185,6 +1220,25 @@ return {messageId, messageScore} -- Return message details
       `,
     });
 
+    this.redis.defineCommand("replaceMessage", {
+      numberOfKeys: 1,
+      lua: `
+local messageKey = KEYS[1]
+local messageData = ARGV[1]
+
+-- Check if message exists
+local existingMessage = redis.call('GET', messageKey)
+
+-- Do nothing if it doesn't
+if #existingMessage == nil then
+    return nil
+end
+
+-- Replace the message
+redis.call('SET', messageKey, messageData, 'GET')
+      `,
+    });
+
     this.redis.defineCommand("acknowledgeMessage", {
       numberOfKeys: 7,
       lua: `
@@ -1406,6 +1460,12 @@ declare module "ioredis" {
       callback?: Callback<[string, string]>
     ): Result<[string, string] | null, Context>;
 
+    replaceMessage(
+      messageKey: string,
+      messageData: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
     acknowledgeMessage(
       parentQueue: string,
       messageKey: string,
@@ -1489,7 +1549,7 @@ function getMarQSClient() {
 
       return new MarQS({
         keysProducer: new MarQSShortKeyProducer(KEY_PREFIX),
-        queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
+        queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 36 }),
         envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
         workers: 1,
         redis: redisOptions,

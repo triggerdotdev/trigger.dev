@@ -232,7 +232,7 @@ export default function Page() {
                   <FormError id={projectSlug.errorId}>{projectSlug.error}</FormError>
                   <FormError>{deleteForm.error}</FormError>
                   <Hint>
-                    This change is irreversible, so please be certain. Type in the Project slug
+                    This change is irreversible, so please be certain. Type in the Project slug{" "}
                     <InlineCode variant="extra-small">{project.slug}</InlineCode> and then press
                     Delete.
                   </Hint>

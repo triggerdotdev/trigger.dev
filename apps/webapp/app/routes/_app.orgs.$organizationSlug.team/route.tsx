@@ -8,6 +8,7 @@ import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-type
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { UserAvatar } from "~/components/UserProfilePhoto";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
   Alert,
@@ -23,8 +24,9 @@ import { Button, ButtonContent, LinkButton } from "~/components/primitives/Butto
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
@@ -107,6 +109,28 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Team" />
+
+        <PageAccessories>
+          <AdminDebugTooltip>
+            <PropertyTable>
+              <Property label="Org ID">
+                <div className="flex items-center gap-2">
+                  <Paragraph variant="extra-small/bright/mono">{organization.id}</Paragraph>
+                </div>
+              </Property>
+
+              {members.map((member) => (
+                <Property label={member.user.name} key={member.id}>
+                  <div className="flex items-center gap-2">
+                    <Paragraph variant="extra-small/bright/mono">
+                      {member.user.email} - {member.user.id}
+                    </Paragraph>
+                  </div>
+                </Property>
+              ))}
+            </PropertyTable>
+          </AdminDebugTooltip>
+        </PageAccessories>
       </NavBar>
       <PageBody>
         <Header2>Members</Header2>

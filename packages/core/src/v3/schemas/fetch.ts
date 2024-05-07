@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RetryOptions } from "./messages";
+import { RetryOptions } from "./schemas";
 import { EventFilter } from "./eventFilter";
 import { Prettify } from "../types";
 

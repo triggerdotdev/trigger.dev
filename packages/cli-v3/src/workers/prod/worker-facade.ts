@@ -62,7 +62,7 @@ const configLogLevel = triggerLogLevel
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
   tracer: tracer,
-  level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "log",
+  level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "info",
 });
 
 logger.setGlobalTaskLogger(otelTaskLogger);
@@ -174,7 +174,7 @@ const zodIpc = new ZodIpcConnection({
       prodRuntimeManager.resumeTask(completion, execution);
     },
     WAIT_COMPLETED_NOTIFICATION: async () => {
-      prodRuntimeManager.resumeAfterRestore();
+      prodRuntimeManager.resumeAfterDuration();
     },
     CLEANUP: async ({ flush, kill }, sender) => {
       if (kill) {

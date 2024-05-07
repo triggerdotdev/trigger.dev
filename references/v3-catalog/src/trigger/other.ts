@@ -20,3 +20,58 @@ export const waitForever = task({
     }
   },
 });
+
+export const consecutiveWaits = task({
+  id: "consecutive-waits",
+  run: async (payload: { seconds?: number; debug?: boolean }) => {
+    logger.log("logs before");
+    await wait.for({ seconds: payload.seconds ?? 5 });
+    if (payload.debug) {
+      await wait.for({ seconds: 30 });
+    }
+    await wait.for({ seconds: payload.seconds ?? 5 });
+    if (payload.debug) {
+      await wait.for({ seconds: 30 });
+    }
+    logger.log("logs after");
+  },
+});
+
+export const waitAminute = task({
+  id: "wait-a-minute",
+  run: async (payload: { seconds?: number }) => {
+    logger.log("waitAminute: before");
+    await wait.for({ seconds: payload.seconds ?? 60 });
+    logger.log("waitAminute: after");
+  },
+});
+
+export const consecutiveDependencies = task({
+  id: "consecutive-dependencies",
+  run: async (payload: { seconds?: number }) => {
+    logger.log("logs before");
+    await waitAminute.triggerAndWait({ seconds: payload.seconds });
+    await waitAminute.triggerAndWait({ seconds: payload.seconds });
+    logger.log("logs after");
+  },
+});
+
+export const consecutiveWaitAndDependency = task({
+  id: "consecutive-wait-and-dependency",
+  run: async (payload: { seconds?: number }) => {
+    logger.log("logs before");
+    await wait.for({ seconds: payload.seconds ?? 5 });
+    await waitAminute.triggerAndWait({ seconds: payload.seconds });
+    logger.log("logs after");
+  },
+});
+
+export const consecutiveDependencyAndWait = task({
+  id: "consecutive-dependency-and-wait",
+  run: async (payload: { seconds?: number }) => {
+    logger.log("logs before");
+    await waitAminute.triggerAndWait({ seconds: payload.seconds });
+    await wait.for({ seconds: payload.seconds ?? 5 });
+    logger.log("logs after");
+  },
+});

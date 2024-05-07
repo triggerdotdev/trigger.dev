@@ -125,7 +125,7 @@ function getTracer() {
     );
   } else {
     if (env.INTERNAL_OTEL_TRACE_LOGGING_ENABLED === "1") {
-      console.log(`🔦 Tracer: Logger exporter enabled`);
+      console.log(`🔦 Tracer: Logger exporter enabled (sampling = ${samplingRate})`);
 
       const loggerExporter = new LoggerSpanExporter();
 

@@ -79,21 +79,33 @@ class ProdWorker {
     });
 
     this.#backgroundWorker.onReadyForCheckpoint.attach(async (message) => {
+      // Flush before checkpointing so we don't flush the same spans again after restore
+      await this.#backgroundWorker.flushTelemetry();
       this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
     });
 
+    // Currently, this is only used for duration waits. Might need adjusting for other use cases.
     this.#backgroundWorker.onCancelCheckpoint.attach(async (message) => {
-      logger.log("onCancelCheckpoint() clearing paused state, don't wait for post start hook", {
-        paused: this.paused,
-        nextResumeAfter: this.nextResumeAfter,
-        waitForPostStart: this.waitForPostStart,
-      });
+      logger.log("onCancelCheckpoint", { message });
 
-      this.paused = false;
-      this.nextResumeAfter = undefined;
-      this.waitForPostStart = false;
+      const { checkpointCanceled } = await this.#coordinatorSocket.socket.emitWithAck(
+        "CANCEL_CHECKPOINT",
+        {
+          version: "v2",
+          reason: message.reason,
+        }
+      );
 
-      this.#coordinatorSocket.socket.emit("CANCEL_CHECKPOINT", { version: "v1" });
+      if (checkpointCanceled) {
+        if (message.reason === "WAIT_FOR_DURATION") {
+          // Worker will resume immediately
+          this.paused = false;
+          this.nextResumeAfter = undefined;
+          this.waitForPostStart = false;
+        }
+      }
+
+      this.#backgroundWorker.checkpointCanceledNotification.post({ checkpointCanceled });
     });
 
     this.#backgroundWorker.onWaitForDuration.attach(async (message) => {
@@ -216,7 +228,7 @@ class ProdWorker {
     }
   }
 
-  #prepareForWait(reason: WaitReason, willCheckpointAndRestore: boolean) {
+  async #prepareForWait(reason: WaitReason, willCheckpointAndRestore: boolean) {
     logger.log(`prepare for ${reason}`, { willCheckpointAndRestore });
 
     this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
@@ -225,6 +237,12 @@ class ProdWorker {
       this.paused = true;
       this.nextResumeAfter = reason;
       this.waitForPostStart = true;
+
+      if (reason === "WAIT_FOR_TASK" || reason === "WAIT_FOR_BATCH") {
+        // Flush before checkpointing so we don't flush the same spans again after restore
+        // Duration waits do this via the "ready for checkpoint" event instead
+        await this.#backgroundWorker.flushTelemetry();
+      }
     }
   }
 
@@ -253,6 +271,7 @@ class ProdWorker {
   #resumeAfterDuration() {
     this.paused = false;
     this.nextResumeAfter = undefined;
+    this.waitForPostStart = false;
 
     this.#backgroundWorker.waitCompletedNotification();
   }
@@ -267,6 +286,7 @@ class ProdWorker {
     return headers;
   }
 
+  // FIXME: If the the worker can't connect for a while, this runs MANY times - it should only run once
   #createCoordinatorSocket(host: string) {
     const extraHeaders = this.#returnValidatedExtraHeaders({
       "x-machine-name": MACHINE_NAME,
@@ -342,6 +362,7 @@ class ProdWorker {
 
           this.paused = false;
           this.nextResumeAfter = undefined;
+          this.waitForPostStart = false;
 
           for (let i = 0; i < message.completions.length; i++) {
             const completion = message.completions[i];
@@ -425,6 +446,25 @@ class ProdWorker {
       onConnection: async (socket, handler, sender, logger) => {
         if (this.waitForPostStart) {
           logger.log("skip connection handler, waiting for post start hook");
+          return;
+        }
+
+        if (this.paused) {
+          if (!this.nextResumeAfter) {
+            return;
+          }
+
+          if (!this.attemptFriendlyId) {
+            logger.error("Missing friendly ID");
+            return;
+          }
+
+          socket.emit("READY_FOR_RESUME", {
+            version: "v1",
+            attemptFriendlyId: this.attemptFriendlyId,
+            type: this.nextResumeAfter,
+          });
+
           return;
         }
 
@@ -519,30 +559,6 @@ class ProdWorker {
           }
         }
 
-        if (this.paused) {
-          if (!this.nextResumeAfter) {
-            return;
-          }
-
-          if (!this.attemptFriendlyId) {
-            logger.error("Missing friendly ID");
-            return;
-          }
-
-          if (this.nextResumeAfter === "WAIT_FOR_DURATION") {
-            this.#resumeAfterDuration();
-            return;
-          }
-
-          socket.emit("READY_FOR_RESUME", {
-            version: "v1",
-            attemptFriendlyId: this.attemptFriendlyId,
-            type: this.nextResumeAfter,
-          });
-
-          return;
-        }
-
         if (this.executing) {
           return;
         }
@@ -587,7 +603,8 @@ class ProdWorker {
           case "/status": {
             return reply.json({
               executing: this.executing,
-              pause: this.paused,
+              paused: this.paused,
+              completed: this.completed.size,
               nextResumeAfter: this.nextResumeAfter,
             });
           }

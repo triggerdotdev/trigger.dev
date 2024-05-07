@@ -1,5 +1,5 @@
 import { TimerOptions } from "node:timers";
-import { setTimeout } from "node:timers/promises";
+import { setInterval, setTimeout } from "node:timers/promises";
 
 export async function unboundedTimeout<T = void>(
   delay: number = 0,
@@ -18,4 +18,15 @@ export async function unboundedTimeout<T = void>(
   }
 
   return lastTimeoutResult;
+}
+
+export async function checkpointSafeTimeout(delay: number = 0): Promise<void> {
+  const scanIntervalMs = 1000;
+
+  // Every scanIntervalMs, check if delay has elapsed
+  for await (const start of setInterval(scanIntervalMs, Date.now())) {
+    if (Date.now() - start > delay) {
+      break;
+    }
+  }
 }

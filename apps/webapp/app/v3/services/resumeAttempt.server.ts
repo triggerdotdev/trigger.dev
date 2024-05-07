@@ -2,13 +2,14 @@ import {
   CoordinatorToPlatformMessages,
   TaskRunExecution,
   TaskRunExecutionResult,
+  WaitReason,
 } from "@trigger.dev/core/v3";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { socketIo } from "../handleSocketIo.server";
-import { sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
+import { SharedQueueMessageBody, sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
 import { BaseService } from "./baseService.server";
 import { TaskRunAttempt } from "@trigger.dev/database";
 
@@ -91,12 +92,13 @@ export class ResumeAttemptService extends BaseService {
 
       switch (params.type) {
         case "WAIT_FOR_DURATION": {
-          logger.error(
-            "Attempt requested resume after duration wait, this is unexpected and likely a bug",
-            { attemptId: attempt.id }
-          );
+          logger.debug("Sending duration wait resume message", {
+            attemptId: attempt.id,
+            attemptFriendlyId: params.attemptFriendlyId,
+          });
 
-          // Attempts should not request resume for duration waits, this is just here as a backup
+          await this.#setPostResumeStatuses(attempt, tx);
+
           socketIo.coordinatorNamespace.emit("RESUME_AFTER_DURATION", {
             version: "v1",
             attemptId: attempt.id,
@@ -119,6 +121,9 @@ export class ResumeAttemptService extends BaseService {
             logger.error("No task dependency", { attemptId: attempt.id });
             return;
           }
+
+          await this.#handleDependencyResume(attempt, completedAttemptIds, tx);
+
           break;
         }
         case "WAIT_FOR_BATCH": {
@@ -136,6 +141,9 @@ export class ResumeAttemptService extends BaseService {
             logger.error("No batch dependency", { attemptId: attempt.id });
             return;
           }
+
+          await this.#handleDependencyResume(attempt, completedAttemptIds, tx);
+
           break;
         }
         default: {
@@ -143,7 +151,8 @@ export class ResumeAttemptService extends BaseService {
         }
       }
 
-      await this.#handleDependencyResume(attempt, completedAttemptIds, tx);
+      // Prevent infinite restores by failing runs that don't heartbeat after post-restore resume requests
+      await this.#replaceResumeWithFailMessage(attempt.taskRunId, params.type);
     });
   }
 
@@ -215,7 +224,20 @@ export class ResumeAttemptService extends BaseService {
       executions.push(executionPayload.execution);
     }
 
-    const updated = await tx.taskRunAttempt.update({
+    await this.#setPostResumeStatuses(attempt, tx);
+
+    socketIo.coordinatorNamespace.emit("RESUME_AFTER_DEPENDENCY", {
+      version: "v1",
+      runId: attempt.taskRunId,
+      attemptId: attempt.id,
+      attemptFriendlyId: attempt.friendlyId,
+      completions,
+      executions,
+    });
+  }
+
+  async #setPostResumeStatuses(attempt: TaskRunAttempt, tx: PrismaClientOrTransaction) {
+    return await tx.taskRunAttempt.update({
       where: {
         id: attempt.id,
       },
@@ -230,14 +252,51 @@ export class ResumeAttemptService extends BaseService {
         },
       },
     });
+  }
 
-    socketIo.coordinatorNamespace.emit("RESUME_AFTER_DEPENDENCY", {
-      version: "v1",
-      runId: attempt.taskRunId,
-      attemptId: attempt.id,
-      attemptFriendlyId: attempt.friendlyId,
-      completions,
-      executions,
-    });
+  async #replaceResumeWithFailMessage(messageId: string, waitReason: WaitReason) {
+    const currentMessage = await marqs?.readMessage(messageId);
+
+    if (!currentMessage) {
+      logger.debug("No message to replace", { messageId, waitReason });
+      return;
+    }
+
+    const currentBody = SharedQueueMessageBody.safeParse(currentMessage.data);
+
+    if (!currentBody.success) {
+      logger.debug("Invalid message body", { messageId, waitReason, currentBody });
+      return;
+    }
+
+    const currentType = currentBody.data.type;
+
+    if (currentType !== "RESUME" && currentType !== "RESUME_AFTER_DURATION") {
+      logger.debug("Not a resume message", { messageId, waitReason, currentBody });
+      return;
+    }
+
+    let reason = "Worker unresponsive after restore";
+
+    switch (waitReason) {
+      case "WAIT_FOR_DURATION":
+        reason = "Worker unresponsive after waiting for duration";
+        break;
+      case "WAIT_FOR_TASK":
+        reason = "Worker unresponsive after waiting for task";
+        break;
+      case "WAIT_FOR_BATCH":
+        reason = "Worker unresponsive after waiting for batch task";
+        break;
+      default:
+        break;
+    }
+
+    const failMessage: SharedQueueMessageBody = {
+      type: "FAIL",
+      reason,
+    };
+
+    return await marqs?.replaceMessage(messageId, failMessage, undefined, true);
   }
 }

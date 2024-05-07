@@ -27,14 +27,15 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
 import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
-import { tracer } from "../tracer.server";
+import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
+import { CrashTaskRunService } from "../services/crashTaskRun.server";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
 
-const MessageBody = z.discriminatedUnion("type", [
+export const SharedQueueMessageBody = z.discriminatedUnion("type", [
   WithTraceContext.extend({
     type: z.literal("EXECUTE"),
     taskIdentifier: z.string(),
@@ -51,7 +52,13 @@ const MessageBody = z.discriminatedUnion("type", [
     resumableAttemptId: z.string(),
     checkpointEventId: z.string(),
   }),
+  WithTraceContext.extend({
+    type: z.literal("FAIL"),
+    reason: z.string(),
+  }),
 ]);
+
+export type SharedQueueMessageBody = z.infer<typeof SharedQueueMessageBody>;
 
 type BackgroundWorkerWithTasks = BackgroundWorker & { tasks: BackgroundWorkerTask[] };
 
@@ -60,7 +67,6 @@ export type SharedQueueConsumerOptions = {
   traceTimeoutSeconds?: number;
   nextTickInterval?: number;
   interval?: number;
-  parentContext?: Context;
 };
 
 export class SharedQueueConsumer {
@@ -86,7 +92,6 @@ export class SharedQueueConsumer {
       traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
       nextTickInterval: options.nextTickInterval ?? 1000, // 1 second
       interval: options.interval ?? 100, // 100ms
-      parentContext: options.parentContext ?? ROOT_CONTEXT,
     };
   }
 
@@ -186,19 +191,17 @@ export class SharedQueueConsumer {
     ) {
       this.#endCurrentSpan();
 
-      const parentContext = this._options.parentContext ?? ROOT_CONTEXT;
-
       // Create a new trace
       this._currentSpan = tracer.startSpan(
         "SharedQueueConsumer.doWork()",
         {
           kind: SpanKind.CONSUMER,
         },
-        parentContext
+        ROOT_CONTEXT
       );
 
       // Get the span trace context
-      this._currentSpanContext = trace.setSpan(parentContext, this._currentSpan);
+      this._currentSpanContext = trace.setSpan(ROOT_CONTEXT, this._currentSpan);
 
       this._perTraceCountdown = this._options.maximumItemsPerTrace;
       this._lastNewTrace = new Date();
@@ -233,7 +236,7 @@ export class SharedQueueConsumer {
 
     logger.log("dequeueMessageInSharedQueue()", { queueMessage: message });
 
-    const messageBody = MessageBody.safeParse(message.data);
+    const messageBody = SharedQueueMessageBody.safeParse(message.data);
 
     if (!messageBody.success) {
       logger.error("Failed to parse message", {
@@ -753,6 +756,34 @@ export class SharedQueueConsumer {
         }
 
         break;
+      }
+      // Fail for whatever reason, usually runs that have been resumed but stopped heartbeating
+      case "FAIL": {
+        const existingTaskRun = await prisma.taskRun.findUnique({
+          where: {
+            id: message.messageId,
+          },
+        });
+
+        if (!existingTaskRun) {
+          logger.error("No existing task run to fail", {
+            queueMessage: messageBody,
+            messageId: message.messageId,
+          });
+
+          await this.#ackAndDoMoreWork(message.messageId);
+          return;
+        }
+
+        // TODO: Consider failing the attempt and retrying instead. This may not be a good idea, as dequeued FAIL messages tend to point towards critical, persistent errors.
+        const service = new CrashTaskRunService();
+        await service.call(existingTaskRun.id, {
+          crashAttempts: true,
+          reason: messageBody.data.reason,
+        });
+
+        await this.#ackAndDoMoreWork(message.messageId);
+        return;
       }
     }
 

@@ -9,6 +9,7 @@ import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
 import { InitCommandV3, TriggerDevStepV3, TriggerLoginStepV3 } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -17,8 +18,9 @@ import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import {
@@ -125,6 +127,25 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Tasks" />
+        <PageAccessories>
+          <AdminDebugTooltip>
+            <PropertyTable>
+              {tasks.map((task) => (
+                <Property label={task.exportName} key={task.slug}>
+                  <div className="flex items-center gap-2">
+                    <Paragraph variant="extra-small/bright/mono">
+                      {task.environments
+                        .map((e) =>
+                          e.userName ? `${e.userName}/${e.id}` : `${e.type.slice(0, 3)}/${e.id}`
+                        )
+                        .join(", ")}
+                    </Paragraph>
+                  </div>
+                </Property>
+              ))}
+            </PropertyTable>
+          </AdminDebugTooltip>
+        </PageAccessories>
       </NavBar>
       <PageBody>
         <div className={cn("grid h-full grid-rows-1")}>

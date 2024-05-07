@@ -16,12 +16,11 @@ export const config: TriggerConfig = {
       randomize: true,
     },
   },
-  additionalPackages: ["wrangler@3.35.0"],
-  additionalFiles: ["./wrangler/wrangler.toml"],
+  additionalPackages: ["wrangler@3.35.0", "pg@8.11.5", "prisma@5.11.0"],
+  additionalFiles: ["./wrangler/wrangler.toml", "./prisma/schema.prisma"],
   dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp"],
   instrumentations: [new OpenAIInstrumentation()],
-  logLevel: "log",
-  enableConsoleLogging: true,
+  logLevel: "info",
   onStart: async (payload, { ctx }) => {
     if (ctx.organization.id === "clsylhs0v0002dyx75xx4pod1") {
       console.log("Initializing the app data source");
@@ -34,4 +33,5 @@ export const config: TriggerConfig = {
 
     throw error;
   },
+  postInstall: "npm exec --package prisma -- prisma generate",
 };

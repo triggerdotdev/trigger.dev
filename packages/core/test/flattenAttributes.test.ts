@@ -1,24 +1,50 @@
 import { flattenAttributes, unflattenAttributes } from "../src/v3/utils/flattenAttributes";
 
 describe("flattenAttributes", () => {
-  it("handles null and undefined gracefully", () => {
-    expect(flattenAttributes(null)).toEqual({});
-    expect(flattenAttributes(undefined)).toEqual({});
+  it("handles null correctly", () => {
+    expect(flattenAttributes(null)).toEqual({ "": "$@null((" });
+    expect(unflattenAttributes({ "": "$@null((" })).toEqual(null);
+
+    expect(flattenAttributes(null, "$output")).toEqual({ $output: "$@null((" });
+    expect(flattenAttributes({ foo: null })).toEqual({ foo: "$@null((" });
+    expect(unflattenAttributes({ foo: "$@null((" })).toEqual({ foo: null });
+
+    expect(flattenAttributes({ foo: [null] })).toEqual({ "foo.[0]": "$@null((" });
+    expect(unflattenAttributes({ "foo.[0]": "$@null((" })).toEqual({ foo: [null] });
+
+    expect(flattenAttributes([null])).toEqual({ "[0]": "$@null((" });
+    expect(unflattenAttributes({ "[0]": "$@null((" })).toEqual([null]);
   });
 
   it("flattens string attributes correctly", () => {
     const result = flattenAttributes("testString");
     expect(result).toEqual({ "": "testString" });
+    expect(unflattenAttributes(result)).toEqual("testString");
   });
 
   it("flattens number attributes correctly", () => {
     const result = flattenAttributes(12345);
     expect(result).toEqual({ "": 12345 });
+    expect(unflattenAttributes(result)).toEqual(12345);
   });
 
   it("flattens boolean attributes correctly", () => {
     const result = flattenAttributes(true);
     expect(result).toEqual({ "": true });
+    expect(unflattenAttributes(result)).toEqual(true);
+  });
+
+  it("flattens boolean attributes correctly", () => {
+    const result = flattenAttributes(true, "$output");
+    expect(result).toEqual({ $output: true });
+    expect(unflattenAttributes(result)).toEqual({ $output: true });
+  });
+
+  it("flattens array attributes correctly", () => {
+    const input = [1, 2, 3];
+    const result = flattenAttributes(input);
+    expect(result).toEqual({ "[0]": 1, "[1]": 2, "[2]": 3 });
+    expect(unflattenAttributes(result)).toEqual(input);
   });
 
   it("flattens complex objects correctly", () => {

@@ -1,5 +1,49 @@
 # trigger.dev
 
+## 3.0.0-beta.28
+
+### Patch Changes
+
+- 2156e1526: Adding some additional telemetry during deploy to help debug issues
+- 6406924b0: Ensure @trigger.dev/sdk and @trigger.dev/core are always in the list of deployed dependencies
+- Updated dependencies [d490bc5cb]
+- Updated dependencies [6d9dfbc75]
+  - @trigger.dev/core@3.0.0-beta.28
+
+## 3.0.0-beta.27
+
+### Patch Changes
+
+- 1670c4c41: Remove "log" Log Level, unify log and info messages under the "info" log level
+- Updated dependencies [1670c4c41]
+- Updated dependencies [203e00208]
+  - @trigger.dev/core@3.0.0-beta.27
+
+## 3.0.0-beta.26
+
+### Patch Changes
+
+- e667028d4: Strip out server-only package from worker builds
+  - @trigger.dev/core@3.0.0-beta.26
+
+## 3.0.0-beta.25
+
+### Patch Changes
+
+- e337b2165: Add a postInstall option to allow running scripts after dependencies have been installed in deployed images
+- c37c82231: Use locked package versions when resolving dependencies in deployed workers
+- Updated dependencies [e337b2165]
+- Updated dependencies [9e5382951]
+  - @trigger.dev/core@3.0.0-beta.25
+
+## 3.0.0-beta.24
+
+### Patch Changes
+
+- 83dc87155: Fix issues with consecutive waits
+- Updated dependencies [83dc87155]
+  - @trigger.dev/core@3.0.0-beta.24
+
 ## 3.0.0-beta.23
 
 ### Patch Changes

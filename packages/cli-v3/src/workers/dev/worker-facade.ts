@@ -55,7 +55,9 @@ clock.setGlobalClock(durableClock);
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(
   otelLogger,
-  __PROJECT_CONFIG__.enableConsoleLogging ?? false
+  typeof __PROJECT_CONFIG__.enableConsoleLogging === "boolean"
+    ? __PROJECT_CONFIG__.enableConsoleLogging
+    : true
 );
 
 const devRuntimeManager = new DevRuntimeManager();
@@ -73,7 +75,7 @@ const configLogLevel = triggerLogLevel
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
   tracer: tracer,
-  level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "log",
+  level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "info",
 });
 
 logger.setGlobalTaskLogger(otelTaskLogger);

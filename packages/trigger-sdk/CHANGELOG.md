@@ -1,5 +1,49 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.28
+
+### Patch Changes
+
+- 6d9dfbc75: Add configure function to be able to configure the SDK manually
+- Updated dependencies [d490bc5cb]
+- Updated dependencies [6d9dfbc75]
+  - @trigger.dev/core@3.0.0-beta.28
+  - @trigger.dev/core-backend@3.0.0-beta.28
+
+## 3.0.0-beta.27
+
+### Patch Changes
+
+- 203e00208: Add runs.retrieve management API method to get info about a run by run ID
+- Updated dependencies [1670c4c41]
+- Updated dependencies [203e00208]
+  - @trigger.dev/core@3.0.0-beta.27
+  - @trigger.dev/core-backend@3.0.0-beta.27
+
+## 3.0.0-beta.26
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.26
+- @trigger.dev/core-backend@3.0.0-beta.26
+
+## 3.0.0-beta.25
+
+### Patch Changes
+
+- Updated dependencies [e337b2165]
+- Updated dependencies [9e5382951]
+  - @trigger.dev/core@3.0.0-beta.25
+  - @trigger.dev/core-backend@3.0.0-beta.25
+
+## 3.0.0-beta.24
+
+### Patch Changes
+
+- Updated dependencies [83dc87155]
+  - @trigger.dev/core@3.0.0-beta.24
+  - @trigger.dev/core-backend@3.0.0-beta.24
+
 ## 3.0.0-beta.23
 
 ### Patch Changes

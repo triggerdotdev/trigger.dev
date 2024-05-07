@@ -51,11 +51,15 @@ export class UpsertTaskScheduleService extends BaseService {
     });
 
     if (!task) {
-      throw new Error(`Task with identifier ${schedule.taskIdentifier} not found in project.`);
+      throw new ServiceValidationError(
+        `Task with identifier ${schedule.taskIdentifier} not found in project.`
+      );
     }
 
     if (task.triggerSource !== "SCHEDULED") {
-      throw new Error(`Task with identifier ${schedule.taskIdentifier} is not a scheduled task.`);
+      throw new ServiceValidationError(
+        `Task with identifier ${schedule.taskIdentifier} is not a scheduled task.`
+      );
     }
 
     const result = await $transaction(this._prisma, async (tx) => {
