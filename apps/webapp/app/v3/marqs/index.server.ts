@@ -21,7 +21,7 @@ import {
   QueueCapacities,
   QueueRange,
 } from "./types";
-import { workerQueue } from "~/services/worker.server";
+import { RequeueTaskRunService } from "../requeueTaskRun.server";
 
 const tracer = trace.getTracer("marqs");
 
@@ -260,15 +260,9 @@ export class MarQS {
           });
         }
 
-        await workerQueue.enqueue(
-          "v3.requeueTaskRun",
-          {
-            runId: messageData.messageId,
-          },
-          {
-            runAt: new Date(Date.now() + this.visibilityTimeoutInMs),
-            jobKey: `requeueTaskRun:${messageData.messageId}`,
-          }
+        await RequeueTaskRunService.enqueue(
+          messageData.messageId,
+          new Date(Date.now() + this.visibilityTimeoutInMs)
         );
 
         return message;
@@ -391,7 +385,7 @@ export class MarQS {
           [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
         });
 
-        workerQueue.dequeue(`requeueTaskRun:${messageId}`);
+        await RequeueTaskRunService.dequeue(messageId);
 
         await this.#callAcknowledgeMessage({
           parentQueue: message.parentQueue,
@@ -458,7 +452,7 @@ export class MarQS {
           return;
         }
 
-        workerQueue.dequeue(`requeueTaskRun:${messageId}`);
+        await RequeueTaskRunService.dequeue(messageId);
 
         await this.#callAcknowledgeMessage({
           parentQueue: oldMessage.parentQueue,
@@ -526,6 +520,8 @@ export class MarQS {
           [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
         });
 
+        await RequeueTaskRunService.dequeue(messageId);
+
         await this.#callNackMessage({
           messageKey: this.keys.messageKey(messageId),
           messageQueue: message.queue,
@@ -559,16 +555,7 @@ export class MarQS {
       maxVisibilityTimeout: Date.now() + this.visibilityTimeoutInMs,
     });
 
-    await workerQueue.enqueue(
-      "v3.requeueTaskRun",
-      {
-        runId: messageId,
-      },
-      {
-        runAt: new Date(Date.now() + seconds * 1000),
-        jobKey: `requeueTaskRun:${messageId}`,
-      }
-    );
+    await RequeueTaskRunService.enqueue(messageId, new Date(Date.now() + seconds * 1000));
   }
 
   get visibilityTimeoutInMs() {
@@ -1351,20 +1338,18 @@ local messageId = ARGV[2]
 local currentTime = tonumber(ARGV[3])
 local messageScore = tonumber(ARGV[4])
 
--- Check to see if the message is still in the visibilityQueue
-local messageVisibility = tonumber(redis.call('ZSCORE', visibilityQueue, messageId)) or 0
-
-if messageVisibility == 0 then
-    return
-end
-
 -- Update the concurrency keys
 redis.call('SREM', concurrencyKey, messageId)
 redis.call('SREM', envConcurrencyKey, messageId)
 redis.call('SREM', orgConcurrencyKey, messageId)
 
+-- Check to see if the message is still in the visibilityQueue
+local messageVisibility = tonumber(redis.call('ZSCORE', visibilityQueue, messageId)) or 0
+
+if messageVisibility > 0 then
 -- Remove the message from the timeout queue (deprecated, will eventually remove this)
-redis.call('ZREM', visibilityQueue, messageId)
+    redis.call('ZREM', visibilityQueue, messageId)
+end
 
 -- Enqueue the message into the queue
 redis.call('ZADD', childQueueKey, messageScore, messageId)

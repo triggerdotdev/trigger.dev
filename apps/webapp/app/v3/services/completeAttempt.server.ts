@@ -19,7 +19,6 @@ import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.se
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { TaskRun } from "@trigger.dev/database";
-import { socketIo } from "../handleSocketIo.server";
 import { RetryAttemptService } from "./retryAttempt.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
@@ -186,7 +185,10 @@ export class CompleteAttemptService extends BaseService {
         endTime: retryAt,
       });
 
-      logger.debug("Retrying", { taskRun: taskRunAttempt.taskRun.friendlyId });
+      logger.debug("Retrying", {
+        taskRun: taskRunAttempt.taskRun.friendlyId,
+        retry: completion.retry,
+      });
 
       await this._prisma.taskRun.update({
         where: {
