@@ -124,7 +124,11 @@ function FilterMenu(props: RunFiltersProps) {
 
   const filterTrigger = (
     <SelectTrigger
-      icon={<ListFilterIcon className="size-3.5" />}
+      icon={
+        <div className="flex size-4 items-center justify-center">
+          <ListFilterIcon className="size-3.5" />
+        </div>
+      }
       variant={"minimal/small"}
       shortcut={shortcut}
       tooltipTitle={"Filter runs"}
@@ -203,11 +207,11 @@ function Menu(props: MenuProps) {
     case "statuses":
       return <StatusDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "environments":
-      return <Environments {...props} />;
+      return <EnvironmentsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "tasks":
-      return <Tasks {...props} />;
+      return <TasksDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "created":
-      return <Created {...props} />;
+      return <CreatedDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
   }
 }
 
@@ -261,10 +265,10 @@ function StatusDropdown({
 }) {
   const { values, replace } = useSearchParams();
 
-  const handleChange = useCallback((values: string[]) => {
+  const handleChange = (values: string[]) => {
     clearSearchValue();
     replace({ statuses: values, cursor: undefined, direction: undefined });
-  }, []);
+  };
 
   const filtered = useMemo(() => {
     return statuses.filter((item) => item.title.toLowerCase().includes(searchValue.toLowerCase()));
@@ -274,7 +278,6 @@ function StatusDropdown({
     <SelectProvider value={values("statuses")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
-        sameWidth={false}
         className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
         hideOnEscape={() => {
           if (onClose) {
@@ -322,11 +325,11 @@ function AppliedStatusFilter() {
   }
 
   return (
-    <FilterMenuProvider onClose={() => {}}>
+    <FilterMenuProvider>
       {(search, setSearch) => (
         <StatusDropdown
           trigger={
-            <Ariakit.Select render={<div className="cursor-pointer" />}>
+            <Ariakit.Select render={<div className="group cursor-pointer" />}>
               <AppliedFilter
                 label="Status"
                 value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
@@ -342,19 +345,25 @@ function AppliedStatusFilter() {
   );
 }
 
-function Environments({
+function EnvironmentsDropdown({
   trigger,
   clearSearchValue,
   searchValue,
-  setFilterType,
+  onClose,
   possibleEnvironments,
-}: MenuProps) {
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+  possibleEnvironments: DisplayableEnvironment[];
+}) {
   const { values, replace } = useSearchParams();
 
-  const handleChange = useCallback((values: string[]) => {
+  const handleChange = (values: string[]) => {
     clearSearchValue();
     replace({ environments: values, cursor: undefined, direction: undefined });
-  }, []);
+  };
 
   const filtered = useMemo(() => {
     return possibleEnvironments.filter((item) => {
@@ -367,9 +376,14 @@ function Environments({
     <SelectProvider value={values("environments")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
+        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
         hideOnEscape={() => {
-          setFilterType(undefined);
-          return false;
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
         }}
       >
         <ComboBox placeholder={"Filter by environment..."} value={searchValue} />
@@ -389,19 +403,61 @@ function Environments({
   );
 }
 
-function Tasks({
+function AppliedEnvironmentFilter({
+  possibleEnvironments,
+}: Pick<RunFiltersProps, "possibleEnvironments">) {
+  const { values, del } = useSearchParams();
+
+  if (values("environments").length === 0) {
+    return null;
+  }
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <EnvironmentsDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer" />}>
+              <AppliedFilter
+                label="Environment"
+                value={appliedSummary(
+                  values("environments").map((v) => {
+                    const environment = possibleEnvironments.find((env) => env.id === v);
+                    return environment ? environmentTitle(environment, environment.userName) : v;
+                  })
+                )}
+                onRemove={() => del(["environments", "cursor", "direction"])}
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+          possibleEnvironments={possibleEnvironments}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function TasksDropdown({
   trigger,
   clearSearchValue,
   searchValue,
-  setFilterType,
+  onClose,
   possibleTasks,
-}: MenuProps) {
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+  possibleTasks: { slug: string; triggerSource: TaskTriggerSource }[];
+}) {
   const { values, replace } = useSearchParams();
 
-  const handleChange = useCallback((values: string[]) => {
+  const handleChange = (values: string[]) => {
     clearSearchValue();
     replace({ tasks: values, cursor: undefined, direction: undefined });
-  }, []);
+  };
 
   const filtered = useMemo(() => {
     return possibleTasks.filter((item) => {
@@ -413,9 +469,14 @@ function Tasks({
     <SelectProvider value={values("tasks")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
+        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
         hideOnEscape={() => {
-          setFilterType(undefined);
-          return false;
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
         }}
       >
         <ComboBox placeholder={"Filter by task..."} value={searchValue} />
@@ -435,75 +496,116 @@ function Tasks({
   );
 }
 
+function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTasks">) {
+  const { values, del } = useSearchParams();
+
+  if (values("tasks").length === 0) {
+    return null;
+  }
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <TasksDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer" />}>
+              <AppliedFilter
+                label="Task"
+                value={appliedSummary(
+                  values("tasks").map((v) => {
+                    const task = possibleTasks.find((task) => task.slug === v);
+                    return task ? task.slug : v;
+                  })
+                )}
+                onRemove={() => del(["tasks", "cursor", "direction"])}
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+          possibleTasks={possibleTasks}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
 const timePeriods = [
   {
     label: "All periods",
     value: "all",
   },
   {
-    label: "5 mins",
+    label: "5 mins ago",
     value: "5m",
   },
   {
-    label: "15 mins",
+    label: "15 mins ago",
     value: "15m",
   },
   {
-    label: "30 mins",
+    label: "30 mins ago",
     value: "30m",
   },
   {
-    label: "1 hour",
+    label: "1 hour ago",
     value: "1h",
   },
   {
-    label: "3 hours",
+    label: "3 hours ago",
     value: "3h",
   },
   {
-    label: "6 hours",
+    label: "6 hours ago",
     value: "6h",
   },
   {
-    label: "1 day",
+    label: "1 day ago",
     value: "1d",
   },
   {
-    label: "3 days",
+    label: "3 days ago",
     value: "3d",
   },
   {
-    label: "7 days",
+    label: "7 days ago",
     value: "7d",
   },
   {
-    label: "10 days",
+    label: "10 days ago",
     value: "10d",
   },
   {
-    label: "14 days",
+    label: "14 days ago",
     value: "14d",
   },
   {
-    label: "30 days",
+    label: "30 days ago",
     value: "30d",
   },
 ];
 
-function Created({ trigger, clearSearchValue, searchValue, setFilterType }: MenuProps) {
+function CreatedDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
   const { value, replace } = useSearchParams();
 
-  const handleChange = useCallback(
-    (newValue: string) => {
-      clearSearchValue();
-      if (newValue === "all") {
-        if (!value) return;
-      }
+  const handleChange = (newValue: string) => {
+    clearSearchValue();
+    if (newValue === "all") {
+      if (!value) return;
+    }
 
-      replace({ period: newValue, cursor: undefined, direction: undefined });
-    },
-    [value]
-  );
+    replace({ period: newValue, cursor: undefined, direction: undefined });
+  };
 
   const filtered = useMemo(() => {
     return timePeriods.filter((item) =>
@@ -517,10 +619,13 @@ function Created({ trigger, clearSearchValue, searchValue, setFilterType }: Menu
       <SelectPopover
         hideOnEnter={false}
         hideOnEscape={() => {
-          setFilterType(undefined);
-          return false;
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
         }}
-        resetOnEscape={false}
       >
         <ComboBox placeholder={"Filter by period..."} value={searchValue} />
         <SelectList>
@@ -535,50 +640,6 @@ function Created({ trigger, clearSearchValue, searchValue, setFilterType }: Menu
   );
 }
 
-function AppliedEnvironmentFilter({
-  possibleEnvironments,
-}: Pick<RunFiltersProps, "possibleEnvironments">) {
-  const { values, del } = useSearchParams();
-
-  if (values("environments").length === 0) {
-    return null;
-  }
-
-  return (
-    <AppliedFilter
-      label="Environment"
-      value={appliedSummary(
-        values("environments").map((v) => {
-          const environment = possibleEnvironments.find((env) => env.id === v);
-          return environment ? environmentTitle(environment, environment.userName) : v;
-        })
-      )}
-      onRemove={() => del(["environments", "cursor", "direction"])}
-    />
-  );
-}
-
-function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTasks">) {
-  const { values, del } = useSearchParams();
-
-  if (values("tasks").length === 0) {
-    return null;
-  }
-
-  return (
-    <AppliedFilter
-      label="Task"
-      value={appliedSummary(
-        values("tasks").map((v) => {
-          const task = possibleTasks.find((task) => task.slug === v);
-          return task ? task.slug : v;
-        })
-      )}
-      onRemove={() => del(["tasks", "cursor", "direction"])}
-    />
-  );
-}
-
 function AppliedPeriodFilter() {
   const { value, del } = useSearchParams();
 
@@ -587,11 +648,25 @@ function AppliedPeriodFilter() {
   }
 
   return (
-    <AppliedFilter
-      label="Period"
-      value={timePeriods.find((t) => t.value === value("period"))?.label ?? value("period")}
-      onRemove={() => del(["period", "cursor", "direction"])}
-    />
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <CreatedDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer" />}>
+              <AppliedFilter
+                label="Created"
+                value={
+                  timePeriods.find((t) => t.value === value("period"))?.label ?? value("period")
+                }
+                onRemove={() => del(["period", "cursor", "direction"])}
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
   );
 }
 

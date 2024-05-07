@@ -302,7 +302,7 @@ export function SelectTrigger({
         }
       >
         <div className="flex grow items-center gap-0.5">
-          {icon && <div className="-ml-1.5 flex-none">{icon}</div>}
+          {icon && <div className="-ml-1 flex-none">{icon}</div>}
           <div className="truncate">{content}</div>
         </div>
         {dropdownIcon === true ? (

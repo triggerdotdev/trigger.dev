@@ -56,14 +56,14 @@ export function useSearchParams() {
     (param: string) => {
       return search.get(param) ?? undefined;
     },
-    [search]
+    [location, search]
   );
 
   const values = useCallback(
     (param: string) => {
       return search.getAll(param);
     },
-    [search]
+    [location, search]
   );
 
   return {
