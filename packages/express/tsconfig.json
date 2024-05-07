@@ -5,7 +5,12 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "declaration": false,
-    "declarationMap": false
+    "declarationMap": false,
+    "lib": ["DOM"],
+    "paths": {
+      "@trigger.dev/tsup/*": ["../../config-packages/tsup/src/*"],
+      "@trigger.dev/tsup": ["../../config-packages/tsup/src/index"]
+    }
   },
   "exclude": ["node_modules"]
 }

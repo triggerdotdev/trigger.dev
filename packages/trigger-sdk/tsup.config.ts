@@ -1,19 +1,9 @@
-import { defineConfig } from "tsup";
+import { Options, defineConfig as defineConfigTSUP } from "tsup";
+import { packageOptions } from "@trigger.dev/tsup";
 
-export default defineConfig([
-  {
-    name: "main",
-    entry: ["./src/index.ts"],
-    outDir: "./dist",
-    platform: "node",
-    format: ["cjs"],
-    legacyOutput: true,
-    sourcemap: true,
-    clean: true,
-    bundle: true,
-    splitting: false,
-    dts: true,
-    external: ["http", "https", "util", "events", "tty", "os", "timers"],
-    esbuildPlugins: [],
-  },
-]);
+const options: Options = {
+  ...packageOptions,
+  entry: ["./src/index.ts", "./src/v3/index.ts"],
+};
+
+export default defineConfigTSUP(options);

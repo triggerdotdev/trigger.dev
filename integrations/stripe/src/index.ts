@@ -32,6 +32,8 @@ import {
   CustomerSubscriptionEventNamesSchema,
   ExternalAccountEventNames,
   ExternalAccountEventNamesSchema,
+  InvoiceEventNames,
+  InvoiceEventNamesSchema,
   PaymentIntentEventNames,
   PaymentIntentEventNamesSchema,
   PayoutEventNames,
@@ -901,6 +903,123 @@ export class Stripe implements TriggerIntegration {
       params ?? { connect: false }
     );
   }
+
+  /**
+   * Occurs on any invoice.* event. Accepts an optional array of events to filter on. By default it will listen to all invoice.* events.
+   *
+   * @example
+   * ```ts
+   * stripe.onInvoice({ events: ["invoice.created", "invoice.paid"] })
+   * ```
+   *
+   * You can detect the event name in your job by using the `ctx.event.name` property:
+   *
+   * ```ts
+   * client.defineJob({
+   *   id: "stripe-example",
+   *   name: "Stripe Example",
+   *   version: "0.1.0",
+   *   trigger: stripe.onInvoice({ events: ["invoice.created", "invoice.paid"] }),
+   *   run: async (payload, io, ctx) => {
+   *     console.log(ctx.event.name); // "invoice.created" or "invoice.paid"
+   *   },
+   * });
+   * ```
+   */
+  onInvoice(params?: TriggerParams & { events?: InvoiceEventNames }) {
+    const parsedEvents = InvoiceEventNamesSchema.optional().parse(params?.events);
+
+    const event = {
+      ...events.onInvoice,
+      name: parsedEvents ?? events.onPayout.name,
+    };
+
+    return createTrigger(this.source, event, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever an invoice is created.
+   */
+  onInvoiceCreated(params?: TriggerParams) {
+    return createTrigger(this.source, events.onInvoiceCreated, params ?? { connect: false });
+  }
+
+  /**
+   * Occurs whenever an invoice is finalized.
+   */
+  onInvoiceFinalized(params?: TriggerParams) {
+    return createTrigger(this.source, events.onInvoiceFinalized, params ?? { connect: false });
+  }
+
+  /**
+   * The invoice couldn’t be finalized.
+   */
+  onInvoiceFinalizationFailed(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onInvoiceFinalizationFailed,
+      params ?? { connect: false }
+    );
+  }
+
+  /**
+   * Occurs whenever an invoice is marked uncollectible.
+   */
+  onInvoiceMarkedUncollectible(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onInvoiceMarkedUncollectible,
+      params ?? { connect: false }
+    );
+  }
+
+  onInvoicePaid(params?: TriggerParams) {
+    return createTrigger(this.source, events.onInvoicePaid, params ?? { connect: false });
+  }
+
+  onInvoicePaymentActionRequired(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onInvoicePaymentActionRequired,
+      params ?? { connect: false }
+    );
+  }
+
+  onInvoicePaymentFailed(params?: TriggerParams) {
+    return createTrigger(this.source, events.onInvoicePaymentFailed, params ?? { connect: false });
+  }
+
+  onInvoicePaymentSucceeded(params?: TriggerParams) {
+    return createTrigger(
+      this.source,
+      events.onInvoicePaymentSucceeded,
+      params ?? { connect: false }
+    );
+  }
+
+  onInvoiceSent(params?: TriggerParams) {
+    return createTrigger(this.source, events.onInvoiceSent, params ?? { connect: false });
+  }
+
+  onInvoiceUpcoming(params?: TriggerParams) {
+    return createTrigger(this.source, events.onInvoiceUpcoming, params ?? { connect: false });
+  }
+
+  onInvoiceUpdated(params?: TriggerParams) {
+    return createTrigger(this.source, events.onInvoiceUpdated, params ?? { connect: false });
+  }
+
+  onInvoiceVoided(params?: TriggerParams) {
+    return createTrigger(this.source, events.onInvoiceVoided, params ?? { connect: false });
+  }
+
+  onInvoiceItemCreated(params?: TriggerParams) {
+    return createTrigger(this.source, events.onInvoiceItemCreated, params ?? { connect: false });
+  }
+
+  onInvoiceItemDeleted(params?: TriggerParams) {
+    return createTrigger(this.source, events.onInvoiceItemDeleted, params ?? { connect: false });
+  }
 }
 
 export type TriggerParams = {
@@ -1032,7 +1151,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
     const stripeClient = new StripeClient("", { apiVersion: "2022-11-15" });
 
     try {
-      const event = stripeClient.webhooks.constructEvent(rawBody, signature, source.secret);
+      const event = await stripeClient.webhooks.constructEventAsync(rawBody, signature, source.secret);
 
       return {
         events: [

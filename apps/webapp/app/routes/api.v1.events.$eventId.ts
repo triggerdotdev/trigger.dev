@@ -1,8 +1,9 @@
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { GetEvent } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { runOriginalStatus } from "~/models/jobRun.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { apiCors } from "~/utils/apiCors";
 
@@ -10,7 +11,7 @@ const ParamsSchema = z.object({
   eventId: z.string(),
 });
 
-export async function loader({ request, params }: LoaderArgs) {
+export async function loader({ request, params }: LoaderFunctionArgs) {
   if (request.method.toUpperCase() === "OPTIONS") {
     return apiCors(request, json({}));
   }
@@ -49,7 +50,7 @@ function toJSON(eventRecord: FoundEventRecord): GetEvent {
     updatedAt: eventRecord.updatedAt,
     runs: eventRecord.runs.map((run) => ({
       id: run.id,
-      status: run.status,
+      status: runOriginalStatus(run.status),
       startedAt: run.startedAt,
       completedAt: run.completedAt,
     })),

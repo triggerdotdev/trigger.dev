@@ -1,58 +1,33 @@
 import { Outlet } from "@remix-run/react";
-import type { LoaderArgs } from "@remix-run/server-runtime";
-import { typedjson } from "remix-typedjson";
-import invariant from "tiny-invariant";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { redirect } from "remix-typedjson";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
-import { ProjectSideMenu, SideMenuContainer } from "~/components/navigation/ProjectSideMenu";
-import { ProjectsMenu } from "~/components/navigation/ProjectsMenu";
+import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { ProjectPresenter } from "~/presenters/ProjectPresenter.server";
-import { telemetry } from "~/services/telemetry.server";
-import { requireUserId } from "~/services/session.server";
 import { Handle } from "~/utils/handle";
-import { projectPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, projectPath, v3ProjectPath } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
-  const userId = await requireUserId(request);
-  const { projectParam } = params;
-  invariant(projectParam, "projectParam not found");
+export const loader = async ({ params }: LoaderFunctionArgs) => {
+  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
 
-  try {
-    const presenter = new ProjectPresenter();
+  const project = await prisma.project.findUnique({
+    select: { version: true },
+    where: { slug: projectParam },
+  });
 
-    const project = await presenter.call({
-      userId,
-      slug: projectParam,
-    });
-
-    if (!project) {
-      throw new Response("Not Found", {
-        status: 404,
-        statusText: `Project ${projectParam} not found in your Organization.`,
-      });
-    }
-
-    telemetry.project.identify({ project });
-
-    return typedjson({
-      project,
-    });
-  } catch (error) {
-    if (error instanceof Response) {
-      throw error;
-    }
-
-    console.error(error);
-    throw new Response(undefined, {
-      status: 400,
-      statusText: "Something went wrong, if this problem persists please contact support.",
-    });
+  if (!project) {
+    throw new Response("Project not found", { status: 404, statusText: "Project not found" });
   }
+
+  if (project.version === "V3") {
+    return redirect(v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }));
+  }
+
+  return null;
 };
 
 export const handle: Handle = {
-  breadcrumb: (_match, matches) => <ProjectsMenu matches={matches} />,
   scripts: (match) => [
     {
       src: "https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js",
@@ -64,12 +39,7 @@ export const handle: Handle = {
 export default function Project() {
   return (
     <>
-      <SideMenuContainer>
-        <ProjectSideMenu />
-        <div className="flex-grow">
-          <Outlet />
-        </div>
-      </SideMenuContainer>
+      <Outlet />
     </>
   );
 }

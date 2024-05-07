@@ -46,7 +46,8 @@ export function ConnectToOAuthForm({
 
   const [form, { title, slug, scopes, hasCustomClient, customClientId, customClientSecret }] =
     useForm({
-      lastSubmission: fetcher.data,
+      // TODO: type this
+      lastSubmission: fetcher.data as any,
       shouldRevalidate: "onSubmit",
       onValidate({ formData }) {
         return parse(formData, {
@@ -126,7 +127,7 @@ export function ConnectToOAuthForm({
             id="hasCustomClient"
             label="Use my OAuth App"
             variant="simple/small"
-            disabled={requiresCustomOAuthApp}
+            readOnly={requiresCustomOAuthApp}
             onChange={(checked) => setUseMyOAuthApp(checked)}
             {...conform.input(hasCustomClient, { type: "checkbox" })}
             defaultChecked={requiresCustomOAuthApp}
@@ -134,8 +135,9 @@ export function ConnectToOAuthForm({
           {useMyOAuthApp && (
             <div className="ml-6 mt-2">
               <Paragraph variant="small" className="mb-2">
-                Set the callback url to <CodeBlock code={callbackUrl} showLineNumbers={false} />
+                Set the callback url to
               </Paragraph>
+              <CodeBlock code={callbackUrl} showLineNumbers={false} />
               <div className="flex flex-col gap-2">
                 <div className="flex gap-2">
                   <InputGroup fullWidth>
@@ -177,7 +179,7 @@ export function ConnectToOAuthForm({
                 </fieldset> */}
             <div className="mb-2 mt-4 flex items-center justify-between">
               <Header3>Select {integration.name} scopes</Header3>
-              <Paragraph variant="small" className="text-slate-500">
+              <Paragraph variant="small" className="text-charcoal-500">
                 {simplur`${selectedScopes.size} scope[|s] selected`}
               </Paragraph>
             </div>
@@ -230,7 +232,7 @@ export function ConnectToOAuthForm({
         )}
       </Fieldset>
 
-      <div className="absolute bottom-0 left-0 flex w-full items-center justify-end gap-x-4 rounded-b-md border-t border-slate-800 bg-midnight-900 p-4">
+      <div className="absolute bottom-0 left-0 flex w-full items-center justify-end gap-x-4 rounded-b-md border-t border-charcoal-800 bg-background-dimmed p-4">
         <FormError>{scopes.error}</FormError>
         <Button
           type="submit"
@@ -239,7 +241,7 @@ export function ConnectToOAuthForm({
           variant="primary/medium"
           LeadingIcon={integration.icon ?? integration.identifier}
         >
-          Connect to {integration.name}
+          {`Connect to ${integration.name}`}
         </Button>
       </div>
     </fetcher.Form>

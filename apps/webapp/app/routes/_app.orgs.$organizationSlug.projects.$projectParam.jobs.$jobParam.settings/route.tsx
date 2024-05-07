@@ -1,4 +1,4 @@
-import { JobEnvironment, JobStatusTable } from "~/components/JobsStatusTable";
+import { JobStatusTable } from "~/components/JobsStatusTable";
 import { HowToDisableAJob } from "~/components/helpContent/HelpContentText";
 import { DeleteJobDialogContent } from "~/components/jobs/DeleteJobModalContent";
 import { Button } from "~/components/primitives/Buttons";
@@ -10,7 +10,7 @@ import { useJob } from "~/hooks/useJob";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
-import { projectJobsPath, projectPath } from "~/utils/pathBuilder";
+import { projectJobsPath } from "~/utils/pathBuilder";
 
 export default function Page() {
   const job = useJob();
@@ -18,7 +18,7 @@ export default function Page() {
   const project = useProject();
 
   return (
-    <Help defaultOpen>
+    <Help>
       {(open) => (
         <div className={cn("grid h-fit gap-4", open ? "grid-cols-2" : "grid-cols-1")}>
           <div className="w-full">
@@ -26,7 +26,7 @@ export default function Page() {
               <Header2 className="mb-2 flex items-center gap-1">Environments</Header2>
               <HelpTrigger title="How do disable a Job?" />
             </div>
-            <JobStatusTable environments={job.environments} />
+            <JobStatusTable environments={job.environments} displayStyle="long" />
             <div className="mt-4 flex w-full items-center justify-end gap-x-3">
               {job.status === "ACTIVE" && (
                 <Paragraph variant="small">
@@ -38,22 +38,21 @@ export default function Page() {
                 <DialogTrigger asChild>
                   <Button
                     variant="danger/small"
-                    leadingIconClassName="text-bright"
+                    leadingIconClassName="text-text-bright"
                     LeadingIcon="trash-can"
                   >
                     I want to delete this Job
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
-                  <DialogHeader>
-                    <DeleteJobDialogContent
-                      title={job.title}
-                      slug={job.slug}
-                      environments={job.environments}
-                      id={job.id}
-                      redirectTo={projectJobsPath(organization, project)}
-                    />
-                  </DialogHeader>
+                  <DialogHeader>Delete Job</DialogHeader>
+                  <DeleteJobDialogContent
+                    title={job.title}
+                    slug={job.slug}
+                    environments={job.environments}
+                    id={job.id}
+                    redirectTo={projectJobsPath(organization, project)}
+                  />
                 </DialogContent>
               </Dialog>
             </div>

@@ -1,0 +1,42 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  otlp/internal:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4319
+
+processors:
+  batch:
+
+exporters:
+  otlphttp/internal:
+    endpoint: "https://otel.baselime.io/v1/"
+    headers:
+      "x-api-key": ${env:BASELIME_API_KEY}
+      "x-service": ${env:BASELIME_SERVICE}
+      "x-baselime-dataset": "otel"
+  logging:
+    verbosity: normal
+  otlphttp:
+    endpoint: "http://host.docker.internal:3030/otel"
+    compression: none
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp]
+    traces/internal:
+      receivers: [otlp/internal]
+      processors: [batch]
+      exporters: [otlphttp/internal]

@@ -5,7 +5,7 @@ import { getVersion } from "../utils/getVersion";
 import { DevCommandOptions } from "../commands/dev";
 import { ProjectInstallOptions } from "../frameworks";
 
-const postHogApiKey = "phc_hwYmedO564b3Ik8nhA4Csrb5SueY0EwFJWCbseGwWW";
+const postHogApiKey = "phc_9aSDbJCaDUMdZdHxxMPTvcj7A9fsl3mCgM1RBPmPsl7";
 
 export class TelemetryClient {
   #client: PostHog;
@@ -14,7 +14,7 @@ export class TelemetryClient {
 
   constructor() {
     this.#client = new PostHog(postHogApiKey, {
-      host: "https://app.posthog.com",
+      host: "https://eu.posthog.com",
       flushAt: 1,
     });
     this.#sessionId = `cli-${nanoid()}`;

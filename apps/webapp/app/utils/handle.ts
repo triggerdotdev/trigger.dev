@@ -1,8 +1,5 @@
-import { ExternalScriptsFunction } from "remix-utils";
-import { BreadcrumbItem } from "~/components/navigation/Breadcrumb";
+import { ExternalScriptsFunction } from "remix-utils/external-scripts";
 
 export type Handle = {
-  breadcrumb?: BreadcrumbItem;
-  expandSidebar?: boolean;
   scripts?: ExternalScriptsFunction;
 };

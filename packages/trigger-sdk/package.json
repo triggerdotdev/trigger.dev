@@ -1,10 +1,11 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "2.2.0",
+  "version": "3.0.0-beta.28",
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "module": "./dist/index.mjs",
   "publishConfig": {
     "access": "public"
   },
@@ -13,10 +14,29 @@
   ],
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./v3": {
+      "import": {
+        "types": "./dist/v3/index.d.mts",
+        "default": "./dist/v3/index.mjs"
+      },
+      "require": "./dist/v3/index.js",
+      "types": "./dist/v3/index.d.ts"
     },
     "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "v3": [
+        "./dist/v3/index.d.ts"
+      ]
+    }
   },
   "scripts": {
     "clean": "rimraf dist",
@@ -25,7 +45,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:^2.2.0",
+    "@opentelemetry/api": "^1.8.0",
+    "@opentelemetry/api-logs": "^0.48.0",
+    "@opentelemetry/semantic-conventions": "^1.22.0",
+    "@trigger.dev/core": "workspace:3.0.0-beta.28",
+    "@trigger.dev/core-backend": "workspace:3.0.0-beta.28",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
@@ -38,20 +62,23 @@
     "ulid": "^2.3.0",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
-    "zod": "3.22.3"
+    "zod": "3.22.3",
+    "msw": "^2.2.1"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
+    "@trigger.dev/tsup": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/node": "18",
     "@types/slug": "^5.0.3",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
     "encoding": "^0.1.13",
+    "msw": "^2.2.1",
     "rimraf": "^3.0.2",
-    "tsup": "^6.5.0",
-    "tsx": "^3.12.1",
-    "typescript": "^4.8.4"
+    "tsup": "^8.0.1",
+    "typed-emitter": "^2.1.0",
+    "typescript": "^5.3.0"
   },
   "engines": {
     "node": ">=18.0.0"

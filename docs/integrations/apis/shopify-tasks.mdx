@@ -1,0 +1,298 @@
+---
+title: Shopify Tasks
+sidebarTitle: Tasks
+---
+
+Tasks are executed after the job is triggered and are the main building blocks of a job. You can string together as many tasks as you want.
+
+---
+
+## Tasks
+
+All tasks are using Shopify's [REST Resources](https://github.com/Shopify/shopify-api-js/blob/ff0900cd383712e6362b6dd3370d8ab11caabd3d/packages/shopify-api/docs/guides/rest-resources.md) and can be used with the same general pattern:
+
+```ts
+await io.shopify.rest.<Resource>.<method>("cacheKey", params)
+```
+
+<ParamField body="cacheKey" type="string" required>
+  Should be a stable and unique cache key inside the `run()`. See
+  [resumability](/documentation/concepts/resumability) for more information.
+</ParamField>
+<ParamField body="params" type="object">
+  Resource-specific parameters.
+</ParamField>
+
+### `all()`
+
+Fetch all resources of a given type.
+
+```ts
+await io.shopify.rest.Variant.all("get-all-variants", {
+  autoPaginate: true, // Pagination helper, disabled by default
+  product_id: 123456 // Optional, resource-specific parameter
+})
+```
+
+**Returns**
+
+<ResponseField name="data" type="array" required>
+  An array of Shopify resources.
+</ResponseField>
+<ResponseField name="pageInfo" type="PageInfo">
+  The `PageInfo` object. Will be `undefined` if there are no further pages.
+
+  <Expandable title="properties">
+    <ResponseField name="limit" type="string" required>
+      The maximum number of results shown per page.
+    </ResponseField>
+    <ResponseField name="fields" type="string[]">
+      An array of resource fields to show in the results.
+    </ResponseField>
+    <ResponseField name="previousPageUrl" type="string">
+      The optional URL of the previous page.
+    </ResponseField>
+    <ResponseField name="nextPageUrl" type="string">
+      The optional URL of the next page.
+    </ResponseField>
+    <ResponseField name="prevPage" type="PageInfoParams">
+      The optional `PageInfoParams` object of the previous page.
+
+      <Expandable title="properties" defaultOpen>
+        <ResponseField name="path" type="string" required>
+          The path of the previous page.
+        </ResponseField>
+        <ResponseField name="query" type="object" required>
+          The query parameters of the previous page.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="nextPage" type="PageInfoParams">
+      The optional `PageInfoParams` object of the next page.
+
+      <Expandable title="properties" defaultOpen>
+        <ResponseField name="path" type="string" required>
+          The path of the next page.
+        </ResponseField>
+        <ResponseField name="query" type="object" required>
+          The query parameters of the next page.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### `count()`
+
+Fetch the number of resources of a given type.
+
+```ts
+await io.shopify.rest.Product.count("count-products", {
+  product_type: "amazing stuff" // Optional, resource-specific parameters
+})
+```
+
+**Returns**
+
+<ResponseField name="count" type="number" required>
+  The number of resources.
+</ResponseField>
+
+### `find()`
+
+Fetch a single resource by its ID.
+
+```ts
+await io.shopify.rest.Product.find("find-product", {
+  id: 123456
+})
+```
+
+**Returns**
+
+A `Promise` that resolves to the Shopify resource.
+
+### `save()`
+
+Create or update a resource of a given type. The resource will be created if no ID is specified.
+
+```ts
+// Create a product
+await io.shopify.rest.Product.save("create-product", {
+  fromData: {
+    title: "Some Product",
+  },
+})
+
+// Update a product
+await io.shopify.rest.Product.save("update-product", {
+  fromData: {
+    id: 123456
+    title: "New Product Name",
+  },
+})
+```
+
+**Returns**
+
+A `Promise` that resolves to the Shopify resource.
+
+### `delete()`
+
+Delete an existing resource.
+
+```ts
+await io.shopify.rest.Product.delete("delete-product", {
+  id: 123456
+})
+```
+
+**Returns**
+
+A `Promise` that resolves to `undefined` when the resource has been deleted. Throws an error otherwise.
+
+## Resources
+
+This is a list of REST Resources that can be used directly as Tasks. They all implement the same methods described above. For resources with non-standard methods, you will have to use the raw Shopify API Client instead - please see the end of this page for further instructions.
+
+- [Article](https://shopify.dev/docs/api/admin-rest/2023-07/resources/article)
+- [Blog](https://shopify.dev/docs/api/admin-rest/2023-07/resources/blog)
+- [Collect](https://shopify.dev/docs/api/admin-rest/2023-07/resources/collect)
+- [Country](https://shopify.dev/docs/api/admin-rest/2023-07/resources/country)
+- [CustomCollection](https://shopify.dev/docs/api/admin-rest/2023-07/resources/customcollection)
+- [Customer](https://shopify.dev/docs/api/admin-rest/2023-07/resources/customer)
+- [DiscountCode](https://shopify.dev/docs/api/admin-rest/2023-07/resources/discountCode)
+- [DraftOrder](https://shopify.dev/docs/api/admin-rest/2023-07/resources/draftOrder)
+- [Image](https://shopify.dev/docs/api/admin-rest/2023-07/resources/image)
+- [MarketingEvent](https://shopify.dev/docs/api/admin-rest/2023-07/resources/marketingevent)
+- [MetaField](https://shopify.dev/docs/api/admin-rest/2023-07/resources/metafield)
+- [Order](https://shopify.dev/docs/api/admin-rest/2023-07/resources/order)
+- [Page](https://shopify.dev/docs/api/admin-rest/2023-07/resources/page)
+- [PriceRule](https://shopify.dev/docs/api/admin-rest/2023-07/resources/pricerule)
+- [Product](https://shopify.dev/docs/api/admin-rest/2023-07/resources/product)
+- [Redirect](https://shopify.dev/docs/api/admin-rest/2023-07/resources/redirect)
+- [ScriptTag](https://shopify.dev/docs/api/admin-rest/2023-07/resources/scripttag)
+- [SmartCollection](https://shopify.dev/docs/api/admin-rest/2023-07/resources/smartcollection)
+- [Variant](https://shopify.dev/docs/api/admin-rest/2023-07/resources/variant)
+- [Webhook](https://shopify.dev/docs/api/admin-rest/2023-07/resources/webhook)
+
+
+## Example usage
+
+In this example we'll create some products in response to a customer sign-up, count them all before and after, and do a few other things too.
+
+```ts
+client.defineJob({
+  id: "shopify-integration-on-customer-created",
+  name: "Shopify Integration - On Customer Created",
+  version: "1.0.0",
+  integrations: {
+    shopify
+  },
+  trigger: shopify.on("customers/create"),
+  run: async (payload, io, ctx) => {
+    const pre = await io.shopify.rest.Product.count("count-products");
+
+    const firstName = payload.first_name;
+
+    // Create a customized product
+    const productOne = await io.shopify.rest.Product.save("create-product-one", {
+      fromData: {
+        title: `${firstName}'s Teapot`,
+      },
+    });
+
+    // ..and another one
+    const productTwo = await io.shopify.rest.Product.save("create-product-two", {
+      fromData: {
+        title: `${firstName}'s Mug`,
+      },
+    });
+
+    const post = await io.shopify.rest.Product.count("count-products-again");
+
+    await io.logger.info(`Created products: ${post.count - pre.count}`)
+
+    // Use our fancy pagination helper
+    const allProducts = await io.shopify.rest.Product.all("get-all-products", {
+      limit: 1,
+      autoPaginate: true,
+    });
+
+
+    const productNames = allProducts.data.map(p => p.title).join(", ")
+  
+    await io.logger.info(`All product names: ${productNames}`)
+
+    const foundOne = await io.shopify.rest.Product.find("find-product", {
+      id: productOne.id,
+    });
+
+    if (foundOne) {
+      // Get those variants, because we can
+      await io.shopify.rest.Variant.all("get-all-variants", {
+        product_id: foundOne.id,
+      });
+
+      // Maybe that teapot was a bit too much
+      await io.shopify.rest.Product.delete("delete-product", {
+        id: foundOne.id,
+      });
+    }
+
+    return {
+      message: `Hi, ${firstName}! Bet you'll love this item: ${productTwo.title}`
+    }
+  },
+});
+```
+
+## Using the underlying Shopify API Client
+
+You can access the [Shopify API Client instance](https://github.com/Shopify/shopify-api-js/blob/ff0900cd383712e6362b6dd3370d8ab11caabd3d/packages/shopify-api/docs/reference/shopifyApi.md) by using the `runTask` method on the integration:
+
+```ts
+import "@shopify/shopify-api/adapters/node";
+import { Shopify } from "@trigger.dev/shopify";
+
+const shopify = new Shopify({
+  id: "shopify",
+});
+
+client.defineJob({
+  id: "shopify-example-1",
+  name: "Shopify Example 1",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "shopify.example",
+  }),
+  integrations: {
+    shopify,
+  },
+  run: async (payload, io, ctx) => {
+    const newProduct = await io.shopify.runTask(
+      "create-product",
+      async (client, task, io, session) => {
+        // We create a session for you to pass to the client
+        const product = new client.rest.Product({ session });
+
+        product.title = "Rick's Amazing Teapot";
+        product.body_html = "<strong>What a great teapot!</strong>";
+        product.vendor = "Astley Inc.";
+        product.product_type = "Teapot";
+        product.status = "active";
+
+        // This will create the product and update the object
+        await product.save({ update: true });
+
+        return product;
+      }
+    );
+
+    return {
+      status: 418,
+      statusText: `I'm ${newProduct.title}`,
+    };
+  },
+});
+```

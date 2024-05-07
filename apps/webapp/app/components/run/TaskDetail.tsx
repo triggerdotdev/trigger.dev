@@ -12,7 +12,6 @@ import {
   UpdatingDuration,
 } from "./RunCard";
 import { sensitiveDataReplacer } from "~/services/sensitiveDataReplacer";
-import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import { CodeBlock } from "../code/CodeBlock";
 import { DateTime } from "../primitives/DateTime";
@@ -28,12 +27,25 @@ import {
 } from "../primitives/Table";
 import { TaskAttemptStatusLabel } from "./TaskAttemptStatus";
 import { TaskStatusIcon } from "./TaskStatus";
-import { ClientOnly } from "remix-utils";
+import { ClientOnly } from "remix-utils/client-only";
 import { Spinner } from "../primitives/Spinner";
 import type { DetailedTask } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam.runs.$runParam.tasks.$taskParam/route";
+import { formatDuration } from "@trigger.dev/core/v3";
 
 export function TaskDetail({ task }: { task: DetailedTask }) {
-  const { name, description, icon, status, params, properties, output, style, attempts } = task;
+  const {
+    name,
+    description,
+    icon,
+    status,
+    params,
+    properties,
+    output,
+    outputIsUndefined,
+    style,
+    attempts,
+    noop,
+  } = task;
 
   const startedAt = task.startedAt ? new Date(task.startedAt) : undefined;
   const completedAt = task.completedAt ? new Date(task.completedAt) : undefined;
@@ -140,16 +152,18 @@ export function TaskDetail({ task }: { task: DetailedTask }) {
             <Paragraph variant="small">No input</Paragraph>
           )}
         </div>
-        <div className="mt-4 flex flex-col gap-2">
-          <Header3>Output</Header3>
-          {output ? (
-            <ClientOnly fallback={<Spinner />}>
-              {() => <CodeBlock code={output} maxLines={35} />}
-            </ClientOnly>
-          ) : (
-            <Paragraph variant="small">No output</Paragraph>
-          )}
-        </div>
+        {!noop && (
+          <div className="mt-4 flex flex-col gap-2">
+            <Header3>Output</Header3>
+            {output && !outputIsUndefined ? (
+              <ClientOnly fallback={<Spinner />}>
+                {() => <CodeBlock code={output} maxLines={35} />}
+              </ClientOnly>
+            ) : (
+              <Paragraph variant="small">No output</Paragraph>
+            )}
+          </div>
+        )}
       </RunPanelBody>
     </RunPanel>
   );

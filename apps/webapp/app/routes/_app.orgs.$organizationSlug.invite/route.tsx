@@ -1,4 +1,4 @@
-import { conform, useFieldList, useForm, list, requestIntent } from "@conform-to/react";
+import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import type { ActionFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
@@ -91,7 +91,8 @@ export default function Page() {
 
   const [form, { emails }] = useForm({
     id: "invite-members",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
@@ -106,7 +107,7 @@ export default function Page() {
         <FormTitle
           LeadingIcon="invite-member"
           title="Invite team members"
-          description={`Invite a new team member to ${organization.title}.`}
+          description={`Invite new team members to ${organization.title}.`}
         />
         <Form method="post" {...form.props}>
           <Fieldset>
@@ -118,6 +119,7 @@ export default function Page() {
                     {...conform.input(email, { type: "email" })}
                     placeholder={index === 0 ? "Enter an email address" : "Add another email"}
                     icon="envelope"
+                    autoFocus={index === 0}
                     onChange={(e) => {
                       fieldValues.current[index] = e.target.value;
                       if (
@@ -139,7 +141,7 @@ export default function Page() {
                 </Button>
               }
               cancelButton={
-                <LinkButton to={organizationTeamPath(organization)} variant={"secondary/small"}>
+                <LinkButton to={organizationTeamPath(organization)} variant={"tertiary/small"}>
                   Cancel
                 </LinkButton>
               }

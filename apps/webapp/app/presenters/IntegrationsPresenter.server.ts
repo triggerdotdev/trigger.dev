@@ -3,7 +3,7 @@ import { PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
-import { Api, apisList } from "~/services/externalApis/apis";
+import { Api, apisList } from "~/services/externalApis/apis.server";
 import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
 import { Integration, OAuthClientSchema } from "~/services/externalApis/types";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
@@ -25,11 +25,9 @@ export class IntegrationsPresenter {
 
   public async call({
     userId,
-    projectSlug,
     organizationSlug,
   }: {
     userId: User["id"];
-    projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
   }) {
     const clients = await this.#prismaClient.integration.findMany({
@@ -67,8 +65,8 @@ export class IntegrationsPresenter {
             jobIntegrations: {
               where: {
                 job: {
-                  project: {
-                    slug: projectSlug,
+                  organization: {
+                    slug: organizationSlug,
                   },
                   internal: false,
                   deletedAt: null,
@@ -125,9 +123,9 @@ export class IntegrationsPresenter {
             name: c.definition.name,
           },
           authMethod: {
-            type: c.authMethod?.type ?? c.authSource === "RESOLVER" ? "resolver" : "local",
+            type: c.authMethod?.type ?? (c.authSource === "RESOLVER" ? "resolver" : "local"),
             name:
-              c.authMethod?.name ?? c.authSource === "RESOLVER" ? "Auth Resolver" : "Local Only",
+              c.authMethod?.name ?? (c.authSource === "RESOLVER" ? "Auth Resolver" : "Local Only"),
           },
           authSource: c.authSource,
           setupStatus: c.setupStatus,

@@ -1,5 +1,7 @@
-import { PrismaClient, prisma } from "~/db.server";
-import { logger } from "~/services/logger.server";
+import { estimate } from "@trigger.dev/billing";
+import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
+import { featuresForRequest } from "~/features.server";
+import { BillingService } from "~/services/billing.server";
 
 export class OrgUsagePresenter {
   #prismaClient: PrismaClient;
@@ -8,7 +10,7 @@ export class OrgUsagePresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ userId, slug }: { userId: string; slug: string }) {
+  public async call({ userId, slug, request }: { userId: string; slug: string; request: Request }) {
     const organization = await this.#prismaClient.organization.findFirst({
       where: {
         slug,
@@ -21,11 +23,8 @@ export class OrgUsagePresenter {
     });
 
     if (!organization) {
-      return;
+      throw new Error("Organization not found");
     }
-
-    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const startOfLastMonth = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1); // this works for January as well
 
     // Get count of runs since the start of the current month
     const runsCount = await this.#prismaClient.jobRun.count({
@@ -33,18 +32,6 @@ export class OrgUsagePresenter {
         organizationId: organization.id,
         createdAt: {
           gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-        },
-        internal: false,
-      },
-    });
-
-    // Get the count of runs for last month
-    const runsCountLastMonth = await this.#prismaClient.jobRun.count({
-      where: {
-        organizationId: organization.id,
-        createdAt: {
-          gte: startOfLastMonth,
-          lt: startOfMonth,
         },
         internal: false,
       },
@@ -61,100 +48,130 @@ export class OrgUsagePresenter {
     // ]
     // This will be used to generate the chart on the usage page
     // Use prisma queryRaw for this since prisma doesn't support grouping by month
-    const chartDataRaw = await this.#prismaClient.$queryRaw<
+    const monthlyRunsDataRaw = await this.#prismaClient.$queryRaw<
       {
         month: string;
         count: number;
       }[]
-    >`SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, COUNT(*) as count FROM "JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '6 months' AND "internal" = FALSE GROUP BY month ORDER BY month ASC`;
+    >`SELECT TO_CHAR("createdAt", 'YYYY-MM') as month, COUNT(*) as count FROM ${sqlDatabaseSchema}."JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '6 months' AND "internal" = FALSE GROUP BY month ORDER BY month ASC`;
 
-    const chartData = chartDataRaw.map((obj) => ({
+    const hasMonthlyRunData = monthlyRunsDataRaw.length > 0;
+    const monthlyRunsData = monthlyRunsDataRaw.map((obj) => ({
       name: obj.month,
       total: Number(obj.count), // Convert BigInt to Number
     }));
 
-    const totalJobs = await this.#prismaClient.job.count({
-      where: {
-        organizationId: organization.id,
-        internal: false,
-      },
-    });
+    const monthlyRunsDataDisplay = fillInMissingRunMonthlyData(monthlyRunsData, 6);
 
-    const totalJobsLastMonth = await this.#prismaClient.job.count({
-      where: {
-        organizationId: organization.id,
-        createdAt: {
-          lt: startOfMonth,
-        },
-        deletedAt: null,
-        internal: false,
-      },
-    });
+    // Max concurrency each day over past 30 days
+    const concurrencyChartRawData = await this.#prismaClient.$queryRaw<
+      { day: Date; max_concurrent_runs: BigInt }[]
+    >`
+      WITH time_boundaries AS (
+        SELECT generate_series(
+            NOW() - interval '30 days', 
+            NOW(), 
+            interval '1 day'
+        ) AS day_start
+      ),
+      events AS (
+          SELECT
+              day_start,
+              event_time,
+              event_type,
+              SUM(event_type) OVER (ORDER BY event_time) AS running_total
+          FROM
+              time_boundaries
+          JOIN
+              triggerdotdev_events.run_executions
+          ON
+              event_time >= day_start AND event_time < day_start + interval '1 day'
+          WHERE triggerdotdev_events.run_executions.organization_id = ${organization.id}
+      ),
+      max_concurrent_per_day AS (
+          SELECT
+              date_trunc('day', event_time) AS day,
+              MAX(running_total) AS max_concurrent_runs
+          FROM
+              events
+          GROUP BY day
+      )
+      SELECT
+          day,
+          max_concurrent_runs
+      FROM
+          max_concurrent_per_day
+      ORDER BY
+          day;`;
 
-    const totalIntegrations = await this.#prismaClient.integration.count({
-      where: {
-        organizationId: organization.id,
-      },
-    });
+    const ThirtyDaysAgo = new Date();
+    ThirtyDaysAgo.setDate(ThirtyDaysAgo.getDate() - 30);
+    ThirtyDaysAgo.setUTCHours(0, 0, 0, 0);
 
-    const totalIntegrationsLastMonth = await this.#prismaClient.integration.count({
-      where: {
-        organizationId: organization.id,
-        createdAt: {
-          lt: startOfMonth,
-        },
-      },
-    });
+    const hasConcurrencyData = concurrencyChartRawData.length > 0;
+    const concurrencyChartRawDataFilledIn = fillInMissingConcurrencyDays(
+      ThirtyDaysAgo,
+      31,
+      concurrencyChartRawData
+    );
 
-    const totalMembers = await this.#prismaClient.orgMember.count({
-      where: {
-        organizationId: organization.id,
-      },
-    });
+    const dailyRunsRawData = await this.#prismaClient.$queryRaw<
+      { day: Date; runs: BigInt }[]
+    >`SELECT date_trunc('day', "createdAt") as day, COUNT(*) as runs FROM ${sqlDatabaseSchema}."JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '30 days' AND "internal" = FALSE GROUP BY day`;
 
-    const jobs = await this.#prismaClient.job.findMany({
-      where: {
-        organizationId: organization.id,
-        deletedAt: null,
-        internal: false,
-      },
-      select: {
-        id: true,
-        slug: true,
-        _count: {
-          select: {
-            runs: {
-              where: {
-                createdAt: {
-                  gte: startOfMonth,
-                },
-              },
-            },
-          },
-        },
-        project: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
-        },
-      },
-    });
+    const hasDailyRunsData = dailyRunsRawData.length > 0;
+    const dailyRunsDataFilledIn = fillInMissingDailyRuns(ThirtyDaysAgo, 31, dailyRunsRawData);
 
-    const chartDataDisplay = fillInMissingMonthlyData(chartData, 6);
+    const endOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1);
+    endOfMonth.setDate(endOfMonth.getDate() - 1);
+    const projectedRunsCount = Math.round(
+      runsCount / (new Date().getDate() / endOfMonth.getDate())
+    );
+
+    const { isManagedCloud } = featuresForRequest(request);
+    const billingPresenter = new BillingService(isManagedCloud);
+    const plans = await billingPresenter.getPlans();
+
+    let runCostEstimation: number | undefined = undefined;
+    let projectedRunCostEstimation: number | undefined = undefined;
+
+    if (plans) {
+      const estimationResult = estimate({
+        usage: { runs: runsCount },
+        plans: [plans.free, plans.paid],
+      });
+      runCostEstimation = estimationResult?.cost.runsCost;
+
+      const projectedEstimationResult = estimate({
+        usage: { runs: projectedRunsCount },
+        plans: [plans.free, plans.paid],
+      });
+      projectedRunCostEstimation = projectedEstimationResult?.cost.runsCost;
+    }
+
+    const periodStart = new Date();
+    periodStart.setDate(1);
+    periodStart.setUTCHours(0, 0, 0, 0);
+
+    const periodEnd = new Date();
+    periodEnd.setDate(1);
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+    periodEnd.setUTCHours(0, 0, 0, 0);
 
     return {
       id: organization.id,
       runsCount,
-      runsCountLastMonth,
-      chartData: chartDataDisplay,
-      totalJobs,
-      totalJobsLastMonth,
-      totalIntegrations,
-      totalIntegrationsLastMonth,
-      totalMembers,
-      jobs,
+      projectedRunsCount,
+      monthlyRunsData: monthlyRunsDataDisplay,
+      hasMonthlyRunData,
+      concurrencyData: concurrencyChartRawDataFilledIn,
+      hasConcurrencyData,
+      dailyRunsData: dailyRunsDataFilledIn,
+      hasDailyRunsData,
+      runCostEstimation,
+      projectedRunCostEstimation,
+      periodStart,
+      periodEnd,
     };
   }
 }
@@ -163,7 +180,7 @@ export class OrgUsagePresenter {
 // So for example, if data is [{ name: "2021-01", total: 10 }, { name: "2021-03", total: 30 }] and the totalNumberOfMonths is 6
 // And the current month is "2021-04", then this function will return:
 // [{ name: "2020-11", total: 0 }, { name: "2020-12", total: 0 }, { name: "2021-01", total: 10 }, { name: "2021-02", total: 0 }, { name: "2021-03", total: 30 }, { name: "2021-04", total: 0 }]
-function fillInMissingMonthlyData(
+function fillInMissingRunMonthlyData(
   data: Array<{ name: string; total: number }>,
   totalNumberOfMonths: number
 ): Array<{ name: string; total: number }> {
@@ -185,6 +202,60 @@ function fillInMissingMonthlyData(
   });
 
   return completeData;
+}
+
+function fillInMissingConcurrencyDays(
+  startDate: Date,
+  days: number,
+  data: Array<{ day: Date; max_concurrent_runs: BigInt }>
+) {
+  const outputData: Array<{ date: Date; maxConcurrentRuns: number }> = [];
+  for (let i = 0; i < days; i++) {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + i);
+
+    const foundData = data.find((d) => d.day.toISOString() === date.toISOString());
+    if (!foundData) {
+      outputData.push({
+        date,
+        maxConcurrentRuns: 0,
+      });
+    } else {
+      outputData.push({
+        date,
+        maxConcurrentRuns: Number(foundData.max_concurrent_runs),
+      });
+    }
+  }
+
+  return outputData;
+}
+
+function fillInMissingDailyRuns(
+  startDate: Date,
+  days: number,
+  data: Array<{ day: Date; runs: BigInt }>
+) {
+  const outputData: Array<{ date: Date; runs: number }> = [];
+  for (let i = 0; i < days; i++) {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + i);
+
+    const foundData = data.find((d) => d.day.toISOString() === date.toISOString());
+    if (!foundData) {
+      outputData.push({
+        date,
+        runs: 0,
+      });
+    } else {
+      outputData.push({
+        date,
+        runs: Number(foundData.runs),
+      });
+    }
+  }
+
+  return outputData;
 }
 
 // Start month will be like 2023-03 and endMonth will be like 2023-10
@@ -211,12 +282,4 @@ function getMonthsBetween(startMonth: string, endMonth: string): string[] {
   }
 
   return result;
-}
-
-function getLastSecondOfMonth(endMonth: string) {
-  const [year, month] = endMonth.split("-").map(Number);
-  const nextMonthFirstDay = new Date(year, month, 1);
-  nextMonthFirstDay.setDate(0);
-  nextMonthFirstDay.setHours(23, 59, 59);
-  return nextMonthFirstDay;
 }

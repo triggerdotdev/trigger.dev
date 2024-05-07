@@ -1,5 +1,5 @@
 import { parse } from "@conform-to/zod";
-import { ActionArgs, json } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { CreateEndpointError } from "~/services/endpoints/createEndpoint.server";
@@ -10,7 +10,7 @@ export const bodySchema = z.object({
   url: z.string().url("Must be a valid URL"),
 });
 
-export async function action({ request }: ActionArgs) {
+export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const submission = parse(formData, { schema: bodySchema });
 

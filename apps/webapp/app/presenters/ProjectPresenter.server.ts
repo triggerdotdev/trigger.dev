@@ -1,6 +1,8 @@
 import { PrismaClient, prisma } from "~/db.server";
 import { Project } from "~/models/project.server";
+import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
 import { User } from "~/models/user.server";
+import { sortEnvironments } from "~/services/environmentSort.server";
 
 export class ProjectPresenter {
   #prismaClient: PrismaClient;
@@ -11,8 +13,8 @@ export class ProjectPresenter {
 
   public async call({
     userId,
-    slug,
-  }: Pick<Project, "slug"> & {
+    id,
+  }: Pick<Project, "id"> & {
     userId: User["id"];
   }) {
     const project = await this.#prismaClient.project.findFirst({
@@ -23,67 +25,9 @@ export class ProjectPresenter {
         organizationId: true,
         createdAt: true,
         updatedAt: true,
-        jobs: {
-          select: {
-            id: true,
-            slug: true,
-            title: true,
-            aliases: {
-              select: {
-                version: {
-                  select: {
-                    version: true,
-                    eventSpecification: true,
-                    properties: true,
-                    runs: {
-                      select: {
-                        createdAt: true,
-                        status: true,
-                      },
-                      take: 1,
-                      orderBy: [{ createdAt: "desc" }],
-                    },
-                    integrations: {
-                      select: {
-                        key: true,
-                        integration: {
-                          select: {
-                            slug: true,
-                            definition: true,
-                            setupStatus: true,
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-                environment: {
-                  select: {
-                    type: true,
-                    orgMember: {
-                      select: {
-                        userId: true,
-                      },
-                    },
-                  },
-                },
-              },
-              where: {
-                name: "latest",
-              },
-            },
-            dynamicTriggers: {
-              select: {
-                type: true,
-              },
-            },
-          },
-          where: {
-            internal: false,
-            deletedAt: null,
-          },
-          orderBy: [{ title: "asc" }],
-        },
+        deletedAt: true,
+        version: true,
+        externalRef: true,
         _count: {
           select: {
             sources: {
@@ -91,19 +35,13 @@ export class ProjectPresenter {
                 active: false,
               },
             },
-          },
-        },
-        organization: {
-          select: {
-            _count: {
-              select: {
-                integrations: {
-                  where: {
-                    setupStatus: "MISSING_FIELDS",
-                  },
-                },
+            jobs: {
+              where: {
+                internal: false,
+                deletedAt: null,
               },
             },
+            httpEndpoints: true,
           },
         },
         environments: {
@@ -113,14 +51,20 @@ export class ProjectPresenter {
             type: true,
             orgMember: {
               select: {
-                userId: true,
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    displayName: true,
+                  },
+                },
               },
             },
             apiKey: true,
           },
         },
       },
-      where: { slug, organization: { members: { some: { userId } } } },
+      where: { id, deletedAt: null, organization: { members: { some: { userId } } } },
     });
 
     if (!project) {
@@ -130,19 +74,22 @@ export class ProjectPresenter {
     return {
       id: project.id,
       slug: project.slug,
+      ref: project.externalRef,
       name: project.name,
       organizationId: project.organizationId,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
+      deletedAt: project.deletedAt,
+      version: project.version,
       hasInactiveExternalTriggers: project._count.sources > 0,
-      hasUnconfiguredIntegrations: project.organization._count.integrations > 0,
-      environments: project.environments.map((environment) => ({
-        id: environment.id,
-        slug: environment.slug,
-        type: environment.type,
-        apiKey: environment.apiKey,
-        userId: environment.orgMember?.userId,
-      })),
+      jobCount: project._count.jobs,
+      httpEndpointCount: project._count.httpEndpoints,
+      environments: sortEnvironments(
+        project.environments.map((environment) => ({
+          ...displayableEnvironments(environment, userId),
+          userId: environment.orgMember?.user.id,
+        }))
+      ),
     };
   }
 }

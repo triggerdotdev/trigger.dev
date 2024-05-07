@@ -1,0 +1,16 @@
+{
+  "extends": "@trigger.dev/tsconfig/node18.json",
+  "include": ["src/globals.d.ts", "./src/**/*.ts", "tsup.config.ts"],
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "declaration": false,
+    "declarationMap": false,
+    "paths": {
+      "@trigger.dev/tsup/*": ["../../config-packages/tsup/src/*"],
+      "@trigger.dev/tsup": ["../../config-packages/tsup/src/index"]
+    },
+    "lib": ["DOM", "DOM.Iterable"]
+  },
+  "exclude": ["node_modules"]
+}

@@ -19,6 +19,12 @@ type CreateEventInput = {
   deliverAt?: Date;
   sourceContext?: { id: string; metadata?: any };
   externalAccount?: ExternalAccount;
+  eventSource?: EventSource;
+};
+
+type EventSource = {
+  httpEndpointId?: string;
+  httpEndpointEnvironmentId?: string;
 };
 
 const EVENT_UPDATE_THRESHOLD_WINDOW_IN_MSECS = 5 * 1000; // 5 seconds
@@ -48,7 +54,8 @@ export class IngestSendEvent {
     environment: AuthenticatedEnvironment,
     event: RawEvent,
     options?: SendEventOptions,
-    sourceContext?: { id: string; metadata?: any }
+    sourceContext?: { id: string; metadata?: any },
+    eventSource?: EventSource
   ) {
     try {
       const deliverAt = this.#calculateDeliverAt(options);
@@ -89,6 +96,7 @@ export class IngestSendEvent {
               deliverAt,
               sourceContext,
               externalAccount,
+              eventSource,
             }));
 
         return eventLog;
@@ -116,6 +124,7 @@ export class IngestSendEvent {
     deliverAt,
     sourceContext,
     externalAccount,
+    eventSource,
   }: CreateEventInput) {
     const eventLog = await tx.eventRecord.create({
       data: {
@@ -126,11 +135,14 @@ export class IngestSendEvent {
         name: event.name,
         timestamp: event.timestamp ?? new Date(),
         payload: event.payload ?? {},
+        payloadType: event.payloadType,
         context: event.context ?? {},
         source: event.source ?? "trigger.dev",
         sourceContext,
         deliverAt: deliverAt,
         externalAccountId: externalAccount ? externalAccount.id : undefined,
+        httpEndpointId: eventSource?.httpEndpointId,
+        httpEndpointEnvironmentId: eventSource?.httpEndpointEnvironmentId,
       },
     });
 
@@ -154,6 +166,7 @@ export class IngestSendEvent {
       },
       data: {
         payload: reqEvent.payload ?? existingEventLog.payload,
+        payloadType: reqEvent.payloadType,
         context: reqEvent.context ?? existingEventLog.context,
         deliverAt: deliverAt ?? new Date(),
       },

@@ -40,6 +40,7 @@ export async function seedCloud(prisma: PrismaClient) {
         create: {
           name: "My Project",
           slug: "my-project-123",
+          externalRef: "my-project-123",
         },
       },
     },
@@ -77,6 +78,7 @@ export async function seedCloud(prisma: PrismaClient) {
           id: adminMember.id,
         },
       },
+      shortcode: "octopus-tentacles",
     },
     update: {},
   });
@@ -100,6 +102,7 @@ export async function seedCloud(prisma: PrismaClient) {
           id: organization.id,
         },
       },
+      shortcode: "stripey-zebra",
     },
     update: {},
   });

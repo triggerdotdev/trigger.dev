@@ -1,0 +1,17 @@
+{
+  "name": "yalt",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev --port 8787",
+    "start": "wrangler dev"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "~4.20231121.0",
+    "wrangler": "^3.21.0"
+  },
+  "dependencies": {
+    "@trigger.dev/yalt": "workspace:*"
+  }
+}

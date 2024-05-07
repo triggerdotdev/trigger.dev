@@ -1,6 +1,7 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { BoltIcon, ForwardIcon } from "@heroicons/react/24/solid";
+import { PlayIcon } from "@heroicons/react/20/solid";
+import { BoltIcon } from "@heroicons/react/24/solid";
 import {
   Form,
   Outlet,
@@ -9,13 +10,13 @@ import {
   useNavigate,
   useNavigation,
 } from "@remix-run/react";
-import { JobRunStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
+import { RuntimeEnvironmentType, User } from "@trigger.dev/database";
 import { useMemo } from "react";
 import { usePathName } from "~/hooks/usePathName";
+import type { RunBasicStatus } from "~/models/jobRun.server";
 import { ViewRun } from "~/presenters/RunPresenter.server";
 import { cancelSchema } from "~/routes/resources.runs.$runId.cancel";
 import { schema } from "~/routes/resources.runs.$runId.rerun";
-import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 import { runCompletedPath, runTaskPath, runTriggerPath } from "~/utils/pathBuilder";
 import { CodeBlock } from "../code/CodeBlock";
@@ -25,26 +26,19 @@ import { Button } from "../primitives/Buttons";
 import { Callout } from "../primitives/Callout";
 import { DateTime } from "../primitives/DateTime";
 import { Header2 } from "../primitives/Headers";
+import { Icon } from "../primitives/Icon";
 import { NamedIcon } from "../primitives/NamedIcon";
 import {
-  PageButtons,
-  PageHeader,
+  PageAccessories,
+  NavBar,
   PageInfoGroup,
   PageInfoProperty,
   PageInfoRow,
   PageTitle,
-  PageTitleRow,
 } from "../primitives/PageHeader";
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
-import {
-  RunBasicStatus,
-  RunStatusIcon,
-  RunStatusLabel,
-  hasFinished,
-  runBasicStatus,
-  runStatusTitle,
-} from "../runs/RunStatuses";
+import { RunStatusIcon, RunStatusLabel, runStatusTitle } from "../runs/RunStatuses";
 import {
   RunPanel,
   RunPanelBody,
@@ -57,6 +51,7 @@ import {
 } from "./RunCard";
 import { TaskCard } from "./TaskCard";
 import { TaskCardSkeleton } from "./TaskCardSkeleton";
+import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 
 type RunOverviewProps = {
   run: ViewRun;
@@ -70,11 +65,12 @@ type RunOverviewProps = {
     run: string;
     runsPath: string;
   };
+  currentUser: User;
 };
 
 const taskPattern = /\/tasks\/(.*)/;
 
-export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps) {
+export function RunOverview({ run, trigger, showRerun, paths, currentUser }: RunOverviewProps) {
   const navigate = useNavigate();
   const pathName = usePathName();
 
@@ -94,71 +90,96 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
     }
   }, [pathName]);
 
-  const basicStatus = runBasicStatus(run.status);
+  const usernameForEnv =
+    currentUser.id !== run.environment.userId ? run.environment.userName : undefined;
 
   return (
     <PageContainer>
-      <PageHeader>
-        <PageTitleRow>
-          <PageTitle
-            backButton={{
-              to: paths.back,
-              text: "Runs",
-            }}
-            title={`Run #${run.number}`}
-          />
-          <PageButtons>
-            {run.isTest && (
-              <span className="flex items-center gap-1 text-xs uppercase text-slate-600">
-                <NamedIcon name="beaker" className="h-4 w-4 text-slate-600" />
-                Test run
-              </span>
-            )}
-            {showRerun && hasFinished(run.status) && (
-              <RerunPopover
-                runId={run.id}
-                runsPath={paths.runsPath}
-                environmentType={run.environment.type}
-                status={basicStatus}
+      <NavBar>
+        <PageTitle
+          backButton={{
+            to: paths.back,
+            text: "Runs",
+          }}
+          title={
+            typeof run.number === "number" ? `Run #${run.number}` : `Run ${run.id.slice(0, 8)}`
+          }
+        />
+        <PageAccessories>
+          {run.isTest && (
+            <span className="flex items-center gap-1 text-xs uppercase text-charcoal-600">
+              <NamedIcon name="beaker" className="h-4 w-4 text-charcoal-600" />
+              Test run
+            </span>
+          )}
+          {showRerun && run.isFinished && (
+            <RerunPopover
+              runId={run.id}
+              runPath={paths.run}
+              runsPath={paths.runsPath}
+              environmentType={run.environment.type}
+              status={run.basicStatus}
+            />
+          )}
+          {!run.isFinished && <CancelRun runId={run.id} />}
+        </PageAccessories>
+      </NavBar>
+      <PageBody scrollable={false} className="grid grid-rows-[auto_1fr] overflow-hidden">
+        <div className="border-b border-grid-dimmed px-4 py-4">
+          <PageInfoRow className="overflow-hidden">
+            <PageInfoGroup>
+              <PageInfoProperty
+                icon={<RunStatusIcon status={run.status} className="h-4 w-4" />}
+                label={"Status"}
+                value={runStatusTitle(run.status)}
               />
-            )}
-            {!hasFinished(run.status) && <CancelRun runId={run.id} />}
-          </PageButtons>
-        </PageTitleRow>
-        <PageInfoRow>
-          <PageInfoGroup>
-            <PageInfoProperty
-              icon={<RunStatusIcon status={run.status} className="h-4 w-4" />}
-              label={"Status"}
-              value={runStatusTitle(run.status)}
-            />
-            <PageInfoProperty
-              icon={"calendar"}
-              label={"Started"}
-              value={run.startedAt ? <DateTime date={run.startedAt} /> : "Not started yet"}
-            />
-            <PageInfoProperty icon={"property"} label={"Version"} value={`v${run.version}`} />
-            <PageInfoProperty
-              label={"Env"}
-              value={<EnvironmentLabel environment={run.environment} />}
-            />
-            <PageInfoProperty
-              icon={"clock"}
-              label={"Duration"}
-              value={formatDuration(run.startedAt, run.completedAt)}
-            />
-          </PageInfoGroup>
-          <PageInfoGroup alignment="right">
-            <Paragraph variant="extra-small" className="text-slate-600">
-              RUN ID: {run.id}
-            </Paragraph>
-          </PageInfoGroup>
-        </PageInfoRow>
-      </PageHeader>
-      <PageBody scrollable={false}>
-        <div className="grid h-full grid-cols-2 gap-2">
-          <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+              <PageInfoProperty
+                icon={"calendar"}
+                label={"Started"}
+                value={run.startedAt ? <DateTime date={run.startedAt} /> : "Not started yet"}
+              />
+              <PageInfoProperty icon={"property"} label={"Version"} value={`v${run.version}`} />
+              <PageInfoProperty
+                label={"Env"}
+                value={<EnvironmentLabel environment={run.environment} userName={usernameForEnv} />}
+              />
+              <PageInfoProperty
+                icon={"clock"}
+                label={"Duration"}
+                value={formatDuration(run.startedAt, run.completedAt, { style: "short" })}
+              />
+              <PageInfoProperty
+                icon={<Icon icon="alarm-filled" className="h-4 w-4 text-blue-500" />}
+                label={"Execution Time"}
+                value={formatDurationMilliseconds(run.executionDuration, { style: "short" })}
+              />
+              <PageInfoProperty
+                icon={<Icon icon="list-numbers" className="h-4 w-4 text-yellow-500" />}
+                label={"Execution Count"}
+                value={<>{run.executionCount}</>}
+              />
+            </PageInfoGroup>
+            <PageInfoGroup alignment="right">
+              <Paragraph variant="extra-small" className="whitespace-nowrap text-charcoal-600">
+                RUN ID: {run.id}
+              </Paragraph>
+            </PageInfoGroup>
+          </PageInfoRow>
+        </div>
+        <div className="grid h-full grid-cols-2 gap-2 overflow-hidden">
+          <div className="flex flex-col gap-6 overflow-y-auto py-4 pl-4 pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <div>
+              {run.status === "SUCCESS" &&
+                (run.tasks.length === 0 || run.tasks.every((t) => t.noop)) && (
+                  <Callout
+                    variant={"warning"}
+                    to="https://trigger.dev/docs/documentation/concepts/tasks"
+                    className="mb-4"
+                  >
+                    This Run completed but it did not use any Tasks – this can cause unpredictable
+                    results. Read the docs to view the solution.
+                  </Callout>
+                )}
               <Header2 className="mb-2">Trigger</Header2>
               <RunPanel
                 selected={selectedId === "trigger"}
@@ -199,10 +220,10 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
                   );
                 })
               ) : (
-                <BlankTasks status={run.status} basicStatus={basicStatus} />
+                <BlankTasks status={run.basicStatus} />
               )}
             </div>
-            {(basicStatus === "COMPLETED" || basicStatus === "FAILED") && (
+            {(run.basicStatus === "COMPLETED" || run.basicStatus === "FAILED") && (
               <div>
                 <Header2 className={cn("mb-2")}>Run Summary</Header2>
                 <RunPanel
@@ -251,7 +272,9 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
                       <CodeBlock language="json" code={run.output} maxLines={10} />
                     ) : (
                       run.output === null && (
-                        <Paragraph variant="small">This Run returned nothing.</Paragraph>
+                        <Paragraph variant="small" className="mt-4">
+                          This Run returned nothing.
+                        </Paragraph>
                       )
                     )}
                   </RunPanelBody>
@@ -261,8 +284,8 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
           </div>
 
           {/* Detail view */}
-          <div className="overflow-y-auto py-4 pr-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-            <Header2 className="mb-2">Detail</Header2>
+          <div className="overflow-y-auto py-4 pr-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <Header2 className="mb-2">Details</Header2>
             {selectedId ? <Outlet /> : <Callout variant="info">Select a task or trigger</Callout>}
           </div>
         </div>
@@ -271,14 +294,8 @@ export function RunOverview({ run, trigger, showRerun, paths }: RunOverviewProps
   );
 }
 
-function BlankTasks({
-  status,
-  basicStatus,
-}: {
-  status: JobRunStatus;
-  basicStatus: RunBasicStatus;
-}) {
-  switch (basicStatus) {
+function BlankTasks({ status }: { status: RunBasicStatus }) {
+  switch (status) {
     default:
     case "COMPLETED":
       return <Paragraph variant="small">There were no tasks for this run.</Paragraph>;
@@ -300,20 +317,23 @@ function BlankTasks({
 
 function RerunPopover({
   runId,
+  runPath,
   runsPath,
   environmentType,
   status,
 }: {
   runId: string;
+  runPath: string;
   runsPath: string;
   environmentType: RuntimeEnvironmentType;
   status: RunBasicStatus;
 }) {
   const lastSubmission = useActionData();
 
-  const [form, { successRedirect }] = useForm({
+  const [form, { successRedirect, failureRedirect }] = useForm({
     id: "rerun",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
@@ -326,50 +346,53 @@ function RerunPopover({
           Rerun Job
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="flex w-80 flex-col gap-2 p-4" align="end">
+      <PopoverContent className="flex min-w-[20rem] max-w-[20rem] flex-col gap-2 p-0" align="end">
         <Form method="post" action={`/resources/runs/${runId}/rerun`} {...form.props}>
           <input {...conform.input(successRedirect, { type: "hidden" })} defaultValue={runsPath} />
+          <input {...conform.input(failureRedirect, { type: "hidden" })} defaultValue={runPath} />
           {environmentType === "PRODUCTION" && (
-            <Callout variant="warning" className="mb-2">
-              This will rerun this Job in your Production environment.
-            </Callout>
+            <div className="px-4 pt-4">
+              <Callout variant="warning">
+                This will rerun this Job in your Production environment.
+              </Callout>
+            </div>
           )}
 
-          <div className="flex flex-col items-start gap-4 divide-y divide-slate-600">
-            <div>
+          <div className="flex flex-col items-start divide-y divide-charcoal-800">
+            <div className="p-4">
+              <Paragraph variant="small" className="mb-3">
+                Start a brand new Job run with the same Trigger data as this one. This will re-do
+                every Task.
+              </Paragraph>
               <Button
-                variant="primary/small"
+                variant="secondary/medium"
                 type="submit"
                 name={conform.INTENT}
                 value="start"
                 fullWidth
-                LeadingIcon={BoltIcon}
+                className="text-text-bright"
               >
+                <BoltIcon className="mr-1 h-3.5 w-3.5 text-text-bright" />
                 Run again
               </Button>
-
-              <Paragraph variant="extra-small" className="mt-2">
-                Start a brand new job run with the same Trigger data as this one. This will re-do
-                every task.
-              </Paragraph>
             </div>
             {status === "FAILED" && (
-              <div className="pt-4">
+              <div className="p-4">
+                <Paragraph variant="small" className="mb-3">
+                  Continue running this Job run from where it left off. This will skip any Task that
+                  has already been completed.
+                </Paragraph>
                 <Button
-                  variant="primary/small"
+                  variant="secondary/medium"
                   type="submit"
                   name={conform.INTENT}
                   value="continue"
                   fullWidth
-                  LeadingIcon={ForwardIcon}
+                  className="text-text-bright"
                 >
-                  Retry job run
+                  <PlayIcon className="mr-1 h-3.5 w-3.5 text-text-bright" />
+                  Retry Job run
                 </Button>
-
-                <Paragraph variant="extra-small" className="mt-2">
-                  Continue running this job run from where it left off. This will skip any task that
-                  has already been completed.
-                </Paragraph>
               </div>
             )}
           </div>
@@ -386,7 +409,8 @@ export function CancelRun({ runId }: { runId: string }) {
 
   const [form, { redirectUrl }] = useForm({
     id: "cancel-run",
-    lastSubmission,
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema: cancelSchema });
     },

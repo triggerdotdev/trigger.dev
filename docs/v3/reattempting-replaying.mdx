@@ -1,0 +1,55 @@
+---
+title: "Reattempting & Replaying"
+description: "You can reattempt a task that has failed all of its attempts. You can also replay a task with a new version of your code."
+---
+
+## Replaying
+
+A replay is a copy of a run with the same payload but against the latest version in that environment. This is useful if something went wrong and you want to try again with the latest version of your code.
+
+### Replaying from the UI
+
+<Tabs>
+  <Tab title="From a run">
+    Select a task, then in the bottom right click "Replay" ![Select a task, then in the bottom right
+    click "Replay"](/images/v3/replay-run-action.png)
+  </Tab>
+  <Tab title="Runs list">
+    <Steps>
+      <Step title="Click the action button on a run">
+        ![On the runs page, press the triple dot button](/images/v3/replay-runs-list.png)
+      </Step>
+      <Step title="Click replay">![Click replay](/images/v3/replay-runs-list-popover.png)</Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+### Replaying using the SDK
+
+You can replay a run using the SDK:
+
+```ts
+const replayedRun = await runs.replay(run.id);
+```
+
+When you call `trigger()` or `batchTrigger()` on a task you receive back a run handle which has an `id` property. You can use that `id` to replay the run.
+
+You can also access the run id from inside a run. You could write this to your database and then replay it later.
+
+```ts
+export const simpleChildTask = task({
+  id: "simple-child-task",
+  run: async (payload, { ctx }) => {
+    // the run ID (and other useful info) is in ctx
+    const runId = ctx.run.id;
+  },
+});
+```
+
+### Reattempting
+
+Tasks can [automatically reattempt](/v3/errors-retrying) based on the settings you provide.
+
+Sometimes a task will fail all of its attempts. In that case, you can continue reattempting.
+
+<Snippet file="coming-soon.mdx" />

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { ApiAuthenticationMethodApiKey, Integration } from "~/services/externalApis/types";
-import { docsIntegrationPath } from "~/utils/pathBuilder";
+import { Integration } from "~/services/externalApis/types";
+import { apiReferencePath, docsIntegrationPath } from "~/utils/pathBuilder";
 import { LinkButton } from "../primitives/Buttons";
 import { Header1, Header2 } from "../primitives/Headers";
 import { NamedIconInBox } from "../primitives/NamedIcon";
@@ -49,8 +49,17 @@ export function ConnectToIntegrationSheet({
             )}
           </div>
           <LinkButton
+            to={apiReferencePath(integration.identifier)}
+            variant="tertiary/small"
+            TrailingIcon="arrow-up-right"
+            trailingIconClassName="h-4 w-4 text-charcoal-400"
+            target="_blank"
+          >
+            View examples
+          </LinkButton>
+          <LinkButton
             to={docsIntegrationPath(integration.identifier)}
-            variant="secondary/small"
+            variant="tertiary/small"
             LeadingIcon="docs"
             target="_blank"
           >
@@ -83,13 +92,6 @@ export function ConnectToIntegrationSheet({
                 variant="description"
               />
             )}
-            <RadioGroupItem
-              id="custom"
-              value="custom"
-              label="Fetch/Existing SDK"
-              description={`Alternatively, use ${integration.name} without our integration.`}
-              variant="description"
-            />
           </RadioGroup>
 
           {integrationMethod && (
@@ -132,7 +134,5 @@ function SelectedIntegrationMethod({
           callbackUrl={callbackUrl}
         />
       );
-    case "custom":
-      return <CustomHelp name={integration.name} />;
   }
 }

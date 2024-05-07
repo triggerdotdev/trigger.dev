@@ -1,9 +1,13 @@
-import type { ActionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import type { CompleteTaskBodyOutput, ServerTask } from "@trigger.dev/core";
-import { CompleteTaskBodyInputSchema } from "@trigger.dev/core";
+import {
+  API_VERSIONS,
+  CompleteTaskBodyInputSchema,
+  CompleteTaskBodyV2InputSchema,
+} from "@trigger.dev/core";
 import { z } from "zod";
-import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { PrismaClientOrTransaction, prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -14,7 +18,11 @@ const ParamsSchema = z.object({
   id: z.string(),
 });
 
-export async function action({ request, params }: ActionArgs) {
+const HeadersSchema = z.object({
+  "trigger-version": z.string().optional().nullable(),
+});
+
+export async function action({ request, params }: ActionFunctionArgs) {
   // Ensure this is a POST request
   if (request.method.toUpperCase() !== "POST") {
     return { status: 405, body: "Method Not Allowed" };
@@ -31,6 +39,14 @@ export async function action({ request, params }: ActionArgs) {
 
   const { runId, id } = ParamsSchema.parse(params);
 
+  const headers = HeadersSchema.safeParse(Object.fromEntries(request.headers));
+
+  if (!headers.success) {
+    return json({ error: "Invalid headers" }, { status: 400 });
+  }
+
+  const { "trigger-version": triggerVersion } = headers.data;
+
   // Now parse the request body
   const anyBody = await request.json();
 
@@ -40,16 +56,48 @@ export async function action({ request, params }: ActionArgs) {
     id,
   });
 
-  const body = CompleteTaskBodyInputSchema.safeParse(anyBody);
+  if (triggerVersion === API_VERSIONS.SERIALIZED_TASK_OUTPUT) {
+    const body = CompleteTaskBodyV2InputSchema.safeParse(anyBody);
 
-  if (!body.success) {
-    return json({ error: "Invalid request body" }, { status: 400 });
+    if (!body.success) {
+      return json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    // Make sure the length of the output is less than 3MB
+    if (body.data.output && body.data.output.length > 3 * 1024 * 1024) {
+      return json({ error: "Output must be less than 3MB" }, { status: 400 });
+    }
+
+    return await completeRunTask(authenticatedEnv, runId, id, {
+      ...body.data,
+      output: body.data.output ? (JSON.parse(body.data.output) as any) : undefined,
+    });
+  } else {
+    const body = CompleteTaskBodyInputSchema.safeParse(anyBody);
+
+    if (!body.success) {
+      return json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    // Make sure the length of the output is less than 3MB
+    if (JSON.stringify(body.data.output).length > 3 * 1024 * 1024) {
+      return json({ error: "Output must be less than 3MB" }, { status: 400 });
+    }
+
+    return await completeRunTask(authenticatedEnv, runId, id, body.data);
   }
+}
 
+async function completeRunTask(
+  environment: AuthenticatedEnvironment,
+  runId: string,
+  id: string,
+  taskBody: CompleteTaskBodyOutput
+) {
   const service = new CompleteRunTaskService();
 
   try {
-    const task = await service.call(authenticatedEnv, runId, id, body.data);
+    const task = await service.call(environment, runId, id, taskBody);
 
     logger.debug("CompleteRunTaskService.call() response body", {
       runId,
@@ -84,79 +132,76 @@ export class CompleteRunTaskService {
     id: string,
     taskBody: CompleteTaskBodyOutput
   ): Promise<ServerTask | undefined> {
-    // Using a transaction, we'll first check to see if the task already exists and return if if it does
-    // If it doesn't exist, we'll create it and return it
-    const task = await $transaction(this.#prismaClient, async (tx) => {
-      const existingTask = await tx.task.findUnique({
-        where: {
-          id,
-        },
-        include: {
-          run: true,
-          attempts: {
-            where: {
-              status: "PENDING",
-            },
-            orderBy: {
-              number: "desc",
-            },
-            take: 1,
+    const existingTask = await this.#prismaClient.task.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        run: true,
+        attempts: {
+          where: {
+            status: "PENDING",
           },
+          orderBy: {
+            number: "desc",
+          },
+          take: 1,
         },
+      },
+    });
+
+    if (!existingTask) {
+      return;
+    }
+
+    if (existingTask.runId !== runId) {
+      return;
+    }
+
+    if (existingTask.run.environmentId !== environment.id) {
+      return;
+    }
+
+    if (
+      existingTask.status === "COMPLETED" ||
+      existingTask.status === "ERRORED" ||
+      existingTask.status === "CANCELED"
+    ) {
+      logger.debug("Task already completed", {
+        existingTask,
       });
 
-      if (!existingTask) {
-        return;
-      }
+      return taskWithAttemptsToServerTask(existingTask);
+    }
 
-      if (existingTask.runId !== runId) {
-        return;
-      }
-
-      if (existingTask.run.environmentId !== environment.id) {
-        return;
-      }
-
-      if (
-        existingTask.status === "COMPLETED" ||
-        existingTask.status === "ERRORED" ||
-        existingTask.status === "CANCELED"
-      ) {
-        logger.debug("Task already completed", {
-          existingTask,
-        });
-
-        return existingTask;
-      }
-
-      if (existingTask.attempts.length === 1) {
-        await tx.taskAttempt.update({
-          where: {
-            id: existingTask.attempts[0].id,
-          },
-          data: {
-            status: "COMPLETED",
-          },
-        });
-      }
-
-      return await tx.task.update({
+    if (existingTask.attempts.length === 1) {
+      await this.#prismaClient.taskAttempt.update({
         where: {
-          id,
+          id: existingTask.attempts[0].id,
         },
         data: {
           status: "COMPLETED",
-          output: taskBody.output ?? undefined,
-          completedAt: new Date(),
-          outputProperties: taskBody.properties,
-        },
-        include: {
-          attempts: true,
-          run: true,
         },
       });
+    }
+
+    const updatedTask = await this.#prismaClient.task.update({
+      where: {
+        id,
+      },
+      data: {
+        status: "COMPLETED",
+        output: taskBody.output as any,
+        outputIsUndefined: typeof taskBody.output === "undefined",
+        completedAt: new Date(),
+        outputProperties: taskBody.properties,
+      },
+      include: {
+        attempts: true,
+        run: true,
+      },
     });
 
-    return task ? taskWithAttemptsToServerTask(task) : undefined;
+    return taskWithAttemptsToServerTask(updatedTask);
   }
 }

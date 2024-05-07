@@ -47,7 +47,7 @@ pnpm exec changeset version --snapshot prerelease
 3. Build the packages:
 
 ```sh
-pnpm run build --filter "@trigger.dev/*"
+pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
 ```
 
 4. Publish the snapshot (replace "dev" with your tag)

@@ -11,6 +11,7 @@
     </ParamField>
     <ParamField body="trigger" type="object" required>
       The `trigger` property is used to define when the Job should run. There are currently the following Trigger types:
+      - [invokeTrigger](/sdk/invoke-trigger)
       - [cronTrigger](/sdk/crontrigger)
       - [intervalTrigger](/sdk/intervaltrigger)
       - [eventTrigger](/sdk/eventtrigger)
@@ -34,6 +35,15 @@
     </ParamField>
     <ParamField body="enabled" type="boolean">
       The `enabled` property is an optional property that specifies whether the Job is enabled or not. The Job will be enabled by default if you omit this property. When a job is disabled, no new runs will be triggered or resumed. In progress runs will continue to run until they are finished or delayed by using `io.wait`.
+    </ParamField>
+    <ParamField body="concurrencyLimit" type="number | ConcurrencyLimit">
+      The `concurrencyLimit` property is an optional property that specifies the maximum number of concurrent run executions. If this property is omitted, the job can potentially use up the full concurrency of an environment. You can also create a limit on a group of jobs by defining a [ConcurrencyLimit](/sdk/triggerclient/instancemethods/concurrency-limit) object.
+    </ParamField>
+    <ParamField body="onSuccess" type="function">
+      The `onSuccess` property is an optional property that specifies a callback function to run when the Job finishes successfully. The callback function receives a [Run Notification](/sdk/run-notification) object as it's only parameter.
+    </ParamField>
+    <ParamField body="onFailure" type="function">
+      The `onFailure` property is an optional property that specifies a callback function to run when the Job fails to complete successfully. The callback function receives a [Run Notification](/sdk/run-notification) object as it's only parameter.
     </ParamField>
     <ParamField body="logLevel" type="log | error | warn | info | debug">
       The `logLevel` property is an optional property that specifies the level of

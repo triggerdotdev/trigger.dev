@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/nestjs",
-  "version": "2.2.0",
+  "version": "3.0.0-beta.28",
   "description": "Official NestJS adapter for Trigger.dev",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -13,20 +13,26 @@
   ],
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     },
     "./package.json": "./package.json"
   },
   "devDependencies": {
-    "@trigger.dev/sdk": "workspace:^2.2.0",
+    "@trigger.dev/sdk": "workspace:^3.0.0-beta.28",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/debug": "^4.1.7",
     "@types/express": "^4.17.13",
     "fastify": "^4.23.2",
     "rimraf": "^3.0.2",
-    "tsup": "^6.5.0",
-    "tsx": "^3.12.1"
+    "tsup": "8.0.1",
+    "tsx": "^3.12.1",
+    "@trigger.dev/tsup": "workspace:*",
+    "typescript": "^5.3.0"
   },
   "scripts": {
     "clean": "rimraf dist",
@@ -35,7 +41,7 @@
   },
   "peerDependencies": {
     "@nestjs/common": ">=10.0.0",
-    "@trigger.dev/sdk": "workspace:^2.2.0"
+    "@trigger.dev/sdk": "workspace:^3.0.0-beta.28"
   },
   "dependencies": {
     "@nestjs/common": "^10.2.4",
@@ -44,5 +50,6 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "module": "./dist/index.mjs"
 }

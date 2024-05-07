@@ -1,0 +1,70 @@
+---
+title: "verifyRequestSignature()"
+description: "Verify webhook payloads when they're using common signing methods."
+---
+
+Most webhooks come with a signature in the request header. This signature is used to verify that the request is coming from the expected source. To verify you typically need to take the body of the payload, hash it and compare it with the signature in the header. You use a secret when you hash the payload to make sure that the payload hasn't been tampered with.
+
+When using [HttpEndpoint](/sdk/http-endpoint) you are required to verify the payload. `verifyRequestSignature()` is a helper function that makes this easy for the majority of webhooks.
+
+<RequestExample>
+
+```typescript
+const caldotcom = client.defineHttpEndpoint({
+  id: "cal.com",
+  source: "cal.com",
+  icon: "caldotcom",
+  verify: async (request) => {
+    //this is a useful helper function that can verify sha256 signatures
+    //each API has a different header name
+    return await verifyRequestSignature({
+      request,
+      //you can find the header name in the API's documentation
+      headerName: "X-Cal-Signature-256",
+      //you can find the secret in the Trigger.dev dashboard, on the HTTP endpoint page
+      secret: process.env.CALDOTCOM_SECRET!,
+      algorithm: "sha256",
+    });
+  },
+});
+```
+
+</RequestExample>
+
+## Parameters
+
+<ResponseField name="options" required>
+  <Expandable title="options" defaultOpen>
+    <ResponseField name="request" type="Request" required>
+      The web request that you want to verify.
+    </ResponseField>
+    <ResponseField name="headerName" type="string" required>
+      The name of the header that contains the signature. E.g. `X-Cal-Signature-256`.
+    </ResponseField>
+    <ResponseField name="headerEncoding" type="BinaryToTextEncoding">
+      The header encoding. Defaults to `hex`.
+    </ResponseField>
+    <ResponseField name="secret" type="string" required>
+      The secret that you use to hash the payload. For HttpEndpoints this will usually originally
+      come from the Trigger.dev dashboard and should be stored in an environment variable.
+    </ResponseField>
+    <ResponseField name="algorithm" type="sha256" required>
+      The hashing algorithm that was used to create the signature. Currently only `sha256` is
+      supported.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Returns
+
+<ResponseField name="VerifyResult" required>
+  <Expandable defaultOpen>
+    <ResponseField name="success" type="boolean" required>
+      Whether the signature is valid or not
+    </ResponseField>
+    <ResponseField name="reason" type="string">
+      If `success` is false then you can provide the reason it failed. This is dealt with for you by
+      the `verifyRequestSignature()` function.
+    </ResponseField>
+  </Expandable>
+</ResponseField>

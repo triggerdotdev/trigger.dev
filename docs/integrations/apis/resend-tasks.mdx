@@ -1,0 +1,86 @@
+---
+title: Resend tasks
+sidebarTitle: Tasks
+---
+
+Tasks are executed after the job is triggered and are the main building blocks of a job. You can string together as many tasks as you want.
+
+---
+
+## All tasks
+
+### `sendEmail`
+
+Send an email to a recipient with a text payload. [Official Resend Docs](https://resend.com/docs/api-reference/emails/send-email)
+
+```ts example.ts
+  // Using the 'io.resend.sendEmail' method to send an email using Resend.
+  await io.resend.sendEmail("send-email", {
+    to: <recipient-email-address>, // Recipient's email address.
+    subject: <email-subject>, // Email subject.
+    text: <email-body>, // Plain text content of the email.
+    from: "Your-Name <your-email-address>", // Sender's email address and name.
+  });
+}
+```
+
+## Tasks
+
+| Function Name      | Description                      |
+| ------------------ | -------------------------------- |
+| `emails.send`      | Send an email                    |
+| `emails.create`    | Create an email                  |
+| `emails.get`       | Get an email                     |
+| `batch.send`       | Send a batch of emails at once   |
+| `batch.create`     | Create a batch of emails at once |
+| `audiences.create` | Create an audience               |
+| `audiences.get`    | Get an audience                  |
+| `audiences.remove` | Remove an audience               |
+| `audiences.list`   | List audiences                   |
+| `contacts.create`  | Create a contact                 |
+| `contacts.get`     | Get a contact                    |
+| `contacts.update`  | Update a contact                 |
+| `contacts.remove`  | Remove a contact                 |
+| `contacts.list`    | List contacts                    |
+
+## Example
+
+In this example we use [Zod](/documentation/guides/zod), a TypeScript-first schema declaration and validation library.
+
+```ts
+import { Resend } from "@trigger.dev/resend";
+import { Job, eventTrigger } from "@trigger.dev/sdk";
+import { z } from "zod";
+
+...
+
+const resend = new Resend({
+  id: "resend",
+  apiKey: process.env.RESEND_API_KEY!,
+});
+
+client.defineJob({
+  id: "send-resend-email",
+  name: "Send Resend Email",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "send.email",
+    schema: z.object({
+      to: z.union([z.string(), z.array(z.string())]),
+      subject: z.string(),
+      text: z.string(),
+    }),
+  }),
+  integrations: {
+    resend,
+  },
+  run: async (payload, io, ctx) => {
+    await io.resend.emails.send("send-email", {
+      to: payload.to,
+      subject: payload.subject,
+      text: payload.text,
+      from: "Trigger.dev <hello@email.trigger.dev>",
+    });
+  },
+});
+```

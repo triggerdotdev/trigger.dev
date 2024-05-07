@@ -14,6 +14,7 @@ import {
   IndexEndpointStats,
   parseEndpointIndexStats,
 } from "@trigger.dev/core";
+import { sortEnvironments } from "~/services/environmentSort.server";
 
 export type Client = {
   slug: string;
@@ -37,7 +38,7 @@ export type ClientEndpoint =
       state: "configured";
       id: string;
       slug: string;
-      url: string;
+      url: string | null;
       indexWebhookPath: string;
       latestIndex?: {
         status: EndpointIndexStatus;
@@ -99,6 +100,11 @@ export class EnvironmentsPresenter {
               orderBy: {
                 updatedAt: "desc",
               },
+            },
+          },
+          where: {
+            url: {
+              not: null,
             },
           },
         },
@@ -197,30 +203,19 @@ export class EnvironmentsPresenter {
     }
 
     return {
-      environments: filtered
-        .map((environment) => ({
+      environments: sortEnvironments(
+        filtered.map((environment) => ({
           id: environment.id,
           apiKey: environment.apiKey,
           pkApiKey: environment.pkApiKey,
           type: environment.type,
           slug: environment.slug,
         }))
-        .sort((a, b) => {
-          const aIndex = environmentSortOrder.indexOf(a.type);
-          const bIndex = environmentSortOrder.indexOf(b.type);
-          return aIndex - bIndex;
-        }),
+      ),
       clients,
     };
   }
 }
-
-const environmentSortOrder: RuntimeEnvironmentType[] = [
-  "DEVELOPMENT",
-  "PREVIEW",
-  "STAGING",
-  "PRODUCTION",
-];
 
 function endpointClient(
   endpoint: Pick<Endpoint, "id" | "slug" | "url" | "indexingHookIdentifier"> & {

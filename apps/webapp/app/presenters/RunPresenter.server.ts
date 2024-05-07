@@ -5,8 +5,10 @@ import {
   StyleSchema,
 } from "@trigger.dev/core";
 import { PrismaClient, prisma } from "~/db.server";
+import { isRunCompleted, runBasicStatus } from "~/models/jobRun.server";
 import { mergeProperties } from "~/utils/mergeProperties.server";
 import { taskListToTree } from "~/utils/taskListToTree";
+import { getUsername } from "~/utils/username";
 
 type RunOptions = {
   id: string;
@@ -67,6 +69,8 @@ export class RunPresenter {
       id: run.id,
       number: run.number,
       status: run.status,
+      basicStatus: runBasicStatus(run.status),
+      isFinished: isRunCompleted(run.status),
       startedAt: run.startedAt,
       completedAt: run.completedAt,
       isTest: run.isTest,
@@ -76,12 +80,16 @@ export class RunPresenter {
       environment: {
         type: run.environment.type,
         slug: run.environment.slug,
+        userId: run.environment.orgMember?.user.id,
+        userName: getUsername(run.environment.orgMember?.user),
       },
       event: this.#prepareEventData(run.event),
       tasks,
       runConnections: run.runConnections,
       missingConnections: run.missingConnections,
       error: runError,
+      executionDuration: run.executionDuration,
+      executionCount: run.executionCount,
     };
   }
 
@@ -112,6 +120,8 @@ export class RunPresenter {
         isTest: true,
         properties: true,
         output: true,
+        executionCount: true,
+        executionDuration: true,
         version: {
           select: {
             version: true,
@@ -123,6 +133,17 @@ export class RunPresenter {
           select: {
             type: true,
             slug: true,
+            orgMember: {
+              select: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    displayName: true,
+                  },
+                },
+              },
+            },
           },
         },
         event: {
@@ -156,6 +177,7 @@ export class RunPresenter {
             completedAt: true,
             style: true,
             parentId: true,
+            noop: true,
             runConnection: {
               select: {
                 integration: {

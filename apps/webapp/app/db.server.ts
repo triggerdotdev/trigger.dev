@@ -3,6 +3,8 @@ import invariant from "tiny-invariant";
 import { z } from "zod";
 import { logger } from "./services/logger.server";
 import { env } from "./env.server";
+import { singleton } from "./utils/singleton";
+import { isValidDatabaseUrl } from "./utils/db";
 
 export type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -47,7 +49,7 @@ export async function $transaction<R>(
     return await (prisma as PrismaClient).$transaction(fn, options);
   } catch (error) {
     if (isPrismaKnownError(error)) {
-      logger.debug("prisma.$transaction error", {
+      logger.error("prisma.$transaction error", {
         code: error.code,
         meta: error.meta,
         stack: error.stack,
@@ -66,42 +68,23 @@ export async function $transaction<R>(
 
 export { Prisma };
 
-let prisma: PrismaClient;
+export const prisma = singleton("prisma", getClient);
 
-declare global {
-  var __db__: PrismaClient;
-}
-
-// this is needed because in development we don't want to restart
-// the server with every change, but we want to make sure we don't
-// create a new connection to the DB with every change either.
-// in production we'll have a single connection to the DB.
-if (process.env.NODE_ENV === "production") {
-  prisma = getClient();
-} else {
-  if (!global.__db__) {
-    global.__db__ = getClient();
-  }
-  prisma = global.__db__;
-}
+export const $replica: Omit<PrismaClient, "$transaction"> = singleton(
+  "replica",
+  () => getReplicaClient() ?? prisma
+);
 
 function getClient() {
   const { DATABASE_URL } = process.env;
   invariant(typeof DATABASE_URL === "string", "DATABASE_URL env var not set");
 
-  const databaseUrl = new URL(DATABASE_URL);
+  const databaseUrl = extendQueryParams(DATABASE_URL, {
+    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
+  });
 
-  // We need to add the connection_limit and pool_timeout query params to the url, in a way that works if the DATABASE_URL already has query params
-  const query = databaseUrl.searchParams;
-  query.set("connection_limit", env.DATABASE_CONNECTION_LIMIT.toString());
-  query.set("pool_timeout", env.DATABASE_POOL_TIMEOUT.toString());
-  databaseUrl.search = query.toString();
-
-  // Remove the username:password in the url and print that to the console
-  const urlWithoutCredentials = new URL(databaseUrl.href);
-  urlWithoutCredentials.password = "";
-
-  console.log(`🔌 setting up prisma client to ${urlWithoutCredentials.toString()}`);
+  console.log(`🔌 setting up prisma client to ${redactUrlSecrets(databaseUrl)}`);
 
   const client = new PrismaClient({
     datasources: {
@@ -126,13 +109,19 @@ function getClient() {
       //   emit: "stdout",
       //   level: "query",
       // },
+      // {
+      //   emit: "event",
+      //   level: "query",
+      // },
     ],
   });
 
   // client.$on("query", (e) => {
-  //   console.log("Query: " + e.query);
-  //   console.log("Params: " + e.params);
-  //   console.log("Duration: " + e.duration + "ms");
+  //   console.log(`Query tooks ${e.duration}ms`, {
+  //     query: e.query,
+  //     params: e.params,
+  //     duration: e.duration,
+  //   });
   // });
 
   // connect eagerly
@@ -143,9 +132,90 @@ function getClient() {
   return client;
 }
 
-export { prisma };
+function getReplicaClient() {
+  if (!env.DATABASE_READ_REPLICA_URL) {
+    console.log(`🔌 No database replica, using the regular client`);
+    return;
+  }
+
+  const replicaUrl = extendQueryParams(env.DATABASE_READ_REPLICA_URL, {
+    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
+  });
+
+  console.log(`🔌 setting up read replica connection to ${redactUrlSecrets(replicaUrl)}`);
+
+  const replicaClient = new PrismaClient({
+    datasources: {
+      db: {
+        url: replicaUrl.href,
+      },
+    },
+    log: [
+      {
+        emit: "stdout",
+        level: "error",
+      },
+      {
+        emit: "stdout",
+        level: "info",
+      },
+      {
+        emit: "stdout",
+        level: "warn",
+      },
+    ],
+  });
+
+  // connect eagerly
+  replicaClient.$connect();
+
+  console.log(`🔌 read replica connected`);
+
+  return replicaClient;
+}
+
+function extendQueryParams(hrefOrUrl: string | URL, queryParams: Record<string, string>) {
+  const url = new URL(hrefOrUrl);
+  const query = url.searchParams;
+
+  for (const [key, val] of Object.entries(queryParams)) {
+    query.set(key, val);
+  }
+
+  url.search = query.toString();
+
+  return url;
+}
+
+function redactUrlSecrets(hrefOrUrl: string | URL) {
+  const url = new URL(hrefOrUrl);
+  url.password = "";
+  return url.href;
+}
+
 export type { PrismaClient } from "@trigger.dev/database";
 
 export const PrismaErrorSchema = z.object({
   code: z.string(),
 });
+
+function getDatabaseSchema() {
+  if (!isValidDatabaseUrl(env.DATABASE_URL)) {
+    throw new Error("Invalid Database URL");
+  }
+
+  const databaseUrl = new URL(env.DATABASE_URL);
+  const schemaFromSearchParam = databaseUrl.searchParams.get("schema");
+
+  if (!schemaFromSearchParam) {
+    console.debug("❗ database schema unspecified, will default to `public` schema");
+    return "public";
+  }
+
+  return schemaFromSearchParam;
+}
+
+export const DATABASE_SCHEMA = singleton("DATABASE_SCHEMA", getDatabaseSchema);
+
+export const sqlDatabaseSchema = Prisma.sql([`${DATABASE_SCHEMA}`]);

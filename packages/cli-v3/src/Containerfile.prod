@@ -1,0 +1,43 @@
+FROM node:21-bookworm-slim@sha256:fb82287cf66ca32d854c05f54251fca8b572149163f154248df7e800003c90b5 AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    busybox \
+    ca-certificates \
+    dumb-init \
+    git \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create and set workdir with appropriate permissions
+RUN mkdir /app && chown node:node /app
+WORKDIR /app
+
+# copy all the files just in case anything is needed in postinstall
+COPY --chown=node:node . .
+
+USER node
+RUN npm ci --no-fund --no-audit && npm cache clean --force
+
+__POST_INSTALL__
+
+# Development or production stage builds upon the base stage
+FROM base AS final
+
+# Use ARG for build-time variables
+ARG TRIGGER_PROJECT_ID
+ARG TRIGGER_DEPLOYMENT_ID
+ARG TRIGGER_DEPLOYMENT_VERSION
+ARG TRIGGER_CONTENT_HASH
+ARG TRIGGER_PROJECT_REF
+
+ENV TRIGGER_PROJECT_ID=${TRIGGER_PROJECT_ID} \
+    TRIGGER_DEPLOYMENT_ID=${TRIGGER_DEPLOYMENT_ID} \
+    TRIGGER_DEPLOYMENT_VERSION=${TRIGGER_DEPLOYMENT_VERSION} \
+    TRIGGER_CONTENT_HASH=${TRIGGER_CONTENT_HASH} \
+    TRIGGER_PROJECT_REF=${TRIGGER_PROJECT_REF} \
+    NODE_ENV=production
+
+USER node
+
+CMD [ "dumb-init", "node", "index.js" ]

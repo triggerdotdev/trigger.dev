@@ -1,0 +1,19 @@
+---
+title: Completion Tasks
+sidebarTitle: Completions (Legacy)
+---
+
+Given a prompt, the model will return one or more predicted completions, and can also return the probabilities of alternative tokens at each position. We recommend most users use the Chat Completions API. [Learn more](https://platform.openai.com/docs/deprecations/2023-07-06-gpt-and-embeddings)
+
+### `create()`
+
+<Warning>This is a legacy API</Warning>
+
+Creates a completion for the provided prompt and parameters. [Official OpenAI docs](https://platform.openai.com/docs/api-reference/completions/create)
+
+```ts example.ts
+const completion = await io.openai.completions.create("completion", {
+  model: "text-davinci-003",
+  prompt: "Create a good programming joke about Tasks",
+});
+```

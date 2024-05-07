@@ -1,0 +1,34 @@
+{
+  "name": "coordinator",
+  "private": true,
+  "version": "0.0.1",
+  "description": "",
+  "main": "dist/index.cjs",
+  "scripts": {
+    "build": "npm run build:bundle",
+    "build:bundle": "esbuild src/index.ts --bundle --outfile=dist/index.mjs --platform=node --format=esm --target=esnext --banner:js=\"import { createRequire } from 'module';const require = createRequire(import.meta.url);\"",
+    "build:image": "docker build -f Containerfile . -t coordinator",
+    "dev": "tsx --no-warnings=ExperimentalWarning --require dotenv/config --watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/core-apps": "workspace:*",
+    "execa": "^8.0.1",
+    "nanoid": "^5.0.6",
+    "prom-client": "^15.1.0",
+    "socket.io": "4.7.4",
+    "socket.io-client": "4.7.4"
+  },
+  "devDependencies": {
+    "@types/node": "^18",
+    "dotenv": "^16.4.2",
+    "esbuild": "^0.19.11",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

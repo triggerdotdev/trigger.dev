@@ -1,0 +1,440 @@
+---
+title: "Hono Quick Start"
+sidebarTitle: "Hono.dev"
+description: "Start creating Jobs in 5 minutes in your Hono project."
+icon: "fire"
+---
+
+Hono is a fast & lightweight web framework built on top of Web Standards, and we support using Hono with Trigger.dev on Cloudflare Workers, Bun, Deno, and Node.js.
+
+## Installing Required Packages
+
+To begin, install the necessary packages in your Hono project:
+
+<CodeGroup>
+
+```bash npm
+npm add @trigger.dev/sdk@latest @trigger.dev/hono@latest
+```
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@latest @trigger.dev/hono@latest
+```
+
+```bash yarn
+yarn add @trigger.dev/sdk@latest @trigger.dev/hono@latest
+```
+
+</CodeGroup>
+
+## Obtain the Development Server API Key
+
+To locate your development Server API key, login to the [Trigger.dev
+dashboard](https://cloud.trigger.dev) and select the Project you want to
+connect to. Then click on the **Environments & API Keys** tab in the left menu.
+You can copy your development Server API Key from the field at the top of this page.
+(Your development key will start with `tr_dev_`).
+
+## Configure Environment Variables
+
+Add the following environment variables to your `.env` file (or `.dev.vars` file if you are using Cloudflare Workers):
+
+```bash
+TRIGGER_API_KEY=<development server api key>
+TRIGGER_API_URL=https://api.trigger.dev # change this if you are self-hosting
+```
+
+Replace `<development server api key>` with the actual API key obtained from the previous step.
+
+## Enable Node.js compatibility
+
+If you are using Cloudflare Workers, you'll need to enable Node.js compatibility mode in your `wrangler.toml` file:
+
+```toml
+compatibility_flags = ["nodejs_compat"]
+```
+
+## Add Middelware to Your Hono app
+
+Our `@trigger.dev/hono` package provides two different ways of configuring the necessary middleware needed to connect your Hono app to Trigger.dev. `addMiddleware` which should be used for Cloudflare Workers, and `createMiddleware` which can be used with Bun, Deno, and Node.js.
+
+### Cloudflare Workers
+
+Because environment variables in Cloudflare Workers aren't available in the global scope, but are instead available only inside the fetch handler, we need to use the `addMiddleware` function to add the necessary middleware to your Hono app.
+
+```ts
+import { Hono } from "hono";
+import { addMiddleware } from "@trigger.dev/hono";
+import { TriggerClient } from "@trigger.dev/sdk";
+
+const app = new Hono<{
+  Bindings: {
+    TRIGGER_API_KEY: string;
+    TRIGGER_API_URL: string;
+  };
+}>();
+
+addMiddleware(app, (env) => {
+  const client = new TriggerClient({
+    id: "hono-client",
+    apiKey: env.TRIGGER_API_KEY,
+    apiUrl: env.TRIGGER_API_URL,
+  });
+
+  return client;
+});
+
+// Your other routes here
+
+export default app;
+```
+
+The second argument to `addMiddleware` is a function that receives the environment variables (either from `.dev.vars` in development or from Cloudflare when deployed), and returns a `TriggerClient` instance. This function will be called once per request.
+
+If you want, you can extract our the function that creates the `TriggerClient` instance into a separate file, and import it into your `index.ts` file:
+
+<CodeGroup>
+
+```ts trigger-client.ts
+import { TriggerClient } from "@trigger.dev/sdk";
+
+export function triggerClient(apiKey: string, apiUrl: string) {
+  const client = new TriggerClient({
+    id: "hono-client",
+    apiKey,
+    apiUrl,
+  });
+
+  return client;
+}
+```
+
+```ts index.ts
+import { Hono } from "hono";
+import { addMiddleware } from "@trigger.dev/hono";
+import { triggerClient } from "./trigger-client";
+
+const app = new Hono<{
+  Bindings: {
+    TRIGGER_API_KEY: string;
+    TRIGGER_API_URL: string;
+  };
+}>();
+
+addMiddleware(app, (env) => triggerClient(env.TRIGGER_API_KEY, env.TRIGGER_API_URL));
+
+// Your other routes here
+
+export default app;
+```
+
+</CodeGroup>
+
+Now that you've created the `TriggerClient` and setup the middleware, you can add your first job:
+
+<CodeGroup>
+
+```ts trigger-client.ts
+import { TriggerClient } from "@trigger.dev/sdk";
+import { exampleJob } from "./jobs";
+
+export function triggerClient(apiKey: string, apiUrl: string) {
+  const client = new TriggerClient({
+    id: "hono-client",
+    apiKey,
+    apiUrl,
+  });
+
+  exampleJob.attachToClient(client);
+
+  return client;
+}
+```
+
+```ts jobs.ts
+import { Job, invokeTrigger } from "@trigger.dev/sdk";
+
+export const exampleJob = new Job({
+  id: "example-job",
+  name: "Example Job",
+  version: "0.0.1",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello world!", { payload });
+
+    return {
+      message: "Hello world!",
+    };
+  },
+});
+```
+
+</CodeGroup>
+
+As you can see above in `jobs.ts`, we define our first job using the `new Job` constructor from `@trigger.dev/sdk`, and then in `trigger-client.ts` we attach the job to the `TriggerClient` instance.
+
+### Bun
+
+If you are using Bun, you can use the `createMiddleware` function to create the necessary middleware to connect your Hono app to Trigger.dev and define your `TriggerClient` and jobs in the global scope:
+
+```ts
+import { createMiddleware } from "@trigger.dev/hono";
+import { TriggerClient, invokeTrigger } from "@trigger.dev/sdk";
+import { Hono } from "hono";
+
+const app = new Hono();
+
+const client = new TriggerClient({
+  id: "hono-client",
+  apiKey: Bun.env.TRIGGER_API_KEY, // Bun.env is available in the global scope
+  apiUrl: Bun.env.TRIGGER_API_URL, // Bun.env is available in the global scope
+});
+
+client.defineJob({
+  id: "example-job",
+  name: "Example Job",
+  version: "0.0.1",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello world!", { payload });
+
+    return {
+      message: "Hello world!",
+    };
+  },
+});
+
+app.use("/api/trigger", createMiddleware(client));
+
+// The rest of your routes here
+
+export default app;
+```
+
+### Deno
+
+Import trigger.dev packages with Deno using [npm: specifiers](https://docs.deno.com/runtime/manual/node/npm_specifiers):
+```ts index.ts
+import { createMiddleware } from "npm:@trigger.dev/hono@latest";
+import { TriggerClient, invokeTrigger } from "npm:@trigger.dev/sdk@latest";
+import { Hono } from "npm:hono"; // Make sure to use the npm specifier for hono as well
+```
+
+To load a `.env` file on startup, pass the `deno run` command a `--env` flag:
+```bash
+deno run --env --allow-net --watch index.ts
+```
+
+You can also load an environment variables file in code using the `dotenv` package:
+```ts index.ts
+import { load } from "https://deno.land/std@0.208.0/dotenv/mod.ts";
+const env = await load();
+```
+In which case you need to pass the `--allow-env` and `--allow-read` flags:
+```bash
+deno run --allow-env --allow-net --allow-read --watch index.ts
+```
+
+Now we can create the `TriggerClient`, define our jobs, and create the middleware:
+
+```ts index.ts
+const app = new Hono();
+
+const client = new TriggerClient({
+  id: "hono-client",
+  apiKey: env["TRIGGER_API_KEY"],
+  apiUrl: env["TRIGGER_API_URL"],
+});
+
+client.defineJob({
+  id: "example-job",
+  name: "Example Job",
+  version: "0.0.1",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello world!", { payload });
+
+    return {
+      message: "Hello world!",
+    };
+  },
+});
+
+app.use("/api/trigger", createMiddleware(client));
+
+// The rest of your routes here
+
+Deno.serve(app.fetch);
+```
+
+### Node.js
+
+Node.js works very similarly to Deno and Bun, in that you can define the `TriggerClient` and jobs in the global scope, and then create the middleware and add it to your Hono app:
+
+```ts index.ts
+import "dotenv/config";
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+import { createMiddleware } from "@trigger.dev/hono";
+import { TriggerClient, invokeTrigger } from "@trigger.dev/sdk";
+
+const app = new Hono();
+
+const client = new TriggerClient({
+  id: "hono-client",
+  apiKey: process.env.TRIGGER_API_KEY!,
+  apiUrl: process.env.TRIGGER_API_URL!,
+});
+
+client.defineJob({
+  id: "example-job",
+  name: "Example Job",
+  version: "0.0.1",
+  trigger: invokeTrigger(),
+  run: async (payload, io, ctx) => {
+    await io.logger.info("Hello world!", { payload });
+
+    return {
+      message: "Hello world!",
+    };
+  },
+});
+
+app.use("/api/trigger", createMiddleware(client));
+
+// Your other routes here
+
+serve(app, (info) => {
+  console.log(`Listening on port ${info.port}`);
+});
+```
+
+## Running
+
+### Cloudflare Workers
+
+Run your Hono app locally, like you normally would. For example:
+
+<CodeGroup>
+
+```bash npm
+npm run dev
+```
+
+```bash pnpm
+pnpm run dev
+```
+
+```bash yarn
+yarn run dev
+```
+
+</CodeGroup>
+
+In a **_separate terminal window or tab_** run:
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest dev --client-id hono-client -p 8787 -H localhost
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest dev --client-id hono-client -p 8787 -H localhost
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest dev --client-id hono-client -p 8787 -H localhost
+```
+
+</CodeGroup>
+
+### Bun
+
+Run your Hono app locally, like you normally would. For example:
+
+```bash
+bun run index.ts
+```
+
+In a **_separate terminal window or tab_** run:
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest dev --client-id hono-client -p 8787 -H localhost
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest dev --client-id hono-client -p 8787 -H localhost
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest dev --client-id hono-client -p 8787 -H localhost
+```
+
+</CodeGroup>
+
+### Deno
+
+Run your Hono app locally, like you normally would. For example:
+
+```bash
+deno run --env --allow-net --watch index.ts
+```
+
+In a **_separate terminal window or tab_** run:
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest dev --client-id hono-client -p 8000 -H 127.0.0.1
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest dev --client-id hono-client -p 8000 -H 127.0.0.1
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest dev --client-id hono-client -p 8000 -H 127.0.0.1
+```
+
+</CodeGroup>
+
+### Node.js
+
+Run your Hono app locally, like you normally would. For example:
+
+<CodeGroup>
+
+```bash npm
+npm run dev
+```
+
+```bash pnpm
+pnpm run dev
+```
+
+```bash yarn
+yarn run dev
+```
+
+</CodeGroup>
+
+In a **_separate terminal window or tab_** run:
+
+<CodeGroup>
+
+```bash npm
+npx @trigger.dev/cli@latest dev --client-id hono-client -p 8787
+```
+
+```bash pnpm
+pnpm dlx @trigger.dev/cli@latest dev --client-id hono-client -p 8787
+```
+
+```bash yarn
+yarn dlx @trigger.dev/cli@latest dev --client-id hono-client -p 8787
+```
+
+</CodeGroup>

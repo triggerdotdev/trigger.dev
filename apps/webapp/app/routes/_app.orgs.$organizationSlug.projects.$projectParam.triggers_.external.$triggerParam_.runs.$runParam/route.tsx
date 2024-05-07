@@ -1,29 +1,24 @@
 import { useRevalidator } from "@remix-run/react";
-import { LoaderArgs } from "@remix-run/server-runtime";
-import { Fragment, useEffect } from "react";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEventSource } from "remix-utils";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
-import { BreadcrumbIcon } from "~/components/primitives/BreadcrumbIcon";
 import { RunOverview } from "~/components/run/RunOverview";
 import { prisma } from "~/db.server";
+import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useTypedMatchData } from "~/hooks/useTypedMatchData";
+import { useUser } from "~/hooks/useUser";
 import { RunPresenter } from "~/presenters/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
 import {
   TriggerSourceRunParamsSchema,
   externalTriggerPath,
   externalTriggerRunPath,
   externalTriggerRunStreamingPath,
   externalTriggerRunsParentPath,
-  projectTriggersPath,
-  trimTrailingSlash,
 } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { runParam, triggerParam } = TriggerSourceRunParamsSchema.parse(params);
 
@@ -63,40 +58,11 @@ export const loader = async ({ request, params }: LoaderArgs) => {
   });
 };
 
-export const handle: Handle = {
-  breadcrumb: (match, matches) => {
-    const data = useTypedMatchData<typeof loader>(match);
-    if (!data) return null;
-
-    const org = useOrganization(matches);
-    const project = useProject(matches);
-
-    return (
-      <Fragment>
-        <BreadcrumbLink to={projectTriggersPath(org, project)} title="Triggers" />
-        <BreadcrumbIcon />
-        <BreadcrumbLink to={projectTriggersPath(org, project)} title="External Triggers" />
-        <BreadcrumbIcon />
-        <BreadcrumbLink
-          to={externalTriggerPath(org, project, { id: data.trigger.id })}
-          title={`${data.trigger.integration.title}: ${data.trigger.integration.slug}`}
-        />
-        <BreadcrumbIcon />
-        {data && data.run && (
-          <BreadcrumbLink
-            to={trimTrailingSlash(match.pathname)}
-            title={`Run #${data.run.number}`}
-          />
-        )}
-      </Fragment>
-    );
-  },
-};
-
 export default function Page() {
   const { run, trigger } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
+  const user = useUser();
 
   const revalidator = useRevalidator();
   const events = useEventSource(
@@ -124,6 +90,7 @@ export default function Page() {
           id: trigger.id,
         }),
       }}
+      currentUser={user}
     />
   );
 }

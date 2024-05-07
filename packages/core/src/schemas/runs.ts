@@ -1,6 +1,9 @@
 import { z } from "zod";
+import { Prettify } from "../types";
+import { RuntimeEnvironmentType } from "./api";
+import { ErrorWithStack } from "./errors";
+import { JobRunStatusRecord, JobRunStatusRecordSchema } from "./statuses";
 import { TaskStatusSchema } from "./tasks";
-import { JobRunStatusRecordSchema } from "./statuses";
 
 export const RunStatusSchema = z.union([
   z.literal("PENDING"),
@@ -15,6 +18,9 @@ export const RunStatusSchema = z.union([
   z.literal("CANCELED"),
   z.literal("UNRESOLVED_AUTH"),
   z.literal("INVALID_PAYLOAD"),
+  z.literal("EXECUTING"),
+  z.literal("WAITING_TO_CONTINUE"),
+  z.literal("WAITING_TO_EXECUTE"),
 ]);
 
 export const RunTaskSchema = z.object({
@@ -87,7 +93,7 @@ export const GetRunSchema = RunSchema.extend({
   nextCursor: z.string().optional(),
 });
 
-export type GetRun = z.infer<typeof GetRunSchema>;
+export type GetRun = Prettify<z.infer<typeof GetRunSchema>>;
 
 const GetRunsOptionsSchema = z.object({
   /** You can use this to get more tasks, if there are more than are returned in a single batch @default undefined */
@@ -104,3 +110,98 @@ export const GetRunsSchema = z.object({
   /** If there are more runs, you can use this to get them */
   nextCursor: z.string().optional(),
 });
+
+export type RunNotificationJobMetadata = { id: string; version: string };
+export type RunNotificationEnvMetadata = {
+  slug: string;
+  id: string;
+  type: RuntimeEnvironmentType;
+};
+export type RunNotificationOrgMetadata = { slug: string; id: string; title: string };
+export type RunNotificationProjectMetadata = { slug: string; id: string; name: string };
+export type RunNotificationAccountMetadata = { id: string; metadata?: any };
+export type RunNotificationInvocationMetadata<T = any> = {
+  id: string;
+  context: any;
+  timestamp: Date;
+  payload: T;
+};
+export type RunNotificationRunMetadata = {
+  /** The Run id */
+  id: string;
+  /** The Run status */
+  statuses: JobRunStatusRecord[];
+  /** When the run started */
+  startedAt: Date;
+  /** When the run was last updated */
+  updatedAt: Date;
+  /** When the run was completed */
+  completedAt: Date;
+  /** If the run was a test or not */
+  isTest: boolean;
+
+  executionDurationInMs: number;
+  executionCount: number;
+};
+
+type RunNotificationCommon<TPayload = any> = {
+  /** The Run id */
+  id: string;
+  /** The Run status */
+  statuses: JobRunStatusRecord[];
+  /** When the run started */
+  startedAt: Date;
+  /** When the run was last updated */
+  updatedAt: Date;
+  /** When the run was completed */
+  completedAt: Date;
+  /** If the run was a test or not */
+  isTest: boolean;
+
+  executionDurationInMs: number;
+  executionCount: number;
+
+  /** Job metadata */
+  job: RunNotificationJobMetadata;
+  /** Environment metadata */
+  environment: RunNotificationEnvMetadata;
+  /** Organization metadata */
+  organization: RunNotificationOrgMetadata;
+  /** Project metadata */
+  project: RunNotificationProjectMetadata;
+  /** Account metadata */
+  account?: RunNotificationAccountMetadata;
+  /** Invocation metadata */
+  invocation: RunNotificationInvocationMetadata<TPayload>;
+};
+
+export type SuccessfulRunNotification<TOutput, TPayload = any> = RunNotificationCommon<TPayload> & {
+  ok: true;
+  /** The Run status */
+  status: "SUCCESS";
+  /** The output of the run */
+  output: TOutput;
+};
+
+export type FailedRunNotification<TPayload = any> = RunNotificationCommon<TPayload> & {
+  ok: false;
+  /** The Run status */
+  status: "FAILURE" | "TIMED_OUT" | "ABORTED" | "CANCELED" | "UNRESOLVED_AUTH" | "INVALID_PAYLOAD";
+  /** The error of the run */
+  error: any;
+  /** The task that failed */
+  task?: {
+    id: string;
+    cacheKey: string | null;
+    status: string;
+    name: string;
+    icon: string | null;
+    startedAt: string;
+    error: ErrorWithStack;
+    params: any | null;
+  };
+};
+
+export type RunNotification<TOutput, TPayload = any> =
+  | SuccessfulRunNotification<TOutput, TPayload>
+  | FailedRunNotification<TPayload>;

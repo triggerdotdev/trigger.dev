@@ -130,6 +130,9 @@ export async function getUsersInvites({ email }: { email: string }) {
   return await prisma.orgMemberInvite.findMany({
     where: {
       email,
+      organization: {
+        deletedAt: null,
+      },
     },
     include: {
       organization: true,
@@ -221,4 +224,37 @@ export async function resendInvite({ inviteId }: { inviteId: string }) {
       organization: true,
     },
   });
+}
+
+export async function revokeInvite({
+  userId,
+  slug,
+  inviteId,
+}: {
+  userId: string;
+  slug: string;
+  inviteId: string;
+}) {
+  const org = await prisma.organization.findFirst({
+    where: { slug, members: { some: { userId } } },
+  });
+
+  if (!org) {
+    throw new Error("User does not have access to this organization");
+  }
+  const invite = await prisma.orgMemberInvite.delete({
+    where: {
+      id: inviteId,
+    },
+    select: {
+      email: true,
+      organization: true,
+    },
+  });
+
+  if (!invite) {
+    throw new Error("Invite not found");
+  }
+
+  return { email: invite.email, organization: invite.organization };
 }

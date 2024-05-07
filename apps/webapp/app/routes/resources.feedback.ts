@@ -1,12 +1,6 @@
 import { parse } from "@conform-to/zod";
-import { ActionArgs, json } from "@remix-run/server-runtime";
-import {
-  ComponentDividerSpacingSize,
-  ComponentSpacerSize,
-  ComponentTextColor,
-  ComponentTextSize,
-  PlainClient,
-} from "@team-plain/typescript-sdk";
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
 import { inspect } from "util";
 import { z } from "zod";
 import { env } from "~/env.server";
@@ -19,7 +13,8 @@ export const feedbackTypeLabel = {
   bug: "Bug report",
   feature: "Feature request",
   help: "Help me out",
-  integration: "Request an Integration",
+  enterprise: "Enterprise enquiry",
+  "developer preview": "Developer preview feedback",
 };
 
 export type FeedbackType = keyof typeof feedbackTypeLabel;
@@ -40,7 +35,7 @@ export const schema = z.object({
   message: z.string().min(1, "Must be at least 1 character"),
 });
 
-export async function action({ request }: ActionArgs) {
+export async function action({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
 
   const formData = await request.formData();
@@ -68,6 +63,8 @@ export async function action({ request }: ActionArgs) {
       onCreate: {
         externalId: user.id,
         fullName: user.name ?? "",
+        // TODO - Optional: set 'first name' on user
+        // shortName: ''
         email: {
           email: user.email,
           isVerified: true,
@@ -76,6 +73,8 @@ export async function action({ request }: ActionArgs) {
       onUpdate: {
         externalId: { value: user.id },
         fullName: { value: user.name ?? "" },
+        // TODO - see above
+        // shortName: { value: "" },
         email: {
           email: user.email,
           isVerified: true,
@@ -96,63 +95,50 @@ export async function action({ request }: ActionArgs) {
     }
 
     const title = feedbackTypeLabel[submission.value.feedbackType as FeedbackType];
-    const upsertTimelineEntryRes = await client.upsertCustomTimelineEntry({
-      customerId: upsertCustomerRes.data.customer.id,
+    const createThreadRes = await client.createThread({
+      customerIdentifier: {
+        customerId: upsertCustomerRes.data.customer.id,
+      },
       title,
       components: [
-        {
-          componentText: {
-            text: `New ${title} reported by ${user.name} (${user.email})`,
-          },
-        },
-        {
-          componentDivider: {
-            dividerSpacingSize: ComponentDividerSpacingSize.M,
-          },
-        },
-        {
-          componentText: {
-            textSize: ComponentTextSize.S,
-            textColor: ComponentTextColor.Muted,
-            text: "Page",
-          },
-        },
-        {
-          componentText: {
-            text: submission.value.path,
-          },
-        },
-        {
-          componentSpacer: {
-            spacerSize: ComponentSpacerSize.M,
-          },
-        },
-        {
-          componentText: {
-            textSize: ComponentTextSize.S,
-            textColor: ComponentTextColor.Muted,
-            text: "Message",
-          },
-        },
-        {
-          componentText: {
-            text: submission.value.message,
-          },
-        },
+        uiComponent.text({
+          text: `New ${title} reported by ${user.name} (${user.email})`,
+        }),
+        uiComponent.divider({ spacingSize: "M" }),
+        uiComponent.text({
+          size: "S",
+          color: "MUTED",
+          text: "Page",
+        }),
+        uiComponent.text({
+          text: submission.value.path,
+        }),
+        uiComponent.spacer({ size: "M" }),
+        uiComponent.text({
+          size: "S",
+          color: "MUTED",
+          text: "Message",
+        }),
+        uiComponent.text({
+          text: submission.value.message,
+        }),
       ],
-      changeCustomerStatusToActive: true,
-      sendCustomTimelineEntryCreatedNotification: true,
+      // TODO: Optional: set labels on threads here on creation
+      // labelTypeIds: [],
+
+      // TODO: Optional: set the priority (0 is urgent, 3 is low)
+      // priority: 0,
     });
 
-    if (upsertTimelineEntryRes.error) {
+    if (createThreadRes.error) {
       console.error(
-        inspect(upsertTimelineEntryRes.error, {
+        inspect(createThreadRes.error, {
           showHidden: false,
           depth: null,
           colors: true,
         })
       );
-      submission.error.message = upsertTimelineEntryRes.error.message;
+      submission.error.message = createThreadRes.error.message;
       return json(submission);
     }
 

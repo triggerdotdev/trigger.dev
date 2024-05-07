@@ -16,7 +16,7 @@ export const Table = forwardRef<HTMLTableElement, TableProps>(
     return (
       <div
         className={cn(
-          "overflow-x-auto whitespace-nowrap rounded-md border border-uiBorder scrollbar-thin scrollbar-track-midnight-850 scrollbar-thumb-slate-700",
+          "overflow-x-auto whitespace-nowrap rounded-md border border-grid-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
           containerClassName,
           fullWidth && "w-full"
         )}
@@ -39,7 +39,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
     return (
       <thead
         ref={ref}
-        className={cn("rounded-t-md", "relative divide-y divide-uiBorder bg-slate-850", className)}
+        className={cn("rounded-t-md", "relative divide-y divide-grid-dimmed", className)}
       >
         {children}
       </thead>
@@ -49,13 +49,13 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
 
 type TableBodyProps = {
   className?: string;
-  children: ReactNode;
+  children?: ReactNode;
 };
 
 export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(
   ({ className, children }, ref) => {
     return (
-      <tbody ref={ref} className={cn("relative divide-y divide-uiBorder", className)}>
+      <tbody ref={ref} className={cn("relative divide-y divide-grid-dimmed", className)}>
         {children}
       </tbody>
     );
@@ -71,7 +71,7 @@ type TableRowProps = {
 export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
   ({ className, disabled, children }, ref) => {
     return (
-      <tr ref={ref} className={cn(disabled && "opacity-50", "group w-full", className)}>
+      <tr ref={ref} className={cn(disabled && "opacity-50", "group/table-row w-full", className)}>
         {children}
       </tr>
     );
@@ -106,7 +106,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         ref={ref}
         scope="col"
         className={cn(
-          "px-4 py-3 align-middle text-xs font-normal uppercase tracking-wider text-dimmed",
+          "px-4 py-2 align-middle text-xxs font-normal uppercase tracking-wider text-text-dimmed",
           alignmentClassName,
           className
         )}
@@ -122,10 +122,28 @@ type TableCellProps = TableCellBasicProps & {
   to?: string;
   onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
   hasAction?: boolean;
+  isSticky?: boolean;
+  actionClassName?: string;
 };
 
+const stickyStyles =
+  "sticky right-0 z-10 w-[2.8rem] min-w-[2.8rem] bg-background-dimmed before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover/table-row:before:to-charcoal-900";
+
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
-  ({ className, alignment = "left", children, colSpan, to, onClick, hasAction = false }, ref) => {
+  (
+    {
+      className,
+      actionClassName,
+      alignment = "left",
+      children,
+      colSpan,
+      to,
+      onClick,
+      hasAction = false,
+      isSticky = false,
+    },
+    ref
+  ) => {
     let alignmentClassName = "text-left";
     switch (alignment) {
       case "center":
@@ -137,7 +155,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
     }
 
     const flexClasses = cn(
-      "flex w-full whitespace-nowrap px-4 py-3 text-xs text-dimmed",
+      "flex w-full whitespace-nowrap px-4 py-3 text-xs text-text-dimmed",
       alignment === "left"
         ? "justify-start text-left"
         : alignment === "center"
@@ -149,21 +167,22 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       <td
         ref={ref}
         className={cn(
-          "text-xs text-slate-400",
+          "text-xs text-charcoal-400",
           to || onClick || hasAction
-            ? "cursor-pointer group-hover:bg-slate-900"
+            ? "cursor-pointer group-hover/table-row:bg-charcoal-900"
             : "px-4 py-3 align-middle",
           !to && !onClick && alignmentClassName,
+          isSticky && stickyStyles,
           className
         )}
         colSpan={colSpan}
       >
         {to ? (
-          <Link to={to} className={flexClasses}>
+          <Link to={to} className={cn(flexClasses, actionClassName)}>
             {children}
           </Link>
         ) : onClick ? (
-          <button onClick={onClick} className={flexClasses}>
+          <button onClick={onClick} className={cn(flexClasses, actionClassName)}>
             {children}
           </button>
         ) : (
@@ -173,9 +192,6 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
     );
   }
 );
-
-const stickyStyles =
-  "sticky right-0 z-10 w-[2.8rem] min-w-[2.8rem] bg-background before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover:before:to-slate-900";
 
 export const TableCellChevron = forwardRef<
   HTMLTableCellElement,
@@ -189,14 +205,15 @@ export const TableCellChevron = forwardRef<
 >(({ className, to, children, isSticky, onClick }, ref) => {
   return (
     <TableCell
-      className={cn(isSticky && stickyStyles, className)}
+      className={className}
+      isSticky={isSticky}
       to={to}
       onClick={onClick}
       ref={ref}
       alignment="right"
     >
       {children}
-      <ChevronRightIcon className="h-4 w-4 text-dimmed transition group-hover:text-bright" />
+      <ChevronRightIcon className="h-4 w-4 text-text-dimmed transition group-hover:text-text-bright" />
     </TableCell>
   );
 });
@@ -213,7 +230,8 @@ export const TableCellMenu = forwardRef<
   const [isOpen, setIsOpen] = useState(false);
   return (
     <TableCell
-      className={cn(isSticky && stickyStyles, className)}
+      className={className}
+      isSticky={isSticky}
       onClick={onClick}
       ref={ref}
       alignment="right"
@@ -222,7 +240,7 @@ export const TableCellMenu = forwardRef<
       <Popover onOpenChange={(open) => setIsOpen(open)}>
         <PopoverVerticalEllipseTrigger isOpen={isOpen} />
         <PopoverContent
-          className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700"
+          className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
           align="end"
         >
           <div className="flex flex-col gap-1 p-1">{children}</div>
@@ -235,7 +253,7 @@ export const TableCellMenu = forwardRef<
 type TableBlankRowProps = {
   className?: string;
   colSpan: number;
-  children: ReactNode;
+  children?: ReactNode;
 };
 
 export const TableBlankRow = forwardRef<HTMLTableRowElement, TableBlankRowProps>(

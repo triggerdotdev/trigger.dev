@@ -1,0 +1,10 @@
+{
+  "fulfillment_order": {
+    "id": "gid://shopify/FulfillmentOrder/1",
+    "status": "cancelled"
+  },
+  "replacement_fulfillment_order": {
+    "id": "gid://shopify/FulfillmentOrder/2",
+    "status": "open"
+  }
+}

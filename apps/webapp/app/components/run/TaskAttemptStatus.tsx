@@ -38,7 +38,7 @@ function taskAttemptStatusClassNameColor(status: TaskAttemptStatus): string {
     case "COMPLETED":
       return "text-green-500";
     case "PENDING":
-      return "text-slate-400";
+      return "text-charcoal-400";
     case "STARTED":
       return "text-blue-500";
     case "ERRORED":

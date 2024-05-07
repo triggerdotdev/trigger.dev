@@ -1,13 +1,17 @@
+import { Prettify } from "@trigger.dev/core";
 import { z } from "zod";
 import {
   findEnvironmentByApiKey,
   findEnvironmentByPublicApiKey,
 } from "~/models/runtimeEnvironment.server";
 
+type Optional<T, K extends keyof T> = Prettify<Omit<T, K> & Partial<Pick<T, K>>>;
+
 const AuthorizationHeaderSchema = z.string().regex(/^Bearer .+$/);
 
-export type AuthenticatedEnvironment = NonNullable<
-  Awaited<ReturnType<typeof findEnvironmentByApiKey>>
+export type AuthenticatedEnvironment = Optional<
+  NonNullable<Awaited<ReturnType<typeof findEnvironmentByApiKey>>>,
+  "orgMember"
 >;
 
 type ApiAuthenticationResult = {
@@ -20,7 +24,19 @@ export async function authenticateApiRequest(
   request: Request,
   { allowPublicKey = false }: { allowPublicKey?: boolean } = {}
 ): Promise<ApiAuthenticationResult | undefined> {
-  const result = getApiKeyFromRequest(request);
+  const apiKey = getApiKeyFromRequest(request);
+  if (!apiKey) {
+    return;
+  }
+
+  return authenticateApiKey(apiKey, { allowPublicKey });
+}
+
+export async function authenticateApiKey(
+  apiKey: string,
+  { allowPublicKey = false }: { allowPublicKey?: boolean } = {}
+): Promise<ApiAuthenticationResult | undefined> {
+  const result = getApiKeyResult(apiKey);
 
   if (!result) {
     return;
@@ -69,6 +85,10 @@ export function getApiKeyFromRequest(request: Request) {
   }
 
   const apiKey = authorization.data.replace(/^Bearer /, "");
+  return apiKey;
+}
+
+export function getApiKeyResult(apiKey: string) {
   const type = isPublicApiKey(apiKey) ? ("PUBLIC" as const) : ("PRIVATE" as const);
   return { apiKey, type };
 }

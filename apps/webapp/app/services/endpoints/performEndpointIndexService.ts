@@ -1,6 +1,4 @@
-import type { EndpointIndexSource } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
-import { findEndpoint } from "~/models/endpoint.server";
 import { EndpointApi } from "../endpointApi.server";
 import { RegisterJobService } from "../jobs/registerJob.server";
 import { logger } from "../logger.server";
@@ -13,6 +11,9 @@ import { EndpointIndexError } from "@trigger.dev/core";
 import { safeBodyFromResponse } from "~/utils/json";
 import { fromZodError } from "zod-validation-error";
 import { IndexEndpointStats } from "@trigger.dev/core";
+import { RegisterHttpEndpointService } from "../triggers/registerHttpEndpoint.server";
+import { RegisterWebhookService } from "../triggers/registerWebhook.server";
+import { EndpointIndex } from "@trigger.dev/database";
 
 export class PerformEndpointIndexService {
   #prismaClient: PrismaClient;
@@ -22,12 +23,14 @@ export class PerformEndpointIndexService {
   #registerSourceServiceV2 = new RegisterSourceServiceV2();
   #registerDynamicTriggerService = new RegisterDynamicTriggerService();
   #registerDynamicScheduleService = new RegisterDynamicScheduleService();
+  #registerHttpEndpointService = new RegisterHttpEndpointService();
+  #registerWebhookService = new RegisterWebhookService();
 
   constructor(prismaClient: PrismaClient = prisma) {
     this.#prismaClient = prismaClient;
   }
 
-  public async call(id: string) {
+  public async call(id: string, redirectCount = 0): Promise<EndpointIndex> {
     const endpointIndex = await this.#prismaClient.endpointIndex.update({
       where: {
         id,
@@ -51,6 +54,13 @@ export class PerformEndpointIndexService {
 
     logger.debug("Performing endpoint index", endpointIndex);
 
+    if (!endpointIndex.endpoint.url) {
+      logger.debug("Endpoint URL is not set", endpointIndex);
+      return updateEndpointIndexWithError(this.#prismaClient, id, {
+        message: "Endpoint URL is not set",
+      });
+    }
+
     // Make a request to the endpoint to fetch a list of jobs
     const client = new EndpointApi(
       endpointIndex.endpoint.environment.apiKey,
@@ -62,6 +72,39 @@ export class PerformEndpointIndexService {
       return updateEndpointIndexWithError(this.#prismaClient, id, {
         message: `Could not connect to endpoint ${endpointIndex.endpoint.url}`,
       });
+    }
+
+    if (isRedirect(response.status)) {
+      // Update the endpoint URL with the response.headers.location
+      logger.debug("Endpoint is redirecting", {
+        headers: Object.fromEntries(response.headers.entries()),
+      });
+
+      const location = response.headers.get("location");
+
+      if (!location) {
+        return updateEndpointIndexWithError(this.#prismaClient, id, {
+          message: `Endpoint ${endpointIndex.endpoint.url} is redirecting but no location header is present`,
+        });
+      }
+
+      if (redirectCount > 5) {
+        return updateEndpointIndexWithError(this.#prismaClient, id, {
+          message: `Endpoint ${endpointIndex.endpoint.url} is redirecting too many times`,
+        });
+      }
+
+      await this.#prismaClient.endpoint.update({
+        where: {
+          id: endpointIndex.endpoint.id,
+        },
+        data: {
+          url: location,
+        },
+      });
+
+      // Re-run the endpoint index
+      return await this.call(id, redirectCount + 1);
     }
 
     if (response.status === 401) {
@@ -111,7 +154,7 @@ export class PerformEndpointIndexService {
 
       return updateEndpointIndexWithError(this.#prismaClient, id, {
         message: friendlyError,
-        raw: bodyResult.error.issues,
+        raw: fromZodError(bodyResult.error).message,
       });
     }
 
@@ -126,7 +169,8 @@ export class PerformEndpointIndexService {
       });
     }
 
-    const { jobs, sources, dynamicTriggers, dynamicSchedules } = bodyResult.data;
+    const { jobs, sources, dynamicTriggers, dynamicSchedules, httpEndpoints, webhooks } =
+      bodyResult.data;
     const { "trigger-version": triggerVersion, "trigger-sdk-version": triggerSdkVersion } =
       headerResult.data;
     const { endpoint } = endpointIndex;
@@ -149,9 +193,11 @@ export class PerformEndpointIndexService {
     const indexStats: IndexEndpointStats = {
       jobs: 0,
       sources: 0,
+      webhooks: 0,
       dynamicTriggers: 0,
       dynamicSchedules: 0,
       disabledJobs: 0,
+      httpEndpoints: 0,
     };
 
     const existingJobs = await this.#prismaClient.job.findMany({
@@ -300,6 +346,36 @@ export class PerformEndpointIndexService {
       }
     }
 
+    if (httpEndpoints) {
+      for (const httpEndpoint of httpEndpoints) {
+        try {
+          await this.#registerHttpEndpointService.call(endpoint, httpEndpoint);
+          indexStats.httpEndpoints++;
+        } catch (error) {
+          logger.error("Failed to register http endpoint", {
+            endpointId: endpoint.id,
+            httpEndpoint,
+            error,
+          });
+        }
+      }
+    }
+
+    if (webhooks) {
+      for (const webhook of webhooks) {
+        try {
+          await this.#registerWebhookService.call(endpoint, webhook);
+          indexStats.webhooks = indexStats.webhooks ?? 0 + 1;
+        } catch (error) {
+          logger.error("Failed to register webhook", {
+            endpointId: endpoint.id,
+            webhook,
+            error,
+          });
+        }
+      }
+    }
+
     logger.debug("Endpoint indexing complete", {
       endpointId: endpoint.id,
       indexStats,
@@ -318,8 +394,10 @@ export class PerformEndpointIndexService {
         data: {
           jobs,
           sources,
+          webhooks,
           dynamicTriggers,
           dynamicSchedules,
+          httpEndpoints,
         },
       },
     });
@@ -340,4 +418,11 @@ async function updateEndpointIndexWithError(
       error,
     },
   });
+}
+
+const redirectStatus = [301, 302, 303, 307, 308];
+const redirectStatusSet = new Set(redirectStatus);
+
+function isRedirect(status: number) {
+  return redirectStatusSet.has(status);
 }

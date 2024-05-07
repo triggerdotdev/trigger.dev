@@ -1,28 +1,16 @@
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { Outlet } from "@remix-run/react";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { LinkButton } from "~/components/primitives/Buttons";
-import {
-  PageButtons,
-  PageDescription,
-  PageHeader,
-  PageTabs,
-  PageTitle,
-  PageTitleRow,
-} from "~/components/primitives/PageHeader";
+import { PageAccessories, NavBar, PageTabs, PageTitle } from "~/components/primitives/PageHeader";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { Handle } from "~/utils/handle";
 import {
   docsPath,
   projectScheduledTriggersPath,
   projectTriggersPath,
-  trimTrailingSlash,
+  projectWebhookTriggersPath,
 } from "~/utils/pathBuilder";
-
-export const handle: Handle = {
-  breadcrumb: (match) => <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Triggers" />,
-};
 
 export default function Page() {
   const organization = useOrganization();
@@ -30,37 +18,41 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <PageHeader hideBorder>
-        <PageTitleRow>
-          <PageTitle title="Triggers" />
-          <PageButtons>
-            <LinkButton
-              LeadingIcon={"docs"}
-              to={docsPath("documentation/concepts/triggers")}
-              variant="secondary/small"
-            >
-              Triggers Documentation
-            </LinkButton>
-          </PageButtons>
-        </PageTitleRow>
-        <PageDescription>A Trigger is what starts a Job Run.</PageDescription>
-        <PageTabs
-          tabs={[
-            {
-              label: "External Triggers",
-              to: projectTriggersPath(organization, project),
-            },
-            {
-              label: "Scheduled Triggers",
-              to: projectScheduledTriggersPath(organization, project),
-            },
-          ]}
-        />
-      </PageHeader>
+      <NavBar>
+        <PageTitle title="Triggers" />
+        <PageAccessories>
+          <LinkButton
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("documentation/concepts/triggers")}
+            variant="minimal/small"
+          >
+            Triggers documentation
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
 
       <PageBody scrollable={false}>
-        <div className="h-full overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
-          <Outlet />
+        <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden px-4">
+          <PageTabs
+            layoutId="triggers"
+            tabs={[
+              {
+                label: "External Triggers",
+                to: projectTriggersPath(organization, project),
+              },
+              {
+                label: "Scheduled Triggers",
+                to: projectScheduledTriggersPath(organization, project),
+              },
+              {
+                label: "Webhook Triggers",
+                to: projectWebhookTriggersPath(organization, project),
+              },
+            ]}
+          />
+          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <Outlet />
+          </div>
         </div>
       </PageBody>
     </PageContainer>

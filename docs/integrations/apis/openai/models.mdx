@@ -1,0 +1,14 @@
+---
+title: Model Tasks
+sidebarTitle: Models
+---
+
+List and describe the various models available in the API. You can refer to the Models documentation to understand what models are available and the differences between them. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/models)
+
+### `list`
+
+Lists the available models. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/models/list)
+
+```ts example.ts
+const models = await io.openai.models.list("list-models");
+```

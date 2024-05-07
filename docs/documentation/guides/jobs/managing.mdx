@@ -64,7 +64,7 @@ client.defineJob({
   name: "Example Job",
   version: "0.1.0",
   trigger: eventTrigger({ name: "example.event" }),
-  enabled: process.env.TRIGGER_JOBS_DISABLED === "true",
+  enabled: process.env.TRIGGER_JOBS_DISABLED !== "true",
   run: async (payload, io, ctx) => {
     // your Job code here
   },

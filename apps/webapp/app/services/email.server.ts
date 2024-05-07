@@ -7,13 +7,18 @@ import type { User } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
 import { workerQueue } from "./worker.server";
 import { logger } from "./logger.server";
+import { singleton } from "~/utils/singleton";
 
-const client = new EmailClient({
-  apikey: env.RESEND_API_KEY,
-  imagesBaseUrl: env.APP_ORIGIN,
-  from: env.FROM_EMAIL ?? "team@email.trigger.dev",
-  replyTo: env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
-});
+const client = singleton(
+  "email-client",
+  () =>
+    new EmailClient({
+      apikey: env.RESEND_API_KEY,
+      imagesBaseUrl: env.APP_ORIGIN,
+      from: env.FROM_EMAIL ?? "team@email.trigger.dev",
+      replyTo: env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
+    })
+);
 
 export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): Promise<void> {
   // Auto redirect when in development mode

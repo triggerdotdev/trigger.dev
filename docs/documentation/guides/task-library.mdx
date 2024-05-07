@@ -1,0 +1,304 @@
+---
+title: "Task Library"
+description: "These are the built-in tasks that are available to use in your Jobs."
+---
+
+Welcome to the Trigger.dev Task Library 📚. You may be wondering, what is a Task and why are there a library of them? Well you see, Trigger.dev works by divvying up a long-running job execution into a bunch of little tasks, each one taking less time then a single serverless function execution. 💫
+
+You can define and run your own tasks easily using [io.runTask()](/sdk/io/runtask), or you can use one of our [Integrations](/integrations/introduction) which are tasks for specific APIs, like OpenAI or Stripe.
+
+<Note>Read more about how Tasks work [here](/documentation/concepts/tasks).</Note>
+
+We also have a growing library of built-in tasks that you can use in your Jobs through the `io` object. These tasks are designed to be generic and reusable, and are a great way to get started with Trigger.dev.
+
+<Info>
+  You may notice that I'm using emojis for all the cache keys below, which is totally 💯% fine as
+  long as they are unique inside a run. Read more about how cache keys work
+  [here](/documentation/concepts/tasks#task-cache-keys)
+</Info>
+
+## `wait`
+
+This task allows you to resume executing your job after a certain amount of time has passed:
+
+```ts
+await io.wait("⏰", 60); // wait 60 seconds
+```
+
+Internally this task is considered a "noop", and noop tasks have no output.
+
+[reference docs](/sdk/io/wait)
+
+## `waitForRequest`
+
+You supply this task with a callback to receive a URL. When a POST request is made to that URL, the JSON body of the request becomes the task output.
+
+The example below uses `waitForRequest` to capture a Screenshot of a website using [ScreenshotOne.com](https://screenshotone.com/) and passes the callback URL to the webhook URL to get notified when the screenshot is finished:
+
+```ts
+const result = await io.waitForRequest<ScreenshotResponse>(
+  "📸",
+  async (url) => {
+    await fetch(`https://api.screenshotone.com/take`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        webhook_url: url, // this is the URL that will be called when the screenshot is ready
+        access_key: "my-access-key",
+        url: "https://trigger.dev",
+        store: "true",
+        storage_path: "my-screeshots",
+        response_type: "json",
+        async: "true",
+        storage_return_location: "true",
+      }),
+    });
+  },
+  {
+    timeoutInSeconds: 300, // wait up to 5 minutes for the screenshot to be ready
+  }
+);
+```
+
+We actually originally built this task for our [Replicate integration](/integrations/apis/replicate), which accepts a callback URL to notify you when a prediction is ready. So this allows you to write very succinct code to create a prediction and wait for it's results:
+
+```ts
+const sdPrediction = await io.replicate.predictions.createAndAwait("🧑‍🎨", {
+  version: "ac732df83cea7fff18b8472768c88ad041fa750ff7682a21affe81863cbe77e4",
+  input: {
+    prompt: "What is the meaning of life?",
+  },
+});
+```
+
+[reference docs](/sdk/io/wait-for-request)
+
+## `waitForEvent`
+
+This task allows you to wait for an event to be sent. To read about how events work, check out the [Events](/documentation/concepts/triggers/events) documentation.
+
+```ts
+const event = await io.waitForEvent(
+  "🥂",
+  {
+    name: "user.created",
+    schema: z.object({
+      id: z.string(),
+      createdAt: z.coerce.date(),
+      isAdmin: z.boolean(),
+    }),
+    filter: {
+      isAdmin: [true], // Only wait for events where isAdmin is true
+    },
+  },
+  {
+    timeoutInSeconds: 60 * 60, // Wait for up to an hour
+  }
+);
+```
+
+The event object returned from this task is the full event object that was sent, including `id`, `name`, `payload`, `context`, and more.
+
+[reference docs](/sdk/io/wait-for-event)
+
+## `backgroundFetch`
+
+This task allows you to perform a `fetch` request in the background, and then resume the execution of your job after the request has completed.
+
+```ts
+const body = io.backgroundFetch<MyResponseData>("🕸️", "https://example.com/api/endpoint", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: redactString`Bearer ${auth.apiKey}`,
+  },
+  body: JSON.stringify({ foo: "bar" }),
+});
+```
+
+This is useful for when an API is slow to respond and might not finish before your serverless function times out. We created this task to power our [OpenAI integration](/integrations/apis/openai), which can sometimes take more than a minute to respond:
+
+```ts
+// This uses backgroundFetch under the hood
+await io.openai.chat.completions.backgroundCreate("💬", {
+  model: "gpt-3.5-turbo",
+  messages: [
+    {
+      role: "user",
+      content: "Create a good programming joke about background jobs",
+    },
+  ],
+});
+```
+
+[reference docs](/sdk/io/backgroundfetch)
+
+## `backgroundPoll`
+
+This task is similar to `backgroundFetch`, but instead of waiting for a single request to complete, it will poll a URL until it returns a certain value.
+
+```ts
+const result = await io.backgroundPoll<{ foo: string }>("🔃", {
+  url: "https://example.com/api/endpoint",
+  interval: 10, // every 10 seconds
+  timeout: 300, // stop polling after 5 minutes
+  responseFilter: {
+    // stop polling once this filter matches
+    status: [200],
+    body: {
+      status: ["SUCCESS"],
+    },
+  },
+});
+```
+
+## `logger`
+
+The logger object allows you to log messages to the Trigger.dev console. This is useful for debugging your jobs, or just to see what's going on inside your job.
+
+```ts
+await io.logger.info("This is an info message");
+```
+
+You can optionally pass a `context` object to the logger, which will be displayed in the console:
+
+```ts
+await io.logger.info("This is an info message", {
+  foo: "bar",
+});
+```
+
+We support the following log levels:
+
+- `io.logger.debug()`
+- `io.logger.info()`
+- `io.logger.warn()`
+- `io.logger.error()`
+
+<Note>
+  You may notice these tasks don't include cache keys. We automatically create a cache key for you
+  based on the message and the log-level
+</Note>
+
+[reference docs](/sdk/io/logger)
+
+## `store`
+
+The store object exposes several namespaced **Key-Value Stores** you can access inside of your Jobs. This is useful for storing small amounts of serializable data for later retrieval:
+
+```ts
+// store some data
+await io.store.job.set("💾", "disk-A", "Doom 1.2 Demo #3");
+
+// get it again later
+const value = await io.store.job.get<string>("read-💾", "disk-A");
+```
+
+If you want to access the store from outside a run (e.g. just from your backend) you should use [client.store](/sdk/triggerclient/store) instead.
+
+The following namespaces are at your disposal:
+
+- `store.env` to access and store data within the **Environment**
+- `store.job` to access and store data within the **Job**
+- `store.run` to access and store data within the **Run**
+
+[reference docs](/sdk/io/store)
+
+## `random`
+
+Use this task to generate a random number that stays stable during run retries/resumes:
+
+```ts
+const randomNumber = await io.random("🎲", {
+  min: 1,
+  max: 100,
+});
+```
+
+[reference docs](/sdk/io/random)
+
+## `sendEvent`
+
+This task allows you to send an event from inside your job run.
+
+If you want to send an event from outside a run (e.g. just from your backend) you should use [client.sendEvent()](/sdk/triggerclient/instancemethods/sendevent) instead.
+
+```ts
+await io.sendEvent("🚚", {
+  id: "e_1234567890",
+  name: "new.user",
+  payload: {
+    userId: "u_1234567890",
+  },
+});
+```
+
+[reference docs](/sdk/io/sendevent)
+
+## `sendEvents`
+
+This task allows you to send multiple events from inside your job run.
+
+If you want to send multiple events from outside a run (e.g. just from your backend) you should use [client.sendEvents()](/sdk/triggerclient/instancemethods/sendevents) instead.
+
+```ts
+await io.sendEvents("🚚🚚", [
+  {
+    id: "e_12345",
+    name: "new.user",
+    payload: {
+      userId: "u_12345",
+    },
+  },
+  {
+    id: "e_67890",
+    name: "new.user",
+    payload: {
+      userId: "u_67890",
+    },
+  },
+]);
+```
+
+[reference docs](/sdk/io/sendevents)
+
+## `getEvent`
+
+This task allows you to get an event by ID from inside your job run.
+
+If you want to get an event from outside a run (e.g. just from your backend) you should use [client.getEvent()](/sdk/triggerclient/instancemethods/getevent) instead.
+
+```ts
+const event = await io.getEvent("📥", "e_1234567890");
+```
+
+[reference docs](/sdk/io/getevent)
+
+## `cancelEvent`
+
+If you send an event that has a delivery date in the future, you can use this task to cancel it.
+
+```ts
+await io.sendEvent(
+  "🚚",
+  {
+    id: "e_1234567890",
+    name: "new.user",
+    payload: {
+      userId: "u_1234567890",
+    },
+  },
+  {
+    deliverAt: new Date(Date.now() + 1000 * 60 * 60 * 24), // deliver in 24 hours
+  }
+);
+
+// Later on, if you want to cancel the event:
+await io.cancelEvent("🚫", "e_1234567890");
+```
+
+## `createStatus`
+
+Coming soon

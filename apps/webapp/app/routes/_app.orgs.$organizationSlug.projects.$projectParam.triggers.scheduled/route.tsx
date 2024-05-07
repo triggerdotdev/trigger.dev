@@ -1,9 +1,8 @@
 import { NoSymbolIcon } from "@heroicons/react/20/solid";
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { DateTime } from "~/components/primitives/DateTime";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
@@ -21,29 +20,21 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { ScheduledTriggersPresenter } from "~/presenters/ScheduledTriggersPresenter.server";
-import { requireUser } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
-import { ProjectParamSchema, docsPath, trimTrailingSlash } from "~/utils/pathBuilder";
+import { requireUserId } from "~/services/session.server";
+import { ProjectParamSchema, docsPath } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
-  const user = await requireUser(request);
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
   const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
 
   const presenter = new ScheduledTriggersPresenter();
   const data = await presenter.call({
-    userId: user.id,
+    userId,
     organizationSlug,
     projectSlug: projectParam,
   });
 
   return typedjson(data);
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => (
-    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="Scheduled Triggers" />
-  ),
-  expandSidebar: true,
 };
 
 export default function Integrations() {
@@ -53,7 +44,7 @@ export default function Integrations() {
 
   return (
     <>
-      <Paragraph variant="small" spacing>
+      <Paragraph variant="small" spacing className="pt-2">
         A Scheduled Trigger runs a Job on a repeated schedule. The schedule can use a CRON
         expression or an interval.
       </Paragraph>
@@ -109,7 +100,7 @@ export default function Integrations() {
                       <CheckCircleIcon className="h-6 w-6 text-green-500" />
                     ) : t.environment.type === "DEVELOPMENT" ? (
                       <span className="flex items-center gap-1">
-                        <NoSymbolIcon className="h-6 w-6 text-dimmed" />
+                        <NoSymbolIcon className="h-6 w-6 text-text-dimmed" />
                         <Paragraph variant="extra-small">
                           <TextLink
                             href={docsPath("documentation/concepts/triggers/scheduled")}
@@ -130,7 +121,7 @@ export default function Integrations() {
                         {t.dynamicTrigger.slug}
                       </span>
                     ) : (
-                      <span className="text-dimmed">–</span>
+                      <span className="text-text-dimmed">–</span>
                     )}
                   </TableCell>
                   <TableCell>
@@ -143,7 +134,7 @@ export default function Integrations() {
               );
             })
           ) : (
-            <TableBlankRow colSpan={5}>
+            <TableBlankRow colSpan={100}>
               <Paragraph>No Scheduled triggers</Paragraph>
             </TableBlankRow>
           )}

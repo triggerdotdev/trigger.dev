@@ -6,8 +6,12 @@ export * from "./triggers/externalSource";
 export * from "./triggers/dynamic";
 export * from "./triggers/scheduled";
 export * from "./triggers/notifications";
+export * from "./triggers/invokeTrigger";
+export * from "./triggers/webhook";
 export * from "./io";
 export * from "./types";
+export * from "./utils";
+export * from "./security";
 
 import { ServerTask } from "@trigger.dev/core";
 import { RedactString } from "./types";

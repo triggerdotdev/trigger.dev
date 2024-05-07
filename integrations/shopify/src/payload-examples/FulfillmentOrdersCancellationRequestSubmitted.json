@@ -1,0 +1,11 @@
+{
+  "fulfillment_order": {
+    "id": "gid://shopify/FulfillmentOrder/1",
+    "status": "in_progress",
+    "request_status": "cancellation_request"
+  },
+  "fulfillment_order_merchant_request": {
+    "id": "gid://shopify/FulfillmentOrderMerchantRequest/1",
+    "message": "Customer cancelled their order"
+  }
+}

@@ -1,0 +1,105 @@
+---
+title: "store"
+sidebarTitle: "store"
+description: "Exposes namespaced **Key-Value Stores** you can access in and outside of your Jobs."
+---
+
+<Warning>
+  Only use this for small values - there's a **256KB** size limit per item.
+</Warning>
+
+## Namespaces
+
+- `store.env` to access and store data across your **Environment**
+
+## Methods
+
+### `delete()`
+
+Deletes an item from the Key-Value Store.
+
+<ParamField body="key" type="string" required>
+  The `key` of the item to delete.
+</ParamField>
+
+#### Returns
+
+A `Promise` that resolves when the item has been deleted.
+
+```ts
+await client.store.env.delete("key")
+```
+
+### `has()`
+
+Checks if an item exists in the Key-Value Store.
+
+<ParamField body="key" type="string" required>
+  The `key` of the item to check existence of.
+</ParamField>
+
+#### Returns
+
+A `Promise` that resolves to a `boolean` value indicating existence.
+
+```ts
+const exists = await client.store.env.has("key")
+```
+
+### `get()`
+
+Retrieves an item from the Key-Value Store.
+
+<ParamField body="key" type="string" required>
+  The `key` of the item to retrieve.
+</ParamField>
+
+#### Returns
+
+A `Promise` that resolves to the stored value or `undefined` if missing.
+
+```ts
+const val = await client.store.env.get("key")
+```
+
+### `set()`
+
+Stores an item in the Key-Value Store.
+
+<ParamField body="key" type="string" required>
+  The `key` of the item to store.
+</ParamField>
+
+<ParamField body="value" type="any" required>
+  The serializable `value` to store.
+</ParamField>
+
+```ts
+const val = await client.store.env.set("key", "value")
+```
+
+#### Returns
+
+A `Promise` that resolves to the stored value.
+
+<RequestExample>
+```ts Example
+// returns: "value"
+await client.store.env.set("key", "value")
+
+// returns: true
+await client.store.env.has("key")
+
+// returns: "value"
+await client.store.env.get("key")
+
+// returns: void
+await client.store.env.delete("key")
+
+// returns: false
+await client.store.env.has("key")
+
+// returns: { foo: "bar" }
+await client.store.env.set("obj", { foo: "bar" })
+```
+</RequestExample>

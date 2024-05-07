@@ -10,11 +10,16 @@ import type {
   TaskSpec,
 } from "graphile-worker";
 import { run as graphileRun, parseCronItems } from "graphile-worker";
+import { SpanKind, trace } from "@opentelemetry/api";
 
 import omit from "lodash.omit";
 import { z } from "zod";
 import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
+import { PgListenService } from "~/services/db/pgListen.server";
 import { workerLogger as logger } from "~/services/logger.server";
+import { flattenAttributes } from "@trigger.dev/core/v3";
+
+const tracer = trace.getTracer("zodWorker", "3.0.0.dp.1");
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
@@ -93,6 +98,11 @@ export type ZodWorkerCleanupOptions = {
 
 type ZodWorkerReporter = (event: string, properties: Record<string, any>) => Promise<void>;
 
+export interface ZodWorkerRateLimiter {
+  forbiddenFlags(): Promise<string[]>;
+  wrapTask(t: Task, rescheduler: Task): Task;
+}
+
 export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   name: string;
   runnerOptions: RunnerOptions;
@@ -103,6 +113,7 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   cleanup?: ZodWorkerCleanupOptions;
   reporter?: ZodWorkerReporter;
   shutdownTimeoutInMs?: number;
+  rateLimiter?: ZodWorkerRateLimiter;
 };
 
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
@@ -115,6 +126,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #runner?: GraphileRunner;
   #cleanup: ZodWorkerCleanupOptions | undefined;
   #reporter?: ZodWorkerReporter;
+  #rateLimiter?: ZodWorkerRateLimiter;
   #shutdownTimeoutInMs?: number;
   #shuttingDown = false;
 
@@ -127,6 +139,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     this.#recurringTasks = options.recurringTasks;
     this.#cleanup = options.cleanup;
     this.#reporter = options.reporter;
+    this.#rateLimiter = options.rateLimiter;
     this.#shutdownTimeoutInMs = options.shutdownTimeoutInMs ?? 60000; // default to 60 seconds
   }
 
@@ -139,7 +152,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       return true;
     }
 
-    this.#logDebug("Initializing worker queue with options", {
+    this.#logDebug("Initializing graphile worker queue with options", {
       runnerOptions: this.#runnerOptions,
     });
 
@@ -150,10 +163,11 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       noHandleSignals: true,
       taskList: this.#createTaskListFromTasks(),
       parsedCronItems,
+      forbiddenFlags: this.#rateLimiter?.forbiddenFlags.bind(this.#rateLimiter),
     });
 
     if (!this.#runner) {
-      throw new Error("Failed to initialize worker queue");
+      throw new Error("Failed to initialize graphile worker queue");
     }
 
     this.#runner?.events.on("pool:create", ({ workerPool }) => {
@@ -164,8 +178,23 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       this.#logDebug("pool:create", { attempts });
     });
 
-    this.#runner?.events.on("pool:listen:success", ({ workerPool, client }) => {
+    this.#runner?.events.on("pool:listen:success", async ({ workerPool, client }) => {
       this.#logDebug("pool:listen:success");
+
+      // hijack client instance to listen and react to incoming NOTIFY events
+      const pgListen = new PgListenService(client, this.#name, logger);
+
+      await pgListen.on("trigger:graphile:migrate", async ({ latestMigration }) => {
+        this.#logDebug("Detected incoming migration", { latestMigration });
+
+        if (latestMigration > 10) {
+          // already migrated past v0.14 - nothing to do
+          return;
+        }
+
+        // simulate SIGTERM to trigger graceful shutdown
+        this._handleSignal("SIGTERM");
+      });
     });
 
     this.#runner?.events.on("pool:listen:error", ({ error }) => {
@@ -270,7 +299,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       spec,
     });
 
-    const job = await this.#addJob(
+    const { job, durationInMs } = await this.#addJob(
       identifier as string,
       payload,
       spec,
@@ -282,6 +311,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       payload,
       spec,
       job,
+      durationInMs,
     });
 
     return job;
@@ -304,6 +334,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     spec: TaskSpec,
     tx: PrismaClientOrTransaction
   ) {
+    const now = performance.now();
+
     const results = await tx.$queryRawUnsafe(
       `SELECT * FROM ${this.graphileWorkerSchema}.add_job(
           identifier => $1::text,
@@ -327,6 +359,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       spec.jobKeyMode || null
     );
 
+    const durationInMs = performance.now() - now;
+
     const rows = AddJobResultsSchema.safeParse(results);
 
     if (!rows.success) {
@@ -337,7 +371,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     const job = rows.data[0];
 
-    return job as GraphileJob;
+    return { job: job as GraphileJob, durationInMs: Math.floor(durationInMs) };
   }
 
   async #removeJob(jobKey: string, tx: PrismaClientOrTransaction) {
@@ -374,7 +408,11 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
         return this.#handleMessage(key, payload, helpers);
       };
 
-      taskList[key] = task;
+      if (this.#rateLimiter) {
+        taskList[key] = this.#rateLimiter.wrapTask(task, this.#rescheduleTask.bind(this));
+      } else {
+        taskList[key] = task;
+      }
     }
 
     for (const [key] of Object.entries(this.#recurringTasks ?? {})) {
@@ -402,6 +440,19 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     }
 
     return taskList;
+  }
+
+  async #rescheduleTask(payload: unknown, helpers: JobHelpers) {
+    this.#logDebug("Rescheduling task", { payload, job: helpers.job });
+
+    await this.enqueue(helpers.job.task_identifier, payload, {
+      runAt: helpers.job.run_at,
+      queueName: helpers.job.queue_name ?? undefined,
+      priority: helpers.job.priority,
+      jobKey: helpers.job.key ?? undefined,
+      flags: Object.keys(helpers.job.flags ?? []),
+      maxAttempts: helpers.job.max_attempts,
+    });
   }
 
   #createCronItemsFromRecurringTasks() {
@@ -471,7 +522,45 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       throw new Error(`No task for message type: ${String(typeName)}`);
     }
 
-    await task.handler(payload, job);
+    await tracer.startActiveSpan(
+      `Run ${typeName as string}`,
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          "job.task_identifier": job.task_identifier,
+          "job.id": job.id,
+          ...(job.queue_name ? { "job.queue_name": job.queue_name } : {}),
+          ...flattenAttributes(job.payload as Record<string, unknown>, "job.payload"),
+          "job.priority": job.priority,
+          "job.run_at": job.run_at.toISOString(),
+          "job.attempts": job.attempts,
+          "job.max_attempts": job.max_attempts,
+          "job.created_at": job.created_at.toISOString(),
+          "job.updated_at": job.updated_at.toISOString(),
+          ...(job.key ? { "job.key": job.key } : {}),
+          "job.revision": job.revision,
+          ...(job.locked_at ? { "job.locked_at": job.locked_at.toISOString() } : {}),
+          ...(job.locked_by ? { "job.locked_by": job.locked_by } : {}),
+          ...(job.flags ? flattenAttributes(job.flags, "job.flags") : {}),
+          "worker.name": this.#name,
+        },
+      },
+      async (span) => {
+        try {
+          await task.handler(payload, job);
+        } catch (error) {
+          if (error instanceof Error) {
+            span.recordException(error);
+          } else {
+            span.recordException(new Error(String(error)));
+          }
+
+          throw error;
+        } finally {
+          span.end();
+        }
+      }
+    );
   }
 
   async #handleRecurringTask(
@@ -503,16 +592,45 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     const payload = parsedPayload.data;
 
-    try {
-      await recurringTask.handler(payload._cron, job);
-    } catch (error) {
-      logger.error("Failed to handle recurring task", {
-        error,
-        payload,
-      });
+    await tracer.startActiveSpan(
+      `Run ${typeName as string} recurring`,
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          "job.task_identifier": job.task_identifier,
+          "job.id": job.id,
+          ...(job.queue_name ? { "job.queue_name": job.queue_name } : {}),
+          ...flattenAttributes(job.payload as Record<string, unknown>, "job.payload"),
+          "job.priority": job.priority,
+          "job.run_at": job.run_at.toISOString(),
+          "job.attempts": job.attempts,
+          "job.max_attempts": job.max_attempts,
+          "job.created_at": job.created_at.toISOString(),
+          "job.updated_at": job.updated_at.toISOString(),
+          ...(job.key ? { "job.key": job.key } : {}),
+          "job.revision": job.revision,
+          ...(job.locked_at ? { "job.locked_at": job.locked_at.toISOString() } : {}),
+          ...(job.locked_by ? { "job.locked_by": job.locked_by } : {}),
+          ...(job.flags ? flattenAttributes(job.flags, "job.flags") : {}),
+          "worker.name": this.#name,
+        },
+      },
+      async (span) => {
+        try {
+          await recurringTask.handler(payload._cron, job);
+        } catch (error) {
+          if (error instanceof Error) {
+            span.recordException(error);
+          } else {
+            span.recordException(new Error(String(error)));
+          }
 
-      throw error;
-    }
+          throw error;
+        } finally {
+          span.end();
+        }
+      }
+    );
   }
 
   async #handleCleanup(rawPayload: unknown, helpers: JobHelpers): Promise<void> {

@@ -1,0 +1,12 @@
+{
+  "id": 408372092144951400,
+  "handle": "mynewcollection",
+  "title": "My New Collection",
+  "updated_at": "2021-12-31T19:00:00-05:00",
+  "body_html": "<b>Some HTML</b>",
+  "published_at": "2021-12-31T16:00:00-05:00",
+  "sort_order": null,
+  "template_suffix": null,
+  "published_scope": "web",
+  "admin_graphql_api_id": "gid://shopify/Collection/408372092144951419"
+}

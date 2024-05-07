@@ -1,22 +1,41 @@
-import { IntegrationTaskKey, Prettify, redactString } from "@trigger.dev/sdk";
+import { IntegrationTaskKey, Prettify } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 import { OpenAIRunTask } from "./index";
-import { createTaskUsageProperties } from "./taskUtils";
+import {
+  backgroundTaskRetries,
+  createBackgroundFetchHeaders,
+  createBackgroundFetchUrl,
+  createTaskOutputProperties,
+  handleOpenAIError,
+} from "./taskUtils";
+import { OpenAIIntegrationOptions, OpenAIRequestOptions } from "./types";
+import { FetchRetryOptions, FetchTimeoutOptions } from "@trigger.dev/integration-kit";
 
 export class Chat {
-  constructor(private runTask: OpenAIRunTask) {}
+  constructor(
+    private runTask: OpenAIRunTask,
+    private options: OpenAIIntegrationOptions
+  ) {}
 
   completions = {
     create: (
       key: IntegrationTaskKey,
-      params: Prettify<OpenAI.Chat.CompletionCreateParamsNonStreaming>
+      params: Prettify<OpenAI.Chat.ChatCompletionCreateParamsNonStreaming>,
+      options: OpenAIRequestOptions = {}
     ): Promise<OpenAI.Chat.ChatCompletion> => {
       return this.runTask(
         key,
         async (client, task) => {
-          const response = await client.chat.completions.create(params);
-          task.outputProperties = createTaskUsageProperties(response.usage);
-          return response;
+          const { data, response } = await client.chat.completions
+            .create(params, {
+              idempotencyKey: task.idempotencyKey,
+              ...options,
+            })
+            .withResponse();
+
+          task.outputProperties = createTaskOutputProperties(data.usage, response.headers);
+
+          return data;
         },
         {
           name: "Chat Completion",
@@ -27,52 +46,52 @@ export class Chat {
               text: params.model,
             },
           ],
-        }
+        },
+        handleOpenAIError
       );
     },
 
     backgroundCreate: (
       key: IntegrationTaskKey,
-      params: Prettify<OpenAI.Chat.CompletionCreateParamsNonStreaming>
+      params: Prettify<OpenAI.Chat.ChatCompletionCreateParamsNonStreaming>,
+      options: OpenAIRequestOptions = {},
+      fetchOptions: { retries?: FetchRetryOptions; timeout?: FetchTimeoutOptions } = {}
     ): Promise<OpenAI.Chat.ChatCompletion> => {
       return this.runTask(
         key,
         async (client, task, io) => {
-          const response = await io.backgroundFetch<OpenAI.Chat.ChatCompletion>(
+          const url = createBackgroundFetchUrl(
+            client,
+            "/chat/completions",
+            this.options.defaultQuery,
+            options
+          );
+
+          const response = await io.backgroundFetchResponse<OpenAI.Chat.ChatCompletion>(
             "background",
-            "https://api.openai.com/v1/chat/completions",
+            url,
             {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: redactString`Bearer ${client.apiKey}`,
-                ...(client.organization ? { "OpenAI-Organization": client.organization } : {}),
-              },
+              method: options.method ?? "POST",
+              headers: createBackgroundFetchHeaders(
+                client,
+                task.idempotencyKey,
+                this.options.defaultHeaders,
+                options
+              ),
               body: JSON.stringify(params),
             },
             {
-              "500-599": {
-                strategy: "backoff",
-                limit: 5,
-                minTimeoutInMs: 1000,
-                maxTimeoutInMs: 30000,
-                factor: 1.8,
-                randomize: true,
-              },
-              "429": {
-                strategy: "backoff",
-                limit: 10,
-                minTimeoutInMs: 1000,
-                maxTimeoutInMs: 60000,
-                factor: 2,
-                randomize: true,
-              },
+              retry: fetchOptions?.retries ?? backgroundTaskRetries,
+              timeout: fetchOptions?.timeout,
             }
           );
 
-          task.outputProperties = createTaskUsageProperties(response.usage);
+          task.outputProperties = createTaskOutputProperties(
+            response.data.usage,
+            new Headers(response.headers)
+          );
 
-          return response;
+          return response.data;
         },
         {
           name: "Background Chat Completion",
@@ -83,6 +102,9 @@ export class Chat {
               text: params.model,
             },
           ],
+          retry: {
+            limit: 0,
+          },
         }
       );
     },

@@ -1,14 +1,13 @@
-import { DisplayProperty, IOWithIntegrations, IntegrationTaskKey } from "@trigger.dev/sdk";
-import { FieldSet, Records, SelectOptions } from "airtable";
-import { AirtableFieldSet, AirtableRecord, AirtableRunTask, CreateAirtableRecord } from ".";
-import { QueryParams } from "airtable/lib/query_params";
+import { DisplayProperty, IntegrationTaskKey } from "@trigger.dev/sdk";
+import AirtableSDK from "airtable";
+import { AirtableFieldSet, AirtableRecord, AirtableRunTask } from ".";
 
 type TableParams<Params extends Record<string, unknown>> = {
   tableName: string;
 } & Params;
 
 export type AirtableRecordsParams = TableParams<{}>;
-export type AirtableRecords = Records<FieldSet>;
+export type AirtableRecords = AirtableSDK.Records<AirtableSDK.FieldSet>;
 
 export class Base {
   constructor(
@@ -32,12 +31,14 @@ export class Table<TFields extends AirtableFieldSet> {
     this.tableName = tableName;
   }
 
-  getRecords(key: IntegrationTaskKey, params?: SelectOptions<TFields>) {
+  getRecords(key: IntegrationTaskKey, params?: AirtableSDK.SelectOptions<TFields>) {
     return this.runTask(
       key,
       async (client) => {
         const result = await client
           .base(this.baseId)
+          // official types are wrong - we need to use our extended AirtableFieldSet here
+          // @ts-ignore
           .table<TFields>(this.tableName)
           .select(params)
           .all();
@@ -55,6 +56,8 @@ export class Table<TFields extends AirtableFieldSet> {
     return this.runTask(
       key,
       async (client) => {
+        // official types are wrong - we need to use our extended AirtableFieldSet here
+        // @ts-ignore
         const result = await client.base(this.baseId).table<TFields>(this.tableName).find(recordId);
         return toSerializableRecord<TFields>(result);
       },
@@ -75,6 +78,8 @@ export class Table<TFields extends AirtableFieldSet> {
       async (client) => {
         const result = await client
           .base(this.baseId)
+          // official types are wrong - we need to use our extended AirtableFieldSet here
+          // @ts-ignore
           .table<TFields>(this.tableName)
           .create(records);
         return result.map((record) => toSerializableRecord<TFields>(record));
@@ -96,6 +101,8 @@ export class Table<TFields extends AirtableFieldSet> {
       async (client) => {
         const result = await client
           .base(this.baseId)
+          // official types are wrong - we need to use our extended AirtableFieldSet here
+          // @ts-ignore
           .table<TFields>(this.tableName)
           .update(records);
         return result.map((record) => toSerializableRecord<TFields>(record));
@@ -117,6 +124,8 @@ export class Table<TFields extends AirtableFieldSet> {
       async (client) => {
         const result = await client
           .base(this.baseId)
+          // official types are wrong - we need to use our extended AirtableFieldSet here
+          // @ts-ignore
           .table<TFields>(this.tableName)
           .destroy(recordIds);
         return result.map((record) => toSerializableRecord<TFields>(record));

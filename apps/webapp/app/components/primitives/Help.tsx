@@ -46,7 +46,7 @@ export function HelpTrigger({ title }: { title: string }) {
     <></>
   ) : (
     <Button
-      variant="tertiary/small"
+      variant="minimal/small"
       LeadingIcon="lightbulb"
       leadingIconClassName="text-amber-400"
       onClick={() => setOpen(true)}
@@ -78,9 +78,9 @@ export function HelpContent({
             </div>
             {allowDismissing && (
               <Button
-                variant="tertiary/small"
+                variant="minimal/small"
                 TrailingIcon="close"
-                trailingIconClassName="text-slate-400"
+                trailingIconClassName="text-charcoal-400"
                 onClick={() => setOpen(false)}
               >
                 Dismiss
@@ -88,12 +88,7 @@ export function HelpContent({
             )}
           </div>
 
-          <div
-            className="grow rounded border border-slate-850 bg-midnight-850 bg-contain bg-left-top bg-no-repeat p-6"
-            style={{
-              backgroundImage: `url(${gradientPath})`,
-            }}
-          >
+          <div className="grow rounded border border-charcoal-850 bg-background-bright/80 bg-contain bg-left-top bg-no-repeat p-6">
             {children}
           </div>
         </div>

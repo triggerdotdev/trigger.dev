@@ -1,7 +1,8 @@
-import type { LinksFunction, LoaderArgs } from "@remix-run/node";
+import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
 import { Links, LiveReload, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
-import { TypedMetaFunction, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { ExternalScripts } from "remix-utils/external-scripts";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css";
@@ -11,24 +12,31 @@ import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayo
 import { Toast } from "./components/primitives/Toast";
 import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
+import { useHighlight } from "./hooks/useHighlight";
 import { usePostHog } from "./hooks/usePostHog";
 import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
-import { ErrorBoundary as HighlightErrorBoundary } from "@highlight-run/react";
-import { useHighlight } from "./hooks/useHighlight";
-import { ExternalScripts } from "remix-utils";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
 };
 
-export const meta: TypedMetaFunction<typeof loader> = ({ data }) => ({
-  title: `Trigger.dev${appEnvTitleTag(data?.appEnv)}`,
-  charset: "utf-8",
-  viewport: "width=1024, initial-scale=1",
-});
+export const meta: MetaFunction = ({ data }) => {
+  const typedData = data as UseDataFunctionReturn<typeof loader>;
+  return [
+    { title: `Trigger.dev${appEnvTitleTag(typedData.appEnv)}` },
+    {
+      name: "viewport",
+      content: "width=1024, initial-scale=1",
+    },
+    {
+      name: "robots",
+      content: typedData.features.isManagedCloud ? "index, follow" : "noindex, nofollow",
+    },
+  ];
+};
 
-export const loader = async ({ request }: LoaderArgs) => {
+export const loader = async ({ request }: LoaderFunctionArgs) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
   const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
@@ -56,7 +64,7 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
     return false;
   }
 
-  return true;
+  return options.defaultShouldRevalidate;
 };
 
 export function ErrorBoundary() {
@@ -64,11 +72,13 @@ export function ErrorBoundary() {
     <>
       <html lang="en" className="h-full">
         <head>
+          <meta charSet="utf-8" />
+
           <Meta />
           <Links />
         </head>
-        <body className="h-full overflow-hidden bg-darkBackground">
-          <AppContainer showBackgroundGradient={true}>
+        <body className="bg-darkBackground h-full overflow-hidden">
+          <AppContainer>
             <MainCenteredContainer>
               <RouteErrorDisplay />
             </MainCenteredContainer>
@@ -99,10 +109,8 @@ function App() {
           <Meta />
           <Links />
         </head>
-        <body className="h-full overflow-hidden bg-darkBackground">
-          <HighlightErrorBoundary>
-            <Outlet />
-          </HighlightErrorBoundary>
+        <body className="bg-darkBackground h-full overflow-hidden">
+          <Outlet />
           <Toast />
           <ScrollRestoration />
           <ExternalScripts />

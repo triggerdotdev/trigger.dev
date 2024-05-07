@@ -23,14 +23,14 @@
     "@react-email/text": "^0.0.2",
     "react": "^18.2.0",
     "react-email": "^1.6.1",
-    "resend": "^0.9.1",
+    "resend": "^3.2.0",
     "tiny-invariant": "^1.2.0",
     "zod": "3.22.3"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
-    "@types/node": "16",
-    "@types/react": "18.2.17",
+    "@types/node": "^18",
+    "@types/react": "18.2.69",
     "typescript": "^4.9.4"
   },
   "engines": {

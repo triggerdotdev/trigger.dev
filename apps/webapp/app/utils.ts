@@ -1,6 +1,5 @@
-import type { RouteMatch } from "@remix-run/react";
+import type { UIMatch } from "@remix-run/react";
 import { useMatches } from "@remix-run/react";
-import humanizeDuration from "humanize-duration";
 
 const DEFAULT_REDIRECT = "/";
 
@@ -32,10 +31,7 @@ export function safeRedirect(
  * @param {string} id The route id
  * @returns {JSON|undefined} The router data or undefined if not found
  */
-export function useMatchesData(
-  id: string | string[],
-  debug: boolean = false
-): RouteMatch | undefined {
+export function useMatchesData(id: string | string[], debug: boolean = false): UIMatch | undefined {
   const matchingRoutes = useMatches();
 
   if (debug) {
@@ -48,7 +44,7 @@ export function useMatchesData(
   const route = paths.reduce((acc, path) => {
     if (acc) return acc;
     return matchingRoutes.find((route) => route.id === path);
-  }, undefined as RouteMatch | undefined);
+  }, undefined as UIMatch | undefined);
 
   return route;
 }
@@ -93,66 +89,11 @@ export function hydrateDates(object: any): any {
   return object;
 }
 
-type DurationOptions = {
-  style?: "long" | "short";
-  maxDecimalPoints?: number;
-};
-
-export function formatDuration(
-  start?: Date | null,
-  end?: Date | null,
-  options?: DurationOptions
-): string {
-  if (!start || !end) {
-    return "–";
-  }
-
-  return formatDurationMilliseconds(dateDifference(start, end), options);
-}
-
-export function formatDurationMilliseconds(
-  milliseconds: number,
-  options?: DurationOptions
-): string {
-  let duration = humanizeDuration(milliseconds, {
-    maxDecimalPoints: options?.maxDecimalPoints ?? 1,
-    largest: 2,
-  });
-
-  if (!options) {
-    return duration;
-  }
-
-  switch (options.style) {
-    case "short":
-      duration = duration.replace(" seconds", "s");
-      duration = duration.replace(" second", "s");
-      duration = duration.replace(" minutes", "m");
-      duration = duration.replace(" minute", "m");
-      duration = duration.replace(" hours", "h");
-      duration = duration.replace(" hour", "h");
-      duration = duration.replace(" days", "d");
-      duration = duration.replace(" day", "d");
-      duration = duration.replace(" weeks", "w");
-      duration = duration.replace(" week", "w");
-      duration = duration.replace(" months", "mo");
-      duration = duration.replace(" month", "mo");
-      duration = duration.replace(" years", "y");
-      duration = duration.replace(" year", "y");
-  }
-
-  return duration;
-}
-
 export function titleCase(original: string): string {
   return original
     .split(" ")
     .map((word) => word[0].toUpperCase() + word.slice(1))
     .join(" ");
-}
-
-function dateDifference(date1: Date, date2: Date) {
-  return Math.abs(date1.getTime() - date2.getTime());
 }
 
 // Takes an api key (either trigger_live_xxxx or trigger_development_xxxx) and returns trigger_live_********
@@ -161,19 +102,10 @@ export const obfuscateApiKey = (apiKey: string) => {
   return `${prefix}_${slug}_${"*".repeat(secretPart.length)}`;
 };
 
-export function appEnvTitleTag(appEnv?: "test" | "production" | "development" | "staging"): string {
-  if (!appEnv) {
+export function appEnvTitleTag(appEnv?: string): string {
+  if (!appEnv || appEnv === "production") {
     return "";
   }
 
-  switch (appEnv) {
-    case "test":
-      return " (test)";
-    case "production":
-      return "";
-    case "development":
-      return " (dev)";
-    case "staging":
-      return " (staging)";
-  }
+  return ` (${appEnv})`;
 }

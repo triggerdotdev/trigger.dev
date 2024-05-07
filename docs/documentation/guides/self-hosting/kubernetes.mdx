@@ -1,0 +1,201 @@
+---
+title: "Deploy to Kubernetes"
+description: "Deploy [Trigger.dev](https://trigger.dev) to your kubernetes cluster using our helm chart"
+---
+
+<Warning>WARNING: Kubernetes deploys are not officially supported yet, please only use these instructions as a general guide and starting point.</Warning>
+
+**Prerequisites**
+- You have an understanding of [Kubernetes](https://kubernetes.io/)
+- You have [Helm](https://helm.sh/) version v3.11.3 or greater installed
+- You have [kubectl](https://kubernetes.io/docs/reference/kubectl/kubectl/) installed and connected to your kubernetes cluster
+
+By deploying Trigger.dev on Kubernetes, you can take advantage of its features to ensure that the application is fault-tolerant, highly available, and scalable.
+To make the installation process easier and more streamlined, we have created a Helm chart that you can use to install Trigger.dev on Kubernetes. 
+
+Helm is a package manager for Kubernetes that simplifies the installation and management of Kubernetes applications. 
+With our Helm chart, you can easily install Trigger.dev on Kubernetes, configure it to your liking, and scale it up or down as needed. 
+
+## Get our Helm chart
+
+As our charts aren't published for official use yet, you'll need a copy of the `helm-charts` dir:
+
+```bash
+git clone https://github.com/triggerdotdev/trigger.dev
+cd trigger.dev/helm-charts
+```
+
+## Add Helm values
+
+Create a `my-values.yaml` file to configure various installation settings, such as the docker image tags and environment variables. To explore all configurable parameters for your values file visit our [readme](https://github.com/triggerdotdev/trigger.dev/tree/main/helm-charts#parameters).
+
+### Set image tags
+
+By default, the application will use the latest tag to retrieve the required Docker images, which may be appropriate for most cases. 
+However, we recommend that you use a specific version of the Docker image to avoid unexpected changes to the application.
+
+<Tip>
+  You can find valid image tags on [GitHub Packages](https://github.com/triggerdotdev/trigger.dev/pkgs/container/trigger.dev).
+</Tip>
+
+```yaml my-values.yaml 
+trigger:
+  name: trigger
+  replicaCount: 2
+  image:
+    repository: ghcr.io/triggerdotdev/trigger.dev
+    tag: "latest" # <--- image tag 
+    pullPolicy: Always
+```
+
+### Configure environment variables
+
+You can configure environment variables for trigger in your Helm values file under the property `trigger.env`. See examples for some of these values [here](https://github.com/triggerdotdev/trigger.dev/blob/main/.env.example).
+
+At a bare minimum, Trigger.dev requires the following environment variables to be defined:
+- `MAGIC_LINK_SECRET`
+- `SESSION_SECRET`
+- `ENCRYPTION_KEY`
+- `DIRECT_URL`
+- `DATABASE_URL`
+
+When the above environment variables are not defined, the Helm chart will automatically generate values for you. It will persist them in a secret which is preserved between upgrades or uninstalls. It is however strongly recommended to define your own values!
+
+```yaml my-values.yaml
+trigger:
+  ...
+  env:
+    ENCRYPTION_KEY: "b1ebe43a6a6e24b2aa8fa0707d3890e3"
+    MAGIC_LINK_SECRET: "842727396bcee22da68518f959c5730b"
+    ...
+```
+
+### Routing external traffic
+By default, Trigger.dev takes all traffic coming to your external load balancer's IP address and routes them Trigger.dev's services. 
+Trigger.dev uses Nginx to route external traffic. You can install Nginx along with Trigger by setting `ingress.enabled` to `true` in the Helm values file. View all [parameters for ingress](https://github.com/triggerdotdev/trigger.dev/tree/main/helm-charts#ingress-parameters).
+
+```yaml my-values.yaml
+...
+ingress:
+  nginx:
+    enabled: true # <-- if you would like to install nginx along with Trigger.dev
+```
+
+### Database 
+With this Helm chart, you spin up a PostgreSQL instance powered by Bitnami alongside other Trigger.dev services in your cluster. 
+When persistence is enabled, the data will be stored as a Kubernetes Persistence Volume. View all [parameters for postgres](https://github.com/triggerdotdev/trigger.dev/tree/main/helm-charts#postgres-parameters).
+
+```yaml my-values.yaml
+postgresql:
+  enabled: true
+  persistence:
+    enabled: true
+```
+
+### Example values
+
+```yaml my-values.yaml
+trigger:
+  name: trigger
+  replicaCount: 2
+  image:
+    repository: ghcr.io/triggerdotdev/trigger.dev
+    tag: "latest" 
+    pullPolicy: Always
+  env:
+    ENCRYPTION_KEY: "b1ebe43a6a6e24b2aa8fa0707d3890e3"
+    MAGIC_LINK_SECRET: "842727396bcee22da68518f959c5730b"
+
+ingress:
+  nginx:
+    enabled: true # <-- if you would like to install nginx along with Trigger.dev
+```
+
+<Accordion title="Full helm values example">
+  ```yaml my-values.yaml
+  ingress:
+    nginx:
+      enabled: true
+
+  trigger:
+    enabled: true
+    name: trigger
+    podAnnotations: {}
+    deploymentAnnotations: {}
+    replicaCount: 4
+    image:
+      repository: ghcr.io/triggerdotdev/trigger.dev
+      tag: "latest" 
+      pullPolicy: IfNotPresent
+    kubeSecretRef: null
+    service:
+      annotations: {}
+      type: ClusterIP
+      nodePort: ""
+    env:
+      ENCRYPTION_KEY: "b1ebe43a6a6e24b2aa8fa0707d3890e3"
+      MAGIC_LINK_SECRET: "842727396bcee22da68518f959c5730b"
+
+  ## Postgresql DB persistence 
+  postgresql:
+    enabled: true
+    persistence:
+      enabled: true
+
+  ingress:
+    enabled: true
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod" # <-- if you are setting up HTTPS
+    hostName: app.yourdomain.com ## <-- replace with your own domain
+    trigger:
+      path: /
+      pathType: Prefix
+    tls: # <-- if you are setting up HTTPS
+      - secretName: echo-tls
+        hosts:
+          - app.yourdomain.com
+  ```
+</Accordion>
+
+## Install the Helm chart
+
+The following command will install our chart into the `trigger` namespace:
+
+```bash
+# with custom values read from my-values.yaml
+helm upgrade --install --atomic --namespace trigger --create-namespace trigger . --values my-values.yaml
+
+# with default values
+helm upgrade --install --atomic --namespace trigger --create-namespace trigger .
+
+# with inlined values
+helm upgrade --install --atomic --namespace trigger --create-namespace trigger . --set trigger.replicaCount=3
+```
+
+To watch the pods coming up, simply run this from another terminal:
+
+```bash
+kubectl --namespace trigger get pods -w
+```
+
+## Access Trigger.dev
+
+Once the deployment is ready, you should be able to access Trigger.dev on the IP address exposed via Ingress on your load balancer. If you are not sure what the IP address is run `kubectl get ingress` to view the external IP address exposing Trigger.dev.
+
+<Info>
+Once installation is complete, you will have to create the first account. No default account is provided.
+</Info>
+
+### Local access
+
+Forward a local port to access the webapp directly from your device:
+
+```bash
+kubectl --namespace trigger port-forward svc/trigger 2024:3000
+```
+
+Log in via email at `http://localhost:2024` then check your logs for the magic link:
+
+```bash
+kubectl --namespace trigger logs deployments/trigger
+```

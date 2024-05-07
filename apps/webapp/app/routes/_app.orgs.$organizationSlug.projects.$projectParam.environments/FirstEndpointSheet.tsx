@@ -27,9 +27,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "~/components/primitives/Select";
+} from "~/components/primitives/SimpleSelect";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { useRef, useState } from "react";
 
 type FirstEndpointSheetProps = {
   projectId: string;
@@ -40,7 +39,8 @@ export function FirstEndpointSheet({ projectId, environments }: FirstEndpointShe
   const setEndpointUrlFetcher = useFetcher();
   const [form, { url, environmentId }] = useForm({
     id: "new-endpoint-url",
-    lastSubmission: setEndpointUrlFetcher.data,
+    // TODO: type this
+    lastSubmission: setEndpointUrlFetcher.data as any,
     onValidate({ formData }) {
       return parse(formData, { schema: bodySchema });
     },
@@ -51,16 +51,16 @@ export function FirstEndpointSheet({ projectId, environments }: FirstEndpointShe
   return (
     <Sheet>
       <SheetTrigger>
-        <ButtonContent variant={"primary/medium"}>Add your first endpoint</ButtonContent>
+        <ButtonContent variant="secondary/medium">Add your first endpoint</ButtonContent>
       </SheetTrigger>
       <SheetContent size="lg">
         <SheetHeader>
           <div>
             <Header1>Add your first endpoint</Header1>
             <Paragraph variant="small">
-              We recommend you use{" "}
-              <TextLink href={docsPath("documentation/guides/cli")}>the CLI</TextLink> when working
-              in development.
+              We recommend you{" "}
+              <TextLink href={docsPath("documentation/guides/cli")}>use the CLI</TextLink> when
+              working in development.
             </Paragraph>
           </div>
         </SheetHeader>

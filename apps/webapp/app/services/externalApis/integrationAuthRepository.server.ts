@@ -577,6 +577,13 @@ export class IntegrationAuthRepository {
       throw new Error(`Connection ${connectionId} not found`);
     }
 
+    if (!connection.enabled) {
+      logger.info("Connection is disabled", {
+        connection,
+      });
+      return;
+    }
+
     let customOAuthClient: OAuthClient | undefined;
     if (connection.integration.customClientReference) {
       const secretStore = getSecretStore(env.SECRET_STORE);
@@ -687,9 +694,15 @@ export class IntegrationAuthRepository {
     if (connection.expiresAt) {
       const refreshBy = new Date(connection.expiresAt.getTime() - tokenRefreshThreshold * 1000);
       if (refreshBy < new Date()) {
-        connection = await this.refreshConnection({
+        const refreshedConnection = await this.refreshConnection({
           connectionId: connection.id,
         });
+
+        if (!refreshedConnection) {
+          return;
+        }
+
+        connection = refreshedConnection;
       }
     }
 

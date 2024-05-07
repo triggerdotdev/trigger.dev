@@ -1,0 +1,349 @@
+---
+title: Assistant Tasks
+sidebarTitle: Assistants (Beta)
+---
+
+<Note>
+  This feature is currently marked as a "Beta" by OpenAI. Make sure to check our their [How
+  Assistants Work](https://platform.openai.com/docs/assistants/how-it-works) and [Assistants
+  Overview](https://platform.openai.com/docs/assistants/overview) guides.
+</Note>
+
+## Assistants
+
+Build assistants that can call models and use tools to perform tasks. [Official OpenAI docs](https://platform.openai.com/docs/api-reference/assistants)
+
+### `create()`
+
+Create an assistant with a model and instructions. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/assistants/createAssistant)
+
+```ts example.ts
+const file = await io.openai.files.createAndWaitForProcessing("upload-file", {
+  purpose: "assistants",
+  file: fs.createReadStream("./fixtures/mydata.csv"),
+});
+
+const assistant = await io.openai.beta.assistants.create("create-assistant", {
+  name: "Data visualizer",
+  description:
+    "You are great at creating beautiful data visualizations. You analyze data present in .csv files, understand trends, and come up with data visualizations relevant to those trends. You also share a brief text summary of the trends observed.",
+  model: "gpt-4-1106-preview",
+  tools: [{ type: "code_interpreter" }],
+  file_ids: [file.id],
+});
+```
+
+### `update()`
+
+Update an assistant. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/assistants/modifyAssistant)
+
+```ts example.ts
+const file = await io.openai.files.createAndWaitForProcessing("upload-file", {
+  purpose: "assistants",
+  file: fs.createReadStream("./fixtures/mydata.csv"),
+});
+
+const assistantId = "asst_abc123";
+
+const assistant = await io.openai.beta.assistants.update("update-assistant", assistantId, {
+  file_ids: [file.id], // add a file to the assistant
+});
+```
+
+### `list()`
+
+List assistants. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/assistants/listAssistants)
+
+```ts example.ts
+const assistants = await io.openai.beta.assistants.list("list");
+
+// with pagination
+const assistants = await io.openai.beta.assistants.list("list", {
+  limit: 10,
+  order: "desc",
+  after: "asst_abc123",
+});
+```
+
+### `retrieve()`
+
+Retrieve an assistant. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/assistants/getAssistant)
+
+```ts example.ts
+const assistant = await io.openai.beta.assistants.retrieve("get-assistant", "asst_abc123");
+```
+
+### `del()`
+
+Delete an assistant. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/assistants/deleteAssistant)
+
+```ts example.ts
+const deletedAssistant = await io.openai.beta.assistants.del("delete-assistant", "asst_abc123");
+```
+
+## Threads
+
+Create threads that assistants can interact with. [Official OpenAI docs](https://platform.openai.com/docs/api-reference/threads/createThread)
+
+### `create()`
+
+Create a thread. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/assistants/createAssistant)
+
+```ts example.ts
+const thread = await io.openai.beta.threads.create("create-thread", {
+  messages: [
+    {
+      role: "user",
+      content: "Create 3 data visualizations based on the trends in this file.",
+      file_ids: [fileId],
+    },
+  ],
+});
+```
+
+### `createAndRun()`
+
+Create a thread and run it in one task.
+
+```ts example.ts
+const run = await io.openai.beta.threads.createAndRun("create-and-run-thread", {
+  assistant_id: "asst_abc123",
+  thread: {
+    messages: [
+      {
+        role: "user",
+        content: "Create 3 data visualizations based on the trends in this file.",
+        file_ids: [fileId],
+      },
+    ],
+  },
+});
+```
+
+### `createAndRunUntilCompletion()`
+
+Create a thread and runs it in one task, and only returns when the run is completed by polling in the background using [io.backgroundPoll()](/sdk/io/background-poll).
+
+```ts example.ts
+const run = await io.openai.beta.threads.createAndRunUntilCompletion("create-thread", {
+  assistant_id: "asst_abc123",
+  thread: {
+    messages: [
+      {
+        role: "user",
+        content: "Create 3 data visualizations based on the trends in this file.",
+        file_ids: [fileId],
+      },
+    ],
+  },
+});
+
+if (run.status !== "completed") {
+  throw new Error(`Run finished with status ${run.status}: ${JSON.stringify(run.last_error)}`);
+}
+
+// List all messages in the thread
+const messages = await io.openai.beta.threads.messages.list("list-messages", run.thread_id);
+```
+
+### `retrieve()`
+
+Retrieves a thread. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/threads/getThread)
+
+```ts example.ts
+const thread = await io.openai.beta.threads.retrieve("get-thread", "thread_abc123");
+```
+
+### `update()`
+
+Modifies a thread. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/threads/modifyThread)
+
+```ts example.ts
+await io.openai.beta.threads.update("update-thread", "thread_abc123", {
+  metadata: {
+    foo: "bar",
+  },
+});
+```
+
+### `del()`
+
+Deletes a thread. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/threads/deleteThread)
+
+```ts example.ts
+const deletedThread = await io.openai.beta.threads.del("update-thread", "thread_abc123");
+```
+
+## Messages
+
+Create messages within threads. [Official OpenAI docs](https://platform.openai.com/docs/api-reference/messages)
+
+### `list()`
+
+List messages in a thread.
+
+```ts example.ts
+const messages = await io.openai.beta.threads.messages.list("list-messages", "thread_abc123");
+// with pagination
+const messages = await io.openai.beta.threads.messages.list("list-messages", "thread_abc123", {
+  limit: 10,
+  order: "desc",
+  after: "message_abc123",
+});
+```
+
+If you want to list all messages in a thread, you can use the `listAll()` helper:
+
+```ts example.ts
+const messages = await io.openai.beta.threads.messages.listAll("list-messages", "thread_abc123");
+```
+
+This will automatically paginate through all messages in the thread and return them as a single array.
+
+### `create()`
+
+Create a message. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/messages/createMessage)
+
+```ts example.ts
+const thread = await io.openai.beta.threads.create("get-thread");
+
+const message = await io.openai.beta.threads.messages.create("create-message", thread.id, {
+  role: "user",
+  content: "Create 3 data visualizations based on the trends in this file.",
+  file_ids: [fileId],
+});
+```
+
+### `retrieve()`
+
+Retrieve a message. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/messages/getMessage)
+
+```ts example.ts
+const message = await io.openai.beta.threads.messages.retrieve(
+  "get-message",
+  "thread_abc123",
+  "message_abc123"
+);
+```
+
+### `update()`
+
+Update a message. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/messages/modifyMessage)
+
+```ts example.ts
+await io.openai.beta.threads.messages.update("update-message", thread.id, message.id, {
+  metadata: {
+    foo: "bar",
+  },
+});
+```
+
+## Runs
+
+Represents an execution run on a thread. [Official OpenAI docs](https://platform.openai.com/docs/api-reference/runs)
+
+### `list()`
+
+List all runs belonging to a thread.
+
+```ts example.ts
+const runs = await io.openai.beta.threads.runs.list("list-runs", "thread_abc123");
+```
+
+### `create()`
+
+Create a run. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/runs/createRun)
+
+```ts example.ts
+const run = await io.openai.beta.threads.runs.create("create-run", "thread_abc123", {
+  assistant_id: payload.id,
+});
+```
+
+### `createAndWaitForCompletion()`
+
+Create a run and only return when the run is completed by polling in the background using [io.backgroundPoll()](/sdk/io/background-poll).
+
+```ts example.ts
+const run = await io.openai.beta.threads.runs.createAndWaitForCompletion(
+  "create-run",
+  "thread_abc123",
+  {
+    assistant_id: payload.id,
+  }
+);
+
+if (run.status !== "completed") {
+  throw new Error(`Run finished with status ${run.status}: ${JSON.stringify(run.last_error)}`);
+}
+
+const messages = await io.openai.beta.threads.messages.list("list-messages", run.thread_id);
+```
+
+### `waitForCompletion()`
+
+Wait for a run to complete by polling in the background using [io.backgroundPoll()](/sdk/io/background-poll).
+
+```ts example.ts
+const run = await io.openai.beta.threads.runs.create("create-run", "thread_abc123", {
+  assistant_id: payload.id,
+});
+
+const completedRun = await io.openai.beta.threads.runs.waitForCompletion(
+  "wait-for-completion",
+  "thread_abc123",
+  run.id
+);
+
+if (completedRun.status !== "completed") {
+  throw new Error(
+    `Run finished with status ${completedRun.status}: ${JSON.stringify(completedRun.last_error)}`
+  );
+}
+
+const messages = await io.openai.beta.threads.messages.list("list-messages", run.thread_id);
+```
+
+### `retrieve()`
+
+Retrieve a run. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/runs/getRun)
+
+```ts example.ts
+const run = await io.openai.beta.threads.runs.retrieve("get-run", "thread_abc123", "run_abc123");
+```
+
+### `cancel()`
+
+Cancels a run that is `in_progress`. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/runs/cancelRun)
+
+```ts example.ts
+const run = await io.openai.beta.threads.runs.cancel("cancel-run", "thread_abc123", "run_abc123");
+```
+
+### `submitToolOutputs()`
+
+When a run has the `status: "requires_action"` and `required_action.type` is `submit_tool_outputs`, this endpoint can be used to submit the outputs from the tool calls once they're all completed. All outputs must be submitted in a single request. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/runs/submitToolOutputs)
+
+```ts example.ts
+const run = await io.openai.beta.threads.runs.submitToolOutputs(
+  "submit-tool-outputs",
+  "thread_abc123",
+  "run_abc123",
+  {
+    tool_outputs: [
+      {
+        tool_call_id: "tool_run_abc123",
+        output: "This is the output of the tool call.",
+      },
+    ],
+  }
+);
+```
+
+### `list()`
+
+Returns all runs belonging to a thread. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/runs/listRuns)
+
+```ts example.ts
+const runs = await io.openai.beta.threads.runs.list("list-runs", "thread_abc123");
+```

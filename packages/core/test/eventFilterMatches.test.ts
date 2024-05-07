@@ -2,6 +2,20 @@ import { EventFilter } from "../src";
 import { eventFilterMatches } from "../src/eventFilterMatches";
 
 describe("eventFilterMatches", () => {
+  it("should return true if the payload is undefined and the filter is empty", () => {
+    const payload = undefined;
+    const filter: EventFilter = {};
+    expect(eventFilterMatches(payload, filter)).toBe(true);
+  });
+
+  it("should return false if the payload is undefined and the filter isn't empty", () => {
+    const payload = undefined;
+    const filter: EventFilter = {
+      name: ["John"],
+    };
+    expect(eventFilterMatches(payload, filter)).toBe(false);
+  });
+
   it("should return true when payload matches string filter", () => {
     const payload = {
       name: "John",
@@ -236,6 +250,54 @@ describe("eventFilterMatches", () => {
     };
 
     expect(eventFilterMatches(payload, filter)).toBe(true);
+  });
+
+  it("should return true when payload matches an not condition", () => {
+    const payload = {
+      name: "John",
+      age: 30,
+      score: 100,
+      isAdmin: false,
+      hobbies: ["reading", "swimming"],
+      address: {
+        street: "123 Main St",
+        city: "Anytown",
+        state: "CA",
+        zip: "12345",
+      },
+    };
+    const filter: EventFilter = {
+      hobbies: [{ $not: "gaming" }],
+      age: [{ $not: 39 }],
+      isAdmin: [{ $not: true }],
+      name: [{ $not: 'Test' }]
+    };
+
+    expect(eventFilterMatches(payload, filter)).toBe(true);
+  });
+
+  it("should return false when payload not matches an not condition", () => {
+    const payload = {
+      name: "John",
+      age: 30,
+      score: 100,
+      isAdmin: false,
+      hobbies: ["reading", "swimming"],
+      address: {
+        street: "123 Main St",
+        city: "Anytown",
+        state: "CA",
+        zip: "12345",
+      },
+    };
+    const filter: EventFilter = {
+      hobbies: [{ $not: "reading" }],
+      age: [{ $not: 30 }],
+      isAdmin: [{ $not: false }],
+      name: [{ $not: 'John' }]
+    };
+
+    expect(eventFilterMatches(payload, filter)).toBe(false);
   });
 
   it("should return true when payload matches an ignoreCaseEquals condition", () => {

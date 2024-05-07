@@ -3,11 +3,15 @@ import {
   DisplayPropertySchema,
   EventSpecificationSchema,
 } from "@trigger.dev/core";
-import { PrismaClient, Prisma, prisma } from "~/db.server";
+import { PrismaClient, Prisma, prisma, sqlDatabaseSchema } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
 import { z } from "zod";
+import { projectPath } from "~/utils/pathBuilder";
+import { JobRunStatus } from "@trigger.dev/database";
+
+export type ProjectJob = Awaited<ReturnType<JobListPresenter["call"]>>[0];
 
 export class JobListPresenter {
   #prismaClient: PrismaClient;
@@ -23,8 +27,8 @@ export class JobListPresenter {
     integrationSlug,
   }: {
     userId: User["id"];
-    projectSlug: Project["slug"];
-    organizationSlug?: Organization["slug"];
+    projectSlug?: Project["slug"];
+    organizationSlug: Organization["slug"];
     integrationSlug?: string;
   }) {
     const orgWhere: Prisma.JobWhereInput["organization"] = organizationSlug
@@ -40,54 +44,43 @@ export class JobListPresenter {
         id: true,
         slug: true,
         title: true,
-        aliases: {
+        integrations: {
           select: {
-            version: {
+            key: true,
+            integration: {
               select: {
-                version: true,
-                eventSpecification: true,
-                properties: true,
-                status: true,
-                runs: {
-                  select: {
-                    createdAt: true,
-                    status: true,
-                  },
-                  take: 1,
-                  orderBy: [{ createdAt: "desc" }],
-                },
-                integrations: {
-                  select: {
-                    key: true,
-                    integration: {
-                      select: {
-                        slug: true,
-                        definition: true,
-                        setupStatus: true,
-                      },
-                    },
-                  },
-                },
+                slug: true,
+                definition: true,
+                setupStatus: true,
               },
             },
+          },
+        },
+        versions: {
+          select: {
+            version: true,
+            eventSpecification: true,
+            properties: true,
+            status: true,
+            triggerLink: true,
+            triggerHelp: true,
             environment: {
               select: {
                 type: true,
-                orgMember: {
-                  select: {
-                    userId: true,
-                  },
-                },
               },
             },
           },
-          where: {
-            name: "latest",
-          },
+          orderBy: [{ updatedAt: "desc" }],
+          take: 1,
         },
         dynamicTriggers: {
           select: {
             type: true,
+          },
+        },
+        project: {
+          select: {
+            slug: true,
           },
         },
       },
@@ -95,63 +88,68 @@ export class JobListPresenter {
         internal: false,
         deletedAt: null,
         organization: orgWhere,
-        project: {
-          slug: projectSlug,
-        },
+        project: projectSlug
+          ? {
+              slug: projectSlug,
+            }
+          : undefined,
         integrations: integrationsWhere,
       },
       orderBy: [{ title: "asc" }],
     });
 
+    let latestRuns = [] as {
+      createdAt: Date;
+      status: JobRunStatus;
+      jobId: string;
+      rn: BigInt;
+    }[];
+
+    if (jobs.length > 0) {
+      latestRuns = await this.#prismaClient.$queryRaw<
+        {
+          createdAt: Date;
+          status: JobRunStatus;
+          jobId: string;
+          rn: BigInt;
+        }[]
+      >`
+        SELECT * FROM (
+          SELECT 
+              "id", 
+              "createdAt", 
+              "status", 
+              "jobId",
+              ROW_NUMBER() OVER(PARTITION BY "jobId" ORDER BY "createdAt" DESC) as rn
+          FROM 
+              ${sqlDatabaseSchema}."JobRun" 
+          WHERE 
+              "jobId" IN (${Prisma.join(jobs.map((j) => j.id))})
+      ) t
+      WHERE rn = 1;`;
+    }
+
     return jobs
-      .map((job) => {
-        //the best alias to select:
-        // 1. Logged-in user dev
-        // 2. Prod
-        // 3. Any other user's dev
-        const sortedAliases = job.aliases.sort((a, b) => {
-          if (a.environment.type === "DEVELOPMENT" && a.environment.orgMember?.userId === userId) {
-            return -1;
-          }
-
-          if (b.environment.type === "DEVELOPMENT" && b.environment.orgMember?.userId === userId) {
-            return 1;
-          }
-
-          if (a.environment.type === "PRODUCTION") {
-            return -1;
-          }
-
-          if (b.environment.type === "PRODUCTION") {
-            return 1;
-          }
-
-          return 0;
-        });
-
-        const alias = sortedAliases.at(0);
-
-        if (!alias) {
-          throw new Error(`No aliases found for job ${job.id}, this should never happen.`);
+      .flatMap((job) => {
+        const version = job.versions.at(0);
+        if (!version) {
+          return [];
         }
 
-        const eventSpecification = EventSpecificationSchema.parse(alias.version.eventSpecification);
+        const eventSpecification = EventSpecificationSchema.parse(version.eventSpecification);
 
-        const lastRuns = job.aliases
-          .map((alias) => alias.version.runs.at(0))
-          .filter(Boolean)
-          .sort((a, b) => {
-            return b.createdAt.getTime() - a.createdAt.getTime();
-          });
-
-        const lastRun = lastRuns.at(0);
-
-        const integrations = alias.version.integrations.map((integration) => ({
+        const integrations = job.integrations.map((integration) => ({
           key: integration.key,
           title: integration.integration.slug,
           icon: integration.integration.definition.icon ?? integration.integration.definition.id,
           setupStatus: integration.integration.setupStatus,
         }));
+
+        //deduplicate integrations
+        const uniqueIntegrations = new Map<string, (typeof integrations)[0]>();
+        integrations.forEach((i) => {
+          uniqueIntegrations.set(i.key, i);
+        });
 
         let properties: DisplayProperty[] = [];
 
@@ -159,38 +157,41 @@ export class JobListPresenter {
           properties = [...properties, ...eventSpecification.properties];
         }
 
-        if (alias.version.properties) {
-          const versionProperties = z.array(DisplayPropertySchema).parse(alias.version.properties);
+        if (version.properties) {
+          const versionProperties = z.array(DisplayPropertySchema).parse(version.properties);
           properties = [...properties, ...versionProperties];
         }
 
-        const environments = job.aliases.map((alias) => ({
-          type: alias.environment.type,
-          enabled: alias.version.status === "ACTIVE",
-          lastRun: alias.version.runs.at(0)?.createdAt,
-          version: alias.version.version,
-        }));
+        const latestRun = latestRuns.find((r) => r.jobId === job.id);
 
-        return {
-          id: job.id,
-          slug: job.slug,
-          title: job.title,
-          version: alias.version.version,
-          status: alias.version.status,
-          dynamic: job.dynamicTriggers.length > 0,
-          event: {
-            title: eventSpecification.title,
-            icon: eventSpecification.icon,
-            source: eventSpecification.source,
+        return [
+          {
+            id: job.id,
+            slug: job.slug,
+            title: job.title,
+            version: version.version,
+            status: version.status,
+            dynamic: job.dynamicTriggers.length > 0,
+            event: {
+              title: eventSpecification.title,
+              icon: eventSpecification.icon,
+              source: eventSpecification.source,
+              link: projectSlug
+                ? `${projectPath({ slug: organizationSlug }, { slug: projectSlug })}/${
+                    version.triggerLink
+                  }`
+                : undefined,
+            },
+            integrations: Array.from(uniqueIntegrations.values()),
+            hasIntegrationsRequiringAction: integrations.some(
+              (i) => i.setupStatus === "MISSING_FIELDS"
+            ),
+            environment: version.environment,
+            lastRun: latestRun,
+            properties,
+            projectSlug: job.project.slug,
           },
-          integrations,
-          hasIntegrationsRequiringAction: integrations.some(
-            (i) => i.setupStatus === "MISSING_FIELDS"
-          ),
-          lastRun,
-          properties,
-          environments,
-        };
+        ];
       })
       .filter(Boolean);
   }

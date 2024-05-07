@@ -2,6 +2,7 @@ import type { Job } from "@trigger.dev/database";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { telemetry } from "../telemetry.server";
+import { logger } from "../logger.server";
 
 export class DeleteJobService {
   #prismaClient: PrismaClient;
@@ -25,6 +26,7 @@ export class DeleteJobService {
     const allDisabled = latestVersions.every((alias) => alias.version.status === "DISABLED");
 
     if (!allDisabled) {
+      logger.info("Not all latest versions are disabled, cannot delete job", { jobId: job.id });
       throw new Error("All latest versions must be disabled before deleting a job");
     }
 

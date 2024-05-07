@@ -4,7 +4,8 @@
   "commit": false,
   "fixed": [
     [
-      "@trigger.dev/*"
+      "@trigger.dev/*",
+      "trigger.dev"
     ]
   ],
   "linked": [],
@@ -14,7 +15,12 @@
   "ignore": [
     "webapp",
     "emails",
-    "@trigger.dev/database"
+    "proxy",
+    "yalt",
+    "@trigger.dev/database",
+    "coordinator",
+    "docker-provider",
+    "kubernetes-provider"
   ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true

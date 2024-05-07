@@ -1,8 +1,7 @@
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { BreadcrumbLink } from "~/components/navigation/NavBar";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -20,30 +19,22 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { TriggersPresenter } from "~/presenters/TriggersPresenter.server";
-import { requireUser } from "~/services/session.server";
+import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { Handle } from "~/utils/handle";
-import { ProjectParamSchema, externalTriggerPath, trimTrailingSlash } from "~/utils/pathBuilder";
+import { ProjectParamSchema, externalTriggerPath } from "~/utils/pathBuilder";
 
-export const loader = async ({ request, params }: LoaderArgs) => {
-  const user = await requireUser(request);
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
   const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
 
   const presenter = new TriggersPresenter();
   const data = await presenter.call({
-    userId: user.id,
+    userId,
     organizationSlug,
     projectSlug: projectParam,
   });
 
   return typedjson(data);
-};
-
-export const handle: Handle = {
-  breadcrumb: (match) => (
-    <BreadcrumbLink to={trimTrailingSlash(match.pathname)} title="External Triggers" />
-  ),
-  expandSidebar: true,
 };
 
 export default function Integrations() {
@@ -53,7 +44,7 @@ export default function Integrations() {
 
   return (
     <>
-      <Paragraph variant="small" spacing>
+      <Paragraph variant="small" spacing className="pt-2">
         External Triggers get registered with external APIs, for example a webhook.
       </Paragraph>
       <Table containerClassName="mt-4">
@@ -93,7 +84,7 @@ export default function Integrations() {
                         {t.dynamicTrigger.slug}
                       </span>
                     ) : (
-                      <span className="text-dimmed">–</span>
+                      <span className="text-text-dimmed">–</span>
                     )}
                   </TableCell>
                   <TableCell to={path}>
@@ -138,7 +129,7 @@ export default function Integrations() {
               );
             })
           ) : (
-            <TableBlankRow colSpan={5}>
+            <TableBlankRow colSpan={100}>
               <Paragraph>No External triggers</Paragraph>
             </TableBlankRow>
           )}

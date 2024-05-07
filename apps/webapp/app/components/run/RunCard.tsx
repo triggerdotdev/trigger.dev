@@ -1,4 +1,5 @@
 import type { DisplayProperty, StyleName } from "@trigger.dev/core";
+import { formatDuration } from "@trigger.dev/core/v3";
 import { motion } from "framer-motion";
 import { HourglassIcon } from "lucide-react";
 import { ReactNode, useEffect, useState } from "react";
@@ -7,7 +8,6 @@ import { Callout } from "~/components/primitives/Callout";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { formatDuration } from "~/utils";
 import { cn } from "~/utils/cn";
 
 type RunPanelProps = {
@@ -29,14 +29,14 @@ export function RunPanel({
     <div
       className={cn(
         "overflow-hidden rounded-md border transition duration-150",
-        styleName === "normal" && "bg-slate-900",
+        styleName === "normal" && "bg-background-bright",
         selected
           ? "border-green-500"
           : styleName === "normal"
-          ? "border-slate-850"
-          : "border-slate-900",
+          ? "border-charcoal-850"
+          : "border-charcoal-900",
         onClick && "cursor-pointer",
-        onClick && !selected && "hover:border-green-500/30",
+        onClick && !selected && "hover:border-charcoal-500/30",
         className
       )}
       onClick={() => onClick && onClick()}
@@ -63,7 +63,9 @@ export function RunPanelHeader({
     <div
       className={cn(
         "flex items-center justify-between px-2",
-        styleName === "normal" ? "h-10 border-b border-slate-850 bg-midnight-850 py-2" : "pt-2"
+        styleName === "normal"
+          ? "h-10 border-b border-charcoal-700 bg-background-bright py-2"
+          : "pt-2"
       )}
     >
       <div className="flex items-center gap-2">
@@ -140,7 +142,7 @@ export function RunPanelIconSection({
 }
 
 export function RunPanelDivider() {
-  return <div className="mb-4 border-b border-slate-700 pb-4" />;
+  return <div className="mb-4 border-b border-charcoal-700 pb-4" />;
 }
 
 export function RunPanelIconProperty({
@@ -154,7 +156,7 @@ export function RunPanelIconProperty({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <div className="flex h-8 w-8 items-center justify-center rounded-sm border border-slate-800 bg-slate-850">
+      <div className="flex h-8 w-8 items-center justify-center rounded-sm border border-charcoal-800 bg-charcoal-850">
         {typeof icon === "string" ? <NamedIcon name={icon} className="h-5 w-5" /> : icon}
       </div>
       <div className="flex flex-col gap-0.5">
@@ -191,7 +193,7 @@ export function RunPanelProperties({
 
 export function TaskSeparator({ depth }: { depth: number }) {
   return (
-    <div className="h-4 w-4 border-r border-slate-600" style={{ marginLeft: `${depth}rem` }} />
+    <div className="h-4 w-4 border-r border-charcoal-600" style={{ marginLeft: `${depth}rem` }} />
   );
 }
 

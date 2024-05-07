@@ -1,5 +1,450 @@
 # create-trigger
 
+## 3.0.0-beta.28
+
+### Patch Changes
+
+- Updated dependencies [d490bc5cb]
+- Updated dependencies [6d9dfbc75]
+  - @trigger.dev/core@3.0.0-beta.28
+  - @trigger.dev/yalt@3.0.0-beta.28
+
+## 3.0.0-beta.27
+
+### Patch Changes
+
+- Updated dependencies [1670c4c41]
+- Updated dependencies [203e00208]
+  - @trigger.dev/core@3.0.0-beta.27
+  - @trigger.dev/yalt@3.0.0-beta.27
+
+## 3.0.0-beta.26
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.26
+- @trigger.dev/yalt@3.0.0-beta.26
+
+## 3.0.0-beta.25
+
+### Patch Changes
+
+- Updated dependencies [e337b2165]
+- Updated dependencies [9e5382951]
+  - @trigger.dev/core@3.0.0-beta.25
+  - @trigger.dev/yalt@3.0.0-beta.25
+
+## 3.0.0-beta.24
+
+### Patch Changes
+
+- Updated dependencies [83dc87155]
+  - @trigger.dev/core@3.0.0-beta.24
+  - @trigger.dev/yalt@3.0.0-beta.24
+
+## 3.0.0-beta.23
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.23
+- @trigger.dev/yalt@3.0.0-beta.23
+
+## 3.0.0-beta.22
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.22
+- @trigger.dev/yalt@3.0.0-beta.22
+
+## 3.0.0-beta.21
+
+### Patch Changes
+
+- Updated dependencies [9491a1649]
+- Updated dependencies [9491a1649]
+  - @trigger.dev/core@3.0.0-beta.21
+  - @trigger.dev/yalt@3.0.0-beta.21
+
+## 3.0.0-beta.20
+
+### Patch Changes
+
+- Updated dependencies [e3db25739]
+  - @trigger.dev/core@3.0.0-beta.20
+  - @trigger.dev/yalt@3.0.0-beta.20
+
+## 3.0.0-beta.19
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.19
+- @trigger.dev/yalt@3.0.0-beta.19
+
+## 3.0.0-beta.18
+
+### Patch Changes
+
+- b68012f81: Move to our global system from AsyncLocalStorage for the current task context storage
+- b68012f81: Add support for tasks located in subdirectories inside trigger dirs
+- Updated dependencies [b68012f81]
+- Updated dependencies [b68012f81]
+  - @trigger.dev/core@3.0.0-beta.18
+  - @trigger.dev/yalt@3.0.0-beta.18
+
+## 3.0.0-beta.17
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.17
+- @trigger.dev/yalt@3.0.0-beta.17
+
+## 3.0.0-beta.16
+
+### Patch Changes
+
+- Updated dependencies [ed2a26c86]
+  - @trigger.dev/core@3.0.0-beta.16
+  - @trigger.dev/yalt@3.0.0-beta.16
+
+## 3.0.0-beta.15
+
+### Patch Changes
+
+- Updated dependencies [374edef02]
+- Updated dependencies [26093896d]
+- Updated dependencies [62c9a5b71]
+  - @trigger.dev/core@3.0.0-beta.15
+  - @trigger.dev/yalt@3.0.0-beta.15
+
+## 3.0.0-beta.14
+
+### Patch Changes
+
+- Updated dependencies [584c7da5d]
+  - @trigger.dev/core@3.0.0-beta.14
+  - @trigger.dev/yalt@3.0.0-beta.14
+
+## 3.0.0-beta.13
+
+### Patch Changes
+
+- Updated dependencies [4986bfda2]
+- Updated dependencies [44e1b8754]
+- Updated dependencies [4986bfda2]
+- Updated dependencies [fde939a30]
+- Updated dependencies [03b104a3d]
+- Updated dependencies [4986bfda2]
+  - @trigger.dev/core@3.0.0-beta.13
+  - @trigger.dev/yalt@3.0.0-beta.13
+
+## 3.0.0-beta.12
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.12
+- @trigger.dev/yalt@3.0.0-beta.12
+
+## 3.0.0-beta.11
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.11
+- @trigger.dev/yalt@3.0.0-beta.11
+
+## 3.0.0-beta.7
+
+### Patch Changes
+
+- Updated dependencies [f854cb90e]
+- Updated dependencies [f854cb90e]
+  - @trigger.dev/core@3.0.0-beta.7
+  - @trigger.dev/yalt@3.0.0-beta.7
+
+## 3.0.0-beta.6
+
+### Patch Changes
+
+- Updated dependencies [7ea8532cc]
+  - @trigger.dev/core@3.0.0-beta.6
+  - @trigger.dev/yalt@3.0.0-beta.6
+
+## 3.0.0-beta.5
+
+### Patch Changes
+
+- Updated dependencies [eb6012628]
+  - @trigger.dev/core@3.0.0-beta.5
+  - @trigger.dev/yalt@3.0.0-beta.5
+
+## 3.0.0-beta.4
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.4
+- @trigger.dev/yalt@3.0.0-beta.4
+
+## 3.0.0-beta.3
+
+### Patch Changes
+
+- Updated dependencies [c702d6a9c]
+- Updated dependencies [b271742dc]
+- Updated dependencies [9af2570da]
+  - @trigger.dev/core@3.0.0-beta.3
+  - @trigger.dev/yalt@3.0.0-beta.3
+
+## 3.0.0-beta.2
+
+### Patch Changes
+
+- Updated dependencies [e3cf456c6]
+  - @trigger.dev/core@3.0.0-beta.2
+  - @trigger.dev/yalt@3.0.0-beta.2
+
+## 3.0.0-beta.1
+
+### Patch Changes
+
+- Updated dependencies [b66d5525e]
+- Updated dependencies [719c0a0b9]
+- Updated dependencies [f93eae300]
+  - @trigger.dev/core@3.0.0-beta.1
+  - @trigger.dev/yalt@3.0.0-beta.1
+
+## 3.0.0-beta.0
+
+### Patch Changes
+
+- Updated dependencies [395abe1b9]
+  - @trigger.dev/core@3.0.0-beta.0
+  - @trigger.dev/yalt@3.0.0-beta.0
+
+## 2.3.18
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.18
+- @trigger.dev/yalt@2.3.18
+
+## 2.3.17
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.17
+- @trigger.dev/yalt@2.3.17
+
+## 2.3.16
+
+### Patch Changes
+
+- Updated dependencies [583da458]
+  - @trigger.dev/core@2.3.16
+  - @trigger.dev/yalt@2.3.16
+
+## 2.3.15
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.15
+- @trigger.dev/yalt@2.3.15
+
+## 2.3.14
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.14
+- @trigger.dev/yalt@2.3.14
+
+## 2.3.13
+
+### Patch Changes
+
+- 26f5e777: Increase the yalt.dev connection timeout to 5 seconds
+  - @trigger.dev/core@2.3.13
+  - @trigger.dev/yalt@2.3.13
+
+## 2.3.12
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.12
+- @trigger.dev/yalt@2.3.12
+
+## 2.3.11
+
+### Patch Changes
+
+- bc61d837: updated the dev command to include -https flag
+- Updated dependencies [bc61d837]
+  - @trigger.dev/yalt@2.3.11
+  - @trigger.dev/core@2.3.11
+
+## 2.3.10
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.10
+- @trigger.dev/yalt@2.3.10
+
+## 2.3.9
+
+### Patch Changes
+
+- aa97bf4a: Updated the telemetry API key
+- Updated dependencies [740b7b23]
+  - @trigger.dev/core@2.3.9
+  - @trigger.dev/yalt@2.3.9
+
+## 2.3.8
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.8
+- @trigger.dev/yalt@2.3.8
+
+## 2.3.7
+
+### Patch Changes
+
+- dfa47b62: Don't proxy certain headers across the Yalt boundary as it can mess-up proxied local requests
+- Updated dependencies [dfa47b62]
+  - @trigger.dev/yalt@2.3.7
+  - @trigger.dev/core@2.3.7
+
+## 2.3.6
+
+### Patch Changes
+
+- 812b5afe: Add support for the built-in Trigger.dev tunnel (Yalt)
+- Updated dependencies [812b5afe]
+  - @trigger.dev/yalt@2.3.6
+  - @trigger.dev/core@2.3.6
+
+## 2.3.5
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.5
+
+## 2.3.4
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.4
+
+## 2.3.3
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.3
+
+## 2.3.2
+
+### Patch Changes
+
+- @trigger.dev/core@2.3.2
+
+## 2.3.1
+
+### Patch Changes
+
+- Updated dependencies [f3efcc0c]
+  - @trigger.dev/core@2.3.1
+
+## 2.3.0
+
+### Patch Changes
+
+- 17f6f29d: Added hono framework support
+- Updated dependencies [17f6f29d]
+  - @trigger.dev/core@2.3.0
+
+## 2.2.11
+
+### Patch Changes
+
+- @trigger.dev/core@2.2.11
+
+## 2.2.10
+
+### Patch Changes
+
+- @trigger.dev/core@2.2.10
+
+## 2.2.9
+
+### Patch Changes
+
+- Updated dependencies [6ebd435e]
+  - @trigger.dev/core@2.2.9
+
+## 2.2.8
+
+### Patch Changes
+
+- 067e19fe: - Simplify `Webhook Triggers` and use the new HTTP Endpoints
+  - Add a `Key-Value Store` for use in and outside of Jobs
+  - Add a `@trigger.dev/shopify` package
+- Updated dependencies [067e19fe]
+  - @trigger.dev/core@2.2.8
+
+## 2.2.7
+
+### Patch Changes
+
+- Updated dependencies [756024da]
+  - @trigger.dev/core@2.2.7
+
+## 2.2.6
+
+### Patch Changes
+
+- Updated dependencies [cb1825bf]
+- Updated dependencies [cb1825bf]
+- Updated dependencies [d0217344]
+  - @trigger.dev/core@2.2.6
+
+## 2.2.5
+
+### Patch Changes
+
+- Updated dependencies [620b8383]
+- Updated dependencies [578d2e54]
+  - @trigger.dev/core@2.2.5
+
+## 2.2.4
+
+### Patch Changes
+
+- 0876b875: Added new example job which uses Tasks
+- Updated dependencies [c1710ae7]
+  - @trigger.dev/core@2.2.4
+
+## 2.2.3
+
+### Patch Changes
+
+- Updated dependencies [6e1b8a11]
+  - @trigger.dev/core@2.2.3
+
+## 2.2.2
+
+### Patch Changes
+
+- @trigger.dev/core@2.2.2
+
+## 2.2.1
+
+### Patch Changes
+
+- 6769d6b4: Detects JSRuntime (Node/Deno at the moment). Adds basic Deno support
+- 9df93d07: Improve create-integration output. Use templates and shared configs.
+- 50e31924: add ability to use custom tunnel in dev command
+- 0adf41c7: Added Next.js `maxDuration` commented out to the api/trigger file using CLI init
+- Updated dependencies [044d38e3]
+- Updated dependencies [abc9737a]
+  - @trigger.dev/core@2.2.1
+
 ## 2.2.0
 
 ### Minor Changes

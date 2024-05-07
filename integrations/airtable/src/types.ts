@@ -1,5 +1,3 @@
-import { Prettify } from "@trigger.dev/integration-kit";
-
 export type AirtableFieldSet = {
   [key: string]:
     | undefined
@@ -9,7 +7,8 @@ export type AirtableFieldSet = {
     | Collaborator
     | Collaborator[]
     | string[]
-    | Attachment[];
+    | Attachment[]
+    | Formula;
 };
 
 export type Collaborator = {
@@ -30,6 +29,16 @@ export type Attachment = {
     full: Thumbnail;
   };
 };
+
+export type FormulaError = {
+  error: string;
+};
+
+export type FormulaSpecialValue = {
+  specialValue: "Infinity" | "NaN";
+};
+
+export type Formula = string | number | FormulaError | FormulaSpecialValue;
 
 export type Thumbnail = {
   url: string;

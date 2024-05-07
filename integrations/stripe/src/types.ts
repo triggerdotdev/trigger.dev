@@ -86,3 +86,7 @@ export type OnPaymentIntentEvent =
   ExtractWebhookPayload<Stripe.DiscriminatedEvent.PaymentIntentEvent>;
 
 export type OnPayoutEvent = ExtractWebhookPayload<Stripe.DiscriminatedEvent.PayoutEvent>;
+
+export type OnInvoiceEvent = ExtractWebhookPayload<Stripe.DiscriminatedEvent.InvoiceEvent>;
+
+export type OnInvoiceItemEvent = ExtractWebhookPayload<Stripe.DiscriminatedEvent.InvoiceitemEvent>;

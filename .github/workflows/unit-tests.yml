@@ -4,7 +4,7 @@ on:
 jobs:
   unitTests:
     name: "🧪 Unit Tests"
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: buildjet-8vcpu-ubuntu-2204
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
@@ -14,13 +14,28 @@ jobs:
       - name: ⎔ Setup pnpm
         uses: pnpm/action-setup@v2.2.4
         with:
-          version: 7.18
+          version: 8.15.5
 
       - name: ⎔ Setup node
         uses: buildjet/setup-node@v3
         with:
-          node-version: 18
+          node-version: 20.11.1
           cache: "pnpm"
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ⎔ Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: ⎔ Setup bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: "1.0.15"
 
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile

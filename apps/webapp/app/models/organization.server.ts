@@ -9,69 +9,25 @@ import { customAlphabet } from "nanoid";
 import slug from "slug";
 import { prisma, PrismaClientOrTransaction } from "~/db.server";
 import { createProject } from "./project.server";
+import { generate } from "random-words";
+import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
+import { env } from "~/env.server";
 
 export type { Organization };
 
 const nanoid = customAlphabet("1234567890abcdef", 4);
-const apiKeyId = customAlphabet(
-  "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-  12
-);
-
-export function getOrganizationFromSlug({
-  userId,
-  slug,
-}: Pick<Organization, "slug"> & {
-  userId: User["id"];
-}) {
-  return prisma.organization.findFirst({
-    include: {
-      environments: true,
-    },
-    where: { slug, members: { some: { userId } } },
-  });
-}
-
-export function getOrganizations({ userId }: { userId: User["id"] }) {
-  return prisma.organization.findMany({
-    where: { members: { some: { userId } } },
-    orderBy: { createdAt: "desc" },
-    include: {
-      environments: {
-        orderBy: { slug: "asc" },
-      },
-      projects: {
-        orderBy: { name: "asc" },
-        include: {
-          _count: {
-            select: {
-              jobs: {
-                where: {
-                  internal: false,
-                  deletedAt: null,
-                },
-              },
-            },
-          },
-        },
-      },
-      _count: {
-        select: {
-          members: true,
-        },
-      },
-    },
-  });
-}
 
 export async function createOrganization(
   {
     title,
     userId,
     projectName,
-  }: Pick<Organization, "title"> & {
+    companySize,
+    projectVersion,
+  }: Pick<Organization, "title" | "companySize"> & {
     userId: User["id"];
     projectName: string;
+    projectVersion: "v2" | "v3";
   },
   attemptCount = 0
 ): Promise<Organization & { projects: Project[] }> {
@@ -95,6 +51,8 @@ export async function createOrganization(
         title,
         userId,
         projectName,
+        companySize,
+        projectVersion,
       },
       attemptCount + 1
     );
@@ -104,6 +62,8 @@ export async function createOrganization(
     data: {
       title,
       slug: uniqueOrgSlug,
+      companySize,
+      maximumConcurrencyLimit: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
       members: {
         create: {
           userId: userId,
@@ -120,14 +80,15 @@ export async function createOrganization(
     organizationSlug: organization.slug,
     name: projectName,
     userId,
+    version: projectVersion,
   });
 
   return { ...organization, projects: [project] };
 }
 
 export async function createEnvironment(
-  organization: Organization,
-  project: Project,
+  organization: Pick<Organization, "id">,
+  project: Pick<Project, "id">,
   type: RuntimeEnvironment["type"],
   member?: OrgMember,
   prismaClient: PrismaClientOrTransaction = prisma
@@ -135,13 +96,16 @@ export async function createEnvironment(
   const slug = envSlug(type);
   const apiKey = createApiKeyForEnv(type);
   const pkApiKey = createPkApiKeyForEnv(type);
+  const shortcode = createShortcode().join("-");
 
   return await prismaClient.runtimeEnvironment.create({
     data: {
       slug,
       apiKey,
       pkApiKey,
+      shortcode,
       autoEnableInternalSources: type !== "DEVELOPMENT",
+      maximumConcurrencyLimit: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
       organization: {
         connect: {
           id: organization.id,
@@ -158,27 +122,6 @@ export async function createEnvironment(
   });
 }
 
-function createApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
-  return `tr_${envSlug(envType)}_${apiKeyId(20)}`;
-}
-
-function createPkApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
-  return `pk_${envSlug(envType)}_${apiKeyId(20)}`;
-}
-
-function envSlug(environmentType: RuntimeEnvironment["type"]) {
-  switch (environmentType) {
-    case "DEVELOPMENT": {
-      return "dev";
-    }
-    case "PRODUCTION": {
-      return "prod";
-    }
-    case "STAGING": {
-      return "stg";
-    }
-    case "PREVIEW": {
-      return "prev";
-    }
-  }
+function createShortcode() {
+  return generate({ exactly: 2 });
 }

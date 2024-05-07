@@ -5,7 +5,7 @@ export function Spinner({
   color = "blue",
 }: {
   className?: string;
-  color?: "blue" | "white";
+  color?: "blue" | "white" | "muted" | "dark";
 }) {
   const colors = {
     blue: {
@@ -15,6 +15,14 @@ export function Spinner({
     white: {
       light: "rgba(255, 255, 255, 0.4)",
       dark: "rgba(255, 255, 255)",
+    },
+    muted: {
+      light: "#1C2433",
+      dark: "#3C4B62",
+    },
+    dark: {
+      light: "#15171A",
+      dark: "#272A2E",
     },
   };
 

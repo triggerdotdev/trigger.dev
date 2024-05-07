@@ -14,6 +14,10 @@ client.defineJob({
       // state: "loading",
     });
 
+    await io.runTask("task-1", async () => {
+      await io.wait("wait-subtask", 2);
+    });
+
     await io.wait("wait-input", 2);
 
     await gettingInputData.update("input-data-complete", {
@@ -54,7 +58,7 @@ client.defineJob({
       },
     });
 
-    await io.wait("wait-again", 4);
+    await io.wait("wait-again-2", 4);
 
     await generatingMemes.update("completed-generation", {
       label: "Generated memes",

@@ -1,0 +1,164 @@
+---
+title: Airtable tasks
+sidebarTitle: Tasks
+---
+
+Tasks are executed after the job is triggered and are the main building blocks of a job. You can string together as many tasks as you want.
+
+---
+
+## All tasks
+
+### `base.table.getRecords`
+
+Gets multiple records for a table. You can filter. [Official Airtable Docs](https://airtable.com/developers/web/api/update-multiple-records).
+
+```ts example.ts
+// Gets multiple records from the table.
+await table.getRecords("multiple records", {
+  fields: ["Status"], // Here we only get the Status fields (columns)
+});
+```
+
+### `base.table.getRecord`
+
+Gets a single record (using the id) for a table. [Official Airtable Docs](https://airtable.com/developers/web/api/get-record).
+
+```ts example.ts
+// Get a single record using the ID of the first record in the fetched records.
+await table.getRecord("single", records[0].id);
+```
+
+### `base.table.createRecords`
+
+Create one or more records in a table. [Official Airtable Docs](https://airtable.com/developers/web/api/create-records).
+
+```ts example.ts
+// Create newRecords by adding a record to the table.
+await table.createRecords("create records", [
+  {
+    // Define the new record to be created
+    fields: {
+      "Launch goals": "Created from Trigger.dev",
+      Status: "In progress",
+    },
+  },
+]);
+```
+
+### `base.table.updateRecords`
+
+Update one or more records in a table. [Official Airtable Docs](https://airtable.com/developers/web/api/update-record).
+
+```ts example.ts
+// Update the record that was just created.
+await table.updateRecords(
+  // Specify the table's name as "update records."
+  "update records",
+  // Use the `map` method to create an array of records to be updated.
+  newRecords.map((record) => ({
+    // For each record, specify the: ID and the field to update ("Status" to "At risk").
+    id: record.id,
+    fields: {
+      Status: "At risk",
+    },
+  }))
+);
+```
+
+### `base.table.deleteRecords`
+
+Delete one or more records in a table (using ids). [Official Airtable Docs](https://airtable.com/developers/web/api/delete-record).
+
+```ts example.ts
+// Delete records from the table.
+await table.deleteRecords(
+  // Specify the table's name as "delete records."
+  "delete records"
+);
+```
+
+## Example Usage
+
+In this demo we will use the Airtable to get records from a table, create a new record, update it and then delete it.
+
+```ts
+// Importing necessary modules and packages.
+import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+import { Airtable } from "@trigger.dev/airtable";
+import { z } from "zod";
+
+// Creating an instance of the Airtable client with personal access token obtained from an environment variable.
+const airtable = new Airtable({
+  id: "airtable",
+  apiKey: process.env.AIRTABLE_PERSONAL_ACCESS_TOKEN!,
+});
+
+type LaunchGoalsAndOkRs = {
+  "Launch goals"?: string;
+  DRI?: Collaborator;
+  Team?: string;
+  Status?: "On track" | "In progress" | "At risk";
+  "Key results"?: Array<string>;
+  "Features (from 💻 Features table)"?: Array<string>;
+  "Status (from 💻 Features)": Array<
+    "Live" | "Complete" | "In progress" | "Planning" | "In reviews"
+  >;
+};
+
+client.defineJob({
+  id: "airtable-example",
+  name: "Airtable Example: getRecords",
+  version: "0.1.0",
+  trigger: eventTrigger({
+    name: "airtable.example",
+  }),
+  integrations: {
+    // Make sure to add the integration here
+    airtable,
+  },
+  run: async (payload, io, ctx) => {
+    // Adding the type to table<YourTableType>("<your table name>") gives you nice type inference and errors
+    // You can leave it out as well table("<your table name>")
+    const table = io.airtable.base("<your base id>").table<LaunchGoalsAndOkRs>("<your table name>");
+
+    // Gets multiple records from the table. Here we only get the Status fields (columns)
+    const records = await table.getRecords("multiple records", {
+      fields: ["Status"],
+    });
+    await io.logger.log(records[0].fields.Status ?? "no status");
+
+    // Get a single record
+    const aRecord = await table.getRecord("single", records[0].id);
+
+    // Create a new record
+    const newRecords = await table.createRecords("create records", [
+      {
+        fields: {
+          "Launch goals": "Created from Trigger.dev",
+          Status: "In progress",
+        },
+      },
+    ]);
+
+    // Update the record we just created
+    const updatedRecords = await table.updateRecords(
+      "update records",
+      newRecords.map((record) => ({
+        id: record.id,
+        fields: { Status: "At risk" },
+      }))
+    );
+
+    // Wait for 5 seconds
+    await io.wait("5 secs", 5);
+
+    // Delete the record we just created + updated
+    const deletedRecords = await table.deleteRecords(
+      "delete records",
+      updatedRecords.map((record) => record.id)
+    );
+  },
+});
+```
+

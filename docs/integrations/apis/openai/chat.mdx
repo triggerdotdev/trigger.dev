@@ -1,0 +1,38 @@
+---
+title: Chat Completion Tasks
+sidebarTitle: Chat Completions
+---
+
+Given a list of messages comprising a conversation, the model will return a response. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/chat)
+
+### `completions.create()`
+
+Creates a model response for the given chat conversation. [Official OpenAI Docs](https://platform.openai.com/docs/api-reference/chat/create)
+
+```ts example.ts
+await io.openai.chat.completions.create("chat-completion", {
+  model: "gpt-3.5-turbo",
+  messages: [
+    {
+      role: "user",
+      content: "Create a good programming joke about background jobs",
+    },
+  ],
+});
+```
+
+### `completions.backgroundCreate()`
+
+Creates a model response for the given chat conversation, but runs the request in the background using [io.backgroundFetch()](/sdk/io/backgroundfetch)
+
+```ts example.ts
+await io.openai.chat.completions.backgroundCreate("chat-completion", {
+  model: "gpt-3.5-turbo",
+  messages: [
+    {
+      role: "user",
+      content: "Create a good programming joke about background jobs",
+    },
+  ],
+});
+```

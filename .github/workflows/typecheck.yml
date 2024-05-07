@@ -3,7 +3,7 @@ on:
   workflow_call:
 jobs:
   typecheck:
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: buildjet-8vcpu-ubuntu-2204
 
     steps:
       - name: ⬇️ Checkout repo
@@ -14,13 +14,18 @@ jobs:
       - name: ⎔ Setup pnpm
         uses: pnpm/action-setup@v2.2.4
         with:
-          version: 7.18
+          version: 8.15.5
 
       - name: ⎔ Setup node
         uses: buildjet/setup-node@v3
         with:
-          node-version: 18
+          node-version: 20.11.1
           cache: "pnpm"
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile

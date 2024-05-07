@@ -1,0 +1,10 @@
+{
+  "fulfillment_order": {
+    "id": "gid://shopify/FulfillmentOrder/1",
+    "status": "open",
+    "preparable": true,
+    "delivery_method": {
+      "method_type": "pickup"
+    }
+  }
+}

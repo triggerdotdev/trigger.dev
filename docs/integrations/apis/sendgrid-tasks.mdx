@@ -1,0 +1,89 @@
+---
+title: SendGrid tasks
+sidebarTitle: Tasks
+---
+
+Tasks are executed after the job is triggered and are the main building blocks of a job. You can string together as many tasks as you want.
+
+---
+
+## All tasks
+
+### `sendEmail`
+
+Send an email with a body. [Official SendGrid Docs](https://docs.sendgrid.com/for-developers/sending-email)
+
+```ts example.ts
+  // Using the 'io.sendgrid.sendEmail' method to send an email using SendGrid.
+  await io.sendgrid.sendEmail({
+    to: <recipient-email-address>, // Recipient's email address.
+    from: "Your-Name <your-email-address>", // Sender's email address and name.
+    subject: <email-subject>, // Email subject.
+    text: <email-body>, // Plain text content of the email.
+  });
+}
+
+```
+
+## Example usage
+
+In this example, we will send weekly summary emails to users who have `summariesEnabled = true`, at 4pm every Friday, and then posts the total numbers to Slack.
+
+```ts example.ts
+import { TriggerClient, cronTrigger } from "@trigger.dev/sdk";
+import { SendGrid } from "@trigger.dev/sendgrid";
+import { Slack } from "@trigger.dev/slack";
+import { weeklySummaryDb } from "./mocks/db";
+import { weeklySummaryEmail } from "./mocks/emails";
+
+// Creating instances of SendGrid and Slack clients.
+const sendgrid = new SendGrid({
+  id: "sendgrid",
+  apiKey: process.env.SENDGRID_API_KEY!,
+});
+
+const slack = new Slack({ id: "slack" });
+
+// Defining a job that sends a weekly summary email to users and posts total numbers to Slack.
+client.defineJob({
+  id: "weekly-user-activity-summary", // Unique identifier for the job.
+  name: "Weekly user activity summary", // A specific name for the job.
+  version: "1.0.0", // Version number for the job.
+  integrations: { sendgrid, slack }, // Integrating SendGrid and Slack clients into this job.
+  trigger: cronTrigger({
+    // Setting a cron schedule to run the job every Friday at 4 pm.
+    cron: "0 16 * * 5",
+  }),
+  run: async (payload, io, ctx) => {
+    // Inside the 'run' function, several operations are performed to send weekly summaries and post to Slack.
+
+    // Retrieving a list of users from the weeklySummaryDb.
+    const users = await weeklySummaryDb.getUsers();
+
+    let sentCount = 0;
+    let notSentCount = 0;
+
+    // Iterating through the list of users.
+    for (const user of users) {
+      if (user.summariesEnabled) {
+        // Sending a weekly summary email to users with summaries enabled.
+        await io.sendgrid.sendEmail(`Weekly summary for ${user.id}`, {
+          to: user.email,
+          from: "hello@acme.inc", // The sender's email.
+          subject: "Your weekly summary",
+          html: weeklySummaryEmail(user), // HTML content for the email.
+        });
+        sentCount++;
+      } else {
+        notSentCount++;
+      }
+    }
+
+    // Posting a message to Slack with a summary of the sent and unsent emails.
+    await io.slack.postMessage("Notify team", {
+      text: `Weekly summary sent to ${sentCount} users and not sent to ${notSentCount} users`,
+      channel: "YOUR_CHANNEL_ID", // Specify the Slack channel ID for posting the message.
+    });
+  },
+});
+```

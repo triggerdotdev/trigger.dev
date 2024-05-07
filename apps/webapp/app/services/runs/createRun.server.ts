@@ -3,6 +3,7 @@ import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
+import { logger } from "../logger.server";
 
 export class CreateRunService {
   #prismaClient: PrismaClientOrTransaction;
@@ -11,28 +12,35 @@ export class CreateRunService {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({
-    environment,
-    eventId,
-    job,
-    version,
-  }: {
-    environment: AuthenticatedEnvironment;
-    eventId: string;
-    job: Job;
-    version: JobVersion;
-  }) {
+  public async call(
+    {
+      environment,
+      eventId,
+      job,
+      version,
+    }: {
+      environment: AuthenticatedEnvironment;
+      eventId: string;
+      job: Job;
+      version: JobVersion;
+    },
+    options: { callbackUrl?: string } = {}
+  ) {
+    if (!environment.organization.runsEnabled) {
+      logger.debug("Runs are disabled for this organization", environment);
+      return;
+    }
+
     const endpoint = await this.#prismaClient.endpoint.findUniqueOrThrow({
       where: {
         id: version.endpointId,
       },
     });
 
-    const jobQueue = await this.#prismaClient.jobQueue.findUniqueOrThrow({
-      where: {
-        id: version.queueId,
-      },
-    });
+    if (!endpoint.url) {
+      logger.debug("Endpoint has no url", endpoint);
+      return;
+    }
 
     const eventRecord = await this.#prismaClient.eventRecord.findUniqueOrThrow({
       where: {
@@ -41,22 +49,8 @@ export class CreateRunService {
     });
 
     return await $transaction(this.#prismaClient, async (tx) => {
-      // Get the current max number for the given jobId
-      const latestJob = await tx.jobRun.findFirst({
-        where: { jobId: job.id },
-        orderBy: { id: "desc" },
-        select: {
-          number: true,
-        },
-      });
-
-      // Increment the number for the new execution
-      const newNumber = (latestJob?.number ?? 0) + 1;
-
-      // Create the new execution with the incremented number
       const run = await tx.jobRun.create({
         data: {
-          number: newNumber,
           preprocess: version.preprocessRuns,
           jobId: job.id,
           versionId: version.id,
@@ -65,7 +59,6 @@ export class CreateRunService {
           organizationId: environment.organizationId,
           projectId: environment.projectId,
           endpointId: endpoint.id,
-          queueId: jobQueue.id,
           externalAccountId: eventRecord.externalAccountId
             ? eventRecord.externalAccountId
             : undefined,
@@ -73,6 +66,25 @@ export class CreateRunService {
           internal: job.internal,
         },
       });
+
+      if (options.callbackUrl) {
+        await tx.jobRunSubscription.createMany({
+          data: [
+            {
+              runId: run.id,
+              recipientMethod: "WEBHOOK",
+              recipient: options.callbackUrl,
+              event: "SUCCESS",
+            },
+            {
+              runId: run.id,
+              recipientMethod: "WEBHOOK",
+              recipient: options.callbackUrl,
+              event: "FAILURE",
+            },
+          ],
+        });
+      }
 
       await workerQueue.enqueue(
         "startRun",

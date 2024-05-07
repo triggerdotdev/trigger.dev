@@ -1,6 +1,8 @@
 import { IntegrationTaskKey } from "@trigger.dev/sdk";
 import OpenAI from "openai";
 import { OpenAIRunTask } from "./index";
+import { OpenAIRequestOptions } from "./types";
+import { handleOpenAIError } from "./taskUtils";
 
 type SpecificFineTuneRequest = {
   fineTuneId: string;
@@ -15,7 +17,8 @@ export class FineTunes {
 
   create(
     key: IntegrationTaskKey,
-    params: OpenAI.FineTuneCreateParams
+    params: OpenAI.FineTuneCreateParams,
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.FineTunes.FineTune> {
     let properties = [
       {
@@ -41,38 +44,44 @@ export class FineTunes {
     return this.runTask(
       key,
       async (client, task) => {
-        return client.fineTunes.create(params);
+        return client.fineTunes.create(params, { idempotencyKey: task.idempotencyKey, ...options });
       },
       {
         name: "Create fine tune",
         params,
         properties,
-      }
+      },
+      handleOpenAIError
     );
   }
 
-  list(key: IntegrationTaskKey): Promise<OpenAI.FineTunes.FineTune[]> {
+  list(
+    key: IntegrationTaskKey,
+    options: OpenAIRequestOptions = {}
+  ): Promise<OpenAI.FineTunes.FineTune[]> {
     return this.runTask(
       key,
       async (client, task) => {
-        const response = await client.fineTunes.list();
+        const response = await client.fineTunes.list(options);
         return response.data;
       },
       {
         name: "List fine tunes",
         properties: [],
-      }
+      },
+      handleOpenAIError
     );
   }
 
   retrieve(
     key: IntegrationTaskKey,
-    params: SpecificFineTuneRequest
+    params: SpecificFineTuneRequest,
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.FineTunes.FineTune> {
     return this.runTask(
       key,
       async (client, task) => {
-        return client.fineTunes.retrieve(params.fineTuneId);
+        return client.fineTunes.retrieve(params.fineTuneId, options);
       },
       {
         name: "Retrieve fine tune",
@@ -83,18 +92,23 @@ export class FineTunes {
             text: params.fineTuneId,
           },
         ],
-      }
+      },
+      handleOpenAIError
     );
   }
 
   cancel(
     key: IntegrationTaskKey,
-    params: SpecificFineTuneRequest
+    params: SpecificFineTuneRequest,
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.FineTunes.FineTune> {
     return this.runTask(
       key,
       async (client, task) => {
-        return client.fineTunes.cancel(params.fineTuneId);
+        return client.fineTunes.cancel(params.fineTuneId, {
+          idempotencyKey: task.idempotencyKey,
+          ...options,
+        });
       },
       {
         name: "Cancel fine tune",
@@ -105,18 +119,20 @@ export class FineTunes {
             text: params.fineTuneId,
           },
         ],
-      }
+      },
+      handleOpenAIError
     );
   }
 
   listEvents(
     key: IntegrationTaskKey,
-    params: SpecificFineTuneRequest
+    params: SpecificFineTuneRequest,
+    options: OpenAIRequestOptions = {}
   ): Promise<OpenAI.FineTuneEventsListResponse> {
     return this.runTask(
       key,
       async (client, task) => {
-        return client.fineTunes.listEvents(params.fineTuneId, { stream: false });
+        return client.fineTunes.listEvents(params.fineTuneId, { stream: false, ...options });
       },
       {
         name: "List fine tune events",
@@ -127,7 +143,8 @@ export class FineTunes {
             text: params.fineTuneId,
           },
         ],
-      }
+      },
+      handleOpenAIError
     );
   }
 
@@ -142,7 +159,8 @@ export class FineTunes {
      */
     create: (
       key: IntegrationTaskKey,
-      params: OpenAI.FineTuning.JobCreateParams
+      params: OpenAI.FineTuning.JobCreateParams,
+      options: OpenAIRequestOptions = {}
     ): Promise<OpenAI.FineTuning.FineTuningJob> => {
       let properties = [
         {
@@ -168,24 +186,29 @@ export class FineTunes {
       return this.runTask(
         key,
         async (client, task) => {
-          return client.fineTuning.jobs.create(params);
+          return client.fineTuning.jobs.create(params, {
+            idempotencyKey: task.idempotencyKey,
+            ...options,
+          });
         },
         {
           name: "Create Fine Tuning Job",
           params,
           properties,
-        }
+        },
+        handleOpenAIError
       );
     },
 
     retrieve: (
       key: IntegrationTaskKey,
-      params: { id: string }
+      params: { id: string },
+      options: OpenAIRequestOptions = {}
     ): Promise<OpenAI.FineTuning.FineTuningJob> => {
       return this.runTask(
         key,
         async (client, task) => {
-          return client.fineTuning.jobs.retrieve(params.id);
+          return client.fineTuning.jobs.retrieve(params.id, options);
         },
         {
           name: "Retrieve Fine Tuning Job",
@@ -196,18 +219,23 @@ export class FineTunes {
               text: params.id,
             },
           ],
-        }
+        },
+        handleOpenAIError
       );
     },
 
     cancel: (
       key: IntegrationTaskKey,
-      params: { id: string }
+      params: { id: string },
+      options: OpenAIRequestOptions = {}
     ): Promise<OpenAI.FineTuning.FineTuningJob> => {
       return this.runTask(
         key,
         async (client, task) => {
-          return client.fineTuning.jobs.cancel(params.id);
+          return client.fineTuning.jobs.cancel(params.id, {
+            idempotencyKey: task.idempotencyKey,
+            ...options,
+          });
         },
         {
           name: "Cancel Fine Tuning Job",
@@ -218,18 +246,20 @@ export class FineTunes {
               text: params.id,
             },
           ],
-        }
+        },
+        handleOpenAIError
       );
     },
 
     listEvents: (
       key: IntegrationTaskKey,
-      params: { id: string }
+      params: { id: string },
+      options: OpenAIRequestOptions = {}
     ): Promise<OpenAI.FineTuning.FineTuningJobEvent[]> => {
       return this.runTask(
         key,
         async (client, task) => {
-          const response = await client.fineTuning.jobs.listEvents(params.id);
+          const response = await client.fineTuning.jobs.listEvents(params.id, options);
           return response.data;
         },
         {
@@ -241,25 +271,28 @@ export class FineTunes {
               text: params.id,
             },
           ],
-        }
+        },
+        handleOpenAIError
       );
     },
 
     list: (
       key: IntegrationTaskKey,
-      params: OpenAI.FineTuning.JobListParams
+      params: OpenAI.FineTuning.JobListParams,
+      options: OpenAIRequestOptions = {}
     ): Promise<OpenAI.FineTuning.FineTuningJob[]> => {
       return this.runTask(
         key,
         async (client, task) => {
-          const response = await client.fineTuning.jobs.list(params);
+          const response = await client.fineTuning.jobs.list(params, options);
 
           return response.data;
         },
         {
           name: "List Fine Tuning Jobs",
           params,
-        }
+        },
+        handleOpenAIError
       );
     },
   };

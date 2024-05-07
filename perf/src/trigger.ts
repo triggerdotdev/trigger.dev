@@ -17,7 +17,7 @@ triggerClient.defineJob({
     await io.runTask(
       "task-1",
       async (task) => {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 5000));
 
         return {
           value: Math.random(),
@@ -25,6 +25,8 @@ triggerClient.defineJob({
       },
       { name: "task 1" }
     );
+
+    await io.wait("wait", 10);
 
     await io.runTask(
       "task-2",
@@ -34,6 +36,110 @@ triggerClient.defineJob({
         };
       },
       { name: "task 2" }
+    );
+
+    await io.runTask(
+      "task-3",
+      async (task) => {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        return {
+          value: Math.random(),
+        };
+      },
+      { name: "task 3" }
+    );
+  },
+});
+
+triggerClient.defineJob({
+  id: `perf-test-2`,
+  name: `Perf Test 2`,
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "perf.test",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.runTask(
+      "task-1",
+      async (task) => {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+
+        return {
+          value: Math.random(),
+        };
+      },
+      { name: "task 1" }
+    );
+
+    await io.wait("wait", 10);
+
+    await io.runTask(
+      "task-2",
+      async (task) => {
+        return {
+          value: Math.random(),
+        };
+      },
+      { name: "task 2" }
+    );
+
+    await io.runTask(
+      "task-3",
+      async (task) => {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        return {
+          value: Math.random(),
+        };
+      },
+      { name: "task 3" }
+    );
+  },
+});
+
+triggerClient.defineJob({
+  id: `perf-test-3`,
+  name: `Perf Test 3`,
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "perf.test",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.runTask(
+      "task-1",
+      async (task) => {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+
+        return {
+          value: Math.random(),
+        };
+      },
+      { name: "task 1" }
+    );
+
+    await io.wait("wait", 10);
+
+    await io.runTask(
+      "task-2",
+      async (task) => {
+        return {
+          value: Math.random(),
+        };
+      },
+      { name: "task 2" }
+    );
+
+    await io.runTask(
+      "task-3",
+      async (task) => {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        return {
+          value: Math.random(),
+        };
+      },
+      { name: "task 3" }
     );
   },
 });

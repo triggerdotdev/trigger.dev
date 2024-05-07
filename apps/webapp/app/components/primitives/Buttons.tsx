@@ -1,105 +1,141 @@
 import { Link, LinkProps, NavLink, NavLinkProps } from "@remix-run/react";
-import React, { ReactComponentElement, forwardRef, useImperativeHandle, useRef } from "react";
+import React, { forwardRef, useImperativeHandle, useRef } from "react";
 import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 import { ShortcutKey } from "./ShortcutKey";
 
+const sizes = {
+  small: {
+    button: "h-6 px-2.5 text-xs",
+    icon: "h-3.5 -mx-1",
+    iconSpacing: "gap-x-2.5",
+    shortcutVariant: "small" as const,
+    shortcut: "-ml-0.5 -mr-1.5 justify-self-center",
+  },
+  medium: {
+    button: "h-8 px-3 text-sm",
+    icon: "h-4 -mx-1",
+    iconSpacing: "gap-x-2.5",
+    shortcutVariant: "medium" as const,
+    shortcut: "-ml-0.5 -mr-1.5 rounded justify-self-center",
+  },
+  large: {
+    button: "h-10 px-2 text-sm font-medium",
+    icon: "h-5",
+    iconSpacing: "gap-x-0.5",
+    shortcutVariant: "medium" as const,
+    shortcut: "ml-1.5 -mr-0.5",
+  },
+  "extra-large": {
+    button: "h-12 px-2 text-base font-medium",
+    icon: "h-5",
+    iconSpacing: "gap-x-0.5",
+    shortcutVariant: "medium" as const,
+    shortcut: "ml-1.5 -mr-0.5",
+  },
+};
+
+type Size = keyof typeof sizes;
+
+const theme = {
+  primary: {
+    textColor:
+      "text-charcoal-900 group-hover:text-charcoal-900 transition group-disabled:text-charcoal-900",
+    button:
+      "bg-primary group-hover:bg-apple-200 group-disabled:opacity-50 group-disabled:bg-primary group-disabled:pointer-events-none",
+    shortcut:
+      "border-black/40 text-charcoal-900 group-hover:border-black/60 group-hover:text-charcoal-900",
+  },
+  secondary: {
+    textColor: "text-primary group-hover:text-apple-200 transition group-disabled:text-primary",
+    button:
+      "bg-transparent border border-primary group-hover:border-apple-200 group-hover:bg-apple-950 group-disabled:opacity-30 group-disabled:border-primary group-disabled:bg-transparent group-disabled:pointer-events-none",
+    shortcut:
+      "border-primary/30 text-apple-200 group-hover:text-text-bright/80 group-hover:border-dimmed/60",
+  },
+  tertiary: {
+    textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
+    button:
+      "bg-tertiary group-hover:bg-charcoal-600 group-disabled:bg-tertiary group-disabled:opacity-60 group-disabled:pointer-events-none",
+    shortcut:
+      "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright group-hover:border-text-dimmed",
+  },
+  minimal: {
+    textColor:
+      "text-text-dimmed group-hover:text-text-bright transition group-disabled:text-text-dimmed/80",
+    button:
+      "bg-transparent group-hover:bg-tertiary disabled:opacity-50 group-disabled:bg-transparent group-disabled:pointer-events-none",
+    shortcut:
+      "border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60",
+  },
+  danger: {
+    textColor:
+      "text-text-bright group-hover:text-white transition group-disabled:text-text-bright/80",
+    button:
+      "bg-error group-hover:bg-rose-500 disabled:opacity-50 group-disabled:bg-error group-disabled:pointer-events-none",
+    shortcut: "border-text-bright text-text-bright group-hover:border-bright/60",
+  },
+};
+
+type Theme = keyof typeof theme;
+
+function createVariant(sizeName: Size, themeName: Theme) {
+  return {
+    textColor: theme[themeName].textColor,
+    button: cn(sizes[sizeName].button, theme[themeName].button),
+    icon: sizes[sizeName].icon,
+    iconSpacing: sizes[sizeName].iconSpacing,
+    shortcutVariant: sizes[sizeName].shortcutVariant,
+    shortcut: cn(sizes[sizeName].shortcut, theme[themeName].shortcut),
+  };
+}
+
 const variant = {
-  "primary/small": {
-    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/80",
-    button:
-      "h-6 px-[5px] text-xs bg-indigo-600 group-hover:bg-indigo-500/90 group-disabled:opacity-50 group-disabled:pointer-events-none",
-    icon: "h-3.5",
-    shortcutVariant: "small" as const,
-    shortcut:
-      "ml-1 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60 justify-self-center",
-  },
-  "secondary/small": {
-    textColor: "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
-    button:
-      "h-6 px-[5px] text-xs bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50 group-disabled:pointer-events-none",
-    icon: "h-3.5",
-    shortcutVariant: "small" as const,
-    shortcut:
-      "ml-1 -mr-0.5 border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60",
-  },
-  "tertiary/small": {
-    textColor: "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
-    button:
-      "h-6 px-[5px] text-xs bg-transparent group-hover:bg-slate-850 disabled:opacity-50 group-disabled:pointer-events-none",
-    icon: "h-3.5",
-    shortcutVariant: "small" as const,
-    shortcut:
-      "ml-1 -mr-0.5 border-dimmed/40 text-dimmed group-hover:text-bright/80 group-hover:border-dimmed/60",
-  },
-  "danger/small": {
-    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/80",
-    button:
-      "h-6 px-[5px] text-xs bg-rose-600 group-hover:bg-rose-500 disabled:opacity-50 group-disabled:pointer-events-none",
-    icon: "h-3.5",
-    shortcutVariant: "small" as const,
-    shortcut: "ml-1 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
-  },
-  "primary/medium": {
-    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/80",
-    button: "h-8 px-2 text-sm bg-indigo-600 group-hover:bg-indigo-500/90 disabled:opacity-50",
-    icon: "h-4",
-    shortcutVariant: "medium" as const,
-    shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
-  },
-  "secondary/medium": {
-    textColor: "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
-    button: "h-8 px-2 text-sm bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50",
-    icon: "h-4",
-    shortcutVariant: "medium" as const,
-    shortcut:
-      "ml-1.5 -mr-0.5 border-dimmed/40 text-dimmed group-hover:border-dimmed group-hover:text-bright",
-  },
-  "tertiary/medium": {
-    textColor: "text-dimmed group-hover:text-bright transition group-disabled:text-dimmed/80",
-    button: "h-8 px-2 text-sm bg-transparent group-hover:bg-slate-850 disabled:opacity-50",
-    icon: "h-4",
-    shortcutVariant: "medium" as const,
-    shortcut:
-      "ml-1.5 -mr-0.5 border-bright/40 text-dimmed group-hover:border-bright/60 group-hover:text-bright",
-  },
-  "danger/medium": {
-    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/80",
-    button: "h-8 px-2 text-sm bg-rose-600 group-hover:bg-rose-500 disabled:opacity-50",
-    icon: "h-4",
-    shortcutVariant: "medium" as const,
-    shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
-  },
-  "primary/large": {
-    textColor: "text-bright group-hover:text-white transition group-disabled:text-dimmed/80",
-    button:
-      "h-10 px-2 text-sm font-medium bg-indigo-600 group-hover:bg-indigo-500/90 disabled:opacity-50",
-    icon: "h-5",
-    shortcutVariant: undefined,
-    shortcut: undefined,
-  },
-  "secondary/large": {
-    textColor: "text-dimmed",
-    button:
-      "h-10 px-2 text-sm text-dimmed group-hover:text-bright transition font-medium bg-slate-800 group-hover:bg-slate-700/70 disabled:opacity-50",
-    icon: "h-5",
-    shortcutVariant: undefined,
-    shortcut: undefined,
-  },
-  "danger/large": {
-    textColor: "text-bright group-hover:text-white transition group-disabled:text-bright/50",
-    button:
-      "h-10 px-2 text-md bg-rose-600 group-hover:bg-rose-500 group-disabled:opacity-50 group-disabled:group-hover:bg-rose-600",
-    icon: "h-5",
-    shortcutVariant: "medium" as const,
-    shortcut: "ml-1.5 -mr-0.5 border-bright/40 text-bright group-hover:border-bright/60",
-  },
+  "primary/small": createVariant("small", "primary"),
+  "primary/medium": createVariant("medium", "primary"),
+  "primary/large": createVariant("large", "primary"),
+  "primary/extra-large": createVariant("extra-large", "primary"),
+  "secondary/small": createVariant("small", "secondary"),
+  "secondary/medium": createVariant("medium", "secondary"),
+  "secondary/large": createVariant("large", "secondary"),
+  "secondary/extra-large": createVariant("extra-large", "secondary"),
+  "tertiary/small": createVariant("small", "tertiary"),
+  "tertiary/medium": createVariant("medium", "tertiary"),
+  "tertiary/large": createVariant("large", "tertiary"),
+  "tertiary/extra-large": createVariant("extra-large", "tertiary"),
+  "minimal/small": createVariant("small", "minimal"),
+  "minimal/medium": createVariant("medium", "minimal"),
+  "minimal/large": createVariant("large", "minimal"),
+  "minimal/extra-large": createVariant("extra-large", "minimal"),
+  "danger/small": createVariant("small", "danger"),
+  "danger/medium": createVariant("medium", "danger"),
+  "danger/large": createVariant("large", "danger"),
+  "danger/extra-large": createVariant("extra-large", "danger"),
   "menu-item": {
-    textColor: "text-bright",
+    textColor: "text-text-bright px-1",
     button:
-      "h-9 px-[0.475rem] text-sm rounded-sm bg-transparent group-hover:bg-slate-800 transition",
+      "h-9 px-[0.475rem] text-sm rounded-sm bg-transparent group-hover:bg-charcoal-800 transition",
     icon: "h-5",
+    iconSpacing: "gap-x-0.5",
+    shortcutVariant: undefined,
+    shortcut: undefined,
+  },
+  "small-menu-item": {
+    textColor: "text-text-bright",
+    button:
+      "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-text-dimmed bg-transparent group-hover:bg-charcoal-850 transition",
+    icon: "h-4",
+    iconSpacing: "gap-x-1.5",
+    shortcutVariant: undefined,
+    shortcut: undefined,
+  },
+  "small-menu-sub-item": {
+    textColor: "text-text-dimmed",
+    button:
+      "h-[1.8rem] px-[0.5rem] ml-5 text-2sm rounded-sm text-text-dimmed bg-transparent group-hover:bg-charcoal-850 transition",
+    icon: undefined,
+    iconSpacing: undefined,
     shortcutVariant: undefined,
     shortcut: undefined,
   },
@@ -110,7 +146,7 @@ const allVariants = {
   variant: variant,
 };
 
-type ButtonContentPropsType = {
+export type ButtonContentPropsType = {
   children?: React.ReactNode;
   LeadingIcon?: React.ComponentType<any> | IconNamesOrString;
   TrailingIcon?: React.ComponentType<any> | IconNamesOrString;
@@ -140,6 +176,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
   // Based on the size prop, we'll use the corresponding variant classnames
   const btnClassName = cn(allVariants.$all, variation.button);
   const iconClassName = variation.icon;
+  const iconSpacingClassName = variation.iconSpacing;
   const shortcutClassName = variation.shortcut;
   const textColorClassName = variation.textColor;
 
@@ -148,7 +185,8 @@ export function ButtonContent(props: ButtonContentPropsType) {
       <div
         className={cn(
           textAlignLeft ? "text-left" : "justify-center",
-          "flex w-full items-center gap-x-0.5"
+          "flex w-full items-center",
+          iconSpacingClassName
         )}
       >
         {LeadingIcon &&
@@ -170,7 +208,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
 
         {text &&
           (typeof text === "string" ? (
-            <span className={cn("mx-auto grow self-center truncate px-1", textColorClassName)}>
+            <span className={cn("mx-auto grow self-center truncate", textColorClassName)}>
               {text}
             </span>
           ) : (
@@ -245,8 +283,20 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
   }
 );
 
-type LinkPropsType = Pick<LinkProps, "to" | "target"> & React.ComponentProps<typeof ButtonContent>;
-export const LinkButton = ({ to, ...props }: LinkPropsType) => {
+type LinkPropsType = Pick<
+  LinkProps,
+  "to" | "target" | "onClick" | "onMouseDown" | "onMouseEnter" | "onMouseLeave" | "download"
+> & { disabled?: boolean } & React.ComponentProps<typeof ButtonContent>;
+export const LinkButton = ({
+  to,
+  onClick,
+  onMouseDown,
+  onMouseEnter,
+  onMouseLeave,
+  download,
+  disabled = false,
+  ...props
+}: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
   if (props.shortcut) {
     useShortcutKeys({
@@ -259,12 +309,30 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
     });
   }
 
-  if (to.toString().startsWith("http")) {
+  if (disabled) {
+    return (
+      <div
+        className={cn(
+          "group pointer-events-none cursor-default opacity-40 outline-none",
+          props.fullWidth ? "w-full" : ""
+        )}
+      >
+        <ButtonContent {...props} />
+      </div>
+    );
+  }
+
+  if (to.toString().startsWith("http") || to.toString().startsWith("/resources")) {
     return (
       <ExtLink
         href={to.toString()}
         ref={innerRef}
         className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+        onClick={onClick}
+        onMouseDown={onMouseDown}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        download={download}
       >
         <ButtonContent {...props} />
       </ExtLink>
@@ -275,6 +343,11 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
         to={to}
         ref={innerRef}
         className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+        onClick={onClick}
+        onMouseDown={onMouseDown}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        download={download}
       >
         <ButtonContent {...props} />
       </Link>

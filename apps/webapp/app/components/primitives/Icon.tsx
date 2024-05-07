@@ -1,7 +1,11 @@
-import { IconNamesOrString, NamedIcon } from "./NamedIcon";
+import React, { FunctionComponent, createElement } from "react";
 import { cn } from "~/utils/cn";
+import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 
-export type RenderIcon = IconNamesOrString | React.ComponentType<any>;
+export type RenderIcon =
+  | IconNamesOrString
+  | FunctionComponent<{ className?: string }>
+  | React.ReactNode;
 
 type IconProps = {
   icon?: RenderIcon;
@@ -10,24 +14,41 @@ type IconProps = {
 
 /** Use this icon to either render a passed in React component, or a NamedIcon/CompanyIcon */
 export function Icon(props: IconProps) {
+  if (!props.icon) return null;
+
   if (typeof props.icon === "string") {
     return <NamedIcon name={props.icon} className={props.className ?? ""} fallback={<></>} />;
   }
 
-  const Icon = props.icon;
-
-  if (!Icon) {
-    return <></>;
+  if (typeof props.icon === "function") {
+    const Icon = props.icon;
+    return <Icon className={props.className} />;
   }
 
-  return <Icon className={props.className} />;
+  if (React.isValidElement(props.icon)) {
+    return <>{props.icon}</>;
+  }
+
+  if (
+    props.icon &&
+    typeof props.icon === "object" &&
+    ("type" in props.icon || "$$typeof" in props.icon)
+  ) {
+    return createElement<FunctionComponent<any>>(
+      props.icon as any,
+      { className: props.className } as any
+    );
+  }
+
+  console.error("Invalid icon", props);
+  return null;
 }
 
 export function IconInBox({ boxClassName, ...props }: IconProps & { boxClassName?: string }) {
   return (
     <div
       className={cn(
-        "grid h-9 w-9 place-content-center rounded-sm border border-slate-750 bg-slate-850",
+        "grid h-9 w-9 place-content-center rounded-sm border border-charcoal-750 bg-charcoal-850",
         boxClassName
       )}
     >

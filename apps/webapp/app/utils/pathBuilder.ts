@@ -1,8 +1,19 @@
-import type { Integration, TriggerSource } from "@trigger.dev/database";
+import type {
+  BackgroundWorkerTask,
+  EventRecord,
+  Integration,
+  TaskRun,
+  TriggerHttpEndpoint,
+  TriggerSource,
+  Webhook,
+  WorkerDeployment,
+} from "@trigger.dev/database";
 import { z } from "zod";
+import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
+import { objectToSearchParams } from "./searchParams";
 
 export type OrgForPath = Pick<Organization, "slug">;
 export type ProjectForPath = Pick<Project, "slug">;
@@ -10,6 +21,13 @@ export type JobForPath = Pick<Job, "slug">;
 export type RunForPath = Pick<Job, "id">;
 export type IntegrationForPath = Pick<Integration, "slug">;
 export type TriggerForPath = Pick<TriggerSource, "id">;
+export type EventForPath = Pick<EventRecord, "id">;
+export type WebhookForPath = Pick<Webhook, "id">;
+export type HttpEndpointForPath = Pick<TriggerHttpEndpoint, "key">;
+export type TaskForPath = Pick<BackgroundWorkerTask, "friendlyId">;
+export type v3RunForPath = Pick<TaskRun, "friendlyId">;
+export type v3SpanForPath = Pick<TaskRun, "spanId">;
+export type DeploymentForPath = Pick<WorkerDeployment, "shortCode">;
 
 export const OrganizationParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -31,12 +49,16 @@ export const TaskParamsSchema = RunParamsSchema.extend({
   taskParam: z.string(),
 });
 
-export const IntegrationClientParamSchema = ProjectParamSchema.extend({
+export const IntegrationClientParamSchema = OrganizationParamsSchema.extend({
   clientParam: z.string(),
 });
 
 export const TriggerSourceParamSchema = ProjectParamSchema.extend({
   triggerParam: z.string(),
+});
+
+export const EventParamSchema = ProjectParamSchema.extend({
+  eventParam: z.string(),
 });
 
 export const TriggerSourceRunParamsSchema = TriggerSourceParamSchema.extend({
@@ -45,6 +67,31 @@ export const TriggerSourceRunParamsSchema = TriggerSourceParamSchema.extend({
 
 export const TriggerSourceRunTaskParamsSchema = TriggerSourceRunParamsSchema.extend({
   taskParam: z.string(),
+});
+
+export const HttpEndpointParamSchema = ProjectParamSchema.extend({
+  httpEndpointParam: z.string(),
+});
+
+//v3
+export const v3TaskParamsSchema = ProjectParamSchema.extend({
+  taskParam: z.string(),
+});
+
+export const v3RunParamsSchema = ProjectParamSchema.extend({
+  runParam: z.string(),
+});
+
+export const v3SpanParamsSchema = v3RunParamsSchema.extend({
+  spanParam: z.string(),
+});
+
+export const v3DeploymentParams = ProjectParamSchema.extend({
+  deploymentParam: z.string(),
+});
+
+export const v3ScheduleParams = ProjectParamSchema.extend({
+  scheduleParam: z.string(),
 });
 
 export function trimTrailingSlash(path: string) {
@@ -57,12 +104,16 @@ export function parentPath(path: string) {
   return trimmedTrailingSlash.substring(0, lastSlashIndex);
 }
 
-export function organizationsPath() {
+export function rootPath() {
   return `/`;
 }
 
 export function accountPath() {
   return `/account`;
+}
+
+export function personalAccessTokensPath() {
+  return `/account/tokens`;
 }
 
 export function invitesPath() {
@@ -85,6 +136,10 @@ export function logoutPath() {
   return `/logout`;
 }
 
+export function revokeInvitePath() {
+  return `/invite-revoke`;
+}
+
 // Org
 export function organizationPath(organization: OrgForPath) {
   return `/orgs/${organizationParam(organization)}`;
@@ -92,6 +147,10 @@ export function organizationPath(organization: OrgForPath) {
 
 export function newOrganizationPath() {
   return `/orgs/new`;
+}
+
+export function selectPlanPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/select-plan`;
 }
 
 export function organizationTeamPath(organization: OrgForPath) {
@@ -106,6 +165,30 @@ export function organizationBillingPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/billing`;
 }
 
+export function organizationSettingsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/settings`;
+}
+
+export function organizationIntegrationsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/integrations`;
+}
+
+export function usagePath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/billing`;
+}
+
+export function stripePortalPath(organization: OrgForPath) {
+  return `/resources/${organization.slug}/subscription/portal`;
+}
+
+export function plansPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/billing/plans`;
+}
+
+export function subscribedPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/subscribed`;
+}
+
 function organizationParam(organization: OrgForPath) {
   return organization.slug;
 }
@@ -113,6 +196,10 @@ function organizationParam(organization: OrgForPath) {
 // Project
 export function projectPath(organization: OrgForPath, project: ProjectForPath) {
   return `/orgs/${organizationParam(organization)}/projects/${projectParam(project)}`;
+}
+
+export function projectRunsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/runs`;
 }
 
 export function projectSetupPath(organization: OrgForPath, project: ProjectForPath) {
@@ -159,12 +246,35 @@ export function projectJobsPath(organization: OrgForPath, project: ProjectForPat
   return projectPath(organization, project);
 }
 
-export function projectIntegrationsPath(organization: OrgForPath, project: ProjectForPath) {
-  return `${projectPath(organization, project)}/integrations`;
-}
-
 export function projectTriggersPath(organization: OrgForPath, project: ProjectForPath) {
   return `${projectPath(organization, project)}/triggers`;
+}
+
+export function projectEventsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/events`;
+}
+
+export function projectSettingsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/settings`;
+}
+
+export function projectEventPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  event: EventForPath
+) {
+  return `${projectEventsPath(organization, project)}/${event.id}`;
+}
+
+export function projectHttpEndpointsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectPath(organization, project)}/http-endpoints`;
+}
+export function projectHttpEndpointPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  httpEndpoint: HttpEndpointForPath
+) {
+  return `${projectHttpEndpointsPath(organization, project)}/${httpEndpoint.key}`;
 }
 
 export function projectEnvironmentsPath(organization: OrgForPath, project: ProjectForPath) {
@@ -194,29 +304,142 @@ function projectParam(project: ProjectForPath) {
   return project.slug;
 }
 
-// Integration
-export function integrationClientPath(
+//v3 project
+export function v3ProjectPath(organization: OrgForPath, project: ProjectForPath) {
+  return `/orgs/${organizationParam(organization)}/projects/v3/${projectParam(project)}`;
+}
+
+export function v3TasksStreamingPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/tasks/stream`;
+}
+
+export function v3ApiKeysPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/apikeys`;
+}
+
+export function v3EnvironmentVariablesPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/environment-variables`;
+}
+
+export function v3NewEnvironmentVariablesPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3EnvironmentVariablesPath(organization, project)}/new`;
+}
+
+export function v3TestPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  client: IntegrationForPath
+  environmentSlug?: string
 ) {
-  return `${projectIntegrationsPath(organization, project)}/${clientParam(client)}`;
+  return `${v3ProjectPath(organization, project)}/test${
+    environmentSlug ? `?environment=${environmentSlug}` : ""
+  }`;
+}
+
+export function v3TestTaskPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  task: TaskForPath,
+  environmentSlug: string
+) {
+  return `${v3TestPath(organization, project)}/tasks/${
+    task.friendlyId
+  }?environment=${environmentSlug}`;
+}
+
+export function v3RunsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  filters?: TaskRunListSearchFilters
+) {
+  const searchParams = objectToSearchParams(filters);
+  const query = searchParams ? `?${searchParams.toString()}` : "";
+  return `${v3ProjectPath(organization, project)}/runs${query}`;
+}
+
+export function v3RunPath(organization: OrgForPath, project: ProjectForPath, run: v3RunForPath) {
+  return `${v3RunsPath(organization, project)}/${run.friendlyId}`;
+}
+
+export function v3RunSpanPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  run: v3RunForPath,
+  span: v3SpanForPath
+) {
+  return `${v3RunPath(organization, project, run)}?span=${span.spanId}`;
+}
+
+export function v3TraceSpanPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  traceId: string,
+  spanId: string
+) {
+  return `${v3ProjectPath(organization, project)}/traces/${traceId}/spans/${spanId}`;
+}
+
+export function v3RunStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  run: v3RunForPath
+) {
+  return `${v3RunPath(organization, project, run)}/stream`;
+}
+
+export function v3SchedulesPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/schedules`;
+}
+
+export function v3SchedulePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  schedule: { friendlyId: string }
+) {
+  return `${v3ProjectPath(organization, project)}/schedules/${schedule.friendlyId}`;
+}
+
+export function v3EditSchedulePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  schedule: { friendlyId: string }
+) {
+  return `${v3ProjectPath(organization, project)}/schedules/edit/${schedule.friendlyId}`;
+}
+
+export function v3NewSchedulePath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/schedules/new`;
+}
+
+export function v3ProjectSettingsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/settings`;
+}
+
+export function v3DeploymentsPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/deployments`;
+}
+
+export function v3DeploymentPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  deployment: DeploymentForPath
+) {
+  return `${v3DeploymentsPath(organization, project)}/${deployment.shortCode}`;
+}
+
+// Integration
+export function integrationClientPath(organization: OrgForPath, client: IntegrationForPath) {
+  return `${organizationIntegrationsPath(organization)}/${clientParam(client)}`;
 }
 
 export function integrationClientConnectionsPath(
   organization: OrgForPath,
-  project: ProjectForPath,
   client: IntegrationForPath
 ) {
-  return `${integrationClientPath(organization, project, client)}/connections`;
+  return `${integrationClientPath(organization, client)}/connections`;
 }
 
-export function integrationClientScopesPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  client: IntegrationForPath
-) {
-  return `${integrationClientPath(organization, project, client)}/scopes`;
+export function integrationClientScopesPath(organization: OrgForPath, client: IntegrationForPath) {
+  return `${integrationClientPath(organization, client)}/scopes`;
 }
 
 function clientParam(integration: IntegrationForPath) {
@@ -264,6 +487,82 @@ export function externalTriggerRunStreamingPath(
 
 function triggerSourceParam(trigger: TriggerForPath) {
   return trigger.id;
+}
+
+export function projectWebhookTriggersPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${projectTriggersPath(organization, project)}/webhooks`;
+}
+
+export function webhookTriggerPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath
+) {
+  return `${projectTriggersPath(organization, project)}/webhooks/${webhookSourceParam(webhook)}`;
+}
+
+export function webhookTriggerRunsParentPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath
+) {
+  return `${webhookTriggerPath(organization, project, webhook)}/runs`;
+}
+
+export function webhookTriggerRunPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath,
+  run: RunForPath
+) {
+  return `${webhookTriggerRunsParentPath(organization, project, webhook)}/${run.id}`;
+}
+
+export function webhookTriggerRunStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath,
+  run: RunForPath
+) {
+  return `${webhookTriggerRunPath(organization, project, webhook, run)}/stream`;
+}
+
+export function webhookDeliveryPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath
+) {
+  return `${webhookTriggerPath(organization, project, webhook)}/delivery`;
+}
+
+export function webhookTriggerDeliveryRunsParentPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath
+) {
+  return `${webhookTriggerRunsParentPath(organization, project, webhook)}/delivery`;
+}
+
+export function webhookTriggerDeliveryRunPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath,
+  run: RunForPath
+) {
+  return `${webhookTriggerDeliveryRunsParentPath(organization, project, webhook)}/${run.id}`;
+}
+
+export function webhookTriggerDeliveryRunStreamingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  webhook: WebhookForPath,
+  run: RunForPath
+) {
+  return `${webhookTriggerDeliveryRunPath(organization, project, webhook, run)}/stream`;
+}
+
+function webhookSourceParam(webhook: WebhookForPath) {
+  return webhook.id;
 }
 
 // Job
@@ -361,4 +660,9 @@ export function docsIntegrationPath(api: string) {
 
 export function docsCreateIntegration() {
   return `${docsRoot()}/integrations/create`;
+}
+
+//api
+export function apiReferencePath(apiSlug: string) {
+  return `https://trigger.dev/apis/${apiSlug}`;
 }

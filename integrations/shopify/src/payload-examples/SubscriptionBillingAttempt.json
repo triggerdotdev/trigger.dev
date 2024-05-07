@@ -1,0 +1,12 @@
+{
+  "id": null,
+  "admin_graphql_api_id": null,
+  "idempotency_key": "9a453d81-d41d-403e-806f-714dee215ff9",
+  "order_id": 1,
+  "admin_graphql_api_order_id": "gid://shopify/Order/1",
+  "subscription_contract_id": 9251185925,
+  "admin_graphql_api_subscription_contract_id": "gid://shopify/SubscriptionContract/9251185925",
+  "ready": true,
+  "error_message": null,
+  "error_code": null
+}

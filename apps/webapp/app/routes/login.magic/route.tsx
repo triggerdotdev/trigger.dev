@@ -1,32 +1,43 @@
-import type { ActionArgs, LoaderArgs } from "@remix-run/node";
+import { InboxArrowDownIcon } from "@heroicons/react/24/solid";
+import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
-import { Form, useNavigation, useTransition } from "@remix-run/react";
-import { TypedMetaFunction, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { Form, useNavigation } from "@remix-run/react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { LogoIcon } from "~/components/LogoIcon";
-import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
+import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
-import { FormTitle } from "~/components/primitives/FormTitle";
+import { FormError } from "~/components/primitives/FormError";
+import { Header1 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
-import { Label } from "~/components/primitives/Label";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { TextLink } from "~/components/primitives/TextLink";
 import { authenticator } from "~/services/auth.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
-import magicLinkIcon from "./login.magic.svg";
-import type { LoaderType as RootLoader } from "~/root";
-import { appEnvTitleTag } from "~/utils";
-import { TextLink } from "~/components/primitives/TextLink";
-import { FormError } from "~/components/primitives/FormError";
 
-export const meta: TypedMetaFunction<typeof loader, { root: RootLoader }> = ({ parentsData }) => ({
-  title: `Login to Trigger.dev${appEnvTitleTag(parentsData?.root.appEnv)}`,
-});
+export const meta: MetaFunction = ({ matches }) => {
+  const parentMeta = matches
+    .flatMap((match) => match.meta ?? [])
+    .filter((meta) => {
+      if ("title" in meta) return false;
+      if ("name" in meta && meta.name === "viewport") return false;
+      return true;
+    });
 
-export async function loader({ request }: LoaderArgs) {
+  return [
+    ...parentMeta,
+    { title: `Login to Trigger.dev` },
+    {
+      name: "viewport",
+      content: "width=device-width,initial-scale=1",
+    },
+  ];
+};
+
+export async function loader({ request }: LoaderFunctionArgs) {
   await authenticator.isAuthenticated(request, {
     successRedirect: "/",
   });
@@ -54,7 +65,7 @@ export async function loader({ request }: LoaderArgs) {
   );
 }
 
-export async function action({ request }: ActionArgs) {
+export async function action({ request }: ActionFunctionArgs) {
   const clonedRequest = request.clone();
 
   const payload = Object.fromEntries(await clonedRequest.formData());
@@ -92,127 +103,113 @@ export default function LoginMagicLinkPage() {
     navigate.formData?.get("action") === "send";
 
   return (
-    <AppContainer showBackgroundGradient={true}>
-      <MainCenteredContainer>
-        <Form method="post">
-          <div className="flex flex-col items-center">
-            <a href="https://trigger.dev">
-              <LogoIcon className="mb-4 h-16 w-16" />
-            </a>
-
-            {magicLinkSent ? (
-              <>
-                <FormTitle divide={false} title="We've sent you a magic link!" />
-                <img src={magicLinkIcon} className="mb-4 h-12 w-12" />
-                <Fieldset className="flex w-full flex-col items-center gap-y-2">
-                  <Paragraph className="mb-6 text-center">
-                    We sent you an email which contains a magic link that will log you in to your
-                    account.
-                  </Paragraph>
-                  <FormButtons
-                    cancelButton={
-                      <Button
-                        type="submit"
-                        name="action"
-                        value="reset"
-                        variant="tertiary/small"
-                        LeadingIcon="arrow-left"
-                        leadingIconClassName="text-dimmed group-hover:text-bright transition"
-                        data-action="re-enter email"
-                      >
-                        Re-enter email
-                      </Button>
-                    }
-                    confirmButton={
-                      <LinkButton
-                        to="/login"
-                        variant="tertiary/small"
-                        data-action="log in using another option"
-                      >
-                        Log in using another option
-                      </LinkButton>
-                    }
+    <LoginPageLayout>
+      <Form method="post">
+        <div className="flex flex-col items-center justify-center">
+          {magicLinkSent ? (
+            <>
+              <Header1 className="pb-6 text-center text-xl font-normal leading-7 md:text-xl lg:text-2xl">
+                We've sent you a magic link!
+              </Header1>
+              <Fieldset className="flex w-full flex-col items-center gap-y-2">
+                <InboxArrowDownIcon className="mb-4 h-12 w-12 text-primary" />
+                <Paragraph className="mb-6 text-center">
+                  We sent you an email which contains a magic link that will log you in to your
+                  account.
+                </Paragraph>
+                <FormButtons
+                  cancelButton={
+                    <Button
+                      type="submit"
+                      name="action"
+                      value="reset"
+                      variant="minimal/small"
+                      LeadingIcon="arrow-left"
+                      leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
+                      data-action="re-enter email"
+                    >
+                      Re-enter email
+                    </Button>
+                  }
+                  confirmButton={
+                    <LinkButton
+                      to="/login"
+                      variant="minimal/small"
+                      data-action="log in using another option"
+                    >
+                      Log in using another option
+                    </LinkButton>
+                  }
+                />
+              </Fieldset>
+            </>
+          ) : (
+            <>
+              <Header1 className="pb-4 font-semibold sm:text-2xl md:text-3xl lg:text-4xl">
+                Welcome
+              </Header1>
+              <Paragraph variant="base" className="mb-6 text-center">
+                Create an account or login using email
+              </Paragraph>
+              <Fieldset className="flex w-full flex-col items-center gap-y-2">
+                <InputGroup>
+                  <Input
+                    type="email"
+                    name="email"
+                    spellCheck={false}
+                    placeholder="Email Address"
+                    variant="large"
+                    required
+                    autoFocus
                   />
-                </Fieldset>
-              </>
-            ) : (
-              <>
-                <FormTitle divide={false} title="Welcome to Trigger.dev" className="mb-2 pb-0" />
-                <Paragraph variant="small" className="mb-4 text-center">
-                  Create an account or login using your email
-                </Paragraph>
-                <Fieldset className="flex w-full flex-col items-center gap-y-2">
-                  <InputGroup>
-                    <Label>Your email address</Label>
-                    <Input
-                      type="email"
-                      name="email"
-                      spellCheck={false}
-                      placeholder="Email Address"
-                      required
-                      autoFocus
-                    />
-                  </InputGroup>
+                </InputGroup>
 
-                  <Button
-                    name="action"
-                    value="send"
-                    type="submit"
-                    variant="primary/medium"
-                    disabled={isLoading}
-                    fullWidth
-                    data-action="send a magic link"
-                  >
-                    <NamedIcon
-                      name={isLoading ? "spinner-white" : "envelope"}
-                      className={"mr-1.5 h-4 w-4 text-white transition group-hover:text-bright"}
-                    />
-                    {isLoading ? "Sending…" : "Send a magic link"}
-                  </Button>
-                  {magicLinkError && <FormError>{magicLinkError}</FormError>}
-                </Fieldset>
-                <Paragraph variant="extra-small" className="my-4 text-center">
-                  By logging in with your email you agree to our{" "}
-                  <TextLink href="https://trigger.dev/legal" target="_blank">
-                    terms
-                  </TextLink>{" "}
-                  and{" "}
-                  <TextLink href="https://trigger.dev/legal/privacy" target="_blank">
-                    privacy
-                  </TextLink>{" "}
-                  policy.
-                </Paragraph>
-
-                <LinkButton
-                  to="/login"
-                  variant={"tertiary/small"}
-                  LeadingIcon={"arrow-left"}
-                  leadingIconClassName="text-dimmed group-hover:text-bright transition"
-                  data-action="all login options"
+                <Button
+                  name="action"
+                  value="send"
+                  type="submit"
+                  variant="primary/large"
+                  disabled={isLoading}
+                  fullWidth
+                  data-action="send a magic link"
                 >
-                  All login options
-                </LinkButton>
-              </>
-            )}
-            <div className="mt-8 rounded border border-border px-6 py-4">
-              <Paragraph variant="small" className="mb-2 text-center">
-                Having login issues?
-              </Paragraph>
-              <Paragraph variant="extra-small" className="text-center">
-                Ensure the Magic Link email isn't in your spam folder. If the problem persists,{" "}
-                <TextLink href="mailto:help@trigger.dev" target="_blank">
-                  drop us an email
-                </TextLink>{" "}
-                or let us know on{" "}
-                <TextLink href="https://trigger.dev/discord" target="_blank">
-                  Discord
+                  <NamedIcon
+                    name={isLoading ? "spinner-dark" : "envelope"}
+                    className={"mr-2 size-5 text-background-dimmed"}
+                  />
+                  {isLoading ? (
+                    <span className="text-background-dimmed">Sending…</span>
+                  ) : (
+                    <span className="text-background-dimmed">Send a magic link</span>
+                  )}
+                </Button>
+                {magicLinkError && <FormError>{magicLinkError}</FormError>}
+              </Fieldset>
+              <Paragraph variant="extra-small" className="mb-4 mt-6 text-center">
+                By signing up you agree to our{" "}
+                <TextLink href="https://trigger.dev/legal" target="_blank">
+                  terms
                 </TextLink>
-                .
+                {" "}and{" "}
+                <TextLink href="https://trigger.dev/legal/privacy" target="_blank">
+                  privacy
+                </TextLink>
+                {" "}policy.
               </Paragraph>
-            </div>
-          </div>
-        </Form>
-      </MainCenteredContainer>
-    </AppContainer>
+
+              <LinkButton
+                to="/login"
+                variant={"minimal/small"}
+                LeadingIcon={"arrow-left"}
+                leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
+                data-action="all login options"
+              >
+                All login options
+              </LinkButton>
+            </>
+          )}
+        </div>
+      </Form>
+    </LoginPageLayout>
   );
 }

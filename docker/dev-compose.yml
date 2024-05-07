@@ -2,6 +2,7 @@ version: "3"
 
 volumes:
   database-data:
+  redis-data:
 
 networks:
   app_network:
@@ -42,3 +43,21 @@ services:
       PORT: 3030
     networks:
       - app_network
+
+  redis:
+    container_name: redis
+    image: redis:7
+    restart: always
+    volumes:
+      - redis-data:/data
+    networks:
+      - app_network
+    ports:
+      - 6379:6379
+
+  redisinsight:
+    image: redislabs/redisinsight:latest
+    ports:
+      - "8001:8001"
+    volumes:
+      - redis-data:/redisinsight

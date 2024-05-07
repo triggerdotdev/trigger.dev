@@ -8,6 +8,8 @@ export const DisplayPropertySchema = z.object({
   text: z.string(),
   /** The URL to link to when the property is clicked */
   url: z.string().optional(),
+  /** The URL to a list of images to display next to the property */
+  imageUrl: z.array(z.string()).optional(),
 });
 
 export const DisplayPropertiesSchema = z.array(DisplayPropertySchema);

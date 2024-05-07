@@ -1,0 +1,23 @@
+<Step title="Run the CLI `dev` command">
+
+The CLI `dev` command runs a server for your tasks. It will watches for changes in your `/trigger` directory and communicates with the Trigger.dev platform to register your tasks, perform runs, and send data back and forth.
+
+It can also update your `@trigger.dev/*` packages to prevent version mismatches and failed deploys. You will always be prompted first.
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@beta dev
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@beta dev
+```
+
+```bash yarn
+yarn dlx trigger.dev@beta dev
+```
+
+</CodeGroup>
+
+</Step>

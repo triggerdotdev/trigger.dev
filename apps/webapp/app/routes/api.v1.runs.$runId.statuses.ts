@@ -1,8 +1,9 @@
-import type { LoaderArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { JobRunStatusRecordSchema } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { runOriginalStatus } from "~/models/jobRun.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { apiCors } from "~/utils/apiCors";
@@ -13,7 +14,7 @@ const ParamsSchema = z.object({
 
 const RecordsSchema = z.array(JobRunStatusRecordSchema);
 
-export async function loader({ request, params }: LoaderArgs) {
+export async function loader({ request, params }: LoaderFunctionArgs) {
   if (request.method.toUpperCase() === "OPTIONS") {
     return apiCors(request, json({}));
   }
@@ -66,7 +67,7 @@ export async function loader({ request, params }: LoaderArgs) {
       json({
         run: {
           id: run.id,
-          status: run.status,
+          status: runOriginalStatus(run.status),
           output: run.output,
         },
         statuses: parsedStatuses,
