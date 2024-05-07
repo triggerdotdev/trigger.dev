@@ -34,6 +34,7 @@ import {
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { ListFilterIcon } from "lucide-react";
 
 export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);
 
@@ -127,7 +128,7 @@ function FilterMenu(props: RunFiltersProps) {
 
   const filterTrigger = (
     <SelectTrigger
-      icon={<PlusIcon className="h-4 w-4" />}
+      icon={<ListFilterIcon className="size-3.5" />}
       variant={"minimal/small"}
       shortcut={shortcut}
       tooltipTitle={"Filter runs"}
@@ -475,19 +476,20 @@ function AppliedFilters({ possibleEnvironments, possibleTasks }: RunFiltersProps
   );
 }
 
+const maxStatusesToShow = 3;
+
 function AppliedStatusFilter() {
   const { values, del } = useSearchParams();
+  const statuses = values("statuses");
 
-  if (values("statuses").length === 0) {
+  if (statuses.length === 0) {
     return null;
   }
 
   return (
     <AppliedFilter
       label="Status"
-      value={values("statuses")
-        .map((v) => runStatusTitle(v as TaskRunStatus))
-        .join(", ")}
+      value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
       onRemove={() => del(["statuses", "cursor", "direction"])}
     />
   );
@@ -505,12 +507,12 @@ function AppliedEnvironmentFilter({
   return (
     <AppliedFilter
       label="Environment"
-      value={values("environments")
-        .map((v) => {
+      value={appliedSummary(
+        values("environments").map((v) => {
           const environment = possibleEnvironments.find((env) => env.id === v);
           return environment ? environmentTitle(environment, environment.userName) : v;
         })
-        .join(", ")}
+      )}
       onRemove={() => del(["environments", "cursor", "direction"])}
     />
   );
@@ -526,12 +528,12 @@ function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTas
   return (
     <AppliedFilter
       label="Task"
-      value={values("tasks")
-        .map((v) => {
+      value={appliedSummary(
+        values("tasks").map((v) => {
           const task = possibleTasks.find((task) => task.slug === v);
           return task ? task.slug : v;
         })
-        .join(", ")}
+      )}
       onRemove={() => del(["tasks", "cursor", "direction"])}
     />
   );
@@ -551,4 +553,16 @@ function AppliedPeriodFilter() {
       onRemove={() => del(["period", "cursor", "direction"])}
     />
   );
+}
+
+function appliedSummary(values: string[], maxValues = 3) {
+  if (values.length === 0) {
+    return null;
+  }
+
+  if (values.length > maxValues) {
+    return `${values.slice(0, maxValues).join(", ")} + ${values.length - maxValues} more`;
+  }
+
+  return values.join(", ");
 }
