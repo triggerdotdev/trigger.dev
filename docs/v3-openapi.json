@@ -493,7 +493,7 @@
         "x-codeSamples": [
           {
             "lang": "typescript",
-            "source": "const handle = await runs.replay(existingRun.id);"
+            "source": "import { runs } from \"@trigger.dev/sdk/v3\";\n\nconst handle = await runs.replay(\"run_1234\");"
           },
           {
             "lang": "sh",
@@ -601,11 +601,112 @@
         "x-codeSamples": [
           {
             "lang": "typescript",
-            "source": "await runs.cancel(existingRun.id);"
+            "source": "import { runs } from \"@trigger.dev/sdk/v3\";\n\nawait runs.cancel(\"run_1234\");"
           },
           {
             "lang": "sh",
             "source": "curl --request POST \\\n\t--url https://api.trigger.dev/api/v1/runs/{run_id}/cancel \\\n\t--header 'Authorization: Bearer <token>'"
+          }
+        ]
+      }
+    },
+    "/api/v3/runs/{run_id}": {
+      "get": {
+        "description": "Retrieve a run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ID of an existing run. When you trigger a run you will get an id in the response."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetrieveRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "Invalid or missing run ID"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "Invalid or Missing API key"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "Run not found"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "run"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "operationId": "retrieve_run_v1",
+        "x-codeSamples": [
+          {
+            "lang": "typescript",
+            "source": "import { runs } from \"@trigger.dev/sdk/v3\";\n\nawait runs.retrieve(\"run_1234\");"
+          },
+          {
+            "lang": "sh",
+            "source": "curl --request GET \\\n\t--url https://api.trigger.dev/api/v3/runs/{run_id} \\\n\t--header 'Authorization: Bearer <token>'"
           }
         ]
       }
@@ -620,6 +721,94 @@
       }
     },
     "schemas": {
+      "RetrieveRunResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "taskIdentifier",
+          "createdAt",
+          "updatedAt",
+          "attempts"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "EXECUTING",
+              "PAUSED",
+              "COMPLETED",
+              "FAILED",
+              "CANCELED"
+            ]
+          },
+          "taskIdentifier": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "status",
+                "createdAt",
+                "updatedAt"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "PENDING",
+                    "EXECUTING",
+                    "PAUSED",
+                    "COMPLETED",
+                    "FAILED",
+                    "CANCELED"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "startedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "completedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          }
+        }
+      },
       "CreateScheduleOptions": {
         "type": "object",
         "properties": {

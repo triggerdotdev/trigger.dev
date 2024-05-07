@@ -1,5 +1,19 @@
 # @trigger.dev/hono
 
+## 3.0.0-beta.28
+
+### Patch Changes
+
+- Updated dependencies [6d9dfbc75]
+  - @trigger.dev/sdk@3.0.0-beta.28
+
+## 3.0.0-beta.27
+
+### Patch Changes
+
+- Updated dependencies [203e00208]
+  - @trigger.dev/sdk@3.0.0-beta.27
+
 ## 3.0.0-beta.26
 
 ### Patch Changes

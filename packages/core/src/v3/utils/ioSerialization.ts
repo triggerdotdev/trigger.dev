@@ -1,9 +1,9 @@
 import { Attributes, Span } from "@opentelemetry/api";
-import { apiClientManager } from "../apiClient";
 import { OFFLOAD_IO_PACKET_LENGTH_LIMIT, imposeAttributeLimits } from "../limits";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 import { TriggerTracer } from "../tracer";
 import { flattenAttributes } from "./flattenAttributes";
+import { apiClientManager } from "../apiClientManager-api";
 
 export type IOPacket = {
   data?: string | undefined;

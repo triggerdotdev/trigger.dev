@@ -149,7 +149,7 @@ export function bundleDependenciesPlugin(
           }
         }
 
-        logger.ignore(`[${buildIdentifier}] Externalizing ${args.path}`, {
+        logger.debug(`[${buildIdentifier}] Externalizing ${args.path}`, {
           ...args,
         });
 

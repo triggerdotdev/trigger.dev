@@ -1,5 +1,19 @@
 # internal-platform
 
+## 3.0.0-beta.28
+
+### Patch Changes
+
+- d490bc5cb: Add the "log" level back in as an alias to "info"
+- 6d9dfbc75: Add configure function to be able to configure the SDK manually
+
+## 3.0.0-beta.27
+
+### Patch Changes
+
+- 1670c4c41: Remove "log" Log Level, unify log and info messages under the "info" log level
+- 203e00208: Add runs.retrieve management API method to get info about a run by run ID
+
 ## 3.0.0-beta.26
 
 ## 3.0.0-beta.25

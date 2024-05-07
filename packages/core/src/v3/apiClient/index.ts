@@ -11,6 +11,7 @@ import {
   ListScheduleOptions,
   ListSchedulesResult,
   ReplayRunResponse,
+  RetrieveRunResponse,
   ScheduleObject,
   TaskRunExecutionResult,
   TriggerTaskRequestBody,
@@ -133,6 +134,18 @@ export class ApiClient {
     );
   }
 
+  retrieveRun(runId: string) {
+    return zodfetch(
+      RetrieveRunResponse,
+      `${this.baseUrl}/api/v3/runs/${runId}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      zodFetchOptions
+    );
+  }
+
   replayRun(runId: string) {
     return zodfetch(
       ReplayRunResponse,
@@ -240,44 +253,3 @@ export class ApiClient {
     return headers;
   }
 }
-
-type ApiClientContext = {
-  baseURL: string;
-  accessToken: string;
-};
-
-export class ApiClientManager {
-  private _storage: SafeAsyncLocalStorage<ApiClientContext> =
-    new SafeAsyncLocalStorage<ApiClientContext>();
-
-  get baseURL(): string | undefined {
-    const store = this.#getStore();
-    return store?.baseURL ?? getEnvVar("TRIGGER_API_URL") ?? "https://api.trigger.dev";
-  }
-
-  get accessToken(): string | undefined {
-    const store = this.#getStore();
-    return store?.accessToken ?? getEnvVar("TRIGGER_SECRET_KEY");
-  }
-
-  get client(): ApiClient | undefined {
-    if (!this.baseURL || !this.accessToken) {
-      return undefined;
-    }
-
-    return new ApiClient(this.baseURL, this.accessToken);
-  }
-
-  runWith<R extends (...args: any[]) => Promise<any>>(
-    context: ApiClientContext,
-    fn: R
-  ): Promise<ReturnType<R>> {
-    return this._storage.runWith(context, fn);
-  }
-
-  #getStore(): ApiClientContext | undefined {
-    return this._storage.getStore();
-  }
-}
-
-export const apiClientManager = new ApiClientManager();

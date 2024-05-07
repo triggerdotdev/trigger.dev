@@ -1,3 +1,4 @@
+import { ApiClientConfiguration } from "../apiClientManager/types";
 import { Clock } from "../clock/clock";
 import type { RuntimeManager } from "../runtime/manager";
 import { TaskCatalog } from "../task-catalog/catalog";
@@ -50,4 +51,5 @@ type TriggerDotDevGlobalAPI = {
   clock?: Clock;
   ["task-catalog"]?: TaskCatalog;
   ["task-context"]?: TaskContext;
+  ["api-client"]?: ApiClientConfiguration;
 };

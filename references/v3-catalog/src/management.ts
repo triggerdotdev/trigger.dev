@@ -1,4 +1,4 @@
-import { APIError, runs, schedules } from "@trigger.dev/sdk/v3";
+import { APIError, configure, runs, schedules } from "@trigger.dev/sdk/v3";
 import { simpleChildTask } from "./trigger/subtasks";
 import dotenv from "dotenv";
 import { firstScheduledTask } from "./trigger/scheduled";
@@ -8,6 +8,10 @@ dotenv.config();
 export async function run() {
   try {
     const run = await simpleChildTask.trigger({ message: "Hello, World!" });
+
+    const retrievedRun = await runs.retrieve(run.id);
+    console.log("retrieved run", retrievedRun);
+
     const canceled = await runs.cancel(run.id);
     console.log("canceled run", canceled);
 

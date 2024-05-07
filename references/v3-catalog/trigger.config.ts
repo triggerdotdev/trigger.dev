@@ -20,8 +20,7 @@ export const config: TriggerConfig = {
   additionalFiles: ["./wrangler/wrangler.toml", "./prisma/schema.prisma"],
   dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp"],
   instrumentations: [new OpenAIInstrumentation()],
-  logLevel: "log",
-  enableConsoleLogging: true,
+  logLevel: "info",
   onStart: async (payload, { ctx }) => {
     if (ctx.organization.id === "clsylhs0v0002dyx75xx4pod1") {
       console.log("Initializing the app data source");

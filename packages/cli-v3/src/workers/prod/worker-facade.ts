@@ -62,7 +62,7 @@ const configLogLevel = triggerLogLevel
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
   tracer: tracer,
-  level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "log",
+  level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "info",
 });
 
 logger.setGlobalTaskLogger(otelTaskLogger);
