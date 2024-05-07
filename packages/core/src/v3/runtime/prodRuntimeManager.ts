@@ -94,18 +94,8 @@ export class ProdRuntimeManager implements RuntimeManager {
       return;
     }
 
-    process.stdout.write("pre");
-    process.stdout.write(JSON.stringify(clock.preciseNow()));
-
-    console.log("pre", clock.preciseNow());
-
     // Resets the clock to the current time
     clock.reset();
-
-    console.log("post", clock.preciseNow());
-
-    process.stdout.write("post");
-    process.stdout.write(JSON.stringify(clock.preciseNow()));
 
     this._waitForDuration.resolve("external");
     this._waitForDuration = undefined;
