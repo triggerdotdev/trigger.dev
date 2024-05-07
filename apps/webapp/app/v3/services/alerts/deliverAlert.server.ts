@@ -489,13 +489,13 @@ export class DeliverAlertService extends BaseService {
             const message = await client.chat.postMessage({
               thread_ts,
               channel: slackProperties.data.channelId,
-              text: `:warning: Task error in ${alert.taskRunAttempt.backgroundWorkerTask.exportName} [${alert.taskRunAttempt.backgroundWorker.version}.${alert.environment.slug}]`,
+              text: `Task error in ${alert.taskRunAttempt.backgroundWorkerTask.exportName} [${alert.taskRunAttempt.backgroundWorker.version}.${alert.environment.slug}]`,
               blocks: [
                 {
                   type: "section",
                   text: {
                     type: "mrkdwn",
-                    text: `:warning: Error in *${exportName}* _<!date^${Math.round(
+                    text: `:rotating_light: Error in *${exportName}* _<!date^${Math.round(
                       timestamp.getTime() / 1000
                     )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
                   },
@@ -604,7 +604,7 @@ export class DeliverAlertService extends BaseService {
                   type: "section",
                   text: {
                     type: "mrkdwn",
-                    text: `:warning: Deployment failed *${version}.${environment}* _<!date^${Math.round(
+                    text: `:rotating_light: Deployment failed *${version}.${environment}* _<!date^${Math.round(
                       timestamp.getTime() / 1000
                     )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
                   },
