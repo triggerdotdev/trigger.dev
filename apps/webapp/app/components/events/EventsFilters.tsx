@@ -9,7 +9,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../primitives/OldSelect";
+} from "../primitives/SimpleSelect";
 import { EventListSearchSchema } from "./EventStatuses";
 import { environmentKeys, FilterableEnvironment } from "~/components/runs/RunStatuses";
 import { TimeFrameFilter } from "../runs/TimeFrameFilter";

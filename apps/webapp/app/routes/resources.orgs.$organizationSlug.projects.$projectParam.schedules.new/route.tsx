@@ -28,7 +28,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "~/components/primitives/OldSelect";
+} from "~/components/primitives/SimpleSelect";
 import {
   Table,
   TableBody,
