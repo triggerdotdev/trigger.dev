@@ -87,7 +87,6 @@ export function RunsFilters(props: RunFiltersProps) {
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu {...props} />
-      {/* <TimeFrameFilter from={from} to={to} onRangeChanged={handleTimeFrameChange} /> */}
       <AppliedFilters {...props} />
       {hasFilters && (
         <Form>

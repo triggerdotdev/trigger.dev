@@ -1,9 +1,11 @@
-import { TrashIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { XMarkIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
 import { RuntimeEnvironment } from "@trigger.dev/database";
 import { useCallback } from "react";
 import { z } from "zod";
+import { Input } from "~/components/primitives/Input";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useThrottle } from "~/hooks/useThrottle";
 import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
 import { Button } from "../../primitives/Buttons";
 import { Paragraph } from "../../primitives/Paragraph";
@@ -15,9 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../primitives/SimpleSelect";
-import { Input } from "~/components/primitives/Input";
-import { useDebounce } from "~/hooks/useDebounce";
-import { useThrottle } from "~/hooks/useThrottle";
 
 export const ScheduleListFilters = z.object({
   page: z.coerce.number().default(1),
@@ -52,6 +51,9 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
   const { environments, tasks, page, search } = ScheduleListFilters.parse(
     Object.fromEntries(searchParams.entries())
   );
+
+  const hasFilters =
+    searchParams.has("tasks") || searchParams.has("environments") || searchParams.has("search");
 
   const handleFilterChange = useCallback((filterType: string, value: string | undefined) => {
     if (value) {
@@ -146,7 +148,7 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
               <SelectItem key={task} value={task}>
                 <Paragraph
                   variant="extra-small"
-                  className="pl-0.5 transition group-hover:text-text-bright"
+                  className="whitespace-nowrap pl-0.5 transition group-hover:text-text-bright"
                 >
                   {task}
                 </Paragraph>
@@ -156,7 +158,11 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
         </Select>
       </SelectGroup>
 
-      <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={XMarkIcon} />
+      {hasFilters && (
+        <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={XMarkIcon}>
+          Clear all
+        </Button>
+      )}
     </div>
   );
 }
