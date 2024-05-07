@@ -291,12 +291,18 @@ export class SharedQueueConsumer {
           (!retryingFromCheckpoint &&
             !EXECUTABLE_RUN_STATUSES.withoutCheckpoint.includes(existingTaskRun.status))
         ) {
-          logger.debug("Task run has invalid status for execution", {
+          logger.error("Task run has invalid status for execution", {
             queueMessage: message.data,
             messageId: message.messageId,
             taskRun: existingTaskRun.id,
             status: existingTaskRun.status,
             retryingFromCheckpoint,
+          });
+
+          const service = new CrashTaskRunService();
+          await service.call(existingTaskRun.id, {
+            crashAttempts: true,
+            reason: `Invalid run status for execution: ${existingTaskRun.status}`,
           });
 
           await this.#ackAndDoMoreWork(message.messageId);
