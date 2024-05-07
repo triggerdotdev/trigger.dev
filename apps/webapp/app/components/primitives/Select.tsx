@@ -240,6 +240,8 @@ export function SelectTrigger({
   disabled,
   placeholder,
   dropdownIcon = false,
+  children,
+  className,
   ...props
 }: SelectTriggerProps) {
   const ref = React.useRef<HTMLButtonElement>(null);
@@ -259,8 +261,8 @@ export function SelectTrigger({
   const variantClasses = variants[variant];
 
   let content: React.ReactNode = "";
-  if (props.children) {
-    content = props.children;
+  if (children) {
+    content = children;
   } else if (text !== undefined) {
     if (typeof text === "function") {
       content = <SelectValue>{(value) => <>{text(value) ?? placeholder}</>}</SelectValue>;
@@ -292,9 +294,10 @@ export function SelectTrigger({
             className={cn(
               "group flex items-center gap-1 outline-offset-0 focus-within:outline-none focus-within:ring-1 disabled:cursor-not-allowed disabled:opacity-50",
               variantClasses.button,
-              props.className
+              className
             )}
             ref={ref}
+            {...props}
           />
         }
       >
