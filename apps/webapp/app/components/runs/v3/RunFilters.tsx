@@ -1,7 +1,9 @@
-import { CalendarIcon, CpuChipIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import * as Ariakit from "@ariakit/react";
+import { CalendarIcon, CpuChipIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { RuntimeEnvironment, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
-import { startTransition, useCallback, useMemo, useState } from "react";
+import { ListFilterIcon } from "lucide-react";
+import { ReactNode, startTransition, useCallback, useMemo, useState } from "react";
 import { z } from "zod";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
@@ -24,6 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { Button } from "../../primitives/Buttons";
 import {
@@ -33,8 +36,6 @@ import {
   runStatusTitle,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
-import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
-import { ListFilterIcon } from "lucide-react";
 
 export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);
 
@@ -121,11 +122,6 @@ const shortcut = { key: "f" };
 function FilterMenu(props: RunFiltersProps) {
   const [filterType, setFilterType] = useState<FilterType | undefined>();
 
-  const [searchValue, setSearchValue] = useState("");
-  const clearSearchValue = useCallback(() => {
-    setSearchValue("");
-  }, [setSearchValue]);
-
   const filterTrigger = (
     <SelectTrigger
       icon={<ListFilterIcon className="size-3.5" />}
@@ -138,6 +134,31 @@ function FilterMenu(props: RunFiltersProps) {
   );
 
   return (
+    <FilterMenuProvider onClose={() => setFilterType(undefined)}>
+      {(search, setSearch) => (
+        <Menu
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+          trigger={filterTrigger}
+          filterType={filterType}
+          setFilterType={setFilterType}
+          {...props}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function FilterMenuProvider({
+  children,
+  onClose,
+}: {
+  children: (search: string, setSearch: (value: string) => void) => React.ReactNode;
+  onClose?: () => void;
+}) {
+  const [searchValue, setSearchValue] = useState("");
+
+  return (
     <ComboboxProvider
       resetValueOnHide
       setValue={(value) => {
@@ -146,20 +167,24 @@ function FilterMenu(props: RunFiltersProps) {
         });
       }}
       setOpen={(open) => {
-        if (!open) {
-          setFilterType(undefined);
+        if (!open && onClose) {
+          onClose();
         }
       }}
     >
-      <Menu
-        searchValue={searchValue}
-        clearSearchValue={clearSearchValue}
-        trigger={filterTrigger}
-        filterType={filterType}
-        setFilterType={setFilterType}
-        {...props}
-      />
+      {children(searchValue, setSearchValue)}
     </ComboboxProvider>
+  );
+}
+
+function AppliedFilters({ possibleEnvironments, possibleTasks }: RunFiltersProps) {
+  return (
+    <>
+      <AppliedStatusFilter />
+      <AppliedEnvironmentFilter possibleEnvironments={possibleEnvironments} />
+      <AppliedTaskFilter possibleTasks={possibleTasks} />
+      <AppliedPeriodFilter />
+    </>
   );
 }
 
@@ -176,7 +201,7 @@ function Menu(props: MenuProps) {
     case undefined:
       return <MainMenu {...props} />;
     case "statuses":
-      return <Statuses {...props} />;
+      return <StatusDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "environments":
       return <Environments {...props} />;
     case "tasks":
@@ -223,7 +248,17 @@ const statuses = allTaskRunStatuses.map((status) => ({
   value: status,
 }));
 
-function Statuses({ trigger, clearSearchValue, searchValue, setFilterType }: MenuProps) {
+function StatusDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
   const { values, replace } = useSearchParams();
 
   const handleChange = useCallback((values: string[]) => {
@@ -239,9 +274,15 @@ function Statuses({ trigger, clearSearchValue, searchValue, setFilterType }: Men
     <SelectProvider value={values("statuses")} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
+        sameWidth={false}
+        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
         hideOnEscape={() => {
-          setFilterType(undefined);
-          return false;
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
         }}
       >
         <ComboBox placeholder={"Filter by status..."} value={searchValue} />
@@ -269,6 +310,35 @@ function Statuses({ trigger, clearSearchValue, searchValue, setFilterType }: Men
         </SelectList>
       </SelectPopover>
     </SelectProvider>
+  );
+}
+
+function AppliedStatusFilter() {
+  const { values, del } = useSearchParams();
+  const statuses = values("statuses");
+
+  if (statuses.length === 0) {
+    return null;
+  }
+
+  return (
+    <FilterMenuProvider onClose={() => {}}>
+      {(search, setSearch) => (
+        <StatusDropdown
+          trigger={
+            <Ariakit.Select render={<div className="cursor-pointer" />}>
+              <AppliedFilter
+                label="Status"
+                value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
+                onRemove={() => del(["statuses", "cursor", "direction"])}
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
   );
 }
 
@@ -462,36 +532,6 @@ function Created({ trigger, clearSearchValue, searchValue, setFilterType }: Menu
         </SelectList>
       </SelectPopover>
     </SelectProvider>
-  );
-}
-
-function AppliedFilters({ possibleEnvironments, possibleTasks }: RunFiltersProps) {
-  return (
-    <>
-      <AppliedStatusFilter />
-      <AppliedEnvironmentFilter possibleEnvironments={possibleEnvironments} />
-      <AppliedTaskFilter possibleTasks={possibleTasks} />
-      <AppliedPeriodFilter />
-    </>
-  );
-}
-
-const maxStatusesToShow = 3;
-
-function AppliedStatusFilter() {
-  const { values, del } = useSearchParams();
-  const statuses = values("statuses");
-
-  if (statuses.length === 0) {
-    return null;
-  }
-
-  return (
-    <AppliedFilter
-      label="Status"
-      value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
-      onRemove={() => del(["statuses", "cursor", "direction"])}
-    />
   );
 }
 
