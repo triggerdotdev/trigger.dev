@@ -3,7 +3,7 @@ import { logger, task, wait } from "@trigger.dev/sdk/v3";
 export const oneAtATime = task({
   id: "on-at-a-time",
   queue: {
-    concurrencyLimit: 2,
+    concurrencyLimit: 1,
   },
   run: async (payload: { message: string }) => {
     logger.info("One at a time task payload", { payload });
