@@ -9,7 +9,7 @@ const variants = {
   },
   secondary: {
     base: "bg-charcoal-700/50",
-    active: "text-text-bright bg-charcoal-700 rounded-[2px]",
+    active: "text-text-bright bg-charcoal-700 rounded-[2px] border border-charcoal-600/50",
   },
 };
 
