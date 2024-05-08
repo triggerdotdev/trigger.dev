@@ -55,10 +55,14 @@ export class ProdRuntimeManager implements RuntimeManager {
       this._waitForDuration = { resolve, reject };
     });
 
-    const { willCheckpointAndRestore } = await this.ipc.sendWithAck("WAIT_FOR_DURATION", {
-      ms,
-      now,
-    });
+    const { willCheckpointAndRestore } = await this.ipc.sendWithAck(
+      "WAIT_FOR_DURATION",
+      {
+        ms,
+        now,
+      },
+      10_000
+    );
 
     if (!willCheckpointAndRestore) {
       await internalTimeout;
@@ -74,14 +78,24 @@ export class ProdRuntimeManager implements RuntimeManager {
     // Resets the clock to the current time
     clock.reset();
 
-    // The coordinator should cancel any in-progress checkpoints
-    const { checkpointCanceled, version } = await this.ipc.sendWithAck("CANCEL_CHECKPOINT", {
-      version: "v2",
-      reason: "WAIT_FOR_DURATION",
-    });
+    try {
+      // The coordinator should cancel any in-progress checkpoints
+      const { checkpointCanceled, version } = await this.ipc.sendWithAck(
+        "CANCEL_CHECKPOINT",
+        {
+          version: "v2",
+          reason: "WAIT_FOR_DURATION",
+        },
+        10_000
+      );
 
-    if (checkpointCanceled) {
-      // There won't be a checkpoint or external resume and we've already completed our internal timeout
+      if (checkpointCanceled) {
+        // There won't be a checkpoint or external resume and we've already completed our internal timeout
+        return;
+      }
+    } catch (error) {
+      // If the cancellation times out, we will proceed as if the checkpoint was canceled
+      logger.debug("Checkpoint cancellation timed out", { error });
       return;
     }
 
