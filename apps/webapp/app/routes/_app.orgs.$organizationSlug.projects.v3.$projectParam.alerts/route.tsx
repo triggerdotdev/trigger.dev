@@ -350,7 +350,7 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
           leadingIcon={
             <AlertChannelTypeIcon
               channelType={alertChannel.type}
-              className="h-4 w-4 text-charcoal-400"
+              className="size-5 text-charcoal-400"
             />
           }
           leadingIconClassName="text-charcoal-400"
@@ -368,7 +368,7 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
                 <TooltipTrigger>
                   <AlertChannelTypeIcon
                     channelType={alertChannel.type}
-                    className="h-4 w-4 text-charcoal-400"
+                    className="size-5 text-charcoal-400"
                   />
                 </TooltipTrigger>
                 <TooltipContent className="flex items-center gap-1">Webhook</TooltipContent>
@@ -396,7 +396,7 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
           leadingIcon={
             <AlertChannelTypeIcon
               channelType={alertChannel.type}
-              className="h-4 w-4 text-charcoal-400"
+              className="size-5 text-charcoal-400"
             />
           }
           leadingIconClassName="text-charcoal-400"
