@@ -17,6 +17,13 @@ export default function Story() {
       <Checkbox
         name="Simple checkbox"
         id="check1"
+        variant="simple/small"
+        label="This is a simple small checkbox"
+        disabled={isDisabled}
+      />
+      <Checkbox
+        name="Simple checkbox"
+        id="check1"
         variant="simple"
         label="This is a simple checkbox"
         disabled={isDisabled}
