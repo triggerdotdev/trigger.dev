@@ -21,39 +21,14 @@ import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors";
-
-class UnexpectedExitError extends Error {
-  constructor(public code: number) {
-    super(`Unexpected exit with code ${code}`);
-
-    this.name = "UnexpectedExitError";
-  }
-}
-
-class CleanupProcessError extends Error {
-  constructor() {
-    super("Cancelled");
-
-    this.name = "CleanupProcessError";
-  }
-}
-
-class CancelledProcessError extends Error {
-  constructor() {
-    super("Cancelled");
-
-    this.name = "CancelledProcessError";
-  }
-}
-
-class SigKillTimeoutProcessError extends Error {
-  constructor() {
-    super("Process kill timeout");
-
-    this.name = "SigKillTimeoutProcessError";
-  }
-}
+import {
+  CancelledProcessError,
+  CleanupProcessError,
+  SigKillTimeoutProcessError,
+  TaskMetadataParseError,
+  UncaughtExceptionError,
+  UnexpectedExitError,
+} from "../common/errors";
 
 type BackgroundWorkerParams = {
   env: Record<string, string>;
@@ -104,6 +79,7 @@ export class ProdBackgroundWorker {
   public tasks: Array<TaskMetadataWithFilePath> = [];
 
   _taskRunProcess: TaskRunProcess | undefined;
+  private _taskRunProcessesBeingKilled: Set<number> = new Set();
 
   private _closed: boolean = false;
 
@@ -135,14 +111,16 @@ export class ProdBackgroundWorker {
       await this.flushTelemetry();
     }
 
+    const currentTaskRunProcess = this._taskRunProcess;
+
     try {
-      const initialExit = this._taskRunProcess.onExit.waitFor(5_000);
-      this._taskRunProcess.kill(initialSignal);
+      const initialExit = currentTaskRunProcess.onExit.waitFor(5_000);
+      currentTaskRunProcess.kill(initialSignal);
       await initialExit;
     } catch (error) {
       // Try again with SIGKILL
-      const forcedExit = this._taskRunProcess.onExit.waitFor(5_000);
-      this._taskRunProcess.kill("SIGKILL");
+      const forcedExit = currentTaskRunProcess.onExit.waitFor(5_000);
+      currentTaskRunProcess.kill("SIGKILL");
       await forcedExit;
     }
 
@@ -250,7 +228,7 @@ export class ProdBackgroundWorker {
     this._taskRunProcess?.waitCompletedNotification();
   }
 
-  async #initializeTaskRunProcess(
+  async #getFreshTaskRunProcess(
     payload: ProdTaskRunExecutionPayload,
     messageId?: string
   ): Promise<TaskRunProcess> {
@@ -261,93 +239,136 @@ export class ProdBackgroundWorker {
 
     this._closed = false;
 
-    // If the child process is currently being killed, we should wait for it to be dead before creating a fresh one (with a sensible timeout)
-    if (this._taskRunProcess?.isBeingKilled) {
-      try {
-        await this._taskRunProcess.onExit.waitFor(5_000);
-      } catch (error) {
-        console.error("TaskRunProcess graceful kill timeout exceeded", error);
+    await this.#killCurrentTaskRunProcessBeforeAttempt();
 
-        try {
-          const forcedKill = this._taskRunProcess.onExit.waitFor(5_000);
-          this._taskRunProcess.kill("SIGKILL");
-          await forcedKill;
-        } catch (error) {
-          console.error("TaskRunProcess forced kill timeout exceeded", error);
-          throw new SigKillTimeoutProcessError();
-        }
+    const taskRunProcess = new TaskRunProcess(
+      payload.execution.run.id,
+      payload.execution.run.isTest,
+      this.path,
+      {
+        ...this.params.env,
+        ...(payload.environment ?? {}),
+      },
+      metadata,
+      this.params,
+      messageId
+    );
+
+    taskRunProcess.onExit.attach(({ pid }) => {
+      this._taskRunProcess = undefined;
+      if (pid) {
+        this._taskRunProcessesBeingKilled.delete(pid);
       }
-    }
+    });
 
-    if (!this._taskRunProcess) {
-      const taskRunProcess = new TaskRunProcess(
-        payload.execution.run.id,
-        payload.execution.run.isTest,
-        this.path,
-        {
-          ...this.params.env,
-          ...(payload.environment ?? {}),
-        },
-        metadata,
-        this.params,
-        messageId
-      );
+    taskRunProcess.onIsBeingKilled.attach((pid) => {
+      if (pid) {
+        this._taskRunProcessesBeingKilled.add(pid);
+      }
+    });
 
-      taskRunProcess.onExit.attach(() => {
-        this._taskRunProcess = undefined;
-      });
+    taskRunProcess.onTaskHeartbeat.attach((id) => {
+      this.onTaskHeartbeat.post(id);
+    });
 
-      taskRunProcess.onTaskHeartbeat.attach((id) => {
-        this.onTaskHeartbeat.post(id);
-      });
+    taskRunProcess.onTaskRunHeartbeat.attach((id) => {
+      this.onTaskRunHeartbeat.post(id);
+    });
 
-      taskRunProcess.onTaskRunHeartbeat.attach((id) => {
-        this.onTaskRunHeartbeat.post(id);
-      });
+    taskRunProcess.onWaitForBatch.attach((message) => {
+      this.onWaitForBatch.post(message);
+    });
 
-      taskRunProcess.onWaitForBatch.attach((message) => {
-        this.onWaitForBatch.post(message);
-      });
+    taskRunProcess.onWaitForDuration.attach((message) => {
+      this.onWaitForDuration.post(message);
+    });
 
-      taskRunProcess.onWaitForDuration.attach((message) => {
-        this.onWaitForDuration.post(message);
-      });
+    taskRunProcess.onWaitForTask.attach((message) => {
+      this.onWaitForTask.post(message);
+    });
 
-      taskRunProcess.onWaitForTask.attach((message) => {
-        this.onWaitForTask.post(message);
-      });
+    taskRunProcess.onReadyForCheckpoint.attach((message) => {
+      this.onReadyForCheckpoint.post(message);
+    });
 
-      taskRunProcess.onReadyForCheckpoint.attach((message) => {
-        this.onReadyForCheckpoint.post(message);
-      });
+    taskRunProcess.onCancelCheckpoint.attach((message) => {
+      this.onCancelCheckpoint.post(message);
+    });
 
-      taskRunProcess.onCancelCheckpoint.attach((message) => {
-        this.onCancelCheckpoint.post(message);
-      });
+    // Notify down the chain
+    this.preCheckpointNotification.attach((message) => {
+      taskRunProcess.preCheckpointNotification.post(message);
+    });
+    this.checkpointCanceledNotification.attach((message) => {
+      taskRunProcess.checkpointCanceledNotification.post(message);
+    });
 
-      // Notify down the chain
-      this.preCheckpointNotification.attach((message) => {
-        taskRunProcess.preCheckpointNotification.post(message);
-      });
-      this.checkpointCanceledNotification.attach((message) => {
-        taskRunProcess.checkpointCanceledNotification.post(message);
-      });
+    await taskRunProcess.initialize();
 
-      await taskRunProcess.initialize();
-
-      this._taskRunProcess = taskRunProcess;
-    }
+    this._taskRunProcess = taskRunProcess;
 
     return this._taskRunProcess;
   }
 
-  // We need to fork the process before we can execute any tasks
+  async #killCurrentTaskRunProcessBeforeAttempt() {
+    if (!this._taskRunProcess) {
+      return;
+    }
+
+    const currentTaskRunProcess = this._taskRunProcess;
+
+    if (currentTaskRunProcess.isBeingKilled) {
+      if (this._taskRunProcessesBeingKilled.size > 1) {
+        // If there's more than one being killed, wait for graceful exit
+        try {
+          await currentTaskRunProcess.onExit.waitFor(5_000);
+        } catch (error) {
+          console.error("TaskRunProcess graceful kill timeout exceeded", error);
+
+          try {
+            const forcedKill = currentTaskRunProcess.onExit.waitFor(5_000);
+            currentTaskRunProcess.kill("SIGKILL");
+            await forcedKill;
+          } catch (error) {
+            console.error("TaskRunProcess forced kill timeout exceeded", error);
+            throw new SigKillTimeoutProcessError();
+          }
+        }
+      } else {
+        // If there's only one or none being killed, don't do anything so we can create a fresh one in parallel
+      }
+    } else {
+      // It's not being killed, so kill it
+      if (this._taskRunProcessesBeingKilled.size > 0) {
+        // If there's one being killed already, wait for graceful exit
+        try {
+          await currentTaskRunProcess.onExit.waitFor(5_000);
+        } catch (error) {
+          console.error("TaskRunProcess graceful kill timeout exceeded", error);
+
+          try {
+            const forcedKill = currentTaskRunProcess.onExit.waitFor(5_000);
+            currentTaskRunProcess.kill("SIGKILL");
+            await forcedKill;
+          } catch (error) {
+            console.error("TaskRunProcess forced kill timeout exceeded", error);
+            throw new SigKillTimeoutProcessError();
+          }
+        }
+      } else {
+        // There's none being killed yet, so we can kill it without waiting. We still set a timeout to kill it forcefully just in case it sticks around.
+        currentTaskRunProcess.kill("SIGTERM", 5_000).catch(() => {});
+      }
+    }
+  }
+
+  // We need to fork the process before we can execute any tasks, use a fresh process for each execution
   async executeTaskRun(
     payload: ProdTaskRunExecutionPayload,
     messageId?: string
   ): Promise<TaskRunExecutionResult> {
     try {
-      const taskRunProcess = await this.#initializeTaskRunProcess(payload, messageId);
+      const taskRunProcess = await this.#getFreshTaskRunProcess(payload, messageId);
 
       const result = await taskRunProcess.executeTaskRun(payload);
 
@@ -483,6 +504,7 @@ class TaskRunProcess {
     typeof ProdWorkerToChildMessages
   >;
   private _child?: ChildProcess;
+  private _childPid?: number;
 
   private _attemptPromises: Map<
     string,
@@ -498,7 +520,9 @@ class TaskRunProcess {
    */
   public onTaskHeartbeat: Evt<string> = new Evt();
   public onTaskRunHeartbeat: Evt<string> = new Evt();
-  public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null }> = new Evt();
+  public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null; pid?: number }> =
+    new Evt();
+  public onIsBeingKilled: Evt<number | undefined> = new Evt();
 
   public onWaitForBatch: Evt<
     InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_BATCH">
@@ -538,6 +562,7 @@ class TaskRunProcess {
         ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
       },
     });
+    this._childPid = this._child?.pid;
 
     this._ipc = new ZodIpcConnection({
       listenSchema: ProdChildToWorkerMessages,
@@ -652,7 +677,10 @@ class TaskRunProcess {
       return;
     }
 
-    this._isBeingKilled = kill;
+    if (kill) {
+      this._isBeingKilled = true;
+      this.onIsBeingKilled.post(this._child?.pid);
+    }
 
     await this._ipc?.sendWithAck("CLEANUP", {
       flush: true,
@@ -736,7 +764,7 @@ class TaskRunProcess {
       }
     }
 
-    this.onExit.post({ code, signal });
+    this.onExit.post({ code, signal, pid: this.pid });
   }
 
   #handleLog(data: Buffer) {
@@ -769,11 +797,24 @@ class TaskRunProcess {
     );
   }
 
-  kill(signal?: number | NodeJS.Signals) {
+  async kill(signal?: number | NodeJS.Signals, timeoutInMs?: number) {
+    this._isBeingKilled = true;
+
+    const killTimeout = this.onExit.waitFor(timeoutInMs);
+
+    this.onIsBeingKilled.post(this._child?.pid);
     this._child?.kill(signal);
+
+    if (timeoutInMs) {
+      await killTimeout;
+    }
   }
 
   get isBeingKilled() {
     return this._isBeingKilled || this._child?.killed;
+  }
+
+  get pid() {
+    return this._childPid;
   }
 }
