@@ -30,8 +30,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug } = ProjectParamSchema.parse(params);
 
   const url = new URL(request.url);
-  const s = Object.fromEntries(url.searchParams.entries());
-  const { tasks, versions, statuses, environments, from, to, cursor, direction } =
+  const s = {
+    cursor: url.searchParams.get("cursor") ?? undefined,
+    direction: url.searchParams.get("direction") ?? undefined,
+    statuses: url.searchParams.getAll("statuses"),
+    environments: url.searchParams.getAll("environments"),
+    tasks: url.searchParams.getAll("tasks"),
+    period: url.searchParams.get("period") ?? undefined,
+  };
+  const { tasks, versions, statuses, environments, period, from, to, cursor, direction } =
     TaskRunListSearchFilters.parse(s);
 
   const presenter = new RunListPresenter();
@@ -42,6 +49,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     versions,
     statuses,
     environments,
+    period,
     from,
     to,
     direction: direction,
@@ -88,10 +96,11 @@ export default function Page() {
                 ) : (
                   <div className={cn("grid h-fit grid-cols-1 gap-4")}>
                     <div>
-                      <div className="mb-2 flex items-center justify-between gap-x-2">
+                      <div className="mb-2 flex items-start justify-between gap-x-2">
                         <RunsFilters
                           possibleEnvironments={project.environments}
                           possibleTasks={list.possibleTasks}
+                          hasFilters={list.hasFilters}
                         />
                         <div className="flex items-center justify-end gap-x-2">
                           <ListPagination list={list} />
