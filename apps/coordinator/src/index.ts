@@ -33,6 +33,10 @@ const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 
+if (CHAOS_MONKEY_ENABLED) {
+  logger.log("🍌 Chaos monkey enabled");
+}
+
 type CheckpointerInitializeReturn = {
   canCheckpoint: boolean;
   willSimulate: boolean;
@@ -224,6 +228,22 @@ class Checkpointer {
     const $$ = $({ signal: controller.signal });
 
     try {
+      if (CHAOS_MONKEY_ENABLED) {
+        console.log("🍌 Chaos monkey wreaking havoc");
+
+        const random = Math.random();
+
+        if (random < 0.33) {
+          // Fake long checkpoint duration
+          await $$`sleep 300`;
+        } else if (random < 0.66) {
+          // Fake checkpoint error
+          await $$`false`;
+        } else {
+          // no-op
+        }
+      }
+
       const shortCode = nanoid(8);
       const imageRef = this.#getImageRef(projectRef, deploymentVersion, shortCode);
       const exportLocation = this.#getExportLocation(projectRef, deploymentVersion, shortCode);
