@@ -16,7 +16,21 @@ export const client = new TriggerClient({
 });
 ```
 
-## 2. Set your environment variables on your server
+## 2. Include your Jobs in `sideEffects` if needed
+
+If your `package.json` does not declare `sideEffects`, you can safely skip this step. Otherwise, include a glob pattern that matches your jobs so that they are not tree shaken away in your production bundle.
+
+```json
+// package.json
+{
+  "name": "my-app",
+  "sideEffects": [
+    "./src/jobs/**/*.ts"
+  ]
+}
+```
+
+## 3. Set your environment variables on your server
 
 Ensure that your `TRIGGER_API_KEY` (or whatever you've set it to) environment variable is set on your server, to the correct value from the "Environments & API Keys" page in your Trigger.dev dashboard.
 
@@ -31,11 +45,11 @@ The exact instructions will vary depending on where you deploy to. Here are the 
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/platform/environment-variables/)
 - [Netlify](https://docs.netlify.com/environment-variables/overview/)
 
-## 3. Deploy your code as usual
+## 4. Deploy your code as usual
 
 Your Job code lives in your codebase, so you can deploy it as you normally would.
 
-## 4. Connect the Endpoint for the first time
+## 5. Connect the Endpoint for the first time
 
 1. Go to the "Environments & API Keys" page in your Trigger.dev dashboard
    ![Go to the Environments & API Keys page ](/images/environments-link.png)
