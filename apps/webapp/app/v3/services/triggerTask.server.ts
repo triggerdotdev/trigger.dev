@@ -4,7 +4,6 @@ import {
   TriggerTaskRequestBody,
   packetRequiresOffloading,
 } from "@trigger.dev/core/v3";
-import { nanoid } from "nanoid";
 import { createHash } from "node:crypto";
 import { $transaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";

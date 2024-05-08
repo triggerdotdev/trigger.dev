@@ -260,6 +260,14 @@ export class SharedQueueConsumer {
           where: {
             id: message.messageId,
           },
+          include: {
+            lockedToVersion: {
+              include: {
+                deployment: true,
+                tasks: true,
+              },
+            },
+          },
         });
 
         if (!existingTaskRun) {
@@ -309,7 +317,12 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const deployment = await findCurrentWorkerDeployment(existingTaskRun.runtimeEnvironmentId);
+        const deployment = existingTaskRun.lockedToVersion?.deployment
+          ? {
+              ...existingTaskRun.lockedToVersion.deployment,
+              worker: existingTaskRun.lockedToVersion,
+            }
+          : await findCurrentWorkerDeployment(existingTaskRun.runtimeEnvironmentId);
 
         if (!deployment || !deployment.worker) {
           logger.error("No matching deployment found for task run", {
@@ -384,6 +397,7 @@ export class SharedQueueConsumer {
           data: {
             lockedAt: new Date(),
             lockedById: backgroundTask.id,
+            lockedToVersionId: deployment.worker.id,
           },
           include: {
             runtimeEnvironment: true,

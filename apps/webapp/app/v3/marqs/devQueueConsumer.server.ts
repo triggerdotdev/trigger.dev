@@ -409,6 +409,7 @@ export class DevQueueConsumer {
       data: {
         lockedAt: new Date(),
         lockedById: backgroundTask.id,
+        lockedToVersionId: backgroundWorker.id,
       },
       include: {
         attempts: {
