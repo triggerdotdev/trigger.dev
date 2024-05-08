@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { $ } from "execa";
+import { $, type ExecaChildProcess } from "execa";
 import { nanoid } from "nanoid";
 import { Server } from "socket.io";
 import {
@@ -19,6 +19,7 @@ collectDefaultMetrics();
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8020);
 const NODE_NAME = process.env.NODE_NAME || "coordinator";
 const DEFAULT_RETRY_DELAY_THRESHOLD_IN_MS = 30_000;
+const CHAOS_MONKEY_ENABLED = !!process.env.CHAOS_MONKEY_ENABLED;
 
 const REGISTRY_HOST = process.env.REGISTRY_HOST || "localhost:5000";
 const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
@@ -49,6 +50,10 @@ type CheckpointData = {
   docker: boolean;
 };
 
+function isExecaChildProcess(maybeExeca: unknown): maybeExeca is Awaited<ExecaChildProcess> {
+  return typeof maybeExeca === "object" && maybeExeca !== null && "escapedCommand" in maybeExeca;
+}
+
 class Checkpointer {
   #initialized = false;
   #canCheckpoint = false;
@@ -56,6 +61,7 @@ class Checkpointer {
 
   #logger = new SimpleLogger("[checkptr]");
   #abortControllers = new Map<string, AbortController>();
+  #failedCheckpoints = new Map<string, unknown>();
 
   constructor(private opts = { forceSimulate: false }) {}
 
@@ -150,7 +156,11 @@ class Checkpointer {
       success: !!result,
     });
 
-    return result;
+    if (!result.success) {
+      return;
+    }
+
+    return result.checkpoint;
   }
 
   isCheckpointing(runId: string) {
@@ -158,6 +168,13 @@ class Checkpointer {
   }
 
   cancelCheckpoint(runId: string): boolean {
+    // If the last checkpoint failed, pretend we canceled it
+    // This ensures tasks don't wait for external resume messages to continue
+    if (this.#hasFailedCheckpoint(runId)) {
+      this.#clearFailedCheckpoint(runId);
+      return true;
+    }
+
     const controller = this.#abortControllers.get(runId);
 
     if (!controller) {
@@ -176,25 +193,30 @@ class Checkpointer {
     leaveRunning = true, // This mirrors kubernetes behaviour more accurately
     projectRef,
     deploymentVersion,
-  }: CheckpointAndPushOptions): Promise<CheckpointData | undefined> {
+  }: CheckpointAndPushOptions): Promise<
+    { success: true; checkpoint: CheckpointData } | { success: false; reason?: "CANCELED" }
+  > {
     await this.initialize();
+
+    const options = {
+      runId,
+      leaveRunning,
+      projectRef,
+      deploymentVersion,
+    };
 
     if (!this.#dockerMode && !this.#canCheckpoint) {
       this.#logger.error("No checkpoint support. Simulation requires docker.");
-      return;
+      return { success: false };
     }
 
     if (this.#abortControllers.has(runId)) {
-      logger.error("Checkpoint procedure already in progress", {
-        options: {
-          runId,
-          leaveRunning,
-          projectRef,
-          deploymentVersion,
-        },
-      });
-      return;
+      logger.error("Checkpoint procedure already in progress", { options });
+      return { success: false };
     }
+
+    // This is a new checkpoint, clear any last failure for this run
+    this.#clearFailedCheckpoint(runId);
 
     const controller = new AbortController();
     this.#abortControllers.set(runId, controller);
@@ -206,14 +228,7 @@ class Checkpointer {
       const imageRef = this.#getImageRef(projectRef, deploymentVersion, shortCode);
       const exportLocation = this.#getExportLocation(projectRef, deploymentVersion, shortCode);
 
-      this.#logger.log("Checkpointing:", {
-        options: {
-          runId,
-          leaveRunning,
-          projectRef,
-          deploymentVersion,
-        },
-      });
+      this.#logger.log("Checkpointing:", { options });
 
       const containterName = this.#getRunContainerName(runId);
 
@@ -234,9 +249,9 @@ class Checkpointer {
               );
             }
           }
-        } catch (error: any) {
-          this.#logger.error(error.stderr);
-          return;
+        } catch (error) {
+          this.#logger.error("Failed while creating docker checkpoint", { exportLocation });
+          throw error;
         }
 
         this.#logger.log("checkpoint created:", {
@@ -245,8 +260,11 @@ class Checkpointer {
         });
 
         return {
-          location: exportLocation,
-          docker: true,
+          success: true,
+          checkpoint: {
+            location: exportLocation,
+            docker: true,
+          },
         };
       }
 
@@ -290,27 +308,50 @@ class Checkpointer {
         this.#logger.log("Deleted checkpoint image", { imageRef });
       } catch (error) {
         this.#logger.error("Failed during checkpoint cleanup", { exportLocation });
-        this.#logger.debug(error);
+        throw error;
       }
 
       return {
-        location: imageRef,
-        docker: false,
+        success: true,
+        checkpoint: {
+          location: imageRef,
+          docker: false,
+        },
       };
     } catch (error) {
-      this.#logger.error("checkpoint failed", {
-        options: {
-          runId,
-          leaveRunning,
-          projectRef,
-          deploymentVersion,
-        },
-        error,
-      });
-      return;
+      if (isExecaChildProcess(error)) {
+        if (error.isCanceled) {
+          this.#logger.error("Checkpoint canceled", { options, error });
+
+          return { success: false, reason: "CANCELED" };
+        }
+
+        // Everything that's not a cancellation is a failure
+        this.#failCheckpoint(runId, error);
+        this.#logger.error("Checkpoint command error", { options, error });
+
+        return { success: false };
+      }
+
+      this.#failCheckpoint(runId, error);
+      this.#logger.error("Unhandled checkpoint error", { options, error });
+
+      return { success: false };
     } finally {
       this.#abortControllers.delete(runId);
     }
+  }
+
+  #failCheckpoint(runId: string, error: unknown) {
+    this.#failedCheckpoints.set(runId, error);
+  }
+
+  #clearFailedCheckpoint(runId: string) {
+    this.#failedCheckpoints.delete(runId);
+  }
+
+  #hasFailedCheckpoint(runId: string) {
+    return this.#failedCheckpoints.has(runId);
   }
 
   #getRunContainerName(suffix: string) {
@@ -947,7 +988,7 @@ class TaskCoordinator {
     return provider;
   }
 
-  #cancelCheckpoint(runId: string) {
+  #cancelCheckpoint(runId: string): boolean {
     const checkpointWait = this.#checkpointableTasks.get(runId);
 
     if (checkpointWait) {
