@@ -16,14 +16,7 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/primitives/Select";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { prisma } from "~/db.server";
 import { useFeatures } from "~/hooks/useFeatures";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -148,20 +141,24 @@ export default function NewOrganizationPage() {
             {canCreateV3Projects ? (
               <InputGroup>
                 <Label htmlFor={projectVersion.id}>Project version</Label>
-                <SelectGroup>
-                  <Select
-                    {...conform.input(projectVersion, { type: "select" })}
-                    defaultValue={defaultVersion}
-                  >
-                    <SelectTrigger width="full" size="medium">
-                      <SelectValue placeholder="Project version" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="v2">Version 2</SelectItem>
-                      <SelectItem value="v3">Version 3 (Developer Preview)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </SelectGroup>
+                <Select
+                  {...conform.select(projectVersion)}
+                  defaultValue={undefined}
+                  variant="tertiary/medium"
+                  placeholder="Select version"
+                  dropdownIcon
+                  text={(value) => {
+                    switch (value) {
+                      case "v2":
+                        return "Version 2";
+                      case "v3":
+                        return "Version 3";
+                    }
+                  }}
+                >
+                  <SelectItem value="v2">Version 2</SelectItem>
+                  <SelectItem value="v3">Version 3 (Developer Preview)</SelectItem>
+                </Select>
                 <FormError id={projectVersion.errorId}>{projectVersion.error}</FormError>
               </InputGroup>
             ) : (

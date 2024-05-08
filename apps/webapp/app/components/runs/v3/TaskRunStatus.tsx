@@ -15,6 +15,20 @@ import { SnowflakeIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
+export const allTaskRunStatuses = [
+  "WAITING_FOR_DEPLOY",
+  "PENDING",
+  "EXECUTING",
+  "RETRYING_AFTER_FAILURE",
+  "WAITING_TO_RESUME",
+  "COMPLETED_SUCCESSFULLY",
+  "CANCELED",
+  "COMPLETED_WITH_ERRORS",
+  "CRASHED",
+  "INTERRUPTED",
+  "SYSTEM_FAILURE",
+] as TaskRunStatus[];
+
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   PENDING: "Task is waiting to be executed",
   WAITING_FOR_DEPLOY: "Task needs to be deployed first to start executing",

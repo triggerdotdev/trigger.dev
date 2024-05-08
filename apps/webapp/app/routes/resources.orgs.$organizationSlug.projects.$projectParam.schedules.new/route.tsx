@@ -21,14 +21,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/primitives/Select";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import {
   Table,
   TableBody,
@@ -189,28 +182,25 @@ export function UpsertScheduleForm({
           <Fieldset>
             <InputGroup>
               <Label htmlFor={taskIdentifier.id}>Task</Label>
-              <SelectGroup>
-                <Select
-                  {...conform.input(taskIdentifier, { type: "select" })}
-                  defaultValue={schedule?.taskIdentifier}
-                >
-                  <SelectTrigger size="medium" width="full">
-                    <SelectValue placeholder="Select task" className="ml-2 p-0" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {possibleTasks.map((task) => (
+              <Select
+                {...conform.select(taskIdentifier)}
+                placeholder="Select a task"
+                defaultValue={schedule?.taskIdentifier}
+                heading={"Filter..."}
+                items={possibleTasks}
+                filter={(task, search) => task.toLowerCase().includes(search.toLowerCase())}
+                dropdownIcon
+              >
+                {(matches) => (
+                  <>
+                    {matches?.map((task) => (
                       <SelectItem key={task} value={task}>
-                        <Paragraph
-                          variant="extra-small"
-                          className="pl-0.5 transition group-hover:text-text-bright"
-                        >
-                          {task}
-                        </Paragraph>
+                        {task}
                       </SelectItem>
                     ))}
-                  </SelectContent>
-                </Select>
-              </SelectGroup>
+                  </>
+                )}
+              </Select>
               <FormError id={taskIdentifier.errorId}>{taskIdentifier.error}</FormError>
             </InputGroup>
             {showGenerateField && <AIGeneratedCronField onSuccess={setCronPattern} />}

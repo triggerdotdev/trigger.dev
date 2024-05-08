@@ -17,16 +17,22 @@ export type ShortcutDefinition =
   | Shortcut;
 
 type useShortcutKeysProps = {
-  shortcut: ShortcutDefinition;
+  shortcut: ShortcutDefinition | undefined;
   action: (event: KeyboardEvent) => void;
   disabled?: boolean;
   enabledOnInputElements?: boolean;
 };
 
-export function useShortcutKeys({ shortcut, action, disabled = false }: useShortcutKeysProps) {
+export function useShortcutKeys({
+  shortcut,
+  action,
+  disabled = false,
+  enabledOnInputElements,
+}: useShortcutKeysProps) {
   const { platform } = useOperatingSystem();
   const isMac = platform === "mac";
-  const relevantShortcut = "mac" in shortcut ? (isMac ? shortcut.mac : shortcut.windows) : shortcut;
+  const relevantShortcut =
+    shortcut && "mac" in shortcut ? (isMac ? shortcut.mac : shortcut.windows) : shortcut;
 
   const keys = createKeysFromShortcut(relevantShortcut);
   useHotkeys(
@@ -36,13 +42,17 @@ export function useShortcutKeys({ shortcut, action, disabled = false }: useShort
     },
     {
       enabled: !disabled,
-      enableOnFormTags: relevantShortcut.enabledOnInputElements,
-      enableOnContentEditable: relevantShortcut.enabledOnInputElements,
+      enableOnFormTags: enabledOnInputElements ?? relevantShortcut?.enabledOnInputElements,
+      enableOnContentEditable: enabledOnInputElements ?? relevantShortcut?.enabledOnInputElements,
     }
   );
 }
 
-function createKeysFromShortcut(shortcut: Shortcut) {
+function createKeysFromShortcut(shortcut: Shortcut | undefined) {
+  if (!shortcut) {
+    return [];
+  }
+
   const modifiers = shortcut.modifiers;
   const character = shortcut.key;
 
