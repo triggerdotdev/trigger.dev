@@ -95,6 +95,12 @@ export function createWebhookEventSource(integration: Shopify) {
             },
           });
 
+          if (!webhook.id) {
+            throw new Error(
+              "Could not subscribe endpoint to webhook. Make sure your shopfiy client configuration is correct. (you have the right permissions and are using the primary myshopify domain)"
+            );
+          }
+
           const clientSecret = await io.integration.runTask(
             "get-client-secret",
             async (client) => client.config.apiSecretKey

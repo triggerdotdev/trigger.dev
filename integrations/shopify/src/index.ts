@@ -75,16 +75,18 @@ export class Shopify implements TriggerIntegration {
       throw `Can't create Shopify integration (${options.id}) as hostName was undefined`;
     }
 
-    // Regular expression to ensure the hostname ends with `.myshopify.com`
+    this._options = options;
+    // Extract the shop domain if user has entered the full URL
+    this._shopDomain = this._options.hostName
+      .replace(/^https?:\/\//, "") // Remove http:// or https://
+      .replace(/\/$/, ""); // Remove trailing slash if it exists (e.g. `example.myshopify.com/`)
+
+    // Regular expression to ensure the shopDomain is a valid `.myshopify.com` domain
     const shopifyDomainPattern = /^[a-zA-Z0-9-]+\.myshopify\.com$/;
 
-    // Verify that the user has entered the .myshopify.com domain and not a custom primary domain
-    if (!shopifyDomainPattern.test(options.hostName)) {
-      throw `Can't create Shopify integration (${options.id}) because hostName should be a ".myshopify.com" domain, not a custom primary domain.`;
+    if (!shopifyDomainPattern.test(this._shopDomain)) {
+      throw `Can't create Shopify integration (${options.id}) because hostName should be a valid ".myshopify.com" domain, not a custom primary domain. For example: my-domain.myshopify.com`;
     }
-
-    this._options = options;
-    this._shopDomain = this._options.hostName.replace("http://", "").replace("https://", "");
   }
 
   get authSource() {
