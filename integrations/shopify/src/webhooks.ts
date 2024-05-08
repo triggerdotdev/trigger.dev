@@ -97,7 +97,7 @@ export function createWebhookEventSource(integration: Shopify) {
 
           if (!webhook.id) {
             throw new Error(
-              "Could not subscribe endpoint to webhook. Make sure your shopfiy client configuration is correct. (you have the right permissions and are using the primary myshopify domain)"
+              "Failed to create webhook. Ensure your Shopfiy client configuration is correct. Have you set the correct access scopes? Are you using the primary myshopify.com domain?"
             );
           }
 
@@ -109,7 +109,11 @@ export function createWebhookEventSource(integration: Shopify) {
           await io.store.job.set("set-id", "webhook-id", webhook.id);
           await io.store.job.set("set-secret", "webhook-secret", clientSecret);
         } catch (error) {
-          await io.logger.error(`Failed to create webhook: ${(error as Error).message}`);
+          if (error instanceof Error) {
+            await io.logger.error(`Failed to create webhook: ${error.message}`);
+          } else {
+            await io.logger.error("Failed to create webhook", { rawError: error });
+          }
           throw error;
         }
       },
@@ -125,7 +129,11 @@ export function createWebhookEventSource(integration: Shopify) {
             id: webhookId,
           });
         } catch (error) {
-          await io.logger.error(`Failed to delete webhook: ${(error as Error).message}`);
+          if (error instanceof Error) {
+            await io.logger.error(`Failed to delete webhook: ${error.message}`);
+          } else {
+            await io.logger.error("Failed to delete webhook", { rawError: error });
+          }
           throw error;
         }
 
@@ -144,7 +152,11 @@ export function createWebhookEventSource(integration: Shopify) {
             },
           });
         } catch (error) {
-          await io.logger.error(`Failed to update webhook: ${(error as Error).message}`);
+          if (error instanceof Error) {
+            await io.logger.error(`Failed to update webhook: ${error.message}`);
+          } else {
+            await io.logger.error("Failed to update webhook", { rawError: error });
+          }
           throw error;
         }
       },
