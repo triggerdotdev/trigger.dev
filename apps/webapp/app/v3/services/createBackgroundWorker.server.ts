@@ -173,7 +173,7 @@ export async function createBackgroundTasks(
         },
       });
 
-      if (taskQueue.concurrencyLimit) {
+      if (typeof taskQueue.concurrencyLimit === "number") {
         await marqs?.updateQueueConcurrencyLimits(
           environment,
           taskQueue.name,
