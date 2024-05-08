@@ -48,11 +48,11 @@ const theme = {
       "border-black/40 text-charcoal-900 group-hover:border-black/60 group-hover:text-charcoal-900",
   },
   secondary: {
-    textColor: "text-primary group-hover:text-apple-200 transition group-disabled:text-primary",
+    textColor: "text-secondary group-hover:text-secondary transition group-disabled:text-secondary",
     button:
-      "bg-transparent border border-primary group-hover:border-apple-200 group-hover:bg-apple-950 group-disabled:opacity-30 group-disabled:border-primary group-disabled:bg-transparent group-disabled:pointer-events-none",
+      "bg-transparent border border-secondary group-hover:border-secondary group-hover:bg-secondary/10 group-disabled:opacity-30 group-disabled:border-secondary group-disabled:bg-transparent group-disabled:pointer-events-none",
     shortcut:
-      "border-primary/30 text-apple-200 group-hover:text-text-bright/80 group-hover:border-dimmed/60",
+      "border-secondary/30 text-secondary group-hover:text-text-bright/80 group-hover:border-dimmed/60",
   },
   tertiary: {
     textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
