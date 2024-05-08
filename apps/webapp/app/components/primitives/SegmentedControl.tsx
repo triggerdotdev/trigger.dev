@@ -4,10 +4,12 @@ import { cn } from "~/utils/cn";
 
 const variants = {
   primary: {
+    base: "bg-charcoal-700",
     active: "text-text-bright hover:bg-charcoal-750/50",
   },
   secondary: {
-    active: "text-text-bright bg-charcoal-600 rounded-[2px]",
+    base: "bg-charcoal-700/50",
+    active: "text-text-bright bg-charcoal-700 rounded-[2px]",
   },
 };
 
@@ -40,7 +42,8 @@ export default function SegmentedControl({
   return (
     <div
       className={cn(
-        "flex h-10 rounded bg-charcoal-700 text-text-bright",
+        "flex h-10 rounded text-text-bright",
+        variants[variant].base,
         fullWidth ? "w-full" : "w-fit"
       )}
     >
