@@ -1,5 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { HashtagIcon, LockClosedIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/router";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
@@ -20,14 +21,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/primitives/Select";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -249,7 +243,6 @@ export default function Page() {
                 onChange={(value) => {
                   setCurrentAlertChannel(value);
                 }}
-                variant="secondary"
                 fullWidth
                 defaultValue={currentAlertChannel ?? undefined}
               />
@@ -270,22 +263,33 @@ export default function Page() {
               <InputGroup fullWidth>
                 {slack.status === "READY" ? (
                   <>
-                    <SelectGroup>
-                      <Select {...conform.input(channelValue, { type: "select" })}>
-                        <SelectTrigger width="full" size="medium">
-                          <SelectValue placeholder="Select a Slack channel" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {slack.channels.map((channel) =>
-                            channel.id ? (
-                              <SelectItem key={channel.id} value={`${channel.id}/${channel.name}`}>
-                                {channel.name}
-                              </SelectItem>
-                            ) : null
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </SelectGroup>
+                    <Select
+                      {...conform.select(channelValue)}
+                      placeholder="Select a Slack channel"
+                      heading="Filter channels…"
+                      defaultValue={undefined}
+                      dropdownIcon
+                      variant="tertiary/medium"
+                      items={slack.channels}
+                      filter={(channel, search) =>
+                        channel.name?.toLowerCase().includes(search.toLowerCase()) ?? false
+                      }
+                      text={(value) => {
+                        const channel = slack.channels.find((s) => value === `${s.id}/${s.name}`);
+                        if (!channel) return;
+                        return <SlackChannelTitle {...channel} />;
+                      }}
+                    >
+                      {(matches) => (
+                        <>
+                          {matches?.map((channel) => (
+                            <SelectItem key={channel.id} value={`${channel.id}/${channel.name}`}>
+                              <SlackChannelTitle {...channel} />
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
+                    </Select>
                     <Hint className="leading-relaxed">
                       If selecting a private channel, you will need to invite the bot to the channel
                       using <InlineCode variant="extra-small">/invite @Trigger.dev</InlineCode>
@@ -380,5 +384,14 @@ export default function Page() {
         </Form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SlackChannelTitle({ name, is_private }: { name?: string; is_private?: boolean }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {is_private ? <LockClosedIcon className="size-4" /> : <HashtagIcon className="size-4" />}
+      <span>{name}</span>
+    </div>
   );
 }

@@ -35,7 +35,7 @@ export default function SegmentedControl({
   value,
   defaultValue,
   options,
-  variant = "primary",
+  variant = "secondary",
   fullWidth,
   onChange,
 }: SegmentedControlProps) {
