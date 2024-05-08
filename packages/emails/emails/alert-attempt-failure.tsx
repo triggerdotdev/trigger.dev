@@ -1,18 +1,18 @@
 import {
+  Body,
   CodeBlock,
   Container,
   Head,
   Html,
   Link,
   Preview,
-  Section,
   Text,
   dracula,
 } from "@react-email/components";
 import { z } from "zod";
 import { Footer } from "./components/Footer";
 import { Image } from "./components/Image";
-import { anchor, container, h1, main, paragraphLight } from "./components/styles";
+import { anchor, container, h1, main, paragraphLight, paragraphTight } from "./components/styles";
 
 export const AlertAttemptEmailSchema = z.object({
   email: z.literal("alert-attempt"),
@@ -53,11 +53,14 @@ export default function Email(props: z.infer<typeof AlertAttemptEmailSchema>) {
     <Html>
       <Head />
       <Preview>{`[${version}.${environment} ${taskIdentifier}] ${error.message}`}</Preview>
-      <Section style={main}>
+      <Body style={main}>
         <Container style={container}>
-          <Text
-            style={h1}
-          >{`There's been an error on ${taskIdentifier} (${fileName} -> ${exportName}) [${version}.${environment}]`}</Text>
+          <Text style={h1}>There's been an error on `{taskIdentifier}`</Text>
+          <Text style={paragraphTight}>Task ID: {taskIdentifier}</Text>
+          <Text style={paragraphTight}>Filename: {fileName}</Text>
+          <Text style={paragraphTight}>Function: {exportName}()</Text>
+          <Text style={paragraphTight}>Version: {version}</Text>
+          <Text style={paragraphTight}>Environment: {environment}</Text>
 
           <Text style={paragraphLight}>{error.message}</Text>
           {error.stackTrace && (
@@ -69,7 +72,7 @@ export default function Email(props: z.infer<typeof AlertAttemptEmailSchema>) {
             style={{
               ...anchor,
               display: "block",
-              marginBottom: "16px",
+              marginBottom: "32px",
             }}
           >
             Investigate this error
@@ -78,7 +81,7 @@ export default function Email(props: z.infer<typeof AlertAttemptEmailSchema>) {
           <Image path="/emails/logo-mono.png" width="156" height="28" alt="Trigger.dev" />
           <Footer />
         </Container>
-      </Section>
+      </Body>
     </Html>
   );
 }

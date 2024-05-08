@@ -1,4 +1,4 @@
-import { Container, Head, Html, Link, Preview, Section, Text } from "@react-email/components";
+import { Body, Container, Head, Html, Link, Preview, Text } from "@react-email/components";
 import { z } from "zod";
 import { Footer } from "./components/Footer";
 import { Image } from "./components/Image";
@@ -22,7 +22,7 @@ export default function Email({
     <Html>
       <Head />
       <Preview>{`You've been invited to ${orgName}`}</Preview>
-      <Section style={main}>
+      <Body style={main}>
         <Container style={container}>
           <Text style={h1}>{`You've been invited to ${orgName}`}</Text>
           <Text style={paragraphLight}>
@@ -34,7 +34,7 @@ export default function Email({
             style={{
               ...anchor,
               display: "block",
-              marginBottom: "16px",
+              marginBottom: "32px",
             }}
           >
             Click here to view the invitation
@@ -43,7 +43,7 @@ export default function Email({
           <Image path="/emails/logo-mono.png" width="156" height="28" alt="Trigger.dev" />
           <Footer />
         </Container>
-      </Section>
+      </Body>
     </Html>
   );
 }

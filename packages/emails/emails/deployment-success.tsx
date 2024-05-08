@@ -1,4 +1,4 @@
-import { Container, Head, Html, Link, Preview, Section, Text } from "@react-email/components";
+import { Body, Container, Head, Html, Link, Preview, Text } from "@react-email/components";
 import { z } from "zod";
 import { Footer } from "./components/Footer";
 import { Image } from "./components/Image";
@@ -33,11 +33,11 @@ export default function Email(props: z.infer<typeof AlertDeploymentSuccessEmailS
     <Html>
       <Head />
       <Preview>{`Deployment ${version} [${environment}] succeeded`}</Preview>
-      <Section style={main}>
+      <Body style={main}>
         <Container style={container}>
           <Text
             style={h1}
-          >{`Version ${version} successfully deployed ${taskCount} tasks in ${environment}.`}</Text>
+          >{`Version ${version} successfully deployed ${taskCount} tasks in ${environment}`}</Text>
 
           <Link
             href={deploymentLink}
@@ -45,7 +45,7 @@ export default function Email(props: z.infer<typeof AlertDeploymentSuccessEmailS
             style={{
               ...anchor,
               display: "block",
-              marginBottom: "16px",
+              marginBottom: "32px",
             }}
           >
             View Deployment
@@ -54,7 +54,7 @@ export default function Email(props: z.infer<typeof AlertDeploymentSuccessEmailS
           <Image path="/emails/logo-mono.png" width="156" height="28" alt="Trigger.dev" />
           <Footer />
         </Container>
-      </Section>
+      </Body>
     </Html>
   );
 }

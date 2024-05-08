@@ -1,11 +1,11 @@
 import {
+  Body,
   CodeBlock,
   Container,
   Head,
   Html,
   Link,
   Preview,
-  Section,
   Text,
   dracula,
 } from "@react-email/components";
@@ -50,10 +50,9 @@ export default function Email(props: z.infer<typeof AlertDeploymentFailureEmailS
     <Html>
       <Head />
       <Preview>{`Deployment ${version} [${environment}] failed: ${error.name}`}</Preview>
-      <Section style={main}>
+      <Body style={main}>
         <Container style={container}>
-          <Text style={h1}>{`An error occurred deploying ${version} in ${environment}.`}</Text>
-
+          <Text style={h1}>{`An error occurred deploying ${version} in ${environment}`}</Text>
           <Text style={paragraphLight}>
             {error.name} {error.message}
           </Text>
@@ -66,16 +65,16 @@ export default function Email(props: z.infer<typeof AlertDeploymentFailureEmailS
             style={{
               ...anchor,
               display: "block",
-              marginBottom: "16px",
+              marginBottom: "32px",
             }}
           >
-            Investigate
+            Investigate this error
           </Link>
 
           <Image path="/emails/logo-mono.png" width="156" height="28" alt="Trigger.dev" />
           <Footer />
         </Container>
-      </Section>
+      </Body>
     </Html>
   );
 }
