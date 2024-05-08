@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dia
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
+import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
@@ -248,6 +249,8 @@ export default function Page() {
                 onChange={(value) => {
                   setCurrentAlertChannel(value);
                 }}
+                variant="secondary"
+                fullWidth
                 defaultValue={currentAlertChannel ?? undefined}
               />
             </InputGroup>
@@ -270,7 +273,7 @@ export default function Page() {
                     <SelectGroup>
                       <Select {...conform.input(channelValue, { type: "select" })}>
                         <SelectTrigger width="full" size="medium">
-                          <SelectValue placeholder="Slack channel" />
+                          <SelectValue placeholder="Select a Slack channel" />
                         </SelectTrigger>
                         <SelectContent>
                           {slack.channels.map((channel) =>
@@ -283,20 +286,18 @@ export default function Page() {
                         </SelectContent>
                       </Select>
                     </SelectGroup>
-                    <Callout variant="info" className="inline-flex">
+                    <Hint className="leading-relaxed">
                       If selecting a private channel, you will need to invite the bot to the channel
-                      using <InlineCode>/invite @Trigger.dev</InlineCode>
-                    </Callout>
+                      using <InlineCode variant="extra-small">/invite @Trigger.dev</InlineCode>
+                    </Hint>
                     <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
                     <input type="hidden" name="integrationId" value={slack.integrationId} />
                   </>
                 ) : slack.status === "NOT_CONFIGURED" ? (
-                  <LinkButton
-                    TrailingIcon={SlackIcon}
-                    variant="secondary/small"
-                    to="connect-to-slack"
-                  >
-                    Connect to Slack
+                  <LinkButton variant="tertiary/large" to="connect-to-slack" fullWidth>
+                    <span className="flex items-center gap-2 text-text-bright">
+                      <SlackIcon className="size-5" /> Connect to Slack
+                    </span>
                   </LinkButton>
                 ) : (
                   <Callout variant="warning">
@@ -315,9 +316,7 @@ export default function Page() {
                   autoFocus
                 />
                 <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
-                <Callout variant="info" className="inline-flex">
-                  We'll issue POST requests to this URL with a JSON payload.
-                </Callout>
+                <Hint>We'll issue POST requests to this URL with a JSON payload.</Hint>
               </InputGroup>
             )}
 
@@ -328,7 +327,7 @@ export default function Page() {
                 name={alertTypes.name}
                 id="TASK_RUN_ATTEMPT"
                 value="TASK_RUN_ATTEMPT"
-                variant="simple"
+                variant="simple/small"
                 label="Task run failure"
                 defaultChecked
               />
@@ -337,7 +336,7 @@ export default function Page() {
                 name={alertTypes.name}
                 id="DEPLOYMENT_FAILURE"
                 value="DEPLOYMENT_FAILURE"
-                variant="simple"
+                variant="simple/small"
                 label="Deployment failure"
                 defaultChecked
               />
@@ -346,7 +345,7 @@ export default function Page() {
                 name={alertTypes.name}
                 id="DEPLOYMENT_SUCCESS"
                 value="DEPLOYMENT_SUCCESS"
-                variant="simple"
+                variant="simple/small"
                 label="Deployment success"
                 defaultChecked
               />
@@ -355,29 +354,28 @@ export default function Page() {
             </InputGroup>
 
             <FormError>{form.error}</FormError>
-
-            <FormButtons
-              confirmButton={
-                <div className="flex flex-row-reverse items-center gap-2">
+            <div className="border-t border-grid-bright pt-3">
+              <FormButtons
+                confirmButton={
                   <Button
-                    variant="secondary/small"
+                    variant="primary/medium"
                     disabled={isLoading}
                     name="action"
                     value="create"
                   >
-                    {isLoading ? "Saving" : "Save"}
+                    {isLoading ? "Saving…" : "Save"}
                   </Button>
-                </div>
-              }
-              cancelButton={
-                <LinkButton
-                  to={v3ProjectAlertsPath(organization, project)}
-                  variant="tertiary/small"
-                >
-                  Cancel
-                </LinkButton>
-              }
-            />
+                }
+                cancelButton={
+                  <LinkButton
+                    to={v3ProjectAlertsPath(organization, project)}
+                    variant="tertiary/medium"
+                  >
+                    Cancel
+                  </LinkButton>
+                }
+              />
+            </div>
           </Fieldset>
         </Form>
       </DialogContent>
