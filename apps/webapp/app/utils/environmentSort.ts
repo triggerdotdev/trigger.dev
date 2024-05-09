@@ -1,5 +1,4 @@
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { logger } from "./logger.server";
 
 const environmentSortOrder: RuntimeEnvironmentType[] = [
   "DEVELOPMENT",

@@ -10,7 +10,7 @@ import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
 import { User } from "~/models/user.server";
-import { sortEnvironments } from "~/services/environmentSort.server";
+import { sortEnvironments } from "~/utils/environmentSort";
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
 
