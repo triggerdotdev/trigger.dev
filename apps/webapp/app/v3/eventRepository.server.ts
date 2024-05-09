@@ -17,6 +17,7 @@ import {
   isExceptionSpanEvent,
   omit,
   unflattenAttributes,
+  TaskRunError,
 } from "@trigger.dev/core/v3";
 import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
 import Redis, { RedisOptions } from "ioredis";
@@ -856,6 +857,36 @@ export function stripAttributePrefix(attributes: Attributes, prefix: string) {
     }
   }
   return result;
+}
+
+export function createExceptionPropertiesFromError(error: TaskRunError): ExceptionEventProperties {
+  switch (error.type) {
+    case "BUILT_IN_ERROR": {
+      return {
+        type: error.name,
+        message: error.message,
+        stacktrace: error.stackTrace,
+      };
+    }
+    case "CUSTOM_ERROR": {
+      return {
+        type: "Error",
+        message: error.raw,
+      };
+    }
+    case "INTERNAL_ERROR": {
+      return {
+        type: "Internal error",
+        message: [error.code, error.message].filter(Boolean).join(": "),
+      };
+    }
+    case "STRING_ERROR": {
+      return {
+        type: "Error",
+        message: error.raw,
+      };
+    }
+  }
 }
 
 /**
