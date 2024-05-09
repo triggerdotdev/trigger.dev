@@ -352,9 +352,8 @@ class Checkpointer {
         await $$`rm ${exportLocation}`;
         this.#logger.log("Deleted checkpoint archive", { exportLocation });
 
-        // Disabled for now as this will increase restore time by having to pull the image again
-        // await $`buildah rmi ${imageRef}`;
-        // this.#logger.log("Deleted checkpoint image", { imageRef });
+        await $`buildah rmi ${imageRef}`;
+        this.#logger.log("Deleted checkpoint image", { imageRef });
       } catch (error) {
         this.#logger.error("Failed during checkpoint cleanup", { exportLocation });
         throw error;
