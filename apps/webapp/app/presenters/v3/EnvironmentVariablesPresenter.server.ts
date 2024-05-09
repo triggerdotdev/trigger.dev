@@ -1,7 +1,7 @@
 import { PrismaClient, prisma } from "~/db.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
-import { sortEnvironments } from "~/services/environmentSort.server";
+import { sortEnvironments } from "~/utils/environmentSort";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 type Result = Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>;

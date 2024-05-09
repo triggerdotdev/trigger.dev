@@ -1,5 +1,7 @@
-import { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
+import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { cn } from "~/utils/cn";
+import { sortEnvironments } from "~/utils/environmentSort";
+import { SimpleTooltip } from "../primitives/Tooltip";
 
 type Environment = Pick<RuntimeEnvironment, "type">;
 const variants = {
@@ -30,6 +32,73 @@ export function EnvironmentLabel({
     >
       {environmentTitle(environment, userName)}
     </span>
+  );
+}
+
+type EnvironmentWithUsername = Environment & { userName?: string };
+
+export function EnvironmentLabels({
+  environments,
+  size = "small",
+  className,
+}: {
+  environments: EnvironmentWithUsername[];
+  size?: keyof typeof variants;
+  className?: string;
+}) {
+  const devEnvironments = sortEnvironments(
+    environments.filter((env) => env.type === "DEVELOPMENT")
+  );
+  const firstDevEnvironment = devEnvironments[0];
+  const otherDevEnvironments = devEnvironments.slice(1);
+  const otherEnvironments = environments.filter((env) => env.type !== "DEVELOPMENT");
+
+  return (
+    <div className={cn("flex items-baseline gap-2", className)}>
+      {firstDevEnvironment && (
+        <EnvironmentLabel
+          environment={firstDevEnvironment}
+          userName={firstDevEnvironment.userName}
+          size={size}
+        />
+      )}
+      {otherDevEnvironments.length > 0 ? (
+        <SimpleTooltip
+          button={
+            <span
+              className={cn(
+                "inline-flex items-center justify-center whitespace-nowrap border font-medium uppercase tracking-wider",
+                environmentBorderClassName({ type: "DEVELOPMENT" }),
+                environmentTextClassName({ type: "DEVELOPMENT" }),
+                variants[size]
+              )}
+            >
+              +{otherDevEnvironments.length}
+            </span>
+          }
+          content={
+            <div className="flex gap-1 py-1">
+              {otherDevEnvironments.map((environment, index) => (
+                <EnvironmentLabel
+                  key={index}
+                  environment={environment}
+                  userName={environment.userName}
+                  size={size}
+                />
+              ))}
+            </div>
+          }
+        />
+      ) : null}
+      {otherEnvironments.map((environment, index) => (
+        <EnvironmentLabel
+          key={index}
+          environment={environment}
+          userName={environment.userName}
+          size={size}
+        />
+      ))}
+    </div>
   );
 }
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { PrismaClient, prisma } from "~/db.server";
-import { sortEnvironments } from "~/services/environmentSort.server";
+import { sortEnvironments } from "~/utils/environmentSort";
 import { httpEndpointUrl } from "~/services/httpendpoint/HandleHttpEndpointService";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { projectPath } from "~/utils/pathBuilder";
