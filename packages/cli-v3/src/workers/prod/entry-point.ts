@@ -230,6 +230,15 @@ class ProdWorker {
     backgroundWorker.onWaitForDuration.attach(async (message) => {
       if (!this.attemptFriendlyId) {
         logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+
+        this.#coordinatorSocket.socket.emit("UNRECOVERABLE_ERROR", {
+          version: "v1",
+          error: {
+            name: "NoAttemptId",
+            message: "Attempt ID not set before waiting for duration",
+          },
+        });
+
         return;
       }
 
@@ -247,6 +256,15 @@ class ProdWorker {
     backgroundWorker.onWaitForTask.attach(async (message) => {
       if (!this.attemptFriendlyId) {
         logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+
+        this.#coordinatorSocket.socket.emit("UNRECOVERABLE_ERROR", {
+          version: "v1",
+          error: {
+            name: "NoAttemptId",
+            message: "Attempt ID not set before waiting for task",
+          },
+        });
+
         return;
       }
 
@@ -264,6 +282,15 @@ class ProdWorker {
     backgroundWorker.onWaitForBatch.attach(async (message) => {
       if (!this.attemptFriendlyId) {
         logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+
+        this.#coordinatorSocket.socket.emit("UNRECOVERABLE_ERROR", {
+          version: "v1",
+          error: {
+            name: "NoAttemptId",
+            message: "Attempt ID not set before waiting for batch",
+          },
+        });
+
         return;
       }
 
@@ -569,11 +596,30 @@ class ProdWorker {
 
         if (this.paused) {
           if (!this.nextResumeAfter) {
+            logger.error("Missing next resume reason");
+
+            this.#coordinatorSocket.socket.emit("UNRECOVERABLE_ERROR", {
+              version: "v1",
+              error: {
+                name: "NoNextResume",
+                message: "Next resume reason not set while resuming from paused state",
+              },
+            });
+
             return;
           }
 
           if (!this.attemptFriendlyId) {
             logger.error("Missing friendly ID");
+
+            this.#coordinatorSocket.socket.emit("UNRECOVERABLE_ERROR", {
+              version: "v1",
+              error: {
+                name: "NoAttemptId",
+                message: "Attempt ID not set while resuming from paused state",
+              },
+            });
+
             return;
           }
 
