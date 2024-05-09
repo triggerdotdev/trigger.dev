@@ -64,6 +64,7 @@ export function EnvironmentLabels({
       )}
       {otherDevEnvironments.length > 0 ? (
         <SimpleTooltip
+          disableHoverableContent
           button={
             <span
               className={cn(
