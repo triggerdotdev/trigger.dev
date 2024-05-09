@@ -104,7 +104,7 @@ export const footerItalic = {
 };
 
 export const footerAnchor = {
-  color: "#826DFF",
+  color: "#878C99",
   fontFamily:
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
   fontSize: "12px",

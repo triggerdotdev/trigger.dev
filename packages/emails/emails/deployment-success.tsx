@@ -45,13 +45,13 @@ export default function Email(props: z.infer<typeof AlertDeploymentSuccessEmailS
             style={{
               ...anchor,
               display: "block",
-              marginBottom: "32px",
+              marginBottom: "50px",
             }}
           >
             View Deployment
           </Link>
 
-          <Image path="/emails/logo-mono.png" width="156" height="28" alt="Trigger.dev" />
+          <Image path="/emails/logo-mono.png" width="120" height="22" alt="Trigger.dev" />
           <Footer />
         </Container>
       </Body>
