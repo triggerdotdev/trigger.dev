@@ -153,6 +153,9 @@ const EnvironmentSchema = z.object({
   INTERNAL_OTEL_TRACE_SAMPLING_RATE: z.string().default("20"),
   INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED: z.string().default("0"),
   INTERNAL_OTEL_TRACE_DISABLED: z.string().default("0"),
+
+  ORG_SLACK_INTEGRATION_CLIENT_ID: z.string().optional(),
+  ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

@@ -1,15 +1,10 @@
-import React from "react";
+// Use a global variable to store the base path
+let globalBasePath: string = "http://localhost:3000";
 
-type BasePathContext = { basePath: string };
-
-const Context = React.createContext<BasePathContext>({
-  basePath: "http://localhost:3000",
-});
-
-export function BasePath({ basePath, children }: { basePath: string; children: React.ReactNode }) {
-  return <Context.Provider value={{ basePath }}>{children}</Context.Provider>;
+export function setGlobalBasePath(basePath: string) {
+  globalBasePath = basePath;
 }
 
-export function useBasePath() {
-  return React.useContext(Context).basePath;
+export function getGlobalBasePath() {
+  return globalBasePath;
 }

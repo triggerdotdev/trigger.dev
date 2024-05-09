@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ProjectAlertType" ADD VALUE 'DEPLOYMENT_SUCCESS';

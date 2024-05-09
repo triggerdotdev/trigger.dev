@@ -1,16 +1,19 @@
-import { ReactElement } from "react";
-import { BasePath } from "../emails/components/BasePath";
-import WelcomeEmail from "../emails/welcome";
-import MagicLinkEmail from "../emails/magic-link";
-import ConnectIntegration from "../emails/connect-integration";
-import WorkflowFailed from "../emails/workflow-failed";
-import WorkflowIntegration from "../emails/workflow-integration";
-import InviteEmail, { InviteEmailSchema } from "../emails/invite";
 import { render } from "@react-email/render";
+import { ReactElement } from "react";
+import AlertAttemptFailureEmail, { AlertAttemptEmailSchema } from "../emails/alert-attempt-failure";
+import { setGlobalBasePath } from "../emails/components/BasePath";
+import AlertDeploymentFailureEmail, {
+  AlertDeploymentFailureEmailSchema,
+} from "../emails/deployment-failure";
+import AlertDeploymentSuccessEmail, {
+  AlertDeploymentSuccessEmailSchema,
+} from "../emails/deployment-success";
+import InviteEmail, { InviteEmailSchema } from "../emails/invite";
+import MagicLinkEmail from "../emails/magic-link";
+import WelcomeEmail from "../emails/welcome";
 
 import { Resend } from "resend";
 import { z } from "zod";
-import React from "react";
 
 export const DeliverEmailSchema = z
   .discriminatedUnion("email", [
@@ -23,20 +26,9 @@ export const DeliverEmailSchema = z
       magicLink: z.string().url(),
     }),
     InviteEmailSchema,
-    z.object({
-      email: z.literal("connect_integration"),
-      workflowId: z.string(),
-      integration: z.string(),
-    }),
-    z.object({
-      email: z.literal("workflow_failed"),
-      workflowId: z.string(),
-    }),
-    z.object({
-      email: z.literal("workflow_integration"),
-      workflowId: z.string(),
-      integration: z.string(),
-    }),
+    AlertAttemptEmailSchema,
+    AlertDeploymentFailureEmailSchema,
+    AlertDeploymentSuccessEmailSchema,
   ])
   .and(z.object({ to: z.string() }));
 
@@ -61,10 +53,12 @@ export class EmailClient {
   async send(data: DeliverEmail) {
     const { subject, component } = this.#getTemplate(data);
 
+    setGlobalBasePath(this.#imagesBaseUrl);
+
     return this.#sendEmail({
       to: data.to,
       subject,
-      react: <BasePath basePath={this.#imagesBaseUrl}>{component}</BasePath>,
+      react: component,
     });
   }
 
@@ -102,25 +96,24 @@ export class EmailClient {
           subject: `You've been invited to join ${data.orgName} on Trigger.dev`,
           component: <InviteEmail {...data} />,
         };
-      case "connect_integration":
+      case "alert-attempt": {
         return {
-          subject: `Action required: you need to connect to ${data.integration}`,
-          component: (
-            <ConnectIntegration workflowId={data.workflowId} integration={data.integration} />
-          ),
+          subject: `Error on ${data.taskIdentifier} [${data.version}.${data.environment}] ${data.error.message}`,
+          component: <AlertAttemptFailureEmail {...data} />,
         };
-      case "workflow_failed":
+      }
+      case "alert-deployment-failure": {
         return {
-          subject: "Action required: your workflow has stopped running!",
-          component: <WorkflowFailed workflowId={data.workflowId} />,
+          subject: `Deployment ${data.version} [${data.environment}] failed: ${data.error.name}`,
+          component: <AlertDeploymentFailureEmail {...data} />,
         };
-      case "workflow_integration":
+      }
+      case "alert-deployment-success": {
         return {
-          subject: `Action required: connect ${data.integration} to start your workflow`,
-          component: (
-            <WorkflowIntegration workflowId={data.workflowId} integration={data.integration} />
-          ),
+          subject: `Deployment ${data.version} [${data.environment}] succeeded`,
+          component: <AlertDeploymentSuccessEmail {...data} />,
         };
+      }
     }
   }
 

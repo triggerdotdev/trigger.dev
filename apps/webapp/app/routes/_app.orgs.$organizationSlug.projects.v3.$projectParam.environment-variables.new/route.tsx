@@ -46,13 +46,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new EnvironmentVariablesPresenter();
-    const { environmentVariables, environments } = await presenter.call({
+    const { environments } = await presenter.call({
       userId,
       projectSlug: projectParam,
     });
 
     return typedjson({
-      environmentVariables,
       environments,
     });
   } catch (error) {
@@ -150,7 +149,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 export default function Page() {
   const [isOpen, setIsOpen] = useState(false);
-  const { environmentVariables, environments } = useTypedLoaderData<typeof loader>();
+  const { environments } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
   const navigate = useNavigate();

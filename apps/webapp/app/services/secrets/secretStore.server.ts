@@ -55,11 +55,13 @@ export class SecretStore {
   }
 }
 
-const EncryptedSecretValueSchema = z.object({
+export const EncryptedSecretValueSchema = z.object({
   nonce: z.string(),
   ciphertext: z.string(),
   tag: z.string(),
 });
+
+export type EncryptedSecretValue = z.infer<typeof EncryptedSecretValueSchema>;
 
 /** This stores secrets in the Postgres Database, encrypted using aes-256-gcm */
 class PrismaSecretStore implements SecretStoreProvider {
@@ -181,18 +183,11 @@ class PrismaSecretStore implements SecretStoreProvider {
   }
 
   async #decrypt(nonce: string, ciphertext: string, tag: string): Promise<string> {
-    const decipher = nodeCrypto.createDecipheriv(
-      "aes-256-gcm",
-      this.encryptionKey,
-      Buffer.from(nonce, "hex")
-    );
-
-    decipher.setAuthTag(Buffer.from(tag, "hex"));
-
-    let decrypted = decipher.update(ciphertext, "hex", "utf8");
-    decrypted += decipher.final("utf8");
-
-    return decrypted;
+    return await decryptSecret(this.encryptionKey, {
+      nonce,
+      ciphertext,
+      tag,
+    });
   }
 
   async #encrypt(value: string): Promise<{
@@ -200,19 +195,7 @@ class PrismaSecretStore implements SecretStoreProvider {
     ciphertext: string;
     tag: string;
   }> {
-    const nonce = nodeCrypto.randomBytes(12);
-    const cipher = nodeCrypto.createCipheriv("aes-256-gcm", this.encryptionKey, nonce);
-
-    let encrypted = cipher.update(value, "utf8", "hex");
-    encrypted += cipher.final("hex");
-
-    const tag = cipher.getAuthTag().toString("hex");
-
-    return {
-      nonce: nonce.toString("hex"),
-      ciphertext: encrypted,
-      tag,
-    };
+    return await encryptSecret(this.encryptionKey, value);
   }
 }
 
@@ -233,4 +216,41 @@ export function getSecretStore<
       throw new Error(`Unsupported secret store option ${provider}`);
     }
   }
+}
+
+export async function decryptSecret(
+  encryptionKey: string,
+  secret: EncryptedSecretValue
+): Promise<string> {
+  const decipher = nodeCrypto.createDecipheriv(
+    "aes-256-gcm",
+    encryptionKey,
+    Buffer.from(secret.nonce, "hex")
+  );
+
+  decipher.setAuthTag(Buffer.from(secret.tag, "hex"));
+
+  let decrypted = decipher.update(secret.ciphertext, "hex", "utf8");
+  decrypted += decipher.final("utf8");
+
+  return decrypted;
+}
+
+export async function encryptSecret(
+  encryptionKey: string,
+  value: string
+): Promise<EncryptedSecretValue> {
+  const nonce = nodeCrypto.randomBytes(12);
+  const cipher = nodeCrypto.createCipheriv("aes-256-gcm", encryptionKey, nonce);
+
+  let encrypted = cipher.update(value, "utf8", "hex");
+  encrypted += cipher.final("hex");
+
+  const tag = cipher.getAuthTag().toString("hex");
+
+  return {
+    nonce: nonce.toString("hex"),
+    ciphertext: encrypted,
+    tag,
+  };
 }

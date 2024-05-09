@@ -144,18 +144,18 @@ export class DeploymentPresenter {
           userName: getUsername(deployment.environment.orgMember?.user),
         },
         deployedBy: deployment.triggeredBy,
-        errorData: this.#prepareErrorData(deployment.errorData),
         sdkVersion: deployment.worker?.sdkVersion,
         imageReference: deployment.imageReference,
         externalBuildData:
           externalBuildData && externalBuildData.success ? externalBuildData.data : undefined,
         projectId: deployment.projectId,
         organizationId: project.organizationId,
+        errorData: DeploymentPresenter.prepareErrorData(deployment.errorData),
       },
     };
   }
 
-  #prepareErrorData(errorData: WorkerDeployment["errorData"]): ErrorData | undefined {
+  public static prepareErrorData(errorData: WorkerDeployment["errorData"]): ErrorData | undefined {
     if (!errorData) {
       return;
     }

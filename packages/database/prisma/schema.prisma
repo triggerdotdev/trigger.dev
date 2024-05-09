@@ -130,12 +130,13 @@ model Organization {
   events       EventRecord[]
   jobRuns      JobRun[]
 
-  projects         Project[]
-  members          OrgMember[]
-  invites          OrgMemberInvite[]
-  externalAccounts ExternalAccount[]
-  integrations     Integration[]
-  sources          TriggerSource[]
+  projects                 Project[]
+  members                  OrgMember[]
+  invites                  OrgMemberInvite[]
+  externalAccounts         ExternalAccount[]
+  integrations             Integration[]
+  sources                  TriggerSource[]
+  organizationIntegrations OrganizationIntegration[]
 }
 
 model ExternalAccount {
@@ -401,6 +402,7 @@ model RuntimeEnvironment {
   taskRunAttempts            TaskRunAttempt[]
   CheckpointRestoreEvent     CheckpointRestoreEvent[]
   taskScheduleInstances      TaskScheduleInstance[]
+  alerts                     ProjectAlert[]
 
   sessions         RuntimeEnvironmentSession[]
   currentSession   RuntimeEnvironmentSession?  @relation("currentSession", fields: [currentSessionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
@@ -452,6 +454,9 @@ model Project {
   WorkerDeployment       WorkerDeployment[]
   CheckpointRestoreEvent CheckpointRestoreEvent[]
   taskSchedules          TaskSchedule[]
+  alertChannels          ProjectAlertChannel[]
+  alerts                 ProjectAlert[]
+  alertStorages          ProjectAlertStorage[]
 }
 
 enum ProjectVersion {
@@ -1129,8 +1134,9 @@ model SecretReference {
   httpEndpoints             TriggerHttpEndpoint[]
   environmentVariableValues EnvironmentVariableValue[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  OrganizationIntegration OrganizationIntegration[]
 }
 
 enum SecretStoreProvider {
@@ -1764,6 +1770,7 @@ model TaskRunAttempt {
   checkpoints            Checkpoint[]
   batchTaskRunItems      BatchTaskRunItem[]
   CheckpointRestoreEvent CheckpointRestoreEvent[]
+  alerts                 ProjectAlert[]
 
   @@unique([taskRunId, number])
 }
@@ -2105,6 +2112,7 @@ model WorkerDeployment {
   updatedAt DateTime @updatedAt
 
   promotions WorkerDeploymentPromotion[]
+  alerts     ProjectAlert[]
 
   @@unique([projectId, shortCode])
   @@unique([environmentId, version])
@@ -2217,4 +2225,123 @@ model RuntimeEnvironmentSession {
   disconnectedAt DateTime?
 
   currentEnvironments RuntimeEnvironment[] @relation("currentSession")
+}
+
+model ProjectAlertChannel {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  ///can be provided and we won't create another with the same key
+  deduplicationKey             String  @default(cuid())
+  userProvidedDeduplicationKey Boolean @default(false)
+
+  integration   OrganizationIntegration? @relation(fields: [integrationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  integrationId String?
+
+  enabled Boolean @default(true)
+
+  type       ProjectAlertChannelType
+  name       String
+  properties Json
+  alertTypes ProjectAlertType[]
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  alerts        ProjectAlert[]
+  alertStorages ProjectAlertStorage[]
+
+  @@unique([projectId, deduplicationKey])
+}
+
+enum ProjectAlertChannelType {
+  EMAIL
+  SLACK
+  WEBHOOK
+}
+
+model ProjectAlert {
+  id         String @id @default(cuid())
+  friendlyId String @unique
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  channel   ProjectAlertChannel @relation(fields: [channelId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  channelId String
+
+  status ProjectAlertStatus @default(PENDING)
+
+  type ProjectAlertType
+
+  taskRunAttempt   TaskRunAttempt? @relation(fields: [taskRunAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRunAttemptId String?
+
+  workerDeployment   WorkerDeployment? @relation(fields: [workerDeploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workerDeploymentId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum ProjectAlertType {
+  TASK_RUN_ATTEMPT
+  DEPLOYMENT_FAILURE
+  DEPLOYMENT_SUCCESS
+}
+
+enum ProjectAlertStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model ProjectAlertStorage {
+  id String @id @default(cuid())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  alertChannel   ProjectAlertChannel @relation(fields: [alertChannelId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  alertChannelId String
+
+  alertType ProjectAlertType
+
+  storageId   String
+  storageData Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OrganizationIntegration {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  service IntegrationService
+
+  integrationData Json
+
+  tokenReference   SecretReference @relation(fields: [tokenReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  tokenReferenceId String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  alertChannels ProjectAlertChannel[]
+}
+
+enum IntegrationService {
+  SLACK
 }
