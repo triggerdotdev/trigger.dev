@@ -149,6 +149,7 @@ export type UpdateEventOptions = {
   attributes: TraceAttributes;
   endTime?: Date;
   immediate?: boolean;
+  events?: SpanEvents;
 };
 
 export class EventRepository {
@@ -219,7 +220,7 @@ export class EventRepository {
       isCancelled: false,
       status: options?.attributes.isError ? "ERROR" : "OK",
       links: event.links ?? [],
-      events: event.events ?? [],
+      events: event.events ?? (options?.events as any) ?? [],
       duration: calculateDurationFromStart(event.startTime, options?.endTime),
       properties: event.properties as Attributes,
       metadata: event.metadata as Attributes,
