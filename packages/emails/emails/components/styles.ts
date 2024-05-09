@@ -10,6 +10,7 @@ export const h1 = {
 
 export const main = {
   backgroundColor: "#15171A",
+  padding: "0 20px",
 };
 
 export const container = {
