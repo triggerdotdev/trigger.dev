@@ -54,7 +54,7 @@ export function EnvironmentLabels({
   const otherEnvironments = environments.filter((env) => env.type !== "DEVELOPMENT");
 
   return (
-    <div className={cn("flex gap-2", className)}>
+    <div className={cn("flex items-baseline gap-2", className)}>
       {firstDevEnvironment && (
         <EnvironmentLabel
           environment={firstDevEnvironment}

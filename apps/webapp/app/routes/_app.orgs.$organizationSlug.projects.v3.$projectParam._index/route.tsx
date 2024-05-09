@@ -11,7 +11,7 @@ import { InitCommandV3, TriggerDevStepV3, TriggerLoginStepV3 } from "~/component
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabel, EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
