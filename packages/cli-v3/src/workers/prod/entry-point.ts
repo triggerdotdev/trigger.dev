@@ -258,6 +258,9 @@ class ProdWorker {
       await this.#exitGracefully();
     }
 
+    // Clear state for next execution
+    this.paused = false;
+    this.waitForPostStart = false;
     this.executing = false;
     this.attemptFriendlyId = undefined;
 
