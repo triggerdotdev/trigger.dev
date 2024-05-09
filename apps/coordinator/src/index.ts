@@ -916,6 +916,20 @@ class TaskCoordinator {
             error: message.error,
           });
         });
+
+        socket.on("UNRECOVERABLE_ERROR", async (message) => {
+          logger.log("[UNRECOVERABLE_ERROR]", message);
+
+          this.#platformSocket?.send("RUN_CRASHED", {
+            version: "v1",
+            runId: socket.data.runId,
+            error: message.error,
+          });
+
+          socket.emit("REQUEST_EXIT", {
+            version: "v1",
+          });
+        });
       },
       onDisconnect: async (socket, handler, sender, logger) => {
         this.#platformSocket?.send("LOG", {

@@ -137,7 +137,19 @@ function createCoordinatorNamespace(io: Server) {
 
           await service.call(message.deploymentId, message.error);
         } catch (e) {
-          logger.error("Error while indexing", { error: e });
+          logger.error("Error while processing index failure", { error: e });
+        }
+      },
+      RUN_CRASHED: async (message) => {
+        try {
+          const service = new CrashTaskRunService();
+
+          await service.call(message.runId, {
+            reason: `${message.error.name}: ${message.error.message}`,
+            logs: message.error.stack,
+          });
+        } catch (e) {
+          logger.error("Error while processing run failure", { error: e });
         }
       },
     },

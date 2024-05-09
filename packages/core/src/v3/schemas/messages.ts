@@ -490,6 +490,17 @@ export const CoordinatorToPlatformMessages = {
       }),
     }),
   },
+  RUN_CRASHED: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+      error: z.object({
+        name: z.string(),
+        message: z.string(),
+        stack: z.string().optional(),
+      }),
+    }),
+  },
 };
 
 export const PlatformToCoordinatorMessages = {
@@ -679,6 +690,16 @@ export const ProdWorkerToCoordinatorMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       deploymentId: z.string(),
+      error: z.object({
+        name: z.string(),
+        message: z.string(),
+        stack: z.string().optional(),
+      }),
+    }),
+  },
+  UNRECOVERABLE_ERROR: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
       error: z.object({
         name: z.string(),
         message: z.string(),
