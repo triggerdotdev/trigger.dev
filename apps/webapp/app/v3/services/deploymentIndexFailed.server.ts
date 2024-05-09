@@ -23,7 +23,7 @@ export class DeploymentIndexFailed extends BaseService {
       },
     });
 
-    PerformDeploymentAlertsService.enqueue(deployment.id, this._prisma);
+    await PerformDeploymentAlertsService.enqueue(deployment.id, this._prisma);
 
     return deployment;
   }
