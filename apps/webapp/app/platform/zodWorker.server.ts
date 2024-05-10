@@ -468,7 +468,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     this.#logDebug("Rescheduling task", { payload, job: helpers.job });
 
     await this.enqueue(helpers.job.task_identifier, payload, {
-      runAt: helpers.job.run_at,
+      runAt: new Date(Date.now() + 1000 * 10),
       queueName: await this.#getQueueName(helpers.job.job_queue_id),
       priority: helpers.job.priority,
       jobKey: helpers.job.key ?? undefined,
