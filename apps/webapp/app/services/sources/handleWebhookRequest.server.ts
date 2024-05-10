@@ -37,6 +37,8 @@ export class HandleWebhookRequestService {
     const lockId = webhookIdToLockId(webhookEnvironment.webhookId);
 
     await this.#prismaClient.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockId})`;
+
       const counter = await tx.webhookDeliveryCounter.upsert({
         where: { webhookId: webhookEnvironment.id },
         update: { lastNumber: { increment: 1 } },
