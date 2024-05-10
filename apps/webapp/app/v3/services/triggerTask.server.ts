@@ -88,6 +88,8 @@ export class TriggerTaskService extends BaseService {
           const lockId = taskIdentifierToLockId(taskId);
 
           const run = await $transaction(this._prisma, async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockId})`;
+
             const lockedToBackgroundWorker = body.options?.lockToVersion
               ? await tx.backgroundWorker.findUnique({
                   where: {
