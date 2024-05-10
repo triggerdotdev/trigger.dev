@@ -171,5 +171,9 @@ Worker.init().catch((error) => {
 
 function logError(error: unknown, request?: Request) {
   console.error(error);
+
+  if (error instanceof Error && error.message.startsWith("There are locked jobs present")) {
+    console.log("⚠️  graphile-worker migration issue detected!");
+  }
 }
 export { express } from "./express.server";
