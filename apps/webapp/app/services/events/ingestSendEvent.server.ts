@@ -60,6 +60,11 @@ export class IngestSendEvent {
     try {
       const deliverAt = this.#calculateDeliverAt(options);
 
+      if (!environment.organization.runsEnabled) {
+        logger.debug("IngestSendEvent: Runs are disabled for this organization", environment);
+        return;
+      }
+
       return await $transaction(this.#prismaClient, async (tx) => {
         const externalAccount = options?.accountId
           ? await tx.externalAccount.upsert({
