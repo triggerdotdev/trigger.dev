@@ -40,6 +40,7 @@ import { TriggerScheduledTaskService } from "~/v3/services/triggerScheduledTask.
 import { PerformTaskAttemptAlertsService } from "~/v3/services/alerts/performTaskAttemptAlerts.server";
 import { DeliverAlertService } from "~/v3/services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "~/v3/services/alerts/performDeploymentAlerts.server";
+import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -211,9 +212,8 @@ if (env.NODE_ENV === "production") {
 }
 
 export async function init() {
-  // const pgNotify = new PgNotifyService();
-  // await pgNotify.call("trigger:graphile:migrate", { latestMigration: 10 });
-  // await new Promise((resolve) => setTimeout(resolve, 10000))
+  const migrationHelper = new GraphileMigrationHelperService();
+  await migrationHelper.call();
 
   if (env.WORKER_ENABLED === "true") {
     await workerQueue.initialize();
@@ -250,7 +250,7 @@ function getWorkerQueue() {
     recurringTasks: {
       // Run this every 5 minutes
       autoIndexProductionEndpoints: {
-        pattern: "*/5 * * * *",
+        match: "*/5 * * * *",
         handler: async (payload, job) => {
           const service = new RecurringEndpointIndexService();
 
@@ -259,7 +259,7 @@ function getWorkerQueue() {
       },
       // Run this every hour
       purgeOldIndexings: {
-        pattern: "0 * * * *",
+        match: "0 * * * *",
         handler: async (payload, job) => {
           // Delete indexings that are older than 7 days
           await prisma.endpointIndex.deleteMany({
@@ -273,7 +273,7 @@ function getWorkerQueue() {
       },
       // Run this every hour at the 13 minute mark
       purgeOldTaskEvents: {
-        pattern: "47 * * * *",
+        match: "47 * * * *",
         handler: async (payload, job) => {
           await eventRepository.truncateEvents();
         },
