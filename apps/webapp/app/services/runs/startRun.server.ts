@@ -64,8 +64,6 @@ export class StartRunService {
     await $transaction(
       this.#prismaClient,
       async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockId})`;
-
         const counter = await tx.jobCounter.upsert({
           where: { jobId: run.jobId },
           update: { lastNumber: { increment: 1 } },
