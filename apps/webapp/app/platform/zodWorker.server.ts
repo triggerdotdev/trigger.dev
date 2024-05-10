@@ -692,7 +692,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const rawResults = await $replica.$queryRawUnsafe(
       `SELECT id
         FROM ${this.graphileWorkerSchema}.jobs
-        WHERE run_at > $1
+        WHERE run_at < $1
           AND locked_at IS NULL
           AND max_attempts = attempts
         LIMIT $2`,
