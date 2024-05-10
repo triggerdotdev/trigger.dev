@@ -36,7 +36,7 @@ export class HandleHttpSourceService {
       logger.debug("HandleHttpSourceService: Runs are disabled for this organization", {
         organizationId: triggerSource.organization.id,
       });
-      return;
+      return { status: 404 };
     }
 
     if (!triggerSource.interactive) {
