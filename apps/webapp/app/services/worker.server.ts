@@ -590,7 +590,7 @@ function getExecutionWorkerQueue() {
     },
     shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: executionWorkerCatalog,
-    rateLimiter: executionRateLimiter,
+    // rateLimiter: executionRateLimiter,
     tasks: {
       performRunExecutionV2: {
         priority: 0, // smaller number = higher priority
