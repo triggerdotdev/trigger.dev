@@ -1,20 +1,21 @@
 import type {
   CronItem,
   CronItemOptions,
-  Job as GraphileJob,
+  DbJob as GraphileJob,
   Runner as GraphileRunner,
   JobHelpers,
   RunnerOptions,
   Task,
   TaskList,
   TaskSpec,
+  WorkerUtils,
 } from "graphile-worker";
-import { run as graphileRun, parseCronItems } from "graphile-worker";
+import { run as graphileRun, makeWorkerUtils, parseCronItems } from "graphile-worker";
 import { SpanKind, trace } from "@opentelemetry/api";
 
 import omit from "lodash.omit";
 import { z } from "zod";
-import { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
+import { $replica, PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { PgListenService } from "~/services/db/pgListen.server";
 import { workerLogger as logger } from "~/services/logger.server";
 import { flattenAttributes } from "@trigger.dev/core/v3";
@@ -34,8 +35,8 @@ const RawCronPayloadSchema = z.object({
 
 const GraphileJobSchema = z.object({
   id: z.coerce.string(),
-  queue_name: z.string().nullable(),
-  task_identifier: z.string(),
+  job_queue_id: z.number().nullable(),
+  task_id: z.number(),
   payload: z.unknown(),
   priority: z.number(),
   run_at: z.coerce.date(),
@@ -72,7 +73,7 @@ type RecurringTaskPayload = {
 
 export type ZodRecurringTasks = {
   [key: string]: {
-    pattern: string;
+    match: string;
     options?: CronItemOptions;
     handler: (payload: RecurringTaskPayload, job: GraphileJob) => Promise<void>;
   };
@@ -129,6 +130,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #rateLimiter?: ZodWorkerRateLimiter;
   #shutdownTimeoutInMs?: number;
   #shuttingDown = false;
+  #workerUtils?: WorkerUtils;
 
   constructor(options: ZodWorkerOptions<TMessageCatalog>) {
     this.#name = options.name;
@@ -157,6 +159,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     });
 
     const parsedCronItems = parseCronItems(this.#createCronItemsFromRecurringTasks());
+
+    this.#workerUtils = await makeWorkerUtils(this.#runnerOptions);
 
     this.#runner = await graphileRun({
       ...this.#runnerOptions,
@@ -188,7 +192,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
         this.#logDebug("Detected incoming migration", { latestMigration });
 
         if (latestMigration > 10) {
-          // already migrated past v0.14 - nothing to do
+          this.#logDebug("Already migrated past v0.14 - nothing to do", { latestMigration });
           return;
         }
 
@@ -263,6 +267,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
   public async stop() {
     await this.#runner?.stop();
+    await this.#workerUtils?.release();
   }
 
   public async enqueue<K extends keyof TMessageCatalog>(
@@ -442,12 +447,29 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     return taskList;
   }
 
+  async #getQueueName(queueId: number | null) {
+    if (queueId === null) {
+      return;
+    }
+
+    const schema = z.array(z.object({ queue_name: z.string() }));
+
+    const rawQueueNameResults = await $replica.$queryRawUnsafe(
+      `SELECT queue_name FROM ${this.graphileWorkerSchema}._private_job_queues WHERE id = $1`,
+      queueId
+    );
+
+    const queueNameResults = schema.parse(rawQueueNameResults);
+
+    return queueNameResults[0]?.queue_name;
+  }
+
   async #rescheduleTask(payload: unknown, helpers: JobHelpers) {
     this.#logDebug("Rescheduling task", { payload, job: helpers.job });
 
     await this.enqueue(helpers.job.task_identifier, payload, {
       runAt: helpers.job.run_at,
-      queueName: helpers.job.queue_name ?? undefined,
+      queueName: await this.#getQueueName(helpers.job.job_queue_id),
       priority: helpers.job.priority,
       jobKey: helpers.job.key ?? undefined,
       flags: Object.keys(helpers.job.flags ?? []),
@@ -460,7 +482,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     if (this.#cleanup) {
       cronItems.push({
-        pattern: this.#cleanup.frequencyExpression,
+        match: this.#cleanup.frequencyExpression,
         identifier: CLEANUP_TASK_NAME,
         task: CLEANUP_TASK_NAME,
         options: this.#cleanup.taskOptions,
@@ -469,7 +491,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     if (this.#reporter) {
       cronItems.push({
-        pattern: "50 * * * *", // Every hour at 50 minutes past the hour
+        match: "50 * * * *", // Every hour at 50 minutes past the hour
         identifier: REPORTER_TASK_NAME,
         task: REPORTER_TASK_NAME,
       });
@@ -481,7 +503,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     for (const [key, task] of Object.entries(this.#recurringTasks)) {
       const cronItem: CronItem = {
-        pattern: task.pattern,
+        match: task.match,
         identifier: key,
         task: key,
         options: task.options,
@@ -529,7 +551,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
         attributes: {
           "job.task_identifier": job.task_identifier,
           "job.id": job.id,
-          ...(job.queue_name ? { "job.queue_name": job.queue_name } : {}),
+          ...(job.job_queue_id ? { "job.queue_id": job.job_queue_id } : {}),
           ...flattenAttributes(job.payload as Record<string, unknown>, "job.payload"),
           "job.priority": job.priority,
           "job.run_at": job.run_at.toISOString(),
@@ -599,7 +621,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
         attributes: {
           "job.task_identifier": job.task_identifier,
           "job.id": job.id,
-          ...(job.queue_name ? { "job.queue_name": job.queue_name } : {}),
+          ...(job.job_queue_id ? { "job.queue_id": job.job_queue_id } : {}),
           ...flattenAttributes(job.payload as Record<string, unknown>, "job.payload"),
           "job.priority": job.priority,
           "job.run_at": job.run_at.toISOString(),
@@ -638,6 +660,10 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       return;
     }
 
+    if (!this.#workerUtils) {
+      throw new Error("WorkerUtils need to be initialized before running job cleanup.");
+    }
+
     const job = helpers.job;
 
     logger.debug("Received cleanup task", {
@@ -663,23 +689,38 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       payload,
     });
 
-    const rawResults = await this.#prisma.$queryRawUnsafe(
-      `WITH rows AS (SELECT id FROM ${this.graphileWorkerSchema}.jobs WHERE run_at < $1 AND locked_at IS NULL AND max_attempts = attempts LIMIT $2 FOR UPDATE) DELETE FROM ${this.graphileWorkerSchema}.jobs WHERE id IN (SELECT id FROM rows) RETURNING id`,
+    const rawResults = await $replica.$queryRawUnsafe(
+      `SELECT id
+        FROM ${this.graphileWorkerSchema}.jobs
+        WHERE run_at > $1
+          AND locked_at IS NULL
+          AND max_attempts = attempts
+        LIMIT $2`,
       expirationDate,
       this.#cleanup.maxCount
     );
 
-    const results = Array.isArray(rawResults) ? rawResults : [];
+    const results = z
+      .array(
+        z.object({
+          id: z.coerce.string(),
+        })
+      )
+      .parse(rawResults);
+
+    const completedJobs = await this.#workerUtils.completeJobs(results.map((job) => job.id));
 
     logger.debug("Cleaned up old jobs", {
-      count: results.length,
+      found: results.length,
+      deleted: completedJobs.length,
       expirationDate,
       payload,
     });
 
     if (this.#reporter) {
       await this.#reporter("cleanup_stats", {
-        count: results.length,
+        found: results.length,
+        deleted: completedJobs.length,
         expirationDate,
         ts: payload._cron.ts,
       });
@@ -711,7 +752,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const schema = z.array(z.object({ count: z.coerce.number() }));
 
     // Count the number of jobs that have been added since the startAt date and before the payload._cron.ts date
-    const rawAddedResults = await this.#prisma.$queryRawUnsafe(
+    const rawAddedResults = await $replica.$queryRawUnsafe(
       `SELECT COUNT(*) FROM ${this.graphileWorkerSchema}.jobs WHERE created_at > $1 AND created_at < $2`,
       startAt,
       payload._cron.ts
@@ -720,7 +761,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const addedCountResults = schema.parse(rawAddedResults)[0];
 
     // Count the total number of jobs in the jobs table
-    const rawTotalResults = await this.#prisma.$queryRawUnsafe(
+    const rawTotalResults = await $replica.$queryRawUnsafe(
       `SELECT COUNT(*) FROM ${this.graphileWorkerSchema}.jobs`
     );
 
