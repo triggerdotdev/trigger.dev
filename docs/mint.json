@@ -1,14 +1,8 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
-  "openapi": [
-    "/openapi.yml",
-    "/v3-openapi.json"
-  ],
-  "versions": [
-    "v3 (Developer Preview)",
-    "v2"
-  ],
+  "openapi": ["/openapi.yml", "/v3-openapi.json"],
+  "versions": ["v3 (Developer Preview)", "v2"],
   "logo": {
     "dark": "/logo/dark.png",
     "light": "/logo/light.png",
@@ -49,16 +43,6 @@
   },
   "tabs": [
     {
-      "name": "v3 Developer Preview",
-      "url": "https://trigger.dev/docs/v3",
-      "version": "v2"
-    },
-    {
-      "name": "v2",
-      "url": "https://trigger.dev/docs/documentation",
-      "version": "v3 (Developer Preview)"
-    },
-    {
       "name": "Integrations",
       "url": "integrations",
       "version": "v2"
@@ -72,6 +56,16 @@
       "name": "Examples",
       "url": "https://trigger.dev/apis",
       "version": "v2"
+    },
+    {
+      "name": "v3 Developer Preview",
+      "url": "https://trigger.dev/docs/v3",
+      "version": "v2"
+    },
+    {
+      "name": "v2",
+      "url": "https://trigger.dev/docs/documentation",
+      "version": "v3 (Developer Preview)"
     }
   ],
   "redirects": [
@@ -96,9 +90,7 @@
     {
       "group": "",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/introduction"
-      ]
+      "pages": ["v3/introduction"]
     },
     {
       "group": "Getting Started",
@@ -121,12 +113,7 @@
         "v3/apikeys",
         {
           "group": "Task types",
-          "pages": [
-            "v3/tasks-regular",
-            "v3/tasks-scheduled",
-            "v3/tasks-zod",
-            "v3/tasks-webhooks"
-          ]
+          "pages": ["v3/tasks-regular", "v3/tasks-scheduled", "v3/tasks-zod", "v3/tasks-webhooks"]
         },
         "v3/trigger-config"
       ]
@@ -134,10 +121,7 @@
     {
       "group": "Development",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/cli-dev",
-        "v3/run-tests"
-      ]
+      "pages": ["v3/cli-dev", "v3/run-tests"]
     },
     {
       "group": "Deployment",
@@ -148,9 +132,7 @@
         "v3/github-actions",
         {
           "group": "Deployment integrations",
-          "pages": [
-            "v3/vercel-integration"
-          ]
+          "pages": ["v3/vercel-integration"]
         }
       ]
     },
@@ -226,9 +208,7 @@
         },
         {
           "group": "Objects",
-          "pages": [
-            "v3/reference-context"
-          ]
+          "pages": ["v3/reference-context"]
         },
         {
           "group": "CLI",
@@ -277,11 +257,7 @@
     {
       "group": "Open source",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/github-repo",
-        "v3/open-source-self-hosting",
-        "v3/open-source-contributing"
-      ]
+      "pages": ["v3/github-repo", "v3/open-source-self-hosting", "v3/open-source-contributing"]
     },
     {
       "group": "Help",
@@ -459,6 +435,7 @@
     },
     {
       "group": "Overview",
+      "version": "v2",
       "pages": [
         "integrations/introduction",
         {
@@ -479,13 +456,11 @@
     },
     {
       "group": "Integrations",
+      "version": "v2",
       "pages": [
         {
           "group": "Airtable",
-          "pages": [
-            "integrations/apis/airtable",
-            "integrations/apis/airtable-tasks"
-          ]
+          "pages": ["integrations/apis/airtable", "integrations/apis/airtable-tasks"]
         },
         {
           "group": "GitHub",
@@ -511,25 +486,16 @@
         },
         {
           "group": "Plain",
-          "pages": [
-            "integrations/apis/plain",
-            "integrations/apis/plain-tasks"
-          ]
+          "pages": ["integrations/apis/plain", "integrations/apis/plain-tasks"]
         },
         "integrations/apis/replicate",
         {
           "group": "SendGrid",
-          "pages": [
-            "integrations/apis/sendgrid",
-            "integrations/apis/sendgrid-tasks"
-          ]
+          "pages": ["integrations/apis/sendgrid", "integrations/apis/sendgrid-tasks"]
         },
         {
           "group": "Resend",
-          "pages": [
-            "integrations/apis/resend",
-            "integrations/apis/resend-tasks"
-          ]
+          "pages": ["integrations/apis/resend", "integrations/apis/resend-tasks"]
         },
         {
           "group": "Shopify",
@@ -541,10 +507,7 @@
         },
         {
           "group": "Slack",
-          "pages": [
-            "integrations/apis/slack",
-            "integrations/apis/slack-tasks"
-          ]
+          "pages": ["integrations/apis/slack", "integrations/apis/slack-tasks"]
         },
         "integrations/apis/stripe",
         {
@@ -560,6 +523,7 @@
     },
     {
       "group": "SDK",
+      "version": "v2",
       "pages": [
         "sdk/introduction",
         {
@@ -569,9 +533,7 @@
             "sdk/triggerclient/constructor",
             {
               "group": "Instance properties",
-              "pages": [
-                "sdk/triggerclient/store"
-              ]
+              "pages": ["sdk/triggerclient/store"]
             },
             {
               "group": "Instance methods",
@@ -634,10 +596,7 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": [
-                "sdk/dynamictrigger/register",
-                "sdk/dynamictrigger/unregister"
-              ]
+              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
             }
           ]
         },
@@ -648,10 +607,7 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": [
-                "sdk/dynamicschedule/register",
-                "sdk/dynamicschedule/unregister"
-              ]
+              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
             }
           ]
         },
@@ -663,12 +619,12 @@
     },
     {
       "group": "HTTP Reference",
-      "pages": [
-        "sdk/api-reference/events/create-an-event"
-      ]
+      "version": "v2",
+      "pages": ["sdk/api-reference/events/create-an-event"]
     },
     {
       "group": "React SDK",
+      "version": "v2",
       "pages": [
         "sdk/react/introduction",
         "sdk/react/triggerprovider",
@@ -680,9 +636,7 @@
     {
       "group": "Overview",
       "version": "v2",
-      "pages": [
-        "examples/introduction"
-      ]
+      "pages": ["examples/introduction"]
     }
   ],
   "footerSocials": {
