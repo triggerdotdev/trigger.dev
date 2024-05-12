@@ -167,19 +167,29 @@
       ]
     },
     {
-      "group": "Dashboard",
-      "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/dashboard-overview",
-        "v3/dashboard-runs",
-        "v3/dashboard-tests",
-        "v3/dashboard-environment-variables"
-      ]
-    },
-    {
       "group": "API reference",
       "version": "v3 (Developer Preview)",
       "pages": [
+        {
+          "group": "Runs API",
+          "pages": [
+            "v3/management-retrieve-run",
+            "v3/management-replay-run",
+            "v3/management-cancel-run"
+          ]
+        },
+        {
+          "group": "Schedules API",
+          "pages": [
+            "v3/management-list-schedules",
+            "v3/management-create-schedule",
+            "v3/management-retrieve-schedule",
+            "v3/management-update-schedule",
+            "v3/management-delete-schedule",
+            "v3/management-deactivate-schedule",
+            "v3/management-activate-schedule"
+          ]
+        },
         {
           "group": "Functions",
           "pages": [
@@ -221,26 +231,6 @@
             "v3/reference-cli-update",
             "v3/reference-cli-build",
             "v3/reference-cli-who-am-i"
-          ]
-        },
-        {
-          "group": "Runs API",
-          "pages": [
-            "v3/management-retrieve-run",
-            "v3/management-replay-run",
-            "v3/management-cancel-run"
-          ]
-        },
-        {
-          "group": "Schedules API",
-          "pages": [
-            "v3/management-list-schedules",
-            "v3/management-create-schedule",
-            "v3/management-retrieve-schedule",
-            "v3/management-update-schedule",
-            "v3/management-delete-schedule",
-            "v3/management-deactivate-schedule",
-            "v3/management-activate-schedule"
           ]
         }
       ]
