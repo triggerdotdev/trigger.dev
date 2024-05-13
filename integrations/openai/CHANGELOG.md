@@ -1,5 +1,12 @@
 # @trigger.dev/slack
 
+## 3.0.0-beta.31
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.31
+- @trigger.dev/sdk@3.0.0-beta.31
+
 ## 3.0.0-beta.30
 
 ### Patch Changes

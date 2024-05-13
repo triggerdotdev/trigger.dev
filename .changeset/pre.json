@@ -44,6 +44,7 @@
     "@trigger.dev/yalt": "2.3.18"
   },
   "changesets": [
+    "afraid-sheep-joke",
     "angry-eagles-trade",
     "beige-pens-dance",
     "big-tomatoes-deliver",
