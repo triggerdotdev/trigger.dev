@@ -152,7 +152,6 @@
         "v3/machines",
         "v3/idempotency",
         "v3/reattempting-replaying",
-        "v3/trigger-filters",
         "v3/notifications"
       ]
     },
