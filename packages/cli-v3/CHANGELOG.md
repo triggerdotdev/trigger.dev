@@ -1,5 +1,12 @@
 # trigger.dev
 
+## 3.0.0-beta.31
+
+### Patch Changes
+
+- b8477ea2b: Fixes an issue with scoped packages in additionalPackages option
+  - @trigger.dev/core@3.0.0-beta.31
+
 ## 3.0.0-beta.30
 
 ### Patch Changes

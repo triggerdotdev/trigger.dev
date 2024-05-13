@@ -1,5 +1,12 @@
 # create-trigger
 
+## 3.0.0-beta.31
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.31
+- @trigger.dev/yalt@3.0.0-beta.31
+
 ## 3.0.0-beta.30
 
 ### Patch Changes
