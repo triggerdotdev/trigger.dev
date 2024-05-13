@@ -213,19 +213,6 @@
         {
           "group": "Objects",
           "pages": ["v3/reference-context"]
-        },
-        {
-          "group": "CLI",
-          "pages": [
-            "v3/reference-cli-init",
-            "v3/reference-cli-dev",
-            "v3/reference-cli-deploy",
-            "v3/reference-cli-login",
-            "v3/reference-cli-logout",
-            "v3/reference-cli-update",
-            "v3/reference-cli-build",
-            "v3/reference-cli-who-am-i"
-          ]
         }
       ]
     },
