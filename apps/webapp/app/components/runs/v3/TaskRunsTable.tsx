@@ -28,6 +28,8 @@ import { CancelRunDialog } from "./CancelRunDialog";
 import { ReplayRunDialog } from "./ReplayRunDialog";
 import { TaskRunStatusCombo } from "./TaskRunStatus";
 import { LiveTimer } from "./LiveTimer";
+import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
+import { Checkbox } from "~/components/primitives/Checkbox";
 
 type RunsTableProps = {
   total: number;
@@ -36,6 +38,7 @@ type RunsTableProps = {
   showJob?: boolean;
   runs: RunListItem[];
   isLoading?: boolean;
+  allowSelection?: boolean;
 };
 
 export function TaskRunsTable({
@@ -44,14 +47,33 @@ export function TaskRunsTable({
   filters,
   runs,
   isLoading = false,
+  allowSelection = false,
 }: RunsTableProps) {
   const organization = useOrganization();
   const project = useProject();
+  const { selectedItems, has, hasAll, select, deselect } = useSelectedItems(allowSelection);
+
+  console.log(selectedItems);
 
   return (
     <Table>
       <TableHeader>
         <TableRow>
+          {allowSelection && (
+            <TableHeaderCell>
+              <Checkbox
+                defaultChecked={hasAll(runs.map((r) => r.id))}
+                onChange={(checked) => {
+                  const ids = runs.map((r) => r.id);
+                  if (checked) {
+                    select(ids);
+                  } else {
+                    deselect(ids);
+                  }
+                }}
+              />
+            </TableHeaderCell>
+          )}
           <TableHeaderCell>Run</TableHeaderCell>
           <TableHeaderCell>Task ID</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
@@ -78,6 +100,21 @@ export function TaskRunsTable({
             const path = v3RunSpanPath(organization, project, run, { spanId: run.spanId });
             return (
               <TableRow key={run.id}>
+                {allowSelection && (
+                  <TableCell>
+                    <Checkbox
+                      defaultChecked={has(run.id)}
+                      onChange={(checked) => {
+                        console.log("Checkbox changed", run.id, checked);
+                        if (checked) {
+                          select(run.id);
+                        } else {
+                          deselect(run.id);
+                        }
+                      }}
+                    />
+                  </TableCell>
+                )}
                 <TableCell to={path}>#{run.number}</TableCell>
                 <TableCell to={path}>{run.taskIdentifier}</TableCell>
                 <TableCell to={path}>{run.version ?? "–"}</TableCell>
@@ -194,7 +231,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   ) {
     const environment = envs?.find((env) => env.id === filters.environments[0]);
     return (
-      <TableBlankRow colSpan={9}>
+      <TableBlankRow colSpan={10}>
         <div className="py-14">
           <Paragraph className="w-auto" variant="base/bright" spacing>
             There are no runs for {filters.tasks[0]}

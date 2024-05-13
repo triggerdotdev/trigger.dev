@@ -24,6 +24,7 @@ import { ListPagination } from "../../components/ListPagination";
 import { TextLink } from "~/components/primitives/TextLink";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Suspense } from "react";
+import { SelectedItemsProvider } from "~/components/primitives/SelectedItemsProvider";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -74,54 +75,57 @@ export default function Page() {
         <PageTitle title="Runs" />
       </NavBar>
       <PageBody>
-        <Suspense
-          fallback={
-            <div className="flex items-center justify-center py-2">
-              <div className="mx-auto flex items-center gap-2">
-                <Spinner />
-                <Paragraph variant="small">Loading runs</Paragraph>
+        <SelectedItemsProvider initialSelectedItems={[]}>
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center py-2">
+                <div className="mx-auto flex items-center gap-2">
+                  <Spinner />
+                  <Paragraph variant="small">Loading runs</Paragraph>
+                </div>
               </div>
-            </div>
-          }
-        >
-          <TypedAwait resolve={data}>
-            {(list) => (
-              <>
-                {list.runs.length === 0 && !list.hasFilters ? (
-                  list.possibleTasks.length === 0 ? (
-                    <CreateFirstTaskInstructions />
+            }
+          >
+            <TypedAwait resolve={data}>
+              {(list) => (
+                <>
+                  {list.runs.length === 0 && !list.hasFilters ? (
+                    list.possibleTasks.length === 0 ? (
+                      <CreateFirstTaskInstructions />
+                    ) : (
+                      <RunTaskInstructions />
+                    )
                   ) : (
-                    <RunTaskInstructions />
-                  )
-                ) : (
-                  <div className={cn("grid h-fit grid-cols-1 gap-4")}>
-                    <div>
-                      <div className="mb-2 flex items-start justify-between gap-x-2">
-                        <RunsFilters
-                          possibleEnvironments={project.environments}
-                          possibleTasks={list.possibleTasks}
-                          hasFilters={list.hasFilters}
-                        />
-                        <div className="flex items-center justify-end gap-x-2">
-                          <ListPagination list={list} />
+                    <div className={cn("grid h-fit grid-cols-1 gap-4")}>
+                      <div>
+                        <div className="mb-2 flex items-start justify-between gap-x-2">
+                          <RunsFilters
+                            possibleEnvironments={project.environments}
+                            possibleTasks={list.possibleTasks}
+                            hasFilters={list.hasFilters}
+                          />
+                          <div className="flex items-center justify-end gap-x-2">
+                            <ListPagination list={list} />
+                          </div>
                         </div>
-                      </div>
 
-                      <TaskRunsTable
-                        total={list.runs.length}
-                        hasFilters={list.hasFilters}
-                        filters={list.filters}
-                        runs={list.runs}
-                        isLoading={isLoading}
-                      />
-                      <ListPagination list={list} className="mt-2 justify-end" />
+                        <TaskRunsTable
+                          total={list.runs.length}
+                          hasFilters={list.hasFilters}
+                          filters={list.filters}
+                          runs={list.runs}
+                          isLoading={isLoading}
+                          allowSelection
+                        />
+                        <ListPagination list={list} className="mt-2 justify-end" />
+                      </div>
                     </div>
-                  </div>
-                )}
-              </>
-            )}
-          </TypedAwait>
-        </Suspense>
+                  )}
+                </>
+              )}
+            </TypedAwait>
+          </Suspense>
+        </SelectedItemsProvider>
       </PageBody>
     </>
   );

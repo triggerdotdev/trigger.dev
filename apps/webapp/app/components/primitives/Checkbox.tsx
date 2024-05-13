@@ -53,7 +53,7 @@ export type CheckboxProps = Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
   "checked" | "onChange"
 > & {
-  id: string;
+  id?: string;
   name?: string;
   value?: string;
   variant?: keyof typeof variants;
@@ -143,25 +143,27 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           ref={ref}
         />
         <div>
-          <div className="flex items-center gap-x-2">
-            <label
-              htmlFor={id}
-              className={cn(
-                props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
-                labelClassName
+          {label !== undefined && (
+            <div className="flex items-center gap-x-2">
+              <label
+                htmlFor={id}
+                className={cn(
+                  props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
+                  labelClassName
+                )}
+                onClick={(e) => e.preventDefault()}
+              >
+                {label}
+              </label>
+              {badges && (
+                <span className="-mr-2 flex gap-x-1.5">
+                  {badges.map((badge) => (
+                    <Badge key={badge}>{badge}</Badge>
+                  ))}
+                </span>
               )}
-              onClick={(e) => e.preventDefault()}
-            >
-              {label}
-            </label>
-            {badges && (
-              <span className="-mr-2 flex gap-x-1.5">
-                {badges.map((badge) => (
-                  <Badge key={badge}>{badge}</Badge>
-                ))}
-              </span>
-            )}
-          </div>
+            </div>
+          )}
           {variant === "description" && (
             <Paragraph variant="small" className={cn("mt-0.5", descriptionClassName)}>
               {description}
