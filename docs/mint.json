@@ -156,8 +156,7 @@
         "v3/notifications",
         "v3/rollbacks",
         "v3/using-apis",
-        "v3/middleware",
-        "v3/automated-tests"
+        "v3/middleware"
       ]
     },
     {
