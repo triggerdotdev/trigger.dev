@@ -230,15 +230,6 @@
       ]
     },
     {
-      "group": "Architecture",
-      "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/architecture-how-it-works",
-        "v3/architecture-multi-tenant-queue",
-        "v3/architecture-reliability"
-      ]
-    },
-    {
       "group": "Open source",
       "version": "v3 (Developer Preview)",
       "pages": ["v3/github-repo", "v3/open-source-self-hosting", "v3/open-source-contributing"]
