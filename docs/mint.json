@@ -246,13 +246,7 @@
     {
       "group": "Help",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/help-faqs",
-        "v3/community",
-        "v3/help-email",
-        "v3/help-slack",
-        "v3/help-uptime-status"
-      ]
+      "pages": ["v3/community", "v3/help-email", "v3/help-slack", "v3/help-uptime-status"]
     },
     {
       "group": "Getting Started",
