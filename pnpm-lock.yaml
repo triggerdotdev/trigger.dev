@@ -4,17 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  '@changesets/assemble-release-plan@5.2.4':
-    hash: 3wuhjtl4hjck4itk3w32z4cd5u
-    path: patches/@changesets__assemble-release-plan@5.2.4.patch
-  engine.io-parser@5.2.2:
-    hash: e6nctogrhpxoivwiwy37ersfu4
-    path: patches/engine.io-parser@5.2.2.patch
-  tsup@8.0.1:
-    hash: a5ztaafw5l4qfghy2hjjuynb34
-    path: patches/tsup@8.0.1.patch
-
 importers:
 
   .:
@@ -3184,6 +3173,24 @@ importers:
       wrangler:
         specifier: ^3.18.0
         version: 3.18.0
+
+  v3-next:
+    dependencies:
+      '@t3-oss/env-nextjs':
+        specifier: ^0.10.1
+        version: 0.10.1(zod@3.22.3)
+      '@trpc/server':
+        specifier: ^10.45.2
+        version: 10.45.2
+      '@typeschema/valibot':
+        specifier: ^0.13.4
+        version: 0.13.4(valibot@0.30.0)
+      valibot:
+        specifier: ^0.30.0
+        version: 0.30.0
+      zod:
+        specifier: 3.22.3
+        version: 3.22.3
 
 packages:
 
@@ -14690,6 +14697,31 @@ packages:
       defer-to-connect: 2.0.1
     dev: false
 
+  /@t3-oss/env-core@0.10.1(zod@3.22.3):
+    resolution: {integrity: sha512-GcKZiCfWks5CTxhezn9k5zWX3sMDIYf6Kaxy2Gx9YEQftFcz8hDRN56hcbylyAO3t4jQnQ5ifLawINsNgCDpOg==}
+    peerDependencies:
+      typescript: '>=5.0.0'
+      zod: ^3.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      zod: 3.22.3
+    dev: false
+
+  /@t3-oss/env-nextjs@0.10.1(zod@3.22.3):
+    resolution: {integrity: sha512-iy2qqJLnFh1RjEWno2ZeyTu0ufomkXruUsOZludzDIroUabVvHsrSjtkHqwHp1/pgPUzN3yBRHMILW162X7x2Q==}
+    peerDependencies:
+      typescript: '>=5.0.0'
+      zod: ^3.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      '@t3-oss/env-core': 0.10.1(zod@3.22.3)
+      zod: 3.22.3
+    dev: false
+
   /@tabler/icons-react@2.40.0(react@18.2.0):
     resolution: {integrity: sha512-C+dDOZowFbwI3LGQP0fdua+hOPkGkW7XeMcRXTSdEKc5fD75W6zRO5nXnWivIMRKsi/Y26EDmnQo15N8JX378w==}
     peerDependencies:
@@ -14896,6 +14928,10 @@ packages:
       - encoding
       - supports-color
       - utf-8-validate
+    dev: false
+
+  /@trpc/server@10.45.2:
+    resolution: {integrity: sha512-wOrSThNNE4HUnuhJG6PfDRp4L2009KDVxsd+2VYH8ro6o/7/jwYZ8Uu5j+VaW+mOmc8EHerHzGcdbGNQSAUPgg==}
     dev: false
 
   /@tsconfig/node10@1.0.9:
@@ -15696,6 +15732,32 @@ packages:
       '@types/node': 18.19.20
     dev: false
     optional: true
+
+  /@typeschema/core@0.13.2:
+    resolution: {integrity: sha512-pAt0MK249/9szYaoPuvzhSfOd3smrLhhwCCpUNB4onX32mRx5F3lzDIveIYGQkLYRq58xOX5sjoW+n72f/MLLw==}
+    peerDependencies:
+      '@types/json-schema': ^7.0.15
+    peerDependenciesMeta:
+      '@types/json-schema':
+        optional: true
+    dev: false
+
+  /@typeschema/valibot@0.13.4(valibot@0.30.0):
+    resolution: {integrity: sha512-DU095eQ3gy5AS4HGTzWWOmGNMZuAMkV9QQe+TtA6a4rdGzBS7c2KPG4IKcs14yIJ/PsSHHrEdODpRms6qF1vJQ==}
+    peerDependencies:
+      '@gcornut/valibot-json-schema': ^0.0.25
+      valibot: ^0.29.0
+    peerDependenciesMeta:
+      '@gcornut/valibot-json-schema':
+        optional: true
+      valibot:
+        optional: true
+    dependencies:
+      '@typeschema/core': 0.13.2
+      valibot: 0.30.0
+    transitivePeerDependencies:
+      - '@types/json-schema'
+    dev: false
 
   /@typescript-eslint/eslint-plugin@5.59.6(@typescript-eslint/parser@5.59.6)(eslint@8.31.0)(typescript@5.2.2):
     resolution: {integrity: sha512-sXtOgJNEuRU5RLwPUb1jxtToZbgvq3M6FPpY4QENxoOggK+UpTxUBpj6tD8+Qh2g46Pi9We87E+eHnUw8YcGsw==}
@@ -34321,6 +34383,10 @@ packages:
       '@types/istanbul-lib-coverage': 2.0.4
       convert-source-map: 1.9.0
     dev: true
+
+  /valibot@0.30.0:
+    resolution: {integrity: sha512-5POBdbSkM+3nvJ6ZlyQHsggisfRtyT4tVTo1EIIShs6qCdXJnyWU5TJ68vr8iTg5zpOLjXLRiBqNx+9zwZz/rA==}
+    dev: false
 
   /validate-npm-package-license@3.0.4:
     resolution: {integrity: sha512-DpKm2Ui/xN7/HQKCtpZxoRWBhZ9Z0kqtygG8XCgNQ8ZlDnxuQmWhj566j8fN4Cu3/JmbhsDo7fcAJq4s9h27Ew==}

@@ -1,0 +1,12 @@
+{
+  "name": "@trigger.dev/v3-next",
+  "description": "Next.js project for Trigger.dev",
+  "version": "0.1.0",
+  "dependencies": {
+    "@t3-oss/env-nextjs": "^0.10.1",
+    "@trpc/server": "^10.45.2",
+    "@typeschema/valibot": "^0.13.4",
+    "valibot": "^0.30.0",
+    "zod": "3.22.3"
+  }
+}
