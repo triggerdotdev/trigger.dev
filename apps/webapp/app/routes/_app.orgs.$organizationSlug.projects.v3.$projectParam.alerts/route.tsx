@@ -167,7 +167,7 @@ export default function Page() {
       </NavBar>
       <PageBody>
         <div className={cn("flex h-full flex-col gap-3")}>
-          {alertChannels.length > 0 && (
+          {alertChannels.length > 0 && alertChannels.length < 10 && (
             <div className="flex items-end justify-between">
               <Header2 className="">Project alerts</Header2>
               <LinkButton
