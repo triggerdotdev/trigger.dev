@@ -209,10 +209,6 @@
             "v3/reference-notify",
             "v3/reference-queue"
           ]
-        },
-        {
-          "group": "Objects",
-          "pages": ["v3/reference-context"]
         }
       ]
     },
