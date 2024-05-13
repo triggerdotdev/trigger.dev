@@ -1,6 +1,7 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import {
+  ArrowUpRightIcon,
   BoltIcon,
   BoltSlashIcon,
   BookOpenIcon,
@@ -248,7 +249,7 @@ export default function Page() {
             </Paragraph>
             <LinkButton
               variant="tertiary/medium"
-              TrailingIcon={ExternalLinkIcon}
+              TrailingIcon={ArrowUpRightIcon}
               to="https://status.trigger.dev/"
               target="_blank"
             >
