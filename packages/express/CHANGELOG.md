@@ -1,5 +1,11 @@
 # @trigger.dev/express
 
+## 3.0.0-beta.30
+
+### Patch Changes
+
+- @trigger.dev/sdk@3.0.0-beta.30
+
 ## 3.0.0-beta.29
 
 ### Patch Changes
