@@ -187,9 +187,19 @@
       "pages": ["v3/github-repo", "v3/open-source-self-hosting", "v3/open-source-contributing"]
     },
     {
+      "group": "Troubleshooting",
+      "version": "v3 (Developer Preview)",
+      "pages": [
+        "v3/troubleshooting-alerts",
+        "v3/troubleshooting-uptime-status",
+        "v3/troubleshooting-github-issues",
+        "v3/troubleshooting-github-discussions"
+      ]
+    },
+    {
       "group": "Help",
       "version": "v3 (Developer Preview)",
-      "pages": ["v3/community", "v3/help-email", "v3/help-slack", "v3/help-uptime-status"]
+      "pages": ["v3/community", "v3/help-slack", "v3/help-email"]
     },
     {
       "group": "Getting Started",
