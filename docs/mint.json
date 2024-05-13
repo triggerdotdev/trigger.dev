@@ -95,13 +95,7 @@
     {
       "group": "Getting Started",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/quick-start",
-        "v3/upgrading-from-v2",
-        "v3/changelog",
-        "v3/feature-matrix",
-        "v3/limits-performance"
-      ]
+      "pages": ["v3/quick-start", "v3/upgrading-from-v2", "v3/changelog", "v3/feature-matrix"]
     },
     {
       "group": "Fundamentals",
