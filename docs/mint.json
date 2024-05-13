@@ -154,8 +154,7 @@
         "v3/reattempting-replaying",
         "v3/trigger-filters",
         "v3/notifications",
-        "v3/rollbacks",
-        "v3/using-apis"
+        "v3/rollbacks"
       ]
     },
     {
