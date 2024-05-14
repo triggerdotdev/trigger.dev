@@ -1,56 +1,9 @@
-import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { TaskQueue } from "@trigger.dev/database";
-import { Gauge, Registry } from "prom-client";
-import { z } from "zod";
+import { Registry, Gauge } from "prom-client";
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { marqs } from "~/v3/marqs/index.server";
 
-const ParamsSchema = z.object({
-  projectRef: z.string(),
-});
-
-export async function loader({ params, request }: LoaderFunctionArgs) {
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-  }
-
-  const validatedParams = ParamsSchema.parse(params);
-
-  const project = await prisma.project.findFirst({
-    where: {
-      externalRef: validatedParams.projectRef,
-      organization: {
-        members: {
-          some: {
-            userId: authenticationResult.userId,
-          },
-        },
-      },
-    },
-    include: {
-      organization: true,
-    },
-  });
-
-  if (!project) {
-    return new Response("Not found", { status: 404 });
-  }
-
-  const registry = new Registry();
-  // Return prometheus metrics for the project (queues)
-
-  await registerProjectMetrics(registry, project.id, authenticationResult.userId);
-
-  return new Response(await registry.metrics(), {
-    headers: {
-      "Content-Type": registry.contentType,
-    },
-  });
-}
 
 export async function registerProjectMetrics(
   registry: Registry,
@@ -59,7 +12,6 @@ export async function registerProjectMetrics(
 ) {
   // Register project metrics here
   // Register queue metrics here
-
   // Find the dev runtime environment for this project/user
   const allEnvironments = await prisma.runtimeEnvironment.findMany({
     where: {
@@ -127,7 +79,7 @@ export async function registerProjectMetrics(
 }
 
 async function registerEnvironmentMetrics(
-  env: AuthenticatedEnvironment & { taskQueues: TaskQueue[] },
+  env: AuthenticatedEnvironment & { taskQueues: TaskQueue[]; },
   registry: Registry
 ) {
   new Gauge({
@@ -174,7 +126,6 @@ async function registerEnvironmentMetrics(
     registerTaskQueueMetrics(registry, queue, env);
   }
 }
-
 function registerTaskQueueMetrics(
   registry: Registry,
   queue: TaskQueue,
@@ -246,7 +197,6 @@ function registerTaskQueueMetrics(
     },
   });
 }
-
 function sanitizeMetricName(name: string) {
   return name.replace(/[^a-zA-Z0-9_]/g, "_");
 }
