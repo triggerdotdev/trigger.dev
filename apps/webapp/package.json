@@ -7,9 +7,8 @@
   "scripts": {
     "build": "run-s build:**",
     "build:db:seed": "esbuild --platform=node --bundle --minify --format=esm ./prisma/seed.ts --outdir=prisma",
-    "build:remix": "remix build",
-    "build:server": "esbuild --platform=node --format=cjs ./server.ts --outdir=build",
-    "dev": "cross-env PORT=3030 remix dev -c \"node ./build/server.js\"",
+    "build:remix": "remix vite:build",
+    "dev": "cross-env PORT=3030 vite",
     "format": "prettier --write .",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "start": "cross-env NODE_ENV=production node --max-old-space-size=8192 ./build/server.js",
@@ -155,6 +154,7 @@
     "remix-auth": "^3.6.0",
     "remix-auth-email-link": "2.0.2",
     "remix-auth-github": "^1.6.0",
+    "remix-create-express-app": "^0.3.7",
     "remix-typedjson": "0.3.1",
     "remix-utils": "^7.1.0",
     "seedrandom": "^3.0.5",
@@ -227,6 +227,7 @@
     "prettier": "^2.8.8",
     "prettier-plugin-tailwindcss": "^0.3.0",
     "prop-types": "^15.8.1",
+    "remix-express-dev-server": "^0.2.4",
     "rimraf": "^3.0.2",
     "style-loader": "^3.3.4",
     "tailwind-scrollbar": "^3.0.1",
@@ -234,6 +235,9 @@
     "ts-node": "^10.7.0",
     "tsconfig-paths": "^3.14.1",
     "typescript": "^5.4.5",
+    "vite": "^5.2.11",
+    "vite-plugin-node-polyfills": "^0.21.0",
+    "vite-tsconfig-paths": "^4.0.5",
     "vitest": "^1.4.0"
   },
   "engines": {
