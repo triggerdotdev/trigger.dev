@@ -233,31 +233,22 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                   </div>
                   <hr className="border-charcoal-800" />
                   <div>
-                    <StepNumber stepNumber="1" title="Create a new Slack channel" />
+                    <StepNumber stepNumber="1" title="Email us" />
                     <StepContentContainer>
                       <Paragraph>
-                        In your Slack app, create a new channel from the main menu by going to File{" "}
-                        <ArrowRightIcon className="inline h-4 w-4 text-text-dimmed" /> New Channel
-                      </Paragraph>
-                    </StepContentContainer>
-                    <StepNumber stepNumber="2" title="Setup your channel" />
-                    <StepContentContainer>
-                      <Paragraph>
-                        Name your channel, set its visibility and click 'Create'.
-                      </Paragraph>
-                    </StepContentContainer>
-                    <StepNumber stepNumber="3" title="Invite Trigger.dev" />
-                    <StepContentContainer>
-                      <Paragraph>
-                        Invite this email address to your channel:{" "}
+                        Send us an email to this address from your Trigger.dev account email
+                        address:
                         <ClipboardField
                           variant="primary/medium"
-                          value="james@trigger.dev"
+                          value="priority-support@trigger.dev"
                           className="my-2"
                         />
                       </Paragraph>
+                    </StepContentContainer>
+                    <StepNumber stepNumber="2" title="Look out for an invite from Slack" />
+                    <StepContentContainer>
                       <Paragraph>
-                        As soon as we can, we'll accept your invitation and say hello!
+                        As soon as we can, we'll setup a Slack Connect channel and say hello!
                       </Paragraph>
                     </StepContentContainer>
                   </div>
