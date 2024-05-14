@@ -234,7 +234,7 @@ function getWorkerQueue() {
     prisma,
     cleanup: {
       frequencyExpression: "13,27,43 * * * *",
-      ttl: 7 * 24 * 60 * 60 * 1000, // 7 days
+      ttl: env.WORKER_CLEANUP_TTL_DAYS * 24 * 60 * 60 * 1000, // X days
       maxCount: 1000,
     },
     runnerOptions: {
