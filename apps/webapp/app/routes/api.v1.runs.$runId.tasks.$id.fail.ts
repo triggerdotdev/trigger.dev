@@ -71,7 +71,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 }
 
-export class FailRunTaskService {
+class FailRunTaskService {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {

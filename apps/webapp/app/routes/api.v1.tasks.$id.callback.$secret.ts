@@ -39,7 +39,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 }
 
-export class CallbackRunTaskService {
+class CallbackRunTaskService {
   #prismaClient: PrismaClient;
 
   constructor(prismaClient: PrismaClient = prisma) {
