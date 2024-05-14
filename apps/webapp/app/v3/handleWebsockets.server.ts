@@ -7,9 +7,8 @@ import { AuthenticatedSocketConnection } from "./authenticatedSocketConnection.s
 import { Gauge } from "prom-client";
 import { metricsRegister } from "~/metrics.server";
 
-export const wss = singleton("wss", initalizeWebSocketServer);
-
 let authenticatedConnections: Map<string, AuthenticatedSocketConnection>;
+export const wss = singleton("wss", initalizeWebSocketServer);
 
 function initalizeWebSocketServer() {
   const server = new WebSocketServer({ noServer: true });
