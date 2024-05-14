@@ -1,12 +1,9 @@
 import { z } from "zod";
+import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
 import { isValidRegex } from "./utils/regex";
 import { isValidDatabaseUrl } from "./utils/db";
 
-import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
-
 const EnvironmentSchema = z.object({
-  SECRET_STORE: SecretStoreOptionsSchema.default("DATABASE"),
-
   NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
   DATABASE_URL: z
     .string()
@@ -35,7 +32,7 @@ const EnvironmentSchema = z.object({
   APP_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ENV: z.string().default(process.env.NODE_ENV),
   SERVICE_NAME: z.string().default("trigger.dev webapp"),
-
+  SECRET_STORE: SecretStoreOptionsSchema.default("DATABASE"),
   POSTHOG_PROJECT_KEY: z.string().optional(),
   TELEMETRY_TRIGGER_API_KEY: z.string().optional(),
   TELEMETRY_TRIGGER_API_URL: z.string().optional(),
@@ -162,5 +159,4 @@ const EnvironmentSchema = z.object({
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
-const env = EnvironmentSchema.parse(process.env);
-export { env };
+export const env = EnvironmentSchema.parse(process.env);
