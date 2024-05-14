@@ -24,11 +24,13 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { SEMRESATTRS_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
-import { PrismaInstrumentation } from "@prisma/instrumentation";
+import prismaInstrumentation from "@prisma/instrumentation";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { singleton } from "~/utils/singleton";
 import { LoggerSpanExporter } from "./telemetry/loggerExporter.server";
+
+const { PrismaInstrumentation } = prismaInstrumentation;
 
 export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
 
