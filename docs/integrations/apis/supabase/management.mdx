@@ -109,6 +109,9 @@ You'll have to do this for each Supabase project you want to use webhooks with.
 
 To use this feature, you'll first initialize a `db` instance, passing in your Supabase project [ID](https://supabase.com/dashboard/project/_/settings/api) (or URL):
 
+Note: If you're using a customn domain, you still need to use this format to intialize the db object:
+`https://<your project id>.supabase.co`.
+
 ```ts
 import { SupabaseManagement } from "@trigger.dev/supabase";
 
