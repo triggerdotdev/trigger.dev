@@ -1,5 +1,12 @@
 # trigger.dev
 
+## 3.0.0-beta.32
+
+### Patch Changes
+
+- f96f1e91a: Better handle issues with resolving dependency versions during deploy
+  - @trigger.dev/core@3.0.0-beta.32
+
 ## 3.0.0-beta.31
 
 ### Patch Changes
