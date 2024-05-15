@@ -488,11 +488,6 @@ async function updateEndpointIndexWithError(
       },
     });
 
-    logger.debug("Recent indexes", {
-      recentIndexes,
-      endpointId,
-    });
-
     if (
       recentIndexes.length === MAX_SEQUENTIAL_FAILURE_COUNT - 1 &&
       recentIndexes.every((index) => index.status === "FAILURE")
