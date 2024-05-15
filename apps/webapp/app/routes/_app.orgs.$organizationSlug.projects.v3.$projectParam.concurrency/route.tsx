@@ -117,11 +117,7 @@ export default function Page() {
               <TableHeaderCell>Task</TableHeaderCell>
               <TableHeaderCell className="flex items-center gap-1">
                 Concurrency limit
-                <SimpleTooltip
-                  content="You can configure concurrency per task."
-                  button={<InformationCircleIcon className="size-3.5 text-text-dimmed" />}
-                  className="normal-case tracking-normal"
-                />
+                <InfoIconTooltip content="You can configure concurrency per task." />
               </TableHeaderCell>
               <TableHeaderCell>Queued</TableHeaderCell>
               <TableHeaderCell>Executing</TableHeaderCell>
