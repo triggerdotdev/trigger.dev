@@ -122,7 +122,7 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
               v3 Docs (Developer preview)
             </LinkButton>
             <LinkButton
-              to={"https://trigger.openstatus.dev/"}
+              to={"https://status.trigger.dev/"}
               variant="tertiary/medium"
               LeadingIcon={ActivityIcon}
             >
