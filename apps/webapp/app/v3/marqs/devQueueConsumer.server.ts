@@ -90,6 +90,10 @@ export class DevQueueConsumer {
       return;
     }
 
+    if (this._backgroundWorkers.has(backgroundWorker.id)) {
+      return;
+    }
+
     this._backgroundWorkers.set(backgroundWorker.id, backgroundWorker);
 
     logger.debug("Registered background worker", { backgroundWorker: backgroundWorker.id });
@@ -271,10 +275,10 @@ export class DevQueueConsumer {
       return;
     }
 
+    this._enabled = true;
     // Create the session
     await createNewSession(this.env, this._options.ipAddress ?? "unknown");
 
-    this._enabled = true;
     this._perTraceCountdown = this._options.maximumItemsPerTrace;
     this._lastNewTrace = new Date();
     this._taskFailures = 0;
