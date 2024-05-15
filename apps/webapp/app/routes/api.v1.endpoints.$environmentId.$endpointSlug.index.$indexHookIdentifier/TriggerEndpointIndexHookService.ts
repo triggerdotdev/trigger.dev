@@ -1,16 +1,10 @@
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
-import type { PrismaClient} from "~/db.server";
+import type { PrismaClient } from "~/db.server";
 import { $transaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
 import { type ParamsSchema } from "./route";
-
-const RuntimeEnvironmentType= {
-  PRODUCTION: "PRODUCTION",
-  STAGING: "STAGING",
-  DEVELOPMENT: "DEVELOPMENT",
-  PREVIEW: "PREVIEW",
-} as const
 
 type TriggerEndpointDeployHookOptions = z.infer<typeof ParamsSchema> & {
   body?: any;
