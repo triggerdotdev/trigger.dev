@@ -14,6 +14,9 @@ import { IndexEndpointStats } from "@trigger.dev/core";
 import { RegisterHttpEndpointService } from "../triggers/registerHttpEndpoint.server";
 import { RegisterWebhookService } from "../triggers/registerWebhook.server";
 import { EndpointIndex } from "@trigger.dev/database";
+import { env } from "~/env.server";
+
+const MAX_SEQUENTIAL_FAILURE_COUNT = env.MAX_SEQUENTIAL_INDEX_FAILURE_COUNT;
 
 export class PerformEndpointIndexService {
   #prismaClient: PrismaClient;
@@ -56,9 +59,16 @@ export class PerformEndpointIndexService {
 
     if (!endpointIndex.endpoint.url) {
       logger.debug("Endpoint URL is not set", endpointIndex);
-      return updateEndpointIndexWithError(this.#prismaClient, id, {
-        message: "Endpoint URL is not set",
-      });
+
+      return updateEndpointIndexWithError(
+        this.#prismaClient,
+        id,
+        endpointIndex.endpoint.id,
+        {
+          message: "Endpoint URL is not set",
+        },
+        false
+      );
     }
 
     // Make a request to the endpoint to fetch a list of jobs
@@ -69,9 +79,15 @@ export class PerformEndpointIndexService {
     const { response, parser, headerParser, errorParser } = await client.indexEndpoint();
 
     if (!response) {
-      return updateEndpointIndexWithError(this.#prismaClient, id, {
-        message: `Could not connect to endpoint ${endpointIndex.endpoint.url}`,
-      });
+      return updateEndpointIndexWithError(
+        this.#prismaClient,
+        id,
+        endpointIndex.endpoint.id,
+        {
+          message: `Could not connect to endpoint ${endpointIndex.endpoint.url}`,
+        },
+        endpointIndex.endpoint.environment.type !== "DEVELOPMENT"
+      );
     }
 
     if (isRedirect(response.status)) {
@@ -83,15 +99,27 @@ export class PerformEndpointIndexService {
       const location = response.headers.get("location");
 
       if (!location) {
-        return updateEndpointIndexWithError(this.#prismaClient, id, {
-          message: `Endpoint ${endpointIndex.endpoint.url} is redirecting but no location header is present`,
-        });
+        return updateEndpointIndexWithError(
+          this.#prismaClient,
+          id,
+          endpointIndex.endpoint.id,
+          {
+            message: `Endpoint ${endpointIndex.endpoint.url} is redirecting but no location header is present`,
+          },
+          endpointIndex.endpoint.environment.type !== "DEVELOPMENT"
+        );
       }
 
       if (redirectCount > 5) {
-        return updateEndpointIndexWithError(this.#prismaClient, id, {
-          message: `Endpoint ${endpointIndex.endpoint.url} is redirecting too many times`,
-        });
+        return updateEndpointIndexWithError(
+          this.#prismaClient,
+          id,
+          endpointIndex.endpoint.id,
+          {
+            message: `Endpoint ${endpointIndex.endpoint.url} is redirecting too many times`,
+          },
+          endpointIndex.endpoint.environment.type !== "DEVELOPMENT"
+        );
       }
 
       await this.#prismaClient.endpoint.update({
@@ -111,20 +139,38 @@ export class PerformEndpointIndexService {
       const body = await safeBodyFromResponse(response, errorParser);
 
       if (body) {
-        return updateEndpointIndexWithError(this.#prismaClient, id, {
-          message: body.message,
-        });
+        return updateEndpointIndexWithError(
+          this.#prismaClient,
+          id,
+          endpointIndex.endpoint.id,
+          {
+            message: body.message,
+          },
+          endpointIndex.endpoint.environment.type !== "DEVELOPMENT"
+        );
       }
 
-      return updateEndpointIndexWithError(this.#prismaClient, id, {
-        message: "Trigger API key is invalid",
-      });
+      return updateEndpointIndexWithError(
+        this.#prismaClient,
+        id,
+        endpointIndex.endpoint.id,
+        {
+          message: "Trigger API key is invalid",
+        },
+        endpointIndex.endpoint.environment.type !== "DEVELOPMENT"
+      );
     }
 
     if (!response.ok) {
-      return updateEndpointIndexWithError(this.#prismaClient, id, {
-        message: `Could not connect to endpoint ${endpointIndex.endpoint.url}. Status code: ${response.status}`,
-      });
+      return updateEndpointIndexWithError(
+        this.#prismaClient,
+        id,
+        endpointIndex.endpoint.id,
+        {
+          message: `Could not connect to endpoint ${endpointIndex.endpoint.url}. Status code: ${response.status}`,
+        },
+        endpointIndex.endpoint.environment.type !== "DEVELOPMENT"
+      );
     }
 
     const anyBody = await response.json();
@@ -152,10 +198,16 @@ export class PerformEndpointIndexService {
         }).message;
       }
 
-      return updateEndpointIndexWithError(this.#prismaClient, id, {
-        message: friendlyError,
-        raw: fromZodError(bodyResult.error).message,
-      });
+      return updateEndpointIndexWithError(
+        this.#prismaClient,
+        id,
+        endpointIndex.endpoint.id,
+        {
+          message: friendlyError,
+          raw: fromZodError(bodyResult.error).message,
+        },
+        endpointIndex.endpoint.environment.type !== "DEVELOPMENT"
+      );
     }
 
     const headerResult = headerParser.safeParse(Object.fromEntries(response.headers.entries()));
@@ -163,10 +215,16 @@ export class PerformEndpointIndexService {
       const friendlyError = fromZodError(headerResult.error, {
         prefix: "Your headers are invalid",
       });
-      return updateEndpointIndexWithError(this.#prismaClient, id, {
-        message: friendlyError.message,
-        raw: headerResult.error.issues,
-      });
+      return updateEndpointIndexWithError(
+        this.#prismaClient,
+        id,
+        endpointIndex.endpoint.id,
+        {
+          message: friendlyError.message,
+          raw: headerResult.error.issues,
+        },
+        endpointIndex.endpoint.environment.type !== "DEVELOPMENT"
+      );
     }
 
     const { jobs, sources, dynamicTriggers, dynamicSchedules, httpEndpoints, webhooks } =
@@ -407,8 +465,44 @@ export class PerformEndpointIndexService {
 async function updateEndpointIndexWithError(
   prismaClient: PrismaClient,
   id: string,
-  error: EndpointIndexError
+  endpointId: string,
+  error: EndpointIndexError,
+  checkDisabling = true
 ) {
+  // Check here to see if this endpoint has only failed for the last 50 times
+  // And if so, we disable the endpoint by setting the url to null
+  if (checkDisabling) {
+    const recentIndexes = await prismaClient.endpointIndex.findMany({
+      where: {
+        endpointId,
+        id: {
+          not: id,
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: MAX_SEQUENTIAL_FAILURE_COUNT - 1,
+      select: {
+        status: true,
+      },
+    });
+
+    if (
+      recentIndexes.length === MAX_SEQUENTIAL_FAILURE_COUNT - 1 &&
+      recentIndexes.every((index) => index.status === "FAILURE")
+    ) {
+      await prismaClient.endpoint.update({
+        where: {
+          id: endpointId,
+        },
+        data: {
+          url: null,
+        },
+      });
+    }
+  }
+
   return await prismaClient.endpointIndex.update({
     where: {
       id,

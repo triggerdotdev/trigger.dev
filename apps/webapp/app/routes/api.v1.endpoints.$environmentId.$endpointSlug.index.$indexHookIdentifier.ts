@@ -106,7 +106,7 @@ export class TriggerEndpointIndexHookService {
         },
       });
 
-      if (!endpoint) {
+      if (!endpoint || !endpoint.url) {
         throw new Error("Endpoint not found");
       }
 

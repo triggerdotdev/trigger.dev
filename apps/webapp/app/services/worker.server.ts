@@ -232,11 +232,6 @@ function getWorkerQueue() {
   return new ZodWorker({
     name: "workerQueue",
     prisma,
-    cleanup: {
-      frequencyExpression: "13,27,43 * * * *",
-      ttl: env.WORKER_CLEANUP_TTL_DAYS * 24 * 60 * 60 * 1000, // X days
-      maxCount: 1000,
-    },
     runnerOptions: {
       connectionString: env.DATABASE_URL,
       concurrency: env.WORKER_CONCURRENCY,

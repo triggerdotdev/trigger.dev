@@ -158,6 +158,8 @@ const EnvironmentSchema = z.object({
 
   ORG_SLACK_INTEGRATION_CLIENT_ID: z.string().optional(),
   ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
+
+  MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
