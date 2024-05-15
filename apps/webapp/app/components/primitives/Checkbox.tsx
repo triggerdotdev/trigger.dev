@@ -174,3 +174,17 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
     );
   }
 );
+
+type SimpleCheckboxProps = React.ComponentProps<"input">;
+
+export function SimpleCheckbox({ className, ...props }: SimpleCheckboxProps) {
+  return (
+    <input
+      className={cn(
+        props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
+        "read-only:border-charcoal-650 disabled:border-charcoal-650 rounded-sm border border-charcoal-600 bg-transparent transition checked:!bg-indigo-500 read-only:!bg-charcoal-700 group-hover:bg-charcoal-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none  focus-visible:ring-indigo-500 disabled:!bg-charcoal-700"
+      )}
+      {...props}
+    />
+  );
+}
