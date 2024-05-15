@@ -1,4 +1,4 @@
-import { $ } from "execa";
+import { $, ExecaError } from "execa";
 import { join } from "node:path";
 import { readJSONFileSync } from "./fileSystem";
 import { logger } from "./logger";
@@ -269,8 +269,7 @@ class PNPMCommands implements PackageManagerCommands {
     packageNames: string[],
     options: PackageManagerOptions
   ): Promise<Record<string, string>> {
-    const { stdout } = await $({ cwd: options.cwd })`${this.cmd} list ${packageNames} -r --json`;
-    const result = JSON.parse(stdout) as PnpmList;
+    const result = await this.#listDependencies(packageNames, options);
 
     logger.debug(`Resolving ${packageNames.join(" ")} version using ${this.name}`);
 
@@ -288,6 +287,21 @@ class PNPMCommands implements PackageManagerCommands {
     }
 
     return results;
+  }
+
+  async #listDependencies(packageNames: string[], options: PackageManagerOptions) {
+    const childProcess = await $({
+      cwd: options.cwd,
+      reject: false,
+    })`${this.cmd} list ${packageNames} -r --json`;
+
+    if (childProcess.failed) {
+      logger.debug("Failed to list dependencies, using stdout anyway...", {
+        error: childProcess.stderr,
+      });
+    }
+
+    return JSON.parse(childProcess.stdout) as PnpmList;
   }
 }
 
@@ -331,8 +345,7 @@ class NPMCommands implements PackageManagerCommands {
     packageNames: string[],
     options: PackageManagerOptions
   ): Promise<Record<string, string>> {
-    const { stdout } = await $({ cwd: options.cwd })`${this.cmd} list ${packageNames} --json`;
-    const output = JSON.parse(stdout) as NpmListOutput;
+    const output = await this.#listDependencies(packageNames, options);
 
     logger.debug(`Resolving ${packageNames.join(" ")} version using ${this.name}`, { output });
 
@@ -347,6 +360,21 @@ class NPMCommands implements PackageManagerCommands {
     }
 
     return results;
+  }
+
+  async #listDependencies(packageNames: string[], options: PackageManagerOptions) {
+    const childProcess = await $({
+      cwd: options.cwd,
+      reject: false,
+    })`${this.cmd} list ${packageNames} --json`;
+
+    if (childProcess.failed) {
+      logger.debug("Failed to list dependencies, using stdout anyway...", {
+        error: childProcess.stderr,
+      });
+    }
+
+    return JSON.parse(childProcess.stdout) as NpmListOutput;
   }
 
   #recursivelySearchDependencies(
@@ -404,7 +432,7 @@ class YarnCommands implements PackageManagerCommands {
     packageNames: string[],
     options: PackageManagerOptions
   ): Promise<Record<string, string>> {
-    const { stdout } = await $({ cwd: options.cwd })`${this.cmd} info ${packageNames} --json`;
+    const stdout = await this.#listDependencies(packageNames, options);
 
     const lines = stdout.split("\n");
 
@@ -423,6 +451,21 @@ class YarnCommands implements PackageManagerCommands {
     }
 
     return results;
+  }
+
+  async #listDependencies(packageNames: string[], options: PackageManagerOptions) {
+    const childProcess = await $({
+      cwd: options.cwd,
+      reject: false,
+    })`${this.cmd} info ${packageNames} --json`;
+
+    if (childProcess.failed) {
+      logger.debug("Failed to list dependencies, using stdout anyway...", {
+        error: childProcess.stderr,
+      });
+    }
+
+    return childProcess.stdout;
   }
 
   // The "value" when doing yarn info is formatted like this:
