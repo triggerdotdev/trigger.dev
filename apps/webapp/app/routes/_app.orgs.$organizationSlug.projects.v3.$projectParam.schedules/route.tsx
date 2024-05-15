@@ -198,15 +198,16 @@ function AttachYourFirstScheduleInstructions() {
         <div className="flex gap-2">
           <LinkButton
             to={`${v3NewSchedulePath(organization, project)}${location.search}`}
-            variant="primary/small"
-            LeadingIcon={PlusSmallIcon}
+            variant="primary/medium"
+            LeadingIcon={PlusIcon}
             className="inline-flex"
+            shortcut={{ key: "n" }}
           >
-            Create in the dashboard
+            New schedule
           </LinkButton>
           <LinkButton
             to={docsPath("v3/tasks-scheduled")}
-            variant="primary/small"
+            variant="tertiary/medium"
             LeadingIcon={BookOpenIcon}
             className="inline-flex"
           >
