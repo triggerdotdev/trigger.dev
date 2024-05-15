@@ -32,10 +32,11 @@ export class HandleHttpSourceService {
       return { status: 200 };
     }
 
+    if (!triggerSource.endpoint.url) {
+      return { status: 404 };
+    }
+
     if (!triggerSource.organization.runsEnabled) {
-      logger.debug("HandleHttpSourceService: Runs are disabled for this organization", {
-        organizationId: triggerSource.organization.id,
-      });
       return { status: 404 };
     }
 
