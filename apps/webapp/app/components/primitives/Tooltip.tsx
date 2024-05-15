@@ -87,9 +87,11 @@ function SimpleTooltip({
 export function InfoIconTooltip({
   content,
   buttonClassName,
+  contentClassName,
 }: {
   content: React.ReactNode;
   buttonClassName?: string;
+  contentClassName?: string;
 }) {
   return (
     <SimpleTooltip
@@ -98,6 +100,7 @@ export function InfoIconTooltip({
       }
       content={content}
       variant="dark"
+      className={cn("normal-case tracking-normal", contentClassName)}
     />
   );
 }
