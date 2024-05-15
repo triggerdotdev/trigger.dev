@@ -53,3 +53,7 @@ pnpm exec triggerdev dev
 ```
 
 6. You should see the v3 dev command spitting out messages, including that it's started a background worker.
+
+7. Go to the webapp now and inside your project you should see some tasks on the "Tasks" page.
+
+8. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the `/references/v3-catalog/src/trigger` folder. Many of them accept an empty payload.
