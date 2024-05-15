@@ -1,18 +1,10 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import {
-  JobRunStatusRecordSchema,
-  StatusHistory,
-  StatusHistorySchema,
-  StatusUpdate,
-  StatusUpdateData,
-  StatusUpdateSchema,
-  StatusUpdateState,
-} from "@trigger.dev/core";
+import { JobRunStatusRecordSchema, StatusUpdateSchema } from "@trigger.dev/core";
 import { z } from "zod";
-import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { SetStatusService } from "./SetStatusService";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -78,67 +70,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     return json({ error: "Something went wrong" }, { status: 500 });
-  }
-}
-
-export class SetStatusService {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
-  public async call(runId: string, id: string, status: StatusUpdate) {
-    const statusRecord = await $transaction(this.#prismaClient, async (tx) => {
-      const existingStatus = await tx.jobRunStatusRecord.findUnique({
-        where: {
-          runId_key: {
-            runId,
-            key: id,
-          },
-        },
-      });
-
-      const history: StatusHistory = [];
-      const historyResult = StatusHistorySchema.safeParse(existingStatus?.history);
-      if (historyResult.success) {
-        history.push(...historyResult.data);
-      }
-      if (existingStatus) {
-        history.push({
-          label: existingStatus.label,
-          state: (existingStatus.state ?? undefined) as StatusUpdateState,
-          data: (existingStatus.data ?? undefined) as StatusUpdateData,
-        });
-      }
-
-      const updatedStatus = await tx.jobRunStatusRecord.upsert({
-        where: {
-          runId_key: {
-            runId,
-            key: id,
-          },
-        },
-        create: {
-          key: id,
-          runId,
-          //this shouldn't ever use the id in reality, as the SDK makess it compulsory on the first call
-          label: status.label ?? id,
-          state: status.state,
-          data: status.data as any,
-          history: [],
-        },
-        update: {
-          label: status.label,
-          state: status.state,
-          data: status.data as any,
-          history: history as any[],
-        },
-      });
-
-      return updatedStatus;
-    });
-
-    return statusRecord;
   }
 }

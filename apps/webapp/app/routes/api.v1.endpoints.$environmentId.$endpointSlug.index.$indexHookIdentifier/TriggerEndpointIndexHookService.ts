@@ -1,73 +1,9 @@
-import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
-import { safeJsonParse } from "~/utils/json";
-
-const ParamsSchema = z.object({
-  environmentId: z.string(),
-  endpointSlug: z.string(),
-  indexHookIdentifier: z.string(),
-});
-
-export async function loader({ params }: LoaderFunctionArgs) {
-  const parsedParams = ParamsSchema.safeParse(params);
-
-  if (!parsedParams.success) {
-    return {
-      status: 400,
-      json: {
-        error: "Invalid params",
-      },
-    };
-  }
-
-  const { environmentId, endpointSlug, indexHookIdentifier } = parsedParams.data;
-
-  const service = new TriggerEndpointIndexHookService();
-
-  await service.call({
-    environmentId,
-    endpointSlug,
-    indexHookIdentifier,
-  });
-
-  return json({
-    ok: true,
-  });
-}
-
-export async function action({ request, params }: ActionFunctionArgs) {
-  const parsedParams = ParamsSchema.safeParse(params);
-
-  if (!parsedParams.success) {
-    return {
-      status: 400,
-      json: {
-        error: "Invalid params",
-      },
-    };
-  }
-
-  const { environmentId, endpointSlug, indexHookIdentifier } = parsedParams.data;
-
-  const body = await request.text();
-
-  const service = new TriggerEndpointIndexHookService();
-
-  await service.call({
-    environmentId,
-    endpointSlug,
-    indexHookIdentifier,
-    body: body ? safeJsonParse(body) : undefined,
-  });
-
-  return json({
-    ok: true,
-  });
-}
+import { type ParamsSchema } from "./route";
 
 type TriggerEndpointDeployHookOptions = z.infer<typeof ParamsSchema> & {
   body?: any;

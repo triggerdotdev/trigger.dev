@@ -1,15 +1,10 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import {
-  CreateExternalConnectionBody,
-  CreateExternalConnectionBodySchema,
-  ErrorWithStackSchema,
-} from "@trigger.dev/core";
+import { CreateExternalConnectionBodySchema, ErrorWithStackSchema } from "@trigger.dev/core";
 import { z } from "zod";
 import { generateErrorMessage } from "zod-error";
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
-import { AuthenticatedEnvironment, authenticateApiRequest } from "~/services/apiAuth.server";
-import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
+import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { CreateExternalConnectionService } from "./CreateExternalConnectionService";
 
 const ParamsSchema = z.object({
   accountId: z.string(),
@@ -65,50 +60,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     return json({ message: parsedError.data.message }, { status: 500 });
-  }
-}
-
-class CreateExternalConnectionService {
-  #prismaClient: PrismaClientOrTransaction;
-
-  constructor(prismaClient: PrismaClientOrTransaction = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
-  public async call(
-    accountIdentifier: string,
-    clientSlug: string,
-    environment: AuthenticatedEnvironment,
-    payload: CreateExternalConnectionBody
-  ) {
-    const externalAccount = await this.#prismaClient.externalAccount.upsert({
-      where: {
-        environmentId_identifier: {
-          environmentId: environment.id,
-          identifier: accountIdentifier,
-        },
-      },
-      create: {
-        environmentId: environment.id,
-        organizationId: environment.organizationId,
-        identifier: accountIdentifier,
-      },
-      update: {},
-    });
-
-    const integration = await this.#prismaClient.integration.findUniqueOrThrow({
-      where: {
-        organizationId_slug: {
-          organizationId: environment.organizationId,
-          slug: clientSlug,
-        },
-      },
-    });
-
-    return await integrationAuthRepository.createConnectionFromToken({
-      externalAccount: externalAccount,
-      integration,
-      token: payload,
-    });
   }
 }
