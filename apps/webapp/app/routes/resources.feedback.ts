@@ -14,6 +14,7 @@ export const feedbackTypeLabel = {
   feature: "Feature request",
   help: "Help me out",
   enterprise: "Enterprise enquiry",
+  "increase concurrency": "Increase concurrency",
   "developer preview": "Developer preview feedback",
 };
 

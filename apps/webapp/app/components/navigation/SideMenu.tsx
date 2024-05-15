@@ -1,5 +1,6 @@
 import {
   AcademicCapIcon,
+  AdjustmentsVerticalIcon,
   ArrowRightIcon,
   ArrowRightOnRectangleIcon,
   BeakerIcon,
@@ -47,6 +48,7 @@ import {
   v3DeploymentsPath,
   v3EnvironmentVariablesPath,
   v3ProjectAlertsPath,
+  v3ProjectConcurrencyPath,
   v3ProjectPath,
   v3ProjectSettingsPath,
   v3RunsPath,
@@ -602,6 +604,13 @@ function V3ProjectSideMenu({
         iconColor="text-blue-500"
         to={v3DeploymentsPath(organization, project)}
         data-action="deployments"
+      />
+      <SideMenuItem
+        name="Concurrency"
+        icon={AdjustmentsVerticalIcon}
+        iconColor="text-green-500"
+        to={v3ProjectConcurrencyPath(organization, project)}
+        data-action="concurrency"
       />
       <SideMenuItem
         name="Alerts"
