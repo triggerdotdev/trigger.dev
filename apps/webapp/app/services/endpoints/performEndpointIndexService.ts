@@ -492,6 +492,11 @@ async function updateEndpointIndexWithError(
       recentIndexes.length === MAX_SEQUENTIAL_FAILURE_COUNT - 1 &&
       recentIndexes.every((index) => index.status === "FAILURE")
     ) {
+      logger.debug("Disabling endpoint", {
+        endpointId,
+        error,
+      });
+
       await prismaClient.endpoint.update({
         where: {
           id: endpointId,
