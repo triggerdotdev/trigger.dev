@@ -159,10 +159,6 @@ const EnvironmentSchema = z.object({
   ORG_SLACK_INTEGRATION_CLIENT_ID: z.string().optional(),
   ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
 
-  /** These enable the alerts feature in v3 */
-  ALERT_FROM_EMAIL: z.string().optional(),
-  ALERT_RESEND_API_KEY: z.string().optional(),
-
   MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
 });
 
