@@ -1,5 +1,11 @@
 # @trigger.dev/react
 
+## 3.0.0-beta.32
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.32
+
 ## 3.0.0-beta.31
 
 ### Patch Changes
