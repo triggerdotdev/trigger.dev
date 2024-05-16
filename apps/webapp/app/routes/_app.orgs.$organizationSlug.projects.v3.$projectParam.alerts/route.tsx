@@ -158,7 +158,7 @@ export default function Page() {
         <PageAccessories>
           <LinkButton
             LeadingIcon={BookOpenIcon}
-            to={docsPath("v3/project-alerts")}
+            to={docsPath("v3/troubleshooting-alerts")}
             variant="minimal/small"
           >
             Alerts docs
