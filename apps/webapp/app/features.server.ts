@@ -4,6 +4,7 @@ import { requestUrl } from "./utils/requestUrl.server";
 export type TriggerFeatures = {
   isManagedCloud: boolean;
   v3Enabled: boolean;
+  alertsEnabled: boolean;
 };
 
 // If the request host is cloud.trigger.dev then we are on the managed cloud
@@ -20,5 +21,6 @@ export function featuresForRequest(request: Request): TriggerFeatures {
   return {
     isManagedCloud,
     v3Enabled: env.V3_ENABLED === "true",
+    alertsEnabled: env.ALERT_FROM_EMAIL !== undefined && env.ALERT_RESEND_API_KEY !== undefined,
   };
 }
