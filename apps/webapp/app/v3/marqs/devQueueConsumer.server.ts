@@ -12,7 +12,7 @@ import { prisma } from "~/db.server";
 import { createNewSession, disconnectSession } from "~/models/runtimeEnvironment.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { CancelAttemptService } from "../services/cancelAttempt.server";
@@ -452,11 +452,21 @@ export class DevQueueConsumer {
 
     const queue = await prisma.taskQueue.findUnique({
       where: {
-        runtimeEnvironmentId_name: { runtimeEnvironmentId: this.env.id, name: lockedTaskRun.queue },
+        runtimeEnvironmentId_name: {
+          runtimeEnvironmentId: this.env.id,
+          name: sanitizeQueueName(lockedTaskRun.queue),
+        },
       },
     });
 
     if (!queue) {
+      logger.debug("[DevQueueConsumer] Failed to find queue", {
+        queueName: lockedTaskRun.queue,
+        sanitizedName: sanitizeQueueName(lockedTaskRun.queue),
+        taskRun: lockedTaskRun.id,
+        messageId: message.messageId,
+      });
+
       await marqs?.nackMessage(message.messageId);
       setTimeout(() => this.#doWork(), 1000);
       return;

@@ -17,6 +17,15 @@ export const simplestTask = task({
   },
 });
 
+export const taskWithSpecialCharacters = task({
+  id: "admin:special-characters",
+  run: async (payload: { url: string }) => {
+    return {
+      message: "This task has special characters in its ID",
+    };
+  },
+});
+
 export const createJsonHeroDoc = task({
   id: "create-jsonhero-doc",
   run: async (payload: { title: string; content: any }, { ctx }) => {
