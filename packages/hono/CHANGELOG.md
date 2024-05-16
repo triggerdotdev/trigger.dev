@@ -1,5 +1,11 @@
 # @trigger.dev/hono
 
+## 3.0.0-beta.33
+
+### Patch Changes
+
+- @trigger.dev/sdk@3.0.0-beta.33
+
 ## 3.0.0-beta.32
 
 ### Patch Changes
