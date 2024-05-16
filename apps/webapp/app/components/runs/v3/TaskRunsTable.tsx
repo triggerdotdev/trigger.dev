@@ -29,6 +29,7 @@ import { ReplayRunDialog } from "./ReplayRunDialog";
 import { TaskRunStatusCombo } from "./TaskRunStatus";
 import { LiveTimer } from "./LiveTimer";
 import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
+import { Checkbox } from "~/components/primitives/Checkbox";
 
 type RunsTableProps = {
   total: number;
@@ -60,8 +61,7 @@ export function TaskRunsTable({
         <TableRow>
           {allowSelection && (
             <TableHeaderCell>
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={hasAll(runs.map((r) => r.id))}
                 onChange={(element) => {
                   const ids = runs.map((r) => r.id);
@@ -103,8 +103,7 @@ export function TaskRunsTable({
               <TableRow key={run.id}>
                 {allowSelection && (
                   <TableCell>
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={has(run.id)}
                       onChange={(element) => {
                         const checked = element.currentTarget.checked;

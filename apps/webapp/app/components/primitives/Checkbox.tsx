@@ -57,14 +57,14 @@ export type CheckboxProps = Omit<
   name?: string;
   value?: string;
   variant?: keyof typeof variants;
-  label?: React.ReactNode;
+  label: React.ReactNode;
   description?: string;
   badges?: string[];
   className?: string;
   onChange?: (isChecked: boolean) => void;
 };
 
-export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
+export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProps>(
   (
     {
       id,
@@ -143,27 +143,25 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           ref={ref}
         />
         <div>
-          {label !== undefined && (
-            <div className="flex items-center gap-x-2">
-              <label
-                htmlFor={id}
-                className={cn(
-                  props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
-                  labelClassName
-                )}
-                onClick={(e) => e.preventDefault()}
-              >
-                {label}
-              </label>
-              {badges && (
-                <span className="-mr-2 flex gap-x-1.5">
-                  {badges.map((badge) => (
-                    <Badge key={badge}>{badge}</Badge>
-                  ))}
-                </span>
+          <div className="flex items-center gap-x-2">
+            <label
+              htmlFor={id}
+              className={cn(
+                props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
+                labelClassName
               )}
-            </div>
-          )}
+              onClick={(e) => e.preventDefault()}
+            >
+              {label}
+            </label>
+            {badges && (
+              <span className="-mr-2 flex gap-x-1.5">
+                {badges.map((badge) => (
+                  <Badge key={badge}>{badge}</Badge>
+                ))}
+              </span>
+            )}
+          </div>
           {variant === "description" && (
             <Paragraph variant="small" className={cn("mt-0.5", descriptionClassName)}>
               {description}
@@ -175,13 +173,14 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
   }
 );
 
-type SimpleCheckboxProps = React.ComponentProps<"input">;
+type SimpleCheckboxProps = Omit<React.ComponentProps<"input">, "type">;
 
-export function SimpleCheckbox({ className, ...props }: SimpleCheckboxProps) {
+export function Checkbox({ className, ...props }: SimpleCheckboxProps) {
   return (
     <input
+      type="checkbox"
       className={cn(
-        props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
+        props.readOnly || props.disabled ? "cursor-default" : "cursor-pointer",
         "read-only:border-charcoal-650 disabled:border-charcoal-650 rounded-sm border border-charcoal-600 bg-transparent transition checked:!bg-indigo-500 read-only:!bg-charcoal-700 group-hover:bg-charcoal-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none  focus-visible:ring-indigo-500 disabled:!bg-charcoal-700"
       )}
       {...props}
