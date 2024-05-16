@@ -81,6 +81,22 @@ export class RestoreCheckpointService extends BaseService {
       return;
     }
 
+    const restoreEvent = await this._prisma.checkpointRestoreEvent.findFirst({
+      where: {
+        checkpointId: checkpoint.id,
+        type: "RESTORE",
+      },
+    });
+
+    if (restoreEvent) {
+      logger.error("Restore event already exists", {
+        checkpointId: checkpoint.id,
+        restoreEventId: restoreEvent.id,
+      });
+
+      return;
+    }
+
     const eventService = new CreateCheckpointRestoreEventService(this._prisma);
     await eventService.restore({ checkpointId: checkpoint.id });
 
