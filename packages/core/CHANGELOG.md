@@ -1,5 +1,16 @@
 # internal-platform
 
+## 3.0.0-beta.32
+
+## 3.0.0-beta.31
+
+## 3.0.0-beta.30
+
+### Patch Changes
+
+- 1477a2e30: Increased the timeout when canceling a checkpoint to 31s (to match the timeout on the server)
+- 0e919f56f: Better handle uncaught exceptions
+
 ## 3.0.0-beta.29
 
 ## 3.0.0-beta.28

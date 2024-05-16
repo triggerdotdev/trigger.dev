@@ -55,17 +55,34 @@ export function stripWorkspaceFromVersion(version: string) {
 }
 
 export function parsePackageName(packageSpecifier: string): { name: string; version?: string } {
-  const parts = packageSpecifier.split("@");
+  let name: string | undefined;
+  let version: string | undefined;
 
-  if (parts.length === 1 && typeof parts[0] === "string") {
-    return { name: parts[0] };
+  // Check if the package is scoped
+  if (packageSpecifier.startsWith("@")) {
+    const atIndex = packageSpecifier.indexOf("@", 1);
+    // If a version is included
+    if (atIndex !== -1) {
+      name = packageSpecifier.slice(0, atIndex);
+      version = packageSpecifier.slice(atIndex + 1);
+    } else {
+      name = packageSpecifier;
+    }
+  } else {
+    const [packageName, packageVersion] = packageSpecifier.split("@");
+
+    if (typeof packageName === "string") {
+      name = packageName;
+    }
+
+    version = packageVersion;
   }
 
-  if (parts.length === 2 && typeof parts[0] === "string" && typeof parts[1] === "string") {
-    return { name: parts[0], version: parts[1] };
+  if (!name) {
+    return { name: packageSpecifier };
   }
 
-  return { name: packageSpecifier };
+  return { name, version };
 }
 
 async function setPackageJsonDeps(path: string, deps: Record<string, string>) {

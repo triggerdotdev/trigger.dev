@@ -44,6 +44,7 @@
     "@trigger.dev/yalt": "2.3.18"
   },
   "changesets": [
+    "afraid-sheep-joke",
     "angry-eagles-trade",
     "beige-pens-dance",
     "big-tomatoes-deliver",
@@ -60,6 +61,7 @@
     "dull-mangos-press",
     "eight-pumas-float",
     "eleven-paws-join",
+    "famous-boats-tease",
     "few-students-share",
     "funny-swans-destroy",
     "gorgeous-gorillas-compete",
@@ -68,6 +70,7 @@
     "khaki-poems-lay",
     "late-icons-lie",
     "late-steaks-behave",
+    "lazy-files-lay",
     "lemon-jobs-repair",
     "light-bulldogs-press",
     "light-dragons-complain",
@@ -80,6 +83,7 @@
     "mighty-flowers-train",
     "nasty-jars-pump",
     "new-rivers-tell",
+    "nice-bulldogs-turn",
     "ninety-pets-travel",
     "odd-poets-own",
     "pink-pumas-rhyme",

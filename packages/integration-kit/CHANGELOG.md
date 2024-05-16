@@ -1,5 +1,25 @@
 # @trigger.dev/integration-kit
 
+## 3.0.0-beta.32
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.32
+
+## 3.0.0-beta.31
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.31
+
+## 3.0.0-beta.30
+
+### Patch Changes
+
+- Updated dependencies [1477a2e30]
+- Updated dependencies [0e919f56f]
+  - @trigger.dev/core@3.0.0-beta.30
+
 ## 3.0.0-beta.29
 
 ### Patch Changes

@@ -47,6 +47,8 @@ const EnvironmentSchema = z.object({
   WORKER_SCHEMA: z.string().default("graphile_worker"),
   WORKER_CONCURRENCY: z.coerce.number().int().default(10),
   WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+  /** The number of days a failed Graphile task should stay before getting cleaned up */
+  WORKER_CLEANUP_TTL_DAYS: z.coerce.number().int().default(3),
   EXECUTION_WORKER_CONCURRENCY: z.coerce.number().int().default(10),
   EXECUTION_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   WORKER_ENABLED: z.string().default("true"),
@@ -160,6 +162,8 @@ const EnvironmentSchema = z.object({
   /** These enable the alerts feature in v3 */
   ALERT_FROM_EMAIL: z.string().optional(),
   ALERT_RESEND_API_KEY: z.string().optional(),
+
+  MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

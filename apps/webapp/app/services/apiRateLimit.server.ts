@@ -191,6 +191,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
   pathMatchers: [/^\/api/],
   // Allow /api/v1/tasks/:id/callback/:secret
   pathWhiteList: [
+    "/api/internal/stripe_webhooks",
     "/api/v1/authorization-code",
     "/api/v1/token",
     /^\/api\/v1\/tasks\/[^\/]+\/callback\/[^\/]+$/, // /api/v1/tasks/$id/callback/$secret

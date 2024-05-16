@@ -1,5 +1,28 @@
 # trigger.dev
 
+## 3.0.0-beta.32
+
+### Patch Changes
+
+- f96f1e91a: Better handle issues with resolving dependency versions during deploy
+  - @trigger.dev/core@3.0.0-beta.32
+
+## 3.0.0-beta.31
+
+### Patch Changes
+
+- b8477ea2b: Fixes an issue with scoped packages in additionalPackages option
+  - @trigger.dev/core@3.0.0-beta.31
+
+## 3.0.0-beta.30
+
+### Patch Changes
+
+- 0e919f56f: Better handle uncaught exceptions
+- Updated dependencies [1477a2e30]
+- Updated dependencies [0e919f56f]
+  - @trigger.dev/core@3.0.0-beta.30
+
 ## 3.0.0-beta.29
 
 ### Patch Changes

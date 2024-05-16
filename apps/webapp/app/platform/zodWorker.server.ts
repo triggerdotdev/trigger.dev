@@ -577,6 +577,17 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
             span.recordException(new Error(String(error)));
           }
 
+          if (job.attempts >= job.max_attempts) {
+            logger.debug("Job failed after max attempts", {
+              job,
+              attempts: job.attempts,
+              max_attempts: job.max_attempts,
+              error: error instanceof Error ? error.message : error,
+            });
+
+            return;
+          }
+
           throw error;
         } finally {
           span.end();
