@@ -59,7 +59,7 @@ This is used to identify your task so it can be triggered, managed, and you can 
 Your custom code inside `run()` will be executed when your task is triggered. It’s an async function that has two arguments:
 
 1. The run payload - the data that you pass to the task when you trigger it.
-2. An object with `ctx` about the run ([Context](/v3/reference-context)), and any output from the optional `init` function that runs before every run attempt.
+2. An object with `ctx` about the run (Context), and any output from the optional `init` function that runs before every run attempt.
 
 Anything you return from the `run` function will be the result of the task. Data you return must be JSON serializable: strings, numbers, booleans, arrays, objects, and null.
 
