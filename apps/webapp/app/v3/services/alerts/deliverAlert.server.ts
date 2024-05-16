@@ -10,7 +10,7 @@ import {
   ProjectAlertWebhookProperties,
 } from "~/models/projectAlert.server";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
-import { sendEmail } from "~/services/email.server";
+import { sendAlertEmail, sendEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { workerQueue } from "~/services/worker.server";
@@ -144,7 +144,7 @@ export class DeliverAlertService extends BaseService {
             return;
           }
 
-          await sendEmail({
+          await sendAlertEmail({
             email: "alert-attempt",
             to: emailProperties.data.email,
             taskIdentifier: alert.taskRunAttempt.taskRun.taskIdentifier,
@@ -177,7 +177,7 @@ export class DeliverAlertService extends BaseService {
             return;
           }
 
-          await sendEmail({
+          await sendAlertEmail({
             email: "alert-deployment-failure",
             to: emailProperties.data.email,
             version: alert.workerDeployment.version,
@@ -197,7 +197,7 @@ export class DeliverAlertService extends BaseService {
       }
       case "DEPLOYMENT_SUCCESS": {
         if (alert.workerDeployment) {
-          await sendEmail({
+          await sendAlertEmail({
             email: "alert-deployment-success",
             to: emailProperties.data.email,
             version: alert.workerDeployment.version,

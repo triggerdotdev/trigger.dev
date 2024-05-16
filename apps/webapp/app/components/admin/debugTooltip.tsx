@@ -20,9 +20,11 @@ export function AdminDebugTooltip({ children }: { children: React.ReactNode }) {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger>
-          <ShieldCheckIcon className="h-5 w-5" />
+          <ShieldCheckIcon className="size-5" />
         </TooltipTrigger>
-        <TooltipContent className="flex items-center gap-1">{children}</TooltipContent>
+        <TooltipContent className="flex max-h-[90vh] items-center gap-1 overflow-y-auto">
+          {children}
+        </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

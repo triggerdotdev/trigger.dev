@@ -19,7 +19,7 @@ Sometimes OpenAI calls can take a long time to complete, or they can fail. This 
 
 This example uses Resend to send a sequence of emails over several days.
 
-Each email is wrapped in [retry.onThrow](/v3/reference-retry-on-throw). This will retry the block of code if an error is thrown. This is useful when you don't want to retry the whole task, but just a part of it. The entire task will use the default retrying, so can also retry.
+Each email is wrapped in `retry.onThrow`. This will retry the block of code if an error is thrown. This is useful when you don't want to retry the whole task, but just a part of it. The entire task will use the default retrying, so can also retry.
 
 Additionally this task uses `wait.for` to wait for a certain amount of time before sending the next email. During the waiting time, the task will be paused and will not consume any resources.
 
