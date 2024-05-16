@@ -79,7 +79,7 @@ export function TaskRunsTable({
         }
       }
     },
-    [checkboxes]
+    [checkboxes, runs]
   );
 
   return (
@@ -89,6 +89,7 @@ export function TaskRunsTable({
           {allowSelection && (
             <TableHeaderCell>
               <Checkbox
+                autoFocus
                 checked={hasAll(runs.map((r) => r.id))}
                 onChange={(element) => {
                   const ids = runs.map((r) => r.id);
