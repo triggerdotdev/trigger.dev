@@ -95,13 +95,7 @@
     {
       "group": "Getting Started",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/quick-start",
-        "v3/upgrading-from-v2",
-        "v3/changelog",
-        "v3/feature-matrix",
-        "v3/limits-performance"
-      ]
+      "pages": ["v3/quick-start", "v3/upgrading-from-v2", "v3/changelog", "v3/feature-matrix"]
     },
     {
       "group": "Fundamentals",
@@ -113,7 +107,7 @@
         "v3/apikeys",
         {
           "group": "Task types",
-          "pages": ["v3/tasks-regular", "v3/tasks-scheduled", "v3/tasks-zod", "v3/tasks-webhooks"]
+          "pages": ["v3/tasks-regular", "v3/tasks-scheduled"]
         },
         "v3/trigger-config"
       ]
@@ -158,12 +152,7 @@
         "v3/machines",
         "v3/idempotency",
         "v3/reattempting-replaying",
-        "v3/trigger-filters",
-        "v3/notifications",
-        "v3/rollbacks",
-        "v3/using-apis",
-        "v3/middleware",
-        "v3/automated-tests"
+        "v3/notifications"
       ]
     },
     {
@@ -189,59 +178,7 @@
             "v3/management-deactivate-schedule",
             "v3/management-activate-schedule"
           ]
-        },
-        {
-          "group": "Functions",
-          "pages": [
-            "v3/reference-task",
-            "v3/reference-cron-task",
-            "v3/reference-cron-dynamic",
-            "v3/reference-interval-task",
-            "v3/reference-interval-dynamic",
-            "v3/reference-zod-task",
-            "v3/reference-zod-catalog",
-            "v3/reference-task-trigger",
-            "v3/reference-task-trigger-and-wait",
-            "v3/reference-task-batch-trigger",
-            "v3/reference-task-batch-trigger-and-wait",
-            "v3/reference-wait-for",
-            "v3/reference-wait-until",
-            "v3/reference-wait-for-event",
-            "v3/reference-wait-for-request",
-            "v3/reference-retry-on-throw",
-            "v3/reference-retry-fetch",
-            "v3/reference-retry-intercept-fetch",
-            "v3/reference-notification-catalog",
-            "v3/reference-notify",
-            "v3/reference-queue"
-          ]
-        },
-        {
-          "group": "Objects",
-          "pages": ["v3/reference-context"]
-        },
-        {
-          "group": "CLI",
-          "pages": [
-            "v3/reference-cli-init",
-            "v3/reference-cli-dev",
-            "v3/reference-cli-deploy",
-            "v3/reference-cli-login",
-            "v3/reference-cli-logout",
-            "v3/reference-cli-update",
-            "v3/reference-cli-build",
-            "v3/reference-cli-who-am-i"
-          ]
         }
-      ]
-    },
-    {
-      "group": "Architecture",
-      "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/architecture-how-it-works",
-        "v3/architecture-multi-tenant-queue",
-        "v3/architecture-reliability"
       ]
     },
     {
@@ -250,15 +187,19 @@
       "pages": ["v3/github-repo", "v3/open-source-self-hosting", "v3/open-source-contributing"]
     },
     {
-      "group": "Help",
+      "group": "Troubleshooting",
       "version": "v3 (Developer Preview)",
       "pages": [
-        "v3/help-faqs",
-        "v3/community",
-        "v3/help-email",
-        "v3/help-slack",
-        "v3/help-uptime-status"
+        "v3/troubleshooting-alerts",
+        "v3/troubleshooting-uptime-status",
+        "v3/troubleshooting-github-issues",
+        "v3/troubleshooting-github-discussions"
       ]
+    },
+    {
+      "group": "Help",
+      "version": "v3 (Developer Preview)",
+      "pages": ["v3/community", "v3/help-slack", "v3/help-email"]
     },
     {
       "group": "Getting Started",

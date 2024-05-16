@@ -1,6 +1,7 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import {
+  ArrowUpRightIcon,
   BoltIcon,
   BoltSlashIcon,
   BookOpenIcon,
@@ -15,12 +16,14 @@ import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-
 import { SlackIcon } from "@trigger.dev/companyicons";
 import { ProjectAlertChannelType, ProjectAlertType } from "@trigger.dev/database";
 import assertNever from "assert-never";
+import { ExternalLinkIcon } from "lucide-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DetailCell } from "~/components/primitives/DetailCell";
+import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -155,7 +158,7 @@ export default function Page() {
         <PageAccessories>
           <LinkButton
             LeadingIcon={BookOpenIcon}
-            to={docsPath("v3/project-alerts")}
+            to={docsPath("v3/troubleshooting-alerts")}
             variant="minimal/small"
           >
             Alerts docs
@@ -164,16 +167,19 @@ export default function Page() {
       </NavBar>
       <PageBody>
         <div className={cn("flex h-full flex-col gap-3")}>
-          <div className="flex items-center justify-end gap-2">
-            <LinkButton
-              to={v3NewProjectAlertPath(organization, project)}
-              variant="primary/small"
-              LeadingIcon={PlusIcon}
-              shortcut={{ key: "n" }}
-            >
-              New alert
-            </LinkButton>
-          </div>
+          {alertChannels.length > 0 && alertChannels.length < 10 && (
+            <div className="flex items-end justify-between">
+              <Header2 className="">Project alerts</Header2>
+              <LinkButton
+                to={v3NewProjectAlertPath(organization, project)}
+                variant="primary/small"
+                LeadingIcon={PlusIcon}
+                shortcut={{ key: "n" }}
+              >
+                New alert
+              </LinkButton>
+            </div>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
@@ -214,14 +220,42 @@ export default function Page() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={5}>
-                    <div className="flex items-center justify-center">
-                      <Paragraph>No alerts have been created</Paragraph>
+                    <div className="flex flex-col items-center justify-center py-6">
+                      <Header2 spacing className="text-text-bright">
+                        You haven't created any project alerts yet
+                      </Header2>
+                      <Paragraph variant="small" className="mb-4">
+                        Get alerted when runs or deployments fail, or when deployments succeed.
+                      </Paragraph>
+                      <LinkButton
+                        to={v3NewProjectAlertPath(organization, project)}
+                        variant="primary/medium"
+                        LeadingIcon={PlusIcon}
+                        shortcut={{ key: "n" }}
+                      >
+                        New alert
+                      </LinkButton>
                     </div>
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
+          <div className="mt-4">
+            <Header2 className="mb-1">Platform alerts</Header2>
+            <Paragraph variant="small" className="mb-4">
+              Get email notifications when Trigger.dev creates, updates or resolves a platform
+              incident.
+            </Paragraph>
+            <LinkButton
+              variant="tertiary/medium"
+              TrailingIcon={ArrowUpRightIcon}
+              to="https://status.trigger.dev/"
+              target="_blank"
+            >
+              Subscribe
+            </LinkButton>
+          </div>
         </div>
         <Outlet />
       </PageBody>
