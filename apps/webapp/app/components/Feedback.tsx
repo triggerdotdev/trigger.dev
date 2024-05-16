@@ -115,14 +115,7 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
               Docs
             </LinkButton>
             <LinkButton
-              to={docsPath("v3/introduction")}
-              variant="tertiary/medium"
-              LeadingIcon={BookOpenIcon}
-            >
-              v3 Docs (Developer preview)
-            </LinkButton>
-            <LinkButton
-              to={"https://trigger.openstatus.dev/"}
+              to={"https://status.trigger.dev/"}
               variant="tertiary/medium"
               LeadingIcon={ActivityIcon}
             >
