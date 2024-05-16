@@ -1,5 +1,13 @@
 # trigger.dev
 
+## 3.0.0-beta.33
+
+### Patch Changes
+
+- 598906fc4: Fix for typo in v3 CLI login command
+- Updated dependencies [6a379e4e9]
+  - @trigger.dev/core@3.0.0-beta.33
+
 ## 3.0.0-beta.32
 
 ### Patch Changes
