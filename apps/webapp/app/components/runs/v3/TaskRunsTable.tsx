@@ -30,6 +30,8 @@ import { TaskRunStatusCombo } from "./TaskRunStatus";
 import { LiveTimer } from "./LiveTimer";
 import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
 import { Checkbox } from "~/components/primitives/Checkbox";
+import { useCallback, useRef } from "react";
+import { run } from "@remix-run/dev/dist/cli/run";
 
 type RunsTableProps = {
   total: number;
@@ -51,9 +53,34 @@ export function TaskRunsTable({
 }: RunsTableProps) {
   const organization = useOrganization();
   const project = useProject();
-  const { selectedItems, has, hasAll, select, deselect } = useSelectedItems(allowSelection);
+  const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
+  const { selectedItems, has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
 
-  console.log(selectedItems);
+  const navigateCheckboxes = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+      //indexes are out by one because of the header row
+      if (event.key === "ArrowUp" && index > 0) {
+        checkboxes.current[index - 1]?.focus();
+
+        if (event.shiftKey) {
+          const oldItem = runs.at(index - 1);
+          const newItem = runs.at(index - 2);
+          const itemsIds = [oldItem?.id, newItem?.id].filter(Boolean);
+          select(itemsIds);
+        }
+      } else if (event.key === "ArrowDown" && index < checkboxes.current.length - 1) {
+        checkboxes.current[index + 1]?.focus();
+
+        if (event.shiftKey) {
+          const oldItem = runs.at(index - 1);
+          const newItem = runs.at(index);
+          const itemsIds = [oldItem?.id, newItem?.id].filter(Boolean);
+          select(itemsIds);
+        }
+      }
+    },
+    [checkboxes]
+  );
 
   return (
     <Table>
@@ -72,6 +99,10 @@ export function TaskRunsTable({
                     deselect(ids);
                   }
                 }}
+                ref={(r) => {
+                  checkboxes.current[0] = r;
+                }}
+                onKeyDown={(event) => navigateCheckboxes(event, 0)}
               />
             </TableHeaderCell>
           )}
@@ -97,7 +128,7 @@ export function TaskRunsTable({
         ) : runs.length === 0 ? (
           <BlankState isLoading={isLoading} filters={filters} />
         ) : (
-          runs.map((run) => {
+          runs.map((run, index) => {
             const path = v3RunSpanPath(organization, project, run, { spanId: run.spanId });
             return (
               <TableRow key={run.id}>
@@ -106,13 +137,12 @@ export function TaskRunsTable({
                     <Checkbox
                       checked={has(run.id)}
                       onChange={(element) => {
-                        const checked = element.currentTarget.checked;
-                        if (checked) {
-                          select(run.id);
-                        } else {
-                          deselect(run.id);
-                        }
+                        toggle(run.id);
                       }}
+                      ref={(r) => {
+                        checkboxes.current[index + 1] = r;
+                      }}
+                      onKeyDown={(event) => navigateCheckboxes(event, index + 1)}
                     />
                   </TableCell>
                 )}

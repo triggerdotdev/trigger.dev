@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Badge } from "./Badge";
 import { Paragraph } from "./Paragraph";
@@ -175,15 +175,18 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
 
 type SimpleCheckboxProps = Omit<React.ComponentProps<"input">, "type">;
 
-export function Checkbox({ className, ...props }: SimpleCheckboxProps) {
-  return (
-    <input
-      type="checkbox"
-      className={cn(
-        props.readOnly || props.disabled ? "cursor-default" : "cursor-pointer",
-        "read-only:border-charcoal-650 disabled:border-charcoal-650 rounded-sm border border-charcoal-600 bg-transparent transition checked:!bg-indigo-500 read-only:!bg-charcoal-700 group-hover:bg-charcoal-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none  focus-visible:ring-indigo-500 disabled:!bg-charcoal-700"
-      )}
-      {...props}
-    />
-  );
-}
+export const Checkbox = forwardRef<HTMLInputElement, SimpleCheckboxProps>(
+  ({ className, ...props }: SimpleCheckboxProps, ref) => {
+    return (
+      <input
+        type="checkbox"
+        className={cn(
+          props.readOnly || props.disabled ? "cursor-default" : "cursor-pointer",
+          "read-only:border-charcoal-650 disabled:border-charcoal-650 rounded-sm border border-charcoal-600 bg-transparent transition checked:!bg-indigo-500 read-only:!bg-charcoal-700 group-hover:bg-charcoal-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none  focus-visible:ring-indigo-500 disabled:!bg-charcoal-700"
+        )}
+        {...props}
+        ref={ref}
+      />
+    );
+  }
+);

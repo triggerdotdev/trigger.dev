@@ -74,57 +74,69 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Runs" />
       </NavBar>
-      <PageBody>
+      <PageBody scrollable={false}>
         <SelectedItemsProvider initialSelectedItems={[]}>
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center py-2">
-                <div className="mx-auto flex items-center gap-2">
-                  <Spinner />
-                  <Paragraph variant="small">Loading runs</Paragraph>
-                </div>
-              </div>
-            }
-          >
-            <TypedAwait resolve={data}>
-              {(list) => (
-                <>
-                  {list.runs.length === 0 && !list.hasFilters ? (
-                    list.possibleTasks.length === 0 ? (
-                      <CreateFirstTaskInstructions />
-                    ) : (
-                      <RunTaskInstructions />
-                    )
-                  ) : (
-                    <div className={cn("grid h-fit grid-cols-1 gap-4")}>
-                      <div>
-                        <div className="mb-2 flex items-start justify-between gap-x-2">
-                          <RunsFilters
-                            possibleEnvironments={project.environments}
-                            possibleTasks={list.possibleTasks}
-                            hasFilters={list.hasFilters}
-                          />
-                          <div className="flex items-center justify-end gap-x-2">
-                            <ListPagination list={list} />
-                          </div>
-                        </div>
-
-                        <TaskRunsTable
-                          total={list.runs.length}
-                          hasFilters={list.hasFilters}
-                          filters={list.filters}
-                          runs={list.runs}
-                          isLoading={isLoading}
-                          allowSelection
-                        />
-                        <ListPagination list={list} className="mt-2 justify-end" />
+          {({ selectedItems }) => (
+            <div
+              className={cn(
+                "grid h-full max-h-full overflow-hidden",
+                selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_2.5rem]"
+              )}
+            >
+              <div className="overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                <Suspense
+                  fallback={
+                    <div className="flex items-center justify-center py-2">
+                      <div className="mx-auto flex items-center gap-2">
+                        <Spinner />
+                        <Paragraph variant="small">Loading runs</Paragraph>
                       </div>
                     </div>
-                  )}
-                </>
-              )}
-            </TypedAwait>
-          </Suspense>
+                  }
+                >
+                  <TypedAwait resolve={data}>
+                    {(list) => (
+                      <>
+                        {list.runs.length === 0 && !list.hasFilters ? (
+                          list.possibleTasks.length === 0 ? (
+                            <CreateFirstTaskInstructions />
+                          ) : (
+                            <RunTaskInstructions />
+                          )
+                        ) : (
+                          <div className={cn("grid h-fit grid-cols-1 gap-4")}>
+                            <div>
+                              <div className="mb-2 flex items-start justify-between gap-x-2">
+                                <RunsFilters
+                                  possibleEnvironments={project.environments}
+                                  possibleTasks={list.possibleTasks}
+                                  hasFilters={list.hasFilters}
+                                />
+                                <div className="flex items-center justify-end gap-x-2">
+                                  <ListPagination list={list} />
+                                </div>
+                              </div>
+
+                              <TaskRunsTable
+                                total={list.runs.length}
+                                hasFilters={list.hasFilters}
+                                filters={list.filters}
+                                runs={list.runs}
+                                isLoading={isLoading}
+                                allowSelection
+                              />
+                              <ListPagination list={list} className="mt-2 justify-end" />
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </TypedAwait>
+                </Suspense>
+              </div>
+              {selectedItems.size > 0 && <div>{selectedItems.size} runs selected</div>}
+            </div>
+          )}
         </SelectedItemsProvider>
       </PageBody>
     </>

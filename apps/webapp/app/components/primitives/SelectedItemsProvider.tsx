@@ -6,6 +6,7 @@ type SelectedItemsContext = {
   selectedItems: Set<string>;
   select: (items: string | string[]) => void;
   deselect: (items: string | string[]) => void;
+  toggle: (items: string | string[]) => void;
   deselectAll: () => void;
   has: (item: string) => boolean;
   hasAll: (items: string[]) => boolean;
@@ -27,7 +28,7 @@ export function SelectedItemsProvider({
   children,
 }: {
   initialSelectedItems: string[];
-  children: React.ReactNode;
+  children: React.ReactNode | ((context: SelectedItemsContext) => React.ReactNode);
 }) {
   const [state, dispatch] = useReducer(selectedItemsReducer, new Set<string>(initialSelectedItems));
 
@@ -37,6 +38,10 @@ export function SelectedItemsProvider({
 
   const deselect = useCallback((items: string | string[]) => {
     dispatch({ type: "deselect", items: Array.isArray(items) ? items : [items] });
+  }, []);
+
+  const toggle = useCallback((items: string | string[]) => {
+    dispatch({ type: "toggle", items: Array.isArray(items) ? items : [items] });
   }, []);
 
   const deselectAll = useCallback(() => {
@@ -49,9 +54,11 @@ export function SelectedItemsProvider({
 
   return (
     <SelectedItemsContext.Provider
-      value={{ selectedItems: state, select, deselect, deselectAll, has, hasAll }}
+      value={{ selectedItems: state, select, deselect, toggle, deselectAll, has, hasAll }}
     >
-      {children}
+      {typeof children === "function"
+        ? children({ selectedItems: state, select, deselect, toggle, deselectAll, has, hasAll })
+        : children}
     </SelectedItemsContext.Provider>
   );
 }
@@ -70,7 +77,12 @@ type DeselectAllItemsAction = {
   type: "deselectAll";
 };
 
-type Action = SelectItemsAction | DeSelectItemsAction | DeselectAllItemsAction;
+type ToggleItemsAction = {
+  type: "toggle";
+  items: string[];
+};
+
+type Action = SelectItemsAction | DeSelectItemsAction | ToggleItemsAction | DeselectAllItemsAction;
 
 function selectedItemsReducer(state: Set<string>, action: Action) {
   switch (action.type) {
@@ -82,6 +94,16 @@ function selectedItemsReducer(state: Set<string>, action: Action) {
         newState.delete(item);
       });
       return newState;
+    case "toggle":
+      const newSet = new Set(state);
+      action.items.forEach((item) => {
+        if (newSet.has(item)) {
+          newSet.delete(item);
+        } else {
+          newSet.add(item);
+        }
+      });
+      return newSet;
     case "deselectAll":
       return new Set<string>();
     default:
