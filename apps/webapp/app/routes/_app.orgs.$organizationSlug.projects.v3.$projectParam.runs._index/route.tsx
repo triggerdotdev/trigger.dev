@@ -157,7 +157,7 @@ export default function Page() {
 }
 
 function BulkActionBar() {
-  const { selectedItems, has, hasAll, select, deselect, deselectAll, toggle } = useSelectedItems();
+  const { selectedItems, deselectAll } = useSelectedItems();
   const [barState, setBarState] = useState<"none" | "replay" | "cancel">("none");
 
   return (
@@ -225,6 +225,7 @@ function CancelRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
     <Dialog onOpenChange={(o) => onOpen(o)}>
       <DialogTrigger asChild>
         <Button
+          type="button"
           variant="minimal/medium"
           shortcut={{ key: "c", enabledOnInputElements: true }}
           LeadingIcon={StopCircleIcon}
@@ -273,6 +274,7 @@ function ReplayRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
     <Dialog onOpenChange={(o) => onOpen(o)}>
       <DialogTrigger asChild>
         <Button
+          type="button"
           variant="minimal/medium"
           shortcut={{ key: "r", enabledOnInputElements: true }}
           LeadingIcon={ArrowPathIcon}
@@ -289,6 +291,9 @@ function ReplayRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
         <DialogFooter>
           <Form action={formAction} method="post">
             <input type="hidden" name="failedRedirect" value={failedRedirect} />
+            {[...selectedItems].map((runId) => (
+              <input key={runId} type="hidden" name="runIds" value={runId} />
+            ))}
             <Button
               type="submit"
               variant="primary/small"

@@ -88,22 +88,24 @@ export function TaskRunsTable({
         <TableRow>
           {allowSelection && (
             <TableHeaderCell>
-              <Checkbox
-                checked={hasAll(runs.map((r) => r.id))}
-                onChange={(element) => {
-                  const ids = runs.map((r) => r.id);
-                  const checked = element.currentTarget.checked;
-                  if (checked) {
-                    select(ids);
-                  } else {
-                    deselect(ids);
-                  }
-                }}
-                ref={(r) => {
-                  checkboxes.current[0] = r;
-                }}
-                onKeyDown={(event) => navigateCheckboxes(event, 0)}
-              />
+              {runs.length > 0 && (
+                <Checkbox
+                  checked={hasAll(runs.map((r) => r.id))}
+                  onChange={(element) => {
+                    const ids = runs.map((r) => r.id);
+                    const checked = element.currentTarget.checked;
+                    if (checked) {
+                      select(ids);
+                    } else {
+                      deselect(ids);
+                    }
+                  }}
+                  ref={(r) => {
+                    checkboxes.current[0] = r;
+                  }}
+                  onKeyDown={(event) => navigateCheckboxes(event, 0)}
+                />
+              )}
             </TableHeaderCell>
           )}
           <TableHeaderCell>Run</TableHeaderCell>
@@ -303,8 +305,21 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   }
 
   return (
-    <TableBlankRow colSpan={9}>
-      <NoRuns title="No runs match your filters" />
+    <TableBlankRow colSpan={10}>
+      <div className="flex flex-col items-center justify-center gap-2">
+        <Paragraph className="w-auto" variant="small">
+          No runs currently match your filters. Try refreshing or modifying your filters.
+        </Paragraph>
+        <Button
+          LeadingIcon={ArrowPathIcon}
+          variant="tertiary/small"
+          onClick={() => {
+            window.location.reload();
+          }}
+        >
+          Refresh
+        </Button>
+      </div>
     </TableBlankRow>
   );
 }
