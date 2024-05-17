@@ -2410,12 +2410,14 @@ model BulkActionItem {
   status BulkActionItemStatus @default(PENDING)
 
   /// The run that is the source of the action, e.g. when replaying this is the original run
-  sourceRun   TaskRun? @relation("SourceActionItemRun", fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  sourceRunId String?
+  sourceRun   TaskRun @relation("SourceActionItemRun", fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRunId String
 
   /// The run that's a result of the action, this will be set when the run has been created
   destinationRun   TaskRun? @relation("DestinationActionItemRun", fields: [destinationRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   destinationRunId String?
+
+  error String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2424,4 +2426,5 @@ model BulkActionItem {
 enum BulkActionItemStatus {
   PENDING
   COMPLETED
+  FAILED
 }
