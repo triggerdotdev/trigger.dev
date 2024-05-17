@@ -123,6 +123,7 @@ function FilterMenu(props: RunFiltersProps) {
 
   const filterTrigger = (
     <SelectTrigger
+      autoFocus
       icon={
         <div className="flex size-4 items-center justify-center">
           <ListFilterIcon className="size-3.5" />
