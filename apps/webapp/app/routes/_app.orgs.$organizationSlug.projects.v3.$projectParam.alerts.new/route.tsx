@@ -41,6 +41,10 @@ const FormSchema = z
       .array(z.enum(["TASK_RUN_ATTEMPT", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"]))
       .min(1)
       .or(z.enum(["TASK_RUN_ATTEMPT", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"])),
+    environmentTypes: z
+      .array(z.enum(["STAGING", "PRODUCTION"]))
+      .min(1)
+      .or(z.enum(["STAGING", "PRODUCTION"])),
     type: z.enum(["WEBHOOK", "SLACK", "EMAIL"]).default("EMAIL"),
     channelValue: z.string().nonempty(),
     integrationId: z.string().optional(),
@@ -82,6 +86,9 @@ function formDataToCreateAlertChannelOptions(
         alertTypes: Array.isArray(formData.alertTypes)
           ? formData.alertTypes
           : [formData.alertTypes],
+        environmentTypes: Array.isArray(formData.environmentTypes)
+          ? formData.environmentTypes
+          : [formData.environmentTypes],
         channel: {
           type: "WEBHOOK",
           url: formData.channelValue,
@@ -94,6 +101,9 @@ function formDataToCreateAlertChannelOptions(
         alertTypes: Array.isArray(formData.alertTypes)
           ? formData.alertTypes
           : [formData.alertTypes],
+        environmentTypes: Array.isArray(formData.environmentTypes)
+          ? formData.environmentTypes
+          : [formData.environmentTypes],
         channel: {
           type: "EMAIL",
           email: formData.channelValue,
@@ -108,6 +118,9 @@ function formDataToCreateAlertChannelOptions(
         alertTypes: Array.isArray(formData.alertTypes)
           ? formData.alertTypes
           : [formData.alertTypes],
+        environmentTypes: Array.isArray(formData.environmentTypes)
+          ? formData.environmentTypes
+          : [formData.environmentTypes],
         channel: {
           type: "SLACK",
           channelId,
@@ -205,15 +218,16 @@ export default function Page() {
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "create";
 
-  const [form, { channelValue: channelValue, alertTypes, type, integrationId }] = useForm({
-    id: "create-alert",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
-    onValidate({ formData }) {
-      return parse(formData, { schema: FormSchema });
-    },
-    shouldRevalidate: "onSubmit",
-  });
+  const [form, { channelValue: channelValue, alertTypes, environmentTypes, type, integrationId }] =
+    useForm({
+      id: "create-alert",
+      // TODO: type this
+      lastSubmission: lastSubmission as any,
+      onValidate({ formData }) {
+        return parse(formData, { schema: FormSchema });
+      },
+      shouldRevalidate: "onSubmit",
+    });
 
   useEffect(() => {
     setIsOpen(true);
@@ -376,7 +390,27 @@ export default function Page() {
 
               <FormError id={alertTypes.errorId}>{alertTypes.error}</FormError>
             </InputGroup>
+            <InputGroup>
+              <Label>Environments</Label>
+              <Checkbox
+                name={environmentTypes.name}
+                id="PRODUCTION"
+                value="PRODUCTION"
+                variant="simple/small"
+                label="PROD"
+                defaultChecked
+              />
+              <Checkbox
+                name={environmentTypes.name}
+                id="STAGING"
+                value="STAGING"
+                variant="simple/small"
+                label="STAGING"
+                defaultChecked
+              />
 
+              <FormError id={environmentTypes.errorId}>{environmentTypes.error}</FormError>
+            </InputGroup>
             <FormError>{form.error}</FormError>
             <div className="border-t border-grid-bright pt-3">
               <FormButtons

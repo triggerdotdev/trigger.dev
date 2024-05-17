@@ -1,4 +1,8 @@
-import { ProjectAlertChannel, ProjectAlertType } from "@trigger.dev/database";
+import {
+  ProjectAlertChannel,
+  ProjectAlertType,
+  RuntimeEnvironmentType,
+} from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { env } from "~/env.server";
 import { findProjectByRef } from "~/models/project.server";
@@ -9,6 +13,7 @@ import { BaseService, ServiceValidationError } from "../baseService.server";
 export type CreateAlertChannelOptions = {
   name: string;
   alertTypes: ProjectAlertType[];
+  environmentTypes: RuntimeEnvironmentType[];
   deduplicationKey?: string;
   channel:
     | {
@@ -40,6 +45,11 @@ export class CreateAlertChannelService extends BaseService {
       throw new ServiceValidationError("Project not found");
     }
 
+    const environmentTypes =
+      options.environmentTypes.length === 0
+        ? (["STAGING", "PRODUCTION"] satisfies RuntimeEnvironmentType[])
+        : options.environmentTypes;
+
     const existingAlertChannel = options.deduplicationKey
       ? await this._prisma.projectAlertChannel.findUnique({
           where: {
@@ -59,6 +69,7 @@ export class CreateAlertChannelService extends BaseService {
           alertTypes: options.alertTypes,
           type: options.channel.type,
           properties: await this.#createProperties(options.channel),
+          environmentTypes,
         },
       });
     }
@@ -74,6 +85,7 @@ export class CreateAlertChannelService extends BaseService {
         enabled: true,
         deduplicationKey: options.deduplicationKey,
         userProvidedDeduplicationKey: options.deduplicationKey ? true : false,
+        environmentTypes,
       },
     });
 
