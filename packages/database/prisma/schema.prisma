@@ -457,6 +457,7 @@ model Project {
   alertChannels          ProjectAlertChannel[]
   alerts                 ProjectAlert[]
   alertStorages          ProjectAlertStorage[]
+  bulkActionGroups       BulkActionGroup[]
 }
 
 enum ProjectVersion {
@@ -1655,6 +1656,9 @@ model TaskRun {
   schedule   TaskSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
   scheduleId String?
 
+  sourceBulkActionItems      BulkActionItem[] @relation("SourceActionItemRun")
+  destinationBulkActionItems BulkActionItem[] @relation("DestinationActionItemRun")
+
   @@unique([runtimeEnvironmentId, idempotencyKey])
   // Task activity graph
   @@index([projectId, createdAt, taskIdentifier])
@@ -2359,4 +2363,65 @@ model OrganizationIntegration {
 
 enum IntegrationService {
   SLACK
+}
+
+/// Bulk actions, like canceling and replaying runs
+model BulkActionGroup {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  type  BulkActionType
+  items BulkActionItem[]
+
+  /// When the group is created it's pending. After we've processed all the items it's completed. This does not mean the associated runs are completed.
+  status BulkActionStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum BulkActionType {
+  /// Cancels existing runs. This populates the destination runs.
+  CANCEL
+  /// Replays existing runs. The original runs go as source runs, and the new runs go as destination runs.
+  REPLAY
+}
+
+enum BulkActionStatus {
+  PENDING
+  COMPLETED
+}
+
+model BulkActionItem {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  group   BulkActionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  groupId String
+
+  type BulkActionType
+
+  /// When the item is created it's pending. After we've processed the item it's completed. This does not mean the associated runs are completed.
+  status BulkActionItemStatus @default(PENDING)
+
+  /// The run that is the source of the action, e.g. when replaying this is the original run
+  sourceRun   TaskRun? @relation("SourceActionItemRun", fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRunId String?
+
+  /// The run that's a result of the action, this will be set when the run has been created
+  destinationRun   TaskRun? @relation("DestinationActionItemRun", fields: [destinationRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  destinationRunId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum BulkActionItemStatus {
+  PENDING
+  COMPLETED
 }
