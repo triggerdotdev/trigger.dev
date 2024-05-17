@@ -1,16 +1,33 @@
+import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { useNavigation } from "@remix-run/react";
+import { Form, useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { TypedAwait, typeddefer, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { AnimatePresence, motion } from "framer-motion";
+import { Suspense, useState } from "react";
+import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 import { Header1 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  SelectedItemsProvider,
+  useSelectedItems,
+} from "~/components/primitives/SelectedItemsProvider";
+import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
+import { TextLink } from "~/components/primitives/TextLink";
 import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -19,17 +36,8 @@ import { useUser } from "~/hooks/useUser";
 import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3ProjectPath, v3TestPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, v3ProjectPath, v3RunsPath, v3TestPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
-import { TextLink } from "~/components/primitives/TextLink";
-import { Spinner } from "~/components/primitives/Spinner";
-import { Suspense } from "react";
-import {
-  SelectedItemsProvider,
-  useSelectedItems,
-} from "~/components/primitives/SelectedItemsProvider";
-import { AnimatePresence, motion } from "framer-motion";
-import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -150,6 +158,7 @@ export default function Page() {
 
 function BulkActionBar() {
   const { selectedItems, has, hasAll, select, deselect, deselectAll, toggle } = useSelectedItems();
+  const [barState, setBarState] = useState<"none" | "replay" | "cancel">("none");
 
   return (
     <AnimatePresence>
@@ -165,30 +174,29 @@ function BulkActionBar() {
             <span>{selectedItems.size} runs selected</span>
           </div>
           <div className="flex items-center gap-1 divide-y divide-charcoal-700">
-            <Button
-              variant="minimal/medium"
-              shortcut={{ key: "c", enabledOnInputElements: true }}
-              onClick={() => {
-                deselectAll();
+            <CancelRuns
+              onOpen={(o) => {
+                if (o) {
+                  setBarState("cancel");
+                } else {
+                  setBarState("none");
+                }
               }}
-              LeadingIcon={StopCircleIcon}
-            >
-              Cancel runs
-            </Button>
-            <Button
-              variant="minimal/medium"
-              shortcut={{ key: "r", enabledOnInputElements: true }}
-              onClick={() => {
-                deselectAll();
+            />
+            <ReplayRuns
+              onOpen={(o) => {
+                if (o) {
+                  setBarState("replay");
+                } else {
+                  setBarState("none");
+                }
               }}
-              LeadingIcon={ArrowPathIcon}
-            >
-              Replay runs
-            </Button>
+            />
             <Button
               variant="minimal/medium"
               shortcut={{ key: "esc", enabledOnInputElements: true }}
               onClick={() => {
+                if (barState !== "none") return;
                 deselectAll();
               }}
             >
@@ -198,6 +206,102 @@ function BulkActionBar() {
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+function CancelRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
+  const { selectedItems } = useSelectedItems();
+
+  const organization = useOrganization();
+  const project = useProject();
+  const failedRedirect = v3RunsPath(organization, project);
+
+  const formAction = `/resources/taskruns/bulk/cancel`;
+
+  const navigation = useNavigation();
+  const isLoading = navigation.formAction === formAction;
+
+  return (
+    <Dialog onOpenChange={(o) => onOpen(o)}>
+      <DialogTrigger asChild>
+        <Button
+          variant="minimal/medium"
+          shortcut={{ key: "c", enabledOnInputElements: true }}
+          LeadingIcon={StopCircleIcon}
+        >
+          Cancel runs
+        </Button>
+      </DialogTrigger>
+      <DialogContent key="replay">
+        <DialogHeader>Cancel {selectedItems.size} runs?</DialogHeader>
+        <DialogDescription>
+          Canceling these runs will stop them from running. Only runs that are not already finished
+          will be canceled, the others will remain in their existing state.
+        </DialogDescription>
+        <DialogFooter>
+          <Form action={formAction} method="post">
+            <input type="hidden" name="failedRedirect" value={failedRedirect} />
+            <Button
+              type="submit"
+              variant="danger/small"
+              LeadingIcon={isLoading ? "spinner-white" : StopCircleIcon}
+              disabled={isLoading}
+              shortcut={{ modifiers: ["meta"], key: "enter" }}
+            >
+              {isLoading ? "Canceling..." : `Cancel ${selectedItems.size} runs`}
+            </Button>
+          </Form>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ReplayRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
+  const { selectedItems } = useSelectedItems();
+
+  const organization = useOrganization();
+  const project = useProject();
+  const failedRedirect = v3RunsPath(organization, project);
+
+  const formAction = `/resources/taskruns/bulk/replay`;
+
+  const navigation = useNavigation();
+  const isLoading = navigation.formAction === formAction;
+
+  return (
+    <Dialog onOpenChange={(o) => onOpen(o)}>
+      <DialogTrigger asChild>
+        <Button
+          variant="minimal/medium"
+          shortcut={{ key: "r", enabledOnInputElements: true }}
+          LeadingIcon={ArrowPathIcon}
+        >
+          Replay {selectedItems.size} runs
+        </Button>
+      </DialogTrigger>
+      <DialogContent key="replay">
+        <DialogHeader>Replay runs?</DialogHeader>
+        <DialogDescription>
+          Replaying these runs will create a new run for each with the same payload and environment
+          as the original. It will use the latest version of the code for each task.
+        </DialogDescription>
+        <DialogFooter>
+          <Form action={formAction} method="post">
+            <input type="hidden" name="failedRedirect" value={failedRedirect} />
+            <Button
+              type="submit"
+              variant="primary/small"
+              LeadingIcon={isLoading ? "spinner-white" : ArrowPathIcon}
+              disabled={isLoading}
+              shortcut={{ modifiers: ["meta"], key: "enter" }}
+            >
+              {isLoading ? "Replaying..." : `Replay ${selectedItems.size} runs`}
+            </Button>
+          </Form>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
