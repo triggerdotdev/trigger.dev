@@ -2,6 +2,7 @@ import { BulkActionType } from "@trigger.dev/database";
 import { BaseService } from "../baseService.server";
 import { generateFriendlyId } from "../../friendlyIdentifiers";
 import { logger } from "~/services/logger.server";
+import { PerformBulkActionService } from "./performBulkAction.server";
 
 type BulkAction = {
   projectId: string;
@@ -34,7 +35,7 @@ export class CreateBulkActionService extends BaseService {
       runIds,
     });
 
-    //todo Graphile task
+    await PerformBulkActionService.enqueue(group.id, this._prisma);
 
     return group;
   }
