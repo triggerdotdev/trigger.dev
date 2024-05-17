@@ -88,7 +88,7 @@ export function TaskRunsTable({
       <TableHeader>
         <TableRow>
           {allowSelection && (
-            <TableHeaderCell>
+            <TableHeaderCell className="pl-2 pr-0">
               {runs.length > 0 && (
                 <Checkbox
                   checked={hasAll(runs.map((r) => r.id))}
@@ -136,7 +136,7 @@ export function TaskRunsTable({
             return (
               <TableRow key={run.id}>
                 {allowSelection && (
-                  <TableCell>
+                  <TableCell className="pl-2 pr-0">
                     <Checkbox
                       checked={has(run.id)}
                       onChange={(element) => {

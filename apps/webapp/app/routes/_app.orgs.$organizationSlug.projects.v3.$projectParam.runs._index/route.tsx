@@ -172,11 +172,11 @@ function BulkActionBar() {
           exit={{ translateY: "100%" }}
           className="flex items-center justify-between gap-2 border-t border-grid-bright bg-background-bright px-3"
         >
-          <div className="flex items-center gap-1">
-            <span>Bulk actions:</span>
+          <div className="flex items-center gap-1.5 text-sm text-text-bright">
+            <span className="font-medium">Bulk actions:</span>
             <span>{selectedItems.size} runs selected</span>
           </div>
-          <div className="flex items-center gap-1 divide-y divide-charcoal-700">
+          <div className="flex items-center gap-1 divide-x divide-charcoal-700">
             <CancelRuns
               onOpen={(o) => {
                 if (o) {
