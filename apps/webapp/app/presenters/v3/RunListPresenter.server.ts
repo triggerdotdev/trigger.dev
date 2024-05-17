@@ -17,6 +17,7 @@ type RunListOptions = {
   environments?: string[];
   scheduleId?: string;
   period?: string;
+  bulkId?: string;
   from?: number;
   to?: number;
   //pagination
@@ -41,6 +42,7 @@ export class RunListPresenter extends BasePresenter {
     environments,
     scheduleId,
     period,
+    bulkId,
     from,
     to,
     direction = "forward",
@@ -55,6 +57,7 @@ export class RunListPresenter extends BasePresenter {
       hasStatusFilters ||
       (environments !== undefined && environments.length > 0) ||
       (period !== undefined && period !== "all") ||
+      (bulkId !== undefined && bulkId !== "") ||
       from !== undefined ||
       to !== undefined;
 
@@ -106,6 +109,31 @@ export class RunListPresenter extends BasePresenter {
       },
     });
 
+    //we can restrict to specific runs using bulkId, or batchId
+    const restrictToRunIds: string[] = [];
+
+    //bulk id
+    if (bulkId) {
+      const bulkAction = await this._replica.bulkActionGroup.findUnique({
+        select: {
+          items: {
+            select: {
+              destinationRunId: true,
+            },
+          },
+        },
+        where: {
+          friendlyId: bulkId,
+        },
+      });
+
+      if (bulkAction) {
+        restrictToRunIds.push(
+          ...bulkAction.items.map((item) => item.destinationRunId).filter(Boolean)
+        );
+      }
+    }
+
     const periodMs = period ? parse(period) : undefined;
 
     //get the runs
@@ -154,6 +182,11 @@ export class RunListPresenter extends BasePresenter {
           : Prisma.empty
       }
       -- filters
+      ${
+        restrictToRunIds.length > 0
+          ? Prisma.sql`AND tr.id IN (${Prisma.join(restrictToRunIds)})`
+          : Prisma.empty
+      }
       ${
         tasks && tasks.length > 0
           ? Prisma.sql`AND tr."taskIdentifier" IN (${Prisma.join(tasks)})`
