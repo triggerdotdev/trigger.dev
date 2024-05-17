@@ -4,6 +4,7 @@ import { BaseService } from "../baseService.server";
 import assertNever from "assert-never";
 import { BulkActionItem } from "@trigger.dev/database";
 import { ReplayTaskRunService } from "../replayTaskRun.server";
+import { CancelTaskRunService } from "../cancelTaskRun.server";
 
 export class PerformBulkActionService extends BaseService {
   public async call(bulkActionGroupId: string) {
@@ -23,7 +24,8 @@ export class PerformBulkActionService extends BaseService {
         await this.#replay(actionGroup.items);
         break;
       case "CANCEL":
-        throw new Error("Not implemented");
+        await this.#cancel(actionGroup.items);
+        break;
       default: {
         assertNever(actionGroup.type);
       }
@@ -55,6 +57,29 @@ export class PerformBulkActionService extends BaseService {
           destinationRunId: result?.id,
           status: result ? "COMPLETED" : "FAILED",
           error: result ? undefined : "Failed to replay task run",
+        },
+      });
+    }
+  }
+
+  async #cancel(items: BulkActionItem[]) {
+    const existingRuns = await this._prisma.taskRun.findMany({
+      where: {
+        id: {
+          in: items.map((item) => item.sourceRunId),
+        },
+      },
+    });
+
+    const service = new CancelTaskRunService(this._prisma);
+    for (const run of existingRuns) {
+      const result = await service.call(run);
+      await this._prisma.bulkActionItem.update({
+        where: { id: items.find((item) => item.sourceRunId === run.id)!.id },
+        data: {
+          destinationRunId: result ? result.id : undefined,
+          status: result ? "COMPLETED" : "FAILED",
+          error: result ? undefined : "Task wasn't cancelable",
         },
       });
     }

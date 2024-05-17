@@ -97,6 +97,10 @@ export class CancelTaskRunService extends BaseService {
     if (opts.cancelAttempts) {
       await this.#cancelPotentiallyRunningAttempts(cancelledTaskRun, cancelledTaskRun.attempts);
     }
+
+    return {
+      id: cancelledTaskRun.id,
+    };
   }
 
   async #cancelPotentiallyRunningAttempts(run: TaskRun, attempts: ExtendedTaskRunAttempt[]) {
