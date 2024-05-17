@@ -26,16 +26,15 @@ export class PerformTaskAttemptAlertsService extends BaseService {
       return;
     }
 
-    if (taskAttempt.runtimeEnvironment.type === "DEVELOPMENT") {
-      return;
-    }
-
     // Find all the alert channels
     const alertChannels = await this._prisma.projectAlertChannel.findMany({
       where: {
         projectId: taskAttempt.taskRun.projectId,
         alertTypes: {
           has: "TASK_RUN_ATTEMPT",
+        },
+        environmentTypes: {
+          has: taskAttempt.runtimeEnvironment.type,
         },
         enabled: true,
       },

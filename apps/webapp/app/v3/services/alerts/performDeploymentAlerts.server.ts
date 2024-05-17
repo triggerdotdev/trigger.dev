@@ -9,6 +9,9 @@ export class PerformDeploymentAlertsService extends BaseService {
   public async call(deploymentId: string) {
     const deployment = await this._prisma.workerDeployment.findUnique({
       where: { id: deploymentId },
+      include: {
+        environment: true,
+      },
     });
 
     if (!deployment) {
@@ -24,6 +27,9 @@ export class PerformDeploymentAlertsService extends BaseService {
         projectId: deployment.projectId,
         alertTypes: {
           has: alertType,
+        },
+        environmentTypes: {
+          has: deployment.environment.type,
         },
         enabled: true,
       },

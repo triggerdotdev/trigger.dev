@@ -27,7 +27,7 @@ type SlackSecret = z.infer<typeof SlackSecretSchema>;
 
 const REDIRECT_AFTER_AUTH_KEY = "redirect-back-after-auth";
 
-type OrganizationIntegrationForService<TService extends IntegrationService> = Omit<
+export type OrganizationIntegrationForService<TService extends IntegrationService> = Omit<
   AuthenticatableIntegration,
   "service"
 > & {
@@ -83,7 +83,14 @@ export class OrgIntegrationRepository {
 
   static slackAuthorizationUrl(
     state: string,
-    scopes: string[] = ["channels:read", "groups:read", "im:read", "mpim:read", "chat:write"],
+    scopes: string[] = [
+      "channels:read",
+      "groups:read",
+      "im:read",
+      "mpim:read",
+      "chat:write",
+      "chat:write.public",
+    ],
     userScopes: string[] = ["channels:read", "groups:read", "im:read", "mpim:read", "chat:write"]
   ) {
     return `https://slack.com/oauth/v2/authorize?client_id=${
