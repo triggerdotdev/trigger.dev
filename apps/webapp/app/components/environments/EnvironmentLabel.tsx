@@ -9,6 +9,30 @@ const variants = {
   large: "h-6 text-xs px-1.5 rounded",
 };
 
+export function EnvironmentTypeLabel({
+  environment,
+  size = "small",
+  className,
+}: {
+  environment: Environment;
+  size?: keyof typeof variants;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "text-midnight-900 inline-flex items-center justify-center whitespace-nowrap border font-medium uppercase tracking-wider",
+        environmentBorderClassName(environment),
+        environmentTextClassName(environment),
+        variants[size],
+        className
+      )}
+    >
+      {environmentTypeTitle(environment)}
+    </span>
+  );
+}
+
 export function EnvironmentLabel({
   environment,
   size = "small",
@@ -111,6 +135,19 @@ export function environmentTitle(environment: Environment, username?: string) {
       return "Staging";
     case "DEVELOPMENT":
       return username ? `Dev: ${username}` : "Dev: You";
+    case "PREVIEW":
+      return "Preview";
+  }
+}
+
+export function environmentTypeTitle(environment: Environment) {
+  switch (environment.type) {
+    case "PRODUCTION":
+      return "Prod";
+    case "STAGING":
+      return "Staging";
+    case "DEVELOPMENT":
+      return "Dev";
     case "PREVIEW":
       return "Preview";
   }

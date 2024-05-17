@@ -41,6 +41,10 @@ const FormSchema = z
       .array(z.enum(["TASK_RUN_ATTEMPT", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"]))
       .min(1)
       .or(z.enum(["TASK_RUN_ATTEMPT", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"])),
+    environmentTypes: z
+      .array(z.enum(["STAGING", "PRODUCTION"]))
+      .min(1)
+      .or(z.enum(["STAGING", "PRODUCTION"])),
     type: z.enum(["WEBHOOK", "SLACK", "EMAIL"]).default("EMAIL"),
     channelValue: z.string().nonempty(),
     integrationId: z.string().optional(),
@@ -82,6 +86,9 @@ function formDataToCreateAlertChannelOptions(
         alertTypes: Array.isArray(formData.alertTypes)
           ? formData.alertTypes
           : [formData.alertTypes],
+        environmentTypes: Array.isArray(formData.environmentTypes)
+          ? formData.environmentTypes
+          : [formData.environmentTypes],
         channel: {
           type: "WEBHOOK",
           url: formData.channelValue,
@@ -94,6 +101,9 @@ function formDataToCreateAlertChannelOptions(
         alertTypes: Array.isArray(formData.alertTypes)
           ? formData.alertTypes
           : [formData.alertTypes],
+        environmentTypes: Array.isArray(formData.environmentTypes)
+          ? formData.environmentTypes
+          : [formData.environmentTypes],
         channel: {
           type: "EMAIL",
           email: formData.channelValue,
@@ -108,6 +118,9 @@ function formDataToCreateAlertChannelOptions(
         alertTypes: Array.isArray(formData.alertTypes)
           ? formData.alertTypes
           : [formData.alertTypes],
+        environmentTypes: Array.isArray(formData.environmentTypes)
+          ? formData.environmentTypes
+          : [formData.environmentTypes],
         channel: {
           type: "SLACK",
           channelId,
@@ -194,20 +207,27 @@ export default function Page() {
   const project = useProject();
   const [currentAlertChannel, setCurrentAlertChannel] = useState<string | null>(option ?? "EMAIL");
 
+  const [selectedSlackChannelValue, setSelectedSlackChannelValue] = useState<string | undefined>();
+
+  const selectedSlackChannel = slack.channels?.find(
+    (s) => selectedSlackChannelValue === `${s.id}/${s.name}`
+  );
+
   const isLoading =
     navigation.state !== "idle" &&
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "create";
 
-  const [form, { channelValue: channelValue, alertTypes, type, integrationId }] = useForm({
-    id: "create-alert",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
-    onValidate({ formData }) {
-      return parse(formData, { schema: FormSchema });
-    },
-    shouldRevalidate: "onSubmit",
-  });
+  const [form, { channelValue: channelValue, alertTypes, environmentTypes, type, integrationId }] =
+    useForm({
+      id: "create-alert",
+      // TODO: type this
+      lastSubmission: lastSubmission as any,
+      onValidate({ formData }) {
+        return parse(formData, { schema: FormSchema });
+      },
+      shouldRevalidate: "onSubmit",
+    });
 
   useEffect(() => {
     setIsOpen(true);
@@ -272,6 +292,9 @@ export default function Page() {
                       dropdownIcon
                       variant="tertiary/medium"
                       items={slack.channels}
+                      setValue={(value) => {
+                        typeof value === "string" && setSelectedSlackChannelValue(value);
+                      }}
                       filter={(channel, search) =>
                         channel.name?.toLowerCase().includes(search.toLowerCase()) ?? false
                       }
@@ -291,10 +314,16 @@ export default function Page() {
                         </>
                       )}
                     </Select>
-                    <Hint className="leading-relaxed">
-                      If selecting a private channel, you will need to invite the bot to the channel
-                      using <InlineCode variant="extra-small">/invite @Trigger.dev</InlineCode>
-                    </Hint>
+                    {selectedSlackChannel && selectedSlackChannel.is_private && (
+                      <Callout variant="warning">
+                        Heads up! To receive alerts in the{" "}
+                        <InlineCode variant="extra-small">{selectedSlackChannel.name}</InlineCode>{" "}
+                        channel, you will need to invite the @Trigger.dev Slack Bot. You can do this
+                        by visiting the channel in your Slack workspace issue the following command:{" "}
+                        <InlineCode variant="extra-small">/invite @Trigger.dev</InlineCode>.
+                      </Callout>
+                    )}
+
                     <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
                     <input type="hidden" name="integrationId" value={slack.integrationId} />
                   </>
@@ -364,23 +393,23 @@ export default function Page() {
             <InputGroup>
               <Label>Environments</Label>
               <Checkbox
-                name="environments"
-                id="production"
-                value="production"
+                name={environmentTypes.name}
+                id="PRODUCTION"
+                value="PRODUCTION"
                 variant="simple/small"
                 label="PROD"
                 defaultChecked
-                disabled
               />
               <Checkbox
-                name="environments"
-                id="staging"
-                value="staging"
+                name={environmentTypes.name}
+                id="STAGING"
+                value="STAGING"
                 variant="simple/small"
                 label="STAGING"
                 defaultChecked
-                disabled
               />
+
+              <FormError id={environmentTypes.errorId}>{environmentTypes.error}</FormError>
             </InputGroup>
             <FormError>{form.error}</FormError>
             <div className="border-t border-grid-bright pt-3">

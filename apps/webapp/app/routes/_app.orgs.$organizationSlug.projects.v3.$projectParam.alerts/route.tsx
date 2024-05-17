@@ -18,7 +18,7 @@ import { ProjectAlertChannelType, ProjectAlertType } from "@trigger.dev/database
 import assertNever from "assert-never";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentTypeLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
@@ -204,8 +204,12 @@ export default function Page() {
                     <TableCell
                       className={cn("space-x-2", alertChannel.enabled ? "" : "opacity-50")}
                     >
-                      <EnvironmentLabel environment={{ type: "PRODUCTION" }} />
-                      <EnvironmentLabel environment={{ type: "STAGING" }} />
+                      {alertChannel.environmentTypes.map((environmentType) => (
+                        <EnvironmentTypeLabel
+                          key={environmentType}
+                          environment={{ type: environmentType }}
+                        />
+                      ))}
                     </TableCell>
                     <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
                       <AlertChannelDetails alertChannel={alertChannel} />

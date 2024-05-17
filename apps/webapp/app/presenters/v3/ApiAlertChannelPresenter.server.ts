@@ -16,6 +16,10 @@ export const ApiAlertType = z.enum(["attempt_failure", "deployment_failure", "de
 
 export type ApiAlertType = z.infer<typeof ApiAlertType>;
 
+export const ApiAlertEnvironmentType = z.enum(["STAGING", "PRODUCTION"]);
+
+export type ApiAlertEnvironmentType = z.infer<typeof ApiAlertEnvironmentType>;
+
 export const ApiAlertChannel = z.enum(["email", "webhook"]);
 
 export type ApiAlertChannel = z.infer<typeof ApiAlertChannel>;
@@ -34,6 +38,7 @@ export const ApiCreateAlertChannel = z.object({
   channel: ApiAlertChannel,
   channelData: ApiAlertChannelData,
   deduplicationKey: z.string().optional(),
+  environmentTypes: ApiAlertEnvironmentType.array().default(["STAGING", "PRODUCTION"]),
 });
 
 export type ApiCreateAlertChannel = z.infer<typeof ApiCreateAlertChannel>;

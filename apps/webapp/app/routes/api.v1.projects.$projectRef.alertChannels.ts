@@ -54,6 +54,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           email: body.data.channelData.email,
         },
         deduplicationKey: body.data.deduplicationKey,
+        environmentTypes: body.data.environmentTypes,
       });
 
       return json(await ApiAlertChannelPresenter.alertChannelToApi(alertChannel));
@@ -75,6 +76,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           secret: body.data.channelData.secret,
         },
         deduplicationKey: body.data.deduplicationKey,
+        environmentTypes: body.data.environmentTypes,
       });
 
       return json(await ApiAlertChannelPresenter.alertChannelToApi(alertChannel));
