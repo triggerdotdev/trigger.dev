@@ -22,6 +22,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -324,24 +325,28 @@ export default function Page() {
               </InputGroup>
             )}
 
-            <InputGroup fullWidth>
-              <Label>Events</Label>
+            <InputGroup>
+              <Label>Alert me when</Label>
 
-              <Checkbox
-                name={alertTypes.name}
-                id="TASK_RUN_ATTEMPT"
-                value="TASK_RUN_ATTEMPT"
-                variant="simple/small"
-                label="Task run failure"
-                defaultChecked
-              />
+              <div className="flex items-center gap-1">
+                <Checkbox
+                  name={alertTypes.name}
+                  id="TASK_RUN_ATTEMPT"
+                  value="TASK_RUN_ATTEMPT"
+                  variant="simple/small"
+                  label="Task run attempts fail"
+                  defaultChecked
+                  className="pr-0"
+                />
+                <InfoIconTooltip content="You'll receive an alert every time an attempt fails on a run." />
+              </div>
 
               <Checkbox
                 name={alertTypes.name}
                 id="DEPLOYMENT_FAILURE"
                 value="DEPLOYMENT_FAILURE"
                 variant="simple/small"
-                label="Deployment failure"
+                label="Deployments fail"
                 defaultChecked
               />
 
@@ -350,13 +355,33 @@ export default function Page() {
                 id="DEPLOYMENT_SUCCESS"
                 value="DEPLOYMENT_SUCCESS"
                 variant="simple/small"
-                label="Deployment success"
+                label="Deployments succeed"
                 defaultChecked
               />
 
               <FormError id={alertTypes.errorId}>{alertTypes.error}</FormError>
             </InputGroup>
-
+            <InputGroup>
+              <Label>Environments</Label>
+              <Checkbox
+                name="environments"
+                id="production"
+                value="production"
+                variant="simple/small"
+                label="PROD"
+                defaultChecked
+                disabled
+              />
+              <Checkbox
+                name="environments"
+                id="staging"
+                value="staging"
+                variant="simple/small"
+                label="STAGING"
+                defaultChecked
+                disabled
+              />
+            </InputGroup>
             <FormError>{form.error}</FormError>
             <div className="border-t border-grid-bright pt-3">
               <FormButtons
