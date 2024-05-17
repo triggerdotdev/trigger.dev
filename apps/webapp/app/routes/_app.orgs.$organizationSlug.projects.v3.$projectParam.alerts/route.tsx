@@ -2,8 +2,8 @@ import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import {
   ArrowUpRightIcon,
-  BoltIcon,
-  BoltSlashIcon,
+  BellAlertIcon,
+  BellSlashIcon,
   BookOpenIcon,
   EnvelopeIcon,
   GlobeAltIcon,
@@ -16,9 +16,9 @@ import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-
 import { SlackIcon } from "@trigger.dev/companyicons";
 import { ProjectAlertChannelType, ProjectAlertType } from "@trigger.dev/database";
 import assertNever from "assert-never";
-import { ExternalLinkIcon } from "lucide-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
@@ -184,7 +184,8 @@ export default function Page() {
             <TableHeader>
               <TableRow>
                 <TableHeaderCell>Name</TableHeaderCell>
-                <TableHeaderCell>Alert Types</TableHeaderCell>
+                <TableHeaderCell>Alert types</TableHeaderCell>
+                <TableHeaderCell>Environments</TableHeaderCell>
                 <TableHeaderCell>Channel</TableHeaderCell>
                 <TableHeaderCell>Enabled</TableHeaderCell>
                 <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
@@ -199,6 +200,12 @@ export default function Page() {
                     </TableCell>
                     <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
                       {alertChannel.alertTypes.map((type) => alertTypeTitle(type)).join(", ")}
+                    </TableCell>
+                    <TableCell
+                      className={cn("space-x-2", alertChannel.enabled ? "" : "opacity-50")}
+                    >
+                      <EnvironmentLabel environment={{ type: "PRODUCTION" }} />
+                      <EnvironmentLabel environment={{ type: "STAGING" }} />
                     </TableCell>
                     <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
                       <AlertChannelDetails alertChannel={alertChannel} />
@@ -225,7 +232,8 @@ export default function Page() {
                         You haven't created any project alerts yet
                       </Header2>
                       <Paragraph variant="small" className="mb-4">
-                        Get alerted when runs or deployments fail, or when deployments succeed.
+                        Get alerted when runs or deployments fail, or when deployments succeed in
+                        both Prod and Staging environments.
                       </Paragraph>
                       <LinkButton
                         to={v3NewProjectAlertPath(organization, project)}
@@ -244,14 +252,15 @@ export default function Page() {
           <div className="mt-4">
             <Header2 className="mb-1">Platform alerts</Header2>
             <Paragraph variant="small" className="mb-4">
-              Get email notifications when Trigger.dev creates, updates or resolves a platform
-              incident.
+              Subscribe to get email notifications when Trigger.dev creates, updates or resolves a
+              platform incident.
             </Paragraph>
             <LinkButton
               variant="tertiary/medium"
               TrailingIcon={ArrowUpRightIcon}
               to="https://status.trigger.dev/"
               target="_blank"
+              className="inline-flex"
             >
               Subscribe
             </LinkButton>
@@ -328,7 +337,7 @@ function DisableAlertChannelButton(props: { id: string }) {
         value="disable"
         type="submit"
         variant="small-menu-item"
-        LeadingIcon={BoltSlashIcon}
+        LeadingIcon={BellSlashIcon}
         leadingIconClassName="text-dimmed"
         className="text-xs"
       >
@@ -366,7 +375,7 @@ function EnableAlertChannelButton(props: { id: string }) {
         value="enable"
         type="submit"
         variant="small-menu-item"
-        LeadingIcon={BoltIcon}
+        LeadingIcon={BellAlertIcon}
         leadingIconClassName="text-success"
         className="text-xs"
       >
