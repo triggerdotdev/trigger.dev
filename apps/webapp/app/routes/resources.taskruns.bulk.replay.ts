@@ -6,7 +6,7 @@ import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/m
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { v3RunsPath } from "~/utils/pathBuilder";
-import { BulkActionService } from "~/v3/services/bulkAction.server";
+import { CreateBulkActionService } from "~/v3/services/bulk/createBulkAction.server";
 
 const FormSchema = z.object({
   organizationSlug: z.string(),
@@ -52,7 +52,7 @@ export async function action({ request }: ActionFunctionArgs) {
       );
     }
 
-    const service = new BulkActionService();
+    const service = new CreateBulkActionService();
     const result = await service.call({
       projectId: project.id,
       action: "REPLAY",

@@ -1,6 +1,6 @@
 import { BulkActionType } from "@trigger.dev/database";
-import { BaseService } from "./baseService.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
+import { BaseService } from "../baseService.server";
+import { generateFriendlyId } from "../../friendlyIdentifiers";
 import { logger } from "~/services/logger.server";
 
 type BulkAction = {
@@ -9,7 +9,7 @@ type BulkAction = {
   runIds: string[];
 };
 
-export class BulkActionService extends BaseService {
+export class CreateBulkActionService extends BaseService {
   public async call({ projectId, action, runIds }: BulkAction) {
     const group = await this._prisma.bulkActionGroup.create({
       data: {
