@@ -123,6 +123,7 @@ export default function Page() {
                                 <RunsFilters
                                   possibleEnvironments={project.environments}
                                   possibleTasks={list.possibleTasks}
+                                  bulkActions={list.bulkActions}
                                   hasFilters={list.hasFilters}
                                 />
                                 <div className="flex items-center justify-end gap-x-2">

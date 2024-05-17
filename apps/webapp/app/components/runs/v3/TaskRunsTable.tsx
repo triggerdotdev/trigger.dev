@@ -32,6 +32,7 @@ import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider"
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { useCallback, useRef } from "react";
 import { run } from "@remix-run/dev/dist/cli/run";
+import { formatNumber } from "~/utils/numberFormatter";
 
 type RunsTableProps = {
   total: number;
@@ -108,7 +109,7 @@ export function TaskRunsTable({
               )}
             </TableHeaderCell>
           )}
-          <TableHeaderCell>Run</TableHeaderCell>
+          <TableHeaderCell alignment="right">Run #</TableHeaderCell>
           <TableHeaderCell>Task ID</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
           <TableHeaderCell>Env</TableHeaderCell>
@@ -148,7 +149,9 @@ export function TaskRunsTable({
                     />
                   </TableCell>
                 )}
-                <TableCell to={path}>#{run.number}</TableCell>
+                <TableCell to={path} alignment="right">
+                  {formatNumber(run.number)}
+                </TableCell>
                 <TableCell to={path}>{run.taskIdentifier}</TableCell>
                 <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>

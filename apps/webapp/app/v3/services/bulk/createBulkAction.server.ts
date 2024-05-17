@@ -14,7 +14,7 @@ export class CreateBulkActionService extends BaseService {
   public async call({ projectId, action, runIds }: BulkAction) {
     const group = await this._prisma.bulkActionGroup.create({
       data: {
-        friendlyId: generateFriendlyId("bulk_"),
+        friendlyId: generateFriendlyId("bulk"),
         projectId,
         type: action,
       },
@@ -22,7 +22,7 @@ export class CreateBulkActionService extends BaseService {
 
     const items = await this._prisma.bulkActionItem.createMany({
       data: runIds.map((runId) => ({
-        friendlyId: generateFriendlyId("bulkitem_"),
+        friendlyId: generateFriendlyId("bulkitem"),
         type: action,
         groupId: group.id,
         sourceRunId: runId,

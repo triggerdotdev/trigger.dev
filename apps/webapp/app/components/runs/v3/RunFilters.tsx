@@ -1,7 +1,18 @@
 import * as Ariakit from "@ariakit/react";
-import { CalendarIcon, CpuChipIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowPathIcon,
+  CalendarIcon,
+  CpuChipIcon,
+  InboxStackIcon,
+  XMarkIcon,
+} from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import { RuntimeEnvironment, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
+import {
+  BulkActionType,
+  RuntimeEnvironment,
+  TaskRunStatus,
+  TaskTriggerSource,
+} from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
 import { ReactNode, startTransition, useCallback, useMemo, useState } from "react";
 import { z } from "zod";
@@ -36,6 +47,7 @@ import {
   runStatusTitle,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
+import { DateTime } from "~/components/primitives/DateTime";
 
 export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);
 
@@ -73,6 +85,11 @@ type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
 type RunFiltersProps = {
   possibleEnvironments: DisplayableEnvironment[];
   possibleTasks: { slug: string; triggerSource: TaskTriggerSource }[];
+  bulkActions: {
+    id: string;
+    type: BulkActionType;
+    createdAt: Date;
+  }[];
   hasFilters: boolean;
 };
 
@@ -83,7 +100,8 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("statuses") ||
     searchParams.has("environments") ||
     searchParams.has("tasks") ||
-    searchParams.has("period");
+    searchParams.has("period") ||
+    searchParams.has("bulkId");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
@@ -113,7 +131,8 @@ const filterTypes = [
   { name: "environments", title: "Environment", icon: <CpuChipIcon className="size-4" /> },
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
   { name: "created", title: "Created", icon: <CalendarIcon className="size-4" /> },
-];
+  { name: "bulk", title: "Bulk action", icon: <InboxStackIcon className="size-4" /> },
+] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];
 
@@ -213,6 +232,8 @@ function Menu(props: MenuProps) {
       return <TasksDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "created":
       return <CreatedDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "bulk":
+      return <BulkActionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
   }
 }
 
@@ -528,6 +549,69 @@ function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTas
         />
       )}
     </FilterMenuProvider>
+  );
+}
+
+function BulkActionsDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+  bulkActions,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+  bulkActions: RunFiltersProps["bulkActions"];
+}) {
+  const { value, replace } = useSearchParams();
+
+  const handleChange = (value: string) => {
+    clearSearchValue();
+    replace({ bulkId: value, cursor: undefined, direction: undefined });
+  };
+
+  const filtered = useMemo(() => {
+    return bulkActions.filter((item) => {
+      return (
+        item.type.toLowerCase().includes(searchValue.toLowerCase()) ||
+        item.createdAt.toISOString().includes(searchValue)
+      );
+    });
+  }, [searchValue, bulkActions]);
+
+  return (
+    <SelectProvider value={value("bulkId")} setValue={handleChange} virtualFocus={true}>
+      {trigger}
+      <SelectPopover
+        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+      >
+        <ComboBox placeholder={"Filter by task..."} value={searchValue} />
+        <SelectList>
+          <SelectItem value={""}>None</SelectItem>
+          {filtered.map((item, index) => (
+            <SelectItem key={item.id} value={item.id}>
+              <div className="flex gap-3">
+                <div className="flex gap-1 text-secondary">
+                  <ArrowPathIcon className="size-4" />
+                  <span>Replay</span>
+                </div>
+                <DateTime date={item.createdAt} />
+              </div>
+            </SelectItem>
+          ))}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
   );
 }
 

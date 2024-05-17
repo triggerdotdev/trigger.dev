@@ -94,6 +94,18 @@ export class RunListPresenter extends BasePresenter {
       },
     });
 
+    //get possible bulk actions
+    const bulkActions = await this._replica.bulkActionGroup.findMany({
+      select: {
+        id: true,
+        type: true,
+        createdAt: true,
+      },
+      where: {
+        projectId: project.id,
+      },
+    });
+
     const periodMs = period ? parse(period) : undefined;
 
     //get the runs
@@ -240,6 +252,7 @@ export class RunListPresenter extends BasePresenter {
         .sort((a, b) => {
           return a.slug.localeCompare(b.slug);
         }),
+      bulkActions,
       filters: {
         tasks: tasks || [],
         versions: versions || [],
