@@ -90,7 +90,7 @@ export class RunListPresenter extends BasePresenter {
     });
 
     //get all possible tasks
-    const possibleTasks = await this._replica.backgroundWorkerTask.findMany({
+    const possibleTasksAsync = this._replica.backgroundWorkerTask.findMany({
       distinct: ["slug"],
       where: {
         projectId: project.id,
@@ -98,7 +98,7 @@ export class RunListPresenter extends BasePresenter {
     });
 
     //get possible bulk actions
-    const bulkActions = await this._replica.bulkActionGroup.findMany({
+    const bulkActionsAsync = this._replica.bulkActionGroup.findMany({
       select: {
         friendlyId: true,
         type: true,
@@ -112,6 +112,8 @@ export class RunListPresenter extends BasePresenter {
       },
       take: 10,
     });
+
+    const [possibleTasks, bulkActions] = await Promise.all([possibleTasksAsync, bulkActionsAsync]);
 
     //we can restrict to specific runs using bulkId, or batchId
     let restrictToRunIds: undefined | string[] = undefined;
