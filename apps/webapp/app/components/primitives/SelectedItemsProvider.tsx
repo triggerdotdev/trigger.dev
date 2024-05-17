@@ -25,12 +25,17 @@ export function useSelectedItems(enabled = true) {
 
 export function SelectedItemsProvider({
   initialSelectedItems,
+  maxSelectedItemCount,
   children,
 }: {
   initialSelectedItems: string[];
+  maxSelectedItemCount?: number;
   children: React.ReactNode | ((context: SelectedItemsContext) => React.ReactNode);
 }) {
-  const [state, dispatch] = useReducer(selectedItemsReducer, new Set<string>(initialSelectedItems));
+  const [state, dispatch] = useReducer(selectedItemsReducer, {
+    items: new Set<string>(initialSelectedItems),
+    maxSelectedItemCount,
+  });
 
   const select = useCallback((items: string | string[]) => {
     dispatch({ type: "select", items: Array.isArray(items) ? items : [items] });
@@ -48,16 +53,27 @@ export function SelectedItemsProvider({
     dispatch({ type: "deselectAll" });
   }, []);
 
-  const has = useCallback((item: string) => state.has(item), [state]);
+  const has = useCallback((item: string) => state.items.has(item), [state]);
 
-  const hasAll = useCallback((items: string[]) => items.every((item) => state.has(item)), [state]);
+  const hasAll = useCallback(
+    (items: string[]) => items.every((item) => state.items.has(item)),
+    [state]
+  );
 
   return (
     <SelectedItemsContext.Provider
-      value={{ selectedItems: state, select, deselect, toggle, deselectAll, has, hasAll }}
+      value={{ selectedItems: state.items, select, deselect, toggle, deselectAll, has, hasAll }}
     >
       {typeof children === "function"
-        ? children({ selectedItems: state, select, deselect, toggle, deselectAll, has, hasAll })
+        ? children({
+            selectedItems: state.items,
+            select,
+            deselect,
+            toggle,
+            deselectAll,
+            has,
+            hasAll,
+          })
         : children}
     </SelectedItemsContext.Provider>
   );
@@ -84,18 +100,22 @@ type ToggleItemsAction = {
 
 type Action = SelectItemsAction | DeSelectItemsAction | ToggleItemsAction | DeselectAllItemsAction;
 
-function selectedItemsReducer(state: Set<string>, action: Action) {
+function selectedItemsReducer(
+  state: { items: Set<string>; maxSelectedItemCount?: number },
+  action: Action
+) {
   switch (action.type) {
     case "select":
-      return new Set([...state, ...action.items]);
+      const items = new Set([...state.items, ...action.items]);
+      return { ...state, items: cappedSet(items, state.maxSelectedItemCount) };
     case "deselect":
-      const newState = new Set(state);
+      const newItems = new Set(state.items);
       action.items.forEach((item) => {
-        newState.delete(item);
+        newItems.delete(item);
       });
-      return newState;
+      return { ...state, items: cappedSet(newItems, state.maxSelectedItemCount) };
     case "toggle":
-      const newSet = new Set(state);
+      let newSet = new Set(state.items);
       action.items.forEach((item) => {
         if (newSet.has(item)) {
           newSet.delete(item);
@@ -103,10 +123,24 @@ function selectedItemsReducer(state: Set<string>, action: Action) {
           newSet.add(item);
         }
       });
-      return newSet;
+      return { ...state, items: cappedSet(newSet, state.maxSelectedItemCount) };
     case "deselectAll":
-      return new Set<string>();
+      return { ...state, items: new Set<string>() };
     default:
       return state;
   }
+}
+
+function cappedSet(set: Set<string>, max?: number) {
+  if (!max) {
+    return set;
+  }
+
+  if (set.size <= max) {
+    return set;
+  }
+
+  console.warn(`Selected items exceeded the maximum count of ${max}.`);
+
+  return new Set([...set].slice(0, max));
 }

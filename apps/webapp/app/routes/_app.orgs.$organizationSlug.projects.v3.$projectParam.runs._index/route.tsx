@@ -38,6 +38,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3ProjectPath, v3RunsPath, v3TestPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
+import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -90,7 +91,10 @@ export default function Page() {
         <PageTitle title="Runs" />
       </NavBar>
       <PageBody scrollable={false}>
-        <SelectedItemsProvider initialSelectedItems={[]}>
+        <SelectedItemsProvider
+          initialSelectedItems={[]}
+          maxSelectedItemCount={BULK_ACTION_RUN_LIMIT}
+        >
           {({ selectedItems }) => (
             <div
               className={cn(
@@ -163,6 +167,8 @@ function BulkActionBar() {
   const { selectedItems, deselectAll } = useSelectedItems();
   const [barState, setBarState] = useState<"none" | "replay" | "cancel">("none");
 
+  const hasSelectedMaximum = selectedItems.size >= BULK_ACTION_RUN_LIMIT;
+
   return (
     <AnimatePresence>
       {selectedItems.size > 0 && (
@@ -174,7 +180,11 @@ function BulkActionBar() {
         >
           <div className="flex items-center gap-1.5 text-sm text-text-bright">
             <span className="font-medium">Bulk actions:</span>
-            <span>{selectedItems.size} runs selected</span>
+            {hasSelectedMaximum ? (
+              <span className="text-warning">Maximum of {selectedItems.size} runs selected</span>
+            ) : (
+              <span>{selectedItems.size} runs selected</span>
+            )}
           </div>
           <div className="flex items-center gap-1 divide-x divide-charcoal-700">
             <CancelRuns
