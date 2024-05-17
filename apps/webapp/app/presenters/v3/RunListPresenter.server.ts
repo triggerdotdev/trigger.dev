@@ -97,7 +97,7 @@ export class RunListPresenter extends BasePresenter {
     //get possible bulk actions
     const bulkActions = await this._replica.bulkActionGroup.findMany({
       select: {
-        id: true,
+        friendlyId: true,
         type: true,
         createdAt: true,
       },
@@ -252,7 +252,11 @@ export class RunListPresenter extends BasePresenter {
         .sort((a, b) => {
           return a.slug.localeCompare(b.slug);
         }),
-      bulkActions,
+      bulkActions: bulkActions.map((bulkAction) => ({
+        id: bulkAction.friendlyId,
+        type: bulkAction.type,
+        createdAt: bulkAction.createdAt,
+      })),
       filters: {
         tasks: tasks || [],
         versions: versions || [],

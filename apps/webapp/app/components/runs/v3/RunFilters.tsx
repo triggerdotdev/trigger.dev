@@ -48,6 +48,7 @@ import {
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 import { DateTime } from "~/components/primitives/DateTime";
+import { BulkActionStatusCombo } from "./BulkAction";
 
 export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);
 
@@ -201,13 +202,14 @@ function FilterMenuProvider({
   );
 }
 
-function AppliedFilters({ possibleEnvironments, possibleTasks }: RunFiltersProps) {
+function AppliedFilters({ possibleEnvironments, possibleTasks, bulkActions }: RunFiltersProps) {
   return (
     <>
       <AppliedStatusFilter />
       <AppliedEnvironmentFilter possibleEnvironments={possibleEnvironments} />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
       <AppliedPeriodFilter />
+      <AppliedBulkActionsFilter bulkActions={bulkActions} />
     </>
   );
 }
@@ -601,10 +603,7 @@ function BulkActionsDropdown({
           {filtered.map((item, index) => (
             <SelectItem key={item.id} value={item.id}>
               <div className="flex gap-3">
-                <div className="flex gap-1 text-secondary">
-                  <ArrowPathIcon className="size-4" />
-                  <span>Replay</span>
-                </div>
+                <BulkActionStatusCombo type={item.type} iconClassName="size-4" />
                 <DateTime date={item.createdAt} />
               </div>
             </SelectItem>
@@ -612,6 +611,39 @@ function BulkActionsDropdown({
         </SelectList>
       </SelectPopover>
     </SelectProvider>
+  );
+}
+
+function AppliedBulkActionsFilter({ bulkActions }: Pick<RunFiltersProps, "bulkActions">) {
+  const { value, del } = useSearchParams();
+
+  const bulkId = value("bulkId");
+
+  if (!bulkId) {
+    return null;
+  }
+
+  const action = bulkActions.find((action) => action.id === bulkId);
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <BulkActionsDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer" />}>
+              <AppliedFilter
+                label="Bulk action"
+                value={bulkId}
+                onRemove={() => del(["bulkId", "cursor", "direction"])}
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+          bulkActions={bulkActions}
+        />
+      )}
+    </FilterMenuProvider>
   );
 }
 
