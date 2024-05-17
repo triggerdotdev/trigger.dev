@@ -77,7 +77,7 @@ export class PerformBulkActionService extends BaseService {
       await this._prisma.bulkActionItem.update({
         where: { id: items.find((item) => item.sourceRunId === run.id)!.id },
         data: {
-          destinationRunId: result ? result.id : undefined,
+          destinationRunId: run.id,
           status: result ? "COMPLETED" : "FAILED",
           error: result ? undefined : "Task wasn't cancelable",
         },
