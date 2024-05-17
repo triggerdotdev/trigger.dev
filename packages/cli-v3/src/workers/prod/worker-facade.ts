@@ -31,9 +31,8 @@ declare const handleError: HandleErrorFunction | undefined;
 
 declare const __PROJECT_CONFIG__: Config;
 declare const tracingSDK: TracingSDK;
-
-const otelTracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.version);
-const otelLogger = tracingSDK.getLogger("trigger-prod-worker", packageJson.version);
+declare const otelTracer: Tracer;
+declare const otelLogger: Logger;
 
 import {
   TaskRunErrorCodes,
@@ -43,7 +42,8 @@ import {
   runtime,
 } from "@trigger.dev/core/v3";
 import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
-import * as packageJson from "../../../package.json";
+import type { Tracer } from "@opentelemetry/api";
+import type { Logger } from "@opentelemetry/api-logs";
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);

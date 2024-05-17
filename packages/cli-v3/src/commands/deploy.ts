@@ -1117,7 +1117,9 @@ async function compileProject(
         .replace("__TASKS__", createTaskFileImports(taskFiles))
         .replace(
           "__WORKER_SETUP__",
-          `import { tracingSDK } from "${escapeImportPath(workerSetupPath)}";`
+          `import { tracingSDK, otelTracer, otelLogger } from "${escapeImportPath(
+            workerSetupPath
+          )}";`
         );
 
       if (configPath) {

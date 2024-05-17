@@ -323,6 +323,7 @@ export class BackgroundWorker {
     const fullEnv = {
       ...this.params.env,
       ...this.#readEnvVars(),
+      ...(this.params.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
     };
 
     logger.debug("Initializing worker", { path: this.path, cwd, fullEnv });
