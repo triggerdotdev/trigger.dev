@@ -107,10 +107,14 @@ export class RunListPresenter extends BasePresenter {
       where: {
         projectId: project.id,
       },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 10,
     });
 
     //we can restrict to specific runs using bulkId, or batchId
-    const restrictToRunIds: string[] = [];
+    let restrictToRunIds: undefined | string[] = undefined;
 
     //bulk id
     if (bulkId) {
@@ -128,9 +132,8 @@ export class RunListPresenter extends BasePresenter {
       });
 
       if (bulkAction) {
-        restrictToRunIds.push(
-          ...bulkAction.items.map((item) => item.destinationRunId).filter(Boolean)
-        );
+        const runIds = bulkAction.items.map((item) => item.destinationRunId).filter(Boolean);
+        restrictToRunIds = runIds;
       }
     }
 
@@ -183,8 +186,10 @@ export class RunListPresenter extends BasePresenter {
       }
       -- filters
       ${
-        restrictToRunIds.length > 0
-          ? Prisma.sql`AND tr.id IN (${Prisma.join(restrictToRunIds)})`
+        restrictToRunIds
+          ? restrictToRunIds.length === 0
+            ? Prisma.sql`AND tr.id = ''`
+            : Prisma.sql`AND tr.id IN (${Prisma.join(restrictToRunIds)})`
           : Prisma.empty
       }
       ${
