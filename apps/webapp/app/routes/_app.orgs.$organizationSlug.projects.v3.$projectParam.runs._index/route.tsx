@@ -240,8 +240,13 @@ function CancelRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
           will be canceled, the others will remain in their existing state.
         </DialogDescription>
         <DialogFooter>
-          <Form action={formAction} method="post">
+          <Form action={formAction} method="post" reloadDocument>
             <input type="hidden" name="failedRedirect" value={failedRedirect} />
+            <input type="hidden" name="organizationSlug" value={organization.slug} />
+            <input type="hidden" name="projectSlug" value={project.slug} />
+            {[...selectedItems].map((runId) => (
+              <input key={runId} type="hidden" name="runIds" value={runId} />
+            ))}
             <Button
               type="submit"
               variant="danger/small"
@@ -289,8 +294,10 @@ function ReplayRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
           as the original. It will use the latest version of the code for each task.
         </DialogDescription>
         <DialogFooter>
-          <Form action={formAction} method="post">
+          <Form action={formAction} method="post" reloadDocument>
             <input type="hidden" name="failedRedirect" value={failedRedirect} />
+            <input type="hidden" name="organizationSlug" value={organization.slug} />
+            <input type="hidden" name="projectSlug" value={project.slug} />
             {[...selectedItems].map((runId) => (
               <input key={runId} type="hidden" name="runIds" value={runId} />
             ))}

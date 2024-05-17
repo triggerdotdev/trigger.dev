@@ -59,6 +59,7 @@ export const TaskRunListSearchFilters = z.object({
     TaskAttemptStatus.array().optional()
   ),
   period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
+  bulkId: z.string().optional(),
   from: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
 });

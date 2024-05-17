@@ -1,15 +1,23 @@
 import { parse } from "@conform-to/zod";
 import { ActionFunctionArgs } from "@remix-run/router";
 import { z } from "zod";
-import { redirectWithErrorMessage } from "~/models/message.server";
+import { prisma } from "~/db.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
+import { requireUserId } from "~/services/session.server";
+import { v3RunsPath } from "~/utils/pathBuilder";
+import { BulkActionService } from "~/v3/services/bulkAction.server";
 
 const FormSchema = z.object({
+  organizationSlug: z.string(),
+  projectSlug: z.string(),
   failedRedirect: z.string(),
   runIds: z.array(z.string()).or(z.string()),
 });
 
 export async function action({ request }: ActionFunctionArgs) {
+  const userId = await requireUserId(request);
+
   if (request.method.toLowerCase() !== "post") {
     return redirectWithErrorMessage("/", request, "Invalid method");
   }
@@ -23,43 +31,50 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    //todo
-    //Redirect user to a page showing the new runs, there won't be any so we should modify the no results filter message.
+    const project = await prisma.project.findUnique({
+      where: {
+        slug: submission.value.projectSlug,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
+          },
+        },
+      },
+    });
 
-    //1. Create the BulkActionGroup with type Replay
-    //2.
-    //2. Add the taskRuns to the BulkActionGroup
-    //3.
+    if (!project) {
+      return redirectWithErrorMessage(
+        submission.value.failedRedirect,
+        request,
+        "Project not found"
+      );
+    }
 
-    // const replayRunService = new ReplayTaskRunService();
-    // const newRun = await replayRunService.call(taskRun);
+    const service = new BulkActionService();
+    const result = await service.call({
+      projectId: project.id,
+      action: "REPLAY",
+      runIds:
+        typeof submission.value.runIds === "string"
+          ? [submission.value.runIds]
+          : submission.value.runIds,
+    });
 
-    // if (!newRun) {
-    return redirectWithErrorMessage(
-      submission.value.failedRedirect,
-      request,
-      "Failed to replay runs "
+    const path = v3RunsPath(
+      { slug: submission.value.organizationSlug },
+      { slug: project.slug },
+      {
+        bulkId: result.friendlyId,
+      }
     );
-    // }
 
-    // const runPath = v3RunSpanPath(
-    //   {
-    //     slug: taskRun.project.organization.slug,
-    //   },
-    //   { slug: taskRun.project.slug },
-    //   { friendlyId: newRun.friendlyId },
-    //   { spanId: newRun.spanId }
-    // );
-
-    // logger.debug("Replayed run", {
-    //   taskRunId: taskRun.id,
-    //   taskRunFriendlyId: taskRun.friendlyId,
-    //   newRunId: newRun.id,
-    //   newRunFriendlyId: newRun.friendlyId,
-    //   runPath,
-    // });
-
-    // return redirectWithSuccessMessage(runPath, request, `Replaying run`);
+    return redirectWithSuccessMessage(
+      path,
+      request,
+      `Replaying ${submission.value.runIds.length} runs`
+    );
   } catch (error) {
     if (error instanceof Error) {
       logger.error("Failed to replay run", {
