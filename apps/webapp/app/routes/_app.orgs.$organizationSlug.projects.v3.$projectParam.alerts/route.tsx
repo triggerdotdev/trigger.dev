@@ -215,7 +215,11 @@ export default function Page() {
                       <AlertChannelDetails alertChannel={alertChannel} />
                     </TableCell>
                     <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
-                      <EnabledStatus enabled={alertChannel.enabled} />
+                      <EnabledStatus
+                        enabled={alertChannel.enabled}
+                        enabledIcon={BellAlertIcon}
+                        disabledIcon={BellSlashIcon}
+                      />
                     </TableCell>
                     <TableCellMenu isSticky>
                       {alertChannel.enabled ? (
