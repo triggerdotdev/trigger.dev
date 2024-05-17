@@ -1,8 +1,20 @@
+import {
+  ChatPostMessageArguments,
+  ErrorCode,
+  WebAPIHTTPError,
+  WebAPIPlatformError,
+  WebAPIRateLimitedError,
+  WebAPIRequestError,
+} from "@slack/web-api";
 import { TaskRunError, createJsonErrorObject } from "@trigger.dev/core/v3";
 import assertNever from "assert-never";
 import { subtle } from "crypto";
 import { Prisma, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
+import {
+  OrgIntegrationRepository,
+  OrganizationIntegrationForService,
+} from "~/models/orgIntegration.server";
 import {
   ProjectAlertEmailProperties,
   ProjectAlertSlackProperties,
@@ -10,12 +22,11 @@ import {
   ProjectAlertWebhookProperties,
 } from "~/models/projectAlert.server";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
-import { sendAlertEmail, sendEmail } from "~/services/email.server";
+import { sendAlertEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { workerQueue } from "~/services/worker.server";
 import { BaseService } from "../baseService.server";
-import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 
 type FoundAlert = Prisma.Result<
   typeof prisma.projectAlert,
@@ -85,10 +96,6 @@ export class DeliverAlertService extends BaseService {
     }
 
     if (alert.status !== "PENDING") {
-      return;
-    }
-
-    if (alert.environment.type === "DEVELOPMENT") {
       return;
     }
 
@@ -439,12 +446,6 @@ export class DeliverAlertService extends BaseService {
       return;
     }
 
-    // Get the client
-    const client = await OrgIntegrationRepository.getAuthenticatedClientForIntegration(
-      integration,
-      { forceBotToken: true }
-    );
-
     switch (alert.type) {
       case "TASK_RUN_ATTEMPT": {
         if (alert.taskRunAttempt) {
@@ -485,90 +486,81 @@ export class DeliverAlertService extends BaseService {
           const runId = alert.taskRunAttempt.taskRun.friendlyId;
           const attemptNumber = alert.taskRunAttempt.number;
 
-          try {
-            const message = await client.chat.postMessage({
-              thread_ts,
-              channel: slackProperties.data.channelId,
-              text: `Task error in ${alert.taskRunAttempt.backgroundWorkerTask.exportName} [${alert.taskRunAttempt.backgroundWorker.version}.${alert.environment.slug}]`,
-              blocks: [
-                {
-                  type: "section",
-                  text: {
+          const message = await this.#postSlackMessage(integration, {
+            thread_ts,
+            channel: slackProperties.data.channelId,
+            text: `Task error in ${alert.taskRunAttempt.backgroundWorkerTask.exportName} [${alert.taskRunAttempt.backgroundWorker.version}.${alert.environment.slug}]`,
+            blocks: [
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `:rotating_light: Error in *${exportName}* _<!date^${Math.round(
+                    timestamp.getTime() / 1000
+                  )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
+                },
+              },
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `\`\`\`${error.stackTrace ?? error.message}\`\`\``,
+                },
+              },
+              {
+                type: "context",
+                elements: [
+                  {
                     type: "mrkdwn",
-                    text: `:rotating_light: Error in *${exportName}* _<!date^${Math.round(
-                      timestamp.getTime() / 1000
-                    )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
+                    text: `${runId}.${attemptNumber} | ${taskIdentifier} | ${version}.${environment} | ${alert.project.name}`,
                   },
-                },
-                {
-                  type: "section",
-                  text: {
-                    type: "mrkdwn",
-                    text: `\`\`\`${error.stackTrace ?? error.message}\`\`\``,
+                ],
+              },
+              {
+                type: "divider",
+              },
+              {
+                type: "actions",
+                elements: [
+                  {
+                    type: "button",
+                    text: {
+                      type: "plain_text",
+                      text: "Investigate",
+                    },
+                    url: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/runs/${alert.taskRunAttempt.taskRun.friendlyId}`,
                   },
-                },
-                {
-                  type: "context",
-                  elements: [
-                    {
-                      type: "mrkdwn",
-                      text: `${runId}.${attemptNumber} | ${taskIdentifier} | ${version}.${environment} | ${alert.project.name}`,
-                    },
-                  ],
-                },
-                {
-                  type: "divider",
-                },
-                {
-                  type: "actions",
-                  elements: [
-                    {
-                      type: "button",
-                      text: {
-                        type: "plain_text",
-                        text: "Investigate",
-                      },
-                      url: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/runs/${alert.taskRunAttempt.taskRun.friendlyId}`,
-                    },
-                  ],
-                },
-              ],
-            });
+                ],
+              },
+            ],
+          });
 
-            // Upsert the storage
-            if (message.ts) {
-              if (storage) {
-                await this._prisma.projectAlertStorage.update({
-                  where: {
-                    id: storage.id,
+          // Upsert the storage
+          if (message.ts) {
+            if (storage) {
+              await this._prisma.projectAlertStorage.update({
+                where: {
+                  id: storage.id,
+                },
+                data: {
+                  storageData: {
+                    message_ts: message.ts,
                   },
-                  data: {
-                    storageData: {
-                      message_ts: message.ts,
-                    },
+                },
+              });
+            } else {
+              await this._prisma.projectAlertStorage.create({
+                data: {
+                  alertChannelId: alert.channel.id,
+                  alertType: alert.type,
+                  storageId: alert.taskRunAttempt.taskRunId,
+                  storageData: {
+                    message_ts: message.ts,
                   },
-                });
-              } else {
-                await this._prisma.projectAlertStorage.create({
-                  data: {
-                    alertChannelId: alert.channel.id,
-                    alertType: alert.type,
-                    storageId: alert.taskRunAttempt.taskRunId,
-                    storageData: {
-                      message_ts: message.ts,
-                    },
-                    projectId: alert.project.id,
-                  },
-                });
-              }
+                  projectId: alert.project.id,
+                },
+              });
             }
-          } catch (error) {
-            logger.error("[DeliverAlert] Failed to send slack message", {
-              error,
-              alert,
-            });
-
-            throw error;
           }
         } else {
           logger.error("[DeliverAlert] Task run attempt not found", {
@@ -596,58 +588,49 @@ export class DeliverAlertService extends BaseService {
           const environment = alert.environment.slug;
           const timestamp = alert.workerDeployment.failedAt ?? new Date();
 
-          try {
-            await client.chat.postMessage({
-              channel: slackProperties.data.channelId,
-              blocks: [
-                {
-                  type: "section",
-                  text: {
+          await this.#postSlackMessage(integration, {
+            channel: slackProperties.data.channelId,
+            blocks: [
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `:rotating_light: Deployment failed *${version}.${environment}* _<!date^${Math.round(
+                    timestamp.getTime() / 1000
+                  )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
+                },
+              },
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `\`\`\`${preparedError.stack ?? preparedError.message}\`\`\``,
+                },
+              },
+              {
+                type: "context",
+                elements: [
+                  {
                     type: "mrkdwn",
-                    text: `:rotating_light: Deployment failed *${version}.${environment}* _<!date^${Math.round(
-                      timestamp.getTime() / 1000
-                    )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
+                    text: `${alert.workerDeployment.shortCode} | ${version}.${environment} | ${alert.project.name}`,
                   },
-                },
-                {
-                  type: "section",
-                  text: {
-                    type: "mrkdwn",
-                    text: `\`\`\`${preparedError.stack ?? preparedError.message}\`\`\``,
+                ],
+              },
+              {
+                type: "actions",
+                elements: [
+                  {
+                    type: "button",
+                    text: {
+                      type: "plain_text",
+                      text: "View Deployment",
+                    },
+                    url: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/deployments/${alert.workerDeployment.shortCode}`,
                   },
-                },
-                {
-                  type: "context",
-                  elements: [
-                    {
-                      type: "mrkdwn",
-                      text: `${alert.workerDeployment.shortCode} | ${version}.${environment} | ${alert.project.name}`,
-                    },
-                  ],
-                },
-                {
-                  type: "actions",
-                  elements: [
-                    {
-                      type: "button",
-                      text: {
-                        type: "plain_text",
-                        text: "View Deployment",
-                      },
-                      url: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/deployments/${alert.workerDeployment.shortCode}`,
-                    },
-                  ],
-                },
-              ],
-            });
-          } catch (error) {
-            logger.error("[DeliverAlert] Failed to send slack message", {
-              error,
-              alert,
-            });
-
-            throw error;
-          }
+                ],
+              },
+            ],
+          });
         } else {
           logger.error("[DeliverAlert] Worker deployment not found", {
             alert,
@@ -663,7 +646,7 @@ export class DeliverAlertService extends BaseService {
           const numberOfTasks = alert.workerDeployment.worker?.tasks.length ?? 0;
           const timestamp = alert.workerDeployment.deployedAt ?? new Date();
 
-          await client.chat.postMessage({
+          await this.#postSlackMessage(integration, {
             channel: slackProperties.data.channelId,
             text: `Deployment ${alert.workerDeployment.version} [${alert.environment.slug}] succeeded`,
             blocks: [
@@ -754,6 +737,63 @@ export class DeliverAlertService extends BaseService {
     }
   }
 
+  async #postSlackMessage(
+    integration: OrganizationIntegrationForService<"SLACK">,
+    message: ChatPostMessageArguments
+  ) {
+    const client = await OrgIntegrationRepository.getAuthenticatedClientForIntegration(
+      integration,
+      { forceBotToken: true }
+    );
+
+    try {
+      return await client.chat.postMessage(message);
+    } catch (error) {
+      if (isWebAPIRateLimitedError(error)) {
+        logger.error("[DeliverAlert] Slack rate limited", {
+          error,
+          message,
+        });
+
+        throw new Error("Slack rate limited");
+      }
+
+      if (isWebAPIHTTPError(error)) {
+        logger.error("[DeliverAlert] Slack HTTP error", {
+          error,
+          message,
+        });
+
+        throw new Error("Slack HTTP error");
+      }
+
+      if (isWebAPIRequestError(error)) {
+        logger.error("[DeliverAlert] Slack request error", {
+          error,
+          message,
+        });
+
+        throw new Error("Slack request error");
+      }
+
+      if (isWebAPIPlatformError(error)) {
+        logger.error("[DeliverAlert] Slack platform error", {
+          error,
+          message,
+        });
+
+        throw new Error("Slack platform error");
+      }
+
+      logger.error("[DeliverAlert] Failed to send slack message", {
+        error,
+        message,
+      });
+
+      throw error;
+    }
+  }
+
   static async enqueue(
     alertId: string,
     tx: PrismaClientOrTransaction,
@@ -772,4 +812,20 @@ export class DeliverAlertService extends BaseService {
       }
     );
   }
+}
+
+function isWebAPIPlatformError(error: unknown): error is WebAPIPlatformError {
+  return (error as WebAPIPlatformError).code === ErrorCode.PlatformError;
+}
+
+function isWebAPIRequestError(error: unknown): error is WebAPIRequestError {
+  return (error as WebAPIRequestError).code === ErrorCode.RequestError;
+}
+
+function isWebAPIHTTPError(error: unknown): error is WebAPIHTTPError {
+  return (error as WebAPIHTTPError).code === ErrorCode.HTTPError;
+}
+
+function isWebAPIRateLimitedError(error: unknown): error is WebAPIRateLimitedError {
+  return (error as WebAPIRateLimitedError).code === ErrorCode.RateLimitedError;
 }

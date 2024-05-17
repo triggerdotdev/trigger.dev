@@ -194,6 +194,12 @@ export default function Page() {
   const project = useProject();
   const [currentAlertChannel, setCurrentAlertChannel] = useState<string | null>(option ?? "EMAIL");
 
+  const [selectedSlackChannelValue, setSelectedSlackChannelValue] = useState<string | undefined>();
+
+  const selectedSlackChannel = slack.channels?.find(
+    (s) => selectedSlackChannelValue === `${s.id}/${s.name}`
+  );
+
   const isLoading =
     navigation.state !== "idle" &&
     navigation.formMethod === "post" &&
@@ -272,6 +278,9 @@ export default function Page() {
                       dropdownIcon
                       variant="tertiary/medium"
                       items={slack.channels}
+                      setValue={(value) => {
+                        typeof value === "string" && setSelectedSlackChannelValue(value);
+                      }}
                       filter={(channel, search) =>
                         channel.name?.toLowerCase().includes(search.toLowerCase()) ?? false
                       }
@@ -291,10 +300,16 @@ export default function Page() {
                         </>
                       )}
                     </Select>
-                    <Hint className="leading-relaxed">
-                      If selecting a private channel, you will need to invite the bot to the channel
-                      using <InlineCode variant="extra-small">/invite @Trigger.dev</InlineCode>
-                    </Hint>
+                    {selectedSlackChannel && selectedSlackChannel.is_private && (
+                      <Callout variant="warning">
+                        Heads up! To receive alerts in the{" "}
+                        <InlineCode variant="extra-small">{selectedSlackChannel.name}</InlineCode>{" "}
+                        channel, you will need to invite the @Trigger.dev Slack Bot. You can do this
+                        by visiting the channel in your Slack workspace issue the following command:{" "}
+                        <InlineCode variant="extra-small">/invite @Trigger.dev</InlineCode>.
+                      </Callout>
+                    )}
+
                     <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
                     <input type="hidden" name="integrationId" value={slack.integrationId} />
                   </>
