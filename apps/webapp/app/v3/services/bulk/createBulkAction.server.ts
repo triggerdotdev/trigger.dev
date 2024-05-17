@@ -1,8 +1,10 @@
 import { BulkActionType } from "@trigger.dev/database";
-import { BaseService } from "../baseService.server";
-import { generateFriendlyId } from "../../friendlyIdentifiers";
+import { bulkActionVerb } from "~/components/runs/v3/BulkAction";
 import { logger } from "~/services/logger.server";
+import { generateFriendlyId } from "../../friendlyIdentifiers";
+import { BaseService } from "../baseService.server";
 import { PerformBulkActionService } from "./performBulkAction.server";
+import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 
 type BulkAction = {
   projectId: string;
@@ -19,6 +21,10 @@ export class CreateBulkActionService extends BaseService {
         type: action,
       },
     });
+
+    //limit to the first X runs
+    const passedTooManyRuns = runIds.length > BULK_ACTION_RUN_LIMIT;
+    runIds = runIds.slice(0, BULK_ACTION_RUN_LIMIT);
 
     const items = await this._prisma.bulkActionItem.createMany({
       data: runIds.map((runId) => ({
@@ -37,6 +43,18 @@ export class CreateBulkActionService extends BaseService {
 
     await PerformBulkActionService.enqueue(group.id, this._prisma);
 
-    return group;
+    let message = bulkActionVerb(action);
+    if (passedTooManyRuns) {
+      message += ` the first ${BULK_ACTION_RUN_LIMIT} runs`;
+    } else {
+      message += ` ${runIds.length} runs`;
+    }
+
+    return {
+      id: group.id,
+      friendlyId: group.friendlyId,
+      runCount: runIds.length,
+      message,
+    };
   }
 }

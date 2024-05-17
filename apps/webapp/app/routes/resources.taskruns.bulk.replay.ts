@@ -70,11 +70,7 @@ export async function action({ request }: ActionFunctionArgs) {
       }
     );
 
-    return redirectWithSuccessMessage(
-      path,
-      request,
-      `Replaying ${submission.value.runIds.length} runs`
-    );
+    return redirectWithSuccessMessage(path, request, result.message);
   } catch (error) {
     if (error instanceof Error) {
       logger.error("Failed to replay run", {

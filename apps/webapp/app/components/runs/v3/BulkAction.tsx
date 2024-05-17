@@ -59,3 +59,15 @@ export function bulkActionTitle(type: BulkActionType): string {
     }
   }
 }
+
+export function bulkActionVerb(type: BulkActionType): string {
+  switch (type) {
+    case "REPLAY":
+      return "Replaying";
+    case "CANCEL":
+      return "Canceling";
+    default: {
+      assertNever(type);
+    }
+  }
+}
