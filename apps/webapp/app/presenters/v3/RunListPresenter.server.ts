@@ -110,7 +110,7 @@ export class RunListPresenter extends BasePresenter {
       orderBy: {
         createdAt: "desc",
       },
-      take: 10,
+      take: 20,
     });
 
     const [possibleTasks, bulkActions] = await Promise.all([possibleTasksAsync, bulkActionsAsync]);
