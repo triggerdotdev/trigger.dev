@@ -1,18 +1,31 @@
-import { BellAlertIcon, BellSlashIcon } from "@heroicons/react/20/solid";
+import { BoltSlashIcon, CheckCircleIcon } from "@heroicons/react/20/solid";
 
-export function EnabledStatus({ enabled }: { enabled: boolean }) {
+type EnabledStatusProps = {
+  enabled: boolean;
+  enabledIcon?: React.ComponentType<any>;
+  disabledIcon?: React.ComponentType<any>;
+};
+
+export function EnabledStatus({
+  enabled,
+  enabledIcon = CheckCircleIcon,
+  disabledIcon = BoltSlashIcon,
+}: EnabledStatusProps) {
+  const EnabledIcon = enabledIcon;
+  const DisabledIcon = disabledIcon;
+
   switch (enabled) {
     case true:
       return (
         <div className="flex items-center gap-1 text-xs text-success">
-          <BellAlertIcon className="size-4" />
+          <EnabledIcon className="size-4" />
           Enabled
         </div>
       );
     case false:
       return (
         <div className="text-dimmed flex items-center gap-1 text-xs">
-          <BellSlashIcon className="size-4" />
+          <DisabledIcon className="size-4" />
           Disabled
         </div>
       );

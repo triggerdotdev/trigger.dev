@@ -10,7 +10,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
+import { Callout, variantClasses } from "~/components/primitives/Callout";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -20,6 +20,7 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
@@ -29,6 +30,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { NewAlertChannelPresenter } from "~/presenters/v3/NewAlertChannelPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3ProjectAlertsPath } from "~/utils/pathBuilder";
 import {
   CreateAlertChannelOptions,
@@ -315,11 +317,14 @@ export default function Page() {
                       )}
                     </Select>
                     {selectedSlackChannel && selectedSlackChannel.is_private && (
-                      <Callout variant="warning">
-                        Heads up! To receive alerts in the{" "}
+                      <Callout
+                        variant="warning"
+                        className={cn("text-sm", variantClasses.warning.textColor)}
+                      >
+                        To receive alerts in the{" "}
                         <InlineCode variant="extra-small">{selectedSlackChannel.name}</InlineCode>{" "}
-                        channel, you will need to invite the @Trigger.dev Slack Bot. You can do this
-                        by visiting the channel in your Slack workspace issue the following command:{" "}
+                        channel, you need to invite the @Trigger.dev Slack Bot. Go to the channel in
+                        Slack and type:{" "}
                         <InlineCode variant="extra-small">/invite @Trigger.dev</InlineCode>.
                       </Callout>
                     )}
