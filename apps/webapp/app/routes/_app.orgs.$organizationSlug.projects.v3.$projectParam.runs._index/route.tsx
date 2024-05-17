@@ -6,7 +6,7 @@ import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -24,7 +24,12 @@ import { ListPagination } from "../../components/ListPagination";
 import { TextLink } from "~/components/primitives/TextLink";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Suspense } from "react";
-import { SelectedItemsProvider } from "~/components/primitives/SelectedItemsProvider";
+import {
+  SelectedItemsProvider,
+  useSelectedItems,
+} from "~/components/primitives/SelectedItemsProvider";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -134,12 +139,65 @@ export default function Page() {
                   </TypedAwait>
                 </Suspense>
               </div>
-              {selectedItems.size > 0 && <div>{selectedItems.size} runs selected</div>}
+              <BulkActionBar />
             </div>
           )}
         </SelectedItemsProvider>
       </PageBody>
     </>
+  );
+}
+
+function BulkActionBar() {
+  const { selectedItems, has, hasAll, select, deselect, deselectAll, toggle } = useSelectedItems();
+
+  return (
+    <AnimatePresence>
+      {selectedItems.size > 0 && (
+        <motion.div
+          initial={{ translateY: "100%" }}
+          animate={{ translateY: 0 }}
+          exit={{ translateY: "100%" }}
+          className="flex items-center justify-between gap-2 border-t border-grid-bright bg-background-bright px-3"
+        >
+          <div className="flex items-center gap-1">
+            <span>Bulk actions:</span>
+            <span>{selectedItems.size} runs selected</span>
+          </div>
+          <div className="flex items-center gap-1 divide-y divide-charcoal-700">
+            <Button
+              variant="minimal/medium"
+              shortcut={{ key: "c", enabledOnInputElements: true }}
+              onClick={() => {
+                deselectAll();
+              }}
+              LeadingIcon={StopCircleIcon}
+            >
+              Cancel runs
+            </Button>
+            <Button
+              variant="minimal/medium"
+              shortcut={{ key: "r", enabledOnInputElements: true }}
+              onClick={() => {
+                deselectAll();
+              }}
+              LeadingIcon={ArrowPathIcon}
+            >
+              Replay runs
+            </Button>
+            <Button
+              variant="minimal/medium"
+              shortcut={{ key: "esc", enabledOnInputElements: true }}
+              onClick={() => {
+                deselectAll();
+              }}
+            >
+              Clear selection
+            </Button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
