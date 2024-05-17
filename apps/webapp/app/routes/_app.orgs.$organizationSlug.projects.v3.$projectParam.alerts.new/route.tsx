@@ -376,27 +376,7 @@ export default function Page() {
 
               <FormError id={alertTypes.errorId}>{alertTypes.error}</FormError>
             </InputGroup>
-            <InputGroup>
-              <Label>Environments</Label>
-              <Checkbox
-                name="environments"
-                id="production"
-                value="production"
-                variant="simple/small"
-                label="PROD"
-                defaultChecked
-                disabled
-              />
-              <Checkbox
-                name="environments"
-                id="staging"
-                value="staging"
-                variant="simple/small"
-                label="STAGING"
-                defaultChecked
-                disabled
-              />
-            </InputGroup>
+
             <FormError>{form.error}</FormError>
             <div className="border-t border-grid-bright pt-3">
               <FormButtons
