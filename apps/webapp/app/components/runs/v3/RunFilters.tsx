@@ -2,7 +2,6 @@ import * as Ariakit from "@ariakit/react";
 import { CalendarIcon, CpuChipIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import type { RuntimeEnvironment, TaskTriggerSource } from "@trigger.dev/database";
-import { TaskRunStatus } from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
 import type { ReactNode} from "react";
 import { startTransition, useCallback, useMemo, useState } from "react";
@@ -334,7 +333,7 @@ function AppliedStatusFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer" />}>
               <AppliedFilter
                 label="Status"
-                value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
+                value={appliedSummary(statuses.map((v) => runStatusTitle(v as typeof TaskRunStatus[number])))}
                 onRemove={() => del(["statuses", "cursor", "direction"])}
               />
             </Ariakit.Select>
