@@ -1,9 +1,11 @@
 import * as Ariakit from "@ariakit/react";
 import { CalendarIcon, CpuChipIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import { RuntimeEnvironment, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
+import type { RuntimeEnvironment, TaskTriggerSource } from "@trigger.dev/database";
+import { TaskRunStatus } from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
-import { ReactNode, startTransition, useCallback, useMemo, useState } from "react";
+import type { ReactNode} from "react";
+import { startTransition, useCallback, useMemo, useState } from "react";
 import { z } from "zod";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
@@ -37,7 +39,8 @@ import {
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 
-export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);
+const TaskRunStatus = ["PENDING", "WAITING_FOR_DEPLOY", "EXECUTING", "WAITING_TO_RESUME", "RETRYING_AFTER_FAILURE", "PAUSED", "CANCELED", "INTERRUPTED", "COMPLETED_SUCCESSFULLY", "COMPLETED_WITH_ERRORS", "SYSTEM_FAILURE", "CRASHED"] as const
+export const TaskAttemptStatus = z.enum(TaskRunStatus)
 
 export const TaskRunListSearchFilters = z.object({
   cursor: z.string().optional(),

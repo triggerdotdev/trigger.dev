@@ -1,18 +1,36 @@
-import {
-  Prisma,
+import type {
   RuntimeEnvironmentType,
-  TaskRunStatus,
-  TaskTriggerSource,
+  TaskTriggerSource
+} from "@trigger.dev/database";
+import {
+  Prisma
 } from "@trigger.dev/database";
 import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
-import { Organization } from "~/models/organization.server";
-import { Project } from "~/models/project.server";
+import type { Organization } from "~/models/organization.server";
+import type { Project } from "~/models/project.server";
 import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
-import { User } from "~/models/user.server";
+import type { User } from "~/models/user.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
+
+const TaskRunStatus = {
+  PENDING: 'PENDING',
+  WAITING_FOR_DEPLOY: 'WAITING_FOR_DEPLOY',
+  EXECUTING: 'EXECUTING',
+  WAITING_TO_RESUME: 'WAITING_TO_RESUME',
+  RETRYING_AFTER_FAILURE: 'RETRYING_AFTER_FAILURE',
+  PAUSED: 'PAUSED',
+  CANCELED: 'CANCELED',
+  INTERRUPTED: 'INTERRUPTED',
+  COMPLETED_SUCCESSFULLY: 'COMPLETED_SUCCESSFULLY',
+  COMPLETED_WITH_ERRORS: 'COMPLETED_WITH_ERRORS',
+  SYSTEM_FAILURE: 'SYSTEM_FAILURE',
+  CRASHED: 'CRASHED'
+} as const;
+
+type TaskRunStatus = typeof TaskRunStatus[keyof typeof TaskRunStatus]
 
 export type Task = {
   slug: string;
@@ -150,7 +168,7 @@ export class TaskListPresenter extends BasePresenter {
     const activity = await this._replica.$queryRaw<
       {
         taskIdentifier: string;
-        status: TaskRunStatus;
+        status: typeof TaskRunStatus;
         day: Date;
         count: BigInt;
       }[]
@@ -193,7 +211,7 @@ export class TaskListPresenter extends BasePresenter {
           existingTask.push({
             day: day.toISOString(),
             [TaskRunStatus.COMPLETED_SUCCESSFULLY]: 0,
-          } as { day: string } & Record<TaskRunStatus, number>);
+          } as unknown as { day: string } & Record<TaskRunStatus, number>);
         }
 
         acc[a.taskIdentifier] = existingTask;
