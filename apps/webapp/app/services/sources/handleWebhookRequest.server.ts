@@ -1,11 +1,16 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
 import { WebhookContextMetadata } from "@trigger.dev/core";
 import { createHash } from "crypto";
 
+const RuntimeEnvironmentType = {
+  PRODUCTION: "PRODUCTION",
+  STAGING: "STAGING",
+  DEVELOPMENT: "DEVELOPMENT",
+  PREVIEW: "PREVIEW",
+} as const
 export class HandleWebhookRequestService {
   #prismaClient: PrismaClient;
 

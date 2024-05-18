@@ -1,18 +1,48 @@
-import {
-  TaskRunError,
+import type {
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
-  TaskRunSuccessfulExecutionResult,
+  TaskRunSuccessfulExecutionResult} from "@trigger.dev/core/v3";
+import {
+  TaskRunError
 } from "@trigger.dev/core/v3";
 import {
-  BatchTaskRunItemStatus,
-  TaskRun,
-  TaskRunAttempt,
-  TaskRunAttemptStatus,
-  TaskRunStatus,
+  type TaskRun,
+  type TaskRunAttempt,
 } from "@trigger.dev/database";
+
 import { assertNever } from "assert-never";
 import { logger } from "~/services/logger.server";
+
+const BatchTaskRunItemStatus = {
+  PENDING: "PENDING",
+  FAILED: "FAILED",
+  CANCELED: "CANCELED",
+  COMPLETED: "COMPLETED",
+} as const
+
+const TaskRunAttemptStatus=  {
+  PENDING: "PENDING",
+  EXECUTING: "EXECUTING",
+  PAUSED: "PAUSED",
+  FAILED: "FAILED",
+  CANCELED: "CANCELED",
+  COMPLETED: "COMPLETED",
+} as const
+
+const TaskRunStatus =  {
+  PENDING: 'PENDING',
+  WAITING_FOR_DEPLOY: 'WAITING_FOR_DEPLOY',
+  EXECUTING: 'EXECUTING',
+  WAITING_TO_RESUME: 'WAITING_TO_RESUME',
+  RETRYING_AFTER_FAILURE: 'RETRYING_AFTER_FAILURE',
+  PAUSED: 'PAUSED',
+  CANCELED: 'CANCELED',
+  INTERRUPTED: 'INTERRUPTED',
+  COMPLETED_SUCCESSFULLY: 'COMPLETED_SUCCESSFULLY',
+  COMPLETED_WITH_ERRORS: 'COMPLETED_WITH_ERRORS',
+  SYSTEM_FAILURE: 'SYSTEM_FAILURE',
+  CRASHED: 'CRASHED'
+} as const 
 
 const SUCCESSFUL_STATUSES = [TaskRunStatus.COMPLETED_SUCCESSFULLY];
 const FAILURE_STATUSES = [
@@ -104,7 +134,7 @@ export function executionResultForTaskRun(
   }
 }
 
-export function batchTaskRunItemStatusForRunStatus(status: TaskRunStatus): BatchTaskRunItemStatus {
+export function batchTaskRunItemStatusForRunStatus(status: keyof typeof TaskRunStatus): keyof typeof BatchTaskRunItemStatus {
   switch (status) {
     case TaskRunStatus.COMPLETED_SUCCESSFULLY:
       return BatchTaskRunItemStatus.COMPLETED;
@@ -113,7 +143,6 @@ export function batchTaskRunItemStatusForRunStatus(status: TaskRunStatus): Batch
     case TaskRunStatus.COMPLETED_WITH_ERRORS:
     case TaskRunStatus.SYSTEM_FAILURE:
     case TaskRunStatus.CRASHED:
-    case TaskRunStatus.COMPLETED_WITH_ERRORS:
       return BatchTaskRunItemStatus.FAILED;
     case TaskRunStatus.PENDING:
     case TaskRunStatus.WAITING_FOR_DEPLOY:

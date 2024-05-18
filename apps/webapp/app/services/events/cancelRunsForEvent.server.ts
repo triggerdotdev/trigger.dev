@@ -1,11 +1,29 @@
-import { $transaction, PrismaClient, prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
-import { JobRunStatus } from "@trigger.dev/database";
+import type { PrismaClient} from "~/db.server";
+import { $transaction, prisma } from "~/db.server";
+import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { CancelRunService } from "../runs/cancelRun.server";
 import { logger } from "../logger.server";
-import { CancelRunsForEvent } from "@trigger.dev/core";
+import type { CancelRunsForEvent } from "@trigger.dev/core";
 
-const CANCELLABLE_JOB_RUN_STATUS: JobRunStatus[] = [
+export const JobRunStatus = {
+  PENDING: 'PENDING',
+  QUEUED: 'QUEUED',
+  WAITING_ON_CONNECTIONS: 'WAITING_ON_CONNECTIONS',
+  PREPROCESSING: 'PREPROCESSING',
+  STARTED: 'STARTED',
+  EXECUTING: 'EXECUTING',
+  WAITING_TO_CONTINUE: 'WAITING_TO_CONTINUE',
+  WAITING_TO_EXECUTE: 'WAITING_TO_EXECUTE',
+  SUCCESS: 'SUCCESS',
+  FAILURE: 'FAILURE',
+  TIMED_OUT: 'TIMED_OUT',
+  ABORTED: 'ABORTED',
+  CANCELED: 'CANCELED',
+  UNRESOLVED_AUTH: 'UNRESOLVED_AUTH',
+  INVALID_PAYLOAD: 'INVALID_PAYLOAD'
+} as const;
+
+const CANCELLABLE_JOB_RUN_STATUS: Array<keyof typeof JobRunStatus> = [
   JobRunStatus.PENDING,
   JobRunStatus.QUEUED,
   JobRunStatus.WAITING_ON_CONNECTIONS,
