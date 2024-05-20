@@ -42,6 +42,8 @@ import { DeliverAlertService } from "~/v3/services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "~/v3/services/alerts/performDeploymentAlerts.server";
 import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
 import { PerformBulkActionService } from "~/v3/services/bulk/performBulkAction.server";
+import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
+import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -152,6 +154,9 @@ const workerCatalog = {
   }),
   "v3.performBulkAction": z.object({
     bulkActionGroupId: z.string(),
+  }),
+  "v3.performBulkActionItem": z.object({
+    bulkActionItemId: z.string(),
   }),
 };
 
@@ -584,6 +589,15 @@ function getWorkerQueue() {
           const service = new PerformBulkActionService();
 
           return await service.call(payload.bulkActionGroupId);
+        },
+      },
+      "v3.performBulkActionItem": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PerformBulkActionService();
+
+          await service.performBulkActionItem(payload.bulkActionItemId);
         },
       },
     },

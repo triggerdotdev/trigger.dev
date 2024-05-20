@@ -597,7 +597,7 @@ function BulkActionsDropdown({
           return true;
         }}
       >
-        <ComboBox placeholder={"Filter by task..."} value={searchValue} />
+        <ComboBox placeholder={"Filter by bulk action..."} value={searchValue} />
         <SelectList>
           <SelectItem value={""}>None</SelectItem>
           {filtered.map((item, index) => (
