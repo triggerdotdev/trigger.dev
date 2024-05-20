@@ -17,6 +17,7 @@ type RunListOptions = {
   environments?: string[];
   scheduleId?: string;
   period?: string;
+  bulkId?: string;
   from?: number;
   to?: number;
   //pagination
@@ -25,7 +26,7 @@ type RunListOptions = {
   pageSize?: number;
 };
 
-const DEFAULT_PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 25;
 
 export type RunList = Awaited<ReturnType<RunListPresenter["call"]>>;
 export type RunListItem = RunList["runs"][0];
@@ -41,6 +42,7 @@ export class RunListPresenter extends BasePresenter {
     environments,
     scheduleId,
     period,
+    bulkId,
     from,
     to,
     direction = "forward",
@@ -55,6 +57,7 @@ export class RunListPresenter extends BasePresenter {
       hasStatusFilters ||
       (environments !== undefined && environments.length > 0) ||
       (period !== undefined && period !== "all") ||
+      (bulkId !== undefined && bulkId !== "") ||
       from !== undefined ||
       to !== undefined;
 
@@ -87,12 +90,54 @@ export class RunListPresenter extends BasePresenter {
     });
 
     //get all possible tasks
-    const possibleTasks = await this._replica.backgroundWorkerTask.findMany({
+    const possibleTasksAsync = this._replica.backgroundWorkerTask.findMany({
       distinct: ["slug"],
       where: {
         projectId: project.id,
       },
     });
+
+    //get possible bulk actions
+    const bulkActionsAsync = this._replica.bulkActionGroup.findMany({
+      select: {
+        friendlyId: true,
+        type: true,
+        createdAt: true,
+      },
+      where: {
+        projectId: project.id,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 20,
+    });
+
+    const [possibleTasks, bulkActions] = await Promise.all([possibleTasksAsync, bulkActionsAsync]);
+
+    //we can restrict to specific runs using bulkId, or batchId
+    let restrictToRunIds: undefined | string[] = undefined;
+
+    //bulk id
+    if (bulkId) {
+      const bulkAction = await this._replica.bulkActionGroup.findUnique({
+        select: {
+          items: {
+            select: {
+              destinationRunId: true,
+            },
+          },
+        },
+        where: {
+          friendlyId: bulkId,
+        },
+      });
+
+      if (bulkAction) {
+        const runIds = bulkAction.items.map((item) => item.destinationRunId).filter(Boolean);
+        restrictToRunIds = runIds;
+      }
+    }
 
     const periodMs = period ? parse(period) : undefined;
 
@@ -142,6 +187,13 @@ export class RunListPresenter extends BasePresenter {
           : Prisma.empty
       }
       -- filters
+      ${
+        restrictToRunIds
+          ? restrictToRunIds.length === 0
+            ? Prisma.sql`AND tr.id = ''`
+            : Prisma.sql`AND tr.id IN (${Prisma.join(restrictToRunIds)})`
+          : Prisma.empty
+      }
       ${
         tasks && tasks.length > 0
           ? Prisma.sql`AND tr."taskIdentifier" IN (${Prisma.join(tasks)})`
@@ -240,6 +292,11 @@ export class RunListPresenter extends BasePresenter {
         .sort((a, b) => {
           return a.slug.localeCompare(b.slug);
         }),
+      bulkActions: bulkActions.map((bulkAction) => ({
+        id: bulkAction.friendlyId,
+        type: bulkAction.type,
+        createdAt: bulkAction.createdAt,
+      })),
       filters: {
         tasks: tasks || [],
         versions: versions || [],

@@ -54,6 +54,33 @@ export function createErrorTaskError(error: TaskRunError): any {
   }
 }
 
+export function createJsonErrorObject(error: TaskRunError) {
+  switch (error.type) {
+    case "BUILT_IN_ERROR": {
+      return {
+        name: error.name,
+        message: error.message,
+        stackTrace: error.stackTrace,
+      };
+    }
+    case "STRING_ERROR": {
+      return {
+        message: error.raw,
+      };
+    }
+    case "CUSTOM_ERROR": {
+      return {
+        message: error.raw,
+      };
+    }
+    case "INTERNAL_ERROR": {
+      return {
+        message: `trigger.dev internal error (${error.code})`,
+      };
+    }
+  }
+}
+
 export function correctErrorStackTrace(
   stackTrace: string,
   projectDir?: string,

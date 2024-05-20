@@ -28,6 +28,11 @@ import { CancelRunDialog } from "./CancelRunDialog";
 import { ReplayRunDialog } from "./ReplayRunDialog";
 import { TaskRunStatusCombo } from "./TaskRunStatus";
 import { LiveTimer } from "./LiveTimer";
+import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
+import { Checkbox } from "~/components/primitives/Checkbox";
+import { useCallback, useRef } from "react";
+import { run } from "@remix-run/dev/dist/cli/run";
+import { formatNumber } from "~/utils/numberFormatter";
 
 type RunsTableProps = {
   total: number;
@@ -36,6 +41,7 @@ type RunsTableProps = {
   showJob?: boolean;
   runs: RunListItem[];
   isLoading?: boolean;
+  allowSelection?: boolean;
 };
 
 export function TaskRunsTable({
@@ -44,15 +50,66 @@ export function TaskRunsTable({
   filters,
   runs,
   isLoading = false,
+  allowSelection = false,
 }: RunsTableProps) {
   const organization = useOrganization();
   const project = useProject();
+  const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
+  const { selectedItems, has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
+
+  const navigateCheckboxes = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+      //indexes are out by one because of the header row
+      if (event.key === "ArrowUp" && index > 0) {
+        checkboxes.current[index - 1]?.focus();
+
+        if (event.shiftKey) {
+          const oldItem = runs.at(index - 1);
+          const newItem = runs.at(index - 2);
+          const itemsIds = [oldItem?.id, newItem?.id].filter(Boolean);
+          select(itemsIds);
+        }
+      } else if (event.key === "ArrowDown" && index < checkboxes.current.length - 1) {
+        checkboxes.current[index + 1]?.focus();
+
+        if (event.shiftKey) {
+          const oldItem = runs.at(index - 1);
+          const newItem = runs.at(index);
+          const itemsIds = [oldItem?.id, newItem?.id].filter(Boolean);
+          select(itemsIds);
+        }
+      }
+    },
+    [checkboxes, runs]
+  );
 
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHeaderCell>Run</TableHeaderCell>
+          {allowSelection && (
+            <TableHeaderCell className="pl-2 pr-0">
+              {runs.length > 0 && (
+                <Checkbox
+                  checked={hasAll(runs.map((r) => r.id))}
+                  onChange={(element) => {
+                    const ids = runs.map((r) => r.id);
+                    const checked = element.currentTarget.checked;
+                    if (checked) {
+                      select(ids);
+                    } else {
+                      deselect(ids);
+                    }
+                  }}
+                  ref={(r) => {
+                    checkboxes.current[0] = r;
+                  }}
+                  onKeyDown={(event) => navigateCheckboxes(event, 0)}
+                />
+              )}
+            </TableHeaderCell>
+          )}
+          <TableHeaderCell alignment="right">Run #</TableHeaderCell>
           <TableHeaderCell>Task ID</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
           <TableHeaderCell>Env</TableHeaderCell>
@@ -74,11 +131,27 @@ export function TaskRunsTable({
         ) : runs.length === 0 ? (
           <BlankState isLoading={isLoading} filters={filters} />
         ) : (
-          runs.map((run) => {
+          runs.map((run, index) => {
             const path = v3RunSpanPath(organization, project, run, { spanId: run.spanId });
             return (
               <TableRow key={run.id}>
-                <TableCell to={path}>#{run.number}</TableCell>
+                {allowSelection && (
+                  <TableCell className="pl-2 pr-0">
+                    <Checkbox
+                      checked={has(run.id)}
+                      onChange={(element) => {
+                        toggle(run.id);
+                      }}
+                      ref={(r) => {
+                        checkboxes.current[index + 1] = r;
+                      }}
+                      onKeyDown={(event) => navigateCheckboxes(event, index + 1)}
+                    />
+                  </TableCell>
+                )}
+                <TableCell to={path} alignment="right">
+                  {formatNumber(run.number)}
+                </TableCell>
                 <TableCell to={path}>{run.taskIdentifier}</TableCell>
                 <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>
@@ -194,7 +267,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   ) {
     const environment = envs?.find((env) => env.id === filters.environments[0]);
     return (
-      <TableBlankRow colSpan={9}>
+      <TableBlankRow colSpan={10}>
         <div className="py-14">
           <Paragraph className="w-auto" variant="base/bright" spacing>
             There are no runs for {filters.tasks[0]}
@@ -235,8 +308,21 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   }
 
   return (
-    <TableBlankRow colSpan={9}>
-      <NoRuns title="No runs match your filters" />
+    <TableBlankRow colSpan={10}>
+      <div className="flex flex-col items-center justify-center gap-2">
+        <Paragraph className="w-auto" variant="small">
+          No runs currently match your filters. Try refreshing or modifying your filters.
+        </Paragraph>
+        <Button
+          LeadingIcon={ArrowPathIcon}
+          variant="tertiary/small"
+          onClick={() => {
+            window.location.reload();
+          }}
+        >
+          Refresh
+        </Button>
+      </div>
     </TableBlankRow>
   );
 }

@@ -22,7 +22,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
@@ -429,6 +429,26 @@ export class SharedQueueConsumer {
           return;
         }
 
+        const queue = await prisma.taskQueue.findUnique({
+          where: {
+            runtimeEnvironmentId_name: {
+              runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
+              name: sanitizeQueueName(lockedTaskRun.queue),
+            },
+          },
+        });
+
+        if (!queue) {
+          logger.debug("SharedQueueConsumer queue not found, so nacking message", {
+            queueMessage: message,
+            taskRunQueue: lockedTaskRun.queue,
+            runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
+          });
+
+          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
+          return;
+        }
+
         if (!this._enabled) {
           logger.debug("SharedQueueConsumer not enabled, so nacking message", {
             queueMessage: message,
@@ -632,12 +652,17 @@ export class SharedQueueConsumer {
           where: {
             runtimeEnvironmentId_name: {
               runtimeEnvironmentId: resumableAttempt.runtimeEnvironmentId,
-              name: resumableRun.queue,
+              name: sanitizeQueueName(resumableRun.queue),
             },
           },
         });
 
         if (!queue) {
+          logger.debug("SharedQueueConsumer queue not found, so nacking message", {
+            queueName: sanitizeQueueName(resumableRun.queue),
+            attempt: resumableAttempt,
+          });
+
           await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
           return;
         }

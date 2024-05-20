@@ -11,7 +11,7 @@ import {
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Checkbox } from "~/components/primitives/Checkbox";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormError } from "~/components/primitives/FormError";
@@ -265,7 +265,7 @@ export function UpsertScheduleForm({
               <Label>Environments</Label>
               <div className="flex flex-wrap items-center gap-2">
                 {possibleEnvironments.map((environment) => (
-                  <Checkbox
+                  <CheckboxWithLabel
                     key={environment.id}
                     id={environment.id}
                     value={environment.id}

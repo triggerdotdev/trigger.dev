@@ -6,7 +6,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabel, EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -281,15 +281,7 @@ function SchedulesTable({
                   {schedule.lastRun ? <DateTime date={schedule.lastRun} timeZone="utc" /> : "–"}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  <div className="flex gap-1">
-                    {schedule.environments.map((environment) => (
-                      <EnvironmentLabel
-                        key={environment.id}
-                        environment={environment}
-                        userName={environment.userName}
-                      />
-                    ))}
-                  </div>
+                  <EnvironmentLabels environments={schedule.environments} size="small" />
                 </TableCell>
                 <TableCell to={path}>
                   <EnabledStatus enabled={schedule.active} />

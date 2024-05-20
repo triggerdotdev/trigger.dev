@@ -8,7 +8,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabel, EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
@@ -211,16 +211,7 @@ export default function Page() {
                 </div>
               </Property>
               <Property label="Environments">
-                <div className="flex flex-wrap gap-1">
-                  {schedule.environments.map((env) => (
-                    <EnvironmentLabel
-                      key={env.id}
-                      size="small"
-                      environment={env}
-                      userName={env.userName}
-                    />
-                  ))}
-                </div>
+                <EnvironmentLabels size="small" environments={schedule.environments} />
               </Property>
               <Property label="External ID">
                 {schedule.externalId ? schedule.externalId : "–"}

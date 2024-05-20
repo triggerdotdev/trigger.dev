@@ -79,6 +79,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string().optional(),
   saveLogs: z.boolean().default(false),
   skipUpdateCheck: z.boolean().default(false),
+  noCache: z.boolean().default(false),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -106,6 +107,12 @@ export function configureDeployCommand(program: Command) {
       new CommandOption(
         "--self-hosted",
         "Build and load the image using your local Docker. Use the --registry option to specify the registry to push the image to when using --self-hosted, or just use --push-image to push to the default registry."
+      ).hideHelp()
+    )
+    .addOption(
+      new CommandOption(
+        "--no-cache",
+        "Do not use the cache when building the image. This will slow down the build process but can be useful if you are experiencing issues with the cache."
       ).hideHelp()
     )
     .addOption(
@@ -293,6 +300,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         buildPlatform: options.buildPlatform,
         pushImage: options.push,
         selfHostedRegistry: !!options.registry,
+        noCache: options.noCache,
       });
     }
 
@@ -318,6 +326,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         projectRef: resolvedConfig.config.project,
         loadImage: options.loadImage,
         buildPlatform: options.buildPlatform,
+        noCache: options.noCache,
       },
       deploymentSpinner
     );
@@ -755,6 +764,7 @@ type BuildAndPushImageOptions = {
   projectRef: string;
   loadImage: boolean;
   buildPlatform: string;
+  noCache: boolean;
 };
 
 type BuildAndPushImageResults =
@@ -798,6 +808,7 @@ async function buildAndPushImage(
       "build",
       "-f",
       "Containerfile",
+      options.noCache ? "--no-cache" : undefined,
       "--platform",
       options.buildPlatform,
       "--provenance",
@@ -923,6 +934,7 @@ async function buildAndPushSelfHostedImage(
       "build",
       "-f",
       "Containerfile",
+      options.noCache ? "--no-cache" : undefined,
       "--platform",
       options.buildPlatform,
       "--build-arg",
@@ -940,7 +952,9 @@ async function buildAndPushSelfHostedImage(
       ".", // The build context
     ].filter(Boolean) as string[];
 
-    logger.debug(`docker ${buildArgs.join(" ")}`);
+    logger.debug(`docker ${buildArgs.join(" ")}`, {
+      cwd: options.cwd,
+    });
 
     span.setAttribute("docker.command.build", `docker ${buildArgs.join(" ")}`);
 

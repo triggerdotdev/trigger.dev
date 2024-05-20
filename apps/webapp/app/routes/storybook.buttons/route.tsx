@@ -278,10 +278,8 @@ export default function Story() {
               <span className="text-charcoal-900">Continue with GitHub</span>
             </Button>
             <Button variant="secondary/large" fullWidth>
-              <EnvelopeIcon
-                className={"mr-1.5 h-5 w-5 text-primary transition group-hover:text-apple-200"}
-              />
-              <span className="text-primary group-hover:text-apple-200">Continue with Email</span>
+              <EnvelopeIcon className={"mr-1.5 h-5 w-5 text-secondary transition"} />
+              <span className="text-secondary">Continue with Email</span>
             </Button>
             <Button variant="tertiary/large" fullWidth>
               <GitHubLightIcon className={"mr-1.5 size-[1.2rem]"} />
@@ -308,10 +306,8 @@ export default function Story() {
               <span className="text-charcoal-900">Continue with GitHub</span>
             </Button>
             <Button variant="secondary/extra-large" fullWidth>
-              <EnvelopeIcon
-                className={"mr-1.5 h-5 w-5 text-primary transition group-hover:text-apple-200"}
-              />
-              <span className="text-primary group-hover:text-apple-200">Continue with Email</span>
+              <EnvelopeIcon className={"mr-1.5 h-5 w-5 text-secondary transition"} />
+              <span className="text-secondary">Continue with Email</span>
             </Button>
             <Button variant="tertiary/extra-large" fullWidth>
               <GitHubLightIcon className={"mr-1.5 h-5 w-5"} />

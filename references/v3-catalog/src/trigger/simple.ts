@@ -9,11 +9,20 @@ export const simplestTask = task({
       body: JSON.stringify({
         hello: "world",
         taskId: "fetch-post-task",
-        foo: "barrrrrrrrrrrrrrrrrrr",
+        foo: "barrrrrrrrrrrrrrrrrrrr",
       }),
     });
 
     return response.json();
+  },
+});
+
+export const taskWithSpecialCharacters = task({
+  id: "admin:special-characters",
+  run: async (payload: { url: string }) => {
+    return {
+      message: "This task has special characters in its ID",
+    };
   },
 });
 
@@ -126,7 +135,7 @@ export const childTask = task({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        title: "childTask payload and ctx",
+        title: "childTask payload and ctxr",
         content: {
           payload,
           ctx,

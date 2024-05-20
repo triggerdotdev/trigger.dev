@@ -49,9 +49,17 @@ export const taskWithRetries = task({
 export const taskThatErrors = task({
   id: "task-that-errors",
   run: async (payload: any, { ctx }) => {
-    throw new Error("failed");
+    connectToDatabase();
   },
 });
+
+function connectToDatabase() {
+  initializeConnection();
+}
+
+function initializeConnection() {
+  throw new Error("Access denied. You do not have the necessary permissions.");
+}
 
 export const taskWithFetchRetries = task({
   id: "task-with-fetch-retries",

@@ -14,7 +14,7 @@ import { prisma } from "~/db.server";
 import { createNewSession, disconnectSession } from "~/models/runtimeEnvironment.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 import { CancelTaskRunService } from "../services/cancelTaskRun.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
@@ -88,6 +88,10 @@ export class DevQueueConsumer {
     });
 
     if (!backgroundWorker) {
+      return;
+    }
+
+    if (this._backgroundWorkers.has(backgroundWorker.id)) {
       return;
     }
 
@@ -264,10 +268,10 @@ export class DevQueueConsumer {
       return;
     }
 
+    this._enabled = true;
     // Create the session
     await createNewSession(this.env, this._options.ipAddress ?? "unknown");
 
-    this._enabled = true;
     this._perTraceCountdown = this._options.maximumItemsPerTrace;
     this._lastNewTrace = new Date();
     this._taskFailures = 0;
@@ -436,6 +440,28 @@ export class DevQueueConsumer {
       await marqs?.acknowledgeMessage(message.messageId);
 
       setTimeout(() => this.#doWork(), 100);
+      return;
+    }
+
+    const queue = await prisma.taskQueue.findUnique({
+      where: {
+        runtimeEnvironmentId_name: {
+          runtimeEnvironmentId: this.env.id,
+          name: sanitizeQueueName(lockedTaskRun.queue),
+        },
+      },
+    });
+
+    if (!queue) {
+      logger.debug("[DevQueueConsumer] Failed to find queue", {
+        queueName: lockedTaskRun.queue,
+        sanitizedName: sanitizeQueueName(lockedTaskRun.queue),
+        taskRun: lockedTaskRun.id,
+        messageId: message.messageId,
+      });
+
+      await marqs?.nackMessage(message.messageId);
+      setTimeout(() => this.#doWork(), 1000);
       return;
     }
 

@@ -130,12 +130,13 @@ model Organization {
   events       EventRecord[]
   jobRuns      JobRun[]
 
-  projects         Project[]
-  members          OrgMember[]
-  invites          OrgMemberInvite[]
-  externalAccounts ExternalAccount[]
-  integrations     Integration[]
-  sources          TriggerSource[]
+  projects                 Project[]
+  members                  OrgMember[]
+  invites                  OrgMemberInvite[]
+  externalAccounts         ExternalAccount[]
+  integrations             Integration[]
+  sources                  TriggerSource[]
+  organizationIntegrations OrganizationIntegration[]
 }
 
 model ExternalAccount {
@@ -401,6 +402,7 @@ model RuntimeEnvironment {
   taskRunAttempts            TaskRunAttempt[]
   CheckpointRestoreEvent     CheckpointRestoreEvent[]
   taskScheduleInstances      TaskScheduleInstance[]
+  alerts                     ProjectAlert[]
 
   sessions         RuntimeEnvironmentSession[]
   currentSession   RuntimeEnvironmentSession?  @relation("currentSession", fields: [currentSessionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
@@ -452,6 +454,10 @@ model Project {
   WorkerDeployment       WorkerDeployment[]
   CheckpointRestoreEvent CheckpointRestoreEvent[]
   taskSchedules          TaskSchedule[]
+  alertChannels          ProjectAlertChannel[]
+  alerts                 ProjectAlert[]
+  alertStorages          ProjectAlertStorage[]
+  bulkActionGroups       BulkActionGroup[]
 }
 
 enum ProjectVersion {
@@ -1129,8 +1135,9 @@ model SecretReference {
   httpEndpoints             TriggerHttpEndpoint[]
   environmentVariableValues EnvironmentVariableValue[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  OrganizationIntegration OrganizationIntegration[]
 }
 
 enum SecretStoreProvider {
@@ -1383,8 +1390,9 @@ model ScheduleSource {
   dynamicTrigger   DynamicTrigger? @relation(fields: [dynamicTriggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   dynamicTriggerId String?
 
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  externalAccount   ExternalAccount?               @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?
+  deferredEvent     DeferredScheduledEventService?
 
   @@unique([key, environmentId])
 }
@@ -1507,6 +1515,19 @@ model DataMigration {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
+}
+
+model DeferredScheduledEventService {
+  id String @id @default(cuid())
+
+  scheduleSource   ScheduleSource @relation(fields: [scheduleSourceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  scheduleSourceId String         @unique
+
+  runAt         DateTime
+  lastTimestamp DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ====================================================
@@ -1637,6 +1658,9 @@ model TaskRun {
   schedule   TaskSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
   scheduleId String?
 
+  sourceBulkActionItems      BulkActionItem[] @relation("SourceActionItemRun")
+  destinationBulkActionItems BulkActionItem[] @relation("DestinationActionItemRun")
+
   @@unique([runtimeEnvironmentId, idempotencyKey])
   // Task activity graph
   @@index([projectId, createdAt, taskIdentifier])
@@ -1766,6 +1790,7 @@ model TaskRunAttempt {
   checkpoints            Checkpoint[]
   batchTaskRunItems      BatchTaskRunItem[]
   CheckpointRestoreEvent CheckpointRestoreEvent[]
+  alerts                 ProjectAlert[]
 
   @@unique([taskRunId, number])
 }
@@ -2107,6 +2132,7 @@ model WorkerDeployment {
   updatedAt DateTime @updatedAt
 
   promotions WorkerDeploymentPromotion[]
+  alerts     ProjectAlert[]
 
   @@unique([projectId, shortCode])
   @@unique([environmentId, version])
@@ -2219,4 +2245,188 @@ model RuntimeEnvironmentSession {
   disconnectedAt DateTime?
 
   currentEnvironments RuntimeEnvironment[] @relation("currentSession")
+}
+
+model ProjectAlertChannel {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  ///can be provided and we won't create another with the same key
+  deduplicationKey             String  @default(cuid())
+  userProvidedDeduplicationKey Boolean @default(false)
+
+  integration   OrganizationIntegration? @relation(fields: [integrationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  integrationId String?
+
+  enabled Boolean @default(true)
+
+  type             ProjectAlertChannelType
+  name             String
+  properties       Json
+  alertTypes       ProjectAlertType[]
+  environmentTypes RuntimeEnvironmentType[] @default([STAGING, PRODUCTION])
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  alerts        ProjectAlert[]
+  alertStorages ProjectAlertStorage[]
+
+  @@unique([projectId, deduplicationKey])
+}
+
+enum ProjectAlertChannelType {
+  EMAIL
+  SLACK
+  WEBHOOK
+}
+
+model ProjectAlert {
+  id         String @id @default(cuid())
+  friendlyId String @unique
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String
+
+  channel   ProjectAlertChannel @relation(fields: [channelId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  channelId String
+
+  status ProjectAlertStatus @default(PENDING)
+
+  type ProjectAlertType
+
+  taskRunAttempt   TaskRunAttempt? @relation(fields: [taskRunAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRunAttemptId String?
+
+  workerDeployment   WorkerDeployment? @relation(fields: [workerDeploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  workerDeploymentId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum ProjectAlertType {
+  TASK_RUN_ATTEMPT
+  DEPLOYMENT_FAILURE
+  DEPLOYMENT_SUCCESS
+}
+
+enum ProjectAlertStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model ProjectAlertStorage {
+  id String @id @default(cuid())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  alertChannel   ProjectAlertChannel @relation(fields: [alertChannelId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  alertChannelId String
+
+  alertType ProjectAlertType
+
+  storageId   String
+  storageData Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OrganizationIntegration {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  service IntegrationService
+
+  integrationData Json
+
+  tokenReference   SecretReference @relation(fields: [tokenReferenceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  tokenReferenceId String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  alertChannels ProjectAlertChannel[]
+}
+
+enum IntegrationService {
+  SLACK
+}
+
+/// Bulk actions, like canceling and replaying runs
+model BulkActionGroup {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  type  BulkActionType
+  items BulkActionItem[]
+
+  /// When the group is created it's pending. After we've processed all the items it's completed. This does not mean the associated runs are completed.
+  status BulkActionStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum BulkActionType {
+  /// Cancels existing runs. This populates the destination runs.
+  CANCEL
+  /// Replays existing runs. The original runs go as source runs, and the new runs go as destination runs.
+  REPLAY
+}
+
+enum BulkActionStatus {
+  PENDING
+  COMPLETED
+}
+
+model BulkActionItem {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  group   BulkActionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  groupId String
+
+  type BulkActionType
+
+  /// When the item is created it's pending. After we've processed the item it's completed. This does not mean the associated runs are completed.
+  status BulkActionItemStatus @default(PENDING)
+
+  /// The run that is the source of the action, e.g. when replaying this is the original run
+  sourceRun   TaskRun @relation("SourceActionItemRun", fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRunId String
+
+  /// The run that's a result of the action, this will be set when the run has been created
+  destinationRun   TaskRun? @relation("DestinationActionItemRun", fields: [destinationRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  destinationRunId String?
+
+  error String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum BulkActionItemStatus {
+  PENDING
+  COMPLETED
+  FAILED
 }

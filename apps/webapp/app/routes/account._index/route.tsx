@@ -6,7 +6,7 @@ import { z } from "zod";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
-import { Checkbox } from "~/components/primitives/Checkbox";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -158,7 +158,7 @@ export default function Page() {
             </InputGroup>
             <InputGroup>
               <Label>Notifications</Label>
-              <Checkbox
+              <CheckboxWithLabel
                 id="marketingEmails"
                 {...conform.input(marketingEmails, { type: "checkbox" })}
                 label="Receive onboarding emails"
