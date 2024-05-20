@@ -383,6 +383,7 @@ export class SharedQueueConsumer {
           data: {
             lockedAt: new Date(),
             lockedById: backgroundTask.id,
+            lockedToVersionId: deployment.worker.id,
           },
           include: {
             runtimeEnvironment: true,
