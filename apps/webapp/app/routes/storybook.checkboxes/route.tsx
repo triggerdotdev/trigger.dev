@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
-import { Checkbox } from "~/components/primitives/Checkbox";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 
 export default function Story() {
   const [isDisabled, setIsDisabled] = useState(false);
@@ -14,28 +14,28 @@ export default function Story() {
       >
         {isDisabled ? "Enable checkboxes" : "Disable checkboxes"}
       </Button>
-      <Checkbox
+      <CheckboxWithLabel
         name="Simple checkbox"
         id="check1"
         variant="simple/small"
         label="This is a simple small checkbox"
         disabled={isDisabled}
       />
-      <Checkbox
+      <CheckboxWithLabel
         name="Simple checkbox"
         id="check1"
         variant="simple"
         label="This is a simple checkbox"
         disabled={isDisabled}
       />
-      <Checkbox
+      <CheckboxWithLabel
         name="Button checkbox"
         id="check2"
         variant="button"
         label="This is a button checkbox"
         disabled={isDisabled}
       />
-      <Checkbox
+      <CheckboxWithLabel
         name="Button checkbox"
         id="check2"
         variant="button"
@@ -43,7 +43,7 @@ export default function Story() {
         badges={["This is a badge"]}
         disabled={isDisabled}
       />
-      <Checkbox
+      <CheckboxWithLabel
         name="Button checkbox"
         id="check2"
         variant="button"
@@ -52,7 +52,7 @@ export default function Story() {
         disabled={isDisabled}
       />
       <div className="flex flex-col gap-y-0.5 overflow-hidden rounded-md">
-        <Checkbox
+        <CheckboxWithLabel
           name="Description checkbox"
           id="check3"
           variant="description"
@@ -61,7 +61,7 @@ export default function Story() {
           description="This is a long checkbox description that goes full width. Grants full access to public and private repositories including read and write access to code, commit statuses, repository invitations, collaborators, deployment statuses, and repository webhooks. Note: In addition to repository related resources, the repo scope also grants access to manage organization-owned resources including projects, invitations, team memberships and webhooks. This scope also grants the ability to manage projects owned by users."
           disabled={isDisabled}
         />
-        <Checkbox
+        <CheckboxWithLabel
           name="Description checkbox"
           id="check4"
           variant="description"
