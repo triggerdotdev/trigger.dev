@@ -252,6 +252,12 @@ function getWorkerQueue() {
           await service.call(payload.ts);
         },
       },
+      scheduleImminentDeferredEvents: {
+        match: "*/10 * * * *",
+        handler: async (payload, job) => {
+          await DeliverScheduledEventService.scheduleImminentDeferredEvents();
+        },
+      },
       // Run this every hour
       purgeOldIndexings: {
         match: "0 * * * *",

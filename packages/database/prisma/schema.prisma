@@ -1389,8 +1389,9 @@ model ScheduleSource {
   dynamicTrigger   DynamicTrigger? @relation(fields: [dynamicTriggerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   dynamicTriggerId String?
 
-  externalAccount   ExternalAccount? @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  externalAccount   ExternalAccount?               @relation(fields: [externalAccountId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   externalAccountId String?
+  deferredEvent     DeferredScheduledEventService?
 
   @@unique([key, environmentId])
 }
@@ -1513,6 +1514,19 @@ model DataMigration {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
+}
+
+model DeferredScheduledEventService {
+  id String @id @default(cuid())
+
+  scheduleSource   ScheduleSource @relation(fields: [scheduleSourceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  scheduleSourceId String         @unique
+
+  runAt         DateTime
+  lastTimestamp DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ====================================================
