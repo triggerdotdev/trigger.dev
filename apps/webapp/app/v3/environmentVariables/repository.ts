@@ -73,16 +73,11 @@ export type EnvironmentVariable = {
 };
 
 export interface Repository {
-  create(
-    projectId: string,
-    userId: string,
-    options: CreateEnvironmentVariables
-  ): Promise<CreateResult>;
-  edit(projectId: string, userId: string, options: EditEnvironmentVariable): Promise<Result>;
-  getProject(projectId: string, userId: string): Promise<ProjectEnvironmentVariable[]>;
+  create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult>;
+  edit(projectId: string, options: EditEnvironmentVariable): Promise<Result>;
+  getProject(projectId: string): Promise<ProjectEnvironmentVariable[]>;
   getEnvironment(
     projectId: string,
-    userId: string,
     environmentId: string,
     excludeInternalVariables?: boolean
   ): Promise<EnvironmentVariable[]>;
@@ -91,10 +86,6 @@ export interface Repository {
     environmentId: string,
     excludeInternalVariables?: boolean
   ): Promise<EnvironmentVariable[]>;
-  delete(projectId: string, userId: string, options: DeleteEnvironmentVariable): Promise<Result>;
-  deleteValue(
-    projectId: string,
-    userId: string,
-    options: DeleteEnvironmentVariableValue
-  ): Promise<Result>;
+  delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result>;
+  deleteValue(projectId: string, options: DeleteEnvironmentVariableValue): Promise<Result>;
 }

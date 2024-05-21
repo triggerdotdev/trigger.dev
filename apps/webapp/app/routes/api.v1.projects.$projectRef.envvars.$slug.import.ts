@@ -2,9 +2,10 @@ import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { ImportEnvironmentVariablesRequestBody } from "@trigger.dev/core/v3";
 import { parse } from "dotenv";
 import { z } from "zod";
-import { prisma } from "~/db.server";
-import { findProjectByRef } from "~/models/project.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import {
+  authenticateProjectApiKeyOrPersonalAccessToken,
+  authenticatedEnvironmentForAuthentication,
+} from "~/services/apiAuth.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 const ParamsSchema = z.object({
@@ -19,44 +20,23 @@ export async function action({ params, request }: ActionFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
+  const authenticationResult = await authenticateProjectApiKeyOrPersonalAccessToken(request);
 
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: {
-      id: authenticationResult.userId,
-    },
-  });
-
-  if (!user) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
-
-  const project = await findProjectByRef(parsedParams.data.projectRef, user.id);
-
-  if (!project) {
-    return json({ error: "Project not found" }, { status: 404 });
-  }
-
-  const environment = await prisma.runtimeEnvironment.findFirst({
-    where: {
-      projectId: project.id,
-      slug: parsedParams.data.slug,
-    },
-  });
-
-  if (!environment) {
-    return json({ error: "Environment not found" }, { status: 404 });
-  }
+  const environment = await authenticatedEnvironmentForAuthentication(
+    authenticationResult,
+    parsedParams.data.projectRef,
+    parsedParams.data.slug
+  );
 
   const repository = new EnvironmentVariablesRepository();
 
   const body = await parseImportBody(request);
 
-  const result = await repository.create(project.id, user.id, {
+  const result = await repository.create(environment.project.id, {
     overwrite: body.overwrite === true ? true : false,
     environmentIds: [environment.id],
     variables: Object.entries(body.variables).map(([key, value]) => ({
@@ -75,15 +55,21 @@ export async function action({ params, request }: ActionFunctionArgs) {
 async function parseImportBody(request: Request): Promise<ImportEnvironmentVariablesRequestBody> {
   const contentType = request.headers.get("content-type") ?? "application/json";
 
-  if (contentType.includes("application/octet-stream")) {
-    // We have a "dotenv" formatted file uploaded
-    const buffer = await request.arrayBuffer();
+  if (contentType.includes("multipart/form-data")) {
+    const formData = await request.formData();
 
-    const variables = parse(Buffer.from(buffer));
+    const file = formData.get("file");
+    const overwrite = formData.get("overwrite") === "true";
 
-    const overwrite = request.headers.get("x-overwrite") === "true";
+    if (file instanceof File) {
+      const buffer = await file.arrayBuffer();
 
-    return { variables, overwrite };
+      const variables = parse(Buffer.from(buffer));
+
+      return { variables, overwrite };
+    } else {
+      throw json({ error: "Invalid file" }, { status: 400 });
+    }
   } else {
     const rawBody = await request.json();
 

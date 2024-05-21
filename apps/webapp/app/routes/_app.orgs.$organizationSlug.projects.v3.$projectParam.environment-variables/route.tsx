@@ -106,6 +106,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const project = await prisma.project.findUnique({
     where: {
       slug: params.projectParam,
+      organization: {
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
     },
     select: {
       id: true,
@@ -119,7 +126,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   switch (submission.value.action) {
     case "edit": {
       const repository = new EnvironmentVariablesRepository(prisma);
-      const result = await repository.edit(project.id, userId, submission.value);
+      const result = await repository.edit(project.id, submission.value);
 
       if (!result.success) {
         submission.error.key = result.error;
@@ -138,7 +145,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
     case "delete": {
       const repository = new EnvironmentVariablesRepository(prisma);
-      const result = await repository.delete(project.id, userId, submission.value);
+      const result = await repository.delete(project.id, submission.value);
 
       if (!result.success) {
         submission.error.key = result.error;

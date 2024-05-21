@@ -87,7 +87,7 @@ export class EnvironmentVariablesPresenter {
     );
 
     const repository = new EnvironmentVariablesRepository(this.#prismaClient);
-    const variables = await repository.getProject(project.id, userId);
+    const variables = await repository.getProject(project.id);
 
     return {
       environmentVariables: environmentVariables.map((environmentVariable) => {

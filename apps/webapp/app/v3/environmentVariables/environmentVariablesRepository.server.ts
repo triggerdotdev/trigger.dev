@@ -43,7 +43,6 @@ export class EnvironmentVariablesRepository implements Repository {
 
   async create(
     projectId: string,
-    userId: string,
     options: {
       overwrite: boolean;
       environmentIds: string[];
@@ -56,13 +55,6 @@ export class EnvironmentVariablesRepository implements Repository {
     const project = await this.prismaClient.project.findUnique({
       where: {
         id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
         deletedAt: null,
       },
       select: {
@@ -228,7 +220,6 @@ export class EnvironmentVariablesRepository implements Repository {
 
   async edit(
     projectId: string,
-    userId: string,
     options: {
       values: { value: string; environmentId: string }[];
       id: string;
@@ -238,31 +229,12 @@ export class EnvironmentVariablesRepository implements Repository {
     const project = await this.prismaClient.project.findUnique({
       where: {
         id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
         deletedAt: null,
       },
       select: {
         environments: {
           select: {
             id: true,
-          },
-          where: {
-            OR: [
-              {
-                orgMember: null,
-              },
-              {
-                orgMember: {
-                  userId,
-                },
-              },
-            ],
           },
         },
       },
@@ -382,17 +354,10 @@ export class EnvironmentVariablesRepository implements Repository {
     }
   }
 
-  async getProject(projectId: string, userId: string): Promise<ProjectEnvironmentVariable[]> {
+  async getProject(projectId: string): Promise<ProjectEnvironmentVariable[]> {
     const project = await this.prismaClient.project.findUnique({
       where: {
         id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
         deletedAt: null,
       },
       select: {
@@ -464,20 +429,12 @@ export class EnvironmentVariablesRepository implements Repository {
 
   async getEnvironment(
     projectId: string,
-    userId: string,
     environmentId: string,
     excludeInternalVariables?: boolean
   ): Promise<EnvironmentVariable[]> {
     const project = await this.prismaClient.project.findUnique({
       where: {
         id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
         deletedAt: null,
       },
       select: {
@@ -654,39 +611,16 @@ export class EnvironmentVariablesRepository implements Repository {
     return [...secretEnvVars, ...triggerEnvVars];
   }
 
-  async delete(
-    projectId: string,
-    userId: string,
-    options: DeleteEnvironmentVariable
-  ): Promise<Result> {
+  async delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result> {
     const project = await this.prismaClient.project.findUnique({
       where: {
         id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
         deletedAt: null,
       },
       select: {
         environments: {
           select: {
             id: true,
-          },
-          where: {
-            OR: [
-              {
-                orgMember: null,
-              },
-              {
-                orgMember: {
-                  userId,
-                },
-              },
-            ],
           },
         },
       },
@@ -758,39 +692,16 @@ export class EnvironmentVariablesRepository implements Repository {
     }
   }
 
-  async deleteValue(
-    projectId: string,
-    userId: string,
-    options: DeleteEnvironmentVariableValue
-  ): Promise<Result> {
+  async deleteValue(projectId: string, options: DeleteEnvironmentVariableValue): Promise<Result> {
     const project = await this.prismaClient.project.findUnique({
       where: {
         id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
         deletedAt: null,
       },
       select: {
         environments: {
           select: {
             id: true,
-          },
-          where: {
-            OR: [
-              {
-                orgMember: null,
-              },
-              {
-                orgMember: {
-                  userId,
-                },
-              },
-            ],
           },
         },
       },
@@ -833,7 +744,7 @@ export class EnvironmentVariablesRepository implements Repository {
 
     // If this is the last value, delete the whole variable
     if (environmentVariable.values.length === 1) {
-      return this.delete(projectId, userId, { id: options.id });
+      return this.delete(projectId, { id: options.id });
     }
 
     try {

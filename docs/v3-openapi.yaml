@@ -1,0 +1,1128 @@
+---
+openapi: 3.1.0
+info:
+  title: Trigger.dev v3 REST API
+  description: "The REST API lets you trigger and manage runs on Trigger.dev. You
+    can trigger a run, get the status of a run, and get the results of a run. "
+  version: 2024-04
+  license: 
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+  - url: https://api.trigger.dev
+    description: Trigger.dev API
+paths:
+  "/api/v1/schedules":
+    post:
+      operationId: create_schedule_v1
+      summary: Create a schedule
+      description: Create a new schedule based on the specified options.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/CreateScheduleOptions"
+      responses:
+        "200":
+          description: Schedule created successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ScheduleObject"
+        "400":
+          description: Invalid request parameters
+        "401":
+          description: Unauthorized
+        "422":
+          description: Unprocessable Entity
+      tags:
+        - schedules
+      security:
+        - apiKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { schedules } from "@trigger.dev/sdk/v3";
+
+            const schedule = await schedules.create({
+              task: 'my-task',
+              cron: '0 0 * * *'
+            });
+
+    get:
+      operationId: list_schedules_v1
+      summary: List all schedules
+      description: List all schedules. You can also paginate the results.
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+          required: false
+          description: Page number of the schedule listing
+        - in: query
+          name: perPage
+          schema:
+            type: integer
+          required: false
+          description: Number of schedules per page
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ListSchedulesResult"
+        "401":
+          description: Unauthorized request
+      tags:
+        - schedules
+      security:
+        - apiKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { schedules } from "@trigger.dev/sdk/v3";
+
+            const allSchedules = await schedules.list();
+
+  "/api/v1/schedules/{schedule_id}":
+    get:
+      operationId: get_schedule_v1
+      summary: Retrieve Schedule
+      description: Get a schedule by its ID.
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema:
+            type: string
+          description: The ID of the schedule.
+          example: sched_1234
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ScheduleObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Resource not found
+      tags:
+        - schedules
+      security:
+        - apiKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { schedules } from "@trigger.dev/sdk/v3";
+
+            const schedule = await schedules.retrieve(scheduleId);
+
+    put:
+      operationId: update_schedule_v1
+      summary: Update Schedule
+      description: Update a schedule by its ID.
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema:
+            type: string
+          description: The ID of the schedule.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/CreateScheduleOptions"
+      responses:
+        "200":
+          description: Schedule updated successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ScheduleObject"
+        "400":
+          description: Invalid request parameters
+        "401":
+          description: Unauthorized
+        "404":
+          description: Resource not found
+        "422":
+          description: Unprocessable Entity
+      tags:
+        - schedules
+      security:
+        - apiKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { schedules } from "@trigger.dev/sdk/v3";
+
+            const updatedSchedule = await schedules.update(scheduleId, {
+              task: 'my-updated-task',
+              cron: '0 0 * * *'
+            });
+
+    delete:
+      operationId: delete_schedule_v1
+      summary: Delete Schedule
+      description: Delete a schedule by its ID.
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema:
+            type: string
+          description: The ID of the schedule.
+      responses:
+        "200":
+          description: Schedule deleted successfully
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Resource not found
+      tags:
+        - schedules
+      security:
+        - apiKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { schedules } from "@trigger.dev/sdk/v3";
+
+            await schedules.del(scheduleId);
+
+  "/api/v1/schedules/{schedule_id}/deactivate":
+    post:
+      operationId: deactivate_schedule_v1
+      summary: Deactivate Schedule.
+      description: Deactivate a schedule by its ID.
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema:
+            type: string
+          description: The ID of the schedule.
+      responses:
+        "200":
+          description: Schedule updated successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ScheduleObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Resource not found
+      tags:
+        - schedules
+      security:
+        - apiKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { schedules } from "@trigger.dev/sdk/v3";
+
+            const schedule = await schedules.deactivate(scheduleId);
+
+  "/api/v1/schedules/{schedule_id}/activate":
+    post:
+      operationId: activate_schedule_v1
+      summary: Activate Schedule
+      description: Activate a schedule by its ID.
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema:
+            type: string
+          description: The ID of the schedule.
+      responses:
+        "200":
+          description: Schedule updated successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ScheduleObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Resource not found
+      tags:
+        - schedules
+      security:
+        - apiKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { schedules } from "@trigger.dev/sdk/v3";
+
+            const schedule = await schedules.activate(scheduleId);
+
+  "/api/v1/runs/{run_id}/replay":
+    post:
+      operationId: replay_run_v1
+      summary: Replay a run
+      description: Creates a new run with the same payload and options as the original
+        run.
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema:
+            type: string
+          description: The ID of an existing run. When you trigger a run you will get
+            an id in the response.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: The ID of the new run.
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or missing run ID
+                      - Failed to create new run
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API key
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run not found
+      tags:
+        - run
+      security:
+        - apiKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { runs } from "@trigger.dev/sdk/v3";
+
+            const handle = await runs.replay("run_1234");
+
+  "/api/v1/runs/{run_id}/cancel":
+    post:
+      operationId: cancel_run_v1
+      description: Cancels a run.
+      summary: Cancel a run
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema:
+            type: string
+          description: The ID of an existing run. When you trigger a run you will get
+            an id in the response.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    description: Confirmation message that the run was canceled.
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or missing run ID
+                      - Failed to create new run
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API key
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run not found
+      tags:
+        - run
+      security:
+        - apiKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { runs } from "@trigger.dev/sdk/v3";
+
+            await runs.cancel("run_1234");
+
+  "/api/v3/runs/{run_id}":
+    get:
+      operationId: retrieve_run_v1
+      description: Retrieve a run
+      summary: Retrieve a run
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema:
+            type: string
+          description: The ID of an existing run. When you trigger a run you will get
+            an id in the response.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RetrieveRunResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or missing run ID
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API key
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run not found
+      tags:
+        - run
+      security:
+        - apiKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { runs } from "@trigger.dev/sdk/v3";
+
+            await runs.retrieve("run_1234");
+
+  "/api/v1/projects/{projectRef}/envvars/{env}":
+    get:
+      operationId: list_project_envvars_v1
+      summary: List environment variables
+      description: List all environment variables for a specific project and environment.
+      parameters:
+        - in: path
+          name: projectRef
+          required: true
+          schema:
+            type: string
+          description: The external ref of the project.
+          example: proj_yubjwjsfkxnylobaqvqz
+        - in: path
+          name: env
+          required: true
+          schema:
+            type: string
+          description: The environment of the project to list variables for.
+          example: dev
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ListEnvironmentVariablesResponse"
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+      tags:
+        - envvars
+      security:
+        - apiKey: []
+        - personalAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { envvars, configure } from "@trigger.dev/sdk/v3";
+
+            configure({ apiKey: "tr_pat_123456" });
+
+            const variables = await envvars.list("proj_yubjwjsfkxnylobaqvqz", "dev");
+
+            for (const variable of variables) {
+              console.log(`Name: ${variable.name}, Value: ${variable.value}`);
+            }
+    post:
+      operationId: create_project_envvar_v1
+      summary: Create environment variable
+      description: Create a new environment variable for a specific project and environment.
+      parameters:
+        - in: path
+          name: projectRef
+          required: true
+          schema:
+            type: string
+          description: The external ref of the project.
+          example: proj_yubjwjsfkxnylobaqvqz
+        - in: path
+          name: env
+          required: true
+          schema:
+            type: string
+          description: The environment of the project to which the variable will be added.
+          example: dev
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/EnvVar"
+      responses:
+        "200":
+          description: Environment variable created successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SucceedResponse"
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/InvalidEnvVarsRequestResponse"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+      tags:
+        - envvars
+      security:
+        - apiKey: []
+        - personalAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { envvars, configure } from "@trigger.dev/sdk/v3";
+
+            configure({ apiKey: "tr_pat_123456" });
+
+            await envvars.create("proj_yubjwjsfkxnylobaqvqz", "dev", {
+              name: "SLACK_API_KEY",
+              value: "slack_123456"
+            });
+  "/api/v1/projects/{projectRef}/envvars/{env}/import":
+    post:
+      operationId: import_project_envvars_v1
+      summary: Import environment variables
+      description: Import mulitple environment variables for a specific project and environment. If you want to overwrite existing variables, set the overwrite flag to true.
+      parameters:
+        - in: path
+          name: projectRef
+          required: true
+          schema:
+            type: string
+          description: The external ref of the project.
+          example: proj_yubjwjsfkxnylobaqvqz
+        - in: path
+          name: env
+          required: true
+          schema:
+            type: string
+          description: The environment of the project to which the variable will be added.
+          example: dev
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                variables:
+                  type: array
+                  items:
+                    "$ref": "#/components/schemas/EnvVar"
+                overwrite:
+                  type: boolean
+                  description: Whether to overwrite existing variables or not
+                  default: false
+              required: ["variables"]
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                overwrite:
+                  type: boolean
+              required: 
+                - file
+      responses:
+        "200":
+          description: Environment variables imported successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SucceedResponse"
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/InvalidEnvVarsRequestResponse"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+      tags:
+        - envvars
+      security:
+        - apiKey: []
+        - personalAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { envvars, configure } from "@trigger.dev/sdk/v3";
+
+            configure({ apiKey: "tr_pat_123456" });
+
+            // Import variables from an array
+            await envvars.import("proj_yubjwjsfkxnylobaqvqz", "dev", {
+              variables: [
+                {
+                  name: "SLACK_API_KEY",
+                  value: "slack_123456"
+                }
+              ],
+              overwrite: false
+            });
+            
+            // Import variables from a .env file
+            await envvars.import("proj_yubjwjsfkxnylobaqvqz", "dev", {
+              file: fs.createReadStream(".env"),
+              overwrite: false
+            });
+
+
+  "/api/v1/projects/{projectRef}/envvars/{env}/{name}":
+    get:
+      operationId: get_project_envvar_v1
+      summary: Retrieve environment variable
+      description: Retrieve a specific environment variable for a specific project and environment.
+      parameters:
+        - in: path
+          name: projectRef
+          required: true
+          schema:
+            type: string
+          description: The external ref of the project.
+          example: proj_yubjwjsfkxnylobaqvqz
+        - in: path
+          name: env
+          required: true
+          schema:
+            type: string
+          description: The environment of the project.
+          example: dev
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+          description: The name of the environment variable.
+          example: SLACK_API_KEY
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/EnvVarValue"
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+      tags:
+        - envvars
+      security:
+        - apiKey: []
+        - personalAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { envvars, configure } from "@trigger.dev/sdk/v3";
+
+            configure({ apiKey: "tr_pat_123456" });
+
+            const variable = await envvars.retrieve("proj_yubjwjsfkxnylobaqvqz", "dev", "SLACK_API_KEY");
+
+            console.log(`Value: ${variable.value}`);
+    delete:
+      operationId: delete_project_envvar_v1
+      summary: Delete environment variable
+      description: Delete a specific environment variable for a specific project and environment.
+      parameters:
+        - in: path
+          name: projectRef
+          required: true
+          schema:
+            type: string
+          description: The external ref of the project.
+          example: proj_yubjwjsfkxnylobaqvqz
+        - in: path
+          name: env
+          required: true
+          schema:
+            type: string
+          description: The environment of the project.
+          example: dev
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+          description: The name of the environment variable to delete
+          example: SLACK_API_KEY
+      responses:
+        "200":
+          description: Environment variable deleted successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SucceedResponse"
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+      tags:
+        - envvars
+      security:
+        - apiKey: []
+        - personalAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { envvars, configure } from "@trigger.dev/sdk/v3";
+
+            configure({ apiKey: "tr_pat_123456" });
+
+            await envvars.del("proj_yubjwjsfkxnylobaqvqz", "dev", "SLACK_API_KEY");
+    put:
+      operationId: update_project_envvar_v1
+      summary: Update environment variable
+      description: Update a specific environment variable for a specific project and environment.
+      parameters:
+        - in: path
+          name: projectRef
+          required: true
+          schema:
+            type: string
+          description: The external ref of the project.
+          example: proj_yubjwjsfkxnylobaqvqz
+        - in: path
+          name: env
+          required: true
+          schema:
+            type: string
+          description: The environment of the project.
+          example: dev
+        - in: path
+          name: name
+          required: true
+          schema:
+            type: string
+          description: The name of the environment variable to update
+          example: SLACK_API_KEY
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/EnvVarValue"
+      responses:
+        "200":
+          description: Environment variable updated successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SucceedResponse"
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/InvalidEnvVarsRequestResponse"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+      tags:
+        - envvars
+      security:
+        - apiKey: []
+        - personalAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { envvars, configure } from "@trigger.dev/sdk/v3";
+
+            configure({ apiKey: "tr_pat_123456" });
+
+            await envvars.update("proj_yubjwjsfkxnylobaqvqz", "dev", "SLACK_API_KEY", {
+              value: "slack_123456"
+            });
+    
+
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: Use your project-specific Secret API key. Will start with tr_dev, tr_prod, tr_stg, etc.
+    personalAccessToken:
+      type: http
+      scheme: bearer
+      description: Use your user-specific Personal Access Token, which you can generate from the Trigger.dev dashboard in your account settings.
+  schemas:
+    InvalidEnvVarsRequestResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        issues:
+          type: array
+          items:
+            type: object
+        variableErrors:
+          type: array
+          items:
+            type: object
+    SucceedResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+      required: ["success"]
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: ["error"]
+    ListEnvironmentVariablesResponse:
+      type: array
+      items:
+        "$ref": "#/components/schemas/EnvVar"
+    EnvVarValue:
+      type: object
+      properties:
+        value:
+          type: string
+          example: slack_123456
+      required: ["value"]
+    EnvVar:
+      type: object
+      properties:
+        name:
+          type: string
+          example: SLACK_API_KEY
+        value:
+          type: string
+          example: slack_123456
+      required: ["name", "value"]
+    RetrieveRunResponse:
+      type: object
+      required:
+        - id
+        - status
+        - taskIdentifier
+        - createdAt
+        - updatedAt
+        - attempts
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+            - PENDING
+            - EXECUTING
+            - PAUSED
+            - COMPLETED
+            - FAILED
+            - CANCELED
+        taskIdentifier:
+          type: string
+        idempotencyKey:
+          type: string
+        version:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        attempts:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - status
+              - createdAt
+              - updatedAt
+            properties:
+              id:
+                type: string
+              status:
+                type: string
+                enum:
+                  - PENDING
+                  - EXECUTING
+                  - PAUSED
+                  - COMPLETED
+                  - FAILED
+                  - CANCELED
+              createdAt:
+                type: string
+                format: date-time
+              updatedAt:
+                type: string
+                format: date-time
+              startedAt:
+                type: string
+                format: date-time
+              completedAt:
+                type: string
+                format: date-time
+    CreateScheduleOptions:
+      type: object
+      properties:
+        task:
+          type: string
+        cron:
+          type: string
+        deduplicationKey:
+          type: string
+        externalId:
+          type: string
+      required:
+        - task
+        - cron
+    ScheduleObject:
+      type: object
+      properties:
+        id:
+          type: string
+          example: sched_1234
+          description: The unique ID of the schedule, prefixed with 'sched_'
+        task:
+          type: string
+          example: my-scheduled-task
+          description: The id of the scheduled task that will be triggered by this
+            schedule
+        active:
+          type: boolean
+          example: true
+          description: Whether the schedule is active or not
+        deduplicationKey:
+          type: string
+          example: dedup_key_1234
+          description: The deduplication key used to prevent creating duplicate schedules
+        externalId:
+          type: string
+          example: user_1234
+          description: The external ID of the schedule. Can be anything that is useful
+            to you (e.g., user ID, org ID, etc.)
+        generator:
+          type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - CRON
+            expression:
+              type: string
+              description: The cron expression used to generate the schedule
+              example: 0 0 * * *
+            description:
+              type: string
+              description: The description of the generator in plain english
+              example: Every day at midnight
+        nextRun:
+          type: string
+          format: date-time
+          description: The next time the schedule will run
+          example: "2024-04-01T00:00:00Z"
+        environments:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ScheduleEnvironment"
+    ListSchedulesResult:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ScheduleObject"
+        pagination:
+          type: object
+          properties:
+            currentPage:
+              type: integer
+            totalPages:
+              type: integer
+            count:
+              type: integer
+    ScheduleEnvironment:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        userName:
+          type: string

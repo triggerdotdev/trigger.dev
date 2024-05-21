@@ -115,6 +115,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const project = await prisma.project.findUnique({
     where: {
       slug: params.projectParam,
+      organization: {
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
     },
     select: {
       id: true,
@@ -126,7 +133,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const repository = new EnvironmentVariablesRepository(prisma);
-  const result = await repository.create(project.id, userId, submission.value);
+  const result = await repository.create(project.id, submission.value);
 
   if (!result.success) {
     if (result.variableErrors) {
