@@ -7,19 +7,15 @@ import {
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { TaskRunAttemptStatus as TaskRunAttemptStatusType } from "@trigger.dev/database";
+import { TaskRunAttemptStatus } from "~/database-types";
 import assertNever from "assert-never";
 import { SnowflakeIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
-export const allTaskRunAttemptStatuses = [
-  "PENDING",
-  "EXECUTING",
-  "PAUSED",
-  "FAILED",
-  "CANCELED",
-  "COMPLETED",
-] as const satisfies TaskRunAttemptStatusType[];
+export const allTaskRunAttemptStatuses = Object.values(
+  TaskRunAttemptStatus
+) as TaskRunAttemptStatusType[];
 
 export type ExtendedTaskAttemptStatus = TaskRunAttemptStatusType | "ENQUEUED";
 
