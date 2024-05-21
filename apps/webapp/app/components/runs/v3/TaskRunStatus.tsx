@@ -25,9 +25,10 @@ export const allTaskRunStatuses = [
   "CANCELED",
   "COMPLETED_WITH_ERRORS",
   "CRASHED",
+  "PAUSED",
   "INTERRUPTED",
   "SYSTEM_FAILURE",
-] as TaskRunStatus[];
+] as const satisfies Array<TaskRunStatus>;
 
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   PENDING: "Task is waiting to be executed",

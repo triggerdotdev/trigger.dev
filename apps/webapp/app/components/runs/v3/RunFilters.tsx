@@ -7,14 +7,10 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import {
-  BulkActionType,
-  RuntimeEnvironment,
-  TaskRunStatus,
-  TaskTriggerSource,
-} from "@trigger.dev/database";
+import type { RuntimeEnvironment, TaskTriggerSource, TaskRunStatus } from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
-import { ReactNode, startTransition, useCallback, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { startTransition, useCallback, useMemo, useState } from "react";
 import { z } from "zod";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
@@ -50,7 +46,7 @@ import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 import { DateTime } from "~/components/primitives/DateTime";
 import { BulkActionStatusCombo } from "./BulkAction";
 
-export const TaskAttemptStatus = z.nativeEnum(TaskRunStatus);
+export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
 
 export const TaskRunListSearchFilters = z.object({
   cursor: z.string().optional(),

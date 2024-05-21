@@ -1,17 +1,20 @@
-import {
-  TaskRunError,
+import type {
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
 } from "@trigger.dev/core/v3";
-import {
-  BatchTaskRunItemStatus,
+import { TaskRunError } from "@trigger.dev/core/v3";
+
+import type {
   TaskRun,
   TaskRunAttempt,
-  TaskRunAttemptStatus,
-  TaskRunStatus,
+  TaskRunAttemptStatus as TaskRunAttemptStatusType,
+  TaskRunStatus as TaskRunStatusType,
+  BatchTaskRunItemStatus as BatchTaskRunItemStatusType,
 } from "@trigger.dev/database";
+
 import { assertNever } from "assert-never";
+import { BatchTaskRunItemStatus, TaskRunAttemptStatus, TaskRunStatus } from "~/database-types";
 import { logger } from "~/services/logger.server";
 
 const SUCCESSFUL_STATUSES = [TaskRunStatus.COMPLETED_SUCCESSFULLY];
@@ -104,7 +107,9 @@ export function executionResultForTaskRun(
   }
 }
 
-export function batchTaskRunItemStatusForRunStatus(status: TaskRunStatus): BatchTaskRunItemStatus {
+export function batchTaskRunItemStatusForRunStatus(
+  status: TaskRunStatusType
+): BatchTaskRunItemStatusType {
   switch (status) {
     case TaskRunStatus.COMPLETED_SUCCESSFULLY:
       return BatchTaskRunItemStatus.COMPLETED;
@@ -113,7 +118,6 @@ export function batchTaskRunItemStatusForRunStatus(status: TaskRunStatus): Batch
     case TaskRunStatus.COMPLETED_WITH_ERRORS:
     case TaskRunStatus.SYSTEM_FAILURE:
     case TaskRunStatus.CRASHED:
-    case TaskRunStatus.COMPLETED_WITH_ERRORS:
       return BatchTaskRunItemStatus.FAILED;
     case TaskRunStatus.PENDING:
     case TaskRunStatus.WAITING_FOR_DEPLOY:
