@@ -413,6 +413,7 @@ export class DevQueueConsumer {
       data: {
         lockedAt: new Date(),
         lockedById: backgroundTask.id,
+        status: "EXECUTING",
         lockedToVersionId: backgroundWorker.id,
       },
       include: {

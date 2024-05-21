@@ -26,7 +26,11 @@ import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
-import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
+import {
+  findCurrentWorkerDeployment,
+  getWorkerDeploymentFromWorker,
+  getWorkerDeploymentFromWorkerTask,
+} from "../models/workerDeployment.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
 import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
 import { CrashTaskRunService } from "../services/crashTaskRun.server";
@@ -317,11 +321,11 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const deployment = existingTaskRun.lockedToVersion?.deployment
-          ? {
-              ...existingTaskRun.lockedToVersion.deployment,
-              worker: existingTaskRun.lockedToVersion,
-            }
+        // Check if the task run is locked to a specific worker, if not, use the current worker deployment
+        const deployment = existingTaskRun.lockedById
+          ? await getWorkerDeploymentFromWorkerTask(existingTaskRun.lockedById)
+          : existingTaskRun.lockedToVersionId
+          ? await getWorkerDeploymentFromWorker(existingTaskRun.lockedToVersionId)
           : await findCurrentWorkerDeployment(existingTaskRun.runtimeEnvironmentId);
 
         if (!deployment || !deployment.worker) {
