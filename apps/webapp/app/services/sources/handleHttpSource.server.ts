@@ -1,10 +1,8 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
-import { requestUrl } from "~/utils/requestUrl.server";
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
-import { logger } from "../logger.server";
+import { RuntimeEnvironmentType } from "~/database-types";
 
 export class HandleHttpSourceService {
   #prismaClient: PrismaClient;
