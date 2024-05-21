@@ -308,21 +308,45 @@ class Checkpointer {
         throw new Error("could not find container id");
       }
 
+      const start = performance.now();
+
+      // Create checkpoint
       this.#logger.debug(await $$`crictl checkpoint --export=${exportLocation} ${containerId}`);
+      const postCheckpoint = performance.now();
 
       // Create image from checkpoint
       const container = this.#logger.debug(await $$`buildah from scratch`);
+      const postFrom = performance.now();
+
       this.#logger.debug(await $$`buildah add ${container} ${exportLocation} /`);
+      const postAdd = performance.now();
+
       this.#logger.debug(
         await $$`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
       );
+      const postConfig = performance.now();
+
       this.#logger.debug(await $$`buildah commit ${container} ${imageRef}`);
+      const postCommit = performance.now();
+
       this.#logger.debug(await $$`buildah rm ${container}`);
+      const postRm = performance.now();
 
       // Push checkpoint image
       this.#logger.debug(await $$`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${imageRef}`);
+      const postPush = performance.now();
 
-      this.#logger.log("Checkpointed and pushed image to:", { location: imageRef });
+      const perf = {
+        "crictl checkpoint": postCheckpoint - start,
+        "buildah from": postFrom - postCheckpoint,
+        "buildah add": postAdd - postFrom,
+        "buildah config": postConfig - postAdd,
+        "buildah commit": postCommit - postConfig,
+        "buildah rm": postRm - postCommit,
+        "buildah push": postPush - postRm,
+      };
+
+      this.#logger.log("Checkpointed and pushed image to:", { location: imageRef, perf });
 
       try {
         await $$`rm ${exportLocation}`;
