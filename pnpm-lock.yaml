@@ -1215,8 +1215,8 @@ importers:
         specifier: workspace:^3.0.0-beta.33
         version: link:../../packages/trigger-sdk
       stripe:
-        specifier: ^12.14.0
-        version: 12.14.0
+        specifier: ~15.7.0
+        version: 15.7.0
       zod:
         specifier: 3.22.3
         version: 3.22.3
@@ -1232,7 +1232,7 @@ importers:
         version: 3.0.2
       stripe-event-types:
         specifier: ^2.4.0
-        version: 2.4.0(stripe@12.14.0)
+        version: 2.4.0(stripe@15.7.0)
       tsup:
         specifier: 8.0.1
         version: 8.0.1(patch_hash=a5ztaafw5l4qfghy2hjjuynb34)(postcss@8.4.27)(typescript@5.3.2)
@@ -32525,16 +32525,24 @@ packages:
       js-tokens: 9.0.0
     dev: true
 
-  /stripe-event-types@2.4.0(stripe@12.14.0):
+  /stripe-event-types@2.4.0(stripe@15.7.0):
     resolution: {integrity: sha512-5ORZMW/WKjc31nsGMCUECOS+xVjtHhAFJJ8833ft3471hIjQrMbLMPBEb5AcJM8mKRRULpKmCVMDU0lLYrxERQ==}
     peerDependencies:
       stripe: '>=10.0.0'
     dependencies:
-      stripe: 12.14.0
+      stripe: 15.7.0
     dev: true
 
   /stripe@12.14.0:
     resolution: {integrity: sha512-WrDlYH1p5jliY7uzSU5nLDY7OCIeRe6FkC0hhScpTGwMthP/Muk38WXGeggjDHKeXAGCs43jUheZ7Ud/NEAJdg==}
+    engines: {node: '>=12.*'}
+    dependencies:
+      '@types/node': 18.19.20
+      qs: 6.11.0
+    dev: false
+
+  /stripe@15.7.0:
+    resolution: {integrity: sha512-hTJhh0Gc+l+hj2vuzaFCh0T46l7793W3wg4J9Oyy3Wu+Ofswd0OgTS4XNt7G9XHJAyHpTmNRNbWgGwn73P4j7g==}
     engines: {node: '>=12.*'}
     dependencies:
       '@types/node': 18.19.20

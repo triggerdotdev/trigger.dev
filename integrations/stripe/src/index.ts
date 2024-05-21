@@ -84,7 +84,7 @@ export class Stripe implements TriggerIntegration {
 
     this.native = options.apiKey
       ? new StripeClient(options.apiKey, {
-          apiVersion: "2022-11-15",
+          apiVersion: "2024-04-10",
           typescript: true,
           timeout: 10000,
           maxNetworkRetries: 0,
@@ -115,7 +115,7 @@ export class Stripe implements TriggerIntegration {
     stripe._io = io;
     stripe._connectionKey = connectionKey;
     stripe._client = new StripeClient(apiKey, {
-      apiVersion: "2022-11-15",
+      apiVersion: "2024-04-10",
       typescript: true,
       timeout: 10000,
       maxNetworkRetries: 0,
@@ -1148,7 +1148,7 @@ async function webhookHandler(event: HandlerEvent<"HTTP">, logger: Logger) {
   const signature = request.headers.get("stripe-signature");
 
   if (signature) {
-    const stripeClient = new StripeClient("", { apiVersion: "2022-11-15" });
+    const stripeClient = new StripeClient("", { apiVersion: "2024-04-10" });
 
     try {
       const event = await stripeClient.webhooks.constructEventAsync(rawBody, signature, source.secret);
