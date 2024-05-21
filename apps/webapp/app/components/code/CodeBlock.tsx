@@ -1,6 +1,6 @@
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import type { Language, PrismTheme } from "prism-react-renderer";
-import Highlight, { defaultProps } from "prism-react-renderer";
+import { Highlight } from "prism-react-renderer";
 import { forwardRef, useCallback, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
@@ -238,7 +238,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
         )}
 
         {shouldHighlight ? (
-          <Highlight {...defaultProps} theme={theme} code={code} language={language}>
+          <Highlight theme={theme} code={code} language={language}>
             {({
               className: inheritedClassName,
               style: inheritedStyle,
@@ -283,7 +283,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
 
                       return (
                         <div
-                          key={lineProps.key}
+                          key={lineNumber}
                           {...lineProps}
                           className={cn(
                             "flex w-full justify-start transition-opacity duration-500",
@@ -312,7 +312,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                               const tokenProps = getTokenProps({ token, key });
                               return (
                                 <span
-                                  key={tokenProps.key}
+                                  key={key}
                                   {...tokenProps}
                                   style={{
                                     color: tokenProps?.style?.color as string,
