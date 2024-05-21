@@ -79,7 +79,7 @@ export class ProdBackgroundWorker {
   public tasks: Array<TaskMetadataWithFilePath> = [];
 
   _taskRunProcess: TaskRunProcess | undefined;
-  private _taskRunProcessesBeingKilled: Set<number> = new Set();
+  private _taskRunProcessesBeingKilled: Map<number, TaskRunProcess> = new Map();
 
   private _closed: boolean = false;
 
@@ -261,9 +261,9 @@ export class ProdBackgroundWorker {
       }
     });
 
-    taskRunProcess.onIsBeingKilled.attach((pid) => {
-      if (pid) {
-        this._taskRunProcessesBeingKilled.add(pid);
+    taskRunProcess.onIsBeingKilled.attach((taskRunProcess) => {
+      if (taskRunProcess?.pid) {
+        this._taskRunProcessesBeingKilled.set(taskRunProcess.pid, taskRunProcess);
       }
     });
 
@@ -308,6 +308,16 @@ export class ProdBackgroundWorker {
     this._taskRunProcess = taskRunProcess;
 
     return this._taskRunProcess;
+  }
+
+  async forceKillOldTaskRunProcesses() {
+    for (const taskRunProcess of this._taskRunProcessesBeingKilled.values()) {
+      try {
+        await taskRunProcess.kill("SIGKILL");
+      } catch (error) {
+        console.error("Error while force killing old task run processes", error);
+      }
+    }
   }
 
   async #killCurrentTaskRunProcessBeforeAttempt() {
@@ -522,7 +532,7 @@ class TaskRunProcess {
   public onTaskRunHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null; pid?: number }> =
     new Evt();
-  public onIsBeingKilled: Evt<number | undefined> = new Evt();
+  public onIsBeingKilled: Evt<TaskRunProcess> = new Evt();
 
   public onWaitForBatch: Evt<
     InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_BATCH">
@@ -679,7 +689,7 @@ class TaskRunProcess {
 
     if (kill) {
       this._isBeingKilled = true;
-      this.onIsBeingKilled.post(this._child?.pid);
+      this.onIsBeingKilled.post(this);
     }
 
     await this._ipc?.sendWithAck("CLEANUP", {
@@ -802,7 +812,7 @@ class TaskRunProcess {
 
     const killTimeout = this.onExit.waitFor(timeoutInMs);
 
-    this.onIsBeingKilled.post(this._child?.pid);
+    this.onIsBeingKilled.post(this);
     this._child?.kill(signal);
 
     if (timeoutInMs) {
