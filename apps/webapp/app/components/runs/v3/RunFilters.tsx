@@ -1,9 +1,9 @@
 import * as Ariakit from "@ariakit/react";
 import { CalendarIcon, CpuChipIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import type { RuntimeEnvironment, TaskTriggerSource } from "@trigger.dev/database";
+import type { RuntimeEnvironment, TaskTriggerSource, TaskRunStatus } from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
-import type { ReactNode} from "react";
+import type { ReactNode } from "react";
 import { startTransition, useCallback, useMemo, useState } from "react";
 import { z } from "zod";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
@@ -38,8 +38,7 @@ import {
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 
-const TaskRunStatus = ["PENDING", "WAITING_FOR_DEPLOY", "EXECUTING", "WAITING_TO_RESUME", "RETRYING_AFTER_FAILURE", "PAUSED", "CANCELED", "INTERRUPTED", "COMPLETED_SUCCESSFULLY", "COMPLETED_WITH_ERRORS", "SYSTEM_FAILURE", "CRASHED"] as const
-export const TaskAttemptStatus = z.enum(TaskRunStatus)
+export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
 
 export const TaskRunListSearchFilters = z.object({
   cursor: z.string().optional(),
@@ -333,7 +332,7 @@ function AppliedStatusFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer" />}>
               <AppliedFilter
                 label="Status"
-                value={appliedSummary(statuses.map((v) => runStatusTitle(v as typeof TaskRunStatus[number])))}
+                value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
                 onRemove={() => del(["statuses", "cursor", "direction"])}
               />
             </Ariakit.Select>

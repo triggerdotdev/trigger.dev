@@ -1,48 +1,21 @@
 import type {
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
-  TaskRunSuccessfulExecutionResult} from "@trigger.dev/core/v3";
-import {
-  TaskRunError
+  TaskRunSuccessfulExecutionResult,
 } from "@trigger.dev/core/v3";
-import {
-  type TaskRun,
-  type TaskRunAttempt,
+import { TaskRunError } from "@trigger.dev/core/v3";
+
+import type {
+  TaskRun,
+  TaskRunAttempt,
+  TaskRunAttemptStatus as TaskRunAttemptStatusType,
+  TaskRunStatus as TaskRunStatusType,
+  BatchTaskRunItemStatus as BatchTaskRunItemStatusType,
 } from "@trigger.dev/database";
 
 import { assertNever } from "assert-never";
+import { BatchTaskRunItemStatus, TaskRunAttemptStatus, TaskRunStatus } from "~/database-types";
 import { logger } from "~/services/logger.server";
-
-const BatchTaskRunItemStatus = {
-  PENDING: "PENDING",
-  FAILED: "FAILED",
-  CANCELED: "CANCELED",
-  COMPLETED: "COMPLETED",
-} as const
-
-const TaskRunAttemptStatus=  {
-  PENDING: "PENDING",
-  EXECUTING: "EXECUTING",
-  PAUSED: "PAUSED",
-  FAILED: "FAILED",
-  CANCELED: "CANCELED",
-  COMPLETED: "COMPLETED",
-} as const
-
-const TaskRunStatus =  {
-  PENDING: 'PENDING',
-  WAITING_FOR_DEPLOY: 'WAITING_FOR_DEPLOY',
-  EXECUTING: 'EXECUTING',
-  WAITING_TO_RESUME: 'WAITING_TO_RESUME',
-  RETRYING_AFTER_FAILURE: 'RETRYING_AFTER_FAILURE',
-  PAUSED: 'PAUSED',
-  CANCELED: 'CANCELED',
-  INTERRUPTED: 'INTERRUPTED',
-  COMPLETED_SUCCESSFULLY: 'COMPLETED_SUCCESSFULLY',
-  COMPLETED_WITH_ERRORS: 'COMPLETED_WITH_ERRORS',
-  SYSTEM_FAILURE: 'SYSTEM_FAILURE',
-  CRASHED: 'CRASHED'
-} as const 
 
 const SUCCESSFUL_STATUSES = [TaskRunStatus.COMPLETED_SUCCESSFULLY];
 const FAILURE_STATUSES = [
@@ -134,7 +107,9 @@ export function executionResultForTaskRun(
   }
 }
 
-export function batchTaskRunItemStatusForRunStatus(status: keyof typeof TaskRunStatus): keyof typeof BatchTaskRunItemStatus {
+export function batchTaskRunItemStatusForRunStatus(
+  status: TaskRunStatusType
+): BatchTaskRunItemStatusType {
   switch (status) {
     case TaskRunStatus.COMPLETED_SUCCESSFULLY:
       return BatchTaskRunItemStatus.COMPLETED;

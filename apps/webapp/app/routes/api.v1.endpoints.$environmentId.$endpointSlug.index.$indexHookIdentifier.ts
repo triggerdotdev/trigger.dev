@@ -1,17 +1,11 @@
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import type { PrismaClient} from "~/db.server";
+import type { PrismaClient } from "~/db.server";
 import { $transaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
 import { safeJsonParse } from "~/utils/json";
-
-const RuntimeEnvironmentType= {
-  PRODUCTION: "PRODUCTION",
-  STAGING: "STAGING",
-  DEVELOPMENT: "DEVELOPMENT",
-  PREVIEW: "PREVIEW",
-} as const
+import { RuntimeEnvironmentType } from "~/database-types";
 
 const ParamsSchema = z.object({
   environmentId: z.string(),

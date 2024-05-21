@@ -3,24 +3,7 @@ import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { CancelRunService } from "../runs/cancelRun.server";
 import { logger } from "../logger.server";
 import { CancelRunsForJob } from "@trigger.dev/core";
-
-export const JobRunStatus = {
-  PENDING: 'PENDING',
-  QUEUED: 'QUEUED',
-  WAITING_ON_CONNECTIONS: 'WAITING_ON_CONNECTIONS',
-  PREPROCESSING: 'PREPROCESSING',
-  STARTED: 'STARTED',
-  EXECUTING: 'EXECUTING',
-  WAITING_TO_CONTINUE: 'WAITING_TO_CONTINUE',
-  WAITING_TO_EXECUTE: 'WAITING_TO_EXECUTE',
-  SUCCESS: 'SUCCESS',
-  FAILURE: 'FAILURE',
-  TIMED_OUT: 'TIMED_OUT',
-  ABORTED: 'ABORTED',
-  CANCELED: 'CANCELED',
-  UNRESOLVED_AUTH: 'UNRESOLVED_AUTH',
-  INVALID_PAYLOAD: 'INVALID_PAYLOAD'
-} as const;
+import { JobRunStatus } from "~/database-types";
 
 const CANCELLABLE_JOB_RUN_STATUS: Array<keyof typeof JobRunStatus> = [
   JobRunStatus.PENDING,

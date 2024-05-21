@@ -2,13 +2,7 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
 import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
-
-const RuntimeEnvironmentType = {
-  PRODUCTION: "PRODUCTION",
-  STAGING: "STAGING",
-  DEVELOPMENT: "DEVELOPMENT",
-  PREVIEW: "PREVIEW",
-} as const
+import { RuntimeEnvironmentType } from "~/database-types";
 
 export class HandleHttpSourceService {
   #prismaClient: PrismaClient;

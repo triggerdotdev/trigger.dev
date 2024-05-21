@@ -12,18 +12,16 @@ import { SnowflakeIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
-export const allTaskRunAttemptStatuses = Object.values(
-  {
-    PENDING: "PENDING",
-    EXECUTING: "EXECUTING",
-    PAUSED: "PAUSED",
-    FAILED: "FAILED",
-    CANCELED: "CANCELED",
-    COMPLETED: "COMPLETED",
-}
-) as TaskRunAttemptStatusType[];
+export const allTaskRunAttemptStatuses = [
+  "PENDING",
+  "EXECUTING",
+  "PAUSED",
+  "FAILED",
+  "CANCELED",
+  "COMPLETED",
+] as const satisfies TaskRunAttemptStatusType[];
 
-export type ExtendedTaskAttemptStatus = (typeof allTaskRunAttemptStatuses)[number] | "ENQUEUED";
+export type ExtendedTaskAttemptStatus = TaskRunAttemptStatusType | "ENQUEUED";
 
 export function TaskRunAttemptStatusCombo({
   status,
