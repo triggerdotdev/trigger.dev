@@ -364,7 +364,9 @@ function useDev({
         .replace("__TASKS__", createTaskFileImports(taskFiles))
         .replace(
           "__WORKER_SETUP__",
-          `import { tracingSDK, sender } from "${escapeImportPath(workerSetupPath)}";`
+          `import { tracingSDK, otelTracer, otelLogger, sender } from "${escapeImportPath(
+            workerSetupPath
+          )}";`
         );
 
       if (configPath) {

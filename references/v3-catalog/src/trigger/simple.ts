@@ -1,5 +1,6 @@
 import "server-only";
 import { logger, task, wait } from "@trigger.dev/sdk/v3";
+import { traceAsync } from "@/telemetry";
 
 export const simplestTask = task({
   id: "fetch-post-task",
@@ -20,6 +21,10 @@ export const simplestTask = task({
 export const taskWithSpecialCharacters = task({
   id: "admin:special-characters",
   run: async (payload: { url: string }) => {
+    await traceAsync("taskWithSpecialCharacters", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    });
+
     return {
       message: "This task has special characters in its ID",
     };
