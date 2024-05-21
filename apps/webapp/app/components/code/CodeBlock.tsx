@@ -283,7 +283,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
 
                       return (
                         <div
-                          key={lineProps.key}
+                          key={lineNumber}
                           {...lineProps}
                           className={cn(
                             "flex w-full justify-start transition-opacity duration-500",
@@ -312,7 +312,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                               const tokenProps = getTokenProps({ token, key });
                               return (
                                 <span
-                                  key={tokenProps.key}
+                                  key={key}
                                   {...tokenProps}
                                   style={{
                                     color: tokenProps?.style?.color as string,
