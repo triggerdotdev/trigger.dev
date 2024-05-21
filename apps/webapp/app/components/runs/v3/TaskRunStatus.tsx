@@ -28,7 +28,7 @@ export const allTaskRunStatuses = [
   "PAUSED",
   "INTERRUPTED",
   "SYSTEM_FAILURE",
-] as const satisfies Array<TaskRunStatus>;
+] as const satisfies Readonly<Array<TaskRunStatus>>;
 
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   PENDING: "Task is waiting to be executed",

@@ -7,7 +7,12 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import type { RuntimeEnvironment, TaskTriggerSource, TaskRunStatus } from "@trigger.dev/database";
+import type {
+  RuntimeEnvironment,
+  TaskTriggerSource,
+  TaskRunStatus,
+  BulkActionType,
+} from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { startTransition, useCallback, useMemo, useState } from "react";
