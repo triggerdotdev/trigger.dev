@@ -115,6 +115,7 @@ export type GetEnvironmentVariablesResponseBody = z.infer<
 
 export const StartDeploymentIndexingRequestBody = z.object({
   imageReference: z.string(),
+  selfHosted: z.boolean().optional(),
 });
 
 export type StartDeploymentIndexingRequestBody = z.infer<typeof StartDeploymentIndexingRequestBody>;

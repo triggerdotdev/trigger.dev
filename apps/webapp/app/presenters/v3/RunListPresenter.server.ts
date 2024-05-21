@@ -1,4 +1,5 @@
 import { Prisma, TaskRunStatus } from "@trigger.dev/database";
+import parse from "parse-duration";
 import { Direction } from "~/components/runs/RunStatuses";
 import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
@@ -15,6 +16,8 @@ type RunListOptions = {
   statuses?: TaskRunStatus[];
   environments?: string[];
   scheduleId?: string;
+  period?: string;
+  bulkId?: string;
   from?: number;
   to?: number;
   //pagination
@@ -23,7 +26,7 @@ type RunListOptions = {
   pageSize?: number;
 };
 
-const DEFAULT_PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 25;
 
 export type RunList = Awaited<ReturnType<RunListPresenter["call"]>>;
 export type RunListItem = RunList["runs"][0];
@@ -38,6 +41,8 @@ export class RunListPresenter extends BasePresenter {
     statuses,
     environments,
     scheduleId,
+    period,
+    bulkId,
     from,
     to,
     direction = "forward",
@@ -47,10 +52,12 @@ export class RunListPresenter extends BasePresenter {
     const hasStatusFilters = statuses && statuses.length > 0;
 
     const hasFilters =
-      tasks !== undefined ||
-      versions !== undefined ||
+      (tasks !== undefined && tasks.length > 0) ||
+      (versions !== undefined && versions.length > 0) ||
       hasStatusFilters ||
-      environments !== undefined ||
+      (environments !== undefined && environments.length > 0) ||
+      (period !== undefined && period !== "all") ||
+      (bulkId !== undefined && bulkId !== "") ||
       from !== undefined ||
       to !== undefined;
 
@@ -83,12 +90,56 @@ export class RunListPresenter extends BasePresenter {
     });
 
     //get all possible tasks
-    const possibleTasks = await this._replica.backgroundWorkerTask.findMany({
+    const possibleTasksAsync = this._replica.backgroundWorkerTask.findMany({
       distinct: ["slug"],
       where: {
         projectId: project.id,
       },
     });
+
+    //get possible bulk actions
+    const bulkActionsAsync = this._replica.bulkActionGroup.findMany({
+      select: {
+        friendlyId: true,
+        type: true,
+        createdAt: true,
+      },
+      where: {
+        projectId: project.id,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 20,
+    });
+
+    const [possibleTasks, bulkActions] = await Promise.all([possibleTasksAsync, bulkActionsAsync]);
+
+    //we can restrict to specific runs using bulkId, or batchId
+    let restrictToRunIds: undefined | string[] = undefined;
+
+    //bulk id
+    if (bulkId) {
+      const bulkAction = await this._replica.bulkActionGroup.findUnique({
+        select: {
+          items: {
+            select: {
+              destinationRunId: true,
+            },
+          },
+        },
+        where: {
+          friendlyId: bulkId,
+        },
+      });
+
+      if (bulkAction) {
+        const runIds = bulkAction.items.map((item) => item.destinationRunId).filter(Boolean);
+        restrictToRunIds = runIds;
+      }
+    }
+
+    const periodMs = period ? parse(period) : undefined;
 
     //get the runs
     let runs = await this._replica.$queryRaw<
@@ -137,6 +188,13 @@ export class RunListPresenter extends BasePresenter {
       }
       -- filters
       ${
+        restrictToRunIds
+          ? restrictToRunIds.length === 0
+            ? Prisma.sql`AND tr.id = ''`
+            : Prisma.sql`AND tr.id IN (${Prisma.join(restrictToRunIds)})`
+          : Prisma.empty
+      }
+      ${
         tasks && tasks.length > 0
           ? Prisma.sql`AND tr."taskIdentifier" IN (${Prisma.join(tasks)})`
           : Prisma.empty
@@ -152,6 +210,11 @@ export class RunListPresenter extends BasePresenter {
           : Prisma.empty
       }
       ${scheduleId ? Prisma.sql`AND tr."scheduleId" = ${scheduleId}` : Prisma.empty}
+      ${
+        periodMs
+          ? Prisma.sql`AND tr."createdAt" >= NOW() - INTERVAL '1 millisecond' * ${periodMs}`
+          : Prisma.empty
+      }
       ${
         from
           ? Prisma.sql`AND tr."createdAt" >= ${new Date(from).toISOString()}::timestamp`
@@ -224,7 +287,16 @@ export class RunListPresenter extends BasePresenter {
         next,
         previous,
       },
-      possibleTasks: possibleTasks.map((task) => task.slug),
+      possibleTasks: possibleTasks
+        .map((task) => ({ slug: task.slug, triggerSource: task.triggerSource }))
+        .sort((a, b) => {
+          return a.slug.localeCompare(b.slug);
+        }),
+      bulkActions: bulkActions.map((bulkAction) => ({
+        id: bulkAction.friendlyId,
+        type: bulkAction.type,
+        createdAt: bulkAction.createdAt,
+      })),
       filters: {
         tasks: tasks || [],
         versions: versions || [],

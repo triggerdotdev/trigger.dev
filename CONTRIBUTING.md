@@ -10,12 +10,12 @@ Thank you for helping us make Trigger.dev even better! 🤩
 
 The development branch is `main`. This is the branch that all pull
 requests should be made against. The changes on the `main`
-branch are tagged into a release monthly.
+branch are tagged into a release periodically.
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/en) version >=16.x
-- [pnpm package manager](https://pnpm.io/installation) version 7
+- [Node.js](https://nodejs.org/en) version 20.11.1
+- [pnpm package manager](https://pnpm.io/installation) version 8.15.5
 - [Docker](https://www.docker.com/get-started/)
 
 ### Setup
@@ -33,15 +33,19 @@ branch are tagged into a release monthly.
    ```
    cd trigger.dev
    ```
-3. Install the required packages using pnpm.
+3. Ensure you are on the correct version of Node.js (20.11.1). If you are using `nvm`, there is an `.nvmrc` file that will automatically select the correct version of Node.js when you navigate to the repository.
+
+4. Run `corepack enable` to use the correct version of pnpm (`8.15.5`) as specified in the root `package.json` file.
+
+5. Install the required packages using pnpm.
    ```
    pnpm i
    ```
-4. Create your `.env` file
+6. Create your `.env` file
    ```
    cp .env.example .env
    ```
-5. Open it and generate a new value for `ENCRYPTION_KEY`:
+7. Open it and generate a new value for `ENCRYPTION_KEY`:
 
    `ENCRYPTION_KEY` is used to two-way encrypt OAuth access tokens and so you'll probably want to actually generate a unique value, and it must be a random 16 byte hex string. You can generate one with the following command:
 
@@ -51,7 +55,7 @@ branch are tagged into a release monthly.
 
    Feel free to update `SESSION_SECRET` and `MAGIC_LINK_SECRET` as well using the same method.
 
-6. Start Docker. This starts the required services like Postgres. If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md)
+8. Start Docker. This starts the required services like Postgres & Redis. If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md)
 
    ```
    pnpm run docker
@@ -59,19 +63,15 @@ branch are tagged into a release monthly.
 
    This will also start and run a local instance of [pgAdmin](https://www.pgadmin.org/) on [localhost:5480](http://localhost:5480), preconfigured with email `admin@example.com` and pwd `admin`. Then use `postgres` as the password to the Trigger.dev server.
 
-7. Migrate the database
+9. Migrate the database
    ```
    pnpm run db:migrate
    ```
-8. Build the app
-   ```
-   pnpm run build --filter webapp
-   ```
-9. Run the seed script
-   ```
-   pnpm run db:seed
-   ```
-10. Run the app. See the section below.
+10. Build the server app
+    ```
+    pnpm run build --filter webapp
+    ```
+11. Run the app. See the section below.
 
 ## Running
 
@@ -83,99 +83,92 @@ branch are tagged into a release monthly.
 
    It should run on port `3030`: [http://localhost:3030](http://localhost:3030/)
 
-2. Once the app is running click the magic link button and enter your email.
-3. Check your terminal, the magic link email should have printed out as following:
+2. Once the app is running click the magic link button and enter your email. You will automatically be logged in, since you are running locally. Create an Org and your first project in the dashboard.
 
-   ```sh
-   webapp:dev: Log in to Trigger.dev
-   webapp:dev:
-   webapp:dev: Click here to log in with this magic link
-   webapp:dev: [http://localhost:3030/magic?token=U2FsdGVkX18OvB0JxgaswTLCSbaRz%2FY82TN0EZWhSzFyZYwgG%2BIzKVTkeiaOtWfotPw7F8RwFzCHh53aBpMEu%2B%2B%2FItb%2FcJYh89MSjc3Pz92bevoEjqxSQ%2Ff%2BZbks09JOpqlBbYC3FzGWC8vuSVFBlxqLXxteSDLthZSUaC%2BS2LaA%2BJgp%2BLO7hgjAaC2lXbCHrM7MTgTdXOFt7i0Dvvuwz6%2BWY25RnfomZOPqDsyH0xz8Q2rzPTz0Xu53WSXrZ1hd]
-   webapp:dev:
-   webapp:dev: If you didn't try to log in, you can safely ignore this email.
-   ```
+## Manual testing using v3-catalog
 
-   Paste the magic link shown in your terminal into your browser to login.
+We use the `<root>/references/v3-catalog` subdirectory as a staging ground for testing changes to the SDK (`@trigger.dev/sdk` at `<root>/packages/trigger-sdk`), the Core package (`@trigger.dev/core` at `<root>packages/core`), the CLI (`trigger.dev` at `<root>/packages/cli-v3`) and the platform (The remix app at `<root>/apps/webapp`). The instructions below will get you started on using the `v3-catalog` for local development of Trigger.dev (v3).
 
-## Adding and running migrations
+### First-time setup
 
-1. Modify packages/database/prisma/schema.prisma file
-2. Change directory to the packages/database folder
-   ```sh
-   cd packages/database
-   ```
-3. Generate the Prisma client
+First, make sure you are running the webapp according to the instructions above. Then:
 
-   ```sh
-   pnpm run generate
-   ```
+1. In Postgres go to the "Organizations" table and on your org set the `v3Enabled` column to `true`.
 
-   The above updates the prisma client generated into node_modules/.prisma/client folder. This helps with typing of relevant prisma models. It ensures typescript
-   recognizes fields added or removed from a model and type-checks appropriately.
+2. Visit http://localhost:3030 in your browser and create a new V3 project called "v3-catalog". If you don't see an option for V3, you haven't set the `v3Enabled` flag to true.
 
-4. Create and apply the migrations
+3. In Postgres go to the "Projects" table and for the project you create change the `externalRef` to `yubjwjsfkxnylobaqvqz`.
 
-   ```
-   pnpm run db:migrate:dev
-   ```
-
-   This creates a migration file and executes the migrations against your database and applies changes to the database schema(s)
-
-5. Commit generated migrations as well as changes to the schema.prisma file
-6. If you're using VSCode you may need to restart the Typescript server in the webapp to get updated type inference. Open a TypeScript file, then open the Command Palette (View > Command Palette) and run `TypeScript: Restart TS server`.
-
-## Testing CLI changes
-
-To test CLI changes, follow the steps below:
-
-1. Build the CLI and watch for changes
+4. Build the CLI
 
 ```sh
-cd packages/cli
-pnpm run dev
+pnpm run build --filter trigger.dev
 ```
 
-2. Open a new Terminal window and run the webapp locally and then create a new project in the dashboard. Copy out the dev API key.
-
-3. Create a new temporary Next.js app in references directory
+5. Change into the `<root>/references/v3-catalog` directory and authorize the CLI to the local server:
 
 ```sh
-cd ./references
-pnpm create next-app@latest test-cli --ts --no-eslint --tailwind --app --src-dir --import-alias "@/*"
+cd references/v3-catalog
+pnpm exec triggerdev login -a http://localhost:3030
 ```
 
-4. Then once that's finished, add the `@trigger.dev/cli` to the `devDependencies` of the newly created Next.js app's `package.json` file, like so:
+This will open a new browser window and authorize the CLI against your local user account.
 
-```json
-{
-  // other package.json properties
-  "devDependencies": { "@trigger.dev/cli": "workspace:*" }
-}
-```
-
-5. Back in the terminal, navigate into the reference, and initialize the CLI. When prompted, select `self-hosted` and enter `localhost:3030` if you are testing against the local instance of Trigger.dev, or you can just use the Trigger.dev cloud. When asked for an API key, use the key you copied earlier.
+You can optionally pass a `--profile` flag to the `login` command, which will allow you to use the CLI with separate accounts/servers. We suggest using a profile called `local` for your local development:
 
 ```sh
-cd ./test-cli
-pnpm i
-pnpm exec trigger-cli init
+cd references/v3-catalog
+pnpm exec triggerdev login -a http://localhost:3030 --profile local
+# later when you run the dev or deploy command:
+pnpm exec triggerdev dev --profile local
+pnpm exec triggerdev deploy --profile local
 ```
 
-6. If you are just testing the `init` command, you can stop here. If you'd like to test the `dev` command, first start the Next.js app on port 3000:
+### Running
+
+The following steps should be followed any time you start working on a new feature you want to test in v3:
+
+1. Make sure the webapp is running on localhost:3030
+
+2. Open a terminal window and build the CLI and watch for changes
 
 ```sh
-pnpm run dev
+pnpm run dev --filter trigger.dev
 ```
 
-7. Open a new terminal window, and then run the `dev` command like so:
+2. Open a new terminal window, and anytime changes are made to the `@trigger.dev/core` package, you'll need to manually rebuild the CLI:
 
 ```sh
-pnpm exec trigger-cli dev
+pnpm run build --filter trigger.dev
 ```
 
-8. Please remember to delete the temporary project you created after you've tested the changes, and before you raise a PR.
+Note: You do not need to do the same for `@trigger.dev/sdk`, just core.
 
-## Running end-to-end webapp tests
+3. Open another terminal window, and change into the `<root>/references/v3-catalog` directory.
+
+4. Run the `dev` command, which will register all the local tasks with the platform and allow you to start testing task execution:
+
+```sh
+# in <root>/references/v3-catalog
+pnpm exec triggerdev dev
+```
+
+If you want additional debug logging, you can use the `--log-level debug` flag:
+
+```sh
+# in <root>/references/v3-catalog
+pnpm exec triggerdev dev --log-level debug
+```
+
+5. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside of the `v3-catalog/src/trigger` dir will automatically be rebuilt by the `dev` command.
+
+6. Navigate to the `v3-catalog` project in your local dashboard at localhost:3030 and you should see the list of tasks.
+
+7. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the `/references/v3-catalog/src/trigger` folder. Many of them accept an empty payload.
+
+8. Feel free to add additional files in `v3-catalog/src/trigger` to test out specific aspects of the system, or add in edge cases.
+
+## Running end-to-end webapp tests (deprecated)
 
 To run the end-to-end tests, follow the steps below:
 
@@ -222,6 +215,26 @@ The end-to-end tests use a `setup` and `teardown` script to seed the database wi
 # With the database running (i.e. pnpm run docker)
 pnpm run db:studio
 ```
+
+## Adding and running migrations
+
+1. Modify packages/database/prisma/schema.prisma file
+2. Change directory to the packages/database folder
+
+   ```sh
+   cd packages/database
+   ```
+
+3. Create and apply the migrations
+
+   ```
+   pnpm run db:migrate:dev
+   ```
+
+   This creates a migration file and executes the migrations against your database and applies changes to the database schema(s)
+
+4. Commit generated migrations as well as changes to the schema.prisma file
+5. If you're using VSCode you may need to restart the Typescript server in the webapp to get updated type inference. Open a TypeScript file, then open the Command Palette (View > Command Palette) and run `TypeScript: Restart TS server`.
 
 ## Add sample jobs
 

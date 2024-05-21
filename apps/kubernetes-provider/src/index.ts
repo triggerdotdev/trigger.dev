@@ -10,6 +10,7 @@ import {
 import { Machine, PostStartCauses, PreStopCauses, EnvironmentType } from "@trigger.dev/core/v3";
 import { randomUUID } from "crypto";
 import { TaskMonitor } from "./taskMonitor";
+import { PodCleaner } from "./podCleaner";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 const NODE_NAME = process.env.NODE_NAME || "local";
@@ -543,3 +544,11 @@ const taskMonitor = new TaskMonitor({
 });
 
 taskMonitor.start();
+
+const podCleaner = new PodCleaner({
+  runtimeEnv: RUNTIME_ENV,
+  namespace: "default",
+  intervalInSeconds: 300,
+});
+
+podCleaner.start();

@@ -1,14 +1,8 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
-  "openapi": [
-    "/openapi.yml",
-    "/v3-openapi.json"
-  ],
-  "versions": [
-    "v3 (Developer Preview)",
-    "v2"
-  ],
+  "openapi": ["/openapi.yml", "/v3-openapi.json"],
+  "versions": ["v3 (Developer Preview)", "v2"],
   "logo": {
     "dark": "/logo/dark.png",
     "light": "/logo/light.png",
@@ -49,16 +43,6 @@
   },
   "tabs": [
     {
-      "name": "v3 Developer Preview",
-      "url": "https://trigger.dev/docs/v3",
-      "version": "v2"
-    },
-    {
-      "name": "v2",
-      "url": "https://trigger.dev/docs/documentation",
-      "version": "v3 (Developer Preview)"
-    },
-    {
       "name": "Integrations",
       "url": "integrations",
       "version": "v2"
@@ -72,6 +56,16 @@
       "name": "Examples",
       "url": "https://trigger.dev/apis",
       "version": "v2"
+    },
+    {
+      "name": "v3 Developer Preview",
+      "url": "https://trigger.dev/docs/v3",
+      "version": "v2"
+    },
+    {
+      "name": "v2",
+      "url": "https://trigger.dev/docs/documentation",
+      "version": "v3 (Developer Preview)"
     }
   ],
   "redirects": [
@@ -96,20 +90,12 @@
     {
       "group": "",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/introduction"
-      ]
+      "pages": ["v3/introduction"]
     },
     {
       "group": "Getting Started",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/quick-start",
-        "v3/upgrading-from-v2",
-        "v3/changelog",
-        "v3/feature-matrix",
-        "v3/limits-performance"
-      ]
+      "pages": ["v3/quick-start", "v3/upgrading-from-v2", "v3/changelog", "v3/feature-matrix"]
     },
     {
       "group": "Fundamentals",
@@ -121,12 +107,7 @@
         "v3/apikeys",
         {
           "group": "Task types",
-          "pages": [
-            "v3/tasks-regular",
-            "v3/tasks-scheduled",
-            "v3/tasks-zod",
-            "v3/tasks-webhooks"
-          ]
+          "pages": ["v3/tasks-regular", "v3/tasks-scheduled"]
         },
         "v3/trigger-config"
       ]
@@ -134,10 +115,7 @@
     {
       "group": "Development",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/cli-dev",
-        "v3/run-tests"
-      ]
+      "pages": ["v3/cli-dev", "v3/run-tests"]
     },
     {
       "group": "Deployment",
@@ -148,9 +126,7 @@
         "v3/github-actions",
         {
           "group": "Deployment integrations",
-          "pages": [
-            "v3/vercel-integration"
-          ]
+          "pages": ["v3/vercel-integration"]
         }
       ]
     },
@@ -176,73 +152,13 @@
         "v3/machines",
         "v3/idempotency",
         "v3/reattempting-replaying",
-        "v3/trigger-filters",
-        "v3/notifications",
-        "v3/rollbacks",
-        "v3/using-apis",
-        "v3/middleware",
-        "v3/automated-tests"
-      ]
-    },
-    {
-      "group": "Dashboard",
-      "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/dashboard-overview",
-        "v3/dashboard-runs",
-        "v3/dashboard-tests",
-        "v3/dashboard-environment-variables"
+        "v3/notifications"
       ]
     },
     {
       "group": "API reference",
       "version": "v3 (Developer Preview)",
       "pages": [
-        {
-          "group": "Functions",
-          "pages": [
-            "v3/reference-task",
-            "v3/reference-cron-task",
-            "v3/reference-cron-dynamic",
-            "v3/reference-interval-task",
-            "v3/reference-interval-dynamic",
-            "v3/reference-zod-task",
-            "v3/reference-zod-catalog",
-            "v3/reference-task-trigger",
-            "v3/reference-task-trigger-and-wait",
-            "v3/reference-task-batch-trigger",
-            "v3/reference-task-batch-trigger-and-wait",
-            "v3/reference-wait-for",
-            "v3/reference-wait-until",
-            "v3/reference-wait-for-event",
-            "v3/reference-wait-for-request",
-            "v3/reference-retry-on-throw",
-            "v3/reference-retry-fetch",
-            "v3/reference-retry-intercept-fetch",
-            "v3/reference-notification-catalog",
-            "v3/reference-notify",
-            "v3/reference-queue"
-          ]
-        },
-        {
-          "group": "Objects",
-          "pages": [
-            "v3/reference-context"
-          ]
-        },
-        {
-          "group": "CLI",
-          "pages": [
-            "v3/reference-cli-init",
-            "v3/reference-cli-dev",
-            "v3/reference-cli-deploy",
-            "v3/reference-cli-login",
-            "v3/reference-cli-logout",
-            "v3/reference-cli-update",
-            "v3/reference-cli-build",
-            "v3/reference-cli-who-am-i"
-          ]
-        },
         {
           "group": "Runs API",
           "pages": [
@@ -266,33 +182,24 @@
       ]
     },
     {
-      "group": "Architecture",
-      "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/architecture-how-it-works",
-        "v3/architecture-multi-tenant-queue",
-        "v3/architecture-reliability"
-      ]
-    },
-    {
       "group": "Open source",
       "version": "v3 (Developer Preview)",
+      "pages": ["v3/github-repo", "v3/open-source-self-hosting", "v3/open-source-contributing"]
+    },
+    {
+      "group": "Troubleshooting",
+      "version": "v3 (Developer Preview)",
       "pages": [
-        "v3/github-repo",
-        "v3/open-source-self-hosting",
-        "v3/open-source-contributing"
+        "v3/troubleshooting-alerts",
+        "v3/troubleshooting-uptime-status",
+        "v3/troubleshooting-github-issues",
+        "v3/troubleshooting-github-discussions"
       ]
     },
     {
       "group": "Help",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/help-faqs",
-        "v3/community",
-        "v3/help-email",
-        "v3/help-slack",
-        "v3/help-uptime-status"
-      ]
+      "pages": ["v3/community", "v3/help-slack", "v3/help-email"]
     },
     {
       "group": "Getting Started",
@@ -459,6 +366,7 @@
     },
     {
       "group": "Overview",
+      "version": "v2",
       "pages": [
         "integrations/introduction",
         {
@@ -479,13 +387,11 @@
     },
     {
       "group": "Integrations",
+      "version": "v2",
       "pages": [
         {
           "group": "Airtable",
-          "pages": [
-            "integrations/apis/airtable",
-            "integrations/apis/airtable-tasks"
-          ]
+          "pages": ["integrations/apis/airtable", "integrations/apis/airtable-tasks"]
         },
         {
           "group": "GitHub",
@@ -511,25 +417,16 @@
         },
         {
           "group": "Plain",
-          "pages": [
-            "integrations/apis/plain",
-            "integrations/apis/plain-tasks"
-          ]
+          "pages": ["integrations/apis/plain", "integrations/apis/plain-tasks"]
         },
         "integrations/apis/replicate",
         {
           "group": "SendGrid",
-          "pages": [
-            "integrations/apis/sendgrid",
-            "integrations/apis/sendgrid-tasks"
-          ]
+          "pages": ["integrations/apis/sendgrid", "integrations/apis/sendgrid-tasks"]
         },
         {
           "group": "Resend",
-          "pages": [
-            "integrations/apis/resend",
-            "integrations/apis/resend-tasks"
-          ]
+          "pages": ["integrations/apis/resend", "integrations/apis/resend-tasks"]
         },
         {
           "group": "Shopify",
@@ -541,10 +438,7 @@
         },
         {
           "group": "Slack",
-          "pages": [
-            "integrations/apis/slack",
-            "integrations/apis/slack-tasks"
-          ]
+          "pages": ["integrations/apis/slack", "integrations/apis/slack-tasks"]
         },
         "integrations/apis/stripe",
         {
@@ -560,6 +454,7 @@
     },
     {
       "group": "SDK",
+      "version": "v2",
       "pages": [
         "sdk/introduction",
         {
@@ -569,9 +464,7 @@
             "sdk/triggerclient/constructor",
             {
               "group": "Instance properties",
-              "pages": [
-                "sdk/triggerclient/store"
-              ]
+              "pages": ["sdk/triggerclient/store"]
             },
             {
               "group": "Instance methods",
@@ -634,10 +527,7 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": [
-                "sdk/dynamictrigger/register",
-                "sdk/dynamictrigger/unregister"
-              ]
+              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
             }
           ]
         },
@@ -648,10 +538,7 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": [
-                "sdk/dynamicschedule/register",
-                "sdk/dynamicschedule/unregister"
-              ]
+              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
             }
           ]
         },
@@ -663,12 +550,12 @@
     },
     {
       "group": "HTTP Reference",
-      "pages": [
-        "sdk/api-reference/events/create-an-event"
-      ]
+      "version": "v2",
+      "pages": ["sdk/api-reference/events/create-an-event"]
     },
     {
       "group": "React SDK",
+      "version": "v2",
       "pages": [
         "sdk/react/introduction",
         "sdk/react/triggerprovider",
@@ -680,9 +567,7 @@
     {
       "group": "Overview",
       "version": "v2",
-      "pages": [
-        "examples/introduction"
-      ]
+      "pages": ["examples/introduction"]
     }
   ],
   "footerSocials": {

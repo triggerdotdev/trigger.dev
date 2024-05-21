@@ -12,7 +12,7 @@ import { ApiAuthenticationMethodOAuth2, Integration, Scope } from "~/services/ex
 import { cn } from "~/utils/cn";
 import { CodeBlock } from "../code/CodeBlock";
 import { Button } from "../primitives/Buttons";
-import { Checkbox } from "../primitives/Checkbox";
+import { CheckboxWithLabel } from "../primitives/Checkbox";
 import { Fieldset } from "../primitives/Fieldset";
 import { FormError } from "../primitives/FormError";
 import { Header2, Header3 } from "../primitives/Headers";
@@ -123,7 +123,7 @@ export function ConnectToOAuthForm({
           <Paragraph variant="small" className="mb-2">
             To use your own OAuth app, check the option below and insert the details.
           </Paragraph>
-          <Checkbox
+          <CheckboxWithLabel
             id="hasCustomClient"
             label="Use my OAuth App"
             variant="simple/small"
@@ -200,7 +200,7 @@ export function ConnectToOAuthForm({
               )}
               {authMethod.scopes.map((s) => {
                 return (
-                  <Checkbox
+                  <CheckboxWithLabel
                     key={s.name}
                     id={s.name}
                     value={s.name}

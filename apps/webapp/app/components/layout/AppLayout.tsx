@@ -41,7 +41,7 @@ export function PageBody({
     <div
       className={cn(
         scrollable
-          ? "overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          ? "overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
           : "overflow-hidden",
         className
       )}

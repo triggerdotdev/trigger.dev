@@ -75,10 +75,14 @@ export class ProdRuntimeManager implements RuntimeManager {
     clock.reset();
 
     // The coordinator should cancel any in-progress checkpoints
-    const { checkpointCanceled, version } = await this.ipc.sendWithAck("CANCEL_CHECKPOINT", {
-      version: "v2",
-      reason: "WAIT_FOR_DURATION",
-    });
+    const { checkpointCanceled, version } = await this.ipc.sendWithAck(
+      "CANCEL_CHECKPOINT",
+      {
+        version: "v2",
+        reason: "WAIT_FOR_DURATION",
+      },
+      31_000
+    );
 
     if (checkpointCanceled) {
       // There won't be a checkpoint or external resume and we've already completed our internal timeout

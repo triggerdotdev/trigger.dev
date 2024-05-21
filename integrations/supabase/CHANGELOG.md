@@ -1,5 +1,40 @@
 # @trigger.dev/supabase
 
+## 3.0.0-beta.33
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.33
+- @trigger.dev/sdk@3.0.0-beta.33
+
+## 3.0.0-beta.32
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.32
+- @trigger.dev/sdk@3.0.0-beta.32
+
+## 3.0.0-beta.31
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.31
+- @trigger.dev/sdk@3.0.0-beta.31
+
+## 3.0.0-beta.30
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.30
+- @trigger.dev/sdk@3.0.0-beta.30
+
+## 3.0.0-beta.29
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.29
+- @trigger.dev/sdk@3.0.0-beta.29
+
 ## 3.0.0-beta.28
 
 ### Patch Changes

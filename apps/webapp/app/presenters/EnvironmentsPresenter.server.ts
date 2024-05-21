@@ -14,7 +14,7 @@ import {
   IndexEndpointStats,
   parseEndpointIndexStats,
 } from "@trigger.dev/core";
-import { sortEnvironments } from "~/services/environmentSort.server";
+import { sortEnvironments } from "~/utils/environmentSort";
 
 export type Client = {
   slug: string;

@@ -21,11 +21,15 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
-import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
+import {
+  findCurrentWorkerDeployment,
+  getWorkerDeploymentFromWorker,
+  getWorkerDeploymentFromWorkerTask,
+} from "../models/workerDeployment.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
 import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
 import { CrashTaskRunService } from "../services/crashTaskRun.server";
@@ -299,7 +303,12 @@ export class SharedQueueConsumer {
           return;
         }
 
-        const deployment = await findCurrentWorkerDeployment(existingTaskRun.runtimeEnvironmentId);
+        // Check if the task run is locked to a specific worker, if not, use the current worker deployment
+        const deployment = existingTaskRun.lockedById
+          ? await getWorkerDeploymentFromWorkerTask(existingTaskRun.lockedById)
+          : existingTaskRun.lockedToVersionId
+          ? await getWorkerDeploymentFromWorker(existingTaskRun.lockedToVersionId)
+          : await findCurrentWorkerDeployment(existingTaskRun.runtimeEnvironmentId);
 
         if (!deployment || !deployment.worker) {
           logger.error("No matching deployment found for task run", {
@@ -374,6 +383,7 @@ export class SharedQueueConsumer {
           data: {
             lockedAt: new Date(),
             lockedById: backgroundTask.id,
+            lockedToVersionId: deployment.worker.id,
           },
           include: {
             runtimeEnvironment: true,
@@ -408,7 +418,7 @@ export class SharedQueueConsumer {
           where: {
             runtimeEnvironmentId_name: {
               runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
-              name: lockedTaskRun.queue,
+              name: sanitizeQueueName(lockedTaskRun.queue),
             },
           },
         });
@@ -635,12 +645,17 @@ export class SharedQueueConsumer {
           where: {
             runtimeEnvironmentId_name: {
               runtimeEnvironmentId: resumableAttempt.runtimeEnvironmentId,
-              name: resumableRun.queue,
+              name: sanitizeQueueName(resumableRun.queue),
             },
           },
         });
 
         if (!queue) {
+          logger.debug("SharedQueueConsumer queue not found, so nacking message", {
+            queueName: sanitizeQueueName(resumableRun.queue),
+            attempt: resumableAttempt,
+          });
+
           await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
           return;
         }

@@ -1,5 +1,6 @@
 import { context, propagation } from "@opentelemetry/api";
-import { ZodFetchOptions, zodfetch } from "../zodfetch";
+import { version } from "../../../package.json";
+import { APIError } from "../apiErrors";
 import {
   BatchTaskRunExecutionResult,
   BatchTriggerTaskRequestBody,
@@ -19,9 +20,7 @@ import {
   UpdateScheduleOptions,
 } from "../schemas";
 import { taskContext } from "../task-context-api";
-import { getEnvVar } from "../utils/getEnv";
-import { SafeAsyncLocalStorage } from "../utils/safeAsyncLocalStorage";
-import { APIError } from "../apiErrors";
+import { ZodFetchOptions, zodfetch } from "../zodfetch";
 
 export type TriggerOptions = {
   spanParentAsLink?: boolean;
@@ -239,10 +238,12 @@ export class ApiClient {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.accessToken}`,
+      "trigger-version": version,
     };
 
     // Only inject the context if we are inside a task
     if (taskContext.isInsideTask) {
+      headers["x-trigger-worker"] = "true";
       propagation.inject(context.active(), headers);
 
       if (spanParentAsLink) {

@@ -1,12 +1,12 @@
 import { Prisma, TaskRun, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
-import { eventRepository } from "../eventRepository.server";
+import assertNever from "assert-never";
+import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
+import { eventRepository } from "../eventRepository.server";
+import { socketIo } from "../handleSocketIo.server";
 import { devPubSub } from "../marqs/devPubSub.server";
 import { BaseService } from "./baseService.server";
-import { socketIo } from "../handleSocketIo.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
-import { logger } from "~/services/logger.server";
-import assertNever from "assert-never";
 
 export const CANCELLABLE_STATUSES: Array<TaskRunStatus> = [
   "PENDING",
@@ -97,6 +97,10 @@ export class CancelTaskRunService extends BaseService {
     if (opts.cancelAttempts) {
       await this.#cancelPotentiallyRunningAttempts(cancelledTaskRun, cancelledTaskRun.attempts);
     }
+
+    return {
+      id: cancelledTaskRun.id,
+    };
   }
 
   async #cancelPotentiallyRunningAttempts(run: TaskRun, attempts: ExtendedTaskRunAttempt[]) {

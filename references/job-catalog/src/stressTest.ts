@@ -23,23 +23,14 @@ client.defineJob({
         `task-${i}`,
         async (task) => {
           return {
-            output: "a".repeat(300 * 1024),
+            output: "a".repeat(30),
           };
         },
         { name: `Task ${i}` }
       );
-    }
 
-    // Now run a single task with 5MB output
-    await io.runTask(
-      `task-5mb`,
-      async (task) => {
-        return {
-          output: "a".repeat(5 * 1024 * 1024),
-        };
-      },
-      { name: `Task 5MB` }
-    );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
 
     // Now do a wait for 5 seconds
     await io.wait("wait", 5);

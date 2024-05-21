@@ -1,6 +1,7 @@
 import type { EventDispatcher } from "@trigger.dev/database";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
+import { DeliverScheduledEventService } from "./deliverScheduledEvent.server";
 
 export class DisableScheduleSourceService {
   #prismaClient: PrismaClientOrTransaction;
@@ -36,7 +37,7 @@ export class DisableScheduleSourceService {
         },
       });
 
-      await workerQueue.dequeue(`scheduled:${scheduleSource.id}`, { tx });
+      await DeliverScheduledEventService.dequeue(scheduleSource.id, tx);
 
       return scheduleSource;
     });

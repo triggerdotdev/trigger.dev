@@ -86,21 +86,36 @@ export function createWebhookEventSource(integration: Shopify) {
     key: (params) => params.topic,
     crud: {
       create: async ({ io, ctx }) => {
-        const webhook = await io.integration.rest.Webhook.save("create-webhook", {
-          fromData: {
-            address: ctx.url,
-            topic: ctx.params.topic,
-            // fields: ctx.params.fields,
-          },
-        });
+        try {
+          const webhook = await io.integration.rest.Webhook.save("create-webhook", {
+            fromData: {
+              address: ctx.url,
+              topic: ctx.params.topic,
+              // fields: ctx.params.fields,
+            },
+          });
 
-        const clientSecret = await io.integration.runTask(
-          "get-client-secret",
-          async (client) => client.config.apiSecretKey
-        );
+          if (!webhook.id) {
+            throw new Error(
+              "Failed to create webhook. Ensure your Shopfiy client configuration is correct. Have you set the correct access scopes? Are you using the primary myshopify.com domain?"
+            );
+          }
 
-        await io.store.job.set("set-id", "webhook-id", webhook.id);
-        await io.store.job.set("set-secret", "webhook-secret", clientSecret);
+          const clientSecret = await io.integration.runTask(
+            "get-client-secret",
+            async (client) => client.config.apiSecretKey
+          );
+
+          await io.store.job.set("set-id", "webhook-id", webhook.id);
+          await io.store.job.set("set-secret", "webhook-secret", clientSecret);
+        } catch (error) {
+          if (error instanceof Error) {
+            await io.logger.error(`Failed to create webhook: ${error.message}`);
+          } else {
+            await io.logger.error("Failed to create webhook", { rawError: error });
+          }
+          throw error;
+        }
       },
       delete: async ({ io, ctx }) => {
         const webhookId = await io.store.job.get<number>("get-webhook-id", "webhook-id");
@@ -109,23 +124,41 @@ export function createWebhookEventSource(integration: Shopify) {
           throw new Error("Missing webhook ID for delete operation.");
         }
 
-        await io.integration.rest.Webhook.delete("delete-webhook", {
-          id: webhookId,
-        });
+        try {
+          await io.integration.rest.Webhook.delete("delete-webhook", {
+            id: webhookId,
+          });
+        } catch (error) {
+          if (error instanceof Error) {
+            await io.logger.error(`Failed to delete webhook: ${error.message}`);
+          } else {
+            await io.logger.error("Failed to delete webhook", { rawError: error });
+          }
+          throw error;
+        }
 
         await io.store.job.delete("delete-webhook-id", "webhook-id");
       },
       update: async ({ io, ctx }) => {
         const webhookId = await io.store.job.get<number>("get-webhook-id", "webhook-id");
 
-        await io.integration.rest.Webhook.save("update-webhook", {
-          fromData: {
-            id: webhookId,
-            address: ctx.url,
-            topic: ctx.params.topic,
-            // fields: ctx.params.fields,
-          },
-        });
+        try {
+          await io.integration.rest.Webhook.save("update-webhook", {
+            fromData: {
+              id: webhookId,
+              address: ctx.url,
+              topic: ctx.params.topic,
+              // fields: ctx.params.fields,
+            },
+          });
+        } catch (error) {
+          if (error instanceof Error) {
+            await io.logger.error(`Failed to update webhook: ${error.message}`);
+          } else {
+            await io.logger.error("Failed to update webhook", { rawError: error });
+          }
+          throw error;
+        }
       },
     },
     verify: async ({ request, client, ctx }) => {

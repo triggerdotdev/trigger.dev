@@ -30,11 +30,11 @@ import {
 } from "~/components/primitives/Table";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
 import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
+import { useFilterTasks } from "~/hooks/useFilterTasks";
 import { useLinkStatus } from "~/hooks/useLinkStatus";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useTextFilter } from "~/hooks/useTextFilter";
 import {
   SelectedEnvironment,
   TaskListItem,
@@ -153,36 +153,7 @@ function TaskSelector({
   tasks: TaskListItem[];
   environmentSlug: string;
 }) {
-  const { filterText, setFilterText, filteredItems } = useTextFilter<TaskListItem>({
-    items: tasks,
-    filter: (task, text) => {
-      if (task.taskIdentifier.toLowerCase().includes(text.toLowerCase())) {
-        return true;
-      }
-
-      if (task.exportName.toLowerCase().includes(text.toLowerCase())) {
-        return true;
-      }
-
-      if (task.filePath.toLowerCase().includes(text.toLowerCase())) {
-        return true;
-      }
-
-      if (task.id.toLowerCase().includes(text.toLowerCase())) {
-        return true;
-      }
-
-      if (task.friendlyId.toLowerCase().includes(text.toLowerCase())) {
-        return true;
-      }
-
-      if (task.triggerSource === "SCHEDULED" && "scheduled".includes(text.toLowerCase())) {
-        return true;
-      }
-
-      return false;
-    },
-  });
+  const { filterText, setFilterText, filteredItems } = useFilterTasks<TaskListItem>({ tasks });
 
   return (
     <div className="divide-y divide-charcoal-800 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">

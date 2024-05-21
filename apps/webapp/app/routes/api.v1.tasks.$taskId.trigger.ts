@@ -11,9 +11,10 @@ const ParamsSchema = z.object({
 });
 
 export const HeadersSchema = z.object({
-  "idempotency-key": z.string().optional().nullable(),
-  "trigger-version": z.string().optional().nullable(),
-  "x-trigger-span-parent-as-link": z.coerce.number().optional().nullable(),
+  "idempotency-key": z.string().nullish(),
+  "trigger-version": z.string().nullish(),
+  "x-trigger-span-parent-as-link": z.coerce.number().nullish(),
+  "x-trigger-worker": z.string().nullish(),
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
@@ -45,6 +46,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     "x-trigger-span-parent-as-link": spanParentAsLink,
     traceparent,
     tracestate,
+    "x-trigger-worker": isFromWorker,
   } = headers.data;
 
   const { taskId } = ParamsSchema.parse(params);
@@ -58,20 +60,31 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  logger.debug("Triggering task", {
-    taskId,
-    idempotencyKey,
-    triggerVersion,
-    body: body.data,
-  });
-
   const service = new TriggerTaskService();
 
   try {
+    const traceContext = traceparent
+      ? !triggerVersion // If the trigger version is NOT set, we are in an older version of the SDK
+        ? { traceparent, tracestate }
+        : isFromWorker // If the trigger version is set, and the request is from a worker, we should pass the trace context
+        ? { traceparent, tracestate }
+        : undefined
+      : undefined;
+
+    logger.debug("Triggering task", {
+      taskId,
+      idempotencyKey,
+      triggerVersion,
+      headers: Object.fromEntries(request.headers),
+      body: body.data,
+      isFromWorker,
+      traceContext,
+    });
+
     const run = await service.call(taskId, authenticationResult.environment, body.data, {
       idempotencyKey: idempotencyKey ?? undefined,
       triggerVersion: triggerVersion ?? undefined,
-      traceContext: traceparent ? { traceparent, tracestate } : undefined,
+      traceContext,
       spanParentAsLink: spanParentAsLink === 1,
     });
 
