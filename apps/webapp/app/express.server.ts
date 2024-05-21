@@ -2,13 +2,9 @@ import { createExpressApp } from "remix-create-express-app";
 import http from "http";
 import morgan from "morgan";
 import compression from "compression";
-
-import type { Server as EngineServer } from "engine.io";
-
 import { registryProxy } from "./v3/registryProxy.server";
 import { apiRateLimiter } from "./services/apiRateLimit.server";
-import { socketIo } from "./v3/handleSocketIo.server";
-import { wss } from "./v3/handleWebsockets.server";
+import { registerSocketIo } from "./socket.server";
 
 export const express = createExpressApp({
   configure(app) {
@@ -62,62 +58,7 @@ export const express = createExpressApp({
   createServer(app) {
     const server = http.createServer(app);
 
-    server.keepAliveTimeout = 65 * 1000;
-
-    process.on("SIGTERM", () => {
-      server.close((err) => {
-        if (err) {
-          console.error("Error closing express server:", err);
-        } else {
-          console.log("Express server closed gracefully.");
-        }
-      });
-    });
-
-    socketIo?.io.attach(server);
-    // prevent duplicate upgrades from listeners created by io.attach()
-    server.removeAllListeners("upgrade");
-
-    server.on("upgrade", async (req, socket, head) => {
-      console.log(
-        `Attemping to upgrade connection at url ${req.url} with headers: ${JSON.stringify(
-          req.headers
-        )}`
-      );
-
-      socket.on("error", (err) => {
-        console.error("Connection upgrade error:", err);
-      });
-
-      const url = new URL(req.url ?? "", "http://localhost");
-
-      // Upgrade socket.io connection
-      if (url.pathname.startsWith("/socket.io/")) {
-        console.log(`Socket.io client connected, upgrading their connection...`);
-
-        // https://github.com/socketio/socket.io/issues/4693
-        (socketIo?.io.engine as EngineServer).handleUpgrade(req, socket, head);
-        return;
-      }
-
-      // Only upgrade the connecting if the path is `/ws`
-      if (url.pathname !== "/ws") {
-        // Setting the socket.destroy() error param causes an error event to be emitted which needs to be handled with socket.on("error") to prevent uncaught exceptions.
-        socket.destroy(
-          new Error(
-            "Cannot connect because of invalid path: Please include `/ws` in the path of your upgrade request."
-          )
-        );
-        return;
-      }
-
-      console.log(`Client connected, upgrading their connection...`);
-
-      // Handle the WebSocket connection
-      wss?.handleUpgrade(req, socket, head, (ws) => {
-        wss?.emit("connection", ws, req);
-      });
-    });
+    registerSocketIo(server);
 
     return server;
   },

@@ -15,6 +15,9 @@ import {
   OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
 
+import { initializeWebSocketServer } from "./v3/handleWebsockets.server";
+initializeWebSocketServer();
+
 const ABORT_DELAY = 30000;
 
 export default function handleRequest(
