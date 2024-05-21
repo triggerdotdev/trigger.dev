@@ -4,6 +4,12 @@ export const formatNumberCompact = (num: number): string => {
   return compactFormatter.format(num);
 };
 
+const formatter = Intl.NumberFormat("en");
+
+export const formatNumber = (num: number): string => {
+  return formatter.format(num);
+};
+
 const roundedCurrencyFormatter = Intl.NumberFormat("en-US", {
   style: "currency",
   currencyDisplay: "symbol",

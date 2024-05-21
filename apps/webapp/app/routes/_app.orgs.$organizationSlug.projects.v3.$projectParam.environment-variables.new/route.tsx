@@ -18,7 +18,7 @@ import {
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Checkbox } from "~/components/primitives/Checkbox";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -195,7 +195,7 @@ export default function Page() {
               <Label>Environments</Label>
               <div className="flex flex-wrap items-center gap-2">
                 {environments.map((environment) => (
-                  <Checkbox
+                  <CheckboxWithLabel
                     key={environment.id}
                     id={environment.id}
                     value={environment.id}

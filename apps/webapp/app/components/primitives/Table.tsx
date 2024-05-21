@@ -106,7 +106,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         ref={ref}
         scope="col"
         className={cn(
-          "px-4 py-2 align-middle text-xxs font-normal uppercase tracking-wider text-text-dimmed",
+          "px-3 py-2 align-middle text-xxs font-normal uppercase tracking-wider text-text-dimmed",
           alignmentClassName,
           className
         )}
@@ -155,7 +155,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
     }
 
     const flexClasses = cn(
-      "flex w-full whitespace-nowrap px-4 py-3 text-xs text-text-dimmed",
+      "flex w-full whitespace-nowrap px-3 py-3 text-xs text-text-dimmed",
       alignment === "left"
         ? "justify-start text-left"
         : alignment === "center"
@@ -170,7 +170,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           "text-xs text-charcoal-400",
           to || onClick || hasAction
             ? "cursor-pointer group-hover/table-row:bg-charcoal-900"
-            : "px-4 py-3 align-middle",
+            : "px-3 py-3 align-middle",
           !to && !onClick && alignmentClassName,
           isSticky && stickyStyles,
           className

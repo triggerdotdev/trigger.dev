@@ -41,6 +41,9 @@ import { PerformTaskAttemptAlertsService } from "~/v3/services/alerts/performTas
 import { DeliverAlertService } from "~/v3/services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "~/v3/services/alerts/performDeploymentAlerts.server";
 import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
+import { PerformBulkActionService } from "~/v3/services/bulk/performBulkAction.server";
+import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
+import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -149,6 +152,12 @@ const workerCatalog = {
   "v3.performDeploymentAlerts": z.object({
     deploymentId: z.string(),
   }),
+  "v3.performBulkAction": z.object({
+    bulkActionGroupId: z.string(),
+  }),
+  "v3.performBulkActionItem": z.object({
+    bulkActionItemId: z.string(),
+  }),
 };
 
 const executionWorkerCatalog = {
@@ -250,6 +259,12 @@ function getWorkerQueue() {
           const service = new RecurringEndpointIndexService();
 
           await service.call(payload.ts);
+        },
+      },
+      scheduleImminentDeferredEvents: {
+        match: "*/10 * * * *",
+        handler: async (payload, job) => {
+          await DeliverScheduledEventService.scheduleImminentDeferredEvents();
         },
       },
       // Run this every hour
@@ -565,6 +580,24 @@ function getWorkerQueue() {
           const service = new PerformDeploymentAlertsService();
 
           return await service.call(payload.deploymentId);
+        },
+      },
+      "v3.performBulkAction": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PerformBulkActionService();
+
+          return await service.call(payload.bulkActionGroupId);
+        },
+      },
+      "v3.performBulkActionItem": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PerformBulkActionService();
+
+          await service.performBulkActionItem(payload.bulkActionItemId);
         },
       },
     },

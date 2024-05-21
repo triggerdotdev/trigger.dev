@@ -11,7 +11,7 @@ import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout, variantClasses } from "~/components/primitives/Callout";
-import { Checkbox } from "~/components/primitives/Checkbox";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -363,7 +363,7 @@ export default function Page() {
               <Label>Alert me when</Label>
 
               <div className="flex items-center gap-1">
-                <Checkbox
+                <CheckboxWithLabel
                   name={alertTypes.name}
                   id="TASK_RUN_ATTEMPT"
                   value="TASK_RUN_ATTEMPT"
@@ -375,7 +375,7 @@ export default function Page() {
                 <InfoIconTooltip content="You'll receive an alert every time an attempt fails on a run." />
               </div>
 
-              <Checkbox
+              <CheckboxWithLabel
                 name={alertTypes.name}
                 id="DEPLOYMENT_FAILURE"
                 value="DEPLOYMENT_FAILURE"
@@ -384,7 +384,7 @@ export default function Page() {
                 defaultChecked
               />
 
-              <Checkbox
+              <CheckboxWithLabel
                 name={alertTypes.name}
                 id="DEPLOYMENT_SUCCESS"
                 value="DEPLOYMENT_SUCCESS"
@@ -397,7 +397,7 @@ export default function Page() {
             </InputGroup>
             <InputGroup>
               <Label>Environments</Label>
-              <Checkbox
+              <CheckboxWithLabel
                 name={environmentTypes.name}
                 id="PRODUCTION"
                 value="PRODUCTION"
@@ -405,7 +405,7 @@ export default function Page() {
                 label="PROD"
                 defaultChecked
               />
-              <Checkbox
+              <CheckboxWithLabel
                 name={environmentTypes.name}
                 id="STAGING"
                 value="STAGING"
