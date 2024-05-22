@@ -120,7 +120,9 @@ model Organization {
 
   runsEnabled Boolean @default(true)
 
-  v3Enabled Boolean @default(false)
+  v3Enabled      Boolean @default(false)
+  v2Enabled      Boolean @default(false)
+  hasRequestedV3 Boolean @default(false)
 
   environments RuntimeEnvironment[]
   connections  IntegrationConnection[]
