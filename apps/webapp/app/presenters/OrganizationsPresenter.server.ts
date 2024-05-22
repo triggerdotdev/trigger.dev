@@ -64,6 +64,10 @@ export class OrganizationsPresenter {
       );
     }
 
+    if (project.organizationId !== organization.id) {
+      throw redirect(newProjectPath({ slug: organizationSlug }), request);
+    }
+
     return { organizations, organization, project };
   }
 
