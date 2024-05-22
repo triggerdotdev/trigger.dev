@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SecretStoreOptionsSchema } from "./services/secrets/secretStore.server";
+import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
 import { isValidRegex } from "./utils/regex";
 import { isValidDatabaseUrl } from "./utils/db";
 
