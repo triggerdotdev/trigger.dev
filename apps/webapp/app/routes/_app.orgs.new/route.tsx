@@ -17,14 +17,11 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { RadioGroupItem } from "~/components/primitives/RadioButton";
-import { Select, SelectItem } from "~/components/primitives/Select";
-import { featuresForRequest } from "~/features.server";
 import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
-import { commitCurrentProjectSession, setCurrentProjectId } from "~/services/currentProject.server";
 import { requireUserId } from "~/services/session.server";
-import { organizationPath, projectPath, rootPath, selectPlanPath } from "~/utils/pathBuilder";
+import { organizationPath, rootPath } from "~/utils/pathBuilder";
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
