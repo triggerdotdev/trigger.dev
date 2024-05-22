@@ -1452,10 +1452,31 @@ async function resolveDependencies(
       logger.debug(`No cached package-lock.json found for ${digest}`);
 
       try {
-        await execa("npm", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit"], {
-          cwd: projectDir,
-          stdio: logger.loggerLevel === "debug" ? "inherit" : "pipe",
-        });
+        if (logger.loggerLevel === "debug") {
+          const childProcess = await execa("npm", ["config", "list"], {
+            cwd: projectDir,
+            stdio: "inherit",
+          });
+
+          logger.debug("npm config list");
+          console.log(childProcess.stdout);
+        }
+
+        await execa(
+          "npm",
+          [
+            "install",
+            "--package-lock-only",
+            "--ignore-scripts",
+            "--no-audit",
+            "--legacy-peer-deps=false",
+            "--strict-peer-deps=false",
+          ],
+          {
+            cwd: projectDir,
+            stdio: logger.loggerLevel === "debug" ? "inherit" : "pipe",
+          }
+        );
 
         const packageLockContents = await readFile(join(projectDir, "package-lock.json"), "utf-8");
 
