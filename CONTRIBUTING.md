@@ -17,6 +17,7 @@ branch are tagged into a release periodically.
 - [Node.js](https://nodejs.org/en) version 20.11.1
 - [pnpm package manager](https://pnpm.io/installation) version 8.15.5
 - [Docker](https://www.docker.com/get-started/)
+- [protobuf](https://github.com/protocolbuffers/protobuf)
 
 ### Setup
 
@@ -102,7 +103,10 @@ First, make sure you are running the webapp according to the instructions above.
 4. Build the CLI
 
 ```sh
+# Build the CLI
 pnpm run build --filter trigger.dev
+# Make it accessible to `pnpm exec`
+pnpm i
 ```
 
 5. Change into the `<root>/references/v3-catalog` directory and authorize the CLI to the local server:
