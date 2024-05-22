@@ -3,7 +3,7 @@ import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { PlainClient } from "@team-plain/typescript-sdk";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
@@ -130,9 +130,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 export function RequestV3Access({
   hasRequestedV3,
   organizationSlug,
+  projectsCount,
 }: {
   hasRequestedV3: boolean;
   organizationSlug: string;
+  projectsCount: number;
 }) {
   const user = useUser();
 
@@ -174,10 +176,17 @@ export function RequestV3Access({
     <MainCenteredContainer>
       <img src={v3Icon} alt="v3" width={32} height={32} className="mb-4" />
       <Form action={`/resources/orgs/${organizationSlug}/v3-access`} method="post">
-        <Paragraph spacing variant="base/bright">
-          Trigger.dev v3 is currently in Developer Preview and we’re operating a waitlist as we
-          focus on the platform’s reliability and scaleability.
-        </Paragraph>
+        {projectsCount > 0 ? (
+          <Paragraph spacing variant="base/bright">
+            You can no longer create v2 projects and your organization doesn't have access to v3
+            yet. We are approving access requests daily.
+          </Paragraph>
+        ) : (
+          <Paragraph spacing variant="base/bright">
+            Trigger.dev v3 is currently in Developer Preview and we’re operating a waitlist as we
+            focus on the platform’s reliability and scaleability.
+          </Paragraph>
+        )}
         <Paragraph spacing variant="base/bright">
           For more info, check out our{" "}
           <TextLink href="https://trigger.dev/blog/v3-developer-preview-launch/">
@@ -185,9 +194,16 @@ export function RequestV3Access({
           </TextLink>
           .
         </Paragraph>
-        <Button variant="primary/medium" type="submit" className="mt-2">
-          Request access
-        </Button>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          {projectsCount > 0 ? (
+            <LinkButton variant="tertiary/small" to={organizationPath({ slug: organizationSlug })}>
+              Cancel
+            </LinkButton>
+          ) : null}
+          <Button variant="primary/small" type="submit">
+            Request access
+          </Button>
+        </div>
       </Form>
     </MainCenteredContainer>
   );

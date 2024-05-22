@@ -43,7 +43,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       _count: {
         select: {
           projects: {
-            where: { deletedAt: null },
+            where: {
+              deletedAt: null,
+            },
           },
         },
       },
@@ -118,6 +120,7 @@ export default function NewOrganizationPage() {
       <RequestV3Access
         hasRequestedV3={organization.hasRequestedV3}
         organizationSlug={organization.slug}
+        projectsCount={organization.projectsCount}
       />
     );
   }
