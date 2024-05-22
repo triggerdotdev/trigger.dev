@@ -24,12 +24,10 @@ import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
 import { commitCurrentProjectSession, setCurrentProjectId } from "~/services/currentProject.server";
 import { requireUserId } from "~/services/session.server";
-import { projectPath, rootPath, selectPlanPath } from "~/utils/pathBuilder";
+import { organizationPath, projectPath, rootPath, selectPlanPath } from "~/utils/pathBuilder";
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
-  projectName: z.string().min(3).max(50),
-  projectVersion: z.enum(["v2", "v3"]),
   companySize: z.string().optional(),
 });
 
@@ -57,29 +55,10 @@ export const action: ActionFunction = async ({ request }) => {
     const organization = await createOrganization({
       title: submission.value.orgName,
       userId,
-      projectName: submission.value.projectName,
       companySize: submission.value.companySize ?? null,
-      projectVersion: submission.value.projectVersion,
     });
 
-    const project = organization.projects[0];
-    const session = await setCurrentProjectId(project.id, request);
-
-    const { isManagedCloud } = featuresForRequest(request);
-
-    const headers = {
-      "Set-Cookie": await commitCurrentProjectSession(session),
-    };
-
-    if (isManagedCloud && submission.value.projectVersion === "v2") {
-      return redirect(selectPlanPath(organization), {
-        headers,
-      });
-    }
-
-    return redirect(projectPath(organization, project), {
-      headers,
-    });
+    return redirect(organizationPath(organization));
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
@@ -91,10 +70,7 @@ export default function NewOrganizationPage() {
   const { isManagedCloud } = useFeatures();
   const navigation = useNavigation();
 
-  //this is temporary whilst v3 is invite-only. Switch to the useFeatures value when v3 is generally available.
-  const v3Enabled = false;
-
-  const [form, { orgName, projectName, projectVersion }] = useForm({
+  const [form, { orgName }] = useForm({
     id: "create-organization",
     // TODO: type this
     lastSubmission: lastSubmission as any,
@@ -123,45 +99,9 @@ export default function NewOrganizationPage() {
             <Hint>E.g. your company name or your workspace name.</Hint>
             <FormError id={orgName.errorId}>{orgName.error}</FormError>
           </InputGroup>
-          <InputGroup>
-            <Label htmlFor={projectName.id}>Project name</Label>
-            <Input
-              {...conform.input(projectName, { type: "text" })}
-              placeholder="Your Project name"
-              icon="folder"
-            />
-            <Hint>Your Jobs will live inside this Project.</Hint>
-            <FormError id={projectName.errorId}>{projectName.error}</FormError>
-          </InputGroup>
-          {v3Enabled ? (
-            <InputGroup>
-              <Label htmlFor={projectVersion.id}>Project version</Label>
-              <Select
-                {...conform.select(projectVersion)}
-                defaultValue={undefined}
-                variant="tertiary/medium"
-                placeholder="Select version"
-                dropdownIcon
-                text={(value) => {
-                  switch (value) {
-                    case "v2":
-                      return "Version 2";
-                    case "v3":
-                      return "Version 3";
-                  }
-                }}
-              >
-                <SelectItem value="v2">Version 2</SelectItem>
-                <SelectItem value="v3">Version 3 (Developer Preview)</SelectItem>
-              </Select>
-              <FormError id={projectVersion.errorId}>{projectVersion.error}</FormError>
-            </InputGroup>
-          ) : (
-            <input {...conform.input(projectVersion, { type: "hidden" })} value="v2" />
-          )}
           {isManagedCloud && (
             <InputGroup>
-              <Label htmlFor={projectName.id}>Number of employees</Label>
+              <Label htmlFor={"companySize"}>Number of employees</Label>
               <RadioGroup name="companySize" className="flex items-center justify-between gap-2">
                 <RadioGroupItem
                   id="employees-1-5"
