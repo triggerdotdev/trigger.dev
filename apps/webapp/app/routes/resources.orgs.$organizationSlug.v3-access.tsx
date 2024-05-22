@@ -146,18 +146,18 @@ export function RequestV3Access({
               <CheckCircleIcon className="size-4 text-success" />
             </div>
           </div>
-          <Paragraph spacing>
-            We’ve received your request for v3 and will notify you as soon as your account has v3
-            access. We’re granting new users access every day so you won’t be waiting long.
+          <Paragraph spacing variant="base/bright">
+            We’ve received your request for v3 and we’ll notify you as soon as you have access.
+            We’re granting new users access every day so you won’t be waiting long.
           </Paragraph>
-          <Paragraph spacing>
+          <Paragraph spacing variant="base/bright">
             Right now v3 is completely free to use but{" "}
             <TextLink href="https://trigger.dev/blog/v3-developer-preview-launch/#cloud-pricing">
               paid tiers
             </TextLink>{" "}
             will be introduced soon.
           </Paragraph>
-          <Paragraph spacing>
+          <Paragraph spacing variant="base/bright">
             In the meantime, check out the{" "}
             <TextLink href="https://trigger.dev/docs">v3 docs</TextLink>, the{" "}
             <TextLink href="https://trigger.dev/blog/v3-developer-preview-launch/">
@@ -174,18 +174,18 @@ export function RequestV3Access({
     <MainCenteredContainer>
       <img src={v3Icon} alt="v3" width={32} height={32} className="mb-4" />
       <Form action={`/resources/orgs/${organizationSlug}/v3-access`} method="post">
-        <Paragraph spacing>
+        <Paragraph spacing variant="base/bright">
           Trigger.dev v3 is currently in Developer Preview and we’re operating a waitlist as we
           focus on the platform’s reliability and scaleability.
         </Paragraph>
-        <Paragraph spacing>
+        <Paragraph spacing variant="base/bright">
           For more info, check out our{" "}
           <TextLink href="https://trigger.dev/blog/v3-developer-preview-launch/">
             v3 blog post
           </TextLink>
           .
         </Paragraph>
-        <Button variant="primary/small" type="submit">
+        <Button variant="primary/medium" type="submit" className="mt-2">
           Request access
         </Button>
       </Form>

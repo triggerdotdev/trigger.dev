@@ -156,7 +156,7 @@ export default function NewOrganizationPage() {
               />
               <FormError id={projectName.errorId}>{projectName.error}</FormError>
             </InputGroup>
-            {canCreateV3Projects ? (
+            {organization.v2Enabled && canCreateV3Projects ? (
               <InputGroup>
                 <Label htmlFor={projectVersion.id}>Project version</Label>
                 <Select
@@ -179,8 +179,16 @@ export default function NewOrganizationPage() {
                 </Select>
                 <FormError id={projectVersion.errorId}>{projectVersion.error}</FormError>
               </InputGroup>
+            ) : canCreateV3Projects ? (
+              <>
+                <Callout variant="info">This will be a v3 project</Callout>
+                <input {...conform.input(projectVersion, { type: "hidden" })} value={"v3"} />
+              </>
             ) : (
-              <input {...conform.input(projectVersion, { type: "hidden" })} value="v2" />
+              <>
+                <Callout variant="info">This will be a v2 project</Callout>
+                <input {...conform.input(projectVersion, { type: "hidden" })} value={"v2"} />
+              </>
             )}
             <FormButtons
               confirmButton={
