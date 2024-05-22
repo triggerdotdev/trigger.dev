@@ -389,3 +389,18 @@ export const ImportEnvironmentVariablesRequestBody = z.object({
 export type ImportEnvironmentVariablesRequestBody = z.infer<
   typeof ImportEnvironmentVariablesRequestBody
 >;
+
+export const EnvironmentVariableResponseBody = z.object({
+  success: z.boolean(),
+});
+
+export const EnvironmentVariableValue = z.object({
+  value: z.string(),
+});
+
+export const EnvironmentVariable = z.object({
+  key: z.string(),
+  value: z.string(),
+});
+
+export const EnvironmentVariables = z.array(EnvironmentVariable);

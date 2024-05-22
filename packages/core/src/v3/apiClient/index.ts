@@ -6,9 +6,13 @@ import {
   BatchTriggerTaskRequestBody,
   BatchTriggerTaskResponse,
   CanceledRunResponse,
+  CreateEnvironmentVariableRequestBody,
   CreateScheduleOptions,
   CreateUploadPayloadUrlResponseBody,
   DeletedScheduleObject,
+  EnvironmentVariableResponseBody,
+  EnvironmentVariableValue,
+  EnvironmentVariables,
   ListScheduleOptions,
   ListSchedulesResult,
   ReplayRunResponse,
@@ -20,7 +24,8 @@ import {
   UpdateScheduleOptions,
 } from "../schemas";
 import { taskContext } from "../task-context-api";
-import { ZodFetchOptions, zodfetch } from "../zodfetch";
+import { ZodFetchOptions, isRecordLike, zodfetch, zodupload } from "../zodfetch";
+import { ImportEnvironmentVariablesParams } from "./types";
 
 export type TriggerOptions = {
   spanParentAsLink?: boolean;
@@ -232,6 +237,92 @@ export class ApiClient {
       method: "DELETE",
       headers: this.#getHeaders(false),
     });
+  }
+
+  listEnvVars(projectRef: string, slug: string) {
+    return zodfetch(
+      EnvironmentVariables,
+      `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      }
+    );
+  }
+
+  importEnvVars(projectRef: string, slug: string, body: ImportEnvironmentVariablesParams) {
+    if (isRecordLike(body.variables)) {
+      return zodfetch(
+        EnvironmentVariableResponseBody,
+        `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/import`,
+        {
+          method: "POST",
+          headers: this.#getHeaders(false),
+          body: JSON.stringify(body),
+        }
+      );
+    } else {
+      return zodupload(
+        EnvironmentVariableResponseBody,
+        `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/import`,
+        body,
+        {
+          method: "POST",
+          headers: this.#getHeaders(false),
+        }
+      );
+    }
+  }
+
+  retrieveEnvVar(projectRef: string, slug: string, key: string) {
+    return zodfetch(
+      EnvironmentVariableValue,
+      `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/${key}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      }
+    );
+  }
+
+  createEnvVar(projectRef: string, slug: string, body: CreateEnvironmentVariableRequestBody) {
+    return zodfetch(
+      EnvironmentVariableResponseBody,
+      `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  updateEnvVar(
+    projectRef: string,
+    slug: string,
+    key: string,
+    body: CreateEnvironmentVariableRequestBody
+  ) {
+    return zodfetch(
+      EnvironmentVariableResponseBody,
+      `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/${key}`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  deleteEnvVar(projectRef: string, slug: string, key: string) {
+    return zodfetch(
+      EnvironmentVariableResponseBody,
+      `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/${key}`,
+      {
+        method: "DELETE",
+        headers: this.#getHeaders(false),
+      }
+    );
   }
 
   #getHeaders(spanParentAsLink: boolean) {
