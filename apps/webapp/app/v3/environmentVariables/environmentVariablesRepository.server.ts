@@ -122,7 +122,7 @@ export class EnvironmentVariablesRepository implements Repository {
       if (existingVariableKeys.length > 0) {
         return {
           success: false as const,
-          error: `Some of the variables are already set for these environments`,
+          error: `Some of the variables are already set for these environments. Set overwrite to true to overwrite them.`,
           variableErrors: existingVariableKeys.map((val) => ({
             key: val.key,
             error: `Variable already set in ${val.environments

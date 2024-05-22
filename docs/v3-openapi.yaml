@@ -523,7 +523,7 @@ paths:
           source: |-
             import { envvars, configure } from "@trigger.dev/sdk/v3";
 
-            configure({ apiKey: "tr_pat_123456" });
+            configure({ secretKey: "tr_pat_123456" });
 
             const variables = await envvars.list("proj_yubjwjsfkxnylobaqvqz", "dev");
 
@@ -596,7 +596,7 @@ paths:
           source: |-
             import { envvars, configure } from "@trigger.dev/sdk/v3";
 
-            configure({ apiKey: "tr_pat_123456" });
+            configure({ secretKey: "tr_pat_123456" });
 
             await envvars.create("proj_yubjwjsfkxnylobaqvqz", "dev", {
               name: "SLACK_API_KEY",
@@ -690,10 +690,10 @@ paths:
           source: |-
             import { envvars, configure } from "@trigger.dev/sdk/v3";
 
-            configure({ apiKey: "tr_pat_123456" });
+            configure({ secretKey: "tr_pat_123456" });
 
             // Import variables from an array
-            await envvars.import("proj_yubjwjsfkxnylobaqvqz", "dev", {
+            await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
               variables: [
                 {
                   name: "SLACK_API_KEY",
@@ -704,7 +704,7 @@ paths:
             });
             
             // Import variables from a .env file
-            await envvars.import("proj_yubjwjsfkxnylobaqvqz", "dev", {
+            await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
               file: fs.createReadStream(".env"),
               overwrite: false
             });

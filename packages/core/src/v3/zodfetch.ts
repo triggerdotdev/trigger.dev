@@ -4,6 +4,7 @@ import { APIConnectionError, APIError } from "./apiErrors";
 import { RetryOptions } from "./schemas";
 import { calculateNextRetryDelay } from "./utils/retries";
 import { FormDataEncoder } from "form-data-encoder";
+import { Readable } from "stream";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,
@@ -26,6 +27,13 @@ export async function zodfetch<TResponseBodySchema extends z.ZodTypeAny>(
   return await _doZodFetch(schema, url, requestInit, options);
 }
 
+export class MultipartBody {
+  constructor(public body: any) {}
+  get [Symbol.toStringTag](): string {
+    return "MultipartBody";
+  }
+}
+
 export async function zodupload<
   TResponseBodySchema extends z.ZodTypeAny,
   TBody = Record<string, unknown>,
@@ -38,7 +46,6 @@ export async function zodupload<
 ): Promise<z.output<TResponseBodySchema>> {
   const form = await createForm(body);
   const encoder = new FormDataEncoder(form);
-  const headers = encoder.headers;
 
   const finalHeaders: Record<string, string> = {};
 
@@ -46,14 +53,18 @@ export async function zodupload<
     finalHeaders[key] = value as string;
   }
 
-  for (const [key, value] of Object.entries(headers)) {
+  for (const [key, value] of Object.entries(encoder.headers)) {
     finalHeaders[key] = value;
   }
+
+  finalHeaders["Content-Length"] = String(encoder.contentLength);
 
   const finalRequestInit: RequestInit = {
     ...requestInit,
     headers: finalHeaders,
-    body: form,
+    body: Readable.from(encoder) as any,
+    // @ts-expect-error
+    duplex: "half",
   };
 
   return await _doZodFetch(schema, url, finalRequestInit, options);
@@ -228,7 +239,12 @@ const addFormValue = async (form: FormData, key: string, value: unknown): Promis
   // TODO: make nested formats configurable
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
     form.append(key, String(value));
-  } else if (isUploadable(value)) {
+  } else if (
+    isUploadable(value) ||
+    isBlobLike(value) ||
+    value instanceof Buffer ||
+    value instanceof ArrayBuffer
+  ) {
     const file = await toFile(value);
     form.append(key, file as File);
   } else if (Array.isArray(value)) {
@@ -336,9 +352,6 @@ function propsForError(value: any): string {
 const isAsyncIterableIterator = (value: any): value is AsyncIterableIterator<unknown> =>
   value != null && typeof value === "object" && typeof value[Symbol.asyncIterator] === "function";
 
-import { ReadStream as FsReadStream } from "node:fs";
-import { Readable } from "node:stream";
-
 /**
  * Intended to match web.Blob, node.Blob, node-fetch.Blob, etc.
  */
@@ -372,7 +385,7 @@ export interface ResponseLike {
   blob(): Promise<BlobLike>;
 }
 
-export type Uploadable = FileLike | ResponseLike | FsReadStream;
+export type Uploadable = FileLike | ResponseLike | Readable;
 
 export const isResponseLike = (value: any): value is ResponseLike =>
   value != null &&
@@ -402,7 +415,7 @@ export const isBlobLike = (
   typeof value.slice === "function" &&
   typeof value.arrayBuffer === "function";
 
-export const isFsReadStream = (value: any): value is FsReadStream => value instanceof FsReadStream;
+export const isFsReadStream = (value: any): value is Readable => value instanceof Readable;
 
 export const isUploadable = (value: any): value is Uploadable => {
   return isFileLike(value) || isResponseLike(value) || isFsReadStream(value);
@@ -420,4 +433,5 @@ export const isRecordLike = (value: any): value is Record<string, string> =>
   value != null &&
   typeof value === "object" &&
   !Array.isArray(value) &&
+  Object.keys(value).length > 0 &&
   Object.keys(value).every((key) => typeof key === "string" && typeof value[key] === "string");

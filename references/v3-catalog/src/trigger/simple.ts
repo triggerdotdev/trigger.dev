@@ -1,5 +1,5 @@
 import "server-only";
-import { logger, task, wait } from "@trigger.dev/sdk/v3";
+import { envvars, logger, task, wait } from "@trigger.dev/sdk/v3";
 import { traceAsync } from "@/telemetry";
 
 export const simplestTask = task({
@@ -28,6 +28,18 @@ export const taskWithSpecialCharacters = task({
     return {
       message: "This task has special characters in its ID",
     };
+  },
+});
+
+export const updateEnvVars = task({
+  id: "update-env-vars",
+  run: async () => {
+    return await envvars.upload({
+      variables: await fetch(
+        "https://gist.githubusercontent.com/ericallam/7a1001c6b03986a74d0f8aad4fd890aa/raw/fe2bc4da82f3b17178d47f58ec1458af47af5035/.env"
+      ),
+      overwrite: true,
+    });
   },
 });
 

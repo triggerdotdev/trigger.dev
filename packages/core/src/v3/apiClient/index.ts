@@ -27,6 +27,8 @@ import { taskContext } from "../task-context-api";
 import { ZodFetchOptions, isRecordLike, zodfetch, zodupload } from "../zodfetch";
 import { ImportEnvironmentVariablesParams } from "./types";
 
+export type { ImportEnvironmentVariablesParams };
+
 export type TriggerOptions = {
   spanParentAsLink?: boolean;
 };

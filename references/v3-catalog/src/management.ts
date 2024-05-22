@@ -1,10 +1,63 @@
 import { tracer } from "./tracer";
-import { APIError, configure, runs, schedules } from "@trigger.dev/sdk/v3";
+import { APIError, configure, runs, schedules, envvars } from "@trigger.dev/sdk/v3";
 import { simpleChildTask } from "./trigger/subtasks";
 import dotenv from "dotenv";
 import { firstScheduledTask } from "./trigger/scheduled";
+import { createReadStream } from "node:fs";
 
 dotenv.config();
+
+async function uploadEnvVars() {
+  configure({
+    secretKey: process.env.TRIGGER_ACCESS_TOKEN,
+  });
+
+  const response1 = await envvars.upload("yubjwjsfkxnylobaqvqz", "dev", {
+    variables: {
+      MY_ENV_VAR: "MY_ENV_VAR_VALUE",
+    },
+    overwrite: true,
+  });
+
+  console.log("response1", response1);
+
+  const response2 = await envvars.upload("yubjwjsfkxnylobaqvqz", "dev", {
+    variables: createReadStream(".uploadable-env"),
+    overwrite: true,
+  });
+
+  console.log("response2", response2);
+
+  const response3 = await envvars.upload("yubjwjsfkxnylobaqvqz", "prod", {
+    variables: createReadStream(".uploadable-env"),
+    overwrite: true,
+  });
+
+  console.log("response3", response3);
+
+  const response4 = await envvars.upload("yubjwjsfkxnylobaqvqz", "prod", {
+    variables: await fetch(
+      "https://gist.githubusercontent.com/ericallam/7a1001c6b03986a74d0f8aad4fd890aa/raw/fe2bc4da82f3b17178d47f58ec1458af47af5035/.env"
+    ),
+    overwrite: true,
+  });
+
+  console.log("response4", response4);
+
+  const response5 = await envvars.upload("yubjwjsfkxnylobaqvqz", "prod", {
+    variables: new File(["IM_A_FILE=GREAT_FOR_YOU"], ".env"),
+    overwrite: true,
+  });
+
+  console.log("response5", response5);
+
+  const response6 = await envvars.upload("yubjwjsfkxnylobaqvqz", "prod", {
+    variables: Buffer.from("IN_BUFFER=TRUE"),
+    overwrite: true,
+  });
+
+  console.log("response6", response6);
+}
 
 export async function run() {
   await tracer.startActiveSpan("run", async (span) => {
@@ -88,4 +141,5 @@ export async function run() {
   });
 }
 
-run();
+// run();
+uploadEnvVars().catch(console.error);

@@ -394,6 +394,8 @@ export const EnvironmentVariableResponseBody = z.object({
   success: z.boolean(),
 });
 
+export type EnvironmentVariableResponseBody = z.infer<typeof EnvironmentVariableResponseBody>;
+
 export const EnvironmentVariableValue = z.object({
   value: z.string(),
 });

@@ -58,7 +58,7 @@ async function parseImportBody(request: Request): Promise<ImportEnvironmentVaria
   if (contentType.includes("multipart/form-data")) {
     const formData = await request.formData();
 
-    const file = formData.get("file");
+    const file = formData.get("variables");
     const overwrite = formData.get("overwrite") === "true";
 
     if (file instanceof File) {
