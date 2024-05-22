@@ -109,6 +109,7 @@ pnpm run build --filter trigger.dev
 
 ```sh
 cd references/v3-catalog
+cp .env.example .env
 pnpm exec triggerdev login -a http://localhost:3030
 ```
 
