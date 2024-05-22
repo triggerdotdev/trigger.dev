@@ -108,12 +108,13 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function NewOrganizationPage() {
-  const { organization, defaultVersion } = useTypedLoaderData<typeof loader>();
+  const { organization } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
-  const { v3Enabled } = useFeatures();
+  const { v3Enabled, isManagedCloud } = useFeatures();
 
   const canCreateV3Projects = organization.v3Enabled && v3Enabled;
-  const canCreateProjects = organization.v2Enabled || canCreateV3Projects;
+  const canCreateV2Projects = organization.v2Enabled || !isManagedCloud;
+  const canCreateProjects = canCreateV2Projects || canCreateV3Projects;
 
   if (!canCreateProjects) {
     return (
@@ -159,7 +160,7 @@ export default function NewOrganizationPage() {
               />
               <FormError id={projectName.errorId}>{projectName.error}</FormError>
             </InputGroup>
-            {organization.v2Enabled && canCreateV3Projects ? (
+            {canCreateV2Projects && canCreateV3Projects ? (
               <InputGroup>
                 <Label htmlFor={projectVersion.id}>Project version</Label>
                 <Select
