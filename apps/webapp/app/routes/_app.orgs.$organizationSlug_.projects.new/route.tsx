@@ -16,13 +16,17 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { useFeatures } from "~/hooks/useFeatures";
+import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { createProject } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
 import { OrganizationParamsSchema, organizationPath, projectPath } from "~/utils/pathBuilder";
+import { RequestV3Access } from "../resources.orgs.$organizationSlug.v3-access";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -34,6 +38,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       id: true,
       title: true,
       v3Enabled: true,
+      v2Enabled: true,
+      hasRequestedV3: true,
       _count: {
         select: {
           projects: {
@@ -57,6 +63,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       slug: organizationSlug,
       projectsCount: organization._count.projects,
       v3Enabled: organization.v3Enabled,
+      v2Enabled: organization.v2Enabled,
+      hasRequestedV3: organization.hasRequestedV3,
     },
     defaultVersion: url.searchParams.get("version") ?? "v2",
   });
@@ -103,6 +111,16 @@ export default function NewOrganizationPage() {
   const { v3Enabled } = useFeatures();
 
   const canCreateV3Projects = organization.v3Enabled && v3Enabled;
+  const canCreateProjects = organization.v2Enabled || canCreateV3Projects;
+
+  if (!canCreateProjects) {
+    return (
+      <RequestV3Access
+        hasRequestedV3={organization.hasRequestedV3}
+        organizationSlug={organization.slug}
+      />
+    );
+  }
 
   const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",
@@ -119,7 +137,7 @@ export default function NewOrganizationPage() {
         <FormTitle
           LeadingIcon="folder"
           title="Create a new project"
-          description={`This will create a new project in your "${organization.title}" organization. `}
+          description={`This will create a new project in your "${organization.title}" organization.`}
         />
         <Form method="post" {...form.props}>
           {organization.projectsCount === 0 && (
