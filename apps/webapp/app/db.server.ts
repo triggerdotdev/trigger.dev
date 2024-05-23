@@ -70,7 +70,9 @@ export { Prisma };
 
 export const prisma = singleton("prisma", getClient);
 
-export const $replica: Omit<PrismaClient, "$transaction"> = singleton(
+export type PrismaReplicaClient = Omit<PrismaClient, "$transaction">;
+
+export const $replica: PrismaReplicaClient = singleton(
   "replica",
   () => getReplicaClient() ?? prisma
 );
