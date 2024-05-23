@@ -1898,6 +1898,9 @@ model TaskEvent {
   payloadType String?
 
   createdAt DateTime @default(now())
+
+  /// Used on the run page
+  @@index([traceId])
 }
 
 enum TaskEventLevel {
