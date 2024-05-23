@@ -157,16 +157,18 @@ export function authorizationRateLimitMiddleware({
     }
 
     res.setHeader("Content-Type", "application/problem+json");
+    const secondsUntilReset = Math.max(0, (reset - new Date().getTime()) / 1000);
     return res.status(429).send(
       JSON.stringify(
         {
           title: "Rate Limit Exceeded",
           status: 429,
           type: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429",
-          detail: `Rate limit exceeded ${remaining}/${limit} requests remaining. Retry after ${reset} seconds.`,
-          reset: reset,
-          limit: limit,
-          error: `Rate limit exceeded ${remaining}/${limit} requests remaining. Retry after ${reset} seconds.`,
+          detail: `Rate limit exceeded ${remaining}/${limit} requests remaining. Retry in ${secondsUntilReset} seconds.`,
+          reset,
+          limit,
+          secondsUntilReset,
+          error: `Rate limit exceeded ${remaining}/${limit} requests remaining. Retry in ${secondsUntilReset} seconds.`,
         },
         null,
         2
