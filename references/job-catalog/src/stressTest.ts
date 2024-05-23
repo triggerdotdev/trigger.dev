@@ -22,14 +22,14 @@ client.defineJob({
       await io.runTask(
         `task-${i}`,
         async (task) => {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+
           return {
             output: "a".repeat(30),
           };
         },
         { name: `Task ${i}` }
       );
-
-      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 
     // Now do a wait for 5 seconds
