@@ -904,7 +904,7 @@ async function zodfetchWithVersions<
       body: versionedSchema.parse(jsonBody),
     };
   } catch (error) {
-    if (error instanceof UnknownVersionError) {
+    if (error instanceof UnknownVersionError || error instanceof AutoYieldRateLimitError) {
       throw error;
     }
 
@@ -1031,6 +1031,10 @@ async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends 
 
     return schema.parse(jsonBody);
   } catch (error) {
+    if (error instanceof AutoYieldRateLimitError) {
+      throw error;
+    }
+
     if (retryCount < MAX_RETRIES) {
       // retry with exponential backoff and jitter
       const delay = exponentialBackoff(retryCount + 1);
