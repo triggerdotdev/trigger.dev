@@ -30,7 +30,7 @@ export class SpanPresenter extends BasePresenter {
       throw new Error("Project not found");
     }
 
-    const run = await this._replica.taskRun.findFirst({
+    const run = await this._prisma.taskRun.findFirst({
       select: {
         traceId: true,
       },
