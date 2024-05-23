@@ -44,6 +44,7 @@ import { env } from "node:process";
 
 import { z } from "zod";
 import { KeyValueStoreClient } from "./store/keyValueStoreClient";
+import { AutoYieldRateLimitError } from "./errors";
 
 export type ApiClientOptions = {
   apiKey?: string;
@@ -818,6 +819,15 @@ async function zodfetchWithVersions<
       return;
     }
 
+    //rate limit, so we want to reschedule
+    if (response.status === 429) {
+      //unix timestamp in milliseconds
+      const retryAfter = response.headers.get("x-ratelimit-reset");
+      if (retryAfter) {
+        throw new AutoYieldRateLimitError(parseInt(retryAfter));
+      }
+    }
+
     if (response.status >= 400 && response.status < 500) {
       const rawBody = await safeResponseText(response);
       const body = safeJsonParse(rawBody);
@@ -985,6 +995,15 @@ async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends 
     ) {
       // @ts-ignore
       return;
+    }
+
+    //rate limit, so we want to reschedule
+    if (response.status === 429) {
+      //unix timestamp in milliseconds
+      const retryAfter = response.headers.get("x-ratelimit-reset");
+      if (retryAfter) {
+        throw new AutoYieldRateLimitError(parseInt(retryAfter));
+      }
     }
 
     if (response.status >= 400 && response.status < 500) {
