@@ -4,6 +4,14 @@ import {
   findEnvironmentByApiKey,
   findEnvironmentByPublicApiKey,
 } from "~/models/runtimeEnvironment.server";
+import {
+  PersonalAccessTokenAuthenticationResult,
+  authenticateApiRequestWithPersonalAccessToken,
+  isPersonalAccessToken,
+} from "./personalAccessToken.server";
+import { prisma } from "~/db.server";
+import { json } from "@remix-run/server-runtime";
+import { findProjectByRef } from "~/models/project.server";
 
 type Optional<T, K extends keyof T> = Prettify<Omit<T, K> & Partial<Pick<T, K>>>;
 
@@ -91,4 +99,113 @@ export function getApiKeyFromRequest(request: Request) {
 export function getApiKeyResult(apiKey: string) {
   const type = isPublicApiKey(apiKey) ? ("PUBLIC" as const) : ("PRIVATE" as const);
   return { apiKey, type };
+}
+
+export type DualAuthenticationResult =
+  | {
+      type: "personalAccessToken";
+      result: PersonalAccessTokenAuthenticationResult;
+    }
+  | {
+      type: "apiKey";
+      result: ApiAuthenticationResult;
+    };
+
+export async function authenticateProjectApiKeyOrPersonalAccessToken(
+  request: Request
+): Promise<DualAuthenticationResult | undefined> {
+  const apiKey = getApiKeyFromRequest(request);
+  if (!apiKey) {
+    return;
+  }
+
+  if (isPersonalAccessToken(apiKey)) {
+    const result = await authenticateApiRequestWithPersonalAccessToken(request);
+
+    if (!result) {
+      return;
+    }
+
+    return {
+      type: "personalAccessToken",
+      result,
+    };
+  }
+
+  const result = await authenticateApiKey(apiKey, { allowPublicKey: false });
+
+  if (!result) {
+    return;
+  }
+
+  return {
+    type: "apiKey",
+    result,
+  };
+}
+
+export async function authenticatedEnvironmentForAuthentication(
+  auth: DualAuthenticationResult,
+  projectRef: string,
+  slug: string
+): Promise<AuthenticatedEnvironment> {
+  switch (auth.type) {
+    case "apiKey": {
+      if (auth.result.environment.project.externalRef !== projectRef) {
+        throw json(
+          {
+            error:
+              "Invalid project ref for this API key. Make sure you are using an API key associated with that project.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (auth.result.environment.slug !== slug) {
+        throw json(
+          {
+            error:
+              "Invalid environment slug for this API key. Make sure you are using an API key associated with that environment.",
+          },
+          { status: 400 }
+        );
+      }
+
+      return auth.result.environment;
+    }
+    case "personalAccessToken": {
+      const user = await prisma.user.findUnique({
+        where: {
+          id: auth.result.userId,
+        },
+      });
+
+      if (!user) {
+        throw json({ error: "Invalid or Missing API key" }, { status: 401 });
+      }
+
+      const project = await findProjectByRef(projectRef, user.id);
+
+      if (!project) {
+        throw json({ error: "Project not found" }, { status: 404 });
+      }
+
+      const environment = await prisma.runtimeEnvironment.findFirst({
+        where: {
+          projectId: project.id,
+          slug: slug,
+        },
+        include: {
+          project: true,
+          organization: true,
+        },
+      });
+
+      if (!environment) {
+        throw json({ error: "Environment not found" }, { status: 404 });
+      }
+
+      return environment;
+    }
+  }
 }

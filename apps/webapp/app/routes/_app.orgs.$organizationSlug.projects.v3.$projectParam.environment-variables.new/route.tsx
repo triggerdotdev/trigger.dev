@@ -70,7 +70,7 @@ const Variable = z.object({
 type Variable = z.infer<typeof Variable>;
 
 const schema = z.object({
-  overwrite: z.preprocess((i) => {
+  override: z.preprocess((i) => {
     if (i === "true") return true;
     if (i === "false") return false;
     return;
@@ -115,6 +115,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const project = await prisma.project.findUnique({
     where: {
       slug: params.projectParam,
+      organization: {
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
     },
     select: {
       id: true,
@@ -126,7 +133,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const repository = new EnvironmentVariablesRepository(prisma);
-  const result = await repository.create(project.id, userId, submission.value);
+  const result = await repository.create(project.id, submission.value);
 
   if (!result.success) {
     if (result.variableErrors) {
@@ -249,7 +256,7 @@ export default function Page() {
                     type="submit"
                     variant="primary/small"
                     disabled={isLoading}
-                    name="overwrite"
+                    name="override"
                     value="false"
                   >
                     {isLoading ? "Saving" : "Save"}
@@ -257,10 +264,10 @@ export default function Page() {
                   <Button
                     variant="secondary/small"
                     disabled={isLoading}
-                    name="overwrite"
+                    name="override"
                     value="true"
                   >
-                    {isLoading ? "Overwriting" : "Overwrite"}
+                    {isLoading ? "Overriding" : "Override"}
                   </Button>
                 </div>
               }

@@ -363,3 +363,50 @@ export const RetrieveRunResponse = z.object({
 });
 
 export type RetrieveRunResponse = z.infer<typeof RetrieveRunResponse>;
+
+export const CreateEnvironmentVariableRequestBody = z.object({
+  name: z.string(),
+  value: z.string(),
+});
+
+export type CreateEnvironmentVariableRequestBody = z.infer<
+  typeof CreateEnvironmentVariableRequestBody
+>;
+
+export const UpdateEnvironmentVariableRequestBody = z.object({
+  value: z.string(),
+});
+
+export type UpdateEnvironmentVariableRequestBody = z.infer<
+  typeof UpdateEnvironmentVariableRequestBody
+>;
+
+export const ImportEnvironmentVariablesRequestBody = z.object({
+  variables: z.record(z.string()),
+  override: z.boolean().optional(),
+});
+
+export type ImportEnvironmentVariablesRequestBody = z.infer<
+  typeof ImportEnvironmentVariablesRequestBody
+>;
+
+export const EnvironmentVariableResponseBody = z.object({
+  success: z.boolean(),
+});
+
+export type EnvironmentVariableResponseBody = z.infer<typeof EnvironmentVariableResponseBody>;
+
+export const EnvironmentVariableValue = z.object({
+  value: z.string(),
+});
+
+export type EnvironmentVariableValue = z.infer<typeof EnvironmentVariableValue>;
+
+export const EnvironmentVariable = z.object({
+  name: z.string(),
+  value: z.string(),
+});
+
+export const EnvironmentVariables = z.array(EnvironmentVariable);
+
+export type EnvironmentVariables = z.infer<typeof EnvironmentVariables>;

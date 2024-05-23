@@ -55,6 +55,7 @@ import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { escapeImportPath } from "../utilities/windows";
 import { updateTriggerPackages } from "./update";
 import { esbuildDecorators } from "@anatine/esbuild-decorators";
+import { callResolveEnvVars } from "../utilities/resolveEnvVars";
 
 let apiClient: CliApiClient | undefined;
 
@@ -162,7 +163,8 @@ async function startDev(
     async function getDevReactElement(
       configParam: ResolvedConfig,
       authorization: { apiUrl: string; accessToken: string },
-      configPath?: string
+      configPath?: string,
+      configModule?: any
     ) {
       const accessToken = authorization.accessToken;
       const apiUrl = authorization.apiUrl;
@@ -201,6 +203,7 @@ async function startDev(
           debuggerOn={options.debugger}
           debugOtel={options.debugOtel}
           configPath={configPath}
+          configModule={configModule}
         />
       );
     }
@@ -209,7 +212,8 @@ async function startDev(
       await getDevReactElement(
         config.config,
         authorization,
-        config.status === "file" ? config.path : undefined
+        config.status === "file" ? config.path : undefined,
+        config.status === "file" ? config.module : undefined
       )
     );
 
@@ -236,6 +240,7 @@ type DevProps = {
   debuggerOn: boolean;
   debugOtel: boolean;
   configPath?: string;
+  configModule?: any;
 };
 
 function useDev({
@@ -248,6 +253,7 @@ function useDev({
   debuggerOn,
   debugOtel,
   configPath,
+  configModule,
 }: DevProps) {
   useEffect(() => {
     const websocketUrl = new URL(apiUrl);
@@ -345,6 +351,8 @@ function useDev({
 
     let ctx: BuildContext | undefined;
 
+    let firstBuild = true;
+
     async function runBuild() {
       if (ctx) {
         // This will stop the watching
@@ -385,8 +393,6 @@ function useDev({
           `const importedConfig = undefined; const handleError = undefined;`
         );
       }
-
-      let firstBuild = true;
 
       logger.log(chalkGrey("○ Building background worker…"));
 
@@ -512,6 +518,7 @@ function useDev({
                   },
                   debuggerOn,
                   debugOtel,
+                  resolveEnvVariables: createResolveEnvironmentVariablesFunction(configModule),
                 });
 
                 try {
@@ -869,4 +876,32 @@ async function findPnpmNodeModulesPath(): Promise<string | undefined> {
     },
     { type: "directory" }
   );
+}
+
+let hasResolvedEnvVars = false;
+let resolvedEnvVars: Record<string, string> = {};
+
+function createResolveEnvironmentVariablesFunction(configModule?: any) {
+  return async (
+    env: Record<string, string>,
+    worker: BackgroundWorker
+  ): Promise<Record<string, string> | undefined> => {
+    if (hasResolvedEnvVars) {
+      return resolvedEnvVars;
+    }
+
+    const $resolvedEnvVars = await callResolveEnvVars(
+      configModule,
+      env,
+      "dev",
+      worker.params.projectConfig.project
+    );
+
+    if ($resolvedEnvVars) {
+      resolvedEnvVars = $resolvedEnvVars.variables;
+      hasResolvedEnvVars = true;
+    }
+
+    return resolvedEnvVars;
+  };
 }

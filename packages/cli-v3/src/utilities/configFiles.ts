@@ -122,6 +122,7 @@ export type ReadConfigResult =
       status: "file";
       config: ResolvedConfig;
       path: string;
+      module?: any;
     }
   | {
       status: "in-memory";
@@ -183,6 +184,14 @@ export async function readConfig(
         tsx: false,
         force: false,
       }),
+      {
+        name: "native-node-modules",
+        setup(build) {
+          const opts = build.initialOptions;
+          opts.loader = opts.loader || {};
+          opts.loader[".node"] = "copy";
+        },
+      },
     ],
   });
 
@@ -202,6 +211,7 @@ export async function readConfig(
       status: "file",
       config: await resolveConfig(absoluteDir, config),
       path: configPath,
+      module: userConfigModule,
     };
   } catch (error) {
     return {

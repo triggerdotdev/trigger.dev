@@ -14,7 +14,7 @@ import { execa } from "execa";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, posix, relative } from "node:path";
+import { dirname, join, posix, relative, resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import terminalLink from "terminal-link";
 import invariant from "tiny-invariant";
@@ -30,7 +30,7 @@ import {
   tracer,
   wrapCommandAction,
 } from "../cli/common.js";
-import { readConfig } from "../utilities/configFiles.js";
+import { ReadConfigResult, readConfig } from "../utilities/configFiles.js";
 import { createTempDir, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import {
@@ -63,6 +63,7 @@ import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { safeJsonParse } from "../utilities/safeJsonParse";
 import { escapeImportPath, spinner } from "../utilities/windows";
 import { updateTriggerPackages } from "./update";
+import { callResolveEnvVars } from "../utilities/resolveEnvVars";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -257,6 +258,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   );
 
   logger.debug("Compilation result", { compilation });
+
+  // Optional Step 1.1: resolve environment variables
+  await resolveEnvironmentVariables(resolvedConfig, environmentClient, options);
 
   // Step 2: Initialize a deployment on the server (response will have everything we need to build an image)
   const deploymentResponse = await environmentClient.initializeDeployment({
@@ -1387,6 +1391,92 @@ async function compileProject(
       span.end();
 
       throw e;
+    }
+  });
+}
+
+async function resolveEnvironmentVariables(
+  config: ReadConfigResult,
+  apiClient: CliApiClient,
+  options: DeployCommandOptions
+) {
+  if (config.status !== "file") {
+    return;
+  }
+
+  if (!config.module || typeof config.module.resolveEnvVars !== "function") {
+    return;
+  }
+
+  const projectConfig = config.config;
+
+  return await tracer.startActiveSpan("resolveEnvironmentVariables", async (span) => {
+    try {
+      const $spinner = spinner();
+      $spinner.start("Resolving environment variables");
+
+      let processEnv: Record<string, string | undefined> = {
+        ...process.env,
+      };
+
+      // Step 1: Get existing env vars from the apiClient
+      const environmentVariables = await apiClient.getEnvironmentVariables(projectConfig.project);
+
+      if (environmentVariables.success) {
+        processEnv = {
+          ...processEnv,
+          ...environmentVariables.data.variables,
+        };
+      }
+
+      logger.debug("Existing environment variables", {
+        keys: Object.keys(processEnv),
+      });
+
+      // Step 2: Call the resolveEnvVars function with the existing env vars (and process.env)
+      const resolvedEnvVars = await callResolveEnvVars(
+        config.module,
+        processEnv,
+        options.env,
+        projectConfig.project
+      );
+
+      // Step 3: Upload the new env vars via the apiClient
+      if (resolvedEnvVars) {
+        const total = Object.keys(resolvedEnvVars.variables).length;
+
+        logger.debug("Resolved env vars", {
+          keys: Object.keys(resolvedEnvVars.variables),
+        });
+
+        if (total > 0) {
+          $spinner.message(
+            `Syncing ${total} environment variable${total > 1 ? "s" : ""} with the server`
+          );
+
+          const uploadResult = await apiClient.importEnvVars(projectConfig.project, options.env, {
+            variables: resolvedEnvVars.variables,
+            override:
+              typeof resolvedEnvVars.override === "boolean" ? resolvedEnvVars.override : true,
+          });
+
+          if (uploadResult.success) {
+            $spinner.stop(`${total} environment variable${total > 1 ? "s" : ""} synced`);
+          } else {
+            $spinner.stop("Failed to sync environment variables");
+
+            throw new Error(uploadResult.error);
+          }
+        } else {
+          $spinner.stop("No environment variables to sync");
+        }
+      }
+    } catch (e) {
+      recordSpanException(span, e);
+
+      throw e;
+    } finally {
+      span.end();
     }
   });
 }
