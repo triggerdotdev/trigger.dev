@@ -17,11 +17,13 @@ export class SpanPresenter {
     projectSlug,
     organizationSlug,
     spanId,
+    runFriendlyId,
   }: {
     userId: string;
     projectSlug: string;
     organizationSlug: string;
     spanId: string;
+    runFriendlyId: string;
   }) {
     const project = await this.#prismaClient.project.findUnique({
       where: {
@@ -33,7 +35,20 @@ export class SpanPresenter {
       throw new Error("Project not found");
     }
 
-    const span = await eventRepository.getSpan(spanId);
+    const run = await this.#prismaClient.taskRun.findFirst({
+      select: {
+        traceId: true,
+      },
+      where: {
+        friendlyId: runFriendlyId,
+      },
+    });
+
+    if (!run) {
+      return;
+    }
+
+    const span = await eventRepository.getSpan(spanId, run.traceId);
 
     if (!span) {
       return;

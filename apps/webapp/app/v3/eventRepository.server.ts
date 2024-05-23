@@ -101,9 +101,26 @@ export type QueryOptions = Prisma.TaskEventWhereInput;
 
 export type TaskEventRecord = TaskEvent;
 
-export type QueriedEvent = TaskEvent;
+export type QueriedEvent = Prisma.TaskEventGetPayload<{
+  select: {
+    id: true;
+    spanId: true;
+    parentId: true;
+    runId: true;
+    idempotencyKey: true;
+    message: true;
+    style: true;
+    startTime: true;
+    duration: true;
+    isError: true;
+    isPartial: true;
+    isCancelled: true;
+    level: true;
+    events: true;
+  };
+}>;
 
-export type PreparedEvent = Omit<TaskEventRecord, "events" | "style" | "duration"> & {
+export type PreparedEvent = Omit<QueriedEvent, "events" | "style" | "duration"> & {
   duration: number;
   events: SpanEvents;
   style: TaskEventStyle;
@@ -350,6 +367,22 @@ export class EventRepository {
 
   public async getTraceSummary(traceId: string): Promise<TraceSummary | undefined> {
     const events = await this.db.taskEvent.findMany({
+      select: {
+        id: true,
+        spanId: true,
+        parentId: true,
+        runId: true,
+        idempotencyKey: true,
+        message: true,
+        style: true,
+        startTime: true,
+        duration: true,
+        isError: true,
+        isPartial: true,
+        isCancelled: true,
+        level: true,
+        events: true,
+      },
       where: {
         traceId,
       },
@@ -407,21 +440,8 @@ export class EventRepository {
 
   // A Span can be cancelled if it is partial and has a parent that is cancelled
   // And a span's duration, if it is partial and has a cancelled parent, is the time between the start of the span and the time of the cancellation event of the parent
-  public async getSpan(spanId: string) {
-    const traceSearch = await this.db.taskEvent.findFirst({
-      where: {
-        spanId,
-      },
-      select: {
-        traceId: true,
-      },
-    });
-
-    if (!traceSearch) {
-      return;
-    }
-
-    const traceSummary = await this.getTraceSummary(traceSearch.traceId);
+  public async getSpan(spanId: string, traceId: string) {
+    const traceSummary = await this.getTraceSummary(traceId);
 
     const span = traceSummary?.spans.find((span) => span.id === spanId);
 
