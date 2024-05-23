@@ -406,9 +406,10 @@ model RuntimeEnvironment {
   taskScheduleInstances      TaskScheduleInstance[]
   alerts                     ProjectAlert[]
 
-  sessions         RuntimeEnvironmentSession[]
-  currentSession   RuntimeEnvironmentSession?  @relation("currentSession", fields: [currentSessionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  currentSessionId String?
+  sessions             RuntimeEnvironmentSession[]
+  currentSession       RuntimeEnvironmentSession?  @relation("currentSession", fields: [currentSessionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  currentSessionId     String?
+  taskRunNumberCounter TaskRunNumberCounter[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -1730,9 +1731,23 @@ model TaskRunDependency {
   updatedAt DateTime @updatedAt
 }
 
+/// deprecated, we hadn't included the project id in the unique constraint
 model TaskRunCounter {
   taskIdentifier String @id
   lastNumber     Int    @default(0)
+}
+
+/// Used for the TaskRun number (e.g. #1,421)
+model TaskRunNumberCounter {
+  id String @id @default(cuid())
+
+  taskIdentifier String
+  environment    RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId  String
+
+  lastNumber Int @default(0)
+
+  @@unique([taskIdentifier, environmentId])
 }
 
 model TaskTag {
