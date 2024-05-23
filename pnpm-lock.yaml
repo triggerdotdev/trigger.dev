@@ -3068,6 +3068,9 @@ importers:
       '@ffprobe-installer/ffprobe':
         specifier: ^2.1.2
         version: 2.1.2
+      '@infisical/sdk':
+        specifier: ^2.1.9
+        version: 2.1.9
       '@opentelemetry/api':
         specifier: 1.4.1
         version: 1.4.1
@@ -7830,6 +7833,132 @@ packages:
 
   /@humanwhocodes/object-schema@1.2.1:
     resolution: {integrity: sha512-ZnQMnLV4e7hDlUvw8H+U8ASL02SS2Gn6+9Ac3wGGLIe7+je2AeAOxPY+izIPJDfFDb7eDjev0Us8MO1iFRN8hA==}
+
+  /@infisical/sdk-android-arm-eabi@2.1.9:
+    resolution: {integrity: sha512-tx0y9efMOmqxdw152BjAxpDcKhlURKftg20aAGUwHxgHaHtqJ1jHaZZ1B3Eo019NB+tDc/ynU1TpjIRKh28kxw==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [android]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@infisical/sdk-android-arm64@2.1.9:
+    resolution: {integrity: sha512-kheXrht4rvEb6F7t9Xu821Pdm6ddzvB51NZjSiyIRwRDqv63HJEYr+MEd7ynIgux0JuMPQZIxmsyRZ5p/NDuFw==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [android]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@infisical/sdk-darwin-arm64@2.1.9:
+    resolution: {integrity: sha512-qjsg67AKZYpjqG2DzJ/OAr+9thDT0YJg49ULknoBO+yaa6fT7PFRy682yRqnbJjg7vxRObXAyWcXSYjls+D4Lw==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [darwin]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@infisical/sdk-darwin-x64@2.1.9:
+    resolution: {integrity: sha512-ErvwcR095VFIzCrXFyOCuED1jWltpX7S1et6WySdTsA811hLp6Txy/S57YNeGLJu/birVwrJdYbksVWdd+bqkQ==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [darwin]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@infisical/sdk-linux-arm-gnueabihf@2.1.9:
+    resolution: {integrity: sha512-2w0EVQc1Xq7ZE6nDsMwBVkaUwTuL0DIdwWdqxVZjo8jn26jwlhSOStxtbrk/cnhtWMQysQ/xKUI+0zZ/T32T3g==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@infisical/sdk-linux-arm64-gnu@2.1.9:
+    resolution: {integrity: sha512-5DMG5CJxX/wlWDyG3+cy1UkZAYuqt1OOEWwx3GNLU656RQ47AzwDFkvyiT9lalIihPHJFDN55hhSb002ru/zPw==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@infisical/sdk-linux-arm64-musl@2.1.9:
+    resolution: {integrity: sha512-61oxqGh9Ih/d7igtduKS2ZjkZ4NU7PjcNDgK8IUwP6kruTQdOEAiNyAWChDx75zvJExvztjdpeczj62SHxmsRw==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@infisical/sdk-linux-x64-gnu@2.1.9:
+    resolution: {integrity: sha512-X38Z4Q+GT0QU8nbRuWl3zyBv06Rfz1aWpewopxL3jahbKGoV8DaITDIaagVhwFl6YV5mMOLzXis5XrIMBJ6tLw==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@infisical/sdk-linux-x64-musl@2.1.9:
+    resolution: {integrity: sha512-8RuL3MNSr2G/Xo79kdKHddxlprVOn4VmCbNG7K2VoY/ytUCGy8bCp5BrkdZOIr1jGm7GlD8eq1dXQkHa3Rn0og==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@infisical/sdk-win32-arm64-msvc@2.1.9:
+    resolution: {integrity: sha512-IUnFDIUFXFRUJ0B/wM32xGWu6Xz4w7GAw+75g9AYv1Ol+LtpbzoDcToh0IUFPsNpvIaOUZn1zxUUWsteWlAy3Q==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [win32]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@infisical/sdk-win32-ia32-msvc@2.1.9:
+    resolution: {integrity: sha512-pDMpuP6X3GTSjzeahvCAscA0GBEkpMic0rwY+FdAmDcAX5SKoZ1pbRvcrMpAd4HMxfyLGeISuvzZ6pdMAowG5g==}
+    engines: {node: '>= 10'}
+    cpu: [ia32]
+    os: [win32]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@infisical/sdk-win32-x64-msvc@2.1.9:
+    resolution: {integrity: sha512-nrIfVPZPTJX85+8PZmZoA/Sk8rKpORzsYUTZ3zyqdfKAzQCpl587JXWCa5hud0ZWRw8SZuBYY06f9b75N+enyA==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [win32]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /@infisical/sdk@2.1.9:
+    resolution: {integrity: sha512-Ds6W4huyjiEnDisf2UJyVugTpCapjHB4RvL69hSCi/raH7NKITff1R+ifWktQJ1cx7hFAE9wi+U0vRrW+WhUMA==}
+    engines: {node: '>= 10'}
+    optionalDependencies:
+      '@infisical/sdk-android-arm-eabi': 2.1.9
+      '@infisical/sdk-android-arm64': 2.1.9
+      '@infisical/sdk-darwin-arm64': 2.1.9
+      '@infisical/sdk-darwin-x64': 2.1.9
+      '@infisical/sdk-linux-arm-gnueabihf': 2.1.9
+      '@infisical/sdk-linux-arm64-gnu': 2.1.9
+      '@infisical/sdk-linux-arm64-musl': 2.1.9
+      '@infisical/sdk-linux-x64-gnu': 2.1.9
+      '@infisical/sdk-linux-x64-musl': 2.1.9
+      '@infisical/sdk-win32-arm64-msvc': 2.1.9
+      '@infisical/sdk-win32-ia32-msvc': 2.1.9
+      '@infisical/sdk-win32-x64-msvc': 2.1.9
+    dev: false
 
   /@inquirer/confirm@3.0.0:
     resolution: {integrity: sha512-LHeuYP1D8NmQra1eR4UqvZMXwxEdDXyElJmmZfU44xdNLL6+GcQBS0uE16vyfZVjH8c22p9e+DStROfE/hyHrg==}
@@ -33371,7 +33500,7 @@ packages:
       bs-logger: 0.2.6
       esbuild: 0.19.11
       fast-json-stable-stringify: 2.1.0
-      jest: 29.6.2(@types/node@20.12.7)
+      jest: 29.6.2(@types/node@18.15.13)
       jest-util: 29.6.2
       json5: 2.2.3
       lodash.memoize: 4.1.2

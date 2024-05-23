@@ -37,6 +37,7 @@ import { safeDeleteFileSync } from "../../utilities/fileSystem.js";
 import { installPackages } from "../../utilities/installPackages.js";
 import { logger } from "../../utilities/logger.js";
 import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors.js";
+import { env } from "node:process";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -263,7 +264,12 @@ export type BackgroundWorkerParams = {
   projectConfig: ResolvedConfig;
   debuggerOn: boolean;
   debugOtel?: boolean;
+  resolveEnvVariables?: (
+    env: Record<string, string>,
+    worker: BackgroundWorker
+  ) => Promise<Record<string, string> | undefined>;
 };
+
 export class BackgroundWorker {
   private _initialized: boolean = false;
   private _handler = new ZodMessageHandler({
@@ -280,9 +286,11 @@ export class BackgroundWorker {
 
   private _closed: boolean = false;
 
+  private _fullEnv: Record<string, string> = {};
+
   constructor(
     public path: string,
-    private params: BackgroundWorkerParams
+    public params: BackgroundWorkerParams
   ) {}
 
   close() {
@@ -320,19 +328,34 @@ export class BackgroundWorker {
 
     const cwd = dirname(this.path);
 
-    const fullEnv = {
+    this._fullEnv = {
       ...this.params.env,
       ...this.#readEnvVars(),
       ...(this.params.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
     };
 
-    logger.debug("Initializing worker", { path: this.path, cwd, fullEnv });
+    let resolvedEnvVars: Record<string, string> = {};
+
+    if (this.params.resolveEnvVariables) {
+      const resolvedEnv = await this.params.resolveEnvVariables(this._fullEnv, this);
+
+      if (resolvedEnv) {
+        resolvedEnvVars = resolvedEnv;
+      }
+    }
+
+    this._fullEnv = {
+      ...this._fullEnv,
+      ...resolvedEnvVars,
+    };
+
+    logger.debug("Initializing worker", { path: this.path, cwd, fullEnv: this._fullEnv });
 
     this.tasks = await new Promise<Array<TaskMetadataWithFilePath>>((resolve, reject) => {
       const child = fork(this.path, {
         stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
         cwd,
-        env: fullEnv,
+        env: this._fullEnv,
       });
 
       // Set a timeout to kill the child process if it doesn't respond
@@ -404,9 +427,8 @@ export class BackgroundWorker {
         payload.execution,
         this.path,
         {
-          ...this.params.env,
+          ...this._fullEnv,
           ...(payload.environment ?? {}),
-          ...this.#readEnvVars(),
         },
         this.metadata,
         this.params

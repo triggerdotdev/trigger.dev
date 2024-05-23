@@ -2,7 +2,7 @@ import { BlobLikePart, Uploadable } from "../zodfetch";
 
 export interface ImportEnvironmentVariablesParams {
   /**
-   * The variables to be imported. If a variable with the same key already exists, it will be overwritten when `overwrite` is `true`.
+   * The variables to be imported. If a variable with the same key already exists, it will be overwritten when `override` is `true`.
    *
    * There are two ways to specify the variables:
    *
@@ -11,5 +11,14 @@ export interface ImportEnvironmentVariablesParams {
    */
   variables: Uploadable | BlobLikePart | Record<string, string>;
 
-  overwrite?: boolean;
+  override?: boolean;
+}
+
+export interface CreateEnvironmentVariableParams {
+  name: string;
+  value: string;
+}
+
+export interface UpdateEnvironmentVariableParams {
+  value: string;
 }

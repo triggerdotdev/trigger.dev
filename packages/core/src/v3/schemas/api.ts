@@ -383,7 +383,7 @@ export type UpdateEnvironmentVariableRequestBody = z.infer<
 
 export const ImportEnvironmentVariablesRequestBody = z.object({
   variables: z.record(z.string()),
-  overwrite: z.boolean().optional(),
+  override: z.boolean().optional(),
 });
 
 export type ImportEnvironmentVariablesRequestBody = z.infer<
@@ -400,9 +400,13 @@ export const EnvironmentVariableValue = z.object({
   value: z.string(),
 });
 
+export type EnvironmentVariableValue = z.infer<typeof EnvironmentVariableValue>;
+
 export const EnvironmentVariable = z.object({
-  key: z.string(),
+  name: z.string(),
   value: z.string(),
 });
 
 export const EnvironmentVariables = z.array(EnvironmentVariable);
+
+export type EnvironmentVariables = z.infer<typeof EnvironmentVariables>;

@@ -42,7 +42,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
   const repository = new EnvironmentVariablesRepository();
 
   const result = await repository.create(environment.project.id, {
-    overwrite: true,
+    override: true,
     environmentIds: [environment.id],
     variables: [
       {
@@ -82,5 +82,5 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const variables = await repository.getEnvironment(environment.project.id, environment.id, true);
 
-  return json(variables);
+  return json(variables.map((variable) => ({ name: variable.key, value: variable.value })));
 }

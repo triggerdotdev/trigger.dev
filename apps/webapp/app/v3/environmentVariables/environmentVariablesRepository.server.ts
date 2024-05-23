@@ -44,7 +44,7 @@ export class EnvironmentVariablesRepository implements Repository {
   async create(
     projectId: string,
     options: {
-      overwrite: boolean;
+      override: boolean;
       environmentIds: string[];
       variables: {
         key: string;
@@ -102,7 +102,7 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     //check if any of them exist in an environment we're setting
-    if (!options.overwrite) {
+    if (!options.override) {
       const existingVariableKeys: { key: string; environments: RuntimeEnvironmentType[] }[] = [];
       for (const variable of values) {
         const existingVariable = project.environmentVariables.find((v) => v.key === variable.key);
@@ -122,7 +122,7 @@ export class EnvironmentVariablesRepository implements Repository {
       if (existingVariableKeys.length > 0) {
         return {
           success: false as const,
-          error: `Some of the variables are already set for these environments. Set overwrite to true to overwrite them.`,
+          error: `Some of the variables are already set for these environments. Set override to true to override them.`,
           variableErrors: existingVariableKeys.map((val) => ({
             key: val.key,
             error: `Variable already set in ${val.environments

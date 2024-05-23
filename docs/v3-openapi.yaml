@@ -469,25 +469,13 @@ paths:
             await runs.retrieve("run_1234");
 
   "/api/v1/projects/{projectRef}/envvars/{env}":
+    parameters:
+      - $ref: "#/components/parameters/projectRef"
+      - $ref: "#/components/parameters/env"
     get:
       operationId: list_project_envvars_v1
       summary: List environment variables
       description: List all environment variables for a specific project and environment.
-      parameters:
-        - in: path
-          name: projectRef
-          required: true
-          schema:
-            type: string
-          description: The external ref of the project.
-          example: proj_yubjwjsfkxnylobaqvqz
-        - in: path
-          name: env
-          required: true
-          schema:
-            type: string
-          description: The environment of the project to list variables for.
-          example: dev
       responses:
         "200":
           description: Successful request
@@ -520,35 +508,35 @@ paths:
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
+          label: Outside of a task
           source: |-
             import { envvars, configure } from "@trigger.dev/sdk/v3";
-
-            configure({ secretKey: "tr_pat_123456" });
 
             const variables = await envvars.list("proj_yubjwjsfkxnylobaqvqz", "dev");
 
             for (const variable of variables) {
               console.log(`Name: ${variable.name}, Value: ${variable.value}`);
             }
+        - lang: typescript
+          label: Inside a task
+          source: |-
+            import { envvars, task } from "@trigger.dev/sdk/v3";
+
+            export const myTask = task({
+              id: "my-task",
+              run: async () => {
+                // projectRef and env are automatically inferred from the task context
+                const variables = await envvars.list();
+
+                for (const variable of variables) {
+                  console.log(`Name: ${variable.name}, Value: ${variable.value}`);
+                }
+              }
+            })
     post:
       operationId: create_project_envvar_v1
       summary: Create environment variable
       description: Create a new environment variable for a specific project and environment.
-      parameters:
-        - in: path
-          name: projectRef
-          required: true
-          schema:
-            type: string
-          description: The external ref of the project.
-          example: proj_yubjwjsfkxnylobaqvqz
-        - in: path
-          name: env
-          required: true
-          schema:
-            type: string
-          description: The environment of the project to which the variable will be added.
-          example: dev
       requestBody:
         required: true
         content:
@@ -593,35 +581,38 @@ paths:
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
+          label: Outside of a task
           source: |-
-            import { envvars, configure } from "@trigger.dev/sdk/v3";
-
-            configure({ secretKey: "tr_pat_123456" });
+            import { envvars } from "@trigger.dev/sdk/v3";
 
             await envvars.create("proj_yubjwjsfkxnylobaqvqz", "dev", {
               name: "SLACK_API_KEY",
               value: "slack_123456"
             });
+        - lang: typescript
+          label: Inside a task
+          source: |-
+            import { envvars, task } from "@trigger.dev/sdk/v3";
+
+            export const myTask = task({
+              id: "my-task",
+              run: async () => {
+                // projectRef and env are automatically inferred from the task context
+                await envvars.create({
+                  name: "SLACK_API_KEY",
+                  value: "slack_123456"
+                });
+              }
+            })
+
   "/api/v1/projects/{projectRef}/envvars/{env}/import":
+    parameters:
+      - $ref: "#/components/parameters/projectRef"
+      - $ref: "#/components/parameters/env"
     post:
-      operationId: import_project_envvars_v1
-      summary: Import environment variables
-      description: Import mulitple environment variables for a specific project and environment. If you want to overwrite existing variables, set the overwrite flag to true.
-      parameters:
-        - in: path
-          name: projectRef
-          required: true
-          schema:
-            type: string
-          description: The external ref of the project.
-          example: proj_yubjwjsfkxnylobaqvqz
-        - in: path
-          name: env
-          required: true
-          schema:
-            type: string
-          description: The environment of the project to which the variable will be added.
-          example: dev
+      operationId: upload_project_envvars_v1
+      summary: Upload environment variables
+      description: Upload mulitple environment variables for a specific project and environment.
       requestBody:
         required: true
         content:
@@ -633,22 +624,22 @@ paths:
                   type: array
                   items:
                     "$ref": "#/components/schemas/EnvVar"
-                overwrite:
+                override:
                   type: boolean
-                  description: Whether to overwrite existing variables or not
+                  description: Whether to override existing variables or not
                   default: false
               required: ["variables"]
           multipart/form-data:
             schema:
               type: object
               properties:
-                file:
+                variables:
                   type: string
                   format: binary
-                overwrite:
+                override:
                   type: boolean
               required: 
-                - file
+                - variables
       responses:
         "200":
           description: Environment variables imported successfully
@@ -687,10 +678,9 @@ paths:
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
+          label: Import variables from an array
           source: |-
-            import { envvars, configure } from "@trigger.dev/sdk/v3";
-
-            configure({ secretKey: "tr_pat_123456" });
+            import { envvars } from "@trigger.dev/sdk/v3";
 
             // Import variables from an array
             await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
@@ -700,43 +690,60 @@ paths:
                   value: "slack_123456"
                 }
               ],
-              overwrite: false
+              override: false
             });
+        - lang: typescript
+          label: Import variables from a read stream
+          source: |-
+            import { envvars } from "@trigger.dev/sdk/v3";
+            import { createReadStream } from "node:fs";
             
-            // Import variables from a .env file
+            // Import variables in dotenv format from a file
             await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
-              file: fs.createReadStream(".env"),
-              overwrite: false
+              variables: createReadStream(".env"),
+              override: false
+            });
+        - lang: typescript
+          label: Import variables from a response
+          source: |-
+            import { envvars } from "@trigger.dev/sdk/v3";
+            
+            // Import variables in dotenv format from a response
+            await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
+              variables: await fetch("https://example.com/.env"),
+              override: false
+            });
+        - lang: typescript
+          label: Import variables from a Buffer
+          source: |-
+            import { envvars } from "@trigger.dev/sdk/v3";
+            
+            // Import variables in dotenv format from a buffer
+            await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
+              variables: Buffer.from("SLACK_API_KEY=slack_1234"),
+              override: false
+            });
+        - lang: typescript
+          label: Import variables from a File
+          source: |-
+            import { envvars } from "@trigger.dev/sdk/v3";
+            
+            // Import variables in dotenv format from a file
+            await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
+              variables: new File(["SLACK_API_KEY=slack_1234"], ".env"),
+              override: false
             });
 
 
   "/api/v1/projects/{projectRef}/envvars/{env}/{name}":
+    parameters:
+      - $ref: "#/components/parameters/projectRef"
+      - $ref: "#/components/parameters/env"
+      - $ref: "#/components/parameters/envvarName"
     get:
       operationId: get_project_envvar_v1
       summary: Retrieve environment variable
       description: Retrieve a specific environment variable for a specific project and environment.
-      parameters:
-        - in: path
-          name: projectRef
-          required: true
-          schema:
-            type: string
-          description: The external ref of the project.
-          example: proj_yubjwjsfkxnylobaqvqz
-        - in: path
-          name: env
-          required: true
-          schema:
-            type: string
-          description: The environment of the project.
-          example: dev
-        - in: path
-          name: name
-          required: true
-          schema:
-            type: string
-          description: The name of the environment variable.
-          example: SLACK_API_KEY
       responses:
         "200":
           description: Successful request
@@ -769,40 +776,32 @@ paths:
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
+          label: Outside of a task
           source: |-
-            import { envvars, configure } from "@trigger.dev/sdk/v3";
-
-            configure({ apiKey: "tr_pat_123456" });
+            import { envvars } from "@trigger.dev/sdk/v3";
 
             const variable = await envvars.retrieve("proj_yubjwjsfkxnylobaqvqz", "dev", "SLACK_API_KEY");
 
             console.log(`Value: ${variable.value}`);
+        - lang: typescript
+          label: Inside a task
+          source: |-
+            import { envvars, task } from "@trigger.dev/sdk/v3";
+
+            export const myTask = task({
+              id: "my-task",
+              run: async () => {
+                // projectRef and env are automatically inferred from the task context
+                const variable = await envvars.retrieve("SLACK_API_KEY");
+
+                console.log(`Value: ${variable.value}`);
+              }
+            })
+        
     delete:
       operationId: delete_project_envvar_v1
       summary: Delete environment variable
       description: Delete a specific environment variable for a specific project and environment.
-      parameters:
-        - in: path
-          name: projectRef
-          required: true
-          schema:
-            type: string
-          description: The external ref of the project.
-          example: proj_yubjwjsfkxnylobaqvqz
-        - in: path
-          name: env
-          required: true
-          schema:
-            type: string
-          description: The environment of the project.
-          example: dev
-        - in: path
-          name: name
-          required: true
-          schema:
-            type: string
-          description: The name of the environment variable to delete
-          example: SLACK_API_KEY
       responses:
         "200":
           description: Environment variable deleted successfully
@@ -835,38 +834,27 @@ paths:
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
+          label: Outside of a task
           source: |-
-            import { envvars, configure } from "@trigger.dev/sdk/v3";
-
-            configure({ apiKey: "tr_pat_123456" });
+            import { envvars } from "@trigger.dev/sdk/v3";
 
             await envvars.del("proj_yubjwjsfkxnylobaqvqz", "dev", "SLACK_API_KEY");
+        - lang: typescript
+          label: Inside a task
+          source: |-
+            import { envvars, task } from "@trigger.dev/sdk/v3";
+
+            export const myTask = task({
+              id: "my-task",
+              run: async () => {
+                // projectRef and env are automatically inferred from the task context
+                await envvars.del("SLACK_API_KEY");
+              }
+            })
     put:
       operationId: update_project_envvar_v1
       summary: Update environment variable
       description: Update a specific environment variable for a specific project and environment.
-      parameters:
-        - in: path
-          name: projectRef
-          required: true
-          schema:
-            type: string
-          description: The external ref of the project.
-          example: proj_yubjwjsfkxnylobaqvqz
-        - in: path
-          name: env
-          required: true
-          schema:
-            type: string
-          description: The environment of the project.
-          example: dev
-        - in: path
-          name: name
-          required: true
-          schema:
-            type: string
-          description: The name of the environment variable to update
-          example: SLACK_API_KEY
       requestBody:
         required: true
         content:
@@ -905,26 +893,86 @@ paths:
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
+          label: Outside of a task
           source: |-
-            import { envvars, configure } from "@trigger.dev/sdk/v3";
-
-            configure({ apiKey: "tr_pat_123456" });
+            import { envvars } from "@trigger.dev/sdk/v3";
 
             await envvars.update("proj_yubjwjsfkxnylobaqvqz", "dev", "SLACK_API_KEY", {
               value: "slack_123456"
             });
+        - lang: typescript
+          label: Inside a task
+          source: |-
+            import { envvars, task } from "@trigger.dev/sdk/v3";
+
+            export const myTask = task({
+              id: "my-task",
+              run: async () => {
+                // projectRef and env are automatically inferred from the task context
+                await envvars.update("SLACK_API_KEY", {
+                  value: "slack_123456"
+                });
+              }
+            })
     
 
 components:
+  parameters:
+    projectRef:
+      in: path
+      name: projectRef
+      required: true
+      schema:
+        type: string
+      description: The external ref of the project. You can find this in the project settings. Starts with `proj_`.
+      example: proj_yubjwjsfkxnylobaqvqz
+    env:
+      in: path
+      name: env
+      required: true
+      schema:
+        type: string
+        enum: [dev, staging, prod]
+      description: The environment of the project to list variables for.
+      example: dev
+    envvarName:
+      in: path
+      name: name
+      required: true
+      schema:
+        type: string
+      description: The name of the environment variable.
+      example: SLACK_API_KEY
   securitySchemes:
     apiKey:
       type: http
       scheme: bearer
-      description: Use your project-specific Secret API key. Will start with tr_dev, tr_prod, tr_stg, etc.
+      description: |
+        Use your project-specific Secret API key. Will start with `tr_dev_`, `tr_prod`, `tr_stg`, etc.
+
+        You can find your Secret API key in the API Keys section of your Trigger.dev project dashboard.
+
+        Our TypeScript SDK will default to using the value of the `TRIGGER_SECRET_KEY` environment variable if it is set. If you are using the SDK in a different environment, you can set the key using the `configure` function.
+
+        ```typescript
+        import { configure } from "@trigger.dev/sdk/v3";
+
+        configure({ secretKey: "tr_dev_1234" });
+        ```
+
     personalAccessToken:
       type: http
       scheme: bearer
-      description: Use your user-specific Personal Access Token, which you can generate from the Trigger.dev dashboard in your account settings.
+      description: |
+        Use your user-specific Personal Access Token, which you can generate from the Trigger.dev dashboard in your account settings. (It will start with `tr_pat_`.)
+
+        Our TypeScript SDK will default to using the value of the `TRIGGER_ACCESS_TOKEN` environment variable if it is set. If you are using the SDK in a different environment, you can set the key using the `configure` function.
+
+        ```typescript
+        import { configure } from "@trigger.dev/sdk/v3";
+
+        configure({ secretKey: "tr_pat_1234" });
+        ```
   schemas:
     InvalidEnvVarsRequestResponse:
       type: object

@@ -70,7 +70,7 @@ const Variable = z.object({
 type Variable = z.infer<typeof Variable>;
 
 const schema = z.object({
-  overwrite: z.preprocess((i) => {
+  override: z.preprocess((i) => {
     if (i === "true") return true;
     if (i === "false") return false;
     return;
@@ -256,7 +256,7 @@ export default function Page() {
                     type="submit"
                     variant="primary/small"
                     disabled={isLoading}
-                    name="overwrite"
+                    name="override"
                     value="false"
                   >
                     {isLoading ? "Saving" : "Save"}
@@ -264,10 +264,10 @@ export default function Page() {
                   <Button
                     variant="secondary/small"
                     disabled={isLoading}
-                    name="overwrite"
+                    name="override"
                     value="true"
                   >
-                    {isLoading ? "Overwriting" : "Overwrite"}
+                    {isLoading ? "Overriding" : "Override"}
                   </Button>
                 </div>
               }

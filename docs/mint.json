@@ -9,6 +9,12 @@
     "v3 (Developer Preview)",
     "v2"
   ],
+  "api": {
+    "playground": {
+      "mode": "hide"
+    },
+    "maintainOrder": true
+  },
   "logo": {
     "dark": "/logo/dark.png",
     "light": "/logo/light.png",

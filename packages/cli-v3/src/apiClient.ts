@@ -14,6 +14,8 @@ import {
   GetDeploymentResponseBody,
   GetProjectsResponseBody,
   GetProjectResponseBody,
+  ImportEnvironmentVariablesRequestBody,
+  EnvironmentVariableResponseBody,
 } from "@trigger.dev/core/v3";
 
 export class CliApiClient {
@@ -135,6 +137,29 @@ export class CliApiClient {
           Authorization: `Bearer ${this.accessToken}`,
           "Content-Type": "application/json",
         },
+      }
+    );
+  }
+
+  async importEnvVars(
+    projectRef: string,
+    slug: "dev" | "prod" | "staging",
+    params: ImportEnvironmentVariablesRequestBody
+  ) {
+    if (!this.accessToken) {
+      throw new Error("importEnvVars: No access token");
+    }
+
+    return zodfetch(
+      EnvironmentVariableResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/envvars/${slug}/import`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(params),
       }
     );
   }

@@ -21,13 +21,22 @@ import {
   TaskRunExecutionResult,
   TriggerTaskRequestBody,
   TriggerTaskResponse,
+  UpdateEnvironmentVariableRequestBody,
   UpdateScheduleOptions,
 } from "../schemas";
 import { taskContext } from "../task-context-api";
 import { ZodFetchOptions, isRecordLike, zodfetch, zodupload } from "../zodfetch";
-import { ImportEnvironmentVariablesParams } from "./types";
+import {
+  ImportEnvironmentVariablesParams,
+  CreateEnvironmentVariableParams,
+  UpdateEnvironmentVariableParams,
+} from "./types";
 
-export type { ImportEnvironmentVariablesParams };
+export type {
+  ImportEnvironmentVariablesParams,
+  CreateEnvironmentVariableParams,
+  UpdateEnvironmentVariableParams,
+};
 
 export type TriggerOptions = {
   spanParentAsLink?: boolean;
@@ -303,7 +312,7 @@ export class ApiClient {
     projectRef: string,
     slug: string,
     key: string,
-    body: CreateEnvironmentVariableRequestBody
+    body: UpdateEnvironmentVariableRequestBody
   ) {
     return zodfetch(
       EnvironmentVariableResponseBody,

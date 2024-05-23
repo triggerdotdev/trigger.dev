@@ -10,7 +10,7 @@ export const simplestTask = task({
       body: JSON.stringify({
         hello: "world",
         taskId: "fetch-post-task",
-        foo: "barrrrrrrrrrrrrrrrrrrr",
+        foo: "barrrrrrrrrrrrrrrrrrrrrr",
       }),
     });
 
@@ -38,7 +38,7 @@ export const updateEnvVars = task({
       variables: await fetch(
         "https://gist.githubusercontent.com/ericallam/7a1001c6b03986a74d0f8aad4fd890aa/raw/fe2bc4da82f3b17178d47f58ec1458af47af5035/.env"
       ),
-      overwrite: true,
+      override: true,
     });
   },
 });

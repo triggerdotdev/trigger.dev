@@ -37,7 +37,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
   const body = await parseImportBody(request);
 
   const result = await repository.create(environment.project.id, {
-    overwrite: body.overwrite === true ? true : false,
+    override: typeof body.override === "boolean" ? body.override : false,
     environmentIds: [environment.id],
     variables: Object.entries(body.variables).map(([key, value]) => ({
       key,
@@ -59,14 +59,14 @@ async function parseImportBody(request: Request): Promise<ImportEnvironmentVaria
     const formData = await request.formData();
 
     const file = formData.get("variables");
-    const overwrite = formData.get("overwrite") === "true";
+    const override = formData.get("override") === "true";
 
     if (file instanceof File) {
       const buffer = await file.arrayBuffer();
 
       const variables = parse(Buffer.from(buffer));
 
-      return { variables, overwrite };
+      return { variables, override };
     } else {
       throw json({ error: "Invalid file" }, { status: 400 });
     }
