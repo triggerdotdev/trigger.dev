@@ -1731,12 +1731,6 @@ model TaskRunDependency {
   updatedAt DateTime @updatedAt
 }
 
-/// deprecated, we hadn't included the project id in the unique constraint
-model TaskRunCounter {
-  taskIdentifier String @id
-  lastNumber     Int    @default(0)
-}
-
 /// Used for the TaskRun number (e.g. #1,421)
 model TaskRunNumberCounter {
   id String @id @default(cuid())
