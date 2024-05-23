@@ -1,17 +1,12 @@
 import { prettyPrintPacket } from "@trigger.dev/core/v3";
 import { PrismaClient, prisma } from "~/db.server";
 import { eventRepository } from "~/v3/eventRepository.server";
+import { BasePresenter } from "./basePresenter.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<Result>["event"];
 
-export class SpanPresenter {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
+export class SpanPresenter extends BasePresenter {
   public async call({
     userId,
     projectSlug,
@@ -25,7 +20,7 @@ export class SpanPresenter {
     spanId: string;
     runFriendlyId: string;
   }) {
-    const project = await this.#prismaClient.project.findUnique({
+    const project = await this._replica.project.findUnique({
       where: {
         slug: projectSlug,
       },
@@ -35,7 +30,7 @@ export class SpanPresenter {
       throw new Error("Project not found");
     }
 
-    const run = await this.#prismaClient.taskRun.findFirst({
+    const run = await this._replica.taskRun.findFirst({
       select: {
         traceId: true,
       },

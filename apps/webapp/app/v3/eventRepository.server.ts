@@ -22,7 +22,7 @@ import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger
 import Redis, { RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
-import { PrismaClient, prisma } from "~/db.server";
+import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -177,7 +177,11 @@ export class EventRepository {
     return this._subscriberCount;
   }
 
-  constructor(private db: PrismaClient = prisma, private readonly _config: EventRepoConfig) {
+  constructor(
+    private db: PrismaClient = prisma,
+    private readReplica: PrismaReplicaClient = $replica,
+    private readonly _config: EventRepoConfig
+  ) {
     this._flushScheduler = new DynamicFlushScheduler({
       batchSize: _config.batchSize,
       flushInterval: _config.batchInterval,
@@ -366,7 +370,7 @@ export class EventRepository {
   }
 
   public async getTraceSummary(traceId: string): Promise<TraceSummary | undefined> {
-    const events = await this.db.taskEvent.findMany({
+    const events = await this.readReplica.taskEvent.findMany({
       select: {
         id: true,
         spanId: true,
@@ -449,7 +453,7 @@ export class EventRepository {
       return;
     }
 
-    const fullEvent = await this.db.taskEvent.findUnique({
+    const fullEvent = await this.readReplica.taskEvent.findUnique({
       where: {
         id: span.recordId,
       },
@@ -834,7 +838,7 @@ export class EventRepository {
 export const eventRepository = singleton("eventRepo", initializeEventRepo);
 
 function initializeEventRepo() {
-  const repo = new EventRepository(prisma, {
+  const repo = new EventRepository(prisma, $replica, {
     batchSize: env.EVENTS_BATCH_SIZE,
     batchInterval: env.EVENTS_BATCH_INTERVAL,
     retentionInDays: env.EVENTS_DEFAULT_LOG_RETENTION,
