@@ -34,7 +34,7 @@ import { detectResponseIsTimeout } from "~/models/endpoint.server";
 import { isRunCompleted } from "~/models/jobRun.server";
 import { resolveRunConnections } from "~/models/runConnection.server";
 import { prepareTasksForCaching, prepareTasksForCachingLegacy } from "~/models/task.server";
-import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.complete";
+import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.complete/CompleteRunTaskService.server";
 import { formatError } from "~/utils/formatErrors.server";
 import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
