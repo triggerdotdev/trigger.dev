@@ -61,7 +61,7 @@ export class ProdRuntimeManager implements RuntimeManager {
         ms,
         now,
       },
-      10_000
+      31_000
     );
 
     if (!willCheckpointAndRestore) {
