@@ -1,5 +1,13 @@
 # @trigger.dev/react
 
+## 2.3.19
+
+### Patch Changes
+
+- Updated dependencies [2d1710c54]
+- Updated dependencies [3d5c52168]
+  - @trigger.dev/core@2.3.19
+
 ## 2.3.18
 
 ### Patch Changes

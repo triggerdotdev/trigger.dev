@@ -1,5 +1,12 @@
 # internal-platform
 
+## 2.3.19
+
+### Patch Changes
+
+- 2d1710c54: v2: Better handle recovering from platform communication errors by auto-yielding back to the platform in case of temporary API failures
+- 3d5c52168: When a v2 run hits the rate limit, reschedule with the reset date
+
 ## 2.3.18
 
 ## 2.3.17
