@@ -44,6 +44,7 @@ import { Button } from "../../primitives/Buttons";
 import {
   TaskRunStatusCombo,
   allTaskRunStatuses,
+  filterableTaskRunStatuses,
   descriptionForTaskRunStatus,
   runStatusTitle,
 } from "./TaskRunStatus";
@@ -272,7 +273,7 @@ function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: Men
   );
 }
 
-const statuses = allTaskRunStatuses.map((status) => ({
+const statuses = filterableTaskRunStatuses.map((status) => ({
   title: runStatusTitle(status),
   value: status,
 }));

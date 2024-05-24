@@ -30,6 +30,20 @@ export const allTaskRunStatuses = [
   "SYSTEM_FAILURE",
 ] as const satisfies Readonly<Array<TaskRunStatus>>;
 
+export const filterableTaskRunStatuses = [
+  "WAITING_FOR_DEPLOY",
+  "PENDING",
+  "EXECUTING",
+  "RETRYING_AFTER_FAILURE",
+  "WAITING_TO_RESUME",
+  "COMPLETED_SUCCESSFULLY",
+  "CANCELED",
+  "COMPLETED_WITH_ERRORS",
+  "CRASHED",
+  "INTERRUPTED",
+  "SYSTEM_FAILURE",
+] as const satisfies Readonly<Array<TaskRunStatus>>;
+
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   PENDING: "Task is waiting to be executed",
   WAITING_FOR_DEPLOY: "Task needs to be deployed first to start executing",
