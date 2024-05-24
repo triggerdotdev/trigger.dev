@@ -71,6 +71,8 @@ class ProdWorker {
     logger.log("Received signal", { signal });
 
     if (signal === "SIGTERM") {
+      let gracefulExitTimeoutElapsed = false;
+
       if (this.executing) {
         const terminationGracePeriodSeconds = 60 * 60;
 
@@ -80,21 +82,27 @@ class ProdWorker {
 
         // Wait for termination grace period minus 5s to give cleanup a chance to complete
         await setTimeout(terminationGracePeriodSeconds * 1000 - 5000);
+        gracefulExitTimeoutElapsed = true;
 
         logger.log("Termination timeout reached, exiting gracefully.");
       } else {
         logger.log("Not executing, exiting immediately.");
       }
 
-      await this.#exitGracefully();
+      await this.#exitGracefully(gracefulExitTimeoutElapsed);
+      return;
     }
 
     logger.log("Unhandled signal", { signal });
   }
 
-  async #exitGracefully() {
-    await this.#backgroundWorker.close();
-    process.exit(0);
+  async #exitGracefully(gracefulExitTimeoutElapsed = false) {
+    await this.#backgroundWorker.close(gracefulExitTimeoutElapsed);
+
+    if (!gracefulExitTimeoutElapsed) {
+      // TODO: Maybe add a sensible timeout instead of a conditional to avoid zombies
+      process.exit(0);
+    }
   }
 
   async #reconnect(isPostStart = false, reconnectImmediately = false) {

@@ -53,3 +53,11 @@ export class SigKillTimeoutProcessError extends Error {
     this.name = "SigKillTimeoutProcessError";
   }
 }
+
+export class GracefulExitTimeoutError extends Error {
+  constructor() {
+    super("Graceful exit timeout");
+
+    this.name = "GracefulExitTimeoutError";
+  }
+}

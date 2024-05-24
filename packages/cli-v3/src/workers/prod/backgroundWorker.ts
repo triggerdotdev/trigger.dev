@@ -24,6 +24,7 @@ import { ChildProcess, fork } from "node:child_process";
 import {
   CancelledProcessError,
   CleanupProcessError,
+  GracefulExitTimeoutError,
   SigKillTimeoutProcessError,
   TaskMetadataParseError,
   UncaughtExceptionError,
@@ -88,7 +89,7 @@ export class ProdBackgroundWorker {
     private params: BackgroundWorkerParams
   ) {}
 
-  async close() {
+  async close(gracefulExitTimeoutElapsed = false) {
     if (this._closed) {
       return;
     }
@@ -99,7 +100,7 @@ export class ProdBackgroundWorker {
     this.onTaskRunHeartbeat.detach();
 
     // We need to close the task run process
-    await this._taskRunProcess?.cleanup(true);
+    await this._taskRunProcess?.cleanup(true, gracefulExitTimeoutElapsed);
   }
 
   async killTaskRunProcess(flush = true, initialSignal: number | NodeJS.Signals = "SIGTERM") {
@@ -113,16 +114,10 @@ export class ProdBackgroundWorker {
 
     const currentTaskRunProcess = this._taskRunProcess;
 
-    try {
-      const initialExit = currentTaskRunProcess.onExit.waitFor(5_000);
-      currentTaskRunProcess.kill(initialSignal);
-      await initialExit;
-    } catch (error) {
-      // Try again with SIGKILL
-      const forcedExit = currentTaskRunProcess.onExit.waitFor(5_000);
-      currentTaskRunProcess.kill("SIGKILL");
-      await forcedExit;
-    }
+    // Try graceful exit but don't wait. We limit the amount of processes during creation instead.
+    this.#tryGracefulExit(currentTaskRunProcess, true, initialSignal).catch((error) => {
+      console.error("Error while trying graceful exit", error);
+    });
 
     this._closed = true;
   }
@@ -329,46 +324,49 @@ export class ProdBackgroundWorker {
 
     if (currentTaskRunProcess.isBeingKilled) {
       if (this._taskRunProcessesBeingKilled.size > 1) {
-        // If there's more than one being killed, wait for graceful exit
-        try {
-          await currentTaskRunProcess.onExit.waitFor(5_000);
-        } catch (error) {
-          console.error("TaskRunProcess graceful kill timeout exceeded", error);
-
-          try {
-            const forcedKill = currentTaskRunProcess.onExit.waitFor(5_000);
-            currentTaskRunProcess.kill("SIGKILL");
-            await forcedKill;
-          } catch (error) {
-            console.error("TaskRunProcess forced kill timeout exceeded", error);
-            throw new SigKillTimeoutProcessError();
-          }
-        }
+        await this.#tryGracefulExit(currentTaskRunProcess);
       } else {
         // If there's only one or none being killed, don't do anything so we can create a fresh one in parallel
       }
     } else {
       // It's not being killed, so kill it
       if (this._taskRunProcessesBeingKilled.size > 0) {
-        // If there's one being killed already, wait for graceful exit
-        try {
-          await currentTaskRunProcess.onExit.waitFor(5_000);
-        } catch (error) {
-          console.error("TaskRunProcess graceful kill timeout exceeded", error);
-
-          try {
-            const forcedKill = currentTaskRunProcess.onExit.waitFor(5_000);
-            currentTaskRunProcess.kill("SIGKILL");
-            await forcedKill;
-          } catch (error) {
-            console.error("TaskRunProcess forced kill timeout exceeded", error);
-            throw new SigKillTimeoutProcessError();
-          }
-        }
+        await this.#tryGracefulExit(currentTaskRunProcess);
       } else {
         // There's none being killed yet, so we can kill it without waiting. We still set a timeout to kill it forcefully just in case it sticks around.
         currentTaskRunProcess.kill("SIGTERM", 5_000).catch(() => {});
       }
+    }
+  }
+
+  async #tryGracefulExit(
+    taskRunProcess: TaskRunProcess,
+    kill = false,
+    initialSignal: number | NodeJS.Signals = "SIGTERM"
+  ) {
+    try {
+      const initialExit = taskRunProcess.onExit.waitFor(5_000);
+
+      if (kill) {
+        taskRunProcess.kill(initialSignal);
+      }
+
+      await initialExit;
+    } catch (error) {
+      console.error("TaskRunProcess graceful kill timeout exceeded", error);
+
+      this.#tryForcefulExit(taskRunProcess);
+    }
+  }
+
+  async #tryForcefulExit(taskRunProcess: TaskRunProcess) {
+    try {
+      const forcedKill = taskRunProcess.onExit.waitFor(5_000);
+      taskRunProcess.kill("SIGKILL");
+      await forcedKill;
+    } catch (error) {
+      console.error("TaskRunProcess forced kill timeout exceeded", error);
+      throw new SigKillTimeoutProcessError();
     }
   }
 
@@ -443,6 +441,19 @@ export class ProdBackgroundWorker {
           error: {
             type: "INTERNAL_ERROR",
             code: TaskRunErrorCodes.TASK_PROCESS_SIGKILL_TIMEOUT,
+          },
+        };
+      }
+
+      if (e instanceof GracefulExitTimeoutError) {
+        return {
+          id: payload.execution.attempt.id,
+          ok: false,
+          retry: undefined,
+          error: {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.GRACEFUL_EXIT_TIMEOUT,
+            message: "Worker process killed while attempt in progress.",
           },
         };
       }
@@ -524,6 +535,7 @@ class TaskRunProcess {
   private _currentExecution: TaskRunExecution | undefined;
   private _isBeingKilled: boolean = false;
   private _isBeingCancelled: boolean = false;
+  private _gracefulExitTimeoutElapsed: boolean = false;
 
   /**
    * @deprecated use onTaskRunHeartbeat instead
@@ -682,7 +694,7 @@ class TaskRunProcess {
     await this.cleanup(true);
   }
 
-  async cleanup(kill: boolean = false) {
+  async cleanup(kill = false, gracefulExitTimeoutElapsed = false) {
     if (kill && this._isBeingKilled) {
       return;
     }
@@ -692,10 +704,21 @@ class TaskRunProcess {
       this.onIsBeingKilled.post(this);
     }
 
+    const killChildProcess = gracefulExitTimeoutElapsed && !!this._currentExecution;
+
+    // Kill parent unless graceful exit timeout has elapsed and we're in the middle of an execution
+    const killParentProcess = kill && !killChildProcess;
+
     await this._ipc?.sendWithAck("CLEANUP", {
       flush: true,
-      kill,
+      kill: killParentProcess,
     });
+
+    if (killChildProcess) {
+      this._gracefulExitTimeoutElapsed = true;
+      // Kill the child process
+      await this.kill("SIGKILL");
+    }
   }
 
   async executeTaskRun(payload: TaskRunExecutionPayload): Promise<TaskRunExecutionResult> {
@@ -766,6 +789,9 @@ class TaskRunProcess {
 
         if (this._isBeingCancelled) {
           rejecter(new CancelledProcessError());
+        } else if (this._gracefulExitTimeoutElapsed) {
+          // Order matters, this has to be before the graceful exit timeout
+          rejecter(new GracefulExitTimeoutError());
         } else if (this._isBeingKilled) {
           rejecter(new CleanupProcessError());
         } else {
