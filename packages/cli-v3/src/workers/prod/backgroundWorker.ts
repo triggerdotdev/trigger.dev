@@ -103,7 +103,7 @@ export class ProdBackgroundWorker {
     await this._taskRunProcess?.cleanup(true, gracefulExitTimeoutElapsed);
   }
 
-  async killTaskRunProcess(flush = true, initialSignal: number | NodeJS.Signals = "SIGTERM") {
+  async #killTaskRunProcess(flush = true, initialSignal: number | NodeJS.Signals = "SIGTERM") {
     if (this._closed || !this._taskRunProcess) {
       return;
     }
@@ -250,7 +250,11 @@ export class ProdBackgroundWorker {
     );
 
     taskRunProcess.onExit.attach(({ pid }) => {
-      this._taskRunProcess = undefined;
+      // Only delete the task run process if the pid matches
+      if (this._taskRunProcess?.pid === pid) {
+        this._taskRunProcess = undefined;
+      }
+
       if (pid) {
         this._taskRunProcessesBeingKilled.delete(pid);
       }
@@ -467,6 +471,8 @@ export class ProdBackgroundWorker {
           code: TaskRunErrorCodes.TASK_EXECUTION_FAILED,
         },
       };
+    } finally {
+      await this.#killTaskRunProcess();
     }
   }
 

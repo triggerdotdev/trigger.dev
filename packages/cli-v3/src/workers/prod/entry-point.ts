@@ -314,19 +314,22 @@ class ProdWorker {
     this.executing = false;
     this.attemptFriendlyId = undefined;
 
-    // Every retry gets a fresh process
-    await this.#backgroundWorker.killTaskRunProcess();
-
     if (willCheckpointAndRestore) {
       this.waitForPostStart = true;
+
+      // We already flush after completion, so we don't need to do it here
+      this.#prepareForCheckpoint(false);
+
       this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
       return;
     }
   }
 
-  async #prepareForCheckpoint() {
-    // Flush before checkpointing so we don't flush the same spans again after restore
-    await this.#backgroundWorker.flushTelemetry();
+  async #prepareForCheckpoint(flush = true) {
+    if (flush) {
+      // Flush before checkpointing so we don't flush the same spans again after restore
+      await this.#backgroundWorker.flushTelemetry();
+    }
 
     // Kill the previous worker process to prevent large checkpoints
     await this.#backgroundWorker.forceKillOldTaskRunProcesses();
