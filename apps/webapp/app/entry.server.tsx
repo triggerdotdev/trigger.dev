@@ -14,9 +14,9 @@ import {
   OperatingSystemContextProvider,
   OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
-import { getSharedSqsEventConsumer } from "./services/events/sqsEventConsumer";
-import { singleton } from "./utils/singleton";
-import { logger } from "./services/logger.server";
+
+import { initializeWebSocketServer } from "./v3/handleWebsockets.server";
+initializeWebSocketServer();
 
 const ABORT_DELAY = 30000;
 
@@ -180,9 +180,4 @@ function logError(error: unknown, request?: Request) {
   }
 }
 
-const sqsEventConsumer = singleton("sqsEventConsumer", getSharedSqsEventConsumer);
-
-export { apiRateLimiter } from "./services/apiRateLimit.server";
-export { socketIo } from "./v3/handleSocketIo.server";
-export { wss } from "./v3/handleWebsockets.server";
-export { registryProxy } from "./v3/registryProxy.server";
+export { express } from "./express.server";
