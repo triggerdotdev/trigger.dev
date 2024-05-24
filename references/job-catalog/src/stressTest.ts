@@ -22,6 +22,8 @@ client.defineJob({
       await io.runTask(
         `task-${i}`,
         async (task) => {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+
           return {
             output: "a".repeat(300 * 1024),
           };

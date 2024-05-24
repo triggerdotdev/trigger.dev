@@ -671,6 +671,13 @@ export type RunJobAutoYieldWithCompletedTaskExecutionError = z.infer<
   typeof RunJobAutoYieldWithCompletedTaskExecutionErrorSchema
 >;
 
+export const RunJobAutoYieldRateLimitErrorSchema = z.object({
+  status: z.literal("AUTO_YIELD_RATE_LIMIT"),
+  reset: z.coerce.number(),
+});
+
+export type RunJobAutoYieldRateLimitError = z.infer<typeof RunJobAutoYieldRateLimitErrorSchema>;
+
 export const RunJobInvalidPayloadErrorSchema = z.object({
   status: z.literal("INVALID_PAYLOAD"),
   errors: z.array(SchemaErrorSchema),
@@ -719,6 +726,7 @@ export const RunJobErrorResponseSchema = z.union([
   RunJobAutoYieldExecutionErrorSchema,
   RunJobAutoYieldWithCompletedTaskExecutionErrorSchema,
   RunJobYieldExecutionErrorSchema,
+  RunJobAutoYieldRateLimitErrorSchema,
   RunJobErrorSchema,
   RunJobUnresolvedAuthErrorSchema,
   RunJobInvalidPayloadErrorSchema,
@@ -741,6 +749,7 @@ export const RunJobResponseSchema = z.discriminatedUnion("status", [
   RunJobAutoYieldExecutionErrorSchema,
   RunJobAutoYieldWithCompletedTaskExecutionErrorSchema,
   RunJobYieldExecutionErrorSchema,
+  RunJobAutoYieldRateLimitErrorSchema,
   RunJobErrorSchema,
   RunJobUnresolvedAuthErrorSchema,
   RunJobInvalidPayloadErrorSchema,
