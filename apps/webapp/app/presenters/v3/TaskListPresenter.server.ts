@@ -111,6 +111,14 @@ export class TaskListPresenter extends BasePresenter {
         acc.push(existingTask);
       }
 
+      //favour newer tasks
+      if (task.createdAt > existingTask.createdAt) {
+        existingTask.createdAt = task.createdAt;
+        existingTask.exportName = task.exportName;
+        existingTask.filePath = task.filePath;
+        existingTask.triggerSource = task.triggerSource;
+      }
+
       existingTask.environments.push(displayableEnvironments(environment, userId));
 
       //order the environments
