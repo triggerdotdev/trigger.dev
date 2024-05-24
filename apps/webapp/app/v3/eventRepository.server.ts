@@ -23,7 +23,7 @@ import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger
 import Redis, { RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
-import { PrismaClient, prisma } from "~/db.server";
+import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -102,9 +102,27 @@ export type QueryOptions = Prisma.TaskEventWhereInput;
 
 export type TaskEventRecord = TaskEvent;
 
-export type QueriedEvent = TaskEvent;
+export type QueriedEvent = Prisma.TaskEventGetPayload<{
+  select: {
+    id: true;
+    spanId: true;
+    parentId: true;
+    runId: true;
+    idempotencyKey: true;
+    message: true;
+    style: true;
+    startTime: true;
+    duration: true;
+    isError: true;
+    isPartial: true;
+    isCancelled: true;
+    level: true;
+    events: true;
+    environmentType: true;
+  };
+}>;
 
-export type PreparedEvent = Omit<TaskEventRecord, "events" | "style" | "duration"> & {
+export type PreparedEvent = Omit<QueriedEvent, "events" | "style" | "duration"> & {
   duration: number;
   events: SpanEvents;
   style: TaskEventStyle;
@@ -140,6 +158,7 @@ export type SpanSummary = {
     isPartial: boolean;
     isCancelled: boolean;
     level: NonNullable<CreatableEvent["level"]>;
+    environmentType: CreatableEventEnvironmentType;
   };
 };
 
@@ -162,7 +181,11 @@ export class EventRepository {
     return this._subscriberCount;
   }
 
-  constructor(private db: PrismaClient = prisma, private readonly _config: EventRepoConfig) {
+  constructor(
+    private db: PrismaClient = prisma,
+    private readReplica: PrismaReplicaClient = $replica,
+    private readonly _config: EventRepoConfig
+  ) {
     this._flushScheduler = new DynamicFlushScheduler({
       batchSize: _config.batchSize,
       flushInterval: _config.batchInterval,
@@ -351,7 +374,24 @@ export class EventRepository {
   }
 
   public async getTraceSummary(traceId: string): Promise<TraceSummary | undefined> {
-    const events = await this.db.taskEvent.findMany({
+    const events = await this.readReplica.taskEvent.findMany({
+      select: {
+        id: true,
+        spanId: true,
+        parentId: true,
+        runId: true,
+        idempotencyKey: true,
+        message: true,
+        style: true,
+        startTime: true,
+        duration: true,
+        isError: true,
+        isPartial: true,
+        isCancelled: true,
+        level: true,
+        events: true,
+        environmentType: true,
+      },
       where: {
         traceId,
       },
@@ -386,6 +426,7 @@ export class EventRepository {
           startTime: getDateFromNanoseconds(event.startTime),
           level: event.level,
           events: event.events,
+          environmentType: event.environmentType,
         },
       };
     });
@@ -409,22 +450,8 @@ export class EventRepository {
 
   // A Span can be cancelled if it is partial and has a parent that is cancelled
   // And a span's duration, if it is partial and has a cancelled parent, is the time between the start of the span and the time of the cancellation event of the parent
-  public async getSpan(spanId: string) {
-    const traceSearch = await this.db.taskEvent.findFirst({
-      where: {
-        spanId,
-      },
-      select: {
-        traceId: true,
-        environmentType: true,
-      },
-    });
-
-    if (!traceSearch) {
-      return;
-    }
-
-    const traceSummary = await this.getTraceSummary(traceSearch.traceId);
+  public async getSpan(spanId: string, traceId: string) {
+    const traceSummary = await this.getTraceSummary(traceId);
 
     const span = traceSummary?.spans.find((span) => span.id === spanId);
 
@@ -432,7 +459,7 @@ export class EventRepository {
       return;
     }
 
-    const fullEvent = await this.db.taskEvent.findUnique({
+    const fullEvent = await this.readReplica.taskEvent.findUnique({
       where: {
         id: span.recordId,
       },
@@ -487,7 +514,7 @@ export class EventRepository {
     const events = transformEvents(
       span.data.events,
       fullEvent.metadata as Attributes,
-      traceSearch.environmentType === "DEVELOPMENT"
+      traceSummary?.rootSpan.data.environmentType === "DEVELOPMENT"
     );
 
     return {
@@ -821,7 +848,7 @@ export class EventRepository {
 export const eventRepository = singleton("eventRepo", initializeEventRepo);
 
 function initializeEventRepo() {
-  const repo = new EventRepository(prisma, {
+  const repo = new EventRepository(prisma, $replica, {
     batchSize: env.EVENTS_BATCH_SIZE,
     batchInterval: env.EVENTS_BATCH_INTERVAL,
     retentionInDays: env.EVENTS_DEFAULT_LOG_RETENTION,

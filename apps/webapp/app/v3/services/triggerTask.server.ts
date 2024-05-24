@@ -99,10 +99,15 @@ export class TriggerTaskService extends BaseService {
                 })
               : undefined;
 
-            const counter = await tx.taskRunCounter.upsert({
-              where: { taskIdentifier: taskId },
+            const counter = await tx.taskRunNumberCounter.upsert({
+              where: {
+                taskIdentifier_environmentId: {
+                  taskIdentifier: taskId,
+                  environmentId: environment.id,
+                },
+              },
               update: { lastNumber: { increment: 1 } },
-              create: { taskIdentifier: taskId, lastNumber: 1 },
+              create: { taskIdentifier: taskId, environmentId: environment.id, lastNumber: 1 },
               select: { lastNumber: true },
             });
 

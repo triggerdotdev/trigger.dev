@@ -27,8 +27,10 @@ export {
   type LogLevel,
 } from "@trigger.dev/core/v3";
 
-export { runs } from "./management";
+export { runs } from "./runs";
 export * as schedules from "./schedules";
+export * as envvars from "./envvars";
+export type { ImportEnvironmentVariablesParams } from "./envvars";
 
 /**
  * Register the global API client configuration. Alternatively, you can set the `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` environment variables.

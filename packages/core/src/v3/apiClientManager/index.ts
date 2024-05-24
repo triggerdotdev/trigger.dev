@@ -33,7 +33,7 @@ export class APIClientManagerAPI {
 
   get accessToken(): string | undefined {
     const store = this.#getConfig();
-    return store?.secretKey ?? getEnvVar("TRIGGER_SECRET_KEY");
+    return store?.secretKey ?? getEnvVar("TRIGGER_SECRET_KEY") ?? getEnvVar("TRIGGER_ACCESS_TOKEN");
   }
 
   get client(): ApiClient | undefined {

@@ -34,7 +34,7 @@ import { detectResponseIsTimeout } from "~/models/endpoint.server";
 import { isRunCompleted } from "~/models/jobRun.server";
 import { resolveRunConnections } from "~/models/runConnection.server";
 import { prepareTasksForCaching, prepareTasksForCachingLegacy } from "~/models/task.server";
-import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.complete";
+import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.complete/CompleteRunTaskService.server";
 import { formatError } from "~/utils/formatErrors.server";
 import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
@@ -441,6 +441,10 @@ export class PerformRunExecutionV3Service {
           await this.#resumeAutoYieldedRunWithCompletedTask(run, safeBody.data, durationInMs);
           break;
         }
+        case "AUTO_YIELD_RATE_LIMIT": {
+          await this.#rescheduleRun(run, safeBody.data.reset, durationInMs);
+          break;
+        }
         case "RESUME_WITH_PARALLEL_TASK": {
           await this.#resumeParallelRunWithTask(run, safeBody.data, durationInMs);
 
@@ -667,6 +671,10 @@ export class PerformRunExecutionV3Service {
 
           break;
         }
+        case "AUTO_YIELD_RATE_LIMIT": {
+          await this.#rescheduleRun(run, childError.reset, durationInMs);
+          break;
+        }
         case "CANCELED": {
           break;
         }
@@ -801,9 +809,9 @@ export class PerformRunExecutionV3Service {
     });
   }
 
-  async #resumeAutoYieldedRun(
+  async #rescheduleRun(
     run: FoundRun,
-    data: AutoYieldMetadata,
+    reset: number,
     durationInMs: number,
     executionCount: number = 1
   ) {
@@ -820,16 +828,6 @@ export class PerformRunExecutionV3Service {
           executionCount: {
             increment: executionCount,
           },
-          autoYieldExecution: {
-            create: [
-              {
-                location: data.location,
-                timeRemaining: data.timeRemaining,
-                timeElapsed: data.timeElapsed,
-                limit: data.limit ?? 0,
-              },
-            ],
-          },
           forceYieldImmediately: false,
         },
         select: {
@@ -837,7 +835,7 @@ export class PerformRunExecutionV3Service {
         },
       });
 
-      await ResumeRunService.enqueue(run, tx);
+      await ResumeRunService.enqueue(run, tx, new Date(reset));
     });
   }
 
@@ -882,6 +880,46 @@ export class PerformRunExecutionV3Service {
       await service.call(run.environment, run.id, data.id, {
         properties: data.properties,
         output: data.output ? (JSON.parse(data.output) as any) : undefined,
+      });
+
+      await ResumeRunService.enqueue(run, tx);
+    });
+  }
+
+  async #resumeAutoYieldedRun(
+    run: FoundRun,
+    data: AutoYieldMetadata,
+    durationInMs: number,
+    executionCount: number = 1
+  ) {
+    await $transaction(this.#prismaClient, async (tx) => {
+      await tx.jobRun.update({
+        where: {
+          id: run.id,
+        },
+        data: {
+          status: "WAITING_TO_EXECUTE",
+          executionDuration: {
+            increment: durationInMs,
+          },
+          executionCount: {
+            increment: executionCount,
+          },
+          autoYieldExecution: {
+            create: [
+              {
+                location: data.location,
+                timeRemaining: data.timeRemaining,
+                timeElapsed: data.timeElapsed,
+                limit: data.limit ?? 0,
+              },
+            ],
+          },
+          forceYieldImmediately: false,
+        },
+        select: {
+          executionCount: true,
+        },
       });
 
       await ResumeRunService.enqueue(run, tx);

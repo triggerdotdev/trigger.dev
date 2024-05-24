@@ -1,6 +1,7 @@
-import { RuntimeEnvironmentType, type RuntimeEnvironment } from "@trigger.dev/database";
+import type { RuntimeEnvironment } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { customAlphabet } from "nanoid";
+import { RuntimeEnvironmentType } from "~/database-types";
 
 const apiKeyId = customAlphabet(
   "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",

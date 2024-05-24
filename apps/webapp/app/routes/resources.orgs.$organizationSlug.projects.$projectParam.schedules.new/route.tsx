@@ -34,7 +34,7 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -92,9 +92,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       submission.value?.friendlyId === result.id ? "Schedule updated" : "Schedule created"
     );
   } catch (error: any) {
-    submission.error.taskIdentifier =
-      error instanceof Error ? error.message : JSON.stringify(error);
-    return json(submission, { status: 400 });
+    const errorMessage = `Failed: ${
+      error instanceof Error ? error.message : JSON.stringify(error)
+    }`;
+    return redirectWithErrorMessage(
+      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }),
+      request,
+      errorMessage
+    );
   }
 };
 

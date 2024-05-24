@@ -1,16 +1,14 @@
-import type { Organization, RuntimeEnvironment } from "@trigger.dev/database";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import type { LogMessage } from "@trigger.dev/core";
-import { LogMessageSchema } from "@trigger.dev/core";
+import { FailTaskBodyInputSchema } from "@trigger.dev/core";
 import { z } from "zod";
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
-import { authenticateApiRequest, AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { FailRunTaskService } from "./FailRunTaskService.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
+  id: z.string(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -28,43 +26,44 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const authenticatedEnv = authenticationResult.environment;
 
-  const { runId } = ParamsSchema.parse(params);
+  const { runId, id } = ParamsSchema.parse(params);
 
   // Now parse the request body
   const anyBody = await request.json();
 
-  const body = LogMessageSchema.safeParse(anyBody);
+  logger.debug("FailRunTaskService.call() request body", {
+    body: anyBody,
+    runId,
+    id,
+  });
+
+  const body = FailTaskBodyInputSchema.safeParse(anyBody);
 
   if (!body.success) {
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const service = new CreateRunLogService();
+  const service = new FailRunTaskService();
 
   try {
-    const log = await service.call(authenticatedEnv, runId, body.data);
+    const task = await service.call(authenticatedEnv, runId, id, body.data);
 
-    return json(log);
+    logger.debug("FailRunTaskService.call() response body", {
+      runId,
+      id,
+      task,
+    });
+
+    if (!task) {
+      return json({ message: "Task not found" }, { status: 404 });
+    }
+
+    return json(task);
   } catch (error) {
     if (error instanceof Error) {
       return json({ error: error.message }, { status: 400 });
     }
 
     return json({ error: "Something went wrong" }, { status: 500 });
-  }
-}
-
-export class CreateRunLogService {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
-  public async call(environment: AuthenticatedEnvironment, runId: string, logMessage: LogMessage) {
-    // @ts-ignore
-    logger.debug(logMessage.message, logMessage.data ?? {});
-
-    return logMessage;
   }
 }

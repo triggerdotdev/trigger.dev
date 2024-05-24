@@ -1,18 +1,19 @@
-import {
-  Prisma,
+import type {
   RuntimeEnvironmentType,
-  TaskRunStatus,
   TaskTriggerSource,
+  TaskRunStatus as TaskRunStatusType,
 } from "@trigger.dev/database";
+import { Prisma } from "@trigger.dev/database";
 import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
-import { Organization } from "~/models/organization.server";
-import { Project } from "~/models/project.server";
+import type { Organization } from "~/models/organization.server";
+import type { Project } from "~/models/project.server";
 import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
-import { User } from "~/models/user.server";
+import type { User } from "~/models/user.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
+import { TaskRunStatus } from "~/database-types";
 
 export type Task = {
   slug: string;
@@ -110,6 +111,14 @@ export class TaskListPresenter extends BasePresenter {
         acc.push(existingTask);
       }
 
+      //favour newer tasks
+      if (task.createdAt > existingTask.createdAt) {
+        existingTask.createdAt = task.createdAt;
+        existingTask.exportName = task.exportName;
+        existingTask.filePath = task.filePath;
+        existingTask.triggerSource = task.triggerSource;
+      }
+
       existingTask.environments.push(displayableEnvironments(environment, userId));
 
       //order the environments
@@ -150,7 +159,7 @@ export class TaskListPresenter extends BasePresenter {
     const activity = await this._replica.$queryRaw<
       {
         taskIdentifier: string;
-        status: TaskRunStatus;
+        status: TaskRunStatusType;
         day: Date;
         count: BigInt;
       }[]
@@ -193,7 +202,7 @@ export class TaskListPresenter extends BasePresenter {
           existingTask.push({
             day: day.toISOString(),
             [TaskRunStatus.COMPLETED_SUCCESSFULLY]: 0,
-          } as { day: string } & Record<TaskRunStatus, number>);
+          } as { day: string } & Record<TaskRunStatusType, number>);
         }
 
         acc[a.taskIdentifier] = existingTask;
@@ -214,7 +223,7 @@ export class TaskListPresenter extends BasePresenter {
       day[a.status] = Number(a.count);
 
       return acc;
-    }, {} as Record<string, ({ day: string } & Record<TaskRunStatus, number>)[]>);
+    }, {} as Record<string, ({ day: string } & Record<TaskRunStatusType, number>)[]>);
   }
 
   async #getRunningStats(tasks: string[], projectId: string) {
@@ -225,7 +234,7 @@ export class TaskListPresenter extends BasePresenter {
     const statuses = await this._replica.$queryRaw<
       {
         taskIdentifier: string;
-        status: TaskRunStatus;
+        status: TaskRunStatusType;
         count: BigInt;
       }[]
     >`

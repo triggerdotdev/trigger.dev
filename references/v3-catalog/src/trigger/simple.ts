@@ -1,5 +1,6 @@
 import "server-only";
-import { logger, task, wait } from "@trigger.dev/sdk/v3";
+import { envvars, logger, task, wait } from "@trigger.dev/sdk/v3";
+import { traceAsync } from "@/telemetry";
 
 export const simplestTask = task({
   id: "fetch-post-task",
@@ -9,7 +10,7 @@ export const simplestTask = task({
       body: JSON.stringify({
         hello: "world",
         taskId: "fetch-post-task",
-        foo: "barrrrrrrrrrrrrrrrrrrr",
+        foo: "barrrrrrrrrrrrrrrrrrrrrr",
       }),
     });
 
@@ -20,9 +21,25 @@ export const simplestTask = task({
 export const taskWithSpecialCharacters = task({
   id: "admin:special-characters",
   run: async (payload: { url: string }) => {
+    await traceAsync("taskWithSpecialCharacters", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    });
+
     return {
       message: "This task has special characters in its ID",
     };
+  },
+});
+
+export const updateEnvVars = task({
+  id: "update-env-vars",
+  run: async () => {
+    return await envvars.upload({
+      variables: await fetch(
+        "https://gist.githubusercontent.com/ericallam/7a1001c6b03986a74d0f8aad4fd890aa/raw/fe2bc4da82f3b17178d47f58ec1458af47af5035/.env"
+      ),
+      override: true,
+    });
   },
 });
 

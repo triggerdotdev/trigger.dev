@@ -31,13 +31,21 @@ export const EditEnvironmentVariable = z.object({
       value: z.string(),
     })
   ),
+  keepEmptyValues: z.boolean().optional(),
 });
 export type EditEnvironmentVariable = z.infer<typeof EditEnvironmentVariable>;
 
 export const DeleteEnvironmentVariable = z.object({
   id: z.string(),
+  environmentId: z.string().optional(),
 });
 export type DeleteEnvironmentVariable = z.infer<typeof DeleteEnvironmentVariable>;
+
+export const DeleteEnvironmentVariableValue = z.object({
+  id: z.string(),
+  environmentId: z.string(),
+});
+export type DeleteEnvironmentVariableValue = z.infer<typeof DeleteEnvironmentVariableValue>;
 
 export type Result =
   | {
@@ -65,18 +73,19 @@ export type EnvironmentVariable = {
 };
 
 export interface Repository {
-  create(
-    projectId: string,
-    userId: string,
-    options: CreateEnvironmentVariables
-  ): Promise<CreateResult>;
-  edit(projectId: string, userId: string, options: EditEnvironmentVariable): Promise<Result>;
-  getProject(projectId: string, userId: string): Promise<ProjectEnvironmentVariable[]>;
+  create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult>;
+  edit(projectId: string, options: EditEnvironmentVariable): Promise<Result>;
+  getProject(projectId: string): Promise<ProjectEnvironmentVariable[]>;
   getEnvironment(
     projectId: string,
-    userId: string,
-    environmentId: string
+    environmentId: string,
+    excludeInternalVariables?: boolean
   ): Promise<EnvironmentVariable[]>;
-  getEnvironmentVariables(projectId: string, environmentId: string): Promise<EnvironmentVariable[]>;
-  delete(projectId: string, userId: string, options: DeleteEnvironmentVariable): Promise<Result>;
+  getEnvironmentVariables(
+    projectId: string,
+    environmentId: string,
+    excludeInternalVariables?: boolean
+  ): Promise<EnvironmentVariable[]>;
+  delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result>;
+  deleteValue(projectId: string, options: DeleteEnvironmentVariableValue): Promise<Result>;
 }

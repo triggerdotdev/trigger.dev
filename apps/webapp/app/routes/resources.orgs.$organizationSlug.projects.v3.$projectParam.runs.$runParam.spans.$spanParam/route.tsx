@@ -4,11 +4,11 @@ import {
   QueueListIcon,
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
-import { useFetcher, useParams } from "@remix-run/react";
+import { useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { useEffect } from "react";
-import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
@@ -46,6 +46,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     organizationSlug,
     projectSlug: projectParam,
     spanId: spanParam,
+    runFriendlyId: runParam,
   });
 
   if (!span) {

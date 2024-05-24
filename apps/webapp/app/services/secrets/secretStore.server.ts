@@ -4,9 +4,7 @@ import { env } from "~/env.server";
 import nodeCrypto from "node:crypto";
 import { safeJsonParse } from "~/utils/json";
 import { logger } from "../logger.server";
-
-export const SecretStoreOptionsSchema = z.enum(["DATABASE", "AWS_PARAM_STORE"]);
-export type SecretStoreOptions = z.infer<typeof SecretStoreOptionsSchema>;
+import type { SecretStoreOptions } from "./secretStoreOptionsSchema.server";
 
 type ProviderInitializationOptions = {
   DATABASE: {

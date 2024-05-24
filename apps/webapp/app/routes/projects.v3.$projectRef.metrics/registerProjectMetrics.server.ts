@@ -1,75 +1,8 @@
-import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { TaskQueue } from "@trigger.dev/database";
 import { Gauge, Registry } from "prom-client";
-import { z } from "zod";
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { marqs } from "~/v3/marqs/index.server";
-
-const ParamsSchema = z.object({
-  projectRef: z.string(),
-});
-
-export async function loader({ params, request }: LoaderFunctionArgs) {
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-  }
-
-  const validatedParams = ParamsSchema.parse(params);
-
-  const user = await prisma.user.findUnique({
-    where: {
-      id: authenticationResult.userId,
-    },
-  });
-
-  if (!user) {
-    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-  }
-
-  const project = user.admin
-    ? await prisma.project.findFirst({
-        where: {
-          externalRef: validatedParams.projectRef,
-        },
-        include: {
-          organization: true,
-        },
-      })
-    : await prisma.project.findFirst({
-        where: {
-          externalRef: validatedParams.projectRef,
-          organization: {
-            members: {
-              some: {
-                userId: authenticationResult.userId,
-              },
-            },
-          },
-        },
-        include: {
-          organization: true,
-        },
-      });
-
-  if (!project) {
-    return new Response("Not found", { status: 404 });
-  }
-
-  const registry = new Registry();
-  // Return prometheus metrics for the project (queues)
-
-  await registerProjectMetrics(registry, project.id, authenticationResult.userId);
-
-  return new Response(await registry.metrics(), {
-    headers: {
-      "Content-Type": registry.contentType,
-    },
-  });
-}
 
 export async function registerProjectMetrics(
   registry: Registry,

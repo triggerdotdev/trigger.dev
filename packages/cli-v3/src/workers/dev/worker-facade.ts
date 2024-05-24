@@ -26,9 +26,8 @@ declare const handleError: HandleErrorFunction | undefined;
 
 declare const __PROJECT_CONFIG__: Config;
 declare const tracingSDK: TracingSDK;
-
-const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
-const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.version);
+declare const otelTracer: Tracer;
+declare const otelLogger: Logger;
 
 import {
   TaskRunErrorCodes,
@@ -45,7 +44,8 @@ import {
   ZodMessageSender,
   ZodSchemaParsedError,
 } from "@trigger.dev/core/v3/zodMessageHandler";
-import * as packageJson from "../../../package.json";
+import type { Tracer } from "@opentelemetry/api";
+import type { Logger } from "@opentelemetry/api-logs";
 
 declare const sender: ZodMessageSender<typeof childToWorkerMessages>;
 
