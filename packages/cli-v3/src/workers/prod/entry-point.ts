@@ -231,13 +231,10 @@ class ProdWorker {
       if (!this.attemptFriendlyId) {
         logger.error("Failed to send wait message, attempt friendly ID not set", { message });
 
-        this.#coordinatorSocket.socket.emit("UNRECOVERABLE_ERROR", {
-          version: "v1",
-          error: {
-            name: "NoAttemptId",
-            message: "Attempt ID not set before waiting for duration",
-          },
-        });
+        this.#emitUnrecoverableError(
+          "NoAttemptId",
+          "Attempt ID not set before waiting for duration"
+        );
 
         return;
       }
@@ -257,13 +254,7 @@ class ProdWorker {
       if (!this.attemptFriendlyId) {
         logger.error("Failed to send wait message, attempt friendly ID not set", { message });
 
-        this.#coordinatorSocket.socket.emit("UNRECOVERABLE_ERROR", {
-          version: "v1",
-          error: {
-            name: "NoAttemptId",
-            message: "Attempt ID not set before waiting for task",
-          },
-        });
+        this.#emitUnrecoverableError("NoAttemptId", "Attempt ID not set before waiting for task");
 
         return;
       }
@@ -283,13 +274,7 @@ class ProdWorker {
       if (!this.attemptFriendlyId) {
         logger.error("Failed to send wait message, attempt friendly ID not set", { message });
 
-        this.#coordinatorSocket.socket.emit("UNRECOVERABLE_ERROR", {
-          version: "v1",
-          error: {
-            name: "NoAttemptId",
-            message: "Attempt ID not set before waiting for batch",
-          },
-        });
+        this.#emitUnrecoverableError("NoAttemptId", "Attempt ID not set before waiting for batch");
 
         return;
       }
@@ -598,13 +583,10 @@ class ProdWorker {
           if (!this.nextResumeAfter) {
             logger.error("Missing next resume reason");
 
-            this.#coordinatorSocket.socket.emit("UNRECOVERABLE_ERROR", {
-              version: "v1",
-              error: {
-                name: "NoNextResume",
-                message: "Next resume reason not set while resuming from paused state",
-              },
-            });
+            this.#emitUnrecoverableError(
+              "NoNextResume",
+              "Next resume reason not set while resuming from paused state"
+            );
 
             return;
           }
@@ -612,13 +594,10 @@ class ProdWorker {
           if (!this.attemptFriendlyId) {
             logger.error("Missing friendly ID");
 
-            this.#coordinatorSocket.socket.emit("UNRECOVERABLE_ERROR", {
-              version: "v1",
-              error: {
-                name: "NoAttemptId",
-                message: "Attempt ID not set while resuming from paused state",
-              },
-            });
+            this.#emitUnrecoverableError(
+              "NoAttemptId",
+              "Attempt ID not set while resuming from paused state"
+            );
 
             return;
           }
@@ -937,6 +916,16 @@ class ProdWorker {
       waitForPostStart: this.waitForPostStart,
       attemptFriendlyId: this.attemptFriendlyId,
     };
+  }
+
+  #emitUnrecoverableError(name: string, message: string) {
+    this.#coordinatorSocket.socket.emit("UNRECOVERABLE_ERROR", {
+      version: "v1",
+      error: {
+        name,
+        message,
+      },
+    });
   }
 
   start() {
