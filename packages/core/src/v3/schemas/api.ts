@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { BackgroundWorkerMetadata, ImageDetailsMetadata } from "./resources";
 import { QueueOptions } from "./schemas";
+import { SerializedError } from "../errors";
 
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
@@ -210,7 +211,7 @@ export const ReplayRunResponse = z.object({
 export type ReplayRunResponse = z.infer<typeof ReplayRunResponse>;
 
 export const CanceledRunResponse = z.object({
-  message: z.string(),
+  id: z.string(),
 });
 
 export type CanceledRunResponse = z.infer<typeof CanceledRunResponse>;
@@ -320,12 +321,28 @@ export const ListScheduleOptions = z.object({
 export type ListScheduleOptions = z.infer<typeof ListScheduleOptions>;
 
 export const RunStatus = z.enum([
-  "PENDING",
+  /// Task hasn't been deployed yet but is waiting to be executed
+  "WAITING_FOR_DEPLOY",
+  /// Task is waiting to be executed by a worker
+  "QUEUED",
+  /// Task is currently being executed by a worker
   "EXECUTING",
-  "PAUSED",
+  /// Task has failed and is waiting to be retried
+  "REATTEMPTING",
+  /// Task has been paused by the system, and will be resumed by the system
+  "FROZEN",
+  /// Task has been completed successfully
   "COMPLETED",
-  "FAILED",
+  /// Task has been canceled by the user
   "CANCELED",
+  /// Task has been completed with errors
+  "FAILED",
+  /// Task has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage
+  "CRASHED",
+  /// Task was interrupted during execution, mostly this happens in development environments
+  "INTERRUPTED",
+  /// Task has failed to complete, due to an error in the system
+  "SYSTEM_FAILURE",
 ]);
 
 export type RunStatus = z.infer<typeof RunStatus>;
@@ -349,6 +366,8 @@ export const RetrieveRunResponse = z.object({
   version: z.string().optional(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
+  payload: z.any().optional(),
+  output: z.any().optional(),
   attempts: z.array(
     z
       .object({
@@ -358,6 +377,7 @@ export const RetrieveRunResponse = z.object({
         updatedAt: z.coerce.date(),
         startedAt: z.coerce.date().optional(),
         completedAt: z.coerce.date().optional(),
+        error: SerializedError.optional(),
       })
       .optional()
   ),

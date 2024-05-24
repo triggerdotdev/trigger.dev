@@ -5,7 +5,7 @@
   "versions": ["v3 (Developer Preview)", "v2"],
   "api": {
     "playground": {
-      "mode": "hide"
+      "mode": "simple"
     },
     "maintainOrder": true
   },

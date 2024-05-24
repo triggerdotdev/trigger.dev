@@ -265,20 +265,14 @@ paths:
 
             const schedule = await schedules.activate(scheduleId);
 
-  "/api/v1/runs/{run_id}/replay":
+  "/api/v1/runs/{runId}/replay":
+    parameters:
+      - $ref: "#/components/parameters/runId"
     post:
       operationId: replay_run_v1
       summary: Replay a run
       description: Creates a new run with the same payload and options as the original
         run.
-      parameters:
-        - in: path
-          name: run_id
-          required: true
-          schema:
-            type: string
-          description: The ID of an existing run. When you trigger a run you will get
-            an id in the response.
       responses:
         "200":
           description: Successful request
@@ -335,19 +329,14 @@ paths:
 
             const handle = await runs.replay("run_1234");
 
-  "/api/v1/runs/{run_id}/cancel":
+  "/api/v2/runs/{runId}/cancel":
+    parameters:
+      - $ref: "#/components/parameters/runId"
     post:
       operationId: cancel_run_v1
-      description: Cancels a run.
       summary: Cancel a run
-      parameters:
-        - in: path
-          name: run_id
-          required: true
-          schema:
-            type: string
-          description: The ID of an existing run. When you trigger a run you will get
-            an id in the response.
+      description: Cancels an in-progress run. If the run is already completed, this
+        will have no effect.
       responses:
         "200":
           description: Successful request
@@ -356,9 +345,10 @@ paths:
               schema:
                 type: object
                 properties:
-                  message:
+                  id:
                     type: string
-                    description: Confirmation message that the run was canceled.
+                    description: The ID of the run that was canceled.
+                    example: run_1234
         "400":
           description: Invalid request
           content:
@@ -404,19 +394,14 @@ paths:
 
             await runs.cancel("run_1234");
 
-  "/api/v3/runs/{run_id}":
+  "/api/v3/runs/{runId}":
+    parameters:
+      - $ref: "#/components/parameters/runId"
     get:
       operationId: retrieve_run_v1
-      description: Retrieve a run
       summary: Retrieve a run
-      parameters:
-        - in: path
-          name: run_id
-          required: true
-          schema:
-            type: string
-          description: The ID of an existing run. When you trigger a run you will get
-            an id in the response.
+      description: |
+        Retrieve information about a run, including its status, payload, output, and attempts. If you authenticate with a Public API key, we will omit the payload and output fields for security reasons. 
       responses:
         "200":
           description: Successful request
@@ -466,7 +451,28 @@ paths:
           source: |-
             import { runs } from "@trigger.dev/sdk/v3";
 
-            await runs.retrieve("run_1234");
+            const result = await runs.retrieve("run_1234");
+
+            // We include boolean helpers to check the status of the run
+            // (isSuccess, isFailed, isCompleted, etc.)
+            if (result.isSuccess) {
+              console.log("Run was successful with output", result.output);
+            }
+
+            // You also have access to the run status that includes more granular information
+            console.log("Run status:", result.status);
+
+            // You can access the payload and output
+            console.log("Payload:", result.payload);
+            console.log("Output:", result.output);
+
+            // You can also access the attempts, which will give you information about errors (if they exist)
+            for (const attempt of result.attempts) {
+              if (attempt.status === "FAILED") {
+                console.log("Attempt failed with error:", attempt.error);
+              }
+            }
+
 
   "/api/v1/projects/{projectRef}/envvars/{env}":
     parameters:
@@ -918,6 +924,15 @@ paths:
 
 components:
   parameters:
+    runId:
+      in: path
+      name: runId
+      required: true
+      schema:
+        type: string
+      description: |
+        The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task.
+      example: run_1234
     projectRef:
       in: path
       name: projectRef
@@ -1032,21 +1047,43 @@ components:
       properties:
         id:
           type: string
+          description: The unique ID of the run, prefixed with `run_`
+          example: run_1234
         status:
           type: string
+          description: The status of the run
           enum:
-            - PENDING
+            - WAITING_FOR_DEPLOY
+            - QUEUED
             - EXECUTING
-            - PAUSED
+            - REATTEMPTING
+            - FROZEN
             - COMPLETED
-            - FAILED
             - CANCELED
+            - FAILED
+            - CRASHED
+            - INTERRUPTED
+            - SYSTEM_FAILURE
         taskIdentifier:
           type: string
-        idempotencyKey:
-          type: string
+          description: The identifier of the task that was run
+          example: my-task
         version:
           type: string
+          example: 20240523.1
+          description: The version of the worker that executed the run
+        payload:
+          type: object
+          description: The payload that was sent to the task. Will be omitted if the request was made with a Public API key
+          example: {"foo": "bar"}
+        output:
+          type: object
+          description: The output of the run. Will be omitted if the request was made with a Public API key
+          example: {"foo": "bar"}
+        idempotencyKey:
+          type: string
+          description: The idempotency key used to prevent creating duplicate runs, if provided
+          example: idempotency_key_1234
         createdAt:
           type: string
           format: date-time
@@ -1065,6 +1102,8 @@ components:
             properties:
               id:
                 type: string
+                description: The unique ID of the attempt, prefixed with `attempt_`
+                example: attempt_1234
               status:
                 type: string
                 enum:
@@ -1074,6 +1113,8 @@ components:
                   - COMPLETED
                   - FAILED
                   - CANCELED
+              error:
+                $ref: "#/components/schemas/SerializedError"
               createdAt:
                 type: string
                 format: date-time
@@ -1174,3 +1215,17 @@ components:
           type: string
         userName:
           type: string
+    SerializedError:
+      type: object
+      required: 
+        - message
+      properties:
+        message:
+          type: string
+          example: Something went wrong
+        name:
+          type: string
+          example: Error
+        stackTrace:
+          type: string
+          example: "Error: Something went wrong"

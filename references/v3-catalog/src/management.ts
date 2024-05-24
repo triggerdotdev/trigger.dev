@@ -1,13 +1,13 @@
-import { tracer } from "./tracer";
-import { APIError, configure, runs, schedules, envvars } from "@trigger.dev/sdk/v3";
-import { simpleChildTask } from "./trigger/subtasks";
+import { configure, envvars, runs, schedules } from "@trigger.dev/sdk/v3";
 import dotenv from "dotenv";
-import { firstScheduledTask } from "./trigger/scheduled";
 import { createReadStream } from "node:fs";
+import { firstScheduledTask } from "./trigger/scheduled";
+import { simpleChildTask } from "./trigger/subtasks";
+import { taskThatErrors } from "./trigger/retries";
 
 dotenv.config();
 
-async function uploadEnvVars() {
+async function doEnvVars() {
   configure({
     secretKey: process.env.TRIGGER_ACCESS_TOKEN,
   });
@@ -88,87 +88,99 @@ async function uploadEnvVars() {
   console.log("response6", response6);
 }
 
-export async function run() {
-  await tracer.startActiveSpan("run", async (span) => {
-    try {
-      const run = await simpleChildTask.trigger({ message: "Hello, World!" });
+async function doRuns() {
+  const run = await simpleChildTask.trigger({ message: "Hello, World!" });
 
-      const retrievedRun = await runs.retrieve(run.id);
-      console.log("retrieved run", retrievedRun);
+  const retrievedRun = await runs.retrieve(run.id);
+  console.log("retrieved run", retrievedRun);
 
-      const canceled = await runs.cancel(run.id);
-      console.log("canceled run", canceled);
+  const completedRun = await waitForRunToComplete(run.id);
+  console.log("completed run", completedRun);
 
-      const replayed = await runs.replay(run.id);
-      console.log("replayed run", replayed);
+  const failingRun = await taskThatErrors.trigger({ message: "Hello, World!" });
+  const failedRun = await waitForRunToComplete(failingRun.id);
 
-      const run2 = await simpleChildTask.trigger(
-        { message: "Hello, World!" },
-        {
-          idempotencyKey: "mmvlgwcidiklyeygen4",
-        }
-      );
+  console.log("failed run", failedRun);
 
-      const run3 = await simpleChildTask.trigger(
-        { message: "Hello, World again!" },
-        {
-          idempotencyKey: "mmvlgwcidiklyeygen4",
-        }
-      );
+  const replayableRun = await runs.replay(failedRun.id);
+  const replayedRun = await waitForRunToExecute(replayableRun.id);
 
-      console.log("run2", run2);
-      console.log("run3", run3);
+  console.log("replayed run", replayedRun);
 
-      const allSchedules = await schedules.list();
+  const canceledRun = await runs.cancel(replayedRun.id);
+  const canceledRunResult = await waitForRunToComplete(canceledRun.id);
 
-      console.log("all schedules", allSchedules);
-
-      // Create a schedule
-      const createdSchedule = await schedules.create({
-        task: firstScheduledTask.id,
-        cron: "0 0 * * *",
-        externalId: "ext_1234444",
-        deduplicationKey: "dedup_1234444",
-      });
-
-      console.log("created schedule", createdSchedule);
-
-      const retrievedSchedule = await schedules.retrieve(createdSchedule.id);
-
-      console.log("retrieved schedule", retrievedSchedule);
-
-      const updatedSchedule = await schedules.update(createdSchedule.id, {
-        task: firstScheduledTask.id,
-        cron: "0 0 1 * *",
-        externalId: "ext_1234444",
-      });
-
-      console.log("updated schedule", updatedSchedule);
-
-      const deactivatedSchedule = await schedules.deactivate(createdSchedule.id);
-
-      console.log("deactivated schedule", deactivatedSchedule);
-
-      const activatedSchedule = await schedules.activate(createdSchedule.id);
-
-      console.log("activated schedule", activatedSchedule);
-
-      const deletedSchedule = await schedules.del(createdSchedule.id);
-
-      console.log("deleted schedule", deletedSchedule);
-    } catch (error) {
-      span.recordException(error as Error);
-
-      if (error instanceof APIError) {
-        console.error("APIError", error);
-      } else {
-        console.error("Unknown error", error);
-      }
-    } finally {
-      span.end();
-    }
-  });
+  console.log("canceled run", canceledRunResult);
 }
 
-// run();
-uploadEnvVars().catch(console.error);
+async function waitForRunToComplete(runId: string) {
+  let run = await runs.retrieve(runId);
+
+  while (!run.isCompleted) {
+    console.log("run is not completed, waiting...", run);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    run = await runs.retrieve(runId);
+  }
+
+  console.log("run is completed", run);
+
+  return run;
+}
+
+async function waitForRunToExecute(runId: string) {
+  let run = await runs.retrieve(runId);
+
+  while (!run.isExecuting) {
+    console.log("run is not executing, waiting...", run);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    run = await runs.retrieve(runId);
+  }
+
+  console.log("run is executing", run);
+
+  return run;
+}
+
+async function doSchedules() {
+  const allSchedules = await schedules.list();
+
+  console.log("all schedules", allSchedules);
+
+  // Create a schedule
+  const createdSchedule = await schedules.create({
+    task: firstScheduledTask.id,
+    cron: "0 0 * * *",
+    externalId: "ext_1234444",
+    deduplicationKey: "dedup_1234444",
+  });
+
+  console.log("created schedule", createdSchedule);
+
+  const retrievedSchedule = await schedules.retrieve(createdSchedule.id);
+
+  console.log("retrieved schedule", retrievedSchedule);
+
+  const updatedSchedule = await schedules.update(createdSchedule.id, {
+    task: firstScheduledTask.id,
+    cron: "0 0 1 * *",
+    externalId: "ext_1234444",
+  });
+
+  console.log("updated schedule", updatedSchedule);
+
+  const deactivatedSchedule = await schedules.deactivate(createdSchedule.id);
+
+  console.log("deactivated schedule", deactivatedSchedule);
+
+  const activatedSchedule = await schedules.activate(createdSchedule.id);
+
+  console.log("activated schedule", activatedSchedule);
+
+  const deletedSchedule = await schedules.del(createdSchedule.id);
+
+  console.log("deleted schedule", deletedSchedule);
+}
+
+doRuns().catch(console.error);
+// doSchedules().catch(console.error);
+// doEnvVars().catch(console.error);

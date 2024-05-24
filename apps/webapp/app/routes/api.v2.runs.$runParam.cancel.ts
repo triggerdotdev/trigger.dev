@@ -48,5 +48,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 
-  return json({ message: "Run cancelled" }, { status: 200 });
+  return json({ id: runParam }, { status: 200 });
 }

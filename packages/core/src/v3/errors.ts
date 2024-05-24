@@ -54,7 +54,15 @@ export function createErrorTaskError(error: TaskRunError): any {
   }
 }
 
-export function createJsonErrorObject(error: TaskRunError) {
+export const SerializedError = z.object({
+  message: z.string(),
+  name: z.string().optional(),
+  stackTrace: z.string().optional(),
+});
+
+export type SerializedError = z.infer<typeof SerializedError>;
+
+export function createJsonErrorObject(error: TaskRunError): SerializedError {
   switch (error.type) {
     case "BUILT_IN_ERROR": {
       return {
