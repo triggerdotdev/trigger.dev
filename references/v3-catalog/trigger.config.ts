@@ -10,6 +10,10 @@ export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async ({
   env,
   environment,
 }) => {
+  if (env.INFISICAL_CLIENT_ID === undefined || env.INFISICAL_CLIENT_SECRET === undefined) {
+    return;
+  }
+
   const client = new InfisicalClient({
     clientId: env.INFISICAL_CLIENT_ID,
     clientSecret: env.INFISICAL_CLIENT_SECRET,
