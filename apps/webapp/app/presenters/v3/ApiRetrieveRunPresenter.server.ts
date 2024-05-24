@@ -117,15 +117,15 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       case "PENDING": {
         return "QUEUED";
       }
-      case "WAITING_TO_RESUME":
+      case "PAUSED":
+      case "WAITING_TO_RESUME": {
+        return "FROZEN";
+      }
       case "RETRYING_AFTER_FAILURE": {
         return "REATTEMPTING";
       }
       case "EXECUTING": {
         return "EXECUTING";
-      }
-      case "PAUSED": {
-        return "FROZEN";
       }
       case "CANCELED": {
         return "CANCELED";

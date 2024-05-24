@@ -1,4 +1,6 @@
-import { BlobLikePart, Uploadable } from "../zodfetch";
+import { RunStatus } from "../schemas";
+import { BlobLikePart, Uploadable } from "./core";
+import { CursorPageParams } from "./pagination";
 
 export interface ImportEnvironmentVariablesParams {
   /**
@@ -21,4 +23,15 @@ export interface CreateEnvironmentVariableParams {
 
 export interface UpdateEnvironmentVariableParams {
   value: string;
+}
+
+export interface ListRunsQueryParams extends CursorPageParams {
+  status?: Array<RunStatus> | RunStatus;
+  env?: Array<"dev" | "staging" | "prod"> | "dev" | "staging" | "prod";
+  taskIdentifier?: Array<string> | string;
+  version?: Array<string> | string;
+  bulkAction?: string;
+  from?: Date | number;
+  to?: Date | number;
+  period?: string;
 }

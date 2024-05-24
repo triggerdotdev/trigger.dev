@@ -168,32 +168,40 @@
         {
           "group": "Runs API",
           "pages": [
-            "v3/management-retrieve-run",
-            "v3/management-replay-run",
-            "v3/management-cancel-run"
+            "v3/management/runs/list",
+            "v3/management/runs/retrieve",
+            "v3/management/runs/replay",
+            "v3/management/runs/cancel"
           ]
         },
         {
           "group": "Schedules API",
           "pages": [
-            "v3/management-list-schedules",
-            "v3/management-create-schedule",
-            "v3/management-retrieve-schedule",
-            "v3/management-update-schedule",
-            "v3/management-delete-schedule",
-            "v3/management-deactivate-schedule",
-            "v3/management-activate-schedule"
+            "v3/management/schedules/list",
+            "v3/management/schedules/create",
+            "v3/management/schedules/retrieve",
+            "v3/management/schedules/update",
+            "v3/management/schedules/delete",
+            "v3/management/schedules/deactivate",
+            "v3/management/schedules/activate"
           ]
         },
         {
           "group": "Env Vars API",
           "pages": [
-            "v3/management-envvars-list",
-            "v3/management-envvars-import",
-            "v3/management-envvars-create",
-            "v3/management-envvars-retrieve",
-            "v3/management-envvars-update",
-            "v3/management-envvars-delete"
+            "v3/management/envvars/list",
+            "v3/management/envvars/import",
+            "v3/management/envvars/create",
+            "v3/management/envvars/retrieve",
+            "v3/management/envvars/update",
+            "v3/management/envvars/delete"
+          ]
+        },
+        {
+          "group": "Projects API",
+          "pages": [
+            "v3/management/projects/auth",
+            "v3/management/projects/runs"
           ]
         }
       ]

@@ -49,6 +49,7 @@ export type MarQSOptions = {
   keysProducer: MarQSKeyProducer;
   queuePriorityStrategy: MarQSQueuePriorityStrategy;
   envQueuePriorityStrategy: MarQSQueuePriorityStrategy;
+  enableRebalancing?: boolean;
 };
 
 /**
@@ -707,6 +708,10 @@ export class MarQS {
   }
 
   #startRebalanceWorkers() {
+    if (!this.options.enableRebalancing) {
+      return;
+    }
+
     // Start a new worker to rebalance parent queues periodically
     for (let i = 0; i < this.options.workers; i++) {
       const worker = new AsyncWorker(this.#rebalanceParentQueues.bind(this), 60_000);
@@ -1597,6 +1602,7 @@ function getMarQSClient() {
         defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
         defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
         visibilityTimeoutInMs: 120 * 1000, // 2 minutes,
+        enableRebalancing: !env.MARQS_DISABLE_REBALANCING,
       });
     } else {
       console.warn(

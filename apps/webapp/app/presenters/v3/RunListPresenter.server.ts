@@ -7,9 +7,9 @@ import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 import { BasePresenter } from "./basePresenter.server";
 
-type RunListOptions = {
+export type RunListOptions = {
   userId?: string;
-  projectSlug: string;
+  projectId: string;
   //filters
   tasks?: string[];
   versions?: string[];
@@ -35,7 +35,7 @@ export type RunListAppliedFilters = RunList["filters"];
 export class RunListPresenter extends BasePresenter {
   public async call({
     userId,
-    projectSlug,
+    projectId,
     tasks,
     versions,
     statuses,
@@ -85,7 +85,7 @@ export class RunListPresenter extends BasePresenter {
         },
       },
       where: {
-        slug: projectSlug,
+        id: projectId,
       },
     });
 
@@ -156,6 +156,7 @@ export class RunListPresenter extends BasePresenter {
         updatedAt: Date;
         isTest: boolean;
         spanId: string;
+        idempotencyKey: string | null;
       }[]
     >`
     SELECT
@@ -170,7 +171,8 @@ export class RunListPresenter extends BasePresenter {
     tr."lockedAt" AS "lockedAt",
     tr."updatedAt" AS "updatedAt",
     tr."isTest" AS "isTest",
-    tr."spanId" AS "spanId"
+    tr."spanId" AS "spanId",
+    tr."idempotencyKey" AS "idempotencyKey"
   FROM
     ${sqlDatabaseSchema}."TaskRun" tr
   LEFT JOIN
@@ -270,6 +272,7 @@ export class RunListPresenter extends BasePresenter {
           friendlyId: run.runFriendlyId,
           number: Number(run.number),
           createdAt: run.createdAt.toISOString(),
+          updatedAt: run.updatedAt.toISOString(),
           startedAt: run.lockedAt ? run.lockedAt.toISOString() : undefined,
           hasFinished,
           finishedAt: hasFinished ? run.updatedAt.toISOString() : undefined,
@@ -281,6 +284,7 @@ export class RunListPresenter extends BasePresenter {
           isReplayable: true,
           isCancellable: CANCELLABLE_STATUSES.includes(run.status),
           environment: displayableEnvironment(environment, userId),
+          idempotencyKey: run.idempotencyKey ? run.idempotencyKey : undefined,
         };
       }),
       pagination: {

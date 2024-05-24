@@ -124,6 +124,7 @@ type DisplayableInputEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
   select: {
     id: true;
     type: true;
+    slug: true;
     orgMember: {
       select: {
         user: {

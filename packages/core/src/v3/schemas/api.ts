@@ -385,6 +385,36 @@ export const RetrieveRunResponse = z.object({
 
 export type RetrieveRunResponse = z.infer<typeof RetrieveRunResponse>;
 
+export const ListRunResponseItem = z.object({
+  id: z.string(),
+  status: RunStatus,
+  taskIdentifier: z.string(),
+  version: z.string().optional(),
+  env: z.object({
+    id: z.string(),
+    name: z.string(),
+    user: z.string().optional(),
+  }),
+  isTest: z.boolean(),
+  idempotencyKey: z.string().optional(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date().optional(),
+  startedAt: z.coerce.date().optional(),
+  finishedAt: z.coerce.date().optional(),
+});
+
+export type ListRunResponseItem = z.infer<typeof ListRunResponseItem>;
+
+export const ListRunResponse = z.object({
+  data: z.array(ListRunResponseItem),
+  pagination: z.object({
+    next: z.string().optional(),
+    previous: z.string().optional(),
+  }),
+});
+
+export type ListRunResponse = z.infer<typeof ListRunResponse>;
+
 export const CreateEnvironmentVariableRequestBody = z.object({
   name: z.string(),
   value: z.string(),

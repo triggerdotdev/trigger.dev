@@ -1,12 +1,15 @@
 import {
   CanceledRunResponse,
+  CursorPageResponse,
+  ListRunResponseItem,
   ReplayRunResponse,
   RetrieveRunResponse,
   apiClientManager,
 } from "@trigger.dev/core/v3";
 import { apiClientMissingError } from "./shared";
+import { ListRunsQueryParams } from "@trigger.dev/core/v3/apiClient/types";
 
-export type RetrieveRunResult = RetrieveRunResponse & {
+type RunStatusBooleanHelpers = {
   isQueued: boolean;
   isExecuting: boolean;
   isCompleted: boolean;
@@ -15,11 +18,26 @@ export type RetrieveRunResult = RetrieveRunResponse & {
   isCancelled: boolean;
 };
 
+export type RetrieveRunResult = RetrieveRunResponse & RunStatusBooleanHelpers;
+
 export const runs = {
   replay: replayRun,
   cancel: cancelRun,
   retrieve: retrieveRun,
+  list: listRuns,
 };
+
+export type ListRunsItem = ListRunResponseItem & RunStatusBooleanHelpers;
+
+function listRuns(params?: ListRunsQueryParams) {
+  const apiClient = apiClientManager.client;
+
+  if (!apiClient) {
+    throw apiClientMissingError();
+  }
+
+  return apiClient.listRuns(params);
+}
 
 async function retrieveRun(runId: string): Promise<RetrieveRunResult> {
   const apiClient = apiClientManager.client;

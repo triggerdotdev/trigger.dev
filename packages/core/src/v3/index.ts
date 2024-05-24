@@ -1,5 +1,6 @@
 export * from "./apiClient";
-export * from "./apiErrors";
+export * from "./apiClient/pagination";
+export * from "./apiClient/errors";
 export * from "./clock-api";
 export * from "./errors";
 export * from "./limits";

@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { APIConnectionError, APIError } from "./apiErrors";
-import { RetryOptions } from "./schemas";
-import { calculateNextRetryDelay } from "./utils/retries";
+import { APIConnectionError, APIError } from "./errors";
+import { RetryOptions } from "../schemas";
+import { calculateNextRetryDelay } from "../utils/retries";
 import { FormDataEncoder } from "form-data-encoder";
 import { Readable } from "node:stream";
+import { CursorPage, CursorPageParams, CursorPageResponse } from "./pagination";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,
@@ -18,6 +19,10 @@ export type ZodFetchOptions = {
   retry?: RetryOptions;
 };
 
+interface FetchPageParams extends CursorPageParams {
+  query?: URLSearchParams;
+}
+
 export async function zodfetch<TResponseBodySchema extends z.ZodTypeAny>(
   schema: TResponseBodySchema,
   url: string,
@@ -27,11 +32,49 @@ export async function zodfetch<TResponseBodySchema extends z.ZodTypeAny>(
   return await _doZodFetch(schema, url, requestInit, options);
 }
 
-export class MultipartBody {
-  constructor(public body: any) {}
-  get [Symbol.toStringTag](): string {
-    return "MultipartBody";
+// requestAPIList<Item = unknown, PageClass extends AbstractPage<Item> = AbstractPage<Item>>(
+//     Page: new (...args: ConstructorParameters<typeof AbstractPage>) => PageClass,
+//     options: FinalRequestOptions,
+//   ): PagePromise<PageClass, Item> {
+//     const request = this.makeRequest(options, null);
+//     return new PagePromise<PageClass, Item>(this, request, Page);
+//   }
+
+export function zodfetchPage<TItemSchema extends z.ZodTypeAny>(
+  schema: TItemSchema,
+  url: string,
+  params: FetchPageParams,
+  requestInit?: RequestInit,
+  options?: ZodFetchOptions
+) {
+  const query = new URLSearchParams(params.query);
+
+  if (params.limit) {
+    query.set("page[size]", String(params.limit));
   }
+
+  if (params.after) {
+    query.set("page[after]", params.after);
+  }
+
+  if (params.before) {
+    query.set("page[before]", params.before);
+  }
+
+  const cursorPageSchema = z.object({
+    data: z.array(schema),
+    pagination: z.object({
+      next: z.string().optional(),
+      previous: z.string().optional(),
+    }),
+  });
+
+  const $url = new URL(url);
+  $url.search = query.toString();
+
+  const response = _doZodFetch(cursorPageSchema, $url.href, requestInit, options);
+
+  return new PagePromise(response, schema, url, params, requestInit, options);
 }
 
 export async function zodupload<
@@ -435,3 +478,79 @@ export const isRecordLike = (value: any): value is Record<string, string> =>
   !Array.isArray(value) &&
   Object.keys(value).length > 0 &&
   Object.keys(value).every((key) => typeof key === "string" && typeof value[key] === "string");
+
+/**
+ * A subclass of `Promise` providing additional helper methods
+ * for interacting with the SDK.
+ */
+class ApiPromise<T> extends Promise<T> {
+  constructor(private responsePromise: Promise<T>) {
+    super((resolve) => {
+      // this is maybe a bit weird but this has to be a no-op to not implicitly
+      // parse the response body; instead .then, .catch, .finally are overridden
+      // to parse the response
+      resolve(null as any);
+    });
+  }
+
+  override then<TResult1 = T, TResult2 = never>(
+    onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null,
+    onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null
+  ): Promise<TResult1 | TResult2> {
+    return this.responsePromise.then(onfulfilled, onrejected);
+  }
+
+  override catch<TResult = never>(
+    onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null
+  ): Promise<T | TResult> {
+    return this.responsePromise.catch(onrejected);
+  }
+
+  override finally(onfinally?: (() => void) | undefined | null): Promise<T> {
+    return this.responsePromise.finally(onfinally);
+  }
+}
+
+export class PagePromise<TItemSchema extends z.ZodTypeAny>
+  extends ApiPromise<CursorPage<z.output<TItemSchema>>>
+  implements AsyncIterable<z.output<TItemSchema>>
+{
+  constructor(
+    response: Promise<CursorPageResponse<z.output<TItemSchema>>>,
+    private schema: TItemSchema,
+    private url: string,
+    private params: FetchPageParams,
+    private requestInit?: RequestInit,
+    private options?: ZodFetchOptions
+  ) {
+    super(
+      response.then(
+        (response) => new CursorPage(response.data, response.pagination, this.#fetchPage.bind(this))
+      )
+    );
+  }
+
+  #fetchPage(params: Omit<CursorPageParams, "limit">): Promise<CursorPage<z.output<TItemSchema>>> {
+    return zodfetchPage(
+      this.schema,
+      this.url,
+      { ...this.params, ...params },
+      this.requestInit,
+      this.options
+    );
+  }
+
+  /**
+   * Allow auto-paginating iteration on an unawaited list call, eg:
+   *
+   *    for await (const item of client.items.list()) {
+   *      console.log(item)
+   *    }
+   */
+  async *[Symbol.asyncIterator]() {
+    const page = await this;
+    for await (const item of page) {
+      yield item;
+    }
+  }
+}

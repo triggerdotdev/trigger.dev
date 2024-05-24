@@ -111,6 +111,48 @@ async function doRuns() {
   const canceledRunResult = await waitForRunToComplete(canceledRun.id);
 
   console.log("canceled run", canceledRunResult);
+
+  let pageCount = 0;
+
+  let page = await runs.list({
+    limit: 100,
+  });
+
+  console.log(`run page #${pageCount++}`);
+
+  // Convenience methods are provided for manually paginating:
+  while (page.hasNextPage()) {
+    page = await page.getNextPage();
+    console.log(`run page #${pageCount++}`);
+  }
+}
+
+async function doListRuns() {
+  let pageCount = 0;
+
+  let page = await runs.list({
+    limit: 100,
+  });
+
+  console.log(`run page #${++pageCount}`);
+
+  // Convenience methods are provided for manually paginating:
+  while (page.hasNextPage()) {
+    page = await page.getNextPage();
+    console.log(`run page #${++pageCount}`);
+  }
+
+  while (page.hasPreviousPage()) {
+    page = await page.getPreviousPage();
+    console.log(`run page #${--pageCount}`);
+  }
+
+  for await (const run of runs.list({
+    status: ["COMPLETED"],
+    period: "1y",
+  })) {
+    console.log(run.id, run.status, run.createdAt);
+  }
 }
 
 async function waitForRunToComplete(runId: string) {
@@ -181,6 +223,7 @@ async function doSchedules() {
   console.log("deleted schedule", deletedSchedule);
 }
 
-doRuns().catch(console.error);
+// doRuns().catch(console.error);
+doListRuns().catch(console.error);
 // doSchedules().catch(console.error);
 // doEnvVars().catch(console.error);

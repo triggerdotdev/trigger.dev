@@ -1,6 +1,6 @@
 import { context, propagation } from "@opentelemetry/api";
 import { version } from "../../../package.json";
-import { APIError } from "../apiErrors";
+import { APIError } from "./errors";
 import {
   BatchTaskRunExecutionResult,
   BatchTriggerTaskRequestBody,
@@ -13,6 +13,8 @@ import {
   EnvironmentVariableResponseBody,
   EnvironmentVariableValue,
   EnvironmentVariables,
+  ListRunResponse,
+  ListRunResponseItem,
   ListScheduleOptions,
   ListSchedulesResult,
   ReplayRunResponse,
@@ -25,12 +27,21 @@ import {
   UpdateScheduleOptions,
 } from "../schemas";
 import { taskContext } from "../task-context-api";
-import { ZodFetchOptions, isRecordLike, zodfetch, zodupload } from "../zodfetch";
+import {
+  ZodFetchOptions,
+  isRecordLike,
+  zodfetch,
+  zodupload,
+  zodfetchPage,
+  PagePromise,
+} from "./core";
 import {
   ImportEnvironmentVariablesParams,
   CreateEnvironmentVariableParams,
   UpdateEnvironmentVariableParams,
+  ListRunsQueryParams,
 } from "./types";
+import { CursorPageResponse } from "./pagination";
 
 export type {
   ImportEnvironmentVariablesParams,
@@ -153,6 +164,80 @@ export class ApiClient {
     return zodfetch(
       RetrieveRunResponse,
       `${this.baseUrl}/api/v3/runs/${runId}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      zodFetchOptions
+    );
+  }
+
+  listRuns(query?: ListRunsQueryParams): PagePromise<typeof ListRunResponseItem> {
+    const searchParams = new URLSearchParams();
+
+    if (query) {
+      if (query.status) {
+        searchParams.append(
+          "filter[status]",
+          Array.isArray(query.status) ? query.status.join(",") : query.status
+        );
+      }
+
+      if (query.env) {
+        searchParams.append(
+          "filter[env]",
+          Array.isArray(query.env) ? query.env.join(",") : query.env
+        );
+      }
+
+      if (query.taskIdentifier) {
+        searchParams.append(
+          "filter[taskIdentifier]",
+          Array.isArray(query.taskIdentifier)
+            ? query.taskIdentifier.join(",")
+            : query.taskIdentifier
+        );
+      }
+
+      if (query.version) {
+        searchParams.append(
+          "filter[version]",
+          Array.isArray(query.version) ? query.version.join(",") : query.version
+        );
+      }
+
+      if (query.bulkAction) {
+        searchParams.append("filter[bulkAction]", query.bulkAction);
+      }
+
+      if (query.from) {
+        searchParams.append(
+          "filter[createdAt][from]",
+          query.from instanceof Date ? query.from.getTime().toString() : query.from.toString()
+        );
+      }
+
+      if (query.to) {
+        searchParams.append(
+          "filter[createdAt][to]",
+          query.to instanceof Date ? query.to.getTime().toString() : query.to.toString()
+        );
+      }
+
+      if (query.period) {
+        searchParams.append("filter[createdAt][period]", query.period);
+      }
+    }
+
+    return zodfetchPage(
+      ListRunResponseItem,
+      `${this.baseUrl}/api/v1/runs`,
+      {
+        query: searchParams,
+        limit: query?.limit,
+        after: query?.after,
+        before: query?.before,
+      },
       {
         method: "GET",
         headers: this.#getHeaders(false),

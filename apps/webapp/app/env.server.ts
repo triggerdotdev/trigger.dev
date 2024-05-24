@@ -170,6 +170,7 @@ const EnvironmentSchema = z.object({
   MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
 
   LOOPS_API_KEY: z.string().optional(),
+  MARQS_DISABLE_REBALANCING: z.coerce.boolean().default(false),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
