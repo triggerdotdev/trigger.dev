@@ -536,21 +536,25 @@ function useDev({
 
                 const processEnv = await gatherProcessEnv();
 
-                const backgroundWorker = new BackgroundWorker(fullPath, {
-                  projectConfig: config,
-                  dependencies,
-                  env: {
-                    ...processEnv,
-                    TRIGGER_API_URL: apiUrl,
-                    TRIGGER_SECRET_KEY: apiKey,
-                    ...(environmentVariablesResponse.success
-                      ? environmentVariablesResponse.data.variables
-                      : {}),
+                const backgroundWorker = new BackgroundWorker(
+                  fullPath,
+                  {
+                    projectConfig: config,
+                    dependencies,
+                    env: {
+                      ...processEnv,
+                      TRIGGER_API_URL: apiUrl,
+                      TRIGGER_SECRET_KEY: apiKey,
+                      ...(environmentVariablesResponse.success
+                        ? environmentVariablesResponse.data.variables
+                        : {}),
+                    },
+                    debuggerOn,
+                    debugOtel,
+                    resolveEnvVariables: createResolveEnvironmentVariablesFunction(configModule),
                   },
-                  debuggerOn,
-                  debugOtel,
-                  resolveEnvVariables: createResolveEnvironmentVariablesFunction(configModule),
-                });
+                  environmentClient
+                );
 
                 try {
                   await backgroundWorker.initialize();

@@ -46,7 +46,6 @@ import {
   UncaughtExceptionError,
   UnexpectedExitError,
 } from "../common/errors.js";
-import { env } from "node:process";
 import { CliApiClient } from "../../apiClient.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
@@ -290,7 +289,8 @@ export class BackgroundWorker {
 
   constructor(
     public path: string,
-    public params: BackgroundWorkerParams
+    public params: BackgroundWorkerParams,
+    private apiClient: CliApiClient
   ) {}
 
   close() {
