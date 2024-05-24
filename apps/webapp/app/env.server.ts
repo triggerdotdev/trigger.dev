@@ -164,6 +164,8 @@ const EnvironmentSchema = z.object({
   ALERT_RESEND_API_KEY: z.string().optional(),
 
   MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
+
+  LOOPS_API_KEY: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
