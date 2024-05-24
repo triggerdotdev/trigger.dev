@@ -1,5 +1,13 @@
 # internal-platform
 
+## 3.0.0-beta.34
+
+### Patch Changes
+
+- 3a1b0c486: v3: Environment variable management API and SDK, along with resolveEnvVars CLI hook
+- 3f8b6d8fc: v2: Better handle recovering from platform communication errors by auto-yielding back to the platform in case of temporary API failures
+- 1281d40e4: When a v2 run hits the rate limit, reschedule with the reset date
+
 ## 3.0.0-beta.33
 
 ### Patch Changes
