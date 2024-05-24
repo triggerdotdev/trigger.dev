@@ -74,6 +74,18 @@ export type RunRecord = {
   event: ApiEventLog;
 };
 
+export class UnknownVersionError extends Error {
+  constructor(version: string) {
+    super(`Unknown version ${version}`);
+  }
+}
+
+const MAX_RETRIES = 8;
+const EXPONENT_FACTOR = 2;
+const MIN_DELAY_IN_MS = 80;
+const MAX_DELAY_IN_MS = 2000;
+const JITTER_IN_MS = 50;
+
 export class ApiClient {
   #apiUrl: string;
   #options: ApiClientOptions;
@@ -129,11 +141,10 @@ export class ApiClient {
   ) {
     const apiKey = await this.#apiKey();
 
-    this.#logger.debug("Running Task", {
-      task,
-    });
+    this.#logger.debug(`[ApiClient] runTask ${task.displayKey}`);
 
     return await zodfetchWithVersions(
+      this.#logger,
       {
         [API_VERSIONS.LAZY_LOADED_CACHED_TASKS]: RunTaskResponseWithCachedTasksBodySchema,
       },
@@ -771,6 +782,7 @@ async function zodfetchWithVersions<
   TUnversionedResponseBodySchema extends z.ZodTypeAny,
   TOptional extends boolean = false,
 >(
+  logger: Logger,
   versionedSchemaMap: TVersionedResponseBodyMap,
   unversionedSchema: TUnversionedResponseBodySchema,
   url: string,
@@ -785,66 +797,132 @@ async function zodfetchWithVersions<
     ? VersionedResponseBody<TVersionedResponseBodyMap, TUnversionedResponseBodySchema> | undefined
     : VersionedResponseBody<TVersionedResponseBodyMap, TUnversionedResponseBodySchema>
 > {
-  const response = await fetch(url, requestInitWithCache(requestInit));
+  try {
+    const fullRequestInit = requestInitWithCache(requestInit);
 
-  if (
-    (!requestInit || requestInit.method === "GET") &&
-    response.status === 404 &&
-    options?.optional
-  ) {
-    // @ts-ignore
-    return;
-  }
+    const response = await fetch(url, fullRequestInit);
 
-  if (response.status >= 400 && response.status < 500) {
-    const body = await response.json();
-
-    throw new Error(body.error);
-  }
-
-  if (response.status >= 500 && retryCount < 6) {
-    // retry with exponential backoff and jitter
-    const delay = exponentialBackoff(retryCount + 1, 2, 50, 1150, 50);
-
-    await new Promise((resolve) => setTimeout(resolve, delay));
-
-    return zodfetchWithVersions(
-      versionedSchemaMap,
-      unversionedSchema,
+    logger.debug(`[ApiClient] zodfetchWithVersions ${url} (attempt ${retryCount + 1})`, {
       url,
-      requestInit,
-      options,
-      retryCount + 1
-    );
-  }
+      retryCount,
+      requestHeaders: fullRequestInit?.headers,
+      responseHeaders: Object.fromEntries(response.headers.entries()),
+    });
 
-  if (response.status !== 200) {
-    throw new Error(
-      options?.errorMessage ?? `Failed to fetch ${url}, got status code ${response.status}`
-    );
-  }
+    if (
+      (!requestInit || requestInit.method === "GET") &&
+      response.status === 404 &&
+      options?.optional
+    ) {
+      // @ts-ignore
+      return;
+    }
 
-  const jsonBody = await response.json();
+    if (response.status >= 400 && response.status < 500) {
+      const rawBody = await safeResponseText(response);
+      const body = safeJsonParse(rawBody);
 
-  const version = response.headers.get("trigger-version");
+      logger.error(`[ApiClient] zodfetchWithVersions failed with ${response.status}`, {
+        url,
+        retryCount,
+        requestHeaders: fullRequestInit?.headers,
+        responseHeaders: Object.fromEntries(response.headers.entries()),
+        status: response.status,
+        rawBody,
+      });
 
-  if (!version) {
+      if (body && body.error) {
+        throw new Error(body.error);
+      } else {
+        throw new Error(rawBody);
+      }
+    }
+
+    if (response.status >= 500 && retryCount < MAX_RETRIES) {
+      // retry with exponential backoff and jitter
+      const delay = exponentialBackoff(retryCount + 1);
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
+
+      return zodfetchWithVersions(
+        logger,
+        versionedSchemaMap,
+        unversionedSchema,
+        url,
+        requestInit,
+        options,
+        retryCount + 1
+      );
+    }
+
+    if (response.status !== 200) {
+      const rawBody = await safeResponseText(response);
+
+      logger.error(`[ApiClient] zodfetchWithVersions failed with ${response.status}`, {
+        url,
+        retryCount,
+        requestHeaders: fullRequestInit?.headers,
+        responseHeaders: Object.fromEntries(response.headers.entries()),
+        status: response.status,
+        rawBody,
+      });
+
+      throw new Error(
+        options?.errorMessage ?? `Failed to fetch ${url}, got status code ${response.status}`
+      );
+    }
+
+    const jsonBody = await response.json();
+
+    const version = response.headers.get("trigger-version");
+
+    if (!version) {
+      return {
+        version: "unversioned",
+        body: unversionedSchema.parse(jsonBody),
+      };
+    }
+
+    const versionedSchema = versionedSchemaMap[version];
+
+    if (!versionedSchema) {
+      throw new UnknownVersionError(version);
+    }
+
     return {
-      version: "unversioned",
-      body: unversionedSchema.parse(jsonBody),
+      version,
+      body: versionedSchema.parse(jsonBody),
     };
+  } catch (error) {
+    if (error instanceof UnknownVersionError) {
+      throw error;
+    }
+
+    logger.error(`[ApiClient] zodfetchWithVersions failed with a connection error`, {
+      url,
+      retryCount,
+      error,
+    });
+
+    if (retryCount < MAX_RETRIES) {
+      // retry with exponential backoff and jitter
+      const delay = exponentialBackoff(retryCount + 1);
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
+
+      return zodfetchWithVersions(
+        logger,
+        versionedSchemaMap,
+        unversionedSchema,
+        url,
+        requestInit,
+        options,
+        retryCount + 1
+      );
+    }
+
+    throw error;
   }
-
-  const versionedSchema = versionedSchemaMap[version];
-
-  if (!versionedSchema) {
-    throw new Error(`Unknown version ${version}`);
-  }
-
-  return {
-    version,
-    body: versionedSchema.parse(jsonBody),
-  };
 }
 
 function requestInitWithCache(requestInit?: RequestInit): RequestInit {
@@ -873,9 +951,9 @@ async function fetchHead(
   };
   const response = await fetch(url, requestInitWithCache(requestInit));
 
-  if (response.status >= 500 && retryCount < 6) {
+  if (response.status >= 500 && retryCount < MAX_RETRIES) {
     // retry with exponential backoff and jitter
-    const delay = exponentialBackoff(retryCount + 1, 2, 50, 1150, 50);
+    const delay = exponentialBackoff(retryCount + 1);
 
     await new Promise((resolve) => setTimeout(resolve, delay));
 
@@ -897,56 +975,80 @@ async function zodfetch<TResponseSchema extends z.ZodTypeAny, TOptional extends 
 ): Promise<
   TOptional extends true ? z.infer<TResponseSchema> | undefined : z.infer<TResponseSchema>
 > {
-  const response = await fetch(url, requestInitWithCache(requestInit));
+  try {
+    const response = await fetch(url, requestInitWithCache(requestInit));
 
-  if (
-    (!requestInit || requestInit.method === "GET") &&
-    response.status === 404 &&
-    options?.optional
-  ) {
-    // @ts-ignore
-    return;
+    if (
+      (!requestInit || requestInit.method === "GET") &&
+      response.status === 404 &&
+      options?.optional
+    ) {
+      // @ts-ignore
+      return;
+    }
+
+    if (response.status >= 400 && response.status < 500) {
+      const body = await response.json();
+
+      throw new Error(body.error);
+    }
+
+    if (response.status >= 500 && retryCount < MAX_RETRIES) {
+      // retry with exponential backoff and jitter
+      const delay = exponentialBackoff(retryCount + 1);
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
+
+      return zodfetch(schema, url, requestInit, options, retryCount + 1);
+    }
+
+    if (response.status !== 200) {
+      throw new Error(
+        options?.errorMessage ?? `Failed to fetch ${url}, got status code ${response.status}`
+      );
+    }
+
+    const jsonBody = await response.json();
+
+    return schema.parse(jsonBody);
+  } catch (error) {
+    if (retryCount < MAX_RETRIES) {
+      // retry with exponential backoff and jitter
+      const delay = exponentialBackoff(retryCount + 1);
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
+
+      return zodfetch(schema, url, requestInit, options, retryCount + 1);
+    }
+
+    throw error;
   }
-
-  if (response.status >= 400 && response.status < 500) {
-    const body = await response.json();
-
-    throw new Error(body.error);
-  }
-
-  if (response.status >= 500 && retryCount < 6) {
-    // retry with exponential backoff and jitter
-    const delay = exponentialBackoff(retryCount + 1, 2, 50, 1150, 50);
-
-    await new Promise((resolve) => setTimeout(resolve, delay));
-
-    return zodfetch(schema, url, requestInit, options, retryCount + 1);
-  }
-
-  if (response.status !== 200) {
-    throw new Error(
-      options?.errorMessage ?? `Failed to fetch ${url}, got status code ${response.status}`
-    );
-  }
-
-  const jsonBody = await response.json();
-
-  return schema.parse(jsonBody);
 }
 
-function exponentialBackoff(
-  retryCount: number,
-  exponential: number,
-  minDelay: number,
-  maxDelay: number,
-  jitter: number
-): number {
+// First retry will have a delay of 80ms, second 160ms, third 320ms, etc.
+function exponentialBackoff(retryCount: number): number {
   // Calculate the delay using the exponential backoff formula
-  const delay = Math.min(Math.pow(exponential, retryCount) * minDelay, maxDelay);
+  const delay = Math.min(Math.pow(EXPONENT_FACTOR, retryCount) * MIN_DELAY_IN_MS, MAX_DELAY_IN_MS);
 
   // Calculate the jitter
-  const jitterValue = Math.random() * jitter;
+  const jitterValue = Math.random() * JITTER_IN_MS;
 
   // Return the calculated delay with jitter
   return delay + jitterValue;
+}
+
+function safeJsonParse(rawBody: string) {
+  try {
+    return JSON.parse(rawBody);
+  } catch (error) {
+    return;
+  }
+}
+
+async function safeResponseText(response: Response) {
+  try {
+    return await response.text();
+  } catch (error) {
+    return "";
+  }
 }
