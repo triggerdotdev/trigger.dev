@@ -1,8 +1,9 @@
 import type { Socket } from "socket.io-client";
 import { io } from "socket.io-client";
-import { z } from "zod";
+import { ZodError, z } from "zod";
 import { EventEmitterLike, ZodMessageValueSchema } from "./zodMessageHandler";
 import { LogLevel, SimpleStructuredLogger, StructuredLogger } from "./utils/structuredLogger";
+import { fromZodError } from "zod-validation-error";
 
 export interface ZodSocketMessageCatalogSchema {
   [key: string]:
@@ -81,7 +82,7 @@ export type MessagesFromSocketCatalog<TMessageCatalog extends ZodSocketMessageCa
 }[keyof TMessageCatalog];
 
 const messageSchema = z.object({
-  version: z.literal("v1").default("v1"),
+  version: z.string(),
   type: z.string(),
   payload: z.unknown(),
 });
@@ -127,10 +128,22 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
       throw new Error(`Unknown message type: ${parsedMessage.data.type}`);
     }
 
-    const parsedPayload = schema.safeParse(parsedMessage.data.payload);
+    const messageWithVersion = {
+      version: parsedMessage.data.version,
+      ...(typeof parsedMessage.data.payload === "object" ? parsedMessage.data.payload : {}),
+    };
+
+    const parsedPayload = schema.safeParse(messageWithVersion);
 
     if (!parsedPayload.success) {
-      throw new Error(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
+      console.error("Failed to parse message payload", {
+        message,
+        payload: messageWithVersion,
+      });
+
+      throw parsedPayload.error instanceof ZodError
+        ? fromZodError(parsedPayload.error)
+        : parsedPayload.error;
     }
 
     return {
@@ -166,7 +179,15 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
             ack = await this.handleMessage({ type: eventName, version, payload });
           }
         } catch (error) {
-          log.error("Error while handling message", { error });
+          log.error("Error while handling message", {
+            error:
+              error instanceof Error
+                ? {
+                    message: error.message,
+                    stack: error.stack,
+                  }
+                : error,
+          });
           return;
         }
 

@@ -531,6 +531,28 @@ class TaskCoordinator {
 
           taskSocket.emit("REQUEST_ATTEMPT_CANCELLATION", message);
         },
+        REQUEST_RUN_CANCELLATION: async (message) => {
+          const taskSocket = await this.#getRunSocket(message.runId);
+
+          if (!taskSocket) {
+            logger.log("Socket for run not found", {
+              runId: message.runId,
+            });
+            return;
+          }
+
+          if (message.delayInMs) {
+            taskSocket.emit("REQUEST_EXIT", {
+              version: "v2",
+              delayInMs: message.delayInMs,
+            });
+          } else {
+            // If there's no delay, assume the worker doesn't support non-v1 messages
+            taskSocket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+          }
+        },
         READY_FOR_RETRY: async (message) => {
           const taskSocket = await this.#getRunSocket(message.runId);
 

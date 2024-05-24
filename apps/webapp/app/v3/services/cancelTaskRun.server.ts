@@ -24,9 +24,15 @@ const CANCELLABLE_ATTEMPT_STATUSES: Array<TaskRunAttemptStatus> = [
   "PENDING",
 ];
 
-type ExtendedTaskRunAttempt = Prisma.TaskRunAttemptGetPayload<{
+type ExtendedTaskRun = Prisma.TaskRunGetPayload<{
   include: {
     runtimeEnvironment: true;
+    lockedToVersion: true;
+  };
+}>;
+
+type ExtendedTaskRunAttempt = Prisma.TaskRunAttemptGetPayload<{
+  include: {
     backgroundWorker: true;
   };
 }>;
@@ -71,11 +77,10 @@ export class CancelTaskRunService extends BaseService {
           },
           include: {
             backgroundWorker: true,
-            runtimeEnvironment: true,
           },
         },
-        dependency: true,
         runtimeEnvironment: true,
+        lockedToVersion: true,
       },
     });
 
@@ -96,6 +101,7 @@ export class CancelTaskRunService extends BaseService {
     // Cancel any in progress attempts
     if (opts.cancelAttempts) {
       await this.#cancelPotentiallyRunningAttempts(cancelledTaskRun, cancelledTaskRun.attempts);
+      await this.#cancelRemainingRunWorkers(cancelledTaskRun);
     }
 
     return {
@@ -103,9 +109,12 @@ export class CancelTaskRunService extends BaseService {
     };
   }
 
-  async #cancelPotentiallyRunningAttempts(run: TaskRun, attempts: ExtendedTaskRunAttempt[]) {
+  async #cancelPotentiallyRunningAttempts(
+    run: ExtendedTaskRun,
+    attempts: ExtendedTaskRunAttempt[]
+  ) {
     for (const attempt of attempts) {
-      if (attempt.runtimeEnvironment.type === "DEVELOPMENT") {
+      if (run.runtimeEnvironment.type === "DEVELOPMENT") {
         // Signal the task run attempt to stop
         await devPubSub.publish(
           `backgroundWorker:${attempt.backgroundWorkerId}:${attempt.id}`,
@@ -157,5 +166,20 @@ export class CancelTaskRunService extends BaseService {
         }
       }
     }
+  }
+
+  async #cancelRemainingRunWorkers(run: ExtendedTaskRun) {
+    if (run.runtimeEnvironment.type === "DEVELOPMENT") {
+      // Nothing to do
+      return;
+    }
+
+    // Broadcast cancel message to all coordinators
+    socketIo.coordinatorNamespace.emit("REQUEST_RUN_CANCELLATION", {
+      version: "v1",
+      runId: run.id,
+      // Give the attempts some time to exit gracefully. If the runs supports lazy attempts, it also supports exit delays.
+      delayInMs: run.lockedToVersion?.supportsLazyAttempts ? 5_000 : undefined,
+    });
   }
 }

@@ -518,12 +518,20 @@ class ProdWorker {
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
           if (!this.executing) {
+            logger.log("dropping cancel request, not executing", { status: this.#status });
             return;
           }
 
+          logger.log("cancelling attempt", { attemptId: message.attemptId, status: this.#status });
+
           await this.#backgroundWorker.cancelAttempt(message.attemptId);
         },
-        REQUEST_EXIT: async () => {
+        REQUEST_EXIT: async (message) => {
+          if (message.version === "v2" && message.delayInMs) {
+            logger.log("exit requested with delay", { delayInMs: message.delayInMs });
+            await setTimeout(message.delayInMs);
+          }
+
           this.#coordinatorSocket.close();
           process.exit(0);
         },
@@ -698,13 +706,7 @@ class ProdWorker {
           }
 
           case "/status": {
-            return reply.json({
-              executing: this.executing,
-              paused: this.paused,
-              completed: this.completed.size,
-              nextResumeAfter: this.nextResumeAfter,
-              waitForPostStart: this.waitForPostStart,
-            });
+            return reply.json(this.#status);
           }
 
           case "/connect": {
@@ -864,6 +866,17 @@ class ProdWorker {
     const data = await response.json();
 
     return data?.variables ?? {};
+  }
+
+  get #status() {
+    return {
+      executing: this.executing,
+      paused: this.paused,
+      completed: this.completed.size,
+      nextResumeAfter: this.nextResumeAfter,
+      waitForPostStart: this.waitForPostStart,
+      attemptFriendlyId: this.attemptFriendlyId,
+    };
   }
 
   start() {

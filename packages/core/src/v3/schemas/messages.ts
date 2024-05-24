@@ -612,6 +612,13 @@ export const PlatformToCoordinatorMessages = {
       attemptFriendlyId: z.string(),
     }),
   },
+  REQUEST_RUN_CANCELLATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+      delayInMs: z.number().optional(),
+    }),
+  },
   READY_FOR_RETRY: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -862,9 +869,15 @@ export const CoordinatorToProdWorkerMessages = {
     }),
   },
   REQUEST_EXIT: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-    }),
+    message: z.discriminatedUnion("version", [
+      z.object({
+        version: z.literal("v1"),
+      }),
+      z.object({
+        version: z.literal("v2"),
+        delayInMs: z.number().optional(),
+      }),
+    ]),
   },
   READY_FOR_RETRY: {
     message: z.object({
