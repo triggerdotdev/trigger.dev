@@ -32,14 +32,6 @@ export async function zodfetch<TResponseBodySchema extends z.ZodTypeAny>(
   return await _doZodFetch(schema, url, requestInit, options);
 }
 
-// requestAPIList<Item = unknown, PageClass extends AbstractPage<Item> = AbstractPage<Item>>(
-//     Page: new (...args: ConstructorParameters<typeof AbstractPage>) => PageClass,
-//     options: FinalRequestOptions,
-//   ): PagePromise<PageClass, Item> {
-//     const request = this.makeRequest(options, null);
-//     return new PagePromise<PageClass, Item>(this, request, Page);
-//   }
-
 export function zodfetchPage<TItemSchema extends z.ZodTypeAny>(
   schema: TItemSchema,
   url: string,
@@ -72,9 +64,9 @@ export function zodfetchPage<TItemSchema extends z.ZodTypeAny>(
   const $url = new URL(url);
   $url.search = query.toString();
 
-  const response = _doZodFetch(cursorPageSchema, $url.href, requestInit, options);
+  const fetchResult = _doZodFetch(cursorPageSchema, $url.href, requestInit, options);
 
-  return new PagePromise(response, schema, url, params, requestInit, options);
+  return new PagePromise(fetchResult, schema, url, params, requestInit, options);
 }
 
 export async function zodupload<
@@ -123,13 +115,18 @@ export const createForm = async <T = Record<string, unknown>>(
   return form;
 };
 
+type ZodFetchResult<T> = {
+  data: T;
+  response: Response;
+};
+
 async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
   schema: TResponseBodySchema,
   url: string,
   requestInit?: RequestInit,
   options?: ZodFetchOptions,
   attempt = 1
-): Promise<z.output<TResponseBodySchema>> {
+): Promise<ZodFetchResult<z.output<TResponseBodySchema>>> {
   try {
     const response = await fetch(url, requestInitWithCache(requestInit));
 
@@ -155,7 +152,7 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
     const parsedResult = schema.safeParse(jsonBody);
 
     if (parsedResult.success) {
-      return parsedResult.data;
+      return { data: parsedResult.data, response };
     }
 
     throw fromZodError(parsedResult.error);
@@ -484,7 +481,7 @@ export const isRecordLike = (value: any): value is Record<string, string> =>
  * for interacting with the SDK.
  */
 class ApiPromise<T> extends Promise<T> {
-  constructor(private responsePromise: Promise<T>) {
+  constructor(private responsePromise: Promise<ZodFetchResult<T>>) {
     super((resolve) => {
       // this is maybe a bit weird but this has to be a no-op to not implicitly
       // parse the response body; instead .then, .catch, .finally are overridden
@@ -493,21 +490,47 @@ class ApiPromise<T> extends Promise<T> {
     });
   }
 
+  /**
+   * Gets the raw `Response` instance instead of parsing the response
+   * data.
+   *
+   * If you want to parse the response body but still get the `Response`
+   * instance, you can use {@link withResponse()}.
+   */
+  asResponse(): Promise<Response> {
+    return this.responsePromise.then((p) => p.response);
+  }
+
+  /**
+   * Gets the parsed response data and the raw `Response` instance.
+   *
+   * If you just want to get the raw `Response` instance without parsing it,
+   * you can use {@link asResponse()}.
+   */
+  async withResponse(): Promise<{ data: T; response: Response }> {
+    const [data, response] = await Promise.all([this.parse(), this.asResponse()]);
+    return { data, response };
+  }
+
+  private parse(): Promise<T> {
+    return this.responsePromise.then((result) => result.data);
+  }
+
   override then<TResult1 = T, TResult2 = never>(
     onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null,
     onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null
   ): Promise<TResult1 | TResult2> {
-    return this.responsePromise.then(onfulfilled, onrejected);
+    return this.parse().then(onfulfilled, onrejected);
   }
 
   override catch<TResult = never>(
     onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null
   ): Promise<T | TResult> {
-    return this.responsePromise.catch(onrejected);
+    return this.parse().catch(onrejected);
   }
 
   override finally(onfinally?: (() => void) | undefined | null): Promise<T> {
-    return this.responsePromise.finally(onfinally);
+    return this.parse().finally(onfinally);
   }
 }
 
@@ -516,7 +539,7 @@ export class PagePromise<TItemSchema extends z.ZodTypeAny>
   implements AsyncIterable<z.output<TItemSchema>>
 {
   constructor(
-    response: Promise<CursorPageResponse<z.output<TItemSchema>>>,
+    result: Promise<ZodFetchResult<CursorPageResponse<z.output<TItemSchema>>>>,
     private schema: TItemSchema,
     private url: string,
     private params: FetchPageParams,
@@ -524,9 +547,10 @@ export class PagePromise<TItemSchema extends z.ZodTypeAny>
     private options?: ZodFetchOptions
   ) {
     super(
-      response.then(
-        (response) => new CursorPage(response.data, response.pagination, this.#fetchPage.bind(this))
-      )
+      result.then((result) => ({
+        data: new CursorPage(result.data.data, result.data.pagination, this.#fetchPage.bind(this)),
+        response: result.response,
+      }))
     );
   }
 
