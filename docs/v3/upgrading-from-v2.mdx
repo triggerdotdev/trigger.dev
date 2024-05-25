@@ -171,10 +171,16 @@ async function yourBackendFunction() {
 
 ## Upgrading your project
 
-Just follow the [v3 quick start](/v3/quick-start) to get started with v3. Our new CLI will take care of the rest.
+1. Make sure to upgrade all of your trigger.dev packages to v3 first.
+
+```bash
+npx @trigger.dev/cli@beta update --to beta
+```
+
+2. Follow the [v3 quick start](/v3/quick-start) to get started with v3. Our new CLI will take care of the rest.
 
 ## Using v2 together with v3
 
 You can use v2 and v3 in the same codebase. This can be useful where you already have v2 jobs or where we don't support features you need (yet).
 
-<Snippet file="incomplete-docs.mdx" />
+<Note>We do not support calling v3 tasks from v2 jobs or vice versa.</Note>
