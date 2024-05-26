@@ -142,6 +142,17 @@ export class PerformRunExecutionV3Service {
         });
       }
 
+      if (run.version.status === "DISABLED") {
+        return await this.#failRunExecution(
+          this.#prismaClient,
+          run,
+          {
+            message: `Job version ${run.version.version} is disabled, aborting run.`,
+          },
+          "ABORTED"
+        );
+      }
+
       // If the execution duration is greater than the maximum execution time, we need to fail the run
       if (run.executionDuration >= run.organization.maximumExecutionTimePerRunInMs) {
         await this.#failRunExecution(

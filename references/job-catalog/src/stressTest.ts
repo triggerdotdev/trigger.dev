@@ -38,6 +38,29 @@ client.defineJob({
 });
 
 client.defineJob({
+  id: "stress-test-disabled",
+  name: "Stress Test Disabled",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "stress.test.disabled",
+  }),
+  enabled: false,
+  run: async (payload, io, ctx) => {
+    await io.wait("wait-1", 20);
+
+    await io.runTask(
+      `task-1`,
+      async (task) => {
+        await new Promise((resolve) => setTimeout(resolve, 10000));
+      },
+      { name: `Task 1` }
+    );
+
+    await io.wait("wait-2", 5);
+  },
+});
+
+client.defineJob({
   id: "stress-test-2",
   name: "Stress Test 2",
   version: "1.0.0",
