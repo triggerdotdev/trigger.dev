@@ -23,13 +23,13 @@ interface FetchPageParams extends CursorPageParams {
   query?: URLSearchParams;
 }
 
-export async function zodfetch<TResponseBodySchema extends z.ZodTypeAny>(
+export function zodfetch<TResponseBodySchema extends z.ZodTypeAny>(
   schema: TResponseBodySchema,
   url: string,
   requestInit?: RequestInit,
   options?: ZodFetchOptions
-): Promise<z.output<TResponseBodySchema>> {
-  return await _doZodFetch(schema, url, requestInit, options);
+): ApiPromise<z.output<TResponseBodySchema>> {
+  return new ApiPromise(_doZodFetch(schema, url, requestInit, options));
 }
 
 export function zodfetchPage<TItemSchema extends z.ZodTypeAny>(
@@ -78,7 +78,7 @@ export async function zodupload<
   body: TBody,
   requestInit?: RequestInit,
   options?: ZodFetchOptions
-): Promise<z.output<TResponseBodySchema>> {
+): ApiPromise<z.output<TResponseBodySchema>> {
   const form = await createForm(body);
   const encoder = new FormDataEncoder(form);
 
@@ -102,7 +102,7 @@ export async function zodupload<
     duplex: "half",
   };
 
-  return await _doZodFetch(schema, url, finalRequestInit, options);
+  return new ApiPromise(_doZodFetch(schema, url, finalRequestInit, options));
 }
 
 export const createForm = async <T = Record<string, unknown>>(
