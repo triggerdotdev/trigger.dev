@@ -2,25 +2,6 @@
 
 FROM node:18-slim AS base
 
-# ENV DEBIAN_FRONTEND=noninteractive
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ARG PUPPETEER_DEPS
-
-# Install Google Chrome first to improve build time
-RUN if [ "$PUPPETEER" = "true" ]; then \
-      apt-get update && apt-get install -y wget gnupg \
-      && wget --quiet --output-document=- https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor > /etc/apt/trusted.gpg.d/google-archive.gpg && \
-      sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' && \
-      apt-get update && \
-      apt-get install google-chrome-stable -y --no-install-recommends && \
-      rm -rf /var/lib/apt/lists/* \
-    # elif [ "$PUPPETEER" = "chrome-stable" ]; then \
-    #     apt-get update && apt-get install -y puppeteer; && npx puppeteer browsers install chrome-stable \
-    else \
-        echo "Skipping puppeteer install"; \
-    fi
-
-
 RUN apt-get update \
   && apt-get install -y dumb-init
 
