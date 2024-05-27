@@ -20,6 +20,7 @@ export type RunListOptions = {
   bulkId?: string;
   from?: number;
   to?: number;
+  isTest?: boolean;
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -43,6 +44,7 @@ export class RunListPresenter extends BasePresenter {
     scheduleId,
     period,
     bulkId,
+    isTest,
     from,
     to,
     direction = "forward",
@@ -59,7 +61,9 @@ export class RunListPresenter extends BasePresenter {
       (period !== undefined && period !== "all") ||
       (bulkId !== undefined && bulkId !== "") ||
       from !== undefined ||
-      to !== undefined;
+      to !== undefined ||
+      (scheduleId !== undefined && scheduleId !== "") ||
+      typeof isTest === "boolean";
 
     // Find the project scoped to the organization
     const project = await this._replica.project.findFirstOrThrow({
@@ -212,6 +216,7 @@ export class RunListPresenter extends BasePresenter {
           : Prisma.empty
       }
       ${scheduleId ? Prisma.sql`AND tr."scheduleId" = ${scheduleId}` : Prisma.empty}
+      ${typeof isTest === "boolean" ? Prisma.sql`AND tr."isTest" = ${isTest}` : Prisma.empty}
       ${
         periodMs
           ? Prisma.sql`AND tr."createdAt" >= NOW() - INTERVAL '1 millisecond' * ${periodMs}`

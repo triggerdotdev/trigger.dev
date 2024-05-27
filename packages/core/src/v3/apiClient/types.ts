@@ -29,10 +29,12 @@ export interface ListRunsQueryParams extends CursorPageParams {
   status?: Array<RunStatus> | RunStatus;
   taskIdentifier?: Array<string> | string;
   version?: Array<string> | string;
-  bulkAction?: string;
   from?: Date | number;
   to?: Date | number;
   period?: string;
+  bulkAction?: string;
+  schedule?: string;
+  isTest?: boolean;
 }
 
 export interface ListProjectRunsQueryParams extends CursorPageParams, ListRunsQueryParams {

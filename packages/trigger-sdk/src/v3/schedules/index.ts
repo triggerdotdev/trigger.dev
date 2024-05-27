@@ -2,7 +2,6 @@ import {
   ApiPromise,
   DeletedScheduleObject,
   InitOutput,
-  ListSchedulesResult,
   ScheduleObject,
   apiClientManager,
   taskCatalog,

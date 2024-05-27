@@ -1251,6 +1251,14 @@ components:
           type: string
           description: The bulk action ID to filter the runs by
           example: bulk_1234
+        schedule:
+          type: string
+          description: The schedule ID to filter the runs by
+          example: schedule_1234
+        isTest:
+          type: boolean
+          description: Whether the run is a test run or not
+          example: false
     ListRunsResult:
       type: object
       properties:
@@ -1432,6 +1440,7 @@ components:
         - createdAt
         - updatedAt
         - attempts
+        - env
       properties:
         id:
           type: string
@@ -1478,6 +1487,59 @@ components:
         updatedAt:
           type: string
           format: date-time
+        env:
+          type: object
+          description: The environment of the run
+          required:
+            - id
+            - name
+          properties:
+            id:
+              type: string
+              description: The unique ID of the environment
+              example: cl1234
+            name:
+              type: string
+              description: The name of the environment
+              example: dev
+            user:
+              type: string
+              description: If this is a dev environment, the username of the user represented by this environment
+              example: Anna
+        schedule:
+          type: object
+          description: The schedule that triggered the run. Will be omitted if the run was not triggered by a schedule
+          required:
+            - id
+            - generator
+          properties:
+            id:
+              type: string
+              description: The unique ID of the schedule, prefixed with `sched_`
+              example: sched_1234
+            externalId:
+              type: string
+              description: The external ID of the schedule. Can be anything that is useful to you (e.g., user ID, org ID, etc.)
+              example: user_1234
+            deduplicationKey:
+              type: string
+              description: The deduplication key used to prevent creating duplicate schedules
+              example: dedup_key_1234
+            generator:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - CRON
+                expression:
+                  type: string
+                  description: The cron expression used to generate the schedule
+                  example: 0 0 * * *
+                description:
+                  type: string
+                  description: The description of the generator in plain english
+                  example: Every day at midnight
         attempts:
           type: array
           items:

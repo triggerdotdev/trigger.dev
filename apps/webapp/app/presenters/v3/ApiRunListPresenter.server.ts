@@ -65,6 +65,30 @@ const SearchParamsSchema = z.object({
       return value ? value.split(",") : undefined;
     }),
   "filter[bulkAction]": z.string().optional(),
+  "filter[schedule]": z.string().optional(),
+  "filter[isTest]": z
+    .string()
+    .optional()
+    .transform((value, ctx) => {
+      if (!value) {
+        return undefined;
+      }
+
+      if (value === "true") {
+        return true;
+      }
+
+      if (value === "false") {
+        return false;
+      }
+
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Invalid value for isTest: ${value}`,
+      });
+
+      return z.NEVER;
+    }),
   "filter[createdAt][from]": z.coerce.date().optional(),
   "filter[createdAt][to]": z.coerce.date().optional(),
   "filter[createdAt][period]": z.string().optional(),
@@ -148,6 +172,10 @@ export class ApiRunListPresenter extends BasePresenter {
         options.bulkId = $searchParams.data["filter[bulkAction]"];
       }
 
+      if ($searchParams.data["filter[schedule]"]) {
+        options.scheduleId = $searchParams.data["filter[schedule]"];
+      }
+
       if ($searchParams.data["filter[createdAt][from]"]) {
         options.from = $searchParams.data["filter[createdAt][from]"].getTime();
       }
@@ -158,6 +186,10 @@ export class ApiRunListPresenter extends BasePresenter {
 
       if ($searchParams.data["filter[createdAt][period]"]) {
         options.period = $searchParams.data["filter[createdAt][period]"];
+      }
+
+      if (typeof $searchParams.data["filter[isTest]"] === "boolean") {
+        options.isTest = $searchParams.data["filter[isTest]"];
       }
 
       const presenter = new RunListPresenter();

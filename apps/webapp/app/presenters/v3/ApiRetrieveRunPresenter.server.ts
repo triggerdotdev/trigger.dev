@@ -34,6 +34,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
             },
           },
           lockedToVersion: true,
+          schedule: true,
         },
       });
 
@@ -85,6 +86,20 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         updatedAt: taskRun.updatedAt ?? undefined,
         payload: $payload,
         output: $output,
+        schedule: taskRun.schedule
+          ? {
+              id: taskRun.schedule.friendlyId,
+              externalId: taskRun.schedule.externalId ?? undefined,
+              deduplicationKey: taskRun.schedule.userProvidedDeduplicationKey
+                ? taskRun.schedule.deduplicationKey
+                : undefined,
+              generator: {
+                type: "CRON",
+                expression: taskRun.schedule.generatorExpression,
+                description: taskRun.schedule.generatorDescription,
+              },
+            }
+          : undefined,
         ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(apiStatus),
         attempts: !showSecretDetails
           ? []

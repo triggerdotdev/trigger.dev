@@ -176,7 +176,7 @@ async function doListRuns() {
     period: "1y",
     env: ["dev", "staging", "prod"],
   })) {
-    console.log(run.env.name, run.id, run.status, run.createdAt);
+    console.log(run.env.name, run.isTest, run.id, run.status, run.createdAt);
   }
 }
 

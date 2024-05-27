@@ -273,17 +273,21 @@ export const UpdateScheduleOptions = CreateScheduleOptions;
 
 export type UpdateScheduleOptions = z.infer<typeof UpdateScheduleOptions>;
 
+export const ScheduleGenerator = z.object({
+  type: z.literal("CRON"),
+  expression: z.string(),
+  description: z.string(),
+});
+
+export type ScheduleGenerator = z.infer<typeof ScheduleGenerator>;
+
 export const ScheduleObject = z.object({
   id: z.string(),
   task: z.string(),
   active: z.boolean(),
   deduplicationKey: z.string().nullish(),
   externalId: z.string().nullish(),
-  generator: z.object({
-    type: z.literal("CRON"),
-    expression: z.string(),
-    description: z.string(),
-  }),
+  generator: ScheduleGenerator,
   nextRun: z.coerce.date().nullish(),
   environments: z.array(
     z.object({
@@ -369,6 +373,23 @@ export const RunStatusBooleanHelpers = z.object({
 
 export type RunStatusBooleanHelpers = z.infer<typeof RunStatusBooleanHelpers>;
 
+export const RunEnvironmentDetails = z.object({
+  id: z.string(),
+  name: z.string(),
+  user: z.string().optional(),
+});
+
+export type RunEnvironmentDetails = z.infer<typeof RunEnvironmentDetails>;
+
+export const RunScheduleDetails = z.object({
+  id: z.string(),
+  externalId: z.string().optional(),
+  deduplicationKey: z.string().optional(),
+  generator: ScheduleGenerator,
+});
+
+export type RunScheduleDetails = z.infer<typeof RunScheduleDetails>;
+
 export const RetrieveRunResponse = z
   .object({
     id: z.string(),
@@ -380,6 +401,7 @@ export const RetrieveRunResponse = z
     updatedAt: z.coerce.date(),
     payload: z.any().optional(),
     output: z.any().optional(),
+    schedule: RunScheduleDetails.optional(),
     attempts: z.array(
       z
         .object({
@@ -404,11 +426,7 @@ export const ListRunResponseItem = z
     status: RunStatus,
     taskIdentifier: z.string(),
     version: z.string().optional(),
-    env: z.object({
-      id: z.string(),
-      name: z.string(),
-      user: z.string().optional(),
-    }),
+    env: RunEnvironmentDetails,
     isTest: z.boolean(),
     idempotencyKey: z.string().optional(),
     createdAt: z.coerce.date(),
