@@ -1,6 +1,7 @@
 import { queueEvent } from "./events/queueEvent";
 import { queueEvents } from "./events/queueEvents";
 import { applyRateLimit } from "./rateLimit";
+import { Ratelimit } from "./rateLimiter";
 
 export interface Env {
   /** The hostname needs to be changed to allow requests to pass to the Trigger.dev platform */
@@ -11,7 +12,7 @@ export interface Env {
   AWS_SQS_QUEUE_URL: string;
   AWS_SQS_REGION: string;
   //rate limiter
-  API_RATE_LIMITER: any;
+  API_RATE_LIMITER: Ratelimit;
 }
 
 export default {
