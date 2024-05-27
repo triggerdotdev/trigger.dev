@@ -1,4 +1,4 @@
-import { configure, envvars, runs, schedules } from "@trigger.dev/sdk/v3";
+import { configure, envvars, runs, schedules, ApiError } from "@trigger.dev/sdk/v3";
 import dotenv from "dotenv";
 import { createReadStream } from "node:fs";
 import { firstScheduledTask } from "./trigger/scheduled";

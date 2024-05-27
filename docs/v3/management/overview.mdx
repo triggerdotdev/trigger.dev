@@ -141,18 +141,80 @@ await envvars.upload("proj_1234", "dev", {
 
 ## Handling errors
 
-Section coming soon.
+When the SDK method is unable to connect to the API server, or the API server returns a non-successful response, the SDK will throw an `ApiError` that you can catch and handle:
+
+```ts
+import { runs, APIError } from "@trigger.dev/sdk/v3";
+
+async function main() {
+  try {
+    const run = await runs.retrieve("run_1234");
+  } catch (error) {
+    if (error instanceof ApiError) {
+      console.error(`API error: ${error.status}, ${error.headers}, ${error.body}`);
+    } else {
+      console.error(`Unknown error: ${error.message}`);
+    }
+  }
+}
+```
 
 ## Auto-pagination
 
-Section coming soon.
+All list endpoints in the management API support auto-pagination.
+You can use `for await … of` syntax to iterate through items across all pages:
 
-## Retries
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
 
-Section coming soon.
+async function fetchAllRuns() {
+  const runs = [];
+
+  for await (const run of runs.list({ limit: 10 })) {
+    runs.push(run);
+  }
+
+  return runs;
+}
+```
+
+You can also use helpers on the return value any any `list` method to get the next/previous page of results:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+
+async function main() {
+  let page = await runs.list({ limit: 10 });
+
+  for (const run of page.data) {
+    console.log(run);
+  }
+
+  while (page.hasNextPage()) {
+    page = await page.getNextPage();
+    // ... do something with the next page
+  }
+}
+```
 
 ## Advanced usage
 
 ### Accessing raw HTTP responses
 
-Section coming soon.
+All API methods return a `Promise` subclass `ApiPromise` that includes helpers for accessing the underlying HTTP response:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+
+async function main() {
+  const { data: run, response: raw } = await runs.retrieve("run_1234").withResponse();
+
+  console.log(raw.status);
+  console.log(raw.headers);
+
+  const response = await runs.retrieve("run_1234").asResponse(); // Returns a Response object
+
+  console.log(response.status);
+  console.log(response.headers);
+}
+```

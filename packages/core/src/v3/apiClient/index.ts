@@ -34,7 +34,7 @@ import {
   zodfetchOffsetLimitPage,
   zodupload,
 } from "./core";
-import { APIError } from "./errors";
+import { ApiError } from "./errors";
 import {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
@@ -89,7 +89,7 @@ export class ApiClient {
         zodFetchOptions
       );
     } catch (error) {
-      if (error instanceof APIError) {
+      if (error instanceof ApiError) {
         if (error.status === 404) {
           return undefined;
         }

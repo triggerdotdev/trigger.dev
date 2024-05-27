@@ -14,7 +14,7 @@ import { apiClientManager } from "@trigger.dev/core/v3";
 export type { ApiClientConfiguration };
 
 export {
-  APIError,
+  ApiError,
   AuthenticationError,
   BadRequestError,
   ConflictError,

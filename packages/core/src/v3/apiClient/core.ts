@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { APIConnectionError, APIError } from "./errors";
+import { ApiConnectionError, ApiError } from "./errors";
 import { RetryOptions } from "../schemas";
 import { calculateNextRetryDelay } from "../utils/retries";
 import { FormDataEncoder } from "form-data-encoder";
@@ -200,7 +200,7 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
         const errJSON = safeJsonParse(errText);
         const errMessage = errJSON ? undefined : errText;
 
-        throw APIError.generate(response.status, errJSON, errMessage, responseHeaders);
+        throw ApiError.generate(response.status, errJSON, errMessage, responseHeaders);
       }
     }
 
@@ -213,7 +213,7 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
 
     throw fromZodError(parsedResult.error);
   } catch (error) {
-    if (error instanceof APIError) {
+    if (error instanceof ApiError) {
       throw error;
     }
 
@@ -229,7 +229,7 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
       }
     }
 
-    throw new APIConnectionError({ cause: castToError(error) });
+    throw new ApiConnectionError({ cause: castToError(error) });
   }
 }
 
