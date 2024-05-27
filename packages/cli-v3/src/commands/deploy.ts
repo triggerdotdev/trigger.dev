@@ -65,7 +65,7 @@ import { escapeImportPath, spinner } from "../utilities/windows";
 import { updateTriggerPackages } from "./update";
 import { callResolveEnvVars } from "../utilities/resolveEnvVars";
 
-const DeployCommandOptions = CommonCommandOptions.extend({
+export const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
   skipDeploy: z.boolean().default(false),
   env: z.enum(["prod", "staging"]),
@@ -83,7 +83,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   noCache: z.boolean().default(false),
 });
 
-type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
+export type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
 
 export function configureDeployCommand(program: Command) {
   return commonOptions(
@@ -1097,7 +1097,7 @@ function extractLogs(outputs: string[]) {
   return cleanedOutputs.map((line) => line.trim()).join("\n");
 }
 
-async function compileProject(
+export async function compileProject(
   config: ResolvedConfig,
   options: DeployCommandOptions,
   configPath?: string
