@@ -111,20 +111,6 @@ async function doRuns() {
   const canceledRunResult = await waitForRunToComplete(canceledRun.id);
 
   console.log("canceled run", canceledRunResult);
-
-  let pageCount = 0;
-
-  let page = await runs.list({
-    limit: 100,
-  });
-
-  console.log(`run page #${pageCount++}`);
-
-  // Convenience methods are provided for manually paginating:
-  while (page.hasNextPage()) {
-    page = await page.getNextPage();
-    console.log(`run page #${pageCount++}`);
-  }
 }
 
 async function doListRuns() {
@@ -151,7 +137,7 @@ async function doListRuns() {
     status: ["COMPLETED"],
     period: "1y",
   })) {
-    console.log(run.env.name, run.id, run.status, run.createdAt);
+    console.log(run);
   }
 
   let withResponse = await runs

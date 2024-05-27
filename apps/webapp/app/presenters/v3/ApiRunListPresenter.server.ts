@@ -206,7 +206,7 @@ export class ApiRunListPresenter extends BasePresenter {
           idempotencyKey: run.idempotencyKey,
           version: run.version ?? undefined,
           createdAt: new Date(run.createdAt),
-          updatedAt: run.updatedAt ? new Date(run.updatedAt) : undefined,
+          updatedAt: new Date(run.updatedAt),
           startedAt: run.startedAt ? new Date(run.startedAt) : undefined,
           finishedAt: run.finishedAt ? new Date(run.finishedAt) : undefined,
           isTest: run.isTest,

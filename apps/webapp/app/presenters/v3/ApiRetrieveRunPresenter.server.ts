@@ -2,7 +2,6 @@ import {
   AttemptStatus,
   RetrieveRunResponse,
   RunStatus,
-  RunStatusBooleanHelpers,
   SerializedError,
   TaskRunError,
   conditionallyImportPacket,
@@ -84,8 +83,13 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         version: taskRun.lockedToVersion ? taskRun.lockedToVersion.version : undefined,
         createdAt: taskRun.createdAt ?? undefined,
         updatedAt: taskRun.updatedAt ?? undefined,
+        startedAt: taskRun.lockedAt ?? undefined,
+        finishedAt: ApiRetrieveRunPresenter.isStatusFinished(apiStatus)
+          ? taskRun.updatedAt
+          : undefined,
         payload: $payload,
         output: $output,
+        isTest: taskRun.isTest,
         schedule: taskRun.schedule
           ? {
               id: taskRun.schedule.friendlyId,
@@ -126,6 +130,17 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
     if (errorData.success) {
       return createJsonErrorObject(errorData.data);
     }
+  }
+
+  static isStatusFinished(status: RunStatus) {
+    return (
+      status === "COMPLETED" ||
+      status === "FAILED" ||
+      status === "CANCELED" ||
+      status === "INTERRUPTED" ||
+      status === "CRASHED" ||
+      status === "SYSTEM_FAILURE"
+    );
   }
 
   static apiStatusFromRunStatus(status: TaskRunStatus): RunStatus {
@@ -170,7 +185,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
     }
   }
 
-  static apiBooleanHelpersFromRunStatus(status: RunStatus): RunStatusBooleanHelpers {
+  static apiBooleanHelpersFromRunStatus(status: RunStatus) {
     const isQueued = status === "QUEUED" || status === "WAITING_FOR_DEPLOY";
     const isExecuting = status === "EXECUTING" || status === "REATTEMPTING" || status === "FROZEN";
     const isCompleted =

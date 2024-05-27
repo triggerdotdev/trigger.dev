@@ -1486,6 +1486,18 @@ components:
         updatedAt:
           type: string
           format: date-time
+        isTest:
+          type: boolean
+          description: Whether the run is a test run or not
+          example: false
+        startedAt:
+          type: string
+          format: date-time
+          description: The time the run started
+        finishedAt:
+          type: string
+          format: date-time
+          description: The time the run finished
         schedule:
           type: object
           description: The schedule that triggered the run. Will be omitted if the run was not triggered by a schedule
