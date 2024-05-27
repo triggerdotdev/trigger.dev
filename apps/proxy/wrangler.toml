@@ -5,3 +5,16 @@ compatibility_flags = [ "nodejs_compat" ]
 
 [env.staging]
 [env.prod]
+
+# The rate limiting API is in open beta.
+[[unsafe.bindings]]
+name = "API_RATE_LIMITER"
+type = "ratelimit"
+# An identifier you define, that is unique to your Cloudflare account.
+# Must be an integer.
+namespace_id = "1"
+
+# Limit: the number of tokens allowed within a given period in a single
+# Cloudflare location
+# Period: the duration of the period, in seconds. Must be either 10 or 60
+simple = { limit = 10, period = 60 }
