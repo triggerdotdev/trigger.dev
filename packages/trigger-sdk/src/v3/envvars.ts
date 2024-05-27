@@ -16,7 +16,7 @@ export async function upload(
   projectRef: string,
   slug: string,
   params: ImportEnvironmentVariablesParams
-): Promise<EnvironmentVariableResponseBody>;
+): ApiPromise<EnvironmentVariableResponseBody>;
 export async function upload(
   params: ImportEnvironmentVariablesParams
 ): Promise<EnvironmentVariableResponseBody>;

@@ -69,7 +69,7 @@ export function zodfetchPage<TItemSchema extends z.ZodTypeAny>(
   return new PagePromise(fetchResult, schema, url, params, requestInit, options);
 }
 
-export async function zodupload<
+export function zodupload<
   TResponseBodySchema extends z.ZodTypeAny,
   TBody = Record<string, unknown>,
 >(
@@ -79,6 +79,15 @@ export async function zodupload<
   requestInit?: RequestInit,
   options?: ZodFetchOptions
 ): ApiPromise<z.output<TResponseBodySchema>> {
+  const finalRequestInit = createMultipartFormRequestInit(body, requestInit);
+
+  return new ApiPromise(_doZodFetch(schema, url, finalRequestInit, options));
+}
+
+async function createMultipartFormRequestInit<TBody = Record<string, unknown>>(
+  body: TBody,
+  requestInit?: RequestInit
+): Promise<RequestInit> {
   const form = await createForm(body);
   const encoder = new FormDataEncoder(form);
 
@@ -102,12 +111,10 @@ export async function zodupload<
     duplex: "half",
   };
 
-  return new ApiPromise(_doZodFetch(schema, url, finalRequestInit, options));
+  return finalRequestInit;
 }
 
-export const createForm = async <T = Record<string, unknown>>(
-  body: T | undefined
-): Promise<FormData> => {
+const createForm = async <T = Record<string, unknown>>(body: T | undefined): Promise<FormData> => {
   const form = new FormData();
   await Promise.all(
     Object.entries(body || {}).map(([key, value]) => addFormValue(form, key, value))
@@ -120,15 +127,19 @@ type ZodFetchResult<T> = {
   response: Response;
 };
 
+type PromiseOrValue<T> = T | Promise<T>;
+
 async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
   schema: TResponseBodySchema,
   url: string,
-  requestInit?: RequestInit,
+  requestInit?: PromiseOrValue<RequestInit>,
   options?: ZodFetchOptions,
   attempt = 1
 ): Promise<ZodFetchResult<z.output<TResponseBodySchema>>> {
   try {
-    const response = await fetch(url, requestInitWithCache(requestInit));
+    const $requestInit = await requestInit;
+
+    const response = await fetch(url, requestInitWithCache($requestInit));
 
     const responseHeaders = createResponseHeaders(response.headers);
 
@@ -480,7 +491,7 @@ export const isRecordLike = (value: any): value is Record<string, string> =>
  * A subclass of `Promise` providing additional helper methods
  * for interacting with the SDK.
  */
-class ApiPromise<T> extends Promise<T> {
+export class ApiPromise<T> extends Promise<T> {
   constructor(private responsePromise: Promise<ZodFetchResult<T>>) {
     super((resolve) => {
       // this is maybe a bit weird but this has to be a no-op to not implicitly

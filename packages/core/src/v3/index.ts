@@ -1,5 +1,6 @@
 export * from "./apiClient";
 export * from "./apiClient/pagination";
+export type { ApiPromise } from "./apiClient/core";
 export * from "./apiClient/errors";
 export * from "./clock-api";
 export * from "./errors";
