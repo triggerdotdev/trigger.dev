@@ -134,12 +134,6 @@ export function getSharedSqsEventConsumer() {
     env.AWS_SQS_ACCESS_KEY_ID &&
     env.AWS_SQS_SECRET_ACCESS_KEY
   ) {
-    if (env.V2_SQS_EVENT_CONSUMER_ENABLED !== "true") {
-      logger.info("V2_SQS_EVENT_CONSUMER_ENABLED isn't true, not starting consumer");
-      return;
-    }
-
-    logger.info("Starting SQS Event Consumer");
     const consumer = new SqsEventConsumer(undefined, {
       queueUrl: env.AWS_SQS_QUEUE_URL,
       batchSize: env.AWS_SQS_BATCH_SIZE,

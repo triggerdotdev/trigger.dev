@@ -67,10 +67,6 @@ const EnvironmentSchema = z.object({
   AWS_SQS_QUEUE_URL: z.string().optional(),
   AWS_SQS_BATCH_SIZE: z.coerce.number().int().optional().default(1),
   AWS_SQS_WAIT_TIME_MS: z.coerce.number().int().optional().default(100),
-
-  /** v2 SQS Event Consumer Enabled */
-  V2_SQS_EVENT_CONSUMER_ENABLED: z.string().default("false"),
-
   DISABLE_SSE: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
 
