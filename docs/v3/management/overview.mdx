@@ -6,15 +6,138 @@ description: Using the Trigger.dev v3 management API
 
 ## Installation
 
-Section coming soon.
+The management API is available through the same `@trigger.dev/sdk` package used in defining and triggering tasks. If you have already installed the package in your project, you can skip this step.
+
+<Note>Make sure you use the `beta` tag when installing, as v3 is still in Developer Preview.</Note>
+
+<CodeGroup>
+
+```bash npm
+npm i @trigger.dev/sdk@beta
+```
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@beta
+```
+
+```bash yarn
+yarn add @trigger.dev/sdk@beta
+```
+
+</CodeGroup>
 
 ## Usage
 
-Section coming soon.
+All `v3` functionality is provided through the `@trigger.dev/sdk/v3` module. You can import the entire module or individual resources as needed.
+
+```ts
+import { configure, runs } from "@trigger.dev/sdk/v3";
+
+configure({
+  // this is the default and if the `TRIGGER_SECRET_KEY` environment variable is set, can omit calling configure
+  secretKey: process.env["TRIGGER_SECRET_KEY"],
+});
+
+async function main() {
+  const runs = await runs.list({
+    limit: 10,
+    status: ["COMPLETED"],
+  });
+}
+
+main().catch(console.error);
+```
 
 ## Authentication
 
-Section coming soon.
+There are two methods of authenticating with the management API: using a secret key associated with a specific environment in a project (`secretKey`), or using a personal access token (`personalAccessToken`). Both methods should only be used in a backend server, as they provide full access to the project.
+
+<Info>
+  Support for client-side authentication is coming soon to v3 but is not available at the time of
+  writing.
+</Info>
+
+Certain API functions work with both authentication methods, but require different arguments depending on the method used. For example, the `runs.list` function can be called using either a `secretKey` or a `personalAccessToken`, but the `projectRef` argument is required when using a `personalAccessToken`:
+
+```ts
+import { configure, runs } from "@trigger.dev/sdk/v3";
+
+// Using secretKey authentication
+configure({
+  secretKey: process.env["TRIGGER_SECRET_KEY"], // starts with tr_dev_ or tr_prod_
+});
+
+function secretKeyExample() {
+  return runs.list({
+    limit: 10,
+    status: ["COMPLETED"],
+  });
+}
+
+// Using personalAccessToken authentication
+configure({
+  secretKey: process.env["TRIGGER_ACCESS_TOKEN"], // starts with tr_pat_
+});
+
+function personalAccessTokenExample() {
+  // Notice the projectRef argument is required when using a personalAccessToken
+  return runs.list("prof_1234", {
+    limit: 10,
+    status: ["COMPLETED"],
+    projectRef: "tr_proj_1234567890",
+  });
+}
+```
+
+<Accordion title="View endpoint support">
+  Consult the following table to see which endpoints support each authentication method.
+
+| Endpoint               | Secret key | Personal Access Token |
+| ---------------------- | ---------- | --------------------- |
+| `runs.list`            | ✅         | ✅                    |
+| `runs.retrieve`        | ✅         |                       |
+| `runs.cancel`          | ✅         |                       |
+| `runs.replay`          | ✅         |                       |
+| `envvars.list`         | ✅         | ✅                    |
+| `envvars.retrieve`     | ✅         | ✅                    |
+| `envvars.upload`       | ✅         | ✅                    |
+| `envvars.create`       | ✅         | ✅                    |
+| `envvars.update`       | ✅         | ✅                    |
+| `envvars.del`          | ✅         | ✅                    |
+| `schedules.list`       | ✅         |                       |
+| `schedules.create`     | ✅         |                       |
+| `schedules.retrieve`   | ✅         |                       |
+| `schedules.update`     | ✅         |                       |
+| `schedules.activate`   | ✅         |                       |
+| `schedules.deactivate` | ✅         |                       |
+| `schedules.del`        | ✅         |                       |
+
+</Accordion>
+
+### Secret key
+
+Secret key authentication scopes the API access to a specific environment in a project, and works with certain endpoints. You can read our [API Keys guide](/v3/apikeys) for more information.
+
+### Personal Access Token (PAT)
+
+A PAT is a token associated with a specific user, and gives access to all the orgs, projects, and environments that the user has access to. You can identify a PAT by the `tr_pat_` prefix. Because a PAT does not scope access to a specific environment, you must provide the `projectRef` argument when using a PAT (and sometimes the environment as well).
+
+For example, when uploading environment variables using a PAT, you must provide the `projectRef` and `environment` arguments:
+
+```ts
+import { configure, envvars } from "@trigger.dev/sdk/v3";
+
+configure({
+  secretKey: process.env["TRIGGER_ACCESS_TOKEN"], // starts with tr_pat_
+});
+
+await envvars.upload("proj_1234", "dev", {
+  variables: {
+    MY_ENV_VAR: "MY_ENV_VAR_VALUE",
+  },
+  override: true,
+});
+```
 
 ## Handling errors
 
@@ -28,6 +151,8 @@ Section coming soon.
 
 Section coming soon.
 
-## Accessing raw HTTP responses
+## Advanced usage
+
+### Accessing raw HTTP responses
 
 Section coming soon.

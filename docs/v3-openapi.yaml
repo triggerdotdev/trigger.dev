@@ -39,7 +39,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -79,7 +79,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -114,7 +114,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -157,7 +157,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -189,7 +189,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -223,7 +223,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -257,7 +257,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -321,7 +321,7 @@ paths:
       tags:
         - runs
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -386,7 +386,7 @@ paths:
       tags:
         - runs
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -445,7 +445,7 @@ paths:
       tags:
         - run
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -499,7 +499,7 @@ paths:
       tags:
         - runs
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           label: List runs
@@ -658,7 +658,7 @@ paths:
       tags:
         - envvars
       security:
-        - apiKey: []
+        - secretKey: []
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
@@ -731,7 +731,7 @@ paths:
       tags:
         - envvars
       security:
-        - apiKey: []
+        - secretKey: []
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
@@ -828,7 +828,7 @@ paths:
       tags:
         - envvars
       security:
-        - apiKey: []
+        - secretKey: []
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
@@ -926,7 +926,7 @@ paths:
       tags:
         - envvars
       security:
-        - apiKey: []
+        - secretKey: []
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
@@ -984,7 +984,7 @@ paths:
       tags:
         - envvars
       security:
-        - apiKey: []
+        - secretKey: []
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
@@ -1043,7 +1043,7 @@ paths:
       tags:
         - envvars
       security:
-        - apiKey: []
+        - secretKey: []
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
@@ -1159,7 +1159,7 @@ components:
       description: The name of the environment variable.
       example: SLACK_API_KEY
   securitySchemes:
-    apiKey:
+    secretKey:
       type: http
       scheme: bearer
       description: |
