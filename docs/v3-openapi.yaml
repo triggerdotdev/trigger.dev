@@ -1440,7 +1440,6 @@ components:
         - createdAt
         - updatedAt
         - attempts
-        - env
       properties:
         id:
           type: string
@@ -1487,25 +1486,6 @@ components:
         updatedAt:
           type: string
           format: date-time
-        env:
-          type: object
-          description: The environment of the run
-          required:
-            - id
-            - name
-          properties:
-            id:
-              type: string
-              description: The unique ID of the environment
-              example: cl1234
-            name:
-              type: string
-              description: The name of the environment
-              example: dev
-            user:
-              type: string
-              description: If this is a dev environment, the username of the user represented by this environment
-              example: Anna
         schedule:
           type: object
           description: The schedule that triggered the run. Will be omitted if the run was not triggered by a schedule
