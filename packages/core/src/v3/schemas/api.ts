@@ -390,51 +390,59 @@ export const RunScheduleDetails = z.object({
 
 export type RunScheduleDetails = z.infer<typeof RunScheduleDetails>;
 
-export const RetrieveRunResponse = z
-  .object({
-    id: z.string(),
-    status: RunStatus,
-    taskIdentifier: z.string(),
-    idempotencyKey: z.string().optional(),
-    version: z.string().optional(),
-    createdAt: z.coerce.date(),
-    updatedAt: z.coerce.date(),
-    payload: z.any().optional(),
-    output: z.any().optional(),
-    schedule: RunScheduleDetails.optional(),
-    attempts: z.array(
-      z
-        .object({
-          id: z.string(),
-          status: AttemptStatus,
-          createdAt: z.coerce.date(),
-          updatedAt: z.coerce.date(),
-          startedAt: z.coerce.date().optional(),
-          completedAt: z.coerce.date().optional(),
-          error: SerializedError.optional(),
-        })
-        .optional()
-    ),
-  })
-  .merge(RunStatusBooleanHelpers);
+export const RetrieveRunResponse = z.object({
+  id: z.string(),
+  status: RunStatus,
+  taskIdentifier: z.string(),
+  idempotencyKey: z.string().optional(),
+  version: z.string().optional(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  payload: z.any().optional(),
+  output: z.any().optional(),
+  schedule: RunScheduleDetails.optional(),
+  isQueued: z.boolean(),
+  isExecuting: z.boolean(),
+  isCompleted: z.boolean(),
+  isSuccess: z.boolean(),
+  isFailed: z.boolean(),
+  isCancelled: z.boolean(),
+  attempts: z.array(
+    z
+      .object({
+        id: z.string(),
+        status: AttemptStatus,
+        createdAt: z.coerce.date(),
+        updatedAt: z.coerce.date(),
+        startedAt: z.coerce.date().optional(),
+        completedAt: z.coerce.date().optional(),
+        error: SerializedError.optional(),
+      })
+      .optional()
+  ),
+});
 
 export type RetrieveRunResponse = z.infer<typeof RetrieveRunResponse>;
 
-export const ListRunResponseItem = z
-  .object({
-    id: z.string(),
-    status: RunStatus,
-    taskIdentifier: z.string(),
-    version: z.string().optional(),
-    env: RunEnvironmentDetails,
-    isTest: z.boolean(),
-    idempotencyKey: z.string().optional(),
-    createdAt: z.coerce.date(),
-    updatedAt: z.coerce.date().optional(),
-    startedAt: z.coerce.date().optional(),
-    finishedAt: z.coerce.date().optional(),
-  })
-  .merge(RunStatusBooleanHelpers);
+export const ListRunResponseItem = z.object({
+  id: z.string(),
+  status: RunStatus,
+  taskIdentifier: z.string(),
+  version: z.string().optional(),
+  env: RunEnvironmentDetails,
+  isQueued: z.boolean(),
+  isExecuting: z.boolean(),
+  isCompleted: z.boolean(),
+  isSuccess: z.boolean(),
+  isFailed: z.boolean(),
+  isCancelled: z.boolean(),
+  isTest: z.boolean(),
+  idempotencyKey: z.string().optional(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date().optional(),
+  startedAt: z.coerce.date().optional(),
+  finishedAt: z.coerce.date().optional(),
+});
 
 export type ListRunResponseItem = z.infer<typeof ListRunResponseItem>;
 
