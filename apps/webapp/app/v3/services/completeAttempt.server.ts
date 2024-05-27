@@ -178,7 +178,7 @@ export class CompleteAttemptService extends BaseService {
           properties: {
             retryAt: retryAt.toISOString(),
           },
-          runId: taskRunAttempt.taskRunId,
+          runId: taskRunAttempt.taskRun.friendlyId,
           style: {
             icon: "schedule-attempt",
           },
