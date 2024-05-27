@@ -165,6 +165,7 @@
       "group": "API reference",
       "version": "v3 (Developer Preview)",
       "pages": [
+        "v3/management/overview",
         {
           "group": "Runs API",
           "pages": [
@@ -200,7 +201,6 @@
         {
           "group": "Projects API",
           "pages": [
-            "v3/management/projects/auth",
             "v3/management/projects/runs"
           ]
         }

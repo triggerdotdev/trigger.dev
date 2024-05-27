@@ -2,6 +2,7 @@ import {
   AttemptStatus,
   RetrieveRunResponse,
   RunStatus,
+  RunStatusBooleanHelpers,
   SerializedError,
   TaskRunError,
   conditionallyImportPacket,
@@ -72,9 +73,11 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         }
       }
 
+      const apiStatus = ApiRetrieveRunPresenter.apiStatusFromRunStatus(taskRun.status);
+
       return {
         id: taskRun.friendlyId,
-        status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(taskRun.status),
+        status: apiStatus,
         taskIdentifier: taskRun.taskIdentifier,
         idempotencyKey: taskRun.idempotencyKey ?? undefined,
         version: taskRun.lockedToVersion ? taskRun.lockedToVersion.version : undefined,
@@ -82,6 +85,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         updatedAt: taskRun.updatedAt ?? undefined,
         payload: $payload,
         output: $output,
+        ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(apiStatus),
         attempts: !showSecretDetails
           ? []
           : taskRun.attempts.map((a) => ({
@@ -149,6 +153,30 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         assertNever(status);
       }
     }
+  }
+
+  static apiBooleanHelpersFromRunStatus(status: RunStatus): RunStatusBooleanHelpers {
+    const isQueued = status === "QUEUED" || status === "WAITING_FOR_DEPLOY";
+    const isExecuting = status === "EXECUTING" || status === "REATTEMPTING" || status === "FROZEN";
+    const isCompleted =
+      status === "COMPLETED" ||
+      status === "CANCELED" ||
+      status === "FAILED" ||
+      status === "CRASHED" ||
+      status === "INTERRUPTED" ||
+      status === "SYSTEM_FAILURE";
+    const isFailed = isCompleted && status !== "COMPLETED";
+    const isSuccess = isCompleted && status === "COMPLETED";
+    const isCancelled = status === "CANCELED";
+
+    return {
+      isQueued,
+      isExecuting,
+      isCompleted,
+      isFailed,
+      isSuccess,
+      isCancelled,
+    };
   }
 
   static apiStatusFromAttemptStatus(status: TaskRunAttemptStatus): AttemptStatus {

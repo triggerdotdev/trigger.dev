@@ -5,7 +5,14 @@ import { RetryOptions } from "../schemas";
 import { calculateNextRetryDelay } from "../utils/retries";
 import { FormDataEncoder } from "form-data-encoder";
 import { Readable } from "node:stream";
-import { CursorPage, CursorPageParams, CursorPageResponse } from "./pagination";
+import {
+  CursorPage,
+  CursorPageParams,
+  CursorPageResponse,
+  OffsetLimitPage,
+  OffsetLimitPageParams,
+  OffsetLimitPageResponse,
+} from "./pagination";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,
@@ -19,7 +26,11 @@ export type ZodFetchOptions = {
   retry?: RetryOptions;
 };
 
-interface FetchPageParams extends CursorPageParams {
+interface FetchCursorPageParams extends CursorPageParams {
+  query?: URLSearchParams;
+}
+
+interface FetchOffsetLimitPageParams extends OffsetLimitPageParams {
   query?: URLSearchParams;
 }
 
@@ -32,10 +43,10 @@ export function zodfetch<TResponseBodySchema extends z.ZodTypeAny>(
   return new ApiPromise(_doZodFetch(schema, url, requestInit, options));
 }
 
-export function zodfetchPage<TItemSchema extends z.ZodTypeAny>(
+export function zodfetchCursorPage<TItemSchema extends z.ZodTypeAny>(
   schema: TItemSchema,
   url: string,
-  params: FetchPageParams,
+  params: FetchCursorPageParams,
   requestInit?: RequestInit,
   options?: ZodFetchOptions
 ) {
@@ -66,7 +77,41 @@ export function zodfetchPage<TItemSchema extends z.ZodTypeAny>(
 
   const fetchResult = _doZodFetch(cursorPageSchema, $url.href, requestInit, options);
 
-  return new PagePromise(fetchResult, schema, url, params, requestInit, options);
+  return new CursorPagePromise(fetchResult, schema, url, params, requestInit, options);
+}
+
+export function zodfetchOffsetLimitPage<TItemSchema extends z.ZodTypeAny>(
+  schema: TItemSchema,
+  url: string,
+  params: FetchOffsetLimitPageParams,
+  requestInit?: RequestInit,
+  options?: ZodFetchOptions
+) {
+  const query = new URLSearchParams(params.query);
+
+  if (params.limit) {
+    query.set("perPage", String(params.limit));
+  }
+
+  if (params.page) {
+    query.set("page", String(params.page));
+  }
+
+  const offsetLimitPageSchema = z.object({
+    data: z.array(schema),
+    pagination: z.object({
+      currentPage: z.coerce.number(),
+      totalPages: z.coerce.number(),
+      count: z.coerce.number(),
+    }),
+  });
+
+  const $url = new URL(url);
+  $url.search = query.toString();
+
+  const fetchResult = _doZodFetch(offsetLimitPageSchema, $url.href, requestInit, options);
+
+  return new OffsetLimitPagePromise(fetchResult, schema, url, params, requestInit, options);
 }
 
 export function zodupload<
@@ -545,7 +590,7 @@ export class ApiPromise<T> extends Promise<T> {
   }
 }
 
-export class PagePromise<TItemSchema extends z.ZodTypeAny>
+export class CursorPagePromise<TItemSchema extends z.ZodTypeAny>
   extends ApiPromise<CursorPage<z.output<TItemSchema>>>
   implements AsyncIterable<z.output<TItemSchema>>
 {
@@ -553,7 +598,7 @@ export class PagePromise<TItemSchema extends z.ZodTypeAny>
     result: Promise<ZodFetchResult<CursorPageResponse<z.output<TItemSchema>>>>,
     private schema: TItemSchema,
     private url: string,
-    private params: FetchPageParams,
+    private params: FetchCursorPageParams,
     private requestInit?: RequestInit,
     private options?: ZodFetchOptions
   ) {
@@ -566,7 +611,58 @@ export class PagePromise<TItemSchema extends z.ZodTypeAny>
   }
 
   #fetchPage(params: Omit<CursorPageParams, "limit">): Promise<CursorPage<z.output<TItemSchema>>> {
-    return zodfetchPage(
+    return zodfetchCursorPage(
+      this.schema,
+      this.url,
+      { ...this.params, ...params },
+      this.requestInit,
+      this.options
+    );
+  }
+
+  /**
+   * Allow auto-paginating iteration on an unawaited list call, eg:
+   *
+   *    for await (const item of client.items.list()) {
+   *      console.log(item)
+   *    }
+   */
+  async *[Symbol.asyncIterator]() {
+    const page = await this;
+    for await (const item of page) {
+      yield item;
+    }
+  }
+}
+
+export class OffsetLimitPagePromise<TItemSchema extends z.ZodTypeAny>
+  extends ApiPromise<OffsetLimitPage<z.output<TItemSchema>>>
+  implements AsyncIterable<z.output<TItemSchema>>
+{
+  constructor(
+    result: Promise<ZodFetchResult<OffsetLimitPageResponse<z.output<TItemSchema>>>>,
+    private schema: TItemSchema,
+    private url: string,
+    private params: FetchOffsetLimitPageParams,
+    private requestInit?: RequestInit,
+    private options?: ZodFetchOptions
+  ) {
+    super(
+      result.then((result) => ({
+        data: new OffsetLimitPage(
+          result.data.data,
+          result.data.pagination,
+          this.#fetchPage.bind(this)
+        ),
+        response: result.response,
+      }))
+    );
+  }
+
+  #fetchPage(
+    params: Omit<FetchOffsetLimitPageParams, "limit">
+  ): Promise<OffsetLimitPage<z.output<TItemSchema>>> {
+    return zodfetchOffsetLimitPage(
       this.schema,
       this.url,
       { ...this.params, ...params },

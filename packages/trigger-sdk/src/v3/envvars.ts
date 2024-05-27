@@ -1,30 +1,30 @@
 import type {
-  ImportEnvironmentVariablesParams,
-  EnvironmentVariableResponseBody,
-  EnvironmentVariables,
+  ApiPromise,
   CreateEnvironmentVariableParams,
+  EnvironmentVariableResponseBody,
   EnvironmentVariableValue,
+  EnvironmentVariables,
+  ImportEnvironmentVariablesParams,
   UpdateEnvironmentVariableParams,
 } from "@trigger.dev/core/v3";
-import { SemanticInternalAttributes, apiClientManager, taskContext } from "@trigger.dev/core/v3";
+import { apiClientManager, taskContext } from "@trigger.dev/core/v3";
 import { apiClientMissingError } from "./shared";
-import { tracer } from "./tracer";
 
-export type { ImportEnvironmentVariablesParams, CreateEnvironmentVariableParams };
+export type { CreateEnvironmentVariableParams, ImportEnvironmentVariablesParams };
 
-export async function upload(
+export function upload(
   projectRef: string,
   slug: string,
   params: ImportEnvironmentVariablesParams
 ): ApiPromise<EnvironmentVariableResponseBody>;
-export async function upload(
+export function upload(
   params: ImportEnvironmentVariablesParams
-): Promise<EnvironmentVariableResponseBody>;
-export async function upload(
+): ApiPromise<EnvironmentVariableResponseBody>;
+export function upload(
   projectRefOrParams: string | ImportEnvironmentVariablesParams,
   slug?: string,
   params?: ImportEnvironmentVariablesParams
-): Promise<EnvironmentVariableResponseBody> {
+): ApiPromise<EnvironmentVariableResponseBody> {
   let $projectRef: string;
   let $params: ImportEnvironmentVariablesParams;
   let $slug: string;
@@ -68,22 +68,12 @@ export async function upload(
     throw apiClientMissingError();
   }
 
-  return await tracer.startActiveSpan(
-    "envvars.upload",
-    async (span) => {
-      return await apiClient.importEnvVars($projectRef, $slug, $params);
-    },
-    {
-      attributes: {
-        [SemanticInternalAttributes.STYLE_ICON]: "file-upload",
-      },
-    }
-  );
+  return apiClient.importEnvVars($projectRef, $slug, $params);
 }
 
-export async function list(projectRef: string, slug: string): Promise<EnvironmentVariables>;
-export async function list(): Promise<EnvironmentVariables>;
-export async function list(projectRef?: string, slug?: string): Promise<EnvironmentVariables> {
+export function list(projectRef: string, slug: string): ApiPromise<EnvironmentVariables>;
+export function list(): ApiPromise<EnvironmentVariables>;
+export function list(projectRef?: string, slug?: string): ApiPromise<EnvironmentVariables> {
   const $projectRef = projectRef ?? taskContext.ctx?.project.ref;
   const $slug = slug ?? taskContext.ctx?.environment.slug;
 
@@ -101,32 +91,22 @@ export async function list(projectRef?: string, slug?: string): Promise<Environm
     throw apiClientMissingError();
   }
 
-  return await tracer.startActiveSpan(
-    "envvars.list",
-    async (span) => {
-      return await apiClient.listEnvVars($projectRef, $slug);
-    },
-    {
-      attributes: {
-        [SemanticInternalAttributes.STYLE_ICON]: "id",
-      },
-    }
-  );
+  return apiClient.listEnvVars($projectRef, $slug);
 }
 
-export async function create(
+export function create(
   projectRef: string,
   slug: string,
   params: CreateEnvironmentVariableParams
-): Promise<EnvironmentVariableResponseBody>;
-export async function create(
+): ApiPromise<EnvironmentVariableResponseBody>;
+export function create(
   params: CreateEnvironmentVariableParams
-): Promise<EnvironmentVariableResponseBody>;
-export async function create(
+): ApiPromise<EnvironmentVariableResponseBody>;
+export function create(
   projectRefOrParams: string | CreateEnvironmentVariableParams,
   slug?: string,
   params?: CreateEnvironmentVariableParams
-): Promise<EnvironmentVariableResponseBody> {
+): ApiPromise<EnvironmentVariableResponseBody> {
   let $projectRef: string;
   let $slug: string;
   let $params: CreateEnvironmentVariableParams;
@@ -170,30 +150,20 @@ export async function create(
     throw apiClientMissingError();
   }
 
-  return await tracer.startActiveSpan(
-    "envvars.create",
-    async (span) => {
-      return await apiClient.createEnvVar($projectRef, $slug, $params);
-    },
-    {
-      attributes: {
-        [SemanticInternalAttributes.STYLE_ICON]: "id",
-      },
-    }
-  );
+  return apiClient.createEnvVar($projectRef, $slug, $params);
 }
 
-export async function retrieve(
+export function retrieve(
   projectRef: string,
   slug: string,
   name: string
-): Promise<EnvironmentVariableValue>;
-export async function retrieve(name: string): Promise<EnvironmentVariableValue>;
-export async function retrieve(
+): ApiPromise<EnvironmentVariableValue>;
+export function retrieve(name: string): ApiPromise<EnvironmentVariableValue>;
+export function retrieve(
   projectRefOrName: string,
   slug?: string,
   name?: string
-): Promise<EnvironmentVariableValue> {
+): ApiPromise<EnvironmentVariableValue> {
   let $projectRef: string;
   let $slug: string;
   let $name: string;
@@ -222,30 +192,20 @@ export async function retrieve(
     throw apiClientMissingError();
   }
 
-  return await tracer.startActiveSpan(
-    "envvars.retrieve",
-    async (span) => {
-      return await apiClient.retrieveEnvVar($projectRef, $slug, $name);
-    },
-    {
-      attributes: {
-        [SemanticInternalAttributes.STYLE_ICON]: "id",
-      },
-    }
-  );
+  return apiClient.retrieveEnvVar($projectRef, $slug, $name);
 }
 
-export async function del(
+export function del(
   projectRef: string,
   slug: string,
   name: string
-): Promise<EnvironmentVariableResponseBody>;
-export async function del(name: string): Promise<EnvironmentVariableResponseBody>;
-export async function del(
+): ApiPromise<EnvironmentVariableResponseBody>;
+export function del(name: string): ApiPromise<EnvironmentVariableResponseBody>;
+export function del(
   projectRefOrName: string,
   slug?: string,
   name?: string
-): Promise<EnvironmentVariableResponseBody> {
+): ApiPromise<EnvironmentVariableResponseBody> {
   let $projectRef: string;
   let $slug: string;
   let $name: string;
@@ -274,35 +234,25 @@ export async function del(
     throw apiClientMissingError();
   }
 
-  return await tracer.startActiveSpan(
-    "envvars.delete",
-    async (span) => {
-      return await apiClient.deleteEnvVar($projectRef, $slug, $name);
-    },
-    {
-      attributes: {
-        [SemanticInternalAttributes.STYLE_ICON]: "id",
-      },
-    }
-  );
+  return apiClient.deleteEnvVar($projectRef, $slug, $name);
 }
 
-export async function update(
+export function update(
   projectRef: string,
   slug: string,
   name: string,
   params: UpdateEnvironmentVariableParams
-): Promise<EnvironmentVariableResponseBody>;
-export async function update(
+): ApiPromise<EnvironmentVariableResponseBody>;
+export function update(
   name: string,
   params: UpdateEnvironmentVariableParams
-): Promise<EnvironmentVariableResponseBody>;
-export async function update(
+): ApiPromise<EnvironmentVariableResponseBody>;
+export function update(
   projectRefOrName: string,
   slugOrParams: string | UpdateEnvironmentVariableParams,
   name?: string,
   params?: UpdateEnvironmentVariableParams
-): Promise<EnvironmentVariableResponseBody> {
+): ApiPromise<EnvironmentVariableResponseBody> {
   let $projectRef: string;
   let $slug: string;
   let $name: string;
@@ -350,15 +300,5 @@ export async function update(
     throw apiClientMissingError();
   }
 
-  return await tracer.startActiveSpan(
-    "envvars.update",
-    async (span) => {
-      return await apiClient.updateEnvVar($projectRef, $slug, $name, $params);
-    },
-    {
-      attributes: {
-        [SemanticInternalAttributes.STYLE_ICON]: "id",
-      },
-    }
-  );
+  return apiClient.updateEnvVar($projectRef, $slug, $name, $params);
 }

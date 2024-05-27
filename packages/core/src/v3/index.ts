@@ -1,4 +1,5 @@
 export * from "./apiClient";
+export * from "./apiClient/types";
 export * from "./apiClient/pagination";
 export type { ApiPromise } from "./apiClient/core";
 export * from "./apiClient/errors";

@@ -27,11 +27,14 @@ export interface UpdateEnvironmentVariableParams {
 
 export interface ListRunsQueryParams extends CursorPageParams {
   status?: Array<RunStatus> | RunStatus;
-  env?: Array<"dev" | "staging" | "prod"> | "dev" | "staging" | "prod";
   taskIdentifier?: Array<string> | string;
   version?: Array<string> | string;
   bulkAction?: string;
   from?: Date | number;
   to?: Date | number;
   period?: string;
+}
+
+export interface ListProjectRunsQueryParams extends CursorPageParams, ListRunsQueryParams {
+  env?: Array<"dev" | "staging" | "prod"> | "dev" | "staging" | "prod";
 }

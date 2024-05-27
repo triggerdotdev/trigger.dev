@@ -1,24 +1,16 @@
 import {
+  ApiPromise,
   CanceledRunResponse,
-  CursorPageResponse,
   ListRunResponseItem,
   ReplayRunResponse,
   RetrieveRunResponse,
   apiClientManager,
 } from "@trigger.dev/core/v3";
+import type { ListProjectRunsQueryParams, ListRunsQueryParams } from "@trigger.dev/core/v3";
 import { apiClientMissingError } from "./shared";
-import { ListRunsQueryParams } from "@trigger.dev/core/v3/apiClient/types";
+import { CursorPagePromise } from "@trigger.dev/core/v3/apiClient/core";
 
-type RunStatusBooleanHelpers = {
-  isQueued: boolean;
-  isExecuting: boolean;
-  isCompleted: boolean;
-  isSuccess: boolean;
-  isFailed: boolean;
-  isCancelled: boolean;
-};
-
-export type RetrieveRunResult = RetrieveRunResponse & RunStatusBooleanHelpers;
+export type RetrieveRunResult = RetrieveRunResponse;
 
 export const runs = {
   replay: replayRun,
@@ -27,70 +19,56 @@ export const runs = {
   list: listRuns,
 };
 
-export type ListRunsItem = ListRunResponseItem & RunStatusBooleanHelpers;
+export type ListRunsItem = ListRunResponseItem;
 
-function listRuns(params?: ListRunsQueryParams) {
+function listRuns(
+  projectRef: string,
+  params?: ListProjectRunsQueryParams
+): CursorPagePromise<typeof ListRunResponseItem>;
+function listRuns(params?: ListRunsQueryParams): CursorPagePromise<typeof ListRunResponseItem>;
+function listRuns(
+  paramsOrProjectRef?: ListRunsQueryParams | string,
+  params?: ListRunsQueryParams | ListProjectRunsQueryParams
+): CursorPagePromise<typeof ListRunResponseItem> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
     throw apiClientMissingError();
+  }
+
+  if (typeof paramsOrProjectRef === "string") {
+    return apiClient.listProjectRuns(paramsOrProjectRef, params);
   }
 
   return apiClient.listRuns(params);
 }
 
-async function retrieveRun(runId: string): Promise<RetrieveRunResult> {
+function retrieveRun(runId: string): ApiPromise<RetrieveRunResult> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
     throw apiClientMissingError();
   }
 
-  const response = await apiClient.retrieveRun(runId);
-
-  const isQueued = response.status === "QUEUED" || response.status === "WAITING_FOR_DEPLOY";
-  const isExecuting =
-    response.status === "EXECUTING" ||
-    response.status === "REATTEMPTING" ||
-    response.status === "FROZEN";
-  const isCompleted =
-    response.status === "COMPLETED" ||
-    response.status === "CANCELED" ||
-    response.status === "FAILED" ||
-    response.status === "CRASHED" ||
-    response.status === "INTERRUPTED" ||
-    response.status === "SYSTEM_FAILURE";
-  const isFailed = isCompleted && response.status !== "COMPLETED";
-  const isSuccess = isCompleted && response.status === "COMPLETED";
-  const isCancelled = response.status === "CANCELED";
-
-  return {
-    ...response,
-    isQueued,
-    isExecuting,
-    isCompleted,
-    isSuccess,
-    isFailed,
-    isCancelled,
-  };
+  return apiClient.retrieveRun(runId);
 }
 
-async function replayRun(runId: string): Promise<ReplayRunResponse> {
+function replayRun(runId: string): ApiPromise<ReplayRunResponse> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
     throw apiClientMissingError();
   }
 
-  return await apiClient.replayRun(runId);
+  return apiClient.replayRun(runId);
 }
 
-async function cancelRun(runId: string): Promise<CanceledRunResponse> {
+function cancelRun(runId: string): ApiPromise<CanceledRunResponse> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
     throw apiClientMissingError();
   }
 
-  return await apiClient.cancelRun(runId);
+  return apiClient.cancelRun(runId);
 }

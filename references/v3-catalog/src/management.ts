@@ -151,7 +151,32 @@ async function doListRuns() {
     status: ["COMPLETED"],
     period: "1y",
   })) {
-    console.log(run.id, run.status, run.createdAt);
+    console.log(run.env.name, run.id, run.status, run.createdAt);
+  }
+
+  let withResponse = await runs
+    .list({
+      limit: 100,
+    })
+    .withResponse();
+
+  console.log(
+    "withResponse",
+    withResponse.response.status,
+    withResponse.response.headers,
+    withResponse.data.data.length
+  );
+
+  configure({
+    secretKey: process.env.TRIGGER_ACCESS_TOKEN,
+  });
+
+  for await (const run of runs.list("yubjwjsfkxnylobaqvqz", {
+    status: ["COMPLETED"],
+    period: "1y",
+    env: ["dev", "staging", "prod"],
+  })) {
+    console.log(run.env.name, run.id, run.status, run.createdAt);
   }
 }
 
@@ -223,7 +248,35 @@ async function doSchedules() {
   console.log("deleted schedule", deletedSchedule);
 }
 
+async function doScheduleLists() {
+  let pageCount = 0;
+
+  let page = await schedules.list({
+    perPage: 2,
+  });
+
+  console.log(`schedule page #${++pageCount}`);
+
+  // Convenience methods are provided for manually paginating:
+  while (page.hasNextPage()) {
+    page = await page.getNextPage();
+    console.log(`schedule page #${++pageCount}`);
+  }
+
+  while (page.hasPreviousPage()) {
+    page = await page.getPreviousPage();
+    console.log(`schedule page #${--pageCount}`);
+  }
+
+  for await (const schedule of schedules.list({
+    perPage: 2,
+  })) {
+    console.log(schedule.id, schedule.task, schedule.generator);
+  }
+}
+
 // doRuns().catch(console.error);
 doListRuns().catch(console.error);
+// doScheduleLists().catch(console.error);
 // doSchedules().catch(console.error);
 // doEnvVars().catch(console.error);

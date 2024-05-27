@@ -1,4 +1,5 @@
 import {
+  ApiPromise,
   DeletedScheduleObject,
   InitOutput,
   ListSchedulesResult,
@@ -30,7 +31,7 @@ export function task<TOutput, TInitOutput extends InitOutput>(
  * @param options.deduplicationKey - An optional deduplication key for the schedule
  * @returns The created schedule
  */
-export async function create(options: SchedulesAPI.CreateScheduleOptions): Promise<ScheduleObject> {
+export function create(options: SchedulesAPI.CreateScheduleOptions): ApiPromise<ScheduleObject> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -45,7 +46,7 @@ export async function create(options: SchedulesAPI.CreateScheduleOptions): Promi
  * @param scheduleId - The ID of the schedule to retrieve
  * @returns The retrieved schedule
  */
-export async function retrieve(scheduleId: string): Promise<ScheduleObject> {
+export function retrieve(scheduleId: string): ApiPromise<ScheduleObject> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -64,10 +65,10 @@ export async function retrieve(scheduleId: string): Promise<ScheduleObject> {
  * @param options.externalId - An optional external identifier for the schedule
  * @returns The updated schedule
  */
-export async function update(
+export function update(
   scheduleId: string,
   options: SchedulesAPI.UpdateScheduleOptions
-): Promise<ScheduleObject> {
+): ApiPromise<ScheduleObject> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -81,7 +82,7 @@ export async function update(
  * Deletes a schedule
  * @param scheduleId - The ID of the schedule to delete
  */
-export async function del(scheduleId: string): Promise<DeletedScheduleObject> {
+export function del(scheduleId: string): ApiPromise<DeletedScheduleObject> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -95,7 +96,7 @@ export async function del(scheduleId: string): Promise<DeletedScheduleObject> {
  * Deactivates a schedule
  * @param scheduleId - The ID of the schedule to deactivate
  */
-export async function deactivate(scheduleId: string): Promise<ScheduleObject> {
+export function deactivate(scheduleId: string): ApiPromise<ScheduleObject> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -109,7 +110,7 @@ export async function deactivate(scheduleId: string): Promise<ScheduleObject> {
  * Activates a schedule
  * @param scheduleId - The ID of the schedule to activate
  */
-export async function activate(scheduleId: string): Promise<ScheduleObject> {
+export function activate(scheduleId: string): ApiPromise<ScheduleObject> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -126,9 +127,7 @@ export async function activate(scheduleId: string): Promise<ScheduleObject> {
  * @param options.perPage - The number of schedules per page
  * @returns The list of schedules
  */
-export async function list(
-  options?: SchedulesAPI.ListScheduleOptions
-): Promise<ListSchedulesResult> {
+export function list(options?: SchedulesAPI.ListScheduleOptions) {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {

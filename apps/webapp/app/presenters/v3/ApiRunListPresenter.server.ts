@@ -183,6 +183,9 @@ export class ApiRunListPresenter extends BasePresenter {
             name: run.environment.slug,
             user: run.environment.userName,
           },
+          ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
+            ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status)
+          ),
         };
       });
 
