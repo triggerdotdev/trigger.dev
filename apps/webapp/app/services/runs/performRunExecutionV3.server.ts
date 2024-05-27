@@ -25,6 +25,7 @@ import {
 import { generateErrorMessage } from "zod-error";
 import { eventRecordToApiJson } from "~/api.server";
 import {
+  MAX_JOB_RUN_EXECUTION_COUNT,
   MAX_RUN_CHUNK_EXECUTION_LIMIT,
   MAX_RUN_YIELDED_EXECUTIONS,
   RUN_CHUNK_EXECUTION_BUFFER,
@@ -139,6 +140,46 @@ export class PerformRunExecutionV3Service {
         return await this.#failRunExecution(this.#prismaClient, run, {
           message: `Endpoint has no URL set`,
         });
+      }
+
+      if (run.version.status === "DISABLED") {
+        return await this.#failRunExecution(
+          this.#prismaClient,
+          run,
+          {
+            message: `Job version ${run.version.version} is disabled, aborting run.`,
+          },
+          "ABORTED"
+        );
+      }
+
+      // If the execution duration is greater than the maximum execution time, we need to fail the run
+      if (run.executionDuration >= run.organization.maximumExecutionTimePerRunInMs) {
+        await this.#failRunExecution(
+          this.#prismaClient,
+          run,
+          {
+            message: `Execution timed out after ${
+              run.organization.maximumExecutionTimePerRunInMs / 1000
+            } seconds`,
+          },
+          "TIMED_OUT",
+          0
+        );
+        return;
+      }
+
+      if (run.executionCount >= MAX_JOB_RUN_EXECUTION_COUNT) {
+        await this.#failRunExecution(
+          this.#prismaClient,
+          run,
+          {
+            message: `Execution timed out after ${run.executionCount} executions`,
+          },
+          "TIMED_OUT",
+          0
+        );
+        return;
       }
 
       const client = new EndpointApi(run.environment.apiKey, run.endpoint.url);
