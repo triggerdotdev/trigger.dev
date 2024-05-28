@@ -17,9 +17,7 @@ import {
   ImportEnvironmentVariablesRequestBody,
   EnvironmentVariableResponseBody,
   TaskRunExecution,
-  APIError,
 } from "@trigger.dev/core/v3";
-import { zodfetch } from "@trigger.dev/core/v3/zodfetch";
 
 export class CliApiClient {
   private readonly apiURL: string;
@@ -32,7 +30,7 @@ export class CliApiClient {
   }
 
   async createAuthorizationCode() {
-    return wrapZodFetch(
+    return zodfetch(
       CreateAuthorizationCodeResponseSchema,
       `${this.apiURL}/api/v1/authorization-code`,
       {
@@ -42,7 +40,7 @@ export class CliApiClient {
   }
 
   async getPersonalAccessToken(authorizationCode: string) {
-    return wrapZodFetch(GetPersonalAccessTokenResponseSchema, `${this.apiURL}/api/v1/token`, {
+    return zodfetch(GetPersonalAccessTokenResponseSchema, `${this.apiURL}/api/v1/token`, {
       method: "POST",
       body: JSON.stringify({
         authorizationCode,
@@ -55,7 +53,7 @@ export class CliApiClient {
       throw new Error("whoAmI: No access token");
     }
 
-    return wrapZodFetch(WhoAmIResponseSchema, `${this.apiURL}/api/v2/whoami`, {
+    return zodfetch(WhoAmIResponseSchema, `${this.apiURL}/api/v2/whoami`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
@@ -68,7 +66,7 @@ export class CliApiClient {
       throw new Error("getProject: No access token");
     }
 
-    return wrapZodFetch(GetProjectResponseBody, `${this.apiURL}/api/v1/projects/${projectRef}`, {
+    return zodfetch(GetProjectResponseBody, `${this.apiURL}/api/v1/projects/${projectRef}`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
@@ -81,7 +79,7 @@ export class CliApiClient {
       throw new Error("getProjects: No access token");
     }
 
-    return wrapZodFetch(GetProjectsResponseBody, `${this.apiURL}/api/v1/projects`, {
+    return zodfetch(GetProjectsResponseBody, `${this.apiURL}/api/v1/projects`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
@@ -94,7 +92,7 @@ export class CliApiClient {
       throw new Error("createBackgroundWorker: No access token");
     }
 
-    return wrapZodFetch(
+    return zodfetch(
       CreateBackgroundWorkerResponse,
       `${this.apiURL}/api/v1/projects/${projectRef}/background-workers`,
       {
@@ -113,7 +111,7 @@ export class CliApiClient {
       throw new Error("creatTaskRunAttempt: No access token");
     }
 
-    return wrapZodFetch(TaskRunExecution, `${this.apiURL}/api/v1/runs/${runFriendlyId}/attempts`, {
+    return zodfetch(TaskRunExecution, `${this.apiURL}/api/v1/runs/${runFriendlyId}/attempts`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
@@ -133,16 +131,12 @@ export class CliApiClient {
       throw new Error("getProjectDevEnv: No access token");
     }
 
-    return wrapZodFetch(
-      GetProjectEnvResponse,
-      `${this.apiURL}/api/v1/projects/${projectRef}/${env}`,
-      {
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    return zodfetch(GetProjectEnvResponse, `${this.apiURL}/api/v1/projects/${projectRef}/${env}`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
   }
 
   async getEnvironmentVariables(projectRef: string) {
@@ -150,7 +144,7 @@ export class CliApiClient {
       throw new Error("getEnvironmentVariables: No access token");
     }
 
-    return wrapZodFetch(
+    return zodfetch(
       GetEnvironmentVariablesResponseBody,
       `${this.apiURL}/api/v1/projects/${projectRef}/envvars`,
       {
@@ -190,7 +184,7 @@ export class CliApiClient {
       throw new Error("initializeDeployment: No access token");
     }
 
-    return wrapZodFetch(InitializeDeploymentResponseBody, `${this.apiURL}/api/v1/deployments`, {
+    return zodfetch(InitializeDeploymentResponseBody, `${this.apiURL}/api/v1/deployments`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
@@ -205,7 +199,7 @@ export class CliApiClient {
       throw new Error("startDeploymentIndexing: No access token");
     }
 
-    return wrapZodFetch(
+    return zodfetch(
       StartDeploymentIndexingResponseBody,
       `${this.apiURL}/api/v1/deployments/${deploymentId}/start-indexing`,
       {
@@ -224,7 +218,7 @@ export class CliApiClient {
       throw new Error("getDeployment: No access token");
     }
 
-    return wrapZodFetch(
+    return zodfetch(
       GetDeploymentResponseBody,
       `${this.apiURL}/api/v1/deployments/${deploymentId}`,
       {
@@ -244,42 +238,56 @@ type ApiResult<TSuccessResult> =
       error: string;
     };
 
-async function wrapZodFetch<T extends z.ZodTypeAny>(
-  schema: T,
+async function zodfetch<TResponseBody extends any>(
+  schema: z.Schema<TResponseBody>,
   url: string,
   requestInit?: RequestInit
-): Promise<ApiResult<z.infer<T>>> {
+): Promise<ApiResult<TResponseBody>> {
   try {
-    const response = await zodfetch(schema, url, requestInit, {
-      retry: {
-        minTimeoutInMs: 500,
-        maxTimeoutInMs: 5000,
-        maxAttempts: 3,
-        factor: 2,
-        randomize: false,
-      },
-    });
+    const response = await fetch(url, requestInit);
 
-    return {
-      success: true,
-      data: response,
-    };
-  } catch (error) {
-    if (error instanceof APIError) {
+    if ((!requestInit || requestInit.method === "GET") && response.status === 404) {
       return {
         success: false,
-        error: error.message,
-      };
-    } else if (error instanceof Error) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    } else {
-      return {
-        success: false,
-        error: String(error),
+        error: `404: ${response.statusText}`,
       };
     }
+
+    if (response.status >= 400 && response.status < 500) {
+      const body = await response.json();
+      if (!body.error) {
+        return { success: false, error: "Something went wrong" };
+      }
+
+      return { success: false, error: body.error };
+    }
+
+    if (response.status !== 200) {
+      return {
+        success: false,
+        error: `Failed to fetch ${url}, got status code ${response.status}`,
+      };
+    }
+
+    const jsonBody = await response.json();
+    const parsedResult = schema.safeParse(jsonBody);
+
+    if (parsedResult.success) {
+      return { success: true, data: parsedResult.data };
+    }
+
+    if ("error" in jsonBody) {
+      return {
+        success: false,
+        error: typeof jsonBody.error === "string" ? jsonBody.error : JSON.stringify(jsonBody.error),
+      };
+    }
+
+    return { success: false, error: parsedResult.error.message };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : JSON.stringify(error),
+    };
   }
 }
