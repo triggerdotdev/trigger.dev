@@ -131,7 +131,7 @@ export class IngestSendEvent {
           reset: result.reset,
           limit: result.limit,
         });
-        return createdEvent;
+        return;
       }
 
       await this.enqueueWorkerEvent(this.#prismaClient, createdEvent);
