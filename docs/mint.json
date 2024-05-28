@@ -1,14 +1,8 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
-  "openapi": [
-    "/openapi.yml",
-    "/v3-openapi.yaml"
-  ],
-  "versions": [
-    "v3 (Developer Preview)",
-    "v2"
-  ],
+  "openapi": ["/openapi.yml", "/v3-openapi.yaml"],
+  "versions": ["v3 (Developer Preview)", "v2"],
   "api": {
     "playground": {
       "mode": "hide"
@@ -102,19 +96,12 @@
     {
       "group": "",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/introduction"
-      ]
+      "pages": ["v3/introduction"]
     },
     {
       "group": "Getting Started",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/quick-start",
-        "v3/upgrading-from-v2",
-        "v3/changelog",
-        "v3/feature-matrix"
-      ]
+      "pages": ["v3/quick-start", "v3/upgrading-from-v2", "v3/changelog", "v3/feature-matrix"]
     },
     {
       "group": "Fundamentals",
@@ -126,10 +113,7 @@
         "v3/apikeys",
         {
           "group": "Task types",
-          "pages": [
-            "v3/tasks-regular",
-            "v3/tasks-scheduled"
-          ]
+          "pages": ["v3/tasks-regular", "v3/tasks-scheduled"]
         },
         "v3/trigger-config"
       ]
@@ -137,10 +121,7 @@
     {
       "group": "Development",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/cli-dev",
-        "v3/run-tests"
-      ]
+      "pages": ["v3/cli-dev", "v3/run-tests"]
     },
     {
       "group": "Deployment",
@@ -151,9 +132,7 @@
         "v3/github-actions",
         {
           "group": "Deployment integrations",
-          "pages": [
-            "v3/vercel-integration"
-          ]
+          "pages": ["v3/vercel-integration"]
         }
       ]
     },
@@ -222,16 +201,13 @@
     {
       "group": "Open source",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/github-repo",
-        "v3/open-source-self-hosting",
-        "v3/open-source-contributing"
-      ]
+      "pages": ["v3/github-repo", "v3/open-source-self-hosting", "v3/open-source-contributing"]
     },
     {
       "group": "Troubleshooting",
       "version": "v3 (Developer Preview)",
       "pages": [
+        "v3/troubleshooting",
         "v3/troubleshooting-alerts",
         "v3/troubleshooting-uptime-status",
         "v3/troubleshooting-github-issues",
@@ -241,11 +217,7 @@
     {
       "group": "Help",
       "version": "v3 (Developer Preview)",
-      "pages": [
-        "v3/community",
-        "v3/help-slack",
-        "v3/help-email"
-      ]
+      "pages": ["v3/community", "v3/help-slack", "v3/help-email"]
     },
     {
       "group": "Getting Started",
@@ -437,10 +409,7 @@
       "pages": [
         {
           "group": "Airtable",
-          "pages": [
-            "integrations/apis/airtable",
-            "integrations/apis/airtable-tasks"
-          ]
+          "pages": ["integrations/apis/airtable", "integrations/apis/airtable-tasks"]
         },
         {
           "group": "GitHub",
@@ -466,25 +435,16 @@
         },
         {
           "group": "Plain",
-          "pages": [
-            "integrations/apis/plain",
-            "integrations/apis/plain-tasks"
-          ]
+          "pages": ["integrations/apis/plain", "integrations/apis/plain-tasks"]
         },
         "integrations/apis/replicate",
         {
           "group": "SendGrid",
-          "pages": [
-            "integrations/apis/sendgrid",
-            "integrations/apis/sendgrid-tasks"
-          ]
+          "pages": ["integrations/apis/sendgrid", "integrations/apis/sendgrid-tasks"]
         },
         {
           "group": "Resend",
-          "pages": [
-            "integrations/apis/resend",
-            "integrations/apis/resend-tasks"
-          ]
+          "pages": ["integrations/apis/resend", "integrations/apis/resend-tasks"]
         },
         {
           "group": "Shopify",
@@ -496,10 +456,7 @@
         },
         {
           "group": "Slack",
-          "pages": [
-            "integrations/apis/slack",
-            "integrations/apis/slack-tasks"
-          ]
+          "pages": ["integrations/apis/slack", "integrations/apis/slack-tasks"]
         },
         "integrations/apis/stripe",
         {
@@ -525,9 +482,7 @@
             "sdk/triggerclient/constructor",
             {
               "group": "Instance properties",
-              "pages": [
-                "sdk/triggerclient/store"
-              ]
+              "pages": ["sdk/triggerclient/store"]
             },
             {
               "group": "Instance methods",
@@ -590,10 +545,7 @@
             "sdk/dynamictrigger/constructor",
             {
               "group": "Instance methods",
-              "pages": [
-                "sdk/dynamictrigger/register",
-                "sdk/dynamictrigger/unregister"
-              ]
+              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
             }
           ]
         },
@@ -604,10 +556,7 @@
             "sdk/dynamicschedule/constructor",
             {
               "group": "Instance methods",
-              "pages": [
-                "sdk/dynamicschedule/register",
-                "sdk/dynamicschedule/unregister"
-              ]
+              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
             }
           ]
         },
@@ -620,9 +569,7 @@
     {
       "group": "HTTP Reference",
       "version": "v2",
-      "pages": [
-        "sdk/api-reference/events/create-an-event"
-      ]
+      "pages": ["sdk/api-reference/events/create-an-event"]
     },
     {
       "group": "React SDK",
@@ -638,9 +585,7 @@
     {
       "group": "Overview",
       "version": "v2",
-      "pages": [
-        "examples/introduction"
-      ]
+      "pages": ["examples/introduction"]
     }
   ],
   "footerSocials": {

@@ -1,0 +1,34 @@
+---
+title: "Common problems"
+description: "Some common problems you might experience and their solutions"
+---
+
+## Deployment
+
+Running the [trigger.dev deploy] command builds and deploys your code. Sometimes there can be issues building your code. Here are some common problems and their solutions:
+
+### `Typecheck failed, aborting deployment`
+
+We typecheck your code before deploying. If the typecheck fails, the deployment is aborted. You should see logs with details about the typecheck failure.
+
+You can skip typechecking, by adding the `--skip-typecheck` flag when calling deploy.
+
+### `Error: Cannot find module 'X'`
+
+This errors occurs if we want figure out how to automatically import some code. You can fix this by adding it the `dependenciesToBundle` array in the [trigger.config file](/v3/trigger-config).
+
+Like this:
+
+```ts trigger.config.ts
+import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+
+export const config: TriggerConfig = {
+  //..other stuff
+  //either regex or strings of package names
+  dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp"],
+};
+```
+
+### `Failed to build project image: Error building image`
+
+### `Deployment timed out`
