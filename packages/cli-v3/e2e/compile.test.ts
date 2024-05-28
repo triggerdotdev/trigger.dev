@@ -1,6 +1,5 @@
 import { execaNode } from "execa";
 import { join, resolve } from "node:path";
-import { expect, test } from "vitest";
 
 type TestCase = {
   name: string;
