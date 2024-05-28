@@ -8,6 +8,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { Task, TaskOptions, apiClientMissingError, createTask } from "../shared";
 import * as SchedulesAPI from "./api";
+import { OffsetLimitPagePromise } from "@trigger.dev/core/v3/apiClient/core";
 
 export function task<TOutput, TInitOutput extends InitOutput>(
   params: TaskOptions<SchedulesAPI.ScheduledTaskPayload, TOutput, TInitOutput>
@@ -126,7 +127,9 @@ export function activate(scheduleId: string): ApiPromise<ScheduleObject> {
  * @param options.perPage - The number of schedules per page
  * @returns The list of schedules
  */
-export function list(options?: SchedulesAPI.ListScheduleOptions) {
+export function list(
+  options?: SchedulesAPI.ListScheduleOptions
+): OffsetLimitPagePromise<typeof ScheduleObject> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {

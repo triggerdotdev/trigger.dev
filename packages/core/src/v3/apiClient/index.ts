@@ -42,7 +42,6 @@ import {
   ListRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types";
-import { URLSearchParams } from "url";
 
 export type {
   CreateEnvironmentVariableParams,
