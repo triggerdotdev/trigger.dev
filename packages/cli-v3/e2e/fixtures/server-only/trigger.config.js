@@ -1,5 +1,4 @@
 export const config = {
-  project: "yubjwjsfkxnylobaqvqz",
-  // project: "server-only",
+  project: "server-only",
   triggerDirectories: ["./trigger"],
 };
