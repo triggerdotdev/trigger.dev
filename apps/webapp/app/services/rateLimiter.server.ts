@@ -34,7 +34,7 @@ export class RateLimiter {
       limiter,
       ephemeralCache: new Map(),
       analytics: false,
-      prefix: keyPrefix,
+      prefix: `ratelimit:${keyPrefix}`,
     });
   }
 

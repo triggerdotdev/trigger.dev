@@ -145,7 +145,7 @@ export function authorizationRateLimitMiddleware({
 }
 
 export const apiRateLimiter = authorizationRateLimitMiddleware({
-  keyPrefix: "ratelimit:api",
+  keyPrefix: "api",
   limiter: Ratelimit.slidingWindow(env.API_RATE_LIMIT_MAX, env.API_RATE_LIMIT_WINDOW as Duration),
   pathMatchers: [/^\/api/],
   // Allow /api/v1/tasks/:id/callback/:secret
