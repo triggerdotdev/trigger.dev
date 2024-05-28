@@ -20,6 +20,7 @@ export class RateLimiter {
 
   constructor(private readonly options: Options) {
     const { redis, keyPrefix, limiter } = options;
+    const prefix = `ratelimit:${keyPrefix}`;
     this.#ratelimit = new Ratelimit({
       redis: createRedisRateLimitClient(
         redis ?? {
@@ -34,7 +35,12 @@ export class RateLimiter {
       limiter,
       ephemeralCache: new Map(),
       analytics: false,
-      prefix: `ratelimit:${keyPrefix}`,
+      prefix,
+    });
+
+    logger.info(`RateLimiter (${keyPrefix}): initialized`, {
+      keyPrefix,
+      redisKeyspace: prefix,
     });
   }
 
