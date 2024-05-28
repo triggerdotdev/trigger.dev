@@ -102,7 +102,7 @@ const EnvironmentSchema = z.object({
 
   //Ingesting event rate limit
   INGEST_EVENT_RATE_LIMIT_WINDOW: z.string().default("60s"),
-  INGEST_EVENT_RATE_LIMIT_MAX: z.coerce.number().int().default(1_000),
+  INGEST_EVENT_RATE_LIMIT_MAX: z.coerce.number().int().optional(),
 
   //v3
   V3_ENABLED: z.string().default("false"),
