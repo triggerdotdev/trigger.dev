@@ -309,7 +309,7 @@ function getWorkerQueue() {
       },
       "events.deliverScheduled": {
         priority: 0, // smaller number = higher priority
-        maxAttempts: 5,
+        maxAttempts: 8,
         handler: async ({ id, payload }, job) => {
           const service = new DeliverScheduledEventService();
 
