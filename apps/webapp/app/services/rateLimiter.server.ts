@@ -51,7 +51,8 @@ export class RateLimiter {
       });
     }
 
-    if (!success && this.options.logFailure) {
+    //log these by default
+    if (!success && this.options.logFailure !== false) {
       logger.info(`RateLimiter (${this.options.keyPrefix}): rate limit exceeded`, {
         limit,
         reset,
