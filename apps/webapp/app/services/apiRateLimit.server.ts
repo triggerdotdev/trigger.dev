@@ -1,45 +1,21 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
-import Redis, { RedisOptions } from "ioredis";
+import { RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
 import { env } from "~/env.server";
 import { logger } from "./logger.server";
-
-function createRedisRateLimitClient(
-  redisOptions: RedisOptions
-): ConstructorParameters<typeof Ratelimit>[0]["redis"] {
-  const redis = new Redis(redisOptions);
-
-  return {
-    sadd: async <TData>(key: string, ...members: TData[]): Promise<number> => {
-      return redis.sadd(key, members as (string | number | Buffer)[]);
-    },
-    eval: <TArgs extends unknown[], TData = unknown>(
-      ...args: [script: string, keys: string[], args: TArgs]
-    ): Promise<TData> => {
-      const script = args[0];
-      const keys = args[1];
-      const argsArray = args[2];
-      return redis.eval(
-        script,
-        keys.length,
-        ...keys,
-        ...(argsArray as (string | Buffer | number)[])
-      ) as Promise<TData>;
-    },
-  };
-}
+import { Duration, Limiter, RateLimiter, createRedisRateLimitClient } from "./rateLimiter.server";
 
 type Options = {
+  redis?: RedisOptions;
+  keyPrefix: string;
+  pathMatchers: (RegExp | string)[];
+  pathWhiteList?: (RegExp | string)[];
+  limiter: Limiter;
   log?: {
     requests?: boolean;
     rejections?: boolean;
   };
-  redis: RedisOptions;
-  keyPrefix: string;
-  pathMatchers: (RegExp | string)[];
-  pathWhiteList?: (RegExp | string)[];
-  limiter: ConstructorParameters<typeof Ratelimit>[0]["limiter"];
 };
 
 //returns an Express middleware that rate limits using the Bearer token in the Authorization header
@@ -54,12 +30,20 @@ export function authorizationRateLimitMiddleware({
     requests: true,
   },
 }: Options) {
-  const rateLimiter = new Ratelimit({
-    redis: createRedisRateLimitClient(redis),
-    limiter: limiter,
-    ephemeralCache: new Map(),
-    analytics: false,
-    prefix: keyPrefix,
+  // const rateLimiter = new Ratelimit({
+  //   redis: createRedisRateLimitClient(redis),
+  //   limiter: limiter,
+  //   ephemeralCache: new Map(),
+  //   analytics: false,
+  //   prefix: keyPrefix,
+  // });
+
+  const rateLimiter = new RateLimiter({
+    redis,
+    keyPrefix,
+    limiter,
+    logSuccess: log.requests,
+    logFailure: log.rejections,
   });
 
   return async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
@@ -135,25 +119,7 @@ export function authorizationRateLimitMiddleware({
     res.set("x-ratelimit-reset", reset.toString());
 
     if (success) {
-      if (log.requests) {
-        logger.info(`RateLimiter (${keyPrefix}): under rate limit`, {
-          limit,
-          reset,
-          remaining,
-          hashedAuthorizationValue,
-        });
-      }
       return next();
-    }
-
-    if (log.rejections) {
-      logger.warn(`RateLimiter (${keyPrefix}): rate limit exceeded`, {
-        limit,
-        reset,
-        remaining,
-        pending,
-        hashedAuthorizationValue,
-      });
     }
 
     res.setHeader("Content-Type", "application/problem+json");
@@ -167,6 +133,7 @@ export function authorizationRateLimitMiddleware({
           detail: `Rate limit exceeded ${remaining}/${limit} requests remaining. Retry in ${secondsUntilReset} seconds.`,
           reset,
           limit,
+          remaining,
           secondsUntilReset,
           error: `Rate limit exceeded ${remaining}/${limit} requests remaining. Retry in ${secondsUntilReset} seconds.`,
         },
@@ -177,18 +144,8 @@ export function authorizationRateLimitMiddleware({
   };
 }
 
-type Duration = Parameters<typeof Ratelimit.slidingWindow>[1];
-
 export const apiRateLimiter = authorizationRateLimitMiddleware({
   keyPrefix: "ratelimit:api",
-  redis: {
-    port: env.REDIS_PORT,
-    host: env.REDIS_HOST,
-    username: env.REDIS_USERNAME,
-    password: env.REDIS_PASSWORD,
-    enableAutoPipelining: true,
-    ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-  },
   limiter: Ratelimit.slidingWindow(env.API_RATE_LIMIT_MAX, env.API_RATE_LIMIT_WINDOW as Duration),
   pathMatchers: [/^\/api/],
   // Allow /api/v1/tasks/:id/callback/:secret
