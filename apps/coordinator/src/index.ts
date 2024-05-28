@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import fs from "node:fs/promises";
 import { $, type ExecaChildProcess } from "execa";
 import { nanoid } from "nanoid";
 import { Server } from "socket.io";
@@ -60,6 +61,36 @@ type CheckpointData = {
 
 function isExecaChildProcess(maybeExeca: unknown): maybeExeca is Awaited<ExecaChildProcess> {
   return typeof maybeExeca === "object" && maybeExeca !== null && "escapedCommand" in maybeExeca;
+}
+
+async function getFileSize(filePath: string): Promise<number> {
+  try {
+    const stats = await fs.stat(filePath);
+    return stats.size;
+  } catch (error) {
+    console.error("Error getting file size:", error);
+    return -1;
+  }
+}
+
+async function getParsedFileSize(filePath: string) {
+  const sizeInBytes = await getFileSize(filePath);
+
+  let message = `Size in bytes: ${sizeInBytes}`;
+
+  if (sizeInBytes > 1024 * 1024) {
+    const sizeInMB = (sizeInBytes / 1024 / 1024).toFixed(2);
+    message = `Size in MB (rounded): ${sizeInMB}`;
+  } else if (sizeInBytes > 1024) {
+    const sizeInKB = (sizeInBytes / 1024).toFixed(2);
+    message = `Size in KB (rounded): ${sizeInKB}`;
+  }
+
+  return {
+    path: filePath,
+    sizeInBytes,
+    message,
+  };
 }
 
 class Checkpointer {
@@ -313,6 +344,10 @@ class Checkpointer {
       // Create checkpoint
       this.#logger.debug(await $$`crictl checkpoint --export=${exportLocation} ${containerId}`);
       const postCheckpoint = performance.now();
+
+      // Print checkpoint size
+      const size = await getParsedFileSize(exportLocation);
+      this.#logger.log("checkpoint archive created", { size, options });
 
       // Create image from checkpoint
       const container = this.#logger.debug(await $$`buildah from scratch`);
