@@ -122,6 +122,7 @@ export class IngestSendEvent {
           await this.enqueueWorkerEvent(tx, eventLog);
         } else {
           logger.info("IngestSendEvent: Rate limit exceeded", {
+            eventRecordId: eventLog.id,
             organizationId: environment.organizationId,
             reset,
             limit,
