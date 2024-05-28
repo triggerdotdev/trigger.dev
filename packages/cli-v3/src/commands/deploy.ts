@@ -65,7 +65,7 @@ import { escapeImportPath, spinner } from "../utilities/windows";
 import { updateTriggerPackages } from "./update";
 import { callResolveEnvVars } from "../utilities/resolveEnvVars";
 
-export const DeployCommandOptions = CommonCommandOptions.extend({
+const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
   skipDeploy: z.boolean().default(false),
   env: z.enum(["prod", "staging"]),
