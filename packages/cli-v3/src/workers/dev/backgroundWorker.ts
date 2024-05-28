@@ -419,21 +419,27 @@ export class BackgroundWorker {
     }
   }
 
-  async #initializeTaskRunProcess(
+  #prefixedMessage(payload: TaskRunExecutionPayload, message: string = "") {
+    return `[${payload.execution.run.id}.${payload.execution.attempt.number}] ${message}`;
+  }
+
+  async #getFreshTaskRunProcess(
     payload: TaskRunExecutionPayload,
     messageId?: string
   ): Promise<TaskRunProcess> {
+    logger.debug(this.#prefixedMessage(payload, "getFreshTaskRunProcess()"));
+
     if (!this.metadata) {
       throw new Error("Worker not registered");
     }
 
     this._closed = false;
 
-    if (this._taskRunProcesses.has(payload.execution.run.id)) {
-      return this._taskRunProcesses.get(payload.execution.run.id) as TaskRunProcess;
-    }
+    logger.debug(this.#prefixedMessage(payload, "killing current task run process before attempt"));
 
     await this.#killCurrentTaskRunProcessBeforeAttempt(payload.execution.run.id);
+
+    logger.debug(this.#prefixedMessage(payload, "creating new task run process"));
 
     const taskRunProcess = new TaskRunProcess(
       payload.execution.run.id,
@@ -450,7 +456,15 @@ export class BackgroundWorker {
     );
 
     taskRunProcess.onExit.attach(({ pid }) => {
-      this._taskRunProcesses.delete(payload.execution.run.id);
+      logger.debug(this.#prefixedMessage(payload, "onExit()"), { pid });
+
+      const taskRunProcess = this._taskRunProcesses.get(payload.execution.run.id);
+
+      // Only delete the task run process if the pid matches
+      if (taskRunProcess?.pid === pid) {
+        this._taskRunProcesses.delete(payload.execution.run.id);
+      }
+
       if (pid) {
         this._taskRunProcessesBeingKilled.delete(pid);
       }
@@ -481,51 +495,59 @@ export class BackgroundWorker {
     const taskRunProcess = this._taskRunProcesses.get(runId);
 
     if (!taskRunProcess) {
+      logger.debug(`[${runId}] no current task process to kill`);
       return;
     }
 
+    logger.debug(`[${runId}] killing current task process`, {
+      pid: taskRunProcess.pid,
+    });
+
     if (taskRunProcess.isBeingKilled) {
       if (this._taskRunProcessesBeingKilled.size > 1) {
-        // If there's more than one being killed, wait for graceful exit
-        try {
-          await taskRunProcess.onExit.waitFor(5_000);
-        } catch (error) {
-          console.error("TaskRunProcess graceful kill timeout exceeded", error);
-
-          try {
-            const forcedKill = taskRunProcess.onExit.waitFor(5_000);
-            taskRunProcess.kill("SIGKILL");
-            await forcedKill;
-          } catch (error) {
-            console.error("TaskRunProcess forced kill timeout exceeded", error);
-            throw new SigKillTimeoutProcessError();
-          }
-        }
+        await this.#tryGracefulExit(taskRunProcess);
       } else {
         // If there's only one or none being killed, don't do anything so we can create a fresh one in parallel
       }
     } else {
       // It's not being killed, so kill it
       if (this._taskRunProcessesBeingKilled.size > 0) {
-        // If there's one being killed already, wait for graceful exit
-        try {
-          await taskRunProcess.onExit.waitFor(5_000);
-        } catch (error) {
-          console.error("TaskRunProcess graceful kill timeout exceeded", error);
-
-          try {
-            const forcedKill = taskRunProcess.onExit.waitFor(5_000);
-            taskRunProcess.kill("SIGKILL");
-            await forcedKill;
-          } catch (error) {
-            console.error("TaskRunProcess forced kill timeout exceeded", error);
-            throw new SigKillTimeoutProcessError();
-          }
-        }
+        await this.#tryGracefulExit(taskRunProcess);
       } else {
         // There's none being killed yet, so we can kill it without waiting. We still set a timeout to kill it forcefully just in case it sticks around.
         taskRunProcess.kill("SIGTERM", 5_000).catch(() => {});
       }
+    }
+  }
+
+  async #tryGracefulExit(
+    taskRunProcess: TaskRunProcess,
+    kill = false,
+    initialSignal: number | NodeJS.Signals = "SIGTERM"
+  ) {
+    try {
+      const initialExit = taskRunProcess.onExit.waitFor(5_000);
+
+      if (kill) {
+        taskRunProcess.kill(initialSignal);
+      }
+
+      await initialExit;
+    } catch (error) {
+      logger.error("TaskRunProcess graceful kill timeout exceeded", error);
+
+      this.#tryForcefulExit(taskRunProcess);
+    }
+  }
+
+  async #tryForcefulExit(taskRunProcess: TaskRunProcess) {
+    try {
+      const forcedKill = taskRunProcess.onExit.waitFor(5_000);
+      taskRunProcess.kill("SIGKILL");
+      await forcedKill;
+    } catch (error) {
+      logger.error("TaskRunProcess forced kill timeout exceeded", error);
+      throw new SigKillTimeoutProcessError();
     }
   }
 
@@ -636,7 +658,12 @@ export class BackgroundWorker {
     messageId?: string
   ): Promise<TaskRunExecutionResult> {
     try {
-      const taskRunProcess = await this.#initializeTaskRunProcess(payload, messageId);
+      const taskRunProcess = await this.#getFreshTaskRunProcess(payload, messageId);
+
+      logger.debug(this.#prefixedMessage(payload, "executing task run"), {
+        pid: taskRunProcess.pid,
+      });
+
       const result = await taskRunProcess.executeTaskRun(payload);
 
       // Always kill the worker
@@ -829,7 +856,7 @@ class TaskRunProcess {
       this.onIsBeingKilled.post(this._child?.pid);
     }
 
-    logger.debug(`[${this.runId}] cleaning up task run process`, { kill });
+    logger.debug(`[${this.runId}] cleaning up task run process`, { kill, pid: this.pid });
 
     await this._sender.send("CLEANUP", {
       flush: true,
@@ -841,7 +868,7 @@ class TaskRunProcess {
     // Set a timeout to kill the child process if it hasn't been killed within 5 seconds
     setTimeout(() => {
       if (this._child && !this._child.killed) {
-        logger.debug(`[${this.runId}] killing task run process after timeout`);
+        logger.debug(`[${this.runId}] killing task run process after timeout`, { pid: this.pid });
 
         this._child.kill();
       }
@@ -949,7 +976,7 @@ class TaskRunProcess {
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {
-    logger.debug(`[${this.runId}] task run process exiting`, { code, signal });
+    logger.debug(`[${this.runId}] handle task run process exit`, { code, signal, pid: this.pid });
 
     // Go through all the attempts currently pending and reject them
     for (const [id, status] of this._attemptStatuses.entries()) {
@@ -1014,9 +1041,9 @@ class TaskRunProcess {
   }
 
   #kill() {
-    if (this._child && !this._child.killed) {
-      logger.debug(`[${this.runId}] killing task run process`);
+    logger.debug(`[${this.runId}] #kill()`, { pid: this.pid });
 
+    if (this._child && !this._child.killed) {
       this._child?.kill();
     }
   }
