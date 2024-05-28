@@ -171,7 +171,7 @@ export class CliApiClient {
       throw new Error("importEnvVars: No access token");
     }
 
-    return zodfetch(
+    return wrapZodFetch(
       EnvironmentVariableResponseBody,
       `${this.apiURL}/api/v1/projects/${projectRef}/envvars/${slug}/import`,
       {
