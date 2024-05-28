@@ -4,7 +4,7 @@ import { APIConnectionError, APIError } from "./apiErrors";
 import { RetryOptions } from "./schemas";
 import { calculateNextRetryDelay } from "./utils/retries";
 import { FormDataEncoder } from "form-data-encoder";
-import { Readable } from "stream";
+import { Readable } from "node:stream";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,

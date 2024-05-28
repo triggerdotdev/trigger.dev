@@ -17,4 +17,5 @@ export default defineConfig({
     "./src/v3/workers/index.ts",
     "./src/v3/zodfetch.ts",
   ],
+  external: ["node:stream"],
 });
