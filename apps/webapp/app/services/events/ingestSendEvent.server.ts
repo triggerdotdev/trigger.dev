@@ -4,6 +4,9 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { workerQueue } from "~/services/worker.server";
 import { logger } from "../logger.server";
 import { EventRecord, ExternalAccount } from "@trigger.dev/database";
+import { Duration, RateLimiter } from "../rateLimiter.server";
+import { Ratelimit } from "@upstash/ratelimit";
+import { env } from "~/env.server";
 
 type UpdateEventInput = {
   tx: PrismaClientOrTransaction;
@@ -31,9 +34,17 @@ const EVENT_UPDATE_THRESHOLD_WINDOW_IN_MSECS = 5 * 1000; // 5 seconds
 
 export class IngestSendEvent {
   #prismaClient: PrismaClientOrTransaction;
+  #rateLimiter: RateLimiter;
 
   constructor(prismaClient: PrismaClientOrTransaction = prisma, private deliverEvents = true) {
     this.#prismaClient = prismaClient;
+    this.#rateLimiter = new RateLimiter({
+      keyPrefix: "ingestsendevent",
+      limiter: Ratelimit.slidingWindow(
+        env.INGEST_EVENT_RATE_LIMIT_MAX,
+        env.INGEST_EVENT_RATE_LIMIT_WINDOW as Duration
+      ),
+    });
   }
 
   #calculateDeliverAt(options?: SendEventOptions) {
@@ -104,6 +115,20 @@ export class IngestSendEvent {
               eventSource,
             }));
 
+        //rate limit
+        const { success, reset, limit } = await this.#rateLimiter.limit(environment.organizationId);
+
+        if (success) {
+          await this.enqueueWorkerEvent(tx, eventLog);
+        } else {
+          logger.info("IngestSendEvent: Rate limit exceeded", {
+            organizationId: environment.organizationId,
+            reset,
+            limit,
+          });
+          return;
+        }
+
         return eventLog;
       });
     } catch (error) {
@@ -151,8 +176,6 @@ export class IngestSendEvent {
       },
     });
 
-    await this.enqueueWorkerEvent(tx, eventLog);
-
     return eventLog;
   }
 
@@ -176,8 +199,6 @@ export class IngestSendEvent {
         deliverAt: deliverAt ?? new Date(),
       },
     });
-
-    await this.enqueueWorkerEvent(tx, updatedEventLog);
 
     return updatedEventLog;
   }

@@ -100,6 +100,10 @@ const EnvironmentSchema = z.object({
   API_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
   API_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
 
+  //Ingesting event rate limit
+  INGEST_EVENT_RATE_LIMIT_WINDOW: z.string().default("60s"),
+  INGEST_EVENT_RATE_LIMIT_MAX: z.coerce.number().int().default(1_000),
+
   //v3
   V3_ENABLED: z.string().default("false"),
   PROVIDER_SECRET: z.string().default("provider-secret"),
