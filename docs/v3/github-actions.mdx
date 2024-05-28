@@ -95,15 +95,24 @@ To set it in GitHub go to your repository, click on "Settings", "Secrets and var
 ## Version pinning
 
 The CLI and `@trigger.dev/*` package versions need to be in sync, otherwise there will be errors and unpredictable behavior. Hence, the `deploy` command will automatically fail during CI on any version mismatches.
+Tip: add the deploy command to your `package.json` file to keep versions managed in the same place. For example:
 
-To ensure a smooth CI experience you can pin the CLI version in the deploy step, like so:
+```json
+{
+  "scripts": {
+    "deploy:trigger-prod": "npx trigger.dev@3.0.0-beta.34 deploy",
+    "deploy:trigger": "npx trigger.dev@3.0.0-beta.34 deploy --env staging"
+  }
+}
+```
+Your workflow file will follow the version specified in the `package.json` script, like so:
 
 ```yaml .github/workflows/release-trigger.yml
 - name: 🚀 Deploy Trigger.dev
   env:
     TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
   run: |
-    npx trigger.dev@3.0.0-beta.16 deploy
+    npm run deploy:trigger
 ```
 
 You should use the version you run locally during dev and manual deploy. The current version is displayed in the banner, but you can also check it by appending `--version` to any command.
