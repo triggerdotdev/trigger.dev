@@ -90,6 +90,8 @@ export class ProdBackgroundWorker {
   ) {}
 
   async close(gracefulExitTimeoutElapsed = false) {
+    console.log("Closing worker", { gracefulExitTimeoutElapsed, closed: this._closed });
+
     if (this._closed) {
       return;
     }
@@ -104,6 +106,8 @@ export class ProdBackgroundWorker {
   }
 
   async #killTaskRunProcess(flush = true, initialSignal: number | NodeJS.Signals = "SIGTERM") {
+    console.log("Killing task run process", { flush, initialSignal, closed: this._closed });
+
     if (this._closed || !this._taskRunProcess) {
       return;
     }
@@ -119,6 +123,10 @@ export class ProdBackgroundWorker {
       console.error("Error while trying graceful exit", error);
     });
 
+    console.log("Killed task run process, setting closed to true", {
+      closed: this._closed,
+      pid: currentTaskRunProcess.pid,
+    });
     this._closed = true;
   }
 
@@ -232,6 +240,9 @@ export class ProdBackgroundWorker {
       payload.execution.worker.version
     );
 
+    console.log("Getting fresh task run process, setting closed to false", {
+      closed: this._closed,
+    });
     this._closed = false;
 
     await this.#killCurrentTaskRunProcessBeforeAttempt();
@@ -250,6 +261,8 @@ export class ProdBackgroundWorker {
     );
 
     taskRunProcess.onExit.attach(({ pid }) => {
+      console.log("Task run process exited", { pid });
+
       // Only delete the task run process if the pid matches
       if (this._taskRunProcess?.pid === pid) {
         this._taskRunProcess = undefined;
@@ -320,11 +333,20 @@ export class ProdBackgroundWorker {
   }
 
   async #killCurrentTaskRunProcessBeforeAttempt() {
+    console.log("killCurrentTaskRunProcessBeforeAttempt()", {
+      hasTaskRunProcess: !!this._taskRunProcess,
+    });
+
     if (!this._taskRunProcess) {
       return;
     }
 
     const currentTaskRunProcess = this._taskRunProcess;
+
+    console.log("Killing current task run process", {
+      isBeingKilled: currentTaskRunProcess?.isBeingKilled,
+      totalBeingKilled: this._taskRunProcessesBeingKilled.size,
+    });
 
     if (currentTaskRunProcess.isBeingKilled) {
       if (this._taskRunProcessesBeingKilled.size > 1) {
@@ -381,6 +403,11 @@ export class ProdBackgroundWorker {
   ): Promise<TaskRunExecutionResult> {
     try {
       const taskRunProcess = await this.#getFreshTaskRunProcess(payload, messageId);
+
+      console.log("executing task run", {
+        attempt: payload.execution.attempt.id,
+        taskRunPid: taskRunProcess.pid,
+      });
 
       const result = await taskRunProcess.executeTaskRun(payload);
 
@@ -477,7 +504,12 @@ export class ProdBackgroundWorker {
   }
 
   async cancelAttempt(attemptId: string) {
-    await this._taskRunProcess?.cancel();
+    if (!this._taskRunProcess) {
+      console.error("No task run process to cancel attempt", { attemptId });
+      return;
+    }
+
+    await this._taskRunProcess.cancel();
   }
 
   async executeTaskRunLazyAttempt(payload: TaskRunExecutionLazyAttemptPayload) {
@@ -701,6 +733,8 @@ class TaskRunProcess {
   }
 
   async cleanup(kill = false, gracefulExitTimeoutElapsed = false) {
+    console.log("cleanup()", { kill, gracefulExitTimeoutElapsed });
+
     if (kill && this._isBeingKilled) {
       return;
     }
@@ -714,6 +748,11 @@ class TaskRunProcess {
 
     // Kill parent unless graceful exit timeout has elapsed and we're in the middle of an execution
     const killParentProcess = kill && !killChildProcess;
+
+    console.log("Cleaning up task run process", {
+      killChildProcess,
+      killParentProcess,
+    });
 
     await this._ipc?.sendWithAck("CLEANUP", {
       flush: true,
@@ -780,9 +819,13 @@ class TaskRunProcess {
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {
+    console.log("handling child exit", { code, signal });
+
     // Go through all the attempts currently pending and reject them
     for (const [id, status] of this._attemptStatuses.entries()) {
       if (status === "PENDING") {
+        console.log("found pending attempt", { id });
+
         this._attemptStatuses.set(id, "REJECTED");
 
         const attemptPromise = this._attemptPromises.get(id);

@@ -856,6 +856,7 @@ export const ProdWorkerToCoordinatorMessages = {
   },
 };
 
+// TODO: The coordinator can only safely use v1 worker messages, higher versions will need a new flag, e.g. SUPPORTS_VERSIONED_MESSAGES
 export const CoordinatorToProdWorkerMessages = {
   RESUME_AFTER_DEPENDENCY: {
     message: z.object({

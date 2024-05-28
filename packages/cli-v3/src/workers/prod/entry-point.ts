@@ -134,7 +134,9 @@ class ProdWorker {
         });
       }
     } catch (error) {
-      logger.error("taskinfo read error during reconnect", { error });
+      logger.error("taskinfo read error during reconnect", {
+        error: error instanceof Error ? error.message : error,
+      });
     } finally {
       this.#coordinatorSocket = this.#createCoordinatorSocket(coordinatorHost);
     }
@@ -180,6 +182,8 @@ class ProdWorker {
           reason: message.reason,
         }
       );
+
+      logger.log("onCancelCheckpoint coordinator response", { checkpointCanceled });
 
       if (checkpointCanceled) {
         if (message.reason === "WAIT_FOR_DURATION") {
@@ -385,11 +389,8 @@ class ProdWorker {
       extraHeaders["x-trigger-attempt-friendly-id"] = this.attemptFriendlyId;
     }
 
-    logger.log("connecting to coordinator", {
-      host,
-      port: COORDINATOR_PORT,
-      extraHeaders,
-    });
+    logger.log(`connecting to coordinator: ${host}:${COORDINATOR_PORT}`);
+    logger.debug(`connecting with extra headers`, { extraHeaders });
 
     const coordinatorConnection = new ZodSocketConnection({
       namespace: "prod-worker",
@@ -574,6 +575,8 @@ class ProdWorker {
         },
       },
       onConnection: async (socket, handler, sender, logger) => {
+        logger.log("connected to coordinator", { status: this.#status });
+
         if (this.waitForPostStart) {
           logger.log("skip connection handler, waiting for post start hook");
           return;
@@ -581,7 +584,7 @@ class ProdWorker {
 
         if (this.paused) {
           if (!this.nextResumeAfter) {
-            logger.error("Missing next resume reason");
+            logger.error("Missing next resume reason", { status: this.#status });
 
             this.#emitUnrecoverableError(
               "NoNextResume",
@@ -592,7 +595,7 @@ class ProdWorker {
           }
 
           if (!this.attemptFriendlyId) {
-            logger.error("Missing friendly ID");
+            logger.error("Missing friendly ID", { status: this.#status });
 
             this.#emitUnrecoverableError(
               "NoAttemptId",
