@@ -69,7 +69,8 @@
     "dev:test": "nodemon -w src/Containerfile.prod -x npm run build:prod-containerfile",
     "clean": "rimraf dist",
     "start": "node dist/index.js",
-    "test": "vitest"
+    "test": "vitest",
+    "test:e2e": "vitest --run -c e2e/vite.config.js"
   },
   "dependencies": {
     "@anatine/esbuild-decorators": "^0.2.19",
