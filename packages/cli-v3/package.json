@@ -60,7 +60,7 @@
     "typecheck": "tsc -p tsconfig.check.json",
     "build": "npm run clean && run-p build:**",
     "build:main": "tsup",
-    "build:test": "tsup --config tsup.test.config.ts",
+    "build:e2e": "tsup --config tsup.e2e.config.ts",
     "build:workers": "tsup --config tsup.workers.config.ts",
     "build:prod-containerfile": "cpy --flat src/Containerfile.prod dist/",
     "dev": "npm run clean && run-p dev:**",
