@@ -30,14 +30,6 @@ export function authorizationRateLimitMiddleware({
     requests: true,
   },
 }: Options) {
-  // const rateLimiter = new Ratelimit({
-  //   redis: createRedisRateLimitClient(redis),
-  //   limiter: limiter,
-  //   ephemeralCache: new Map(),
-  //   analytics: false,
-  //   prefix: keyPrefix,
-  // });
-
   const rateLimiter = new RateLimiter({
     redis,
     keyPrefix,
