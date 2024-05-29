@@ -5,7 +5,11 @@ description: "Some common problems you might experience and their solutions"
 
 ## Deployment
 
-Running the [trigger.dev deploy] command builds and deploys your code. Sometimes there can be issues building your code. Here are some common problems and their solutions:
+Running the [trigger.dev deploy] command builds and deploys your code. Sometimes there can be issues building your code.
+
+You can run the deploy command with `--log-level debug` at the end. This will spit out a lot of information about the deploy. If you can't figure out the problem from the issues below you can join [our Discord](https://trigger.dev/discord) and share these extended logs privately with us. Do NOT share these publicly as the verbose logs might reveal private information about your project.
+
+Here are some common problems and their solutions:
 
 ### `Typecheck failed, aborting deployment`
 
@@ -31,4 +35,22 @@ export const config: TriggerConfig = {
 
 ### `Failed to build project image: Error building image`
 
+There should be a link below the error message to the full build logs on your machine. Take a look at these to see what went wrong. Join [our Discord](https://trigger.dev/discord) and you share it privately with us if you can't figure out what's going wrong. Do NOT share these publicly as the verbose logs might reveal private information about your project.
+
 ### `Deployment timed out`
+
+The last stage of deployment is to run it on our servers – we register the new versions of your tasks with the dashboard during this step. We allow 60 seconds for this to succeed or fail. If it fails then you'll see this error.
+
+The first thing to do is to try again. If that fails then join [our Discord](https://trigger.dev/discord) and create a Help forum post with a link to your deployment.
+
+### `error TS2305: Module 'Y' has no exported member 'Z'.`
+
+### `error TS2307: Cannot find module 'X' or its corresponding type Y.`
+
+### `error TS2306: File 'X' is not a module`
+
+### `Deployment encountered an error: Error`
+
+### `ENOENT: no such file or directory, open '.../tsconfig.json'`
+
+### `ENOENT: no such file or directory, scandir '.../trigger'`
