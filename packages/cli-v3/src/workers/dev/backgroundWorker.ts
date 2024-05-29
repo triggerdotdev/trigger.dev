@@ -865,6 +865,10 @@ class TaskRunProcess {
 
     // FIXME: Something broke READY_TO_DISPOSE. We never receive it, so we always have to kill the process after the timeout below.
 
+    if (!kill) {
+      return;
+    }
+
     // Set a timeout to kill the child process if it hasn't been killed within 5 seconds
     setTimeout(() => {
       if (this._child && !this._child.killed) {
