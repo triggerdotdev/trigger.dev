@@ -2,8 +2,8 @@
 
 import { Command } from "commander";
 
-import { logger } from "../src/utilities/logger";
-import { configureCompileCommand } from "./compile";
+import { logger } from "../src/utilities/logger.js";
+import { configureCompileCommand } from "./compile.js";
 
 const program = new Command();
 

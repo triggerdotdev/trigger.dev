@@ -11,10 +11,17 @@ const testCases: TestCase[] = [
     name: "server-only",
     options: ["--skip-typecheck"],
   },
+  {
+    name: "infisical-sdk",
+    options: ["--skip-typecheck"],
+  },
 ];
 
 for (let testCase of testCases) {
   const { options, name } = testCase;
+
+  if (process.env.MOD && process.env.MOD !== name) continue;
+
   const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
   const commandPath = resolve(join(process.cwd(), "dist/e2e.js"));
 
