@@ -673,6 +673,20 @@ class TaskCoordinator {
       onConnection: async (socket, handler, sender) => {
         const logger = new SimpleLogger(`[prod-worker][${socket.id}]`);
 
+        const crashRun = async (error: { name: string; message: string; stack?: string }) => {
+          try {
+            this.#platformSocket?.send("RUN_CRASHED", {
+              version: "v1",
+              runId: socket.data.runId,
+              error,
+            });
+          } finally {
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+          }
+        };
+
         const checkpointInProgress = () => {
           return this.#checkpointableTasks.has(socket.data.runId);
         };
@@ -741,8 +755,9 @@ class TaskCoordinator {
             if (!executionAck) {
               logger.error("no execution ack", { runId: socket.data.runId });
 
-              socket.emit("REQUEST_EXIT", {
-                version: "v1",
+              await crashRun({
+                name: "ReadyForExecutionError",
+                message: "No execution ack",
               });
 
               return;
@@ -751,8 +766,9 @@ class TaskCoordinator {
             if (!executionAck.success) {
               logger.error("failed to get execution payload", { runId: socket.data.runId });
 
-              socket.emit("REQUEST_EXIT", {
-                version: "v1",
+              await crashRun({
+                name: "ReadyForExecutionError",
+                message: "Failed to get execution payload",
               });
 
               return;
@@ -781,8 +797,9 @@ class TaskCoordinator {
             if (!lazyAttempt) {
               logger.error("no lazy attempt ack", { runId: socket.data.runId });
 
-              socket.emit("REQUEST_EXIT", {
-                version: "v1",
+              await crashRun({
+                name: "ReadyForLazyAttemptError",
+                message: "No lazy attempt ack",
               });
 
               return;
@@ -791,8 +808,9 @@ class TaskCoordinator {
             if (!lazyAttempt.success) {
               logger.error("failed to get lazy attempt payload", { runId: socket.data.runId });
 
-              socket.emit("REQUEST_EXIT", {
-                version: "v1",
+              await crashRun({
+                name: "ReadyForLazyAttemptError",
+                message: "Failed to get lazy attempt payload",
               });
 
               return;
@@ -1140,15 +1158,7 @@ class TaskCoordinator {
         socket.on("UNRECOVERABLE_ERROR", async (message) => {
           logger.log("[UNRECOVERABLE_ERROR]", message);
 
-          this.#platformSocket?.send("RUN_CRASHED", {
-            version: "v1",
-            runId: socket.data.runId,
-            error: message.error,
-          });
-
-          socket.emit("REQUEST_EXIT", {
-            version: "v1",
-          });
+          await crashRun(message.error);
         });
       },
       onDisconnect: async (socket, handler, sender, logger) => {
