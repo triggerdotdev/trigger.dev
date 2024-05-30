@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev:trigger": "triggerdev dev",
-    "management": "ts-node -r tsconfig-paths/register ./src/management.ts"
+    "management": "ts-node -r tsconfig-paths/register ./src/management.ts",
+    "queues": "ts-node -r tsconfig-paths/register ./src/queues.ts"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
