@@ -7,7 +7,7 @@ description: "Some common problems you might experience and their solutions"
 
 Running the [trigger.dev deploy] command builds and deploys your code. Sometimes there can be issues building your code.
 
-You can run the deploy command with `--log-level debug` at the end. This will spit out a lot of information about the deploy. If you can't figure out the problem from the issues below you can join [our Discord](https://trigger.dev/discord) and share these extended logs privately with us. Do NOT share these publicly as the verbose logs might reveal private information about your project.
+You can run the deploy command with `--log-level debug` at the end. This will spit out a lot of information about the deploy. If you can't figure out the problem from the issues please join [our Discord](https://trigger.dev/discord) and create a Help forum post. Do NOT share the extended debug logs publicly as they might reveal private information about your project.
 
 Here are some common problems and their solutions:
 
@@ -43,19 +43,15 @@ The last stage of deployment is to run it on our servers – we register the new
 
 The first thing to do is to try again. If that fails then join [our Discord](https://trigger.dev/discord) and create a Help forum post with a link to your deployment.
 
-### `error TS2305: Module 'Y' has no exported member 'Z'.`
+### `Deployment encountered an error`
 
-### `error TS2307: Cannot find module 'X' or its corresponding type Y.`
-
-### `error TS2306: File 'X' is not a module`
-
-### `Deployment encountered an error: Error`
-
-### `ENOENT: no such file or directory, open '.../tsconfig.json'`
-
-### `ENOENT: no such file or directory, scandir '.../trigger'`
+Usually there will be some useful guidance below this message. If you can't figure out what's going wrong then join [our Discord](https://trigger.dev/discord) and create a Help forum post with a link to your deployment.
 
 ## Runtime issues
+
+### Environment variables not set
+
+Your code is deployed separately from the rest of your app(s) so you need to make sure that you set any environment variables you use in your tasks in the Trigger.dev dashboard. [Read the guide](/v3/deploy-environment-variables).
 
 ### When triggering subtasks the parent task finishes too soon
 
