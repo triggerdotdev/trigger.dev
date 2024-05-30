@@ -7,7 +7,7 @@ description: "Some common problems you might experience and their solutions"
 
 Running the [trigger.dev deploy] command builds and deploys your code. Sometimes there can be issues building your code.
 
-You can run the deploy command with `--log-level debug` at the end. This will spit out a lot of information about the deploy. If you can't figure out the problem from the issues please join [our Discord](https://trigger.dev/discord) and create a Help forum post. Do NOT share the extended debug logs publicly as they might reveal private information about your project.
+You can run the deploy command with `--log-level debug` at the end. This will spit out a lot of information about the deploy. If you can't figure out the problem from the information below please join [our Discord](https://trigger.dev/discord) and create a help forum post. Do NOT share the extended debug logs publicly as they might reveal private information about your project.
 
 Here are some common problems and their solutions:
 
@@ -19,7 +19,7 @@ You can skip typechecking, by adding the `--skip-typecheck` flag when calling de
 
 ### `Error: Cannot find module 'X'`
 
-This errors occurs if we want figure out how to automatically import some code. You can fix this by adding it the `dependenciesToBundle` array in the [trigger.config file](/v3/trigger-config).
+This errors occurs if we can't figure out how to automatically import some code. You can fix this by adding it to the `dependenciesToBundle` array in the [trigger.config file](/v3/trigger-config).
 
 Like this:
 
@@ -39,7 +39,7 @@ There should be a link below the error message to the full build logs on your ma
 
 ### `Deployment timed out`
 
-The last stage of deployment is to run it on our servers – we register the new versions of your tasks with the dashboard during this step. We allow 60 seconds for this to succeed or fail. If it fails then you'll see this error.
+The last stage of deployment is to run it on our servers – we register the new versions of your tasks with the dashboard during this step. We allow 3 mins for this to succeed or fail. If it fails then you'll see this error.
 
 The first thing to do is to try again. If that fails then join [our Discord](https://trigger.dev/discord) and create a Help forum post with a link to your deployment.
 
@@ -55,7 +55,7 @@ Your code is deployed separately from the rest of your app(s) so you need to mak
 
 ### `Error: @prisma/client did not initialize yet.`
 
-Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [Read the guide](/v3/trigger-config#prisma-and-other-generators).
+Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [read the guide](/v3/trigger-config#prisma-and-other-generators).
 
 ### When triggering subtasks the parent task finishes too soon
 
@@ -63,7 +63,7 @@ Make sure that you always use `await` when you call `trigger`, `triggerAndWait`,
 
 ## Framework specific issues
 
-### NestJS application context swallows all errors/exceptions
+### NestJS swallows all errors/exceptions
 
 If you're using NestJS and you add code like this into your tasks you will prevent any errors from being surfaced:
 
