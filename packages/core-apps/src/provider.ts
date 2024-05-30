@@ -46,7 +46,6 @@ export interface TaskOperationsCreateOptions {
   orgId: string;
   projectId: string;
   runId: string;
-  attemptId: string;
 }
 
 export interface TaskOperationsRestoreOptions {
@@ -129,7 +128,6 @@ export class ProviderShell implements Provider {
                 orgId: message.data.orgId,
                 projectId: message.data.projectId,
                 runId: message.data.runId,
-                attemptId: message.data.id,
               });
             } catch (error) {
               logger.error("create failed", error);

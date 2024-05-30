@@ -78,7 +78,7 @@ export async function whoAmI(
             options?.profile ?? "default"
           }\` to login.`
         );
-        outro("Whoami failed");
+        outro(`Whoami failed: ${authentication.error}`);
       }
     }
 

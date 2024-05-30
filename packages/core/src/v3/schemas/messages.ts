@@ -1,11 +1,13 @@
 import { z } from "zod";
-import { TaskRunExecution, TaskRunExecutionResult } from "./common";
+import { TaskRunExecution, TaskRunExecutionResult, TaskRunFailedExecutionResult } from "./common";
+
 import {
   EnvironmentType,
   Machine,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   TaskMetadataWithFilePath,
+  TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionPayload,
   WaitReason,
 } from "./schemas";
@@ -27,12 +29,16 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     version: z.string(),
     machine: Machine,
     // identifiers
-    id: z.string(), // attempt
+    id: z.string().optional(), // TODO: Remove this completely in a future release
     envId: z.string(),
     envType: EnvironmentType,
     orgId: z.string(),
     projectId: z.string(),
     runId: z.string(),
+  }),
+  z.object({
+    type: z.literal("EXECUTE_RUN_LAZY_ATTEMPT"),
+    payload: TaskRunExecutionLazyAttemptPayload,
   }),
 ]);
 
@@ -59,7 +65,17 @@ export const BackgroundWorkerClientMessages = z.discriminatedUnion("type", [
   }),
   z.object({
     version: z.literal("v1").default("v1"),
+    type: z.literal("TASK_RUN_FAILED_TO_RUN"),
+    completion: TaskRunFailedExecutionResult,
+  }),
+  z.object({
+    version: z.literal("v1").default("v1"),
     type: z.literal("TASK_HEARTBEAT"),
+    id: z.string(),
+  }),
+  z.object({
+    version: z.literal("v1").default("v1"),
+    type: z.literal("TASK_RUN_HEARTBEAT"),
     id: z.string(),
   }),
 ]);
@@ -78,6 +94,7 @@ export const clientWebsocketMessages = {
   READY_FOR_TASKS: z.object({
     version: z.literal("v1").default("v1"),
     backgroundWorkerId: z.string(),
+    inProgressRuns: z.string().array().optional(),
   }),
   BACKGROUND_WORKER_DEPRECATED: z.object({
     version: z.literal("v1").default("v1"),
@@ -97,11 +114,17 @@ export const workerToChildMessages = {
     traceContext: z.record(z.unknown()),
     metadata: BackgroundWorkerProperties,
   }),
-  TASK_RUN_COMPLETED_NOTIFICATION: z.object({
-    version: z.literal("v1").default("v1"),
-    completion: TaskRunExecutionResult,
-    execution: TaskRunExecution,
-  }),
+  TASK_RUN_COMPLETED_NOTIFICATION: z.discriminatedUnion("version", [
+    z.object({
+      version: z.literal("v1"),
+      completion: TaskRunExecutionResult,
+      execution: TaskRunExecution,
+    }),
+    z.object({
+      version: z.literal("v2"),
+      completion: TaskRunExecutionResult,
+    }),
+  ]),
   CLEANUP: z.object({
     version: z.literal("v1").default("v1"),
     flush: z.boolean().default(false),
@@ -142,6 +165,10 @@ export const childToWorkerMessages = {
     version: z.literal("v1").default("v1"),
     id: z.string(),
   }),
+  TASK_RUN_HEARTBEAT: z.object({
+    version: z.literal("v1").default("v1"),
+    id: z.string(),
+  }),
   READY_TO_DISPOSE: z.undefined(),
   WAIT_FOR_DURATION: z.object({
     version: z.literal("v1").default("v1"),
@@ -177,6 +204,12 @@ export const ProdChildToWorkerMessages = {
     message: TaskMetadataFailedToParseData,
   },
   TASK_HEARTBEAT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      id: z.string(),
+    }),
+  },
+  TASK_RUN_HEARTBEAT: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       id: z.string(),
@@ -247,11 +280,17 @@ export const ProdWorkerToChildMessages = {
     }),
   },
   TASK_RUN_COMPLETED_NOTIFICATION: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      completion: TaskRunExecutionResult,
-      execution: TaskRunExecution,
-    }),
+    message: z.discriminatedUnion("version", [
+      z.object({
+        version: z.literal("v1"),
+        completion: TaskRunExecutionResult,
+        execution: TaskRunExecution,
+      }),
+      z.object({
+        version: z.literal("v2"),
+        completion: TaskRunExecutionResult,
+      }),
+    ]),
   },
   CLEANUP: {
     message: z.object({
@@ -379,6 +418,18 @@ export const PlatformToProviderMessages = {
   },
 };
 
+const CreateWorkerMessage = z.object({
+  projectRef: z.string(),
+  envId: z.string(),
+  deploymentId: z.string(),
+  metadata: z.object({
+    cliPackageVersion: z.string().optional(),
+    contentHash: z.string(),
+    packageVersion: z.string(),
+    tasks: TaskResource.array(),
+  }),
+});
+
 export const CoordinatorToPlatformMessages = {
   LOG: {
     message: z.object({
@@ -388,24 +439,38 @@ export const CoordinatorToPlatformMessages = {
     }),
   },
   CREATE_WORKER: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      projectRef: z.string(),
-      envId: z.string(),
-      deploymentId: z.string(),
-      metadata: z.object({
-        cliPackageVersion: z.string().optional(),
-        contentHash: z.string(),
-        packageVersion: z.string(),
-        tasks: TaskResource.array(),
+    message: z.discriminatedUnion("version", [
+      CreateWorkerMessage.extend({
+        version: z.literal("v1"),
       }),
-    }),
+      CreateWorkerMessage.extend({
+        version: z.literal("v2"),
+        supportsLazyAttempts: z.boolean(),
+      }),
+    ]),
     callback: z.discriminatedUnion("success", [
       z.object({
         success: z.literal(false),
       }),
       z.object({
         success: z.literal(true),
+      }),
+    ]),
+  },
+  CREATE_TASK_RUN_ATTEMPT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+      envId: z.string(),
+    }),
+    callback: z.discriminatedUnion("success", [
+      z.object({
+        success: z.literal(false),
+        reason: z.string().optional(),
+      }),
+      z.object({
+        success: z.literal(true),
+        executionPayload: ProdTaskRunExecutionPayload,
       }),
     ]),
   },
@@ -422,6 +487,24 @@ export const CoordinatorToPlatformMessages = {
       z.object({
         success: z.literal(true),
         payload: ProdTaskRunExecutionPayload,
+      }),
+    ]),
+  },
+  READY_FOR_LAZY_ATTEMPT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+      envId: z.string(),
+      totalCompletions: z.number(),
+    }),
+    callback: z.discriminatedUnion("success", [
+      z.object({
+        success: z.literal(false),
+        reason: z.string().optional(),
+      }),
+      z.object({
+        success: z.literal(true),
+        lazyPayload: TaskRunExecutionLazyAttemptPayload,
       }),
     ]),
   },
@@ -445,10 +528,22 @@ export const CoordinatorToPlatformMessages = {
         .optional(),
     }),
   },
+  TASK_RUN_FAILED_TO_RUN: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      completion: TaskRunFailedExecutionResult,
+    }),
+  },
   TASK_HEARTBEAT: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptFriendlyId: z.string(),
+    }),
+  },
+  TASK_RUN_HEARTBEAT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
     }),
   },
   CHECKPOINT_CREATED: {
@@ -490,6 +585,17 @@ export const CoordinatorToPlatformMessages = {
       }),
     }),
   },
+  RUN_CRASHED: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+      error: z.object({
+        name: z.string(),
+        message: z.string(),
+        stack: z.string().optional(),
+      }),
+    }),
+  },
 };
 
 export const PlatformToCoordinatorMessages = {
@@ -515,6 +621,13 @@ export const PlatformToCoordinatorMessages = {
       version: z.literal("v1").default("v1"),
       attemptId: z.string(),
       attemptFriendlyId: z.string(),
+    }),
+  },
+  REQUEST_RUN_CANCELLATION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+      delayInMs: z.number().optional(),
     }),
   },
   READY_FOR_RETRY: {
@@ -563,6 +676,13 @@ export const SharedQueueToClientMessages = {
   },
 };
 
+const IndexTasksMessage = z.object({
+  version: z.literal("v1"),
+  deploymentId: z.string(),
+  tasks: TaskResource.array(),
+  packageVersion: z.string(),
+});
+
 export const ProdWorkerToCoordinatorMessages = {
   LOG: {
     message: z.object({
@@ -572,12 +692,15 @@ export const ProdWorkerToCoordinatorMessages = {
     callback: z.void(),
   },
   INDEX_TASKS: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      deploymentId: z.string(),
-      tasks: TaskResource.array(),
-      packageVersion: z.string(),
-    }),
+    message: z.discriminatedUnion("version", [
+      IndexTasksMessage.extend({
+        version: z.literal("v1"),
+      }),
+      IndexTasksMessage.extend({
+        version: z.literal("v2"),
+        supportsLazyAttempts: z.boolean(),
+      }),
+    ]),
     callback: z.discriminatedUnion("success", [
       z.object({
         success: z.literal(false),
@@ -588,6 +711,13 @@ export const ProdWorkerToCoordinatorMessages = {
     ]),
   },
   READY_FOR_EXECUTION: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+      totalCompletions: z.number(),
+    }),
+  },
+  READY_FOR_LAZY_ATTEMPT: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       runId: z.string(),
@@ -630,6 +760,12 @@ export const ProdWorkerToCoordinatorMessages = {
       attemptFriendlyId: z.string(),
     }),
   },
+  TASK_RUN_HEARTBEAT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+    }),
+  },
   TASK_RUN_COMPLETED: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -639,6 +775,12 @@ export const ProdWorkerToCoordinatorMessages = {
     callback: z.object({
       willCheckpointAndRestore: z.boolean(),
       shouldExit: z.boolean(),
+    }),
+  },
+  TASK_RUN_FAILED_TO_RUN: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      completion: TaskRunFailedExecutionResult,
     }),
   },
   WAIT_FOR_DURATION: {
@@ -686,8 +828,35 @@ export const ProdWorkerToCoordinatorMessages = {
       }),
     }),
   },
+  CREATE_TASK_RUN_ATTEMPT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+    }),
+    callback: z.discriminatedUnion("success", [
+      z.object({
+        success: z.literal(false),
+        reason: z.string().optional(),
+      }),
+      z.object({
+        success: z.literal(true),
+        executionPayload: ProdTaskRunExecutionPayload,
+      }),
+    ]),
+  },
+  UNRECOVERABLE_ERROR: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      error: z.object({
+        name: z.string(),
+        message: z.string(),
+        stack: z.string().optional(),
+      }),
+    }),
+  },
 };
 
+// TODO: The coordinator can only safely use v1 worker messages, higher versions will need a new flag, e.g. SUPPORTS_VERSIONED_MESSAGES
 export const CoordinatorToProdWorkerMessages = {
   RESUME_AFTER_DEPENDENCY: {
     message: z.object({
@@ -709,6 +878,12 @@ export const CoordinatorToProdWorkerMessages = {
       executionPayload: ProdTaskRunExecutionPayload,
     }),
   },
+  EXECUTE_TASK_RUN_LAZY_ATTEMPT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      lazyPayload: TaskRunExecutionLazyAttemptPayload,
+    }),
+  },
   REQUEST_ATTEMPT_CANCELLATION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -716,9 +891,15 @@ export const CoordinatorToProdWorkerMessages = {
     }),
   },
   REQUEST_EXIT: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-    }),
+    message: z.discriminatedUnion("version", [
+      z.object({
+        version: z.literal("v1"),
+      }),
+      z.object({
+        version: z.literal("v2"),
+        delayInMs: z.number().optional(),
+      }),
+    ]),
   },
   READY_FOR_RETRY: {
     message: z.object({

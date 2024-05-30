@@ -182,8 +182,17 @@ const handler = new ZodMessageHandler({
         _isRunning = false;
       }
     },
-    TASK_RUN_COMPLETED_NOTIFICATION: async ({ completion, execution }) => {
-      devRuntimeManager.resumeTask(completion, execution);
+    TASK_RUN_COMPLETED_NOTIFICATION: async (payload) => {
+      switch (payload.version) {
+        case "v1": {
+          devRuntimeManager.resumeTask(payload.completion, payload.execution.run.id);
+          break;
+        }
+        case "v2": {
+          devRuntimeManager.resumeTask(payload.completion, payload.completion.id);
+          break;
+        }
+      }
     },
     CLEANUP: async ({ flush, kill }) => {
       if (kill) {
@@ -215,7 +224,7 @@ sender.send("TASKS_READY", { tasks: TASK_METADATA }).catch((err) => {
 
 process.title = "trigger-dev-worker";
 
-async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 5) {
+async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 30) {
   async function _doHeartbeat() {
     while (true) {
       if (_isRunning && _execution) {

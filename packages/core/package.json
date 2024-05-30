@@ -37,6 +37,14 @@
       "require": "./dist/v3/otel/index.js",
       "types": "./dist/v3/otel/index.d.ts"
     },
+    "./v3/zodfetch": {
+      "import": {
+        "types": "./dist/v3/zodfetch.d.mts",
+        "default": "./dist/v3/zodfetch.mjs"
+      },
+      "require": "./dist/v3/zodfetch.js",
+      "types": "./dist/v3/zodfetch.d.ts"
+    },
     "./v3/zodMessageHandler": {
       "import": {
         "types": "./dist/v3/zodMessageHandler.d.mts",

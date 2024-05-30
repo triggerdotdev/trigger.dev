@@ -21,6 +21,7 @@ import {
   QueueCapacities,
   QueueRange,
 } from "./types";
+import { RequeueTaskRunService } from "../requeueTaskRun.server";
 
 const tracer = trace.getTracer("marqs");
 
@@ -259,6 +260,11 @@ export class MarQS {
           });
         }
 
+        await RequeueTaskRunService.enqueue(
+          messageData.messageId,
+          new Date(Date.now() + this.visibilityTimeoutInMs)
+        );
+
         return message;
       },
       {
@@ -270,6 +276,35 @@ export class MarQS {
         },
       }
     );
+  }
+
+  public async getSharedQueueDetails() {
+    const parentQueue = constants.SHARED_QUEUE;
+
+    const { range, selectionId } = await this.queuePriorityStrategy.nextCandidateSelection(
+      parentQueue
+    );
+    const queues = await this.#getChildQueuesWithScores(parentQueue, range);
+
+    const queuesWithScores = await this.#calculateQueueScores(queues, (queue) =>
+      this.#calculateMessageQueueCapacities(queue)
+    );
+
+    // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
+    const choice = this.queuePriorityStrategy.chooseQueue(
+      queuesWithScores,
+      parentQueue,
+      selectionId
+    );
+
+    return {
+      selectionId,
+      queues,
+      queuesWithScores,
+      nextRange: range,
+      queueCount: queues.length,
+      queueChoice: choice,
+    };
   }
 
   /**
@@ -350,6 +385,8 @@ export class MarQS {
           [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
         });
 
+        await RequeueTaskRunService.dequeue(messageId);
+
         await this.#callAcknowledgeMessage({
           parentQueue: message.parentQueue,
           messageKey: this.keys.messageKey(messageId),
@@ -414,6 +451,8 @@ export class MarQS {
           await this.#callReplaceMessage(newMessage);
           return;
         }
+
+        await RequeueTaskRunService.dequeue(messageId);
 
         await this.#callAcknowledgeMessage({
           parentQueue: oldMessage.parentQueue,
@@ -481,6 +520,8 @@ export class MarQS {
           [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
         });
 
+        await RequeueTaskRunService.dequeue(messageId);
+
         await this.#callNackMessage({
           messageKey: this.keys.messageKey(messageId),
           messageQueue: message.queue,
@@ -506,16 +547,19 @@ export class MarQS {
 
   // This should increment by the number of seconds, but with a max value of Date.now() + visibilityTimeoutInMs
   public async heartbeatMessage(messageId: string, seconds: number = 30) {
+    // We are still calling this for backwards compatibility, but we should be using the v3.requeueTaskRun job
     await this.#callHeartbeatMessage({
       visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
       messageId,
       milliseconds: seconds * 1000,
       maxVisibilityTimeout: Date.now() + this.visibilityTimeoutInMs,
     });
+
+    await RequeueTaskRunService.enqueue(messageId, new Date(Date.now() + seconds * 1000));
   }
 
   get visibilityTimeoutInMs() {
-    return this.options.visibilityTimeoutInMs ?? 300000;
+    return this.options.visibilityTimeoutInMs ?? 300000; // 5 minutes
   }
 
   async readMessage(messageId: string) {
@@ -873,7 +917,6 @@ export class MarQS {
     const result = await this.redis.dequeueMessage(
       messageQueue,
       parentQueue,
-      visibilityQueue,
       concurrencyLimitKey,
       envConcurrencyLimitKey,
       orgConcurrencyLimitKey,
@@ -881,7 +924,6 @@ export class MarQS {
       envCurrentConcurrencyKey,
       orgCurrentConcurrencyKey,
       messageQueue,
-      String(this.options.visibilityTimeoutInMs ?? 300000), // 5 minutes
       String(Date.now()),
       String(this.options.defaultEnvConcurrency),
       String(this.options.defaultOrgConcurrency)
@@ -1007,6 +1049,9 @@ export class MarQS {
     );
   }
 
+  /**
+   * @deprecated This is being replaced by the v3.requeueTaskRun graphile worker job
+   */
   #callHeartbeatMessage({
     visibilityQueue,
     messageId,
@@ -1145,25 +1190,23 @@ end
     });
 
     this.redis.defineCommand("dequeueMessage", {
-      numberOfKeys: 9,
+      numberOfKeys: 8,
       lua: `
--- Keys: childQueue, parentQueue, visibilityQueue, concurrencyLimitKey, envConcurrencyLimitKey, orgConcurrencyLimitKey, currentConcurrencyKey, envCurrentConcurrencyKey, orgCurrentConcurrencyKey
+-- Keys: childQueue, parentQueue, concurrencyLimitKey, envConcurrencyLimitKey, orgConcurrencyLimitKey, currentConcurrencyKey, envCurrentConcurrencyKey, orgCurrentConcurrencyKey
 local childQueue = KEYS[1]
 local parentQueue = KEYS[2]
-local visibilityQueue = KEYS[3]
-local concurrencyLimitKey = KEYS[4]
-local envConcurrencyLimitKey = KEYS[5]
-local orgConcurrencyLimitKey = KEYS[6]
-local currentConcurrencyKey = KEYS[7]
-local envCurrentConcurrencyKey = KEYS[8]
-local orgCurrentConcurrencyKey = KEYS[9]
+local concurrencyLimitKey = KEYS[3]
+local envConcurrencyLimitKey = KEYS[4]
+local orgConcurrencyLimitKey = KEYS[5]
+local currentConcurrencyKey = KEYS[6]
+local envCurrentConcurrencyKey = KEYS[7]
+local orgCurrentConcurrencyKey = KEYS[8]
 
--- Args: childQueueName, visibilityQueue, currentTime, defaultEnvConcurrencyLimit, defaultOrgConcurrencyLimit
+-- Args: childQueueName, currentTime, defaultEnvConcurrencyLimit, defaultOrgConcurrencyLimit
 local childQueueName = ARGV[1]
-local visibilityTimeout = tonumber(ARGV[2])
-local currentTime = tonumber(ARGV[3])
-local defaultEnvConcurrencyLimit = ARGV[4]
-local defaultOrgConcurrencyLimit = ARGV[5]
+local currentTime = tonumber(ARGV[2])
+local defaultEnvConcurrencyLimit = ARGV[3]
+local defaultOrgConcurrencyLimit = ARGV[4]
 
 -- Check current org concurrency against the limit
 local orgCurrentConcurrency = tonumber(redis.call('SCARD', orgCurrentConcurrencyKey) or '0')
@@ -1199,11 +1242,9 @@ end
 
 local messageId = messages[1]
 local messageScore = tonumber(messages[2])
-local timeoutScore = currentTime + visibilityTimeout
 
 -- Move message to timeout queue and update concurrency
 redis.call('ZREM', childQueue, messageId)
-redis.call('ZADD', visibilityQueue, timeoutScore, messageId)
 redis.call('SADD', currentConcurrencyKey, messageId)
 redis.call('SADD', envCurrentConcurrencyKey, messageId)
 redis.call('SADD', orgCurrentConcurrencyKey, messageId)
@@ -1269,7 +1310,7 @@ else
     redis.call('ZADD', parentQueue, earliestMessage[2], messageQueueName)
 end
 
--- Remove the message from the timeout queue
+-- Remove the message from the timeout queue (deprecated, will eventually remove this)
 redis.call('ZREM', visibilityQueue, messageId)
 
 -- Update the concurrency keys
@@ -1297,20 +1338,18 @@ local messageId = ARGV[2]
 local currentTime = tonumber(ARGV[3])
 local messageScore = tonumber(ARGV[4])
 
--- Check to see if the message is still in the visibilityQueue
-local messageVisibility = tonumber(redis.call('ZSCORE', visibilityQueue, messageId)) or 0
-
-if messageVisibility == 0 then
-    return
-end
-
 -- Update the concurrency keys
 redis.call('SREM', concurrencyKey, messageId)
 redis.call('SREM', envConcurrencyKey, messageId)
 redis.call('SREM', orgConcurrencyKey, messageId)
 
--- Remove the message from the timeout queue
-redis.call('ZREM', visibilityQueue, messageId)
+-- Check to see if the message is still in the visibilityQueue
+local messageVisibility = tonumber(redis.call('ZSCORE', visibilityQueue, messageId)) or 0
+
+if messageVisibility > 0 then
+-- Remove the message from the timeout queue (deprecated, will eventually remove this)
+    redis.call('ZREM', visibilityQueue, messageId)
+end
 
 -- Enqueue the message into the queue
 redis.call('ZADD', childQueueKey, messageScore, messageId)
@@ -1337,11 +1376,15 @@ local milliseconds = tonumber(ARGV[2])
 local maxVisibilityTimeout = tonumber(ARGV[3])
 
 -- Get the current visibility timeout
-local currentVisibilityTimeout = tonumber(redis.call('ZSCORE', visibilityQueue, messageId)) or 0
+local zscoreResult = redis.call('ZSCORE', visibilityQueue, messageId)
 
-if currentVisibilityTimeout == 0 then
+-- If there's no currentVisibilityTimeout, return and do not execute ZADD
+if zscoreResult == false then
     return
 end
+
+local currentVisibilityTimeout = tonumber(zscoreResult)
+
 
 -- Calculate the new visibility timeout
 local newVisibilityTimeout = math.min(currentVisibilityTimeout + milliseconds * 1000, maxVisibilityTimeout)
@@ -1445,7 +1488,6 @@ declare module "ioredis" {
     dequeueMessage(
       childQueue: string,
       parentQueue: string,
-      visibilityQueue: string,
       concurrencyLimitKey: string,
       envConcurrencyLimitKey: string,
       orgConcurrencyLimitKey: string,
@@ -1453,7 +1495,6 @@ declare module "ioredis" {
       envCurrentConcurrencyKey: string,
       orgCurrentConcurrencyKey: string,
       childQueueName: string,
-      visibilityTimeout: string,
       currentTime: string,
       defaultEnvConcurrencyLimit: string,
       defaultOrgConcurrencyLimit: string,

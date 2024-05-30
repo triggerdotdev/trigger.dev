@@ -112,7 +112,11 @@ export async function devCommand(dir: string, options: DevCommandOptions) {
         )} Connecting to the server failed. Please check your internet connection or contact eric@trigger.dev for help.`
       );
     } else {
-      logger.log(`${chalkError("X Error:")} You must login first. Use the \`login\` CLI command.`);
+      logger.log(
+        `${chalkError("X Error:")} You must login first. Use the \`login\` CLI command.\n\n${
+          authorization.error
+        }`
+      );
     }
     process.exitCode = 1;
     return;
@@ -285,12 +289,26 @@ function useDev({
     websocket.addEventListener("close", (event) => {});
     websocket.addEventListener("error", (event) => {});
 
+    // This is the deprecated task heart beat that uses the friendly attempt ID
     backgroundWorkerCoordinator.onWorkerTaskHeartbeat.attach(
       async ({ worker, backgroundWorkerId, id }) => {
         await sender.send("BACKGROUND_WORKER_MESSAGE", {
           backgroundWorkerId,
           data: {
             type: "TASK_HEARTBEAT",
+            id,
+          },
+        });
+      }
+    );
+
+    // "Task Run Heartbeat" id is the actual run ID that corresponds to the MarQS message ID
+    backgroundWorkerCoordinator.onWorkerTaskRunHeartbeat.attach(
+      async ({ worker, backgroundWorkerId, id }) => {
+        await sender.send("BACKGROUND_WORKER_MESSAGE", {
+          backgroundWorkerId,
+          data: {
+            type: "TASK_RUN_HEARTBEAT",
             id,
           },
         });
@@ -305,6 +323,18 @@ function useDev({
             type: "TASK_RUN_COMPLETED",
             completion,
             execution,
+          },
+        });
+      }
+    );
+
+    backgroundWorkerCoordinator.onTaskFailedToRun.attach(
+      async ({ backgroundWorkerId, completion }) => {
+        await sender.send("BACKGROUND_WORKER_MESSAGE", {
+          backgroundWorkerId,
+          data: {
+            type: "TASK_RUN_FAILED_TO_RUN",
+            completion,
           },
         });
       }
@@ -334,6 +364,7 @@ function useDev({
             for (const worker of backgroundWorkerCoordinator.currentWorkers) {
               await sender.send("READY_FOR_TASKS", {
                 backgroundWorkerId: worker.id,
+                inProgressRuns: worker.worker.inProgressRuns,
               });
             }
           },
@@ -505,21 +536,25 @@ function useDev({
 
                 const processEnv = await gatherProcessEnv();
 
-                const backgroundWorker = new BackgroundWorker(fullPath, {
-                  projectConfig: config,
-                  dependencies,
-                  env: {
-                    ...processEnv,
-                    TRIGGER_API_URL: apiUrl,
-                    TRIGGER_SECRET_KEY: apiKey,
-                    ...(environmentVariablesResponse.success
-                      ? environmentVariablesResponse.data.variables
-                      : {}),
+                const backgroundWorker = new BackgroundWorker(
+                  fullPath,
+                  {
+                    projectConfig: config,
+                    dependencies,
+                    env: {
+                      ...processEnv,
+                      TRIGGER_API_URL: apiUrl,
+                      TRIGGER_SECRET_KEY: apiKey,
+                      ...(environmentVariablesResponse.success
+                        ? environmentVariablesResponse.data.variables
+                        : {}),
+                    },
+                    debuggerOn,
+                    debugOtel,
+                    resolveEnvVariables: createResolveEnvironmentVariablesFunction(configModule),
                   },
-                  debuggerOn,
-                  debugOtel,
-                  resolveEnvVariables: createResolveEnvironmentVariablesFunction(configModule),
-                });
+                  environmentClient
+                );
 
                 try {
                   await backgroundWorker.initialize();
@@ -576,6 +611,7 @@ function useDev({
                       tasks: taskResources,
                       contentHash: contentHash,
                     },
+                    supportsLazyAttempts: true,
                   };
 
                   const backgroundWorkerRecord = await environmentClient.createBackgroundWorker(
@@ -827,18 +863,9 @@ function createDuplicateTaskIdOutputErrorMessage(
 
 async function gatherProcessEnv() {
   const env = {
+    ...process.env,
     NODE_ENV: process.env.NODE_ENV ?? "development",
-    PATH: process.env.PATH,
-    USER: process.env.USER,
-    SHELL: process.env.SHELL,
-    NVM_INC: process.env.NVM_INC,
-    NVM_DIR: process.env.NVM_DIR,
-    NVM_BIN: process.env.NVM_BIN,
-    LANG: process.env.LANG,
-    TERM: process.env.TERM,
     NODE_PATH: await amendNodePathWithPnpmNodeModules(process.env.NODE_PATH),
-    HOME: process.env.HOME,
-    BUN_INSTALL: process.env.BUN_INSTALL,
   };
 
   // Filter out undefined values

@@ -21,3 +21,43 @@ export class TaskMetadataParseError extends Error {
     this.name = "TaskMetadataParseError";
   }
 }
+
+export class UnexpectedExitError extends Error {
+  constructor(public code: number) {
+    super(`Unexpected exit with code ${code}`);
+
+    this.name = "UnexpectedExitError";
+  }
+}
+
+export class CleanupProcessError extends Error {
+  constructor() {
+    super("Cancelled");
+
+    this.name = "CleanupProcessError";
+  }
+}
+
+export class CancelledProcessError extends Error {
+  constructor() {
+    super("Cancelled");
+
+    this.name = "CancelledProcessError";
+  }
+}
+
+export class SigKillTimeoutProcessError extends Error {
+  constructor() {
+    super("Process kill timeout");
+
+    this.name = "SigKillTimeoutProcessError";
+  }
+}
+
+export class GracefulExitTimeoutError extends Error {
+  constructor() {
+    super("Graceful exit timeout");
+
+    this.name = "GracefulExitTimeoutError";
+  }
+}

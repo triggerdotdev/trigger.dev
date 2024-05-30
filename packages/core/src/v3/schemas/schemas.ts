@@ -224,3 +224,13 @@ export type ResolvedConfig = RequireKeys<
 export const WaitReason = z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]);
 
 export type WaitReason = z.infer<typeof WaitReason>;
+
+export const TaskRunExecutionLazyAttemptPayload = z.object({
+  runId: z.string(),
+  messageId: z.string(),
+  isTest: z.boolean(),
+  traceContext: z.record(z.unknown()),
+  environment: z.record(z.string()).optional(),
+});
+
+export type TaskRunExecutionLazyAttemptPayload = z.infer<typeof TaskRunExecutionLazyAttemptPayload>;

@@ -10,6 +10,7 @@ import {
   SpanEvents,
   SpanMessagingEvent,
   TaskEventStyle,
+  TaskRunError,
   correctErrorStackTrace,
   createPacketAttributesAsJson,
   flattenAttributes,
@@ -117,6 +118,7 @@ export type QueriedEvent = Prisma.TaskEventGetPayload<{
     isCancelled: true;
     level: true;
     events: true;
+    environmentType: true;
   };
 }>;
 
@@ -156,6 +158,7 @@ export type SpanSummary = {
     isPartial: boolean;
     isCancelled: boolean;
     level: NonNullable<CreatableEvent["level"]>;
+    environmentType: CreatableEventEnvironmentType;
   };
 };
 
@@ -165,6 +168,7 @@ export type UpdateEventOptions = {
   attributes: TraceAttributes;
   endTime?: Date;
   immediate?: boolean;
+  events?: SpanEvents;
 };
 
 export class EventRepository {
@@ -239,7 +243,7 @@ export class EventRepository {
       isCancelled: false,
       status: options?.attributes.isError ? "ERROR" : "OK",
       links: event.links ?? [],
-      events: event.events ?? [],
+      events: event.events ?? (options?.events as any) ?? [],
       duration: calculateDurationFromStart(event.startTime, options?.endTime),
       properties: event.properties as Attributes,
       metadata: event.metadata as Attributes,
@@ -386,6 +390,7 @@ export class EventRepository {
         isCancelled: true,
         level: true,
         events: true,
+        environmentType: true,
       },
       where: {
         traceId,
@@ -421,6 +426,7 @@ export class EventRepository {
           startTime: getDateFromNanoseconds(event.startTime),
           level: event.level,
           events: event.events,
+          environmentType: event.environmentType,
         },
       };
     });
@@ -505,7 +511,11 @@ export class EventRepository {
       });
     }
 
-    const events = transformEvents(span.data.events, fullEvent.metadata as Attributes);
+    const events = transformEvents(
+      span.data.events,
+      fullEvent.metadata as Attributes,
+      traceSummary?.rootSpan.data.environmentType === "DEVELOPMENT"
+    );
 
     return {
       ...fullEvent,
@@ -877,6 +887,36 @@ export function stripAttributePrefix(attributes: Attributes, prefix: string) {
   return result;
 }
 
+export function createExceptionPropertiesFromError(error: TaskRunError): ExceptionEventProperties {
+  switch (error.type) {
+    case "BUILT_IN_ERROR": {
+      return {
+        type: error.name,
+        message: error.message,
+        stacktrace: error.stackTrace,
+      };
+    }
+    case "CUSTOM_ERROR": {
+      return {
+        type: "Error",
+        message: error.raw,
+      };
+    }
+    case "INTERNAL_ERROR": {
+      return {
+        type: "Internal error",
+        message: [error.code, error.message].filter(Boolean).join(": "),
+      };
+    }
+    case "STRING_ERROR": {
+      return {
+        type: "Error",
+        message: error.raw,
+      };
+    }
+  }
+}
+
 /**
  * Filters out partial events from a batch of creatable events, excluding those that have a corresponding full event.
  * @param batch - The batch of creatable events to filter.
@@ -1097,16 +1137,16 @@ function removePrivateProperties(
   return result;
 }
 
-function transformEvents(events: SpanEvents, properties: Attributes): SpanEvents {
-  return (events ?? []).map((event) => transformEvent(event, properties));
+function transformEvents(events: SpanEvents, properties: Attributes, isDev: boolean): SpanEvents {
+  return (events ?? []).map((event) => transformEvent(event, properties, isDev));
 }
 
-function transformEvent(event: SpanEvent, properties: Attributes): SpanEvent {
+function transformEvent(event: SpanEvent, properties: Attributes, isDev: boolean): SpanEvent {
   if (isExceptionSpanEvent(event)) {
     return {
       ...event,
       properties: {
-        exception: transformException(event.properties.exception, properties),
+        exception: transformException(event.properties.exception, properties, isDev),
       },
     };
   }
@@ -1116,11 +1156,12 @@ function transformEvent(event: SpanEvent, properties: Attributes): SpanEvent {
 
 function transformException(
   exception: ExceptionEventProperties,
-  properties: Attributes
+  properties: Attributes,
+  isDev: boolean
 ): ExceptionEventProperties {
   const projectDirAttributeValue = properties[SemanticInternalAttributes.PROJECT_DIR];
 
-  if (typeof projectDirAttributeValue !== "string") {
+  if (projectDirAttributeValue !== undefined && typeof projectDirAttributeValue !== "string") {
     return exception;
   }
 
@@ -1129,6 +1170,7 @@ function transformException(
     stacktrace: exception.stacktrace
       ? correctErrorStackTrace(exception.stacktrace, projectDirAttributeValue, {
           removeFirstLine: true,
+          isDev,
         })
       : undefined,
   };
