@@ -1,5 +1,15 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.35
+
+### Patch Changes
+
+- Updated dependencies [ece6ca678]
+- Updated dependencies [e69ffd314]
+- Updated dependencies [e69ffd314]
+  - @trigger.dev/core@3.0.0-beta.35
+  - @trigger.dev/core-backend@3.0.0-beta.35
+
 ## 3.0.0-beta.34
 
 ### Patch Changes

@@ -1,5 +1,24 @@
 # trigger.dev
 
+## 3.0.0-beta.35
+
+### Patch Changes
+
+- 98ef17029: Set the deploy timeout to 3mins from 1min
+- e69ffd314: - Clear paused states before retry
+  - Detect and handle unrecoverable worker errors
+  - Remove checkpoints after successful push
+  - Permanently switch to DO hosted busybox image
+  - Fix IPC timeout issue, or at least handle it more gracefully
+  - Handle checkpoint failures
+  - Basic chaos monkey for checkpoint testing
+  - Stack traces are back in the dashboard
+  - Display final errors on root span
+- Updated dependencies [ece6ca678]
+- Updated dependencies [e69ffd314]
+- Updated dependencies [e69ffd314]
+  - @trigger.dev/core@3.0.0-beta.35
+
 ## 3.0.0-beta.34
 
 ### Patch Changes
