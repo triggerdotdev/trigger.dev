@@ -6,11 +6,20 @@ dotenv.config();
 export async function run() {
   await simpleChildTask.trigger({ message: "Regular queue" });
   await simpleChildTask.trigger(
-    { message: "Alt queue" },
+    { message: "Simple alt queue 1" },
     {
       queue: {
         name: "queue-concurrency-3",
-        concurrencyLimit: 3,
+        concurrencyLimit: 1,
+      },
+    }
+  );
+  await simpleChildTask.trigger(
+    { message: "Simple alt queue 2" },
+    {
+      queue: {
+        name: "queue-concurrency-3",
+        concurrencyLimit: 1,
       },
     }
   );
@@ -18,11 +27,29 @@ export async function run() {
   await simpleChildTask.batchTrigger([{ payload: { message: "Regular queue" } }]);
   await simpleChildTask.batchTrigger([
     {
-      payload: { message: "Regular queue" },
+      payload: { message: "Batched alt queue 1" },
       options: {
         queue: {
           name: "queue-concurrency-3",
-          concurrencyLimit: 3,
+          concurrencyLimit: 1,
+        },
+      },
+    },
+    {
+      payload: { message: "Batched alt queue 2" },
+      options: {
+        queue: {
+          name: "queue-concurrency-3",
+          concurrencyLimit: 1,
+        },
+      },
+    },
+    {
+      payload: { message: "Batched alt queue 3" },
+      options: {
+        queue: {
+          name: "queue-concurrency-3",
+          concurrencyLimit: 1,
         },
       },
     },
