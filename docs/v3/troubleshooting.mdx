@@ -54,3 +54,30 @@ The first thing to do is to try again. If that fails then join [our Discord](htt
 ### `ENOENT: no such file or directory, open '.../tsconfig.json'`
 
 ### `ENOENT: no such file or directory, scandir '.../trigger'`
+
+## Runtime issues
+
+### When triggering subtasks the parent task finishes too soon
+
+Make sure that you always use `await` when you call `trigger`, `triggerAndWait`, `batchTrigger`, and `batchTriggerAndWait`. If you don't then it's likely the task(s) won't be triggered because the calling function process can be terminated before the networks calls are sent.
+
+## Framework specific issues
+
+### NestJS application context swallows all errors/exceptions
+
+If you're using NestJS and you add code like this into your tasks you will prevent any errors from being surfaced:
+
+```ts
+export const simplestTask = task({
+  id: "nestjs-example",
+  run: async (payload) => {
+    //by doing this you're swallowing any errors
+    const app = await NestFactory.createApplicationContext(AppModule);
+    await app.init();
+
+    //etc...
+  },
+});
+```
+
+NestJS has a global exception filter that catches all errors and swallows them, so we can't receive them. Our current recommendation is to not use NestJS inside your tasks. If you're a NestJS user you can still use Trigger.dev but just don't use NestJS inside your tasks like this.
