@@ -79,6 +79,19 @@ export class EnvironmentVariablesPresenter {
         project: {
           slug: projectSlug,
         },
+        OR: [
+          {
+            type: {
+              in: ["PREVIEW", "STAGING", "PRODUCTION"],
+            },
+          },
+          {
+            type: "DEVELOPMENT",
+            orgMember: {
+              userId,
+            },
+          },
+        ],
       },
     });
 
