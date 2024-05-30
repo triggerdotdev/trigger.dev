@@ -36,9 +36,12 @@ export class TestPresenter {
           where: {
             OR: [
               {
-                orgMember: null,
+                type: {
+                  in: ["PREVIEW", "STAGING", "PRODUCTION"],
+                },
               },
               {
+                type: "DEVELOPMENT",
                 orgMember: {
                   userId,
                 },
