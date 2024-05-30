@@ -702,7 +702,7 @@ async function failDeploy(
 async function waitForDeploymentToFinish(
   deploymentId: string,
   client: CliApiClient,
-  timeoutInSeconds: number = 60
+  timeoutInSeconds: number = 180
 ) {
   return tracer.startActiveSpan("waitForDeploymentToFinish", async (span) => {
     try {
