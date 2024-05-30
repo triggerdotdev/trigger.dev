@@ -1,5 +1,7 @@
 # @trigger.dev/eslint-plugin
 
+## 3.0.0-beta.35
+
 ## 3.0.0-beta.34
 
 ## 3.0.0-beta.33
