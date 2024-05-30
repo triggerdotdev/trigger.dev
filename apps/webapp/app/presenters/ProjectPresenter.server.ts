@@ -1,6 +1,6 @@
 import { PrismaClient, prisma } from "~/db.server";
 import { Project } from "~/models/project.server";
-import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
+import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { User } from "~/models/user.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 
@@ -86,7 +86,7 @@ export class ProjectPresenter {
       httpEndpointCount: project._count.httpEndpoints,
       environments: sortEnvironments(
         project.environments.map((environment) => ({
-          ...displayableEnvironments(environment, userId),
+          ...displayableEnvironment(environment, userId),
           userId: environment.orgMember?.user.id,
         }))
       ),

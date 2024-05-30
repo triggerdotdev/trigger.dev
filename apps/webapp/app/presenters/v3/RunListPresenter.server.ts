@@ -3,7 +3,7 @@ import parse from "parse-duration";
 import { Direction } from "~/components/runs/RunStatuses";
 import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
-import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
+import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 import { BasePresenter } from "./basePresenter.server";
 
@@ -280,7 +280,7 @@ export class RunListPresenter extends BasePresenter {
           spanId: run.spanId,
           isReplayable: true,
           isCancellable: CANCELLABLE_STATUSES.includes(run.status),
-          environment: displayableEnvironments(environment, userId),
+          environment: displayableEnvironment(environment, userId),
         };
       }),
       pagination: {

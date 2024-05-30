@@ -8,9 +8,9 @@ import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunS
 import { sqlDatabaseSchema } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
-import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
+import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import type { User } from "~/models/user.server";
-import { sortEnvironments } from "~/utils/environmentSort";
+import { filterOrphanedEnvironments, sortEnvironments } from "~/utils/environmentSort";
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
 import { TaskRunStatus } from "~/database-types";
@@ -86,7 +86,9 @@ export class TaskListPresenter extends BasePresenter {
     WITH workers AS (
       SELECT DISTINCT ON ("runtimeEnvironmentId") id, "runtimeEnvironmentId", version
       FROM ${sqlDatabaseSchema}."BackgroundWorker"
-      WHERE "runtimeEnvironmentId" IN (${Prisma.join(project.environments.map((e) => e.id))})
+      WHERE "runtimeEnvironmentId" IN (${Prisma.join(
+        filterOrphanedEnvironments(project.environments).map((e) => e.id)
+      )})
       ORDER BY "runtimeEnvironmentId", "createdAt" DESC
     )
     SELECT tasks.id, slug, "filePath", "exportName", "triggerSource", tasks."runtimeEnvironmentId", tasks."createdAt"
@@ -119,7 +121,7 @@ export class TaskListPresenter extends BasePresenter {
         existingTask.triggerSource = task.triggerSource;
       }
 
-      existingTask.environments.push(displayableEnvironments(environment, userId));
+      existingTask.environments.push(displayableEnvironment(environment, userId));
 
       //order the environments
       existingTask.environments = sortEnvironments(existingTask.environments);
