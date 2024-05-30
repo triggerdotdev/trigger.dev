@@ -1,5 +1,6 @@
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
+import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 
 type EditScheduleOptions = {
   userId: string;
@@ -67,19 +68,7 @@ export class EditSchedulePresenter {
     });
 
     const possibleEnvironments = project.environments.map((environment) => {
-      let userName: undefined | string;
-      if (environment.orgMember) {
-        if (environment.orgMember.user.id !== userId) {
-          userName =
-            environment.orgMember.user.displayName ?? environment.orgMember.user.name ?? undefined;
-        }
-      }
-
-      return {
-        id: environment.id,
-        type: environment.type,
-        userName,
-      };
+      return displayableEnvironment(environment, userId);
     });
 
     return {
