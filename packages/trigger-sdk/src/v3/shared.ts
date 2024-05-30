@@ -353,7 +353,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
             {
               payload: payloadPacket.data,
               options: {
-                queue: params.queue,
+                queue: options?.queue ?? params.queue,
                 concurrencyKey: options?.concurrencyKey,
                 test: taskContext.ctx?.run.isTest,
                 payloadType: payloadPacket.dataType,
@@ -482,7 +482,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
             options: {
               dependentAttempt: ctx.attempt.id,
               lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
-              queue: params.queue,
+              queue: options?.queue ?? params.queue,
               concurrencyKey: options?.concurrencyKey,
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
