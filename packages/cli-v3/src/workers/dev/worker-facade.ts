@@ -183,11 +183,18 @@ const handler = new ZodMessageHandler({
         _execution = execution;
         _isRunning = true;
 
+        const measurement = usage.start();
+
         const { result } = await executor.execute(execution, metadata, traceContext);
+
+        const usageSample = usage.stop(measurement);
 
         return sender.send("TASK_RUN_COMPLETED", {
           execution,
-          result,
+          result: {
+            ...result,
+            usage: usageSample,
+          },
         });
       } finally {
         _execution = undefined;
