@@ -75,3 +75,10 @@ export const consecutiveDependencyAndWait = task({
     logger.log("logs after");
   },
 });
+
+export const unfriendlyIdTask = task({
+  id: "hello/world:task-1",
+  run: async () => {
+    console.log("Hello world");
+  },
+});

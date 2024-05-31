@@ -111,9 +111,11 @@ export class ApiClient {
   }
 
   triggerTask(taskId: string, body: TriggerTaskRequestBody, options?: TriggerOptions) {
+    const encodedTaskId = encodeURIComponent(taskId);
+
     return zodfetch(
       TriggerTaskResponse,
-      `${this.baseUrl}/api/v1/tasks/${taskId}/trigger`,
+      `${this.baseUrl}/api/v1/tasks/${encodedTaskId}/trigger`,
       {
         method: "POST",
         headers: this.#getHeaders(options?.spanParentAsLink ?? false),
@@ -124,9 +126,11 @@ export class ApiClient {
   }
 
   batchTriggerTask(taskId: string, body: BatchTriggerTaskRequestBody, options?: TriggerOptions) {
+    const encodedTaskId = encodeURIComponent(taskId);
+
     return zodfetch(
       BatchTriggerTaskResponse,
-      `${this.baseUrl}/api/v1/tasks/${taskId}/batch`,
+      `${this.baseUrl}/api/v1/tasks/${encodedTaskId}/batch`,
       {
         method: "POST",
         headers: this.#getHeaders(options?.spanParentAsLink ?? false),

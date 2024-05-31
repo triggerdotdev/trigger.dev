@@ -4,6 +4,7 @@ import { createReadStream } from "node:fs";
 import { firstScheduledTask } from "./trigger/scheduled";
 import { simpleChildTask } from "./trigger/subtasks";
 import { taskThatErrors } from "./trigger/retries";
+import { unfriendlyIdTask } from "./trigger/other";
 
 dotenv.config();
 
@@ -261,8 +262,19 @@ async function doScheduleLists() {
   }
 }
 
+async function doTriggerUnfriendlyTaskId() {
+  const run = await unfriendlyIdTask.trigger();
+
+  console.log("unfriendly id task run", run);
+
+  const completedRun = await waitForRunToComplete(run.id);
+
+  console.log("completed run", completedRun);
+}
+
 // doRuns().catch(console.error);
-doListRuns().catch(console.error);
+// doListRuns().catch(console.error);
 // doScheduleLists().catch(console.error);
 // doSchedules().catch(console.error);
 // doEnvVars().catch(console.error);
+doTriggerUnfriendlyTaskId().catch(console.error);
