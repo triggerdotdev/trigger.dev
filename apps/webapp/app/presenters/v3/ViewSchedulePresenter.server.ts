@@ -39,6 +39,7 @@ export class ViewSchedulePresenter {
               select: {
                 id: true,
                 type: true,
+                slug: true,
                 orgMember: {
                   select: {
                     user: {

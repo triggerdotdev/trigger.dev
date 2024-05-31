@@ -156,6 +156,7 @@ export function displayableEnvironment(
   return {
     id: environment.id,
     type: environment.type,
+    slug: environment.slug,
     userName,
   };
 }
