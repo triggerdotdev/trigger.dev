@@ -101,7 +101,7 @@
     "@trigger.dev/yalt": "workspace:*",
     "@types/pg": "8.6.6",
     "@uiw/react-codemirror": "^4.19.5",
-    "@upstash/ratelimit": "^1.0.1",
+    "@upstash/ratelimit": "^1.1.3",
     "@whatwg-node/fetch": "^0.9.14",
     "assert-never": "^1.2.1",
     "aws4fetch": "^1.0.18",
