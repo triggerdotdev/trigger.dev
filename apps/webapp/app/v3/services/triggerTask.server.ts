@@ -219,6 +219,8 @@ export class TriggerTaskService extends BaseService {
                   taskQueue.name,
                   taskQueue.concurrencyLimit
                 );
+              } else {
+                await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
               }
             }
 

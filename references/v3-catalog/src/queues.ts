@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import { simpleChildTask } from "./trigger/subtasks";
+import { wait } from "@trigger.dev/sdk/v3";
 
 dotenv.config();
 
@@ -54,6 +55,18 @@ export async function run() {
       },
     },
   ]);
+
+  await wait.for({ seconds: 5 });
+
+  //this should set the concurrencyLimit back to none
+  await simpleChildTask.trigger(
+    { message: "Simple alt queue 2" },
+    {
+      queue: {
+        name: "queue-concurrency-3",
+      },
+    }
+  );
 }
 
 run().catch(console.error);

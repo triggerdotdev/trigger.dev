@@ -179,6 +179,8 @@ export async function createBackgroundTasks(
           taskQueue.name,
           taskQueue.concurrencyLimit
         );
+      } else {
+        await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
       }
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
