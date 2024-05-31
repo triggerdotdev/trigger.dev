@@ -17,9 +17,8 @@ import {
   ImportEnvironmentVariablesRequestBody,
   EnvironmentVariableResponseBody,
   TaskRunExecution,
-  APIError,
 } from "@trigger.dev/core/v3";
-import { zodfetch } from "@trigger.dev/core/v3/zodfetch";
+import { zodfetch, ApiError } from "@trigger.dev/core/v3/zodfetch";
 
 export class CliApiClient {
   private readonly apiURL: string;
@@ -265,7 +264,7 @@ async function wrapZodFetch<T extends z.ZodTypeAny>(
       data: response,
     };
   } catch (error) {
-    if (error instanceof APIError) {
+    if (error instanceof ApiError) {
       return {
         success: false,
         error: error.message,

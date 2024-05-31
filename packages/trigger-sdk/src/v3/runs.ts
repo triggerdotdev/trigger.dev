@@ -1,43 +1,74 @@
 import {
+  ApiPromise,
   CanceledRunResponse,
+  ListRunResponseItem,
   ReplayRunResponse,
   RetrieveRunResponse,
   apiClientManager,
 } from "@trigger.dev/core/v3";
+import type { ListProjectRunsQueryParams, ListRunsQueryParams } from "@trigger.dev/core/v3";
 import { apiClientMissingError } from "./shared";
+import { CursorPagePromise } from "@trigger.dev/core/v3/apiClient/core";
+
+export type RetrieveRunResult = RetrieveRunResponse;
 
 export const runs = {
   replay: replayRun,
   cancel: cancelRun,
   retrieve: retrieveRun,
+  list: listRuns,
 };
 
-async function retrieveRun(runId: string): Promise<RetrieveRunResponse> {
+export type ListRunsItem = ListRunResponseItem;
+
+function listRuns(
+  projectRef: string,
+  params?: ListProjectRunsQueryParams
+): CursorPagePromise<typeof ListRunResponseItem>;
+function listRuns(params?: ListRunsQueryParams): CursorPagePromise<typeof ListRunResponseItem>;
+function listRuns(
+  paramsOrProjectRef?: ListRunsQueryParams | string,
+  params?: ListRunsQueryParams | ListProjectRunsQueryParams
+): CursorPagePromise<typeof ListRunResponseItem> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
     throw apiClientMissingError();
   }
 
-  return await apiClient.retrieveRun(runId);
+  if (typeof paramsOrProjectRef === "string") {
+    return apiClient.listProjectRuns(paramsOrProjectRef, params);
+  }
+
+  return apiClient.listRuns(params);
 }
 
-async function replayRun(runId: string): Promise<ReplayRunResponse> {
+function retrieveRun(runId: string): ApiPromise<RetrieveRunResult> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
     throw apiClientMissingError();
   }
 
-  return await apiClient.replayRun(runId);
+  return apiClient.retrieveRun(runId);
 }
 
-async function cancelRun(runId: string): Promise<CanceledRunResponse> {
+function replayRun(runId: string): ApiPromise<ReplayRunResponse> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
     throw apiClientMissingError();
   }
 
-  return await apiClient.cancelRun(runId);
+  return apiClient.replayRun(runId);
+}
+
+function cancelRun(runId: string): ApiPromise<CanceledRunResponse> {
+  const apiClient = apiClientManager.client;
+
+  if (!apiClient) {
+    throw apiClientMissingError();
+  }
+
+  return apiClient.cancelRun(runId);
 }

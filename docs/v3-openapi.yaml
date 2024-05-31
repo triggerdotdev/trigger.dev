@@ -39,7 +39,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -79,7 +79,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -114,7 +114,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -157,7 +157,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -189,7 +189,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -223,7 +223,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -257,7 +257,7 @@ paths:
       tags:
         - schedules
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -265,20 +265,14 @@ paths:
 
             const schedule = await schedules.activate(scheduleId);
 
-  "/api/v1/runs/{run_id}/replay":
+  "/api/v1/runs/{runId}/replay":
+    parameters:
+      - $ref: "#/components/parameters/runId"
     post:
       operationId: replay_run_v1
       summary: Replay a run
       description: Creates a new run with the same payload and options as the original
         run.
-      parameters:
-        - in: path
-          name: run_id
-          required: true
-          schema:
-            type: string
-          description: The ID of an existing run. When you trigger a run you will get
-            an id in the response.
       responses:
         "200":
           description: Successful request
@@ -325,9 +319,9 @@ paths:
                     enum:
                       - Run not found
       tags:
-        - run
+        - runs
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -335,19 +329,14 @@ paths:
 
             const handle = await runs.replay("run_1234");
 
-  "/api/v1/runs/{run_id}/cancel":
+  "/api/v2/runs/{runId}/cancel":
+    parameters:
+      - $ref: "#/components/parameters/runId"
     post:
       operationId: cancel_run_v1
-      description: Cancels a run.
       summary: Cancel a run
-      parameters:
-        - in: path
-          name: run_id
-          required: true
-          schema:
-            type: string
-          description: The ID of an existing run. When you trigger a run you will get
-            an id in the response.
+      description: Cancels an in-progress run. If the run is already completed, this
+        will have no effect.
       responses:
         "200":
           description: Successful request
@@ -356,9 +345,10 @@ paths:
               schema:
                 type: object
                 properties:
-                  message:
+                  id:
                     type: string
-                    description: Confirmation message that the run was canceled.
+                    description: The ID of the run that was canceled.
+                    example: run_1234
         "400":
           description: Invalid request
           content:
@@ -394,9 +384,9 @@ paths:
                     enum:
                       - Run not found
       tags:
-        - run
+        - runs
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
@@ -404,19 +394,14 @@ paths:
 
             await runs.cancel("run_1234");
 
-  "/api/v3/runs/{run_id}":
+  "/api/v3/runs/{runId}":
+    parameters:
+      - $ref: "#/components/parameters/runId"
     get:
       operationId: retrieve_run_v1
-      description: Retrieve a run
       summary: Retrieve a run
-      parameters:
-        - in: path
-          name: run_id
-          required: true
-          schema:
-            type: string
-          description: The ID of an existing run. When you trigger a run you will get
-            an id in the response.
+      description: |
+        Retrieve information about a run, including its status, payload, output, and attempts. If you authenticate with a Public API key, we will omit the payload and output fields for security reasons. 
       responses:
         "200":
           description: Successful request
@@ -460,13 +445,182 @@ paths:
       tags:
         - run
       security:
-        - apiKey: []
+        - secretKey: []
       x-codeSamples:
         - lang: typescript
           source: |-
             import { runs } from "@trigger.dev/sdk/v3";
 
-            await runs.retrieve("run_1234");
+            const result = await runs.retrieve("run_1234");
+
+            // We include boolean helpers to check the status of the run
+            // (isSuccess, isFailed, isCompleted, etc.)
+            if (result.isSuccess) {
+              console.log("Run was successful with output", result.output);
+            }
+
+            // You also have access to the run status that includes more granular information
+            console.log("Run status:", result.status);
+
+            // You can access the payload and output
+            console.log("Payload:", result.payload);
+            console.log("Output:", result.output);
+
+            // You can also access the attempts, which will give you information about errors (if they exist)
+            for (const attempt of result.attempts) {
+              if (attempt.status === "FAILED") {
+                console.log("Attempt failed with error:", attempt.error);
+              }
+            }
+
+  "/api/v1/runs":
+    get:
+      operationId: list_runs_v1
+      summary: List runs
+      description: List runs in a specific environment. You can filter the runs by status, created at, task identifier, version, and more.
+      parameters:
+        - $ref: "#/components/parameters/cursorPagination"
+        - $ref: "#/components/parameters/runsFilter"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRunsResult"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorWithDetailsResponse"
+        "401":
+          description: Unauthorized request
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: List runs
+          source: |-
+            import { runs } from "@trigger.dev/sdk/v3";
+
+            // Get the first page of runs
+            let page = await runs.list({ limit: 20 });
+
+            for (const run of page.data) {
+              console.log(`Run ID: ${run.id}, Status: ${run.status}`);
+            }
+
+            // Convenience methods are provided for manually paginating:
+            while (page.hasNextPage()) {
+              page = await page.getNextPage();
+              // Do something with the next page of runs
+            }
+
+            // Auto-paginate through all runs
+            const allRuns = [];
+
+            for await (const run of runs.list({ limit: 20 })) {
+              allRuns.push(run);
+            }
+        - lang: typescript
+          label: Filter runs
+          source: |-
+            import { runs } from "@trigger.dev/sdk/v3";
+
+            const response = await runs.list({
+              status: ["QUEUED", "EXECUTING"],
+              taskIdentifier: ["my-task", "my-other-task"],
+              from: new Date("2024-04-01T00:00:00Z"),
+              to: new Date(),
+            });
+
+            for (const run of response.data) {
+              console.log(`Run ID: ${run.id}, Status: ${run.status}`);
+            }
+
+  "/api/v1/projects/{projectRef}/runs":
+    parameters:
+      - $ref: "#/components/parameters/projectRef"
+    get:
+      operationId: list_project_runs_v1
+      summary: List project runs
+      description: List runs in a project, across multiple environments, using Personal Access Token auth. You can filter the runs by status, created at, task identifier, version, and more.
+      parameters:
+        - $ref: "#/components/parameters/cursorPagination"
+        - $ref: "#/components/parameters/runsFilterWithEnv"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRunsResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorWithDetailsResponse"
+        "401":
+          description: Unauthorized request
+      tags:
+        - runs
+      security:
+        - personalAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          label: List runs
+          source: |-
+            import { runs, configure } from "@trigger.dev/sdk/v3";
+
+            configure({
+              secretKey: "tr_pat_1234" // always use an environment variable for this
+            });
+
+            // Get the first page of runs
+            let page = await runs.list("proj_1234", { limit: 20 });
+
+            for (const run of page.data) {
+              console.log(`Run ID: ${run.id}, Status: ${run.status}`);
+            }
+
+            // Convenience methods are provided for manually paginating:
+            while (page.hasNextPage()) {
+              page = await page.getNextPage();
+              // Do something with the next page of runs
+            }
+
+            // Auto-paginate through all runs
+            const allRuns = [];
+
+            for await (const run of runs.list("proj_1234", { limit: 20 })) {
+              allRuns.push(run);
+            }
+        - lang: typescript
+          label: Filter runs
+          source: |-
+            import { runs, configure } from "@trigger.dev/sdk/v3";
+
+            configure({
+              secretKey: "tr_pat_1234" // always use an environment variable for this
+            });
+
+            const response = await runs.list("proj_1234", {
+              env: ["prod", "staging"],
+              status: ["QUEUED", "EXECUTING"],
+              taskIdentifier: ["my-task", "my-other-task"],
+              from: new Date("2024-04-01T00:00:00Z"),
+              to: new Date(),
+            });
+
+            for (const run of response.data) {
+              console.log(`Run ID: ${run.id}, Status: ${run.status}`);
+            }
+      
+
 
   "/api/v1/projects/{projectRef}/envvars/{env}":
     parameters:
@@ -504,7 +658,7 @@ paths:
       tags:
         - envvars
       security:
-        - apiKey: []
+        - secretKey: []
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
@@ -577,7 +731,7 @@ paths:
       tags:
         - envvars
       security:
-        - apiKey: []
+        - secretKey: []
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
@@ -674,7 +828,7 @@ paths:
       tags:
         - envvars
       security:
-        - apiKey: []
+        - secretKey: []
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
@@ -772,7 +926,7 @@ paths:
       tags:
         - envvars
       security:
-        - apiKey: []
+        - secretKey: []
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
@@ -830,7 +984,7 @@ paths:
       tags:
         - envvars
       security:
-        - apiKey: []
+        - secretKey: []
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
@@ -889,7 +1043,7 @@ paths:
       tags:
         - envvars
       security:
-        - apiKey: []
+        - secretKey: []
         - personalAccessToken: []
       x-codeSamples:
         - lang: typescript
@@ -918,6 +1072,67 @@ paths:
 
 components:
   parameters:
+    runsFilterWithEnv:
+      in: query
+      name: filter
+      style: deepObject
+      explode: true
+      description: |
+        Use this parameter to filter the runs. You can filter by created at, environment, status, task identifier, and version.
+
+        For array fields, you can provide multiple values to filter by using a comma-separated list. For example, to get QUEUED and EXECUTING runs, you can use `filter[status]=QUEUED,EXECUTING`.
+
+        For object fields, you should use the "form" encoding style. For example, to filter by the period, you can use `filter[createdAt][period]=1d`.
+      schema:
+        allOf:
+          - $ref: "#/components/schemas/CommonRunsFilter"
+          - $ref: "#/components/schemas/EnvFilter"
+    runsFilter:
+      in: query
+      name: filter
+      style: deepObject
+      explode: true
+      description: |
+        Use this parameter to filter the runs. You can filter by created at, status, task identifier, and version.
+
+        For array fields, you can provide multiple values to filter by using a comma-separated list. For example, to get QUEUED and EXECUTING runs, you can use `filter[status]=QUEUED,EXECUTING`.
+
+        For object fields, you should use the "form" encoding style. For example, to filter by the period, you can use `filter[createdAt][period]=1d`.
+      schema:
+        $ref: "#/components/schemas/CommonRunsFilter"
+    cursorPagination:
+      in: query
+      name: page
+      style: deepObject
+      explode: true
+      description: |
+        Use this parameter to paginate the results. You can specify the number of runs per page, and the ID of the run to start the page after or before.
+
+        For object fields like `page`, you should use the "form" encoding style. For example, to get the next page of runs, you can use `page[after]=run_1234`.
+      schema:
+        type: object
+        properties:
+          size:
+            type: integer
+            maximum: 100
+            minimum: 10
+            default: 25
+            description: Number of runs per page. Maximum is 100.
+          after:
+            type: string
+            description: The ID of the run to start the page after. This will set the direction of the pagination to forward.
+          before:
+            type: string
+            description: The ID of the run to start the page before. This will set the direction of the pagination to backward.
+    runId:
+      in: path
+      name: runId
+      required: true
+      schema:
+        type: string
+      description: |
+        The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task.
+      example: run_1234
     projectRef:
       in: path
       name: projectRef
@@ -944,7 +1159,7 @@ components:
       description: The name of the environment variable.
       example: SLACK_API_KEY
   securitySchemes:
-    apiKey:
+    secretKey:
       type: http
       scheme: bearer
       description: |
@@ -974,6 +1189,173 @@ components:
         configure({ secretKey: "tr_pat_1234" });
         ```
   schemas:
+    EnvFilter:
+      type: object
+      properties:
+        env:
+          type: array
+          items:
+            type: string
+            description: The environment of the project
+            enum:
+              - dev
+              - staging
+              - prod
+    CommonRunsFilter:
+      type: object
+      properties:
+        createdAt:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date-time
+              description: The start date to filter the runs by
+            to:
+              type: string
+              format: date-time
+              description: The end date to filter the runs by
+            period:
+              type: string
+              description: The period to filter the runs by
+              example: 1d
+        status:
+          type: array
+          items:
+            type: string
+            description: The status of the run
+            enum:
+              - WAITING_FOR_DEPLOY
+              - QUEUED
+              - EXECUTING
+              - REATTEMPTING
+              - FROZEN
+              - COMPLETED
+              - CANCELED
+              - FAILED
+              - CRASHED
+              - INTERRUPTED
+              - SYSTEM_FAILURE
+        taskIdentifier:
+          type: array
+          items:
+            type: string
+            description: The identifier of the task that was run
+        version:
+          type: array
+          items:
+            type: string
+            description: The version of the worker that executed the run
+
+        bulkAction:
+          type: string
+          description: The bulk action ID to filter the runs by
+          example: bulk_1234
+        schedule:
+          type: string
+          description: The schedule ID to filter the runs by
+          example: schedule_1234
+        isTest:
+          type: boolean
+          description: Whether the run is a test run or not
+          example: false
+    ListRunsResult:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ListRunItem"
+        pagination:
+          type: object
+          properties:
+            next:
+              type: string
+              description: The run ID to start the next page after. This should be used as the `page[after]` parameter in the next request.
+              example: run_1234
+            previous:
+              type: string
+              description: The run ID to start the previous page before. This should be used as the `page[before]` parameter in the next request.
+              example: run_5678
+    ListRunItem:
+      type: object
+      required:
+        - id
+        - status
+        - taskIdentifier
+        - createdAt
+        - updatedAt
+        - isTest
+        - env
+      properties:
+        id:
+          type: string
+          description: The unique ID of the run, prefixed with `run_`
+          example: run_1234
+        status:
+          type: string
+          description: The status of the run
+          enum:
+            - WAITING_FOR_DEPLOY
+            - QUEUED
+            - EXECUTING
+            - REATTEMPTING
+            - FROZEN
+            - COMPLETED
+            - CANCELED
+            - FAILED
+            - CRASHED
+            - INTERRUPTED
+            - SYSTEM_FAILURE
+        taskIdentifier:
+          type: string
+          description: The identifier of the task that was run
+          example: my-task
+        version:
+          type: string
+          example: 20240523.1
+          description: The version of the worker that executed the run
+        env:
+          type: object
+          description: The environment of the run
+          required:
+            - id
+            - name
+          properties:
+            id:
+              type: string
+              description: The unique ID of the environment
+              example: cl1234
+            name:
+              type: string
+              description: The name of the environment
+              example: dev
+            user:
+              type: string
+              description: If this is a dev environment, the username of the user represented by this environment
+              example: Anna
+        idempotencyKey:
+          type: string
+          description: The idempotency key used to prevent creating duplicate runs, if provided
+          example: idempotency_key_1234
+        isTest:
+          type: boolean
+          description: Whether the run is a test run or not
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          description: The time the run started
+        finishedAt:
+          type: string
+          format: date-time
+          description: The time the run finished
     InvalidEnvVarsRequestResponse:
       type: object
       properties:
@@ -998,6 +1380,35 @@ components:
       properties:
         error:
           type: string
+      required: ["error"]
+    ErrorWithDetailsResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Query Error
+        details:
+          type: array
+          items:
+            type: object
+            required:
+              - code
+              - message
+            properties:
+              code:
+                type: string
+                description: The error code
+                example: custom
+              message:
+                type: string
+                description: The error message
+                example: "Invalid status values: FOOBAR"
+              path:
+                type: array
+                items:
+                  type: string
+                description: The relevant path in the request
+                example: ["filter[status]"]
       required: ["error"]
     ListEnvironmentVariablesResponse:
       type: array
@@ -1032,27 +1443,95 @@ components:
       properties:
         id:
           type: string
+          description: The unique ID of the run, prefixed with `run_`
+          example: run_1234
         status:
           type: string
+          description: The status of the run
           enum:
-            - PENDING
+            - WAITING_FOR_DEPLOY
+            - QUEUED
             - EXECUTING
-            - PAUSED
+            - REATTEMPTING
+            - FROZEN
             - COMPLETED
-            - FAILED
             - CANCELED
+            - FAILED
+            - CRASHED
+            - INTERRUPTED
+            - SYSTEM_FAILURE
         taskIdentifier:
           type: string
-        idempotencyKey:
-          type: string
+          description: The identifier of the task that was run
+          example: my-task
         version:
           type: string
+          example: 20240523.1
+          description: The version of the worker that executed the run
+        payload:
+          type: object
+          description: The payload that was sent to the task. Will be omitted if the request was made with a Public API key
+          example: {"foo": "bar"}
+        output:
+          type: object
+          description: The output of the run. Will be omitted if the request was made with a Public API key
+          example: {"foo": "bar"}
+        idempotencyKey:
+          type: string
+          description: The idempotency key used to prevent creating duplicate runs, if provided
+          example: idempotency_key_1234
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+        isTest:
+          type: boolean
+          description: Whether the run is a test run or not
+          example: false
+        startedAt:
+          type: string
+          format: date-time
+          description: The time the run started
+        finishedAt:
+          type: string
+          format: date-time
+          description: The time the run finished
+        schedule:
+          type: object
+          description: The schedule that triggered the run. Will be omitted if the run was not triggered by a schedule
+          required:
+            - id
+            - generator
+          properties:
+            id:
+              type: string
+              description: The unique ID of the schedule, prefixed with `sched_`
+              example: sched_1234
+            externalId:
+              type: string
+              description: The external ID of the schedule. Can be anything that is useful to you (e.g., user ID, org ID, etc.)
+              example: user_1234
+            deduplicationKey:
+              type: string
+              description: The deduplication key used to prevent creating duplicate schedules
+              example: dedup_key_1234
+            generator:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - CRON
+                expression:
+                  type: string
+                  description: The cron expression used to generate the schedule
+                  example: 0 0 * * *
+                description:
+                  type: string
+                  description: The description of the generator in plain english
+                  example: Every day at midnight
         attempts:
           type: array
           items:
@@ -1065,6 +1544,8 @@ components:
             properties:
               id:
                 type: string
+                description: The unique ID of the attempt, prefixed with `attempt_`
+                example: attempt_1234
               status:
                 type: string
                 enum:
@@ -1074,6 +1555,8 @@ components:
                   - COMPLETED
                   - FAILED
                   - CANCELED
+              error:
+                $ref: "#/components/schemas/SerializedError"
               createdAt:
                 type: string
                 format: date-time
@@ -1174,3 +1657,17 @@ components:
           type: string
         userName:
           type: string
+    SerializedError:
+      type: object
+      required: 
+        - message
+      properties:
+        message:
+          type: string
+          example: Something went wrong
+        name:
+          type: string
+          example: Error
+        stackTrace:
+          type: string
+          example: "Error: Something went wrong"

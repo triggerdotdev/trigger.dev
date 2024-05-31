@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { BackgroundWorkerMetadata, ImageDetailsMetadata } from "./resources";
 import { QueueOptions } from "./schemas";
+import { SerializedError } from "../errors";
 
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
@@ -210,7 +211,7 @@ export const ReplayRunResponse = z.object({
 export type ReplayRunResponse = z.infer<typeof ReplayRunResponse>;
 
 export const CanceledRunResponse = z.object({
-  message: z.string(),
+  id: z.string(),
 });
 
 export type CanceledRunResponse = z.infer<typeof CanceledRunResponse>;
@@ -272,17 +273,21 @@ export const UpdateScheduleOptions = CreateScheduleOptions;
 
 export type UpdateScheduleOptions = z.infer<typeof UpdateScheduleOptions>;
 
+export const ScheduleGenerator = z.object({
+  type: z.literal("CRON"),
+  expression: z.string(),
+  description: z.string(),
+});
+
+export type ScheduleGenerator = z.infer<typeof ScheduleGenerator>;
+
 export const ScheduleObject = z.object({
   id: z.string(),
   task: z.string(),
   active: z.boolean(),
   deduplicationKey: z.string().nullish(),
   externalId: z.string().nullish(),
-  generator: z.object({
-    type: z.literal("CRON"),
-    expression: z.string(),
-    description: z.string(),
-  }),
+  generator: ScheduleGenerator,
   nextRun: z.coerce.date().nullish(),
   environments: z.array(
     z.object({
@@ -320,12 +325,28 @@ export const ListScheduleOptions = z.object({
 export type ListScheduleOptions = z.infer<typeof ListScheduleOptions>;
 
 export const RunStatus = z.enum([
-  "PENDING",
+  /// Task hasn't been deployed yet but is waiting to be executed
+  "WAITING_FOR_DEPLOY",
+  /// Task is waiting to be executed by a worker
+  "QUEUED",
+  /// Task is currently being executed by a worker
   "EXECUTING",
-  "PAUSED",
+  /// Task has failed and is waiting to be retried
+  "REATTEMPTING",
+  /// Task has been paused by the system, and will be resumed by the system
+  "FROZEN",
+  /// Task has been completed successfully
   "COMPLETED",
-  "FAILED",
+  /// Task has been canceled by the user
   "CANCELED",
+  /// Task has been completed with errors
+  "FAILED",
+  /// Task has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage
+  "CRASHED",
+  /// Task was interrupted during execution, mostly this happens in development environments
+  "INTERRUPTED",
+  /// Task has failed to complete, due to an error in the system
+  "SYSTEM_FAILURE",
 ]);
 
 export type RunStatus = z.infer<typeof RunStatus>;
@@ -341,14 +362,47 @@ export const AttemptStatus = z.enum([
 
 export type AttemptStatus = z.infer<typeof AttemptStatus>;
 
-export const RetrieveRunResponse = z.object({
+export const RunEnvironmentDetails = z.object({
+  id: z.string(),
+  name: z.string(),
+  user: z.string().optional(),
+});
+
+export type RunEnvironmentDetails = z.infer<typeof RunEnvironmentDetails>;
+
+export const RunScheduleDetails = z.object({
+  id: z.string(),
+  externalId: z.string().optional(),
+  deduplicationKey: z.string().optional(),
+  generator: ScheduleGenerator,
+});
+
+export type RunScheduleDetails = z.infer<typeof RunScheduleDetails>;
+
+const CommonRunFields = {
   id: z.string(),
   status: RunStatus,
   taskIdentifier: z.string(),
   idempotencyKey: z.string().optional(),
   version: z.string().optional(),
+  isQueued: z.boolean(),
+  isExecuting: z.boolean(),
+  isCompleted: z.boolean(),
+  isSuccess: z.boolean(),
+  isFailed: z.boolean(),
+  isCancelled: z.boolean(),
+  isTest: z.boolean(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
+  startedAt: z.coerce.date().optional(),
+  finishedAt: z.coerce.date().optional(),
+};
+
+export const RetrieveRunResponse = z.object({
+  ...CommonRunFields,
+  payload: z.any().optional(),
+  output: z.any().optional(),
+  schedule: RunScheduleDetails.optional(),
   attempts: z.array(
     z
       .object({
@@ -358,12 +412,30 @@ export const RetrieveRunResponse = z.object({
         updatedAt: z.coerce.date(),
         startedAt: z.coerce.date().optional(),
         completedAt: z.coerce.date().optional(),
+        error: SerializedError.optional(),
       })
       .optional()
   ),
 });
 
 export type RetrieveRunResponse = z.infer<typeof RetrieveRunResponse>;
+
+export const ListRunResponseItem = z.object({
+  ...CommonRunFields,
+  env: RunEnvironmentDetails,
+});
+
+export type ListRunResponseItem = z.infer<typeof ListRunResponseItem>;
+
+export const ListRunResponse = z.object({
+  data: z.array(ListRunResponseItem),
+  pagination: z.object({
+    next: z.string().optional(),
+    previous: z.string().optional(),
+  }),
+});
+
+export type ListRunResponse = z.infer<typeof ListRunResponse>;
 
 export const CreateEnvironmentVariableRequestBody = z.object({
   name: z.string(),

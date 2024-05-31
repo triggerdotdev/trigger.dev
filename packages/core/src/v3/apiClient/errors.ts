@@ -1,6 +1,6 @@
 export type APIHeaders = Record<string, string | null | undefined>;
 
-export class APIError extends Error {
+export class ApiError extends Error {
   readonly status: number | undefined;
   readonly headers: APIHeaders | undefined;
   readonly error: Object | undefined;
@@ -15,7 +15,7 @@ export class APIError extends Error {
     message: string | undefined,
     headers: APIHeaders | undefined
   ) {
-    super(`${APIError.makeMessage(status, error, message)}`);
+    super(`${ApiError.makeMessage(status, error, message)}`);
     this.status = status;
     this.headers = headers;
 
@@ -54,7 +54,7 @@ export class APIError extends Error {
     headers: APIHeaders | undefined
   ) {
     if (!status) {
-      return new APIConnectionError({ cause: castToError(errorResponse) });
+      return new ApiConnectionError({ cause: castToError(errorResponse) });
     }
 
     const error = (errorResponse as Record<string, any>)?.["error"];
@@ -91,11 +91,11 @@ export class APIError extends Error {
       return new InternalServerError(status, error, message, headers);
     }
 
-    return new APIError(status, error, message, headers);
+    return new ApiError(status, error, message, headers);
   }
 }
 
-export class APIConnectionError extends APIError {
+export class ApiConnectionError extends ApiError {
   override readonly status: undefined = undefined;
 
   constructor({ message, cause }: { message?: string; cause?: Error | undefined }) {
@@ -106,35 +106,35 @@ export class APIConnectionError extends APIError {
   }
 }
 
-export class BadRequestError extends APIError {
+export class BadRequestError extends ApiError {
   override readonly status: 400 = 400;
 }
 
-export class AuthenticationError extends APIError {
+export class AuthenticationError extends ApiError {
   override readonly status: 401 = 401;
 }
 
-export class PermissionDeniedError extends APIError {
+export class PermissionDeniedError extends ApiError {
   override readonly status: 403 = 403;
 }
 
-export class NotFoundError extends APIError {
+export class NotFoundError extends ApiError {
   override readonly status: 404 = 404;
 }
 
-export class ConflictError extends APIError {
+export class ConflictError extends ApiError {
   override readonly status: 409 = 409;
 }
 
-export class UnprocessableEntityError extends APIError {
+export class UnprocessableEntityError extends ApiError {
   override readonly status: 422 = 422;
 }
 
-export class RateLimitError extends APIError {
+export class RateLimitError extends ApiError {
   override readonly status: 429 = 429;
 }
 
-export class InternalServerError extends APIError {}
+export class InternalServerError extends ApiError {}
 
 function castToError(err: any): Error {
   if (err instanceof Error) return err;

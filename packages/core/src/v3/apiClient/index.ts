@@ -1,6 +1,5 @@
 import { context, propagation } from "@opentelemetry/api";
 import { version } from "../../../package.json";
-import { APIError } from "../apiErrors";
 import {
   BatchTaskRunExecutionResult,
   BatchTriggerTaskRequestBody,
@@ -13,6 +12,7 @@ import {
   EnvironmentVariableResponseBody,
   EnvironmentVariableValue,
   EnvironmentVariables,
+  ListRunResponseItem,
   ListScheduleOptions,
   ListSchedulesResult,
   ReplayRunResponse,
@@ -25,16 +25,27 @@ import {
   UpdateScheduleOptions,
 } from "../schemas";
 import { taskContext } from "../task-context-api";
-import { ZodFetchOptions, isRecordLike, zodfetch, zodupload } from "../zodfetch";
 import {
-  ImportEnvironmentVariablesParams,
+  CursorPagePromise,
+  ZodFetchOptions,
+  isRecordLike,
+  zodfetch,
+  zodfetchCursorPage,
+  zodfetchOffsetLimitPage,
+  zodupload,
+} from "./core";
+import { ApiError } from "./errors";
+import {
   CreateEnvironmentVariableParams,
+  ImportEnvironmentVariablesParams,
+  ListProjectRunsQueryParams,
+  ListRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types";
 
 export type {
-  ImportEnvironmentVariablesParams,
   CreateEnvironmentVariableParams,
+  ImportEnvironmentVariablesParams,
   UpdateEnvironmentVariableParams,
 };
 
@@ -77,7 +88,7 @@ export class ApiClient {
         zodFetchOptions
       );
     } catch (error) {
-      if (error instanceof APIError) {
+      if (error instanceof ApiError) {
         if (error.status === 404) {
           return undefined;
         }
@@ -161,6 +172,56 @@ export class ApiClient {
     );
   }
 
+  listRuns(query?: ListRunsQueryParams): CursorPagePromise<typeof ListRunResponseItem> {
+    const searchParams = createSearchQueryForListRuns(query);
+
+    return zodfetchCursorPage(
+      ListRunResponseItem,
+      `${this.baseUrl}/api/v1/runs`,
+      {
+        query: searchParams,
+        limit: query?.limit,
+        after: query?.after,
+        before: query?.before,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      zodFetchOptions
+    );
+  }
+
+  listProjectRuns(
+    projectRef: string,
+    query?: ListProjectRunsQueryParams
+  ): CursorPagePromise<typeof ListRunResponseItem> {
+    const searchParams = createSearchQueryForListRuns(query);
+
+    if (query?.env) {
+      searchParams.append(
+        "filter[env]",
+        Array.isArray(query.env) ? query.env.join(",") : query.env
+      );
+    }
+
+    return zodfetchCursorPage(
+      ListRunResponseItem,
+      `${this.baseUrl}/api/v1/projects/${projectRef}/runs`,
+      {
+        query: searchParams,
+        limit: query?.limit,
+        after: query?.after,
+        before: query?.before,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      zodFetchOptions
+    );
+  }
+
   replayRun(runId: string) {
     return zodfetch(
       ReplayRunResponse,
@@ -204,9 +265,13 @@ export class ApiClient {
       searchParams.append("perPage", options.perPage.toString());
     }
 
-    return zodfetch(
-      ListSchedulesResult,
-      `${this.baseUrl}/api/v1/schedules${searchParams.size > 0 ? `?${searchParams}` : ""}`,
+    return zodfetchOffsetLimitPage(
+      ScheduleObject,
+      `${this.baseUrl}/api/v1/schedules`,
+      {
+        page: options?.page,
+        limit: options?.perPage,
+      },
       {
         method: "GET",
         headers: this.#getHeaders(false),
@@ -355,4 +420,63 @@ export class ApiClient {
 
     return headers;
   }
+}
+
+function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchParams {
+  const searchParams = new URLSearchParams();
+
+  if (query) {
+    if (query.status) {
+      searchParams.append(
+        "filter[status]",
+        Array.isArray(query.status) ? query.status.join(",") : query.status
+      );
+    }
+
+    if (query.taskIdentifier) {
+      searchParams.append(
+        "filter[taskIdentifier]",
+        Array.isArray(query.taskIdentifier) ? query.taskIdentifier.join(",") : query.taskIdentifier
+      );
+    }
+
+    if (query.version) {
+      searchParams.append(
+        "filter[version]",
+        Array.isArray(query.version) ? query.version.join(",") : query.version
+      );
+    }
+
+    if (query.bulkAction) {
+      searchParams.append("filter[bulkAction]", query.bulkAction);
+    }
+
+    if (query.schedule) {
+      searchParams.append("filter[schedule]", query.schedule);
+    }
+
+    if (typeof query.isTest === "boolean") {
+      searchParams.append("filter[isTest]", String(query.isTest));
+    }
+
+    if (query.from) {
+      searchParams.append(
+        "filter[createdAt][from]",
+        query.from instanceof Date ? query.from.getTime().toString() : query.from.toString()
+      );
+    }
+
+    if (query.to) {
+      searchParams.append(
+        "filter[createdAt][to]",
+        query.to instanceof Date ? query.to.getTime().toString() : query.to.toString()
+      );
+    }
+
+    if (query.period) {
+      searchParams.append("filter[createdAt][period]", query.period);
+    }
+  }
+
+  return searchParams;
 }

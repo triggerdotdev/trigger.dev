@@ -30,7 +30,7 @@ export class ViewSchedulePresenter {
         taskIdentifier: true,
         project: {
           select: {
-            slug: true,
+            id: true,
           },
         },
         instances: {
@@ -39,6 +39,7 @@ export class ViewSchedulePresenter {
               select: {
                 id: true,
                 type: true,
+                slug: true,
                 orgMember: {
                   select: {
                     user: {
@@ -71,8 +72,9 @@ export class ViewSchedulePresenter {
       : [];
 
     const runPresenter = new RunListPresenter(this.#prismaClient);
+
     const { runs } = await runPresenter.call({
-      projectSlug: schedule.project.slug,
+      projectId: schedule.project.id,
       scheduleId: schedule.id,
       pageSize: 5,
     });

@@ -124,6 +124,7 @@ type DisplayableInputEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
   select: {
     id: true;
     type: true;
+    slug: true;
     orgMember: {
       select: {
         user: {
@@ -155,6 +156,7 @@ export function displayableEnvironment(
   return {
     id: environment.id,
     type: environment.type,
+    slug: environment.slug,
     userName,
   };
 }
