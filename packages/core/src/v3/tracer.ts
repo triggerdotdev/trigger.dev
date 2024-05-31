@@ -11,6 +11,7 @@ import {
 import { Logger, logs } from "@opentelemetry/api-logs";
 import { SemanticInternalAttributes } from "./semanticInternalAttributes";
 import { clock } from "./clock-api";
+import { usage } from "./usage-api";
 
 export type TriggerTracerConfig =
   | {
@@ -85,6 +86,8 @@ export class TriggerTracer {
           )
           .end();
 
+        const usageMeasurement = usage.start();
+
         try {
           return await fn(span);
         } catch (e) {
@@ -96,6 +99,13 @@ export class TriggerTracer {
 
           throw e;
         } finally {
+          const usageSample = usage.stop(usageMeasurement);
+
+          span.setAttributes({
+            [SemanticInternalAttributes.USAGE_CPU_TIME]: usageSample.cpuTime,
+            [SemanticInternalAttributes.USAGE_WALL_TIME]: usageSample.wallTime,
+          });
+
           span.end(clock.preciseNow());
         }
       }

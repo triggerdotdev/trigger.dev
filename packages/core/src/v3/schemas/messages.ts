@@ -1,6 +1,10 @@
 import { z } from "zod";
-import { TaskRunExecution, TaskRunExecutionResult, TaskRunFailedExecutionResult } from "./common";
-
+import {
+  TaskRunExecution,
+  TaskRunExecutionResult,
+  TaskRunFailedExecutionResult,
+  TaskRunExecutionUsage,
+} from "./common";
 import {
   EnvironmentType,
   Machine,

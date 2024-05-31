@@ -1,4 +1,4 @@
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task, wait } from "@trigger.dev/sdk/v3";
 
 export const longRunning = task({
   id: "long-running",
@@ -6,7 +6,9 @@ export const longRunning = task({
     logger.info("Long running payloadddd", { payload });
 
     // Wait for 3 minutes
-    await new Promise((resolve) => setTimeout(resolve, 3 * 60 * 1000));
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
+    await wait.for({ seconds: 5 });
 
     return {
       finished: new Date().toISOString(),

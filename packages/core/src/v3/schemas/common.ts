@@ -174,12 +174,20 @@ export const TaskRunExecutionRetry = z.object({
 
 export type TaskRunExecutionRetry = z.infer<typeof TaskRunExecutionRetry>;
 
+export const TaskRunExecutionUsage = z.object({
+  cpuTime: z.number(),
+  wallTime: z.number(),
+});
+
+export type TaskRunExecutionUsage = z.infer<typeof TaskRunExecutionUsage>;
+
 export const TaskRunFailedExecutionResult = z.object({
   ok: z.literal(false),
   id: z.string(),
   error: TaskRunError,
   retry: TaskRunExecutionRetry.optional(),
   skippedRetrying: z.boolean().optional(),
+  usage: TaskRunExecutionUsage.optional(),
 });
 
 export type TaskRunFailedExecutionResult = z.infer<typeof TaskRunFailedExecutionResult>;
@@ -189,6 +197,7 @@ export const TaskRunSuccessfulExecutionResult = z.object({
   id: z.string(),
   output: z.string().optional(),
   outputType: z.string(),
+  usage: TaskRunExecutionUsage.optional(),
 });
 
 export type TaskRunSuccessfulExecutionResult = z.infer<typeof TaskRunSuccessfulExecutionResult>;

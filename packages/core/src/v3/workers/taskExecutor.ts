@@ -24,6 +24,7 @@ import {
 } from "../utils/ioSerialization";
 import { calculateNextRetryDelay } from "../utils/retries";
 import { accessoryAttributes } from "../utils/styleAttributes";
+import { usage } from "../usage-api";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -58,7 +59,7 @@ export class TaskExecutor {
     execution: TaskRunExecution,
     worker: BackgroundWorkerProperties,
     traceContext: Record<string, unknown>
-  ): Promise<TaskRunExecutionResult> {
+  ): Promise<{ result: TaskRunExecutionResult }> {
     const ctx = TaskRunContext.parse(execution);
     const attemptMessage = `Attempt ${execution.attempt.number}`;
 
@@ -77,6 +78,8 @@ export class TaskExecutor {
       [SemanticInternalAttributes.SDK_VERSION]: this.task.packageVersion,
       [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
     });
+
+    const measurement = usage.start();
 
     const result = await this._tracer.startActiveSpan(
       attemptMessage,
@@ -215,7 +218,9 @@ export class TaskExecutor {
       this._tracer.extractContext(traceContext)
     );
 
-    return result;
+    const usageSample = usage.stop(measurement);
+
+    return { result: { ...result, usage: usageSample } };
   }
 
   async #callRun(payload: unknown, ctx: TaskRunContext, init: unknown) {

@@ -1803,6 +1803,9 @@ model TaskRunAttempt {
   output     String?
   outputType String  @default("application/json")
 
+  wallTimeMs Int @default(0)
+  cpuTimeMs  Int @default(0)
+
   dependencies      TaskRunDependency[]
   batchDependencies BatchTaskRun[]
 
@@ -1902,6 +1905,9 @@ model TaskEvent {
   payloadType String?
 
   createdAt DateTime @default(now())
+
+  wallTimeMs Int @default(0)
+  cpuTimeMs  Int @default(0)
 
   /// Used on the run page
   @@index([traceId])

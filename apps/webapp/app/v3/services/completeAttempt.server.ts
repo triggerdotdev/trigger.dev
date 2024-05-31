@@ -88,6 +88,8 @@ export class CompleteAttemptService extends BaseService {
         completedAt: new Date(),
         output: completion.output,
         outputType: completion.outputType,
+        wallTimeMs: completion.usage?.wallTime,
+        cpuTimeMs: completion.usage?.cpuTime,
         taskRun: {
           update: {
             data: {
@@ -138,6 +140,7 @@ export class CompleteAttemptService extends BaseService {
       // We need to cancel the task run instead of fail it
       const cancelService = new CancelAttemptService();
 
+      // TODO: handle usages
       await cancelService.call(
         taskRunAttempt.friendlyId,
         taskRunAttempt.taskRunId,
@@ -157,6 +160,8 @@ export class CompleteAttemptService extends BaseService {
         status: "FAILED",
         completedAt: new Date(),
         error: completion.error,
+        wallTimeMs: completion.usage?.wallTime,
+        cpuTimeMs: completion.usage?.cpuTime,
       },
     });
 

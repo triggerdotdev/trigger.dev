@@ -14,6 +14,8 @@ import {
   OtelTaskLogger,
   ConsoleInterceptor,
   type TracingSDK,
+  usage,
+  DevUsageManager,
 } from "@trigger.dev/core/v3/workers";
 
 __WORKER_SETUP__;
@@ -51,6 +53,8 @@ declare const sender: ZodMessageSender<typeof childToWorkerMessages>;
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
+
+usage.setGlobalUsageManager(new DevUsageManager());
 
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(
@@ -130,6 +134,10 @@ const handler = new ZodMessageHandler({
               type: "INTERNAL_ERROR",
               code: TaskRunErrorCodes.TASK_ALREADY_RUNNING,
             },
+            usage: {
+              cpuTime: 0,
+              wallTime: 0,
+            },
           },
         });
 
@@ -152,6 +160,10 @@ const handler = new ZodMessageHandler({
               type: "INTERNAL_ERROR",
               code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,
             },
+            usage: {
+              cpuTime: 0,
+              wallTime: 0,
+            },
           },
         });
 
@@ -171,7 +183,7 @@ const handler = new ZodMessageHandler({
         _execution = execution;
         _isRunning = true;
 
-        const result = await executor.execute(execution, metadata, traceContext);
+        const { result } = await executor.execute(execution, metadata, traceContext);
 
         return sender.send("TASK_RUN_COMPLETED", {
           execution,

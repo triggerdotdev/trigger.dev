@@ -4,6 +4,7 @@ import { BatchTaskRunExecutionResult, TaskRunContext, TaskRunExecutionResult } f
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals";
 import { type RuntimeManager } from "./manager";
 import { NoopRuntimeManager } from "./noopRuntimeManager";
+import { usage } from "../usage-api";
 
 const NOOP_RUNTIME_MANAGER = new NoopRuntimeManager();
 
@@ -21,15 +22,15 @@ export class RuntimeAPI {
   }
 
   public waitForDuration(ms: number): Promise<void> {
-    return this.#getRuntimeManager().waitForDuration(ms);
+    return usage.pauseAsync(() => this.#getRuntimeManager().waitForDuration(ms));
   }
 
   public waitUntil(date: Date): Promise<void> {
-    return this.#getRuntimeManager().waitUntil(date);
+    return usage.pauseAsync(() => this.#getRuntimeManager().waitUntil(date));
   }
 
   public waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
-    return this.#getRuntimeManager().waitForTask(params);
+    return usage.pauseAsync(() => this.#getRuntimeManager().waitForTask(params));
   }
 
   public waitForBatch(params: {
@@ -37,7 +38,7 @@ export class RuntimeAPI {
     runs: string[];
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult> {
-    return this.#getRuntimeManager().waitForBatch(params);
+    return usage.pauseAsync(() => this.#getRuntimeManager().waitForBatch(params));
   }
 
   public setGlobalRuntimeManager(runtimeManager: RuntimeManager): boolean {

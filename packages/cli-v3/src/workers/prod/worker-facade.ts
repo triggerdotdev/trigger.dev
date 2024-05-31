@@ -159,7 +159,7 @@ const zodIpc = new ZodIpcConnection({
         _execution = execution;
         _isRunning = true;
 
-        const result = await executor.execute(execution, metadata, traceContext);
+        const { result } = await executor.execute(execution, metadata, traceContext);
 
         return sender.send("TASK_RUN_COMPLETED", {
           execution,

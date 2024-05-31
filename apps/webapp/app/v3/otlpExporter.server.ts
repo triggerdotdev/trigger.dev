@@ -307,6 +307,14 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
                 "."
               )
             ) ?? resourceProperties.attemptNumber,
+          wallTimeMs: extractDoubleAttribute(
+            span.attributes ?? [],
+            SemanticInternalAttributes.USAGE_WALL_TIME
+          ),
+          cpuTimeMs: extractDoubleAttribute(
+            span.attributes ?? [],
+            SemanticInternalAttributes.USAGE_CPU_TIME
+          ),
         };
       })
       .filter(Boolean);
@@ -609,6 +617,20 @@ function extractNumberAttribute(
   if (!attribute) return fallback;
 
   return isIntValue(attribute?.value) ? Number(attribute.value.intValue) : fallback;
+}
+
+function extractDoubleAttribute(attributes: KeyValue[], name: string): number | undefined;
+function extractDoubleAttribute(attributes: KeyValue[], name: string, fallback: number): number;
+function extractDoubleAttribute(
+  attributes: KeyValue[],
+  name: string,
+  fallback?: number
+): number | undefined {
+  const attribute = attributes.find((attribute) => attribute.key === name);
+
+  if (!attribute) return fallback;
+
+  return isDoubleValue(attribute?.value) ? Number(attribute.value.doubleValue) : fallback;
 }
 
 function extractBooleanAttribute(attributes: KeyValue[], name: string): boolean | undefined;
