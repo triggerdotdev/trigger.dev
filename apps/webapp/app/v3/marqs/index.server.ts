@@ -82,6 +82,10 @@ export class MarQS {
     return this.redis.set(this.keys.queueConcurrencyLimitKey(env, queue), concurrency);
   }
 
+  public async removeQueueConcurrencyLimits(env: AuthenticatedEnvironment, queue: string) {
+    return this.redis.del(this.keys.queueConcurrencyLimitKey(env, queue));
+  }
+
   public async updateEnvConcurrencyLimits(env: AuthenticatedEnvironment) {
     await this.#callUpdateGlobalConcurrencyLimits({
       envConcurrencyLimitKey: this.keys.envConcurrencyLimitKey(env),
