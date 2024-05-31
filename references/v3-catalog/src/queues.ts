@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import { simpleChildTask } from "./trigger/subtasks";
 import { wait } from "@trigger.dev/sdk/v3";
+import { setTimeout } from "timers/promises";
 
 dotenv.config();
 
@@ -56,7 +57,7 @@ export async function run() {
     },
   ]);
 
-  await wait.for({ seconds: 5 });
+  await setTimeout(10_000);
 
   //this should set the concurrencyLimit back to none
   await simpleChildTask.trigger(
