@@ -176,7 +176,16 @@ export const TaskFileMetadata = z.object({
 
 export type TaskFileMetadata = z.infer<typeof TaskFileMetadata>;
 
-export const TaskMetadataWithFilePath = TaskMetadata.merge(TaskFileMetadata);
+export const TaskMetadataWithFilePath = z.object({
+  id: z.string(),
+  packageVersion: z.string(),
+  queue: QueueOptions.optional(),
+  retry: RetryOptions.optional(),
+  machine: Machine.partial().optional(),
+  triggerSource: z.string().optional(),
+  filePath: z.string(),
+  exportName: z.string(),
+});
 
 export type TaskMetadataWithFilePath = z.infer<typeof TaskMetadataWithFilePath>;
 
@@ -224,3 +233,13 @@ export type ResolvedConfig = RequireKeys<
 export const WaitReason = z.enum(["WAIT_FOR_DURATION", "WAIT_FOR_TASK", "WAIT_FOR_BATCH"]);
 
 export type WaitReason = z.infer<typeof WaitReason>;
+
+export const TaskRunExecutionLazyAttemptPayload = z.object({
+  runId: z.string(),
+  messageId: z.string(),
+  isTest: z.boolean(),
+  traceContext: z.record(z.unknown()),
+  environment: z.record(z.string()).optional(),
+});
+
+export type TaskRunExecutionLazyAttemptPayload = z.infer<typeof TaskRunExecutionLazyAttemptPayload>;

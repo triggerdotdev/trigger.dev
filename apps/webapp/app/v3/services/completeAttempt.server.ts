@@ -11,7 +11,7 @@ import { PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
-import { eventRepository } from "../eventRepository.server";
+import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
@@ -20,6 +20,7 @@ import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { TaskRun } from "@trigger.dev/database";
 import { PerformTaskAttemptAlertsService } from "./alerts/performTaskAttemptAlerts.server";
+import { RetryAttemptService } from "./retryAttempt.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -56,6 +57,8 @@ export class CompleteAttemptService extends BaseService {
           status: "SYSTEM_FAILURE",
         },
       });
+
+      // No attempt, so there's no message to ACK
 
       return "COMPLETED";
     }
@@ -143,6 +146,8 @@ export class CompleteAttemptService extends BaseService {
         env
       );
 
+      // The cancel service handles ACK
+
       return "COMPLETED";
     }
 
@@ -173,7 +178,7 @@ export class CompleteAttemptService extends BaseService {
           properties: {
             retryAt: retryAt.toISOString(),
           },
-          runId: taskRunAttempt.taskRunId,
+          runId: taskRunAttempt.taskRun.friendlyId,
           style: {
             icon: "schedule-attempt",
           },
@@ -185,7 +190,10 @@ export class CompleteAttemptService extends BaseService {
         endTime: retryAt,
       });
 
-      logger.debug("Retrying", { taskRun: taskRunAttempt.taskRun.friendlyId });
+      logger.debug("Retrying", {
+        taskRun: taskRunAttempt.taskRun.friendlyId,
+        retry: completion.retry,
+      });
 
       await this._prisma.taskRun.update({
         where: {
@@ -203,7 +211,12 @@ export class CompleteAttemptService extends BaseService {
       }
 
       if (!checkpoint) {
-        await this.#enqueueRetry(taskRunAttempt.taskRun, completion.retry.timestamp);
+        await this.#retryAttempt(
+          taskRunAttempt.taskRun,
+          completion.retry.timestamp,
+          undefined,
+          taskRunAttempt.backgroundWorker.supportsLazyAttempts
+        );
         return "RETRIED";
       }
 
@@ -231,10 +244,12 @@ export class CompleteAttemptService extends BaseService {
           },
         });
 
+        await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
+
         return "COMPLETED";
       }
 
-      await this.#enqueueRetry(
+      await this.#retryAttempt(
         taskRunAttempt.taskRun,
         completion.retry.timestamp,
         checkpointCreateResult.event.id
@@ -253,6 +268,15 @@ export class CompleteAttemptService extends BaseService {
         attributes: {
           isError: true,
         },
+        events: [
+          {
+            name: "exception",
+            time: new Date(),
+            properties: {
+              exception: createExceptionPropertiesFromError(completion.error),
+            },
+          },
+        ],
       });
 
       if (
@@ -310,17 +334,28 @@ export class CompleteAttemptService extends BaseService {
     }
   }
 
-  async #enqueueRetry(run: TaskRun, retryTimestamp: number, checkpointEventId?: string) {
-    // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
-    return await marqs?.replaceMessage(
-      run.id,
-      {
-        type: "EXECUTE",
-        taskIdentifier: run.taskIdentifier,
-        checkpointEventId: checkpointEventId,
-      },
-      retryTimestamp
-    );
+  async #retryAttempt(
+    run: TaskRun,
+    retryTimestamp: number,
+    checkpointEventId?: string,
+    supportsLazyAttempts?: boolean
+  ) {
+    if (checkpointEventId || !supportsLazyAttempts) {
+      // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
+      return await marqs?.replaceMessage(
+        run.id,
+        {
+          type: "EXECUTE",
+          taskIdentifier: run.taskIdentifier,
+          checkpointEventId: checkpointEventId,
+        },
+        retryTimestamp
+      );
+    } else {
+      // There's no checkpoint so the worker is still running and waiting for a retry message
+      // It supports lazy attempts so we can bypass the queue and send the message directly to the worker
+      RetryAttemptService.enqueue(run.id, this._prisma, new Date(retryTimestamp));
+    }
   }
 
   #generateMetadataAttributesForNextAttempt(execution: TaskRunExecution) {
@@ -353,6 +388,7 @@ async function findAttempt(prismaClient: PrismaClientOrTransaction, friendlyId: 
     include: {
       taskRun: true,
       backgroundWorkerTask: true,
+      backgroundWorker: true,
     },
   });
 }

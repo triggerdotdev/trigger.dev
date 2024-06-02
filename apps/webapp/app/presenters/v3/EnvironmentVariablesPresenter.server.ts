@@ -79,6 +79,19 @@ export class EnvironmentVariablesPresenter {
         project: {
           slug: projectSlug,
         },
+        OR: [
+          {
+            type: {
+              in: ["PREVIEW", "STAGING", "PRODUCTION"],
+            },
+          },
+          {
+            type: "DEVELOPMENT",
+            orgMember: {
+              userId,
+            },
+          },
+        ],
       },
     });
 
@@ -87,7 +100,7 @@ export class EnvironmentVariablesPresenter {
     );
 
     const repository = new EnvironmentVariablesRepository(this.#prismaClient);
-    const variables = await repository.getProject(project.id, userId);
+    const variables = await repository.getProject(project.id);
 
     return {
       environmentVariables: environmentVariables.map((environmentVariable) => {

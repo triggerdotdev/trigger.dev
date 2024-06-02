@@ -34,4 +34,26 @@ export abstract class BasePresenter {
       }
     );
   }
+
+  protected async trace<T>(trace: string, fn: (span: Span) => Promise<T>): Promise<T> {
+    return tracer.startActiveSpan(
+      `${this.constructor.name}.${trace}`,
+      { kind: SpanKind.SERVER },
+      async (span) => {
+        try {
+          return await fn(span);
+        } catch (e) {
+          if (e instanceof Error) {
+            span.recordException(e);
+          } else {
+            span.recordException(new Error(String(e)));
+          }
+
+          throw e;
+        } finally {
+          span.end();
+        }
+      }
+    );
+  }
 }

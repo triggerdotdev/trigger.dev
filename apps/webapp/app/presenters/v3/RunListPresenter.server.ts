@@ -3,13 +3,13 @@ import parse from "parse-duration";
 import { Direction } from "~/components/runs/RunStatuses";
 import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
-import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
+import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 import { BasePresenter } from "./basePresenter.server";
 
-type RunListOptions = {
+export type RunListOptions = {
   userId?: string;
-  projectSlug: string;
+  projectId: string;
   //filters
   tasks?: string[];
   versions?: string[];
@@ -20,6 +20,7 @@ type RunListOptions = {
   bulkId?: string;
   from?: number;
   to?: number;
+  isTest?: boolean;
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -35,7 +36,7 @@ export type RunListAppliedFilters = RunList["filters"];
 export class RunListPresenter extends BasePresenter {
   public async call({
     userId,
-    projectSlug,
+    projectId,
     tasks,
     versions,
     statuses,
@@ -43,6 +44,7 @@ export class RunListPresenter extends BasePresenter {
     scheduleId,
     period,
     bulkId,
+    isTest,
     from,
     to,
     direction = "forward",
@@ -59,7 +61,9 @@ export class RunListPresenter extends BasePresenter {
       (period !== undefined && period !== "all") ||
       (bulkId !== undefined && bulkId !== "") ||
       from !== undefined ||
-      to !== undefined;
+      to !== undefined ||
+      (scheduleId !== undefined && scheduleId !== "") ||
+      typeof isTest === "boolean";
 
     // Find the project scoped to the organization
     const project = await this._replica.project.findFirstOrThrow({
@@ -85,7 +89,7 @@ export class RunListPresenter extends BasePresenter {
         },
       },
       where: {
-        slug: projectSlug,
+        id: projectId,
       },
     });
 
@@ -156,6 +160,7 @@ export class RunListPresenter extends BasePresenter {
         updatedAt: Date;
         isTest: boolean;
         spanId: string;
+        idempotencyKey: string | null;
       }[]
     >`
     SELECT
@@ -170,7 +175,8 @@ export class RunListPresenter extends BasePresenter {
     tr."lockedAt" AS "lockedAt",
     tr."updatedAt" AS "updatedAt",
     tr."isTest" AS "isTest",
-    tr."spanId" AS "spanId"
+    tr."spanId" AS "spanId",
+    tr."idempotencyKey" AS "idempotencyKey"
   FROM
     ${sqlDatabaseSchema}."TaskRun" tr
   LEFT JOIN
@@ -210,6 +216,7 @@ export class RunListPresenter extends BasePresenter {
           : Prisma.empty
       }
       ${scheduleId ? Prisma.sql`AND tr."scheduleId" = ${scheduleId}` : Prisma.empty}
+      ${typeof isTest === "boolean" ? Prisma.sql`AND tr."isTest" = ${isTest}` : Prisma.empty}
       ${
         periodMs
           ? Prisma.sql`AND tr."createdAt" >= NOW() - INTERVAL '1 millisecond' * ${periodMs}`
@@ -270,6 +277,7 @@ export class RunListPresenter extends BasePresenter {
           friendlyId: run.runFriendlyId,
           number: Number(run.number),
           createdAt: run.createdAt.toISOString(),
+          updatedAt: run.updatedAt.toISOString(),
           startedAt: run.lockedAt ? run.lockedAt.toISOString() : undefined,
           hasFinished,
           finishedAt: hasFinished ? run.updatedAt.toISOString() : undefined,
@@ -280,7 +288,8 @@ export class RunListPresenter extends BasePresenter {
           spanId: run.spanId,
           isReplayable: true,
           isCancellable: CANCELLABLE_STATUSES.includes(run.status),
-          environment: displayableEnvironments(environment, userId),
+          environment: displayableEnvironment(environment, userId),
+          idempotencyKey: run.idempotencyKey ? run.idempotencyKey : undefined,
         };
       }),
       pagination: {

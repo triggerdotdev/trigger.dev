@@ -34,7 +34,7 @@ export abstract class BaseService {
 }
 
 export class ServiceValidationError extends Error {
-  constructor(message: string) {
+  constructor(message: string, public status?: number) {
     super(message);
     this.name = "ServiceValidationError";
   }

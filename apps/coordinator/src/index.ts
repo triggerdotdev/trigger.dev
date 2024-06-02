@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
-import { $ } from "execa";
+import fs from "node:fs/promises";
+import { $, type ExecaChildProcess } from "execa";
 import { nanoid } from "nanoid";
 import { Server } from "socket.io";
 import {
@@ -19,6 +20,11 @@ collectDefaultMetrics();
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8020);
 const NODE_NAME = process.env.NODE_NAME || "coordinator";
 const DEFAULT_RETRY_DELAY_THRESHOLD_IN_MS = 30_000;
+const CHAOS_MONKEY_ENABLED = !!process.env.CHAOS_MONKEY_ENABLED;
+
+const FORCE_CHECKPOINT_SIMULATION = ["1", "true"].includes(
+  process.env.FORCE_CHECKPOINT_SIMULATION ?? "true"
+);
 
 const REGISTRY_HOST = process.env.REGISTRY_HOST || "localhost:5000";
 const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
@@ -31,6 +37,10 @@ const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
 const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?? "false");
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
+
+if (CHAOS_MONKEY_ENABLED) {
+  logger.log("🍌 Chaos monkey enabled");
+}
 
 type CheckpointerInitializeReturn = {
   canCheckpoint: boolean;
@@ -49,6 +59,40 @@ type CheckpointData = {
   docker: boolean;
 };
 
+function isExecaChildProcess(maybeExeca: unknown): maybeExeca is Awaited<ExecaChildProcess> {
+  return typeof maybeExeca === "object" && maybeExeca !== null && "escapedCommand" in maybeExeca;
+}
+
+async function getFileSize(filePath: string): Promise<number> {
+  try {
+    const stats = await fs.stat(filePath);
+    return stats.size;
+  } catch (error) {
+    console.error("Error getting file size:", error);
+    return -1;
+  }
+}
+
+async function getParsedFileSize(filePath: string) {
+  const sizeInBytes = await getFileSize(filePath);
+
+  let message = `Size in bytes: ${sizeInBytes}`;
+
+  if (sizeInBytes > 1024 * 1024) {
+    const sizeInMB = (sizeInBytes / 1024 / 1024).toFixed(2);
+    message = `Size in MB (rounded): ${sizeInMB}`;
+  } else if (sizeInBytes > 1024) {
+    const sizeInKB = (sizeInBytes / 1024).toFixed(2);
+    message = `Size in KB (rounded): ${sizeInKB}`;
+  }
+
+  return {
+    path: filePath,
+    sizeInBytes,
+    message,
+  };
+}
+
 class Checkpointer {
   #initialized = false;
   #canCheckpoint = false;
@@ -56,6 +100,7 @@ class Checkpointer {
 
   #logger = new SimpleLogger("[checkptr]");
   #abortControllers = new Map<string, AbortController>();
+  #failedCheckpoints = new Map<string, unknown>();
 
   constructor(private opts = { forceSimulate: false }) {}
 
@@ -150,7 +195,11 @@ class Checkpointer {
       success: !!result,
     });
 
-    return result;
+    if (!result.success) {
+      return;
+    }
+
+    return result.checkpoint;
   }
 
   isCheckpointing(runId: string) {
@@ -158,6 +207,13 @@ class Checkpointer {
   }
 
   cancelCheckpoint(runId: string): boolean {
+    // If the last checkpoint failed, pretend we canceled it
+    // This ensures tasks don't wait for external resume messages to continue
+    if (this.#hasFailedCheckpoint(runId)) {
+      this.#clearFailedCheckpoint(runId);
+      return true;
+    }
+
     const controller = this.#abortControllers.get(runId);
 
     if (!controller) {
@@ -176,25 +232,30 @@ class Checkpointer {
     leaveRunning = true, // This mirrors kubernetes behaviour more accurately
     projectRef,
     deploymentVersion,
-  }: CheckpointAndPushOptions): Promise<CheckpointData | undefined> {
+  }: CheckpointAndPushOptions): Promise<
+    { success: true; checkpoint: CheckpointData } | { success: false; reason?: "CANCELED" }
+  > {
     await this.initialize();
+
+    const options = {
+      runId,
+      leaveRunning,
+      projectRef,
+      deploymentVersion,
+    };
 
     if (!this.#dockerMode && !this.#canCheckpoint) {
       this.#logger.error("No checkpoint support. Simulation requires docker.");
-      return;
+      return { success: false };
     }
 
     if (this.#abortControllers.has(runId)) {
-      logger.error("Checkpoint procedure already in progress", {
-        options: {
-          runId,
-          leaveRunning,
-          projectRef,
-          deploymentVersion,
-        },
-      });
-      return;
+      logger.error("Checkpoint procedure already in progress", { options });
+      return { success: false };
     }
+
+    // This is a new checkpoint, clear any last failure for this run
+    this.#clearFailedCheckpoint(runId);
 
     const controller = new AbortController();
     this.#abortControllers.set(runId, controller);
@@ -202,18 +263,27 @@ class Checkpointer {
     const $$ = $({ signal: controller.signal });
 
     try {
+      if (CHAOS_MONKEY_ENABLED) {
+        console.log("🍌 Chaos monkey wreaking havoc");
+
+        const random = Math.random();
+
+        if (random < 0.33) {
+          // Fake long checkpoint duration
+          await $$`sleep 300`;
+        } else if (random < 0.66) {
+          // Fake checkpoint error
+          await $$`false`;
+        } else {
+          // no-op
+        }
+      }
+
       const shortCode = nanoid(8);
       const imageRef = this.#getImageRef(projectRef, deploymentVersion, shortCode);
       const exportLocation = this.#getExportLocation(projectRef, deploymentVersion, shortCode);
 
-      this.#logger.log("Checkpointing:", {
-        options: {
-          runId,
-          leaveRunning,
-          projectRef,
-          deploymentVersion,
-        },
-      });
+      this.#logger.log("Checkpointing:", { options });
 
       const containterName = this.#getRunContainerName(runId);
 
@@ -234,9 +304,9 @@ class Checkpointer {
               );
             }
           }
-        } catch (error: any) {
-          this.#logger.error(error.stderr);
-          return;
+        } catch (error) {
+          this.#logger.error("Failed while creating docker checkpoint", { exportLocation });
+          throw error;
         }
 
         this.#logger.log("checkpoint created:", {
@@ -245,8 +315,11 @@ class Checkpointer {
         });
 
         return {
-          location: exportLocation,
-          docker: true,
+          success: true,
+          checkpoint: {
+            location: exportLocation,
+            docker: true,
+          },
         };
       }
 
@@ -266,52 +339,102 @@ class Checkpointer {
         throw new Error("could not find container id");
       }
 
+      const start = performance.now();
+
+      // Create checkpoint
       this.#logger.debug(await $$`crictl checkpoint --export=${exportLocation} ${containerId}`);
+      const postCheckpoint = performance.now();
+
+      // Print checkpoint size
+      const size = await getParsedFileSize(exportLocation);
+      this.#logger.log("checkpoint archive created", { size, options });
 
       // Create image from checkpoint
       const container = this.#logger.debug(await $$`buildah from scratch`);
+      const postFrom = performance.now();
+
       this.#logger.debug(await $$`buildah add ${container} ${exportLocation} /`);
+      const postAdd = performance.now();
+
       this.#logger.debug(
         await $$`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
       );
+      const postConfig = performance.now();
+
       this.#logger.debug(await $$`buildah commit ${container} ${imageRef}`);
+      const postCommit = performance.now();
+
       this.#logger.debug(await $$`buildah rm ${container}`);
+      const postRm = performance.now();
 
       // Push checkpoint image
       this.#logger.debug(await $$`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${imageRef}`);
+      const postPush = performance.now();
 
-      this.#logger.log("Checkpointed and pushed image to:", { location: imageRef });
+      const perf = {
+        "crictl checkpoint": postCheckpoint - start,
+        "buildah from": postFrom - postCheckpoint,
+        "buildah add": postAdd - postFrom,
+        "buildah config": postConfig - postAdd,
+        "buildah commit": postCommit - postConfig,
+        "buildah rm": postRm - postCommit,
+        "buildah push": postPush - postRm,
+      };
+
+      this.#logger.log("Checkpointed and pushed image to:", { location: imageRef, perf });
 
       try {
         await $$`rm ${exportLocation}`;
         this.#logger.log("Deleted checkpoint archive", { exportLocation });
 
-        // Disabled for now as this will increase restore time by having to pull the image again
-        // await $`buildah rmi ${imageRef}`;
-        // this.#logger.log("Deleted checkpoint image", { imageRef });
+        await $`buildah rmi ${imageRef}`;
+        this.#logger.log("Deleted checkpoint image", { imageRef });
       } catch (error) {
         this.#logger.error("Failed during checkpoint cleanup", { exportLocation });
-        this.#logger.debug(error);
+        throw error;
       }
 
       return {
-        location: imageRef,
-        docker: false,
+        success: true,
+        checkpoint: {
+          location: imageRef,
+          docker: false,
+        },
       };
     } catch (error) {
-      this.#logger.error("checkpoint failed", {
-        options: {
-          runId,
-          leaveRunning,
-          projectRef,
-          deploymentVersion,
-        },
-        error,
-      });
-      return;
+      if (isExecaChildProcess(error)) {
+        if (error.isCanceled) {
+          this.#logger.error("Checkpoint canceled", { options, error });
+
+          return { success: false, reason: "CANCELED" };
+        }
+
+        // Everything that's not a cancellation is a failure
+        this.#failCheckpoint(runId, error);
+        this.#logger.error("Checkpoint command error", { options, error });
+
+        return { success: false };
+      }
+
+      this.#failCheckpoint(runId, error);
+      this.#logger.error("Unhandled checkpoint error", { options, error });
+
+      return { success: false };
     } finally {
       this.#abortControllers.delete(runId);
     }
+  }
+
+  #failCheckpoint(runId: string, error: unknown) {
+    this.#failedCheckpoints.set(runId, error);
+  }
+
+  #clearFailedCheckpoint(runId: string) {
+    this.#failedCheckpoints.delete(runId);
+  }
+
+  #hasFailedCheckpoint(runId: string) {
+    return this.#failedCheckpoints.has(runId);
   }
 
   #getRunContainerName(suffix: string) {
@@ -321,7 +444,7 @@ class Checkpointer {
 
 class TaskCoordinator {
   #httpServer: ReturnType<typeof createServer>;
-  #checkpointer = new Checkpointer({ forceSimulate: true });
+  #checkpointer = new Checkpointer({ forceSimulate: FORCE_CHECKPOINT_SIMULATION });
 
   #prodWorkerNamespace: ZodNamespace<
     typeof ProdWorkerToCoordinatorMessages,
@@ -442,6 +565,28 @@ class TaskCoordinator {
 
           taskSocket.emit("REQUEST_ATTEMPT_CANCELLATION", message);
         },
+        REQUEST_RUN_CANCELLATION: async (message) => {
+          const taskSocket = await this.#getRunSocket(message.runId);
+
+          if (!taskSocket) {
+            logger.log("Socket for run not found", {
+              runId: message.runId,
+            });
+            return;
+          }
+
+          if (message.delayInMs) {
+            taskSocket.emit("REQUEST_EXIT", {
+              version: "v2",
+              delayInMs: message.delayInMs,
+            });
+          } else {
+            // If there's no delay, assume the worker doesn't support non-v1 messages
+            taskSocket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+          }
+        },
         READY_FOR_RETRY: async (message) => {
           const taskSocket = await this.#getRunSocket(message.runId);
 
@@ -528,6 +673,20 @@ class TaskCoordinator {
       onConnection: async (socket, handler, sender) => {
         const logger = new SimpleLogger(`[prod-worker][${socket.id}]`);
 
+        const crashRun = async (error: { name: string; message: string; stack?: string }) => {
+          try {
+            this.#platformSocket?.send("RUN_CRASHED", {
+              version: "v1",
+              runId: socket.data.runId,
+              error,
+            });
+          } finally {
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+          }
+        };
+
         const checkpointInProgress = () => {
           return this.#checkpointableTasks.has(socket.data.runId);
         };
@@ -596,8 +755,9 @@ class TaskCoordinator {
             if (!executionAck) {
               logger.error("no execution ack", { runId: socket.data.runId });
 
-              socket.emit("REQUEST_EXIT", {
-                version: "v1",
+              await crashRun({
+                name: "ReadyForExecutionError",
+                message: "No execution ack",
               });
 
               return;
@@ -606,8 +766,9 @@ class TaskCoordinator {
             if (!executionAck.success) {
               logger.error("failed to get execution payload", { runId: socket.data.runId });
 
-              socket.emit("REQUEST_EXIT", {
-                version: "v1",
+              await crashRun({
+                name: "ReadyForExecutionError",
+                message: "Failed to get execution payload",
               });
 
               return;
@@ -619,6 +780,46 @@ class TaskCoordinator {
             });
 
             socket.data.attemptFriendlyId = executionAck.payload.execution.attempt.id;
+          } catch (error) {
+            logger.error("Error", { error });
+          }
+        });
+
+        socket.on("READY_FOR_LAZY_ATTEMPT", async (message) => {
+          logger.log("[READY_FOR_LAZY_ATTEMPT]", message);
+
+          try {
+            const lazyAttempt = await this.#platformSocket?.sendWithAck("READY_FOR_LAZY_ATTEMPT", {
+              ...message,
+              envId: socket.data.envId,
+            });
+
+            if (!lazyAttempt) {
+              logger.error("no lazy attempt ack", { runId: socket.data.runId });
+
+              await crashRun({
+                name: "ReadyForLazyAttemptError",
+                message: "No lazy attempt ack",
+              });
+
+              return;
+            }
+
+            if (!lazyAttempt.success) {
+              logger.error("failed to get lazy attempt payload", { runId: socket.data.runId });
+
+              await crashRun({
+                name: "ReadyForLazyAttemptError",
+                message: "Failed to get lazy attempt payload",
+              });
+
+              return;
+            }
+
+            socket.emit("EXECUTE_TASK_RUN_LAZY_ATTEMPT", {
+              version: "v1",
+              lazyPayload: lazyAttempt.lazyPayload,
+            });
           } catch (error) {
             logger.error("Error", { error });
           }
@@ -712,6 +913,19 @@ class TaskCoordinator {
               version: "v1",
             });
           }
+        });
+
+        socket.on("TASK_RUN_FAILED_TO_RUN", async ({ completion }) => {
+          logger.log("completed task", { completionId: completion.id });
+
+          this.#platformSocket?.send("TASK_RUN_FAILED_TO_RUN", {
+            version: "v1",
+            completion,
+          });
+
+          socket.emit("REQUEST_EXIT", {
+            version: "v1",
+          });
         });
 
         socket.on("READY_FOR_CHECKPOINT", async (message) => {
@@ -890,7 +1104,7 @@ class TaskCoordinator {
           logger.log("[INDEX_TASKS]", message);
 
           const workerAck = await this.#platformSocket?.sendWithAck("CREATE_WORKER", {
-            version: "v1",
+            version: "v2",
             projectRef: socket.data.projectRef,
             envId: socket.data.envId,
             deploymentId: message.deploymentId,
@@ -899,6 +1113,7 @@ class TaskCoordinator {
               packageVersion: message.packageVersion,
               tasks: message.tasks,
             },
+            supportsLazyAttempts: message.version !== "v1" && message.supportsLazyAttempts,
           });
 
           if (!workerAck) {
@@ -917,6 +1132,34 @@ class TaskCoordinator {
             error: message.error,
           });
         });
+
+        socket.on("CREATE_TASK_RUN_ATTEMPT", async (message, callback) => {
+          logger.log("[CREATE_TASK_RUN_ATTEMPT]", message);
+
+          const createAttempt = await this.#platformSocket?.sendWithAck("CREATE_TASK_RUN_ATTEMPT", {
+            runId: message.runId,
+            envId: socket.data.envId,
+          });
+
+          if (!createAttempt?.success) {
+            logger.debug("no ack while creating attempt", message);
+            callback({ success: false });
+            return;
+          }
+
+          socket.data.attemptFriendlyId = createAttempt.executionPayload.execution.attempt.id;
+
+          callback({
+            success: true,
+            executionPayload: createAttempt.executionPayload,
+          });
+        });
+
+        socket.on("UNRECOVERABLE_ERROR", async (message) => {
+          logger.log("[UNRECOVERABLE_ERROR]", message);
+
+          await crashRun(message.error);
+        });
       },
       onDisconnect: async (socket, handler, sender, logger) => {
         this.#platformSocket?.send("LOG", {
@@ -928,13 +1171,16 @@ class TaskCoordinator {
         TASK_HEARTBEAT: async (message) => {
           this.#platformSocket?.send("TASK_HEARTBEAT", message);
         },
+        TASK_RUN_HEARTBEAT: async (message) => {
+          this.#platformSocket?.send("TASK_RUN_HEARTBEAT", message);
+        },
       },
     });
 
     return provider;
   }
 
-  #cancelCheckpoint(runId: string) {
+  #cancelCheckpoint(runId: string): boolean {
     const checkpointWait = this.#checkpointableTasks.get(runId);
 
     if (checkpointWait) {

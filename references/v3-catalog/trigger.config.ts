@@ -1,15 +1,43 @@
-import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+import type { TriggerConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 import { AppDataSource } from "@/trigger/orm";
+import { InfisicalClient } from "@infisical/sdk";
 
 export { handleError } from "./src/handleError";
+
+export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async ({
+  projectRef,
+  env,
+  environment,
+}) => {
+  if (env.INFISICAL_CLIENT_ID === undefined || env.INFISICAL_CLIENT_SECRET === undefined) {
+    return;
+  }
+
+  const client = new InfisicalClient({
+    clientId: env.INFISICAL_CLIENT_ID,
+    clientSecret: env.INFISICAL_CLIENT_SECRET,
+  });
+
+  const secrets = await client.listSecrets({
+    environment,
+    projectId: env.INFISICAL_PROJECT_ID!,
+  });
+
+  return {
+    variables: secrets.map((secret) => ({
+      name: secret.secretKey,
+      value: secret.secretValue,
+    })),
+  };
+};
 
 export const config: TriggerConfig = {
   project: "yubjwjsfkxnylobaqvqz",
   retries: {
     enabledInDev: true,
     default: {
-      maxAttempts: 3,
+      maxAttempts: 4,
       minTimeoutInMs: 1000,
       maxTimeoutInMs: 10000,
       factor: 2,

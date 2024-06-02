@@ -1,8 +1,8 @@
 import { PrismaClient } from "@trigger.dev/database";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import {
-  clearCurrentProjectId,
   commitCurrentProjectSession,
   getCurrentProjectId,
   setCurrentProjectId,
@@ -10,8 +10,6 @@ import {
 import { logger } from "~/services/logger.server";
 import { newProjectPath } from "~/utils/pathBuilder";
 import { ProjectPresenter } from "./ProjectPresenter.server";
-import { redirectWithErrorMessage } from "~/models/message.server";
-import { match } from "assert";
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
@@ -62,6 +60,10 @@ export class OrganizationsPresenter {
         request,
         "No projects found in organization"
       );
+    }
+
+    if (project.organizationId !== organization.id) {
+      throw redirect(newProjectPath({ slug: organizationSlug }), request);
     }
 
     return { organizations, organization, project };

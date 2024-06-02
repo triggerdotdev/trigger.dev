@@ -1,4 +1,4 @@
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
 
 const environmentSortOrder: RuntimeEnvironmentType[] = [
   "DEVELOPMENT",
@@ -27,5 +27,34 @@ export function sortEnvironments<T extends SortType>(environments: T[]): T[] {
     }
 
     return difference;
+  });
+}
+
+type FilterableEnvironment =
+  | {
+      type: RuntimeEnvironmentType;
+      orgMemberId?: string;
+    }
+  | {
+      type: RuntimeEnvironmentType;
+      //intentionally vague so we can match anything
+      orgMember?: Record<string, any>;
+    };
+
+export function filterOrphanedEnvironments<T extends FilterableEnvironment>(
+  environments: T[]
+): T[] {
+  return environments.filter((environment) => {
+    if (environment.type !== "DEVELOPMENT") return true;
+
+    if ("orgMemberId" in environment) {
+      return !!environment.orgMemberId;
+    }
+
+    if ("orgMember" in environment) {
+      return !!environment.orgMember;
+    }
+
+    return false;
   });
 }

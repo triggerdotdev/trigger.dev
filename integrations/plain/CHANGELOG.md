@@ -1,5 +1,22 @@
 # @trigger.dev/plain
 
+## 3.0.0-beta.35
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.35
+- @trigger.dev/sdk@3.0.0-beta.35
+
+## 3.0.0-beta.34
+
+### Patch Changes
+
+- Updated dependencies [3a1b0c486]
+- Updated dependencies [3f8b6d8fc]
+- Updated dependencies [1281d40e4]
+  - @trigger.dev/sdk@3.0.0-beta.34
+  - @trigger.dev/integration-kit@3.0.0-beta.34
+
 ## 3.0.0-beta.33
 
 ### Patch Changes

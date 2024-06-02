@@ -28,6 +28,7 @@ import { webcrypto } from "node:crypto";
 import { ApiClient } from "./apiClient";
 import {
   AutoYieldExecutionError,
+  AutoYieldRateLimitError,
   AutoYieldWithCompletedTaskExecutionError,
   CanceledWithTaskError,
   ErrorWithTask,
@@ -1460,6 +1461,14 @@ export class IO {
         cachedTasksCursor: this._cachedTasksCursor,
       });
     } catch (error) {
+      if (error instanceof AutoYieldRateLimitError) {
+        this._logger.debug("AutoYieldRateLimitError", {
+          error,
+        });
+
+        throw error;
+      }
+
       return;
     }
   }

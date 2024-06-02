@@ -21,16 +21,12 @@ export async function createOrganization(
   {
     title,
     userId,
-    projectName,
     companySize,
-    projectVersion,
   }: Pick<Organization, "title" | "companySize"> & {
     userId: User["id"];
-    projectName: string;
-    projectVersion: "v2" | "v3";
   },
   attemptCount = 0
-): Promise<Organization & { projects: Project[] }> {
+): Promise<Organization> {
   if (typeof process.env.BLOCKED_USERS === "string" && process.env.BLOCKED_USERS.includes(userId)) {
     throw new Error("Organization could not be created.");
   }
@@ -50,9 +46,7 @@ export async function createOrganization(
       {
         title,
         userId,
-        projectName,
         companySize,
-        projectVersion,
       },
       attemptCount + 1
     );
@@ -76,14 +70,7 @@ export async function createOrganization(
     },
   });
 
-  const project = await createProject({
-    organizationSlug: organization.slug,
-    name: projectName,
-    userId,
-    version: projectVersion,
-  });
-
-  return { ...organization, projects: [project] };
+  return { ...organization };
 }
 
 export async function createEnvironment(

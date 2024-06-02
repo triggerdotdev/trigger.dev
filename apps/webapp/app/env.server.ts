@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SecretStoreOptionsSchema } from "./services/secrets/secretStore.server";
+import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
 import { isValidRegex } from "./utils/regex";
 import { isValidDatabaseUrl } from "./utils/db";
 
@@ -100,6 +100,10 @@ const EnvironmentSchema = z.object({
   API_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
   API_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
 
+  //Ingesting event rate limit
+  INGEST_EVENT_RATE_LIMIT_WINDOW: z.string().default("60s"),
+  INGEST_EVENT_RATE_LIMIT_MAX: z.coerce.number().int().optional(),
+
   //v3
   V3_ENABLED: z.string().default("false"),
   PROVIDER_SECRET: z.string().default("provider-secret"),
@@ -164,6 +168,9 @@ const EnvironmentSchema = z.object({
   ALERT_RESEND_API_KEY: z.string().optional(),
 
   MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
+
+  LOOPS_API_KEY: z.string().optional(),
+  MARQS_DISABLE_REBALANCING: z.coerce.boolean().default(false),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

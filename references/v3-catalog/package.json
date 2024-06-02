@@ -4,11 +4,13 @@
   "private": true,
   "scripts": {
     "dev:trigger": "triggerdev dev",
-    "management": "ts-node -r tsconfig-paths/register ./src/management.ts"
+    "management": "ts-node -r tsconfig-paths/register ./src/management.ts",
+    "queues": "ts-node -r tsconfig-paths/register ./src/queues.ts"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@infisical/sdk": "^2.1.9",
     "@opentelemetry/api": "1.4.1",
     "@react-email/components": "^0.0.17",
     "@react-email/render": "^0.0.7",

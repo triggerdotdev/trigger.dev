@@ -1,5 +1,40 @@
 # trigger.dev
 
+## 3.0.0-beta.35
+
+### Patch Changes
+
+- 98ef17029: Set the deploy timeout to 3mins from 1min
+- e69ffd314: - Clear paused states before retry
+  - Detect and handle unrecoverable worker errors
+  - Remove checkpoints after successful push
+  - Permanently switch to DO hosted busybox image
+  - Fix IPC timeout issue, or at least handle it more gracefully
+  - Handle checkpoint failures
+  - Basic chaos monkey for checkpoint testing
+  - Stack traces are back in the dashboard
+  - Display final errors on root span
+- Updated dependencies [ece6ca678]
+- Updated dependencies [e69ffd314]
+- Updated dependencies [e69ffd314]
+  - @trigger.dev/core@3.0.0-beta.35
+
+## 3.0.0-beta.34
+
+### Patch Changes
+
+- 5a6e79e0c: Fixing missing logs when importing client @opentelemetry/api
+- 3a1b0c486: v3: Environment variable management API and SDK, along with resolveEnvVars CLI hook
+- a86f36cef: Fix TypeScript inclusion in tsconfig.json for `cli-v3 init`
+- c092c0f9d: v3: Prevent legacy-peer-deps=true from breaking deploys
+
+  When a global `.npmrc` file includes `legacy-peer-deps=true`, deploys would fail on the `npm ci` step because the package-lock.json wouldn't match the `package.json` file. This is because inside the image build, the `.npmrc` file would not be picked up and so `legacy-peer-deps` would end up being false (which is the default). This change forces the `package-lock.json` file to be created using `legacy-peer-deps=false`
+
+- Updated dependencies [3a1b0c486]
+- Updated dependencies [3f8b6d8fc]
+- Updated dependencies [1281d40e4]
+  - @trigger.dev/core@3.0.0-beta.34
+
 ## 3.0.0-beta.33
 
 ### Patch Changes

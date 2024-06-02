@@ -1,13 +1,22 @@
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import type { Language, PrismTheme } from "prism-react-renderer";
-import { Highlight } from "prism-react-renderer";
+import { Highlight, Prism } from "prism-react-renderer";
 import { forwardRef, useCallback, useState } from "react";
 import { cn } from "~/utils/cn";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { Paragraph } from "../primitives/Paragraph";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 
 //This is a fork of https://github.com/mantinedev/mantine/blob/master/src/mantine-prism/src/Prism/Prism.tsx
 //it didn't support highlighting lines by dimming the rest of the code, or animations on the highlighting
+
+async function setup() {
+  (typeof global !== "undefined" ? global : window).Prism = Prism;
+  //@ts-ignore
+  await import("prismjs/components/prism-json");
+  //@ts-ignore
+  await import("prismjs/components/prism-typescript");
+}
+setup();
 
 type CodeBlockProps = {
   /** Code which will be highlighted */

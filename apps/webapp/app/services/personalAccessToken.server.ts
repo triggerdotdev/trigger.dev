@@ -90,7 +90,7 @@ export async function revokePersonalAccessToken(tokenId: string) {
   });
 }
 
-type PersonalAccessTokenAuthenticationResult = {
+export type PersonalAccessTokenAuthenticationResult = {
   userId: string;
 };
 
@@ -167,6 +167,10 @@ export async function authenticatePersonalAccessToken(
   return {
     userId: personalAccessToken.userId,
   };
+}
+
+export function isPersonalAccessToken(token: string) {
+  return token.startsWith(tokenPrefix);
 }
 
 export function createAuthorizationCode() {

@@ -62,12 +62,12 @@ export class IndexDeploymentService extends BaseService {
       logger.debug("Index ACK received", { responses });
 
       if (responses.length === 0) {
-        // timeout the deployment if 50 seconds have passed and the deployment is still not indexed
+        // timeout the deployment if 180 seconds have passed and the deployment is still not indexed
         await TimeoutDeploymentService.enqueue(
           deployment.id,
           "DEPLOYING",
           "Could not index deployment in time",
-          new Date(Date.now() + 50_000)
+          new Date(Date.now() + 180_000)
         );
       } else {
         const indexFailed = new DeploymentIndexFailed();

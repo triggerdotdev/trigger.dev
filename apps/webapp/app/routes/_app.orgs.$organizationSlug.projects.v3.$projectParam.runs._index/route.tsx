@@ -39,6 +39,7 @@ import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3ProjectPath, v3RunsPath, v3TestPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
+import { findProjectBySlug } from "~/models/project.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -57,10 +58,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { tasks, versions, statuses, environments, period, bulkId, from, to, cursor, direction } =
     TaskRunListSearchFilters.parse(s);
 
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+
+  if (!project) {
+    throw new Error("Project not found");
+  }
+
   const presenter = new RunListPresenter();
   const list = presenter.call({
     userId,
-    projectSlug: projectParam,
+    projectId: project.id,
     tasks,
     versions,
     statuses,

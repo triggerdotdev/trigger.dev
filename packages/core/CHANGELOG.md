@@ -1,5 +1,29 @@
 # internal-platform
 
+## 3.0.0-beta.35
+
+### Patch Changes
+
+- ece6ca678: Fix issue when using SDK in non-node environments by scoping the stream import with node:
+- e69ffd314: - Clear paused states before retry
+  - Detect and handle unrecoverable worker errors
+  - Remove checkpoints after successful push
+  - Permanently switch to DO hosted busybox image
+  - Fix IPC timeout issue, or at least handle it more gracefully
+  - Handle checkpoint failures
+  - Basic chaos monkey for checkpoint testing
+  - Stack traces are back in the dashboard
+  - Display final errors on root span
+- e69ffd314: Improve handling of IPC timeouts and fix checkpoint cancellation after failures
+
+## 3.0.0-beta.34
+
+### Patch Changes
+
+- 3a1b0c486: v3: Environment variable management API and SDK, along with resolveEnvVars CLI hook
+- 3f8b6d8fc: v2: Better handle recovering from platform communication errors by auto-yielding back to the platform in case of temporary API failures
+- 1281d40e4: When a v2 run hits the rate limit, reschedule with the reset date
+
 ## 3.0.0-beta.33
 
 ### Patch Changes

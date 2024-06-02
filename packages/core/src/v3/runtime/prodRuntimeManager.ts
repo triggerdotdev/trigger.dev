@@ -55,10 +55,14 @@ export class ProdRuntimeManager implements RuntimeManager {
       this._waitForDuration = { resolve, reject };
     });
 
-    const { willCheckpointAndRestore } = await this.ipc.sendWithAck("WAIT_FOR_DURATION", {
-      ms,
-      now,
-    });
+    const { willCheckpointAndRestore } = await this.ipc.sendWithAck(
+      "WAIT_FOR_DURATION",
+      {
+        ms,
+        now,
+      },
+      31_000
+    );
 
     if (!willCheckpointAndRestore) {
       await internalTimeout;
@@ -74,18 +78,24 @@ export class ProdRuntimeManager implements RuntimeManager {
     // Resets the clock to the current time
     clock.reset();
 
-    // The coordinator should cancel any in-progress checkpoints
-    const { checkpointCanceled, version } = await this.ipc.sendWithAck(
-      "CANCEL_CHECKPOINT",
-      {
-        version: "v2",
-        reason: "WAIT_FOR_DURATION",
-      },
-      31_000
-    );
+    try {
+      // The coordinator should cancel any in-progress checkpoints
+      const { checkpointCanceled, version } = await this.ipc.sendWithAck(
+        "CANCEL_CHECKPOINT",
+        {
+          version: "v2",
+          reason: "WAIT_FOR_DURATION",
+        },
+        31_000
+      );
 
-    if (checkpointCanceled) {
-      // There won't be a checkpoint or external resume and we've already completed our internal timeout
+      if (checkpointCanceled) {
+        // There won't be a checkpoint or external resume and we've already completed our internal timeout
+        return;
+      }
+    } catch (error) {
+      // If the cancellation times out, we will proceed as if the checkpoint was canceled
+      logger.debug("Checkpoint cancellation timed out", { error });
       return;
     }
 
@@ -98,18 +108,8 @@ export class ProdRuntimeManager implements RuntimeManager {
       return;
     }
 
-    process.stdout.write("pre");
-    process.stdout.write(JSON.stringify(clock.preciseNow()));
-
-    console.log("pre", clock.preciseNow());
-
     // Resets the clock to the current time
     clock.reset();
-
-    console.log("post", clock.preciseNow());
-
-    process.stdout.write("post");
-    process.stdout.write(JSON.stringify(clock.preciseNow()));
 
     this._waitForDuration.resolve("external");
     this._waitForDuration = undefined;
@@ -167,8 +167,8 @@ export class ProdRuntimeManager implements RuntimeManager {
     };
   }
 
-  resumeTask(completion: TaskRunExecutionResult, execution: TaskRunExecution): void {
-    const wait = this._taskWaits.get(execution.run.id);
+  resumeTask(completion: TaskRunExecutionResult): void {
+    const wait = this._taskWaits.get(completion.id);
 
     if (!wait) {
       return;
@@ -176,7 +176,7 @@ export class ProdRuntimeManager implements RuntimeManager {
 
     wait.resolve(completion);
 
-    this._taskWaits.delete(execution.run.id);
+    this._taskWaits.delete(completion.id);
   }
 
   private get waitThresholdInMs(): number {

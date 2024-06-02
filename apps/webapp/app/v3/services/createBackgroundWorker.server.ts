@@ -63,6 +63,7 @@ export class CreateBackgroundWorkerService extends BaseService {
           contentHash: body.metadata.contentHash,
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
+          supportsLazyAttempts: body.supportsLazyAttempts,
         },
       });
 
@@ -178,6 +179,8 @@ export async function createBackgroundTasks(
           taskQueue.name,
           taskQueue.concurrencyLimit
         );
+      } else {
+        await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
       }
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {

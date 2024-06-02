@@ -44,6 +44,8 @@ import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.ser
 import { PerformBulkActionService } from "~/v3/services/bulk/performBulkAction.server";
 import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
+import { RequeueTaskRunService } from "~/v3/requeueTaskRun.server";
+import { RetryAttemptService } from "~/v3/services/retryAttempt.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -157,6 +159,12 @@ const workerCatalog = {
   }),
   "v3.performBulkActionItem": z.object({
     bulkActionItemId: z.string(),
+  }),
+  "v3.requeueTaskRun": z.object({
+    runId: z.string(),
+  }),
+  "v3.retryAttempt": z.object({
+    runId: z.string(),
   }),
 };
 
@@ -301,7 +309,7 @@ function getWorkerQueue() {
       },
       "events.deliverScheduled": {
         priority: 0, // smaller number = higher priority
-        maxAttempts: 5,
+        maxAttempts: 8,
         handler: async ({ id, payload }, job) => {
           const service = new DeliverScheduledEventService();
 
@@ -598,6 +606,24 @@ function getWorkerQueue() {
           const service = new PerformBulkActionService();
 
           await service.performBulkActionItem(payload.bulkActionItemId);
+        },
+      },
+      "v3.requeueTaskRun": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new RequeueTaskRunService();
+
+          await service.call(payload.runId);
+        },
+      },
+      "v3.retryAttempt": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new RetryAttemptService();
+
+          return await service.call(payload.runId);
         },
       },
     },

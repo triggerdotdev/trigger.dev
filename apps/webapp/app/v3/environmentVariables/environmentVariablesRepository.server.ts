@@ -7,6 +7,8 @@ import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
   CreateResult,
+  DeleteEnvironmentVariable,
+  DeleteEnvironmentVariableValue,
   EnvironmentVariable,
   ProjectEnvironmentVariable,
   Repository,
@@ -41,9 +43,8 @@ export class EnvironmentVariablesRepository implements Repository {
 
   async create(
     projectId: string,
-    userId: string,
     options: {
-      overwrite: boolean;
+      override: boolean;
       environmentIds: string[];
       variables: {
         key: string;
@@ -54,13 +55,6 @@ export class EnvironmentVariablesRepository implements Repository {
     const project = await this.prismaClient.project.findUnique({
       where: {
         id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
         deletedAt: null,
       },
       select: {
@@ -92,6 +86,15 @@ export class EnvironmentVariablesRepository implements Repository {
       return { success: false as const, error: `Environment not found` };
     }
 
+    // Check to see if any of the variables are `TRIGGER_SECRET_KEY` or `TRIGGER_API_URL`
+    const triggerKeys = options.variables.map((v) => v.key);
+    if (triggerKeys.includes("TRIGGER_SECRET_KEY") || triggerKeys.includes("TRIGGER_API_URL")) {
+      return {
+        success: false as const,
+        error: `You cannot set the variables TRIGGER_SECRET_KEY or TRIGGER_API_URL as they will be set automatically`,
+      };
+    }
+
     //get rid of empty variables
     const values = options.variables.filter((v) => v.key.trim() !== "" && v.value.trim() !== "");
     if (values.length === 0) {
@@ -99,7 +102,7 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     //check if any of them exist in an environment we're setting
-    if (!options.overwrite) {
+    if (!options.override) {
       const existingVariableKeys: { key: string; environments: RuntimeEnvironmentType[] }[] = [];
       for (const variable of values) {
         const existingVariable = project.environmentVariables.find((v) => v.key === variable.key);
@@ -119,7 +122,7 @@ export class EnvironmentVariablesRepository implements Repository {
       if (existingVariableKeys.length > 0) {
         return {
           success: false as const,
-          error: `Some of the variables are already set for these environments`,
+          error: `Some of the variables are already set for these environments. Set override to true to override them.`,
           variableErrors: existingVariableKeys.map((val) => ({
             key: val.key,
             error: `Variable already set in ${val.environments
@@ -217,37 +220,21 @@ export class EnvironmentVariablesRepository implements Repository {
 
   async edit(
     projectId: string,
-    userId: string,
-    options: { values: { value: string; environmentId: string }[]; id: string }
+    options: {
+      values: { value: string; environmentId: string }[];
+      id: string;
+      keepEmptyValues?: boolean;
+    }
   ): Promise<Result> {
     const project = await this.prismaClient.project.findUnique({
       where: {
         id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
         deletedAt: null,
       },
       select: {
         environments: {
           select: {
             id: true,
-          },
-          where: {
-            OR: [
-              {
-                orgMember: null,
-              },
-              {
-                orgMember: {
-                  userId,
-                },
-              },
-            ],
           },
         },
       },
@@ -266,12 +253,15 @@ export class EnvironmentVariablesRepository implements Repository {
 
     //add in empty values for environments that don't have a value
     const environmentIds = project.environments.map((e) => e.id);
-    for (const environmentId of environmentIds) {
-      if (!values.some((v) => v.environmentId === environmentId)) {
-        values.push({
-          environmentId,
-          value: "",
-        });
+
+    if (!options.keepEmptyValues) {
+      for (const environmentId of environmentIds) {
+        if (!values.some((v) => v.environmentId === environmentId)) {
+          values.push({
+            environmentId,
+            value: "",
+          });
+        }
       }
     }
 
@@ -364,17 +354,10 @@ export class EnvironmentVariablesRepository implements Repository {
     }
   }
 
-  async getProject(projectId: string, userId: string): Promise<ProjectEnvironmentVariable[]> {
+  async getProject(projectId: string): Promise<ProjectEnvironmentVariable[]> {
     const project = await this.prismaClient.project.findUnique({
       where: {
         id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
         deletedAt: null,
       },
       select: {
@@ -446,19 +429,12 @@ export class EnvironmentVariablesRepository implements Repository {
 
   async getEnvironment(
     projectId: string,
-    userId: string,
-    environmentId: string
+    environmentId: string,
+    excludeInternalVariables?: boolean
   ): Promise<EnvironmentVariable[]> {
     const project = await this.prismaClient.project.findUnique({
       where: {
         id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
         deletedAt: null,
       },
       select: {
@@ -477,7 +453,7 @@ export class EnvironmentVariablesRepository implements Repository {
       return [];
     }
 
-    return this.getEnvironmentVariables(projectId, environmentId);
+    return this.getEnvironmentVariables(projectId, environmentId, excludeInternalVariables);
   }
 
   async #getTriggerEnvironmentVariables(environmentId: string): Promise<EnvironmentVariable[]> {
@@ -621,43 +597,30 @@ export class EnvironmentVariablesRepository implements Repository {
 
   async getEnvironmentVariables(
     projectId: string,
-    environmentId: string
+    environmentId: string,
+    excludeInternalVariables?: boolean
   ): Promise<EnvironmentVariable[]> {
     const secretEnvVars = await this.#getSecretEnvironmentVariables(projectId, environmentId);
+
+    if (excludeInternalVariables) {
+      return secretEnvVars;
+    }
+
     const triggerEnvVars = await this.#getTriggerEnvironmentVariables(environmentId);
 
     return [...secretEnvVars, ...triggerEnvVars];
   }
 
-  async delete(projectId: string, userId: string, options: { id: string }): Promise<Result> {
+  async delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result> {
     const project = await this.prismaClient.project.findUnique({
       where: {
         id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
         deletedAt: null,
       },
       select: {
         environments: {
           select: {
             id: true,
-          },
-          where: {
-            OR: [
-              {
-                orgMember: null,
-              },
-              {
-                orgMember: {
-                  userId,
-                },
-              },
-            ],
           },
         },
       },
@@ -703,7 +666,7 @@ export class EnvironmentVariablesRepository implements Repository {
           prismaClient: tx,
         });
 
-        //create the secret values and references
+        //delete the secret values and references
         for (const value of environmentVariable.values) {
           const key = secretKey(projectId, value.environmentId, environmentVariable.key);
           await secretStore.deleteSecret(key);
@@ -716,6 +679,96 @@ export class EnvironmentVariablesRepository implements Repository {
             });
           }
         }
+      });
+
+      return {
+        success: true as const,
+      };
+    } catch (error) {
+      return {
+        success: false as const,
+        error: error instanceof Error ? error.message : "Something went wrong",
+      };
+    }
+  }
+
+  async deleteValue(projectId: string, options: DeleteEnvironmentVariableValue): Promise<Result> {
+    const project = await this.prismaClient.project.findUnique({
+      where: {
+        id: projectId,
+        deletedAt: null,
+      },
+      select: {
+        environments: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      return { success: false as const, error: "Project not found" };
+    }
+
+    const environmentVariable = await this.prismaClient.environmentVariable.findUnique({
+      select: {
+        id: true,
+        key: true,
+        values: {
+          select: {
+            id: true,
+            environmentId: true,
+            valueReference: {
+              select: {
+                key: true,
+              },
+            },
+          },
+        },
+      },
+      where: {
+        id: options.id,
+      },
+    });
+
+    if (!environmentVariable) {
+      return { success: false as const, error: "Environment variable not found" };
+    }
+
+    const value = environmentVariable.values.find((v) => v.environmentId === options.environmentId);
+
+    if (!value) {
+      return { success: false as const, error: "Environment variable value not found" };
+    }
+
+    // If this is the last value, delete the whole variable
+    if (environmentVariable.values.length === 1) {
+      return this.delete(projectId, { id: options.id });
+    }
+
+    try {
+      await $transaction(this.prismaClient, async (tx) => {
+        const secretStore = getSecretStore("DATABASE", {
+          prismaClient: tx,
+        });
+
+        const key = secretKey(projectId, options.environmentId, environmentVariable.key);
+        await secretStore.deleteSecret(key);
+
+        if (value.valueReference) {
+          await tx.secretReference.delete({
+            where: {
+              key: value.valueReference.key,
+            },
+          });
+        }
+
+        await tx.environmentVariableValue.delete({
+          where: {
+            id: value.id,
+          },
+        });
       });
 
       return {

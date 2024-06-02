@@ -52,6 +52,7 @@ import { ApiClient } from "./apiClient";
 import { ConcurrencyLimit, ConcurrencyLimitOptions } from "./concurrencyLimit";
 import {
   AutoYieldExecutionError,
+  AutoYieldRateLimitError,
   AutoYieldWithCompletedTaskExecutionError,
   CanceledWithTaskError,
   ErrorWithTask,
@@ -1232,6 +1233,13 @@ export class TriggerClient {
           ...error.data,
           limit: body.runChunkExecutionLimit,
         },
+      };
+    }
+
+    if (error instanceof AutoYieldRateLimitError) {
+      return {
+        status: "AUTO_YIELD_RATE_LIMIT",
+        reset: error.resetAtTimestamp,
       };
     }
 

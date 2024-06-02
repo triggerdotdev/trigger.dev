@@ -1,6 +1,7 @@
 import { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
+import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getUsername } from "~/utils/username";
 import { calculateNextScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
 
@@ -233,14 +234,7 @@ export class ScheduleListPresenter {
             );
           }
 
-          return {
-            id: instance.environmentId,
-            type: environment.type,
-            userName:
-              environment.orgMember?.user.id === userId
-                ? undefined
-                : getUsername(environment.orgMember?.user),
-          };
+          return displayableEnvironment(environment, userId);
         }),
       };
     });
@@ -252,14 +246,7 @@ export class ScheduleListPresenter {
       schedules,
       possibleTasks: possibleTasks.map((task) => task.slug),
       possibleEnvironments: project.environments.map((environment) => {
-        return {
-          id: environment.id,
-          type: environment.type,
-          userName:
-            environment.orgMember?.user.id === userId
-              ? undefined
-              : getUsername(environment.orgMember?.user),
-        };
+        return displayableEnvironment(environment, userId);
       }),
       hasFilters,
       filters: {

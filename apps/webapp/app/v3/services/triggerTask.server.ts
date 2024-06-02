@@ -4,13 +4,12 @@ import {
   TriggerTaskRequestBody,
   packetRequiresOffloading,
 } from "@trigger.dev/core/v3";
-import { nanoid } from "nanoid";
 import { createHash } from "node:crypto";
-import { $transaction } from "~/db.server";
+import { $transaction, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { marqs } from "~/v3/marqs/index.server";
 import { uploadToObjectStore } from "../r2.server";
 import { BaseService } from "./baseService.server";
 
@@ -100,14 +99,24 @@ export class TriggerTaskService extends BaseService {
                 })
               : undefined;
 
-            const counter = await tx.taskRunCounter.upsert({
-              where: { taskIdentifier: taskId },
+            const counter = await tx.taskRunNumberCounter.upsert({
+              where: {
+                taskIdentifier_environmentId: {
+                  taskIdentifier: taskId,
+                  environmentId: environment.id,
+                },
+              },
               update: { lastNumber: { increment: 1 } },
-              create: { taskIdentifier: taskId, lastNumber: 1 },
+              create: { taskIdentifier: taskId, environmentId: environment.id, lastNumber: 1 },
               select: { lastNumber: true },
             });
 
-            const queueName = body.options?.queue?.name ?? `task/${taskId}`;
+            let queueName = sanitizeQueueName(body.options?.queue?.name ?? `task/${taskId}`);
+
+            // Check that the queuename is not an empty string
+            if (!queueName) {
+              queueName = sanitizeQueueName(`task/${taskId}`);
+            }
 
             event.setAttribute("queueName", queueName);
             span.setAttribute("queueName", queueName);
@@ -175,6 +184,43 @@ export class TriggerTaskService extends BaseService {
                     dependentBatchRunId: dependentBatchRun.id,
                   },
                 });
+              }
+            }
+
+            if (body.options?.queue) {
+              const concurrencyLimit = body.options.queue.concurrencyLimit
+                ? Math.max(0, body.options.queue.concurrencyLimit)
+                : null;
+              const taskQueue = await prisma.taskQueue.upsert({
+                where: {
+                  runtimeEnvironmentId_name: {
+                    runtimeEnvironmentId: environment.id,
+                    name: queueName,
+                  },
+                },
+                update: {
+                  concurrencyLimit,
+                  rateLimit: body.options.queue.rateLimit,
+                },
+                create: {
+                  friendlyId: generateFriendlyId("queue"),
+                  name: queueName,
+                  concurrencyLimit,
+                  runtimeEnvironmentId: environment.id,
+                  projectId: environment.projectId,
+                  rateLimit: body.options.queue.rateLimit,
+                  type: "NAMED",
+                },
+              });
+
+              if (typeof taskQueue.concurrencyLimit === "number") {
+                await marqs?.updateQueueConcurrencyLimits(
+                  environment,
+                  taskQueue.name,
+                  taskQueue.concurrencyLimit
+                );
+              } else {
+                await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
               }
             }
 
