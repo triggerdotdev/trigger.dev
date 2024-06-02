@@ -467,7 +467,7 @@ export const onCustomerSubscriptionDeleted: EventSpecification<OnCustomerSubscri
 
 export const onCustomerSubscriptionUpdated: EventSpecification<OnCustomerSubscription> = {
   name: "customer.subscription.updated",
-  title: "On Customer Subscription Deleted",
+  title: "On Customer Subscription Updated",
   source: "stripe.com",
   icon: "stripe",
   examples: [updatedSubscriptionExample],
