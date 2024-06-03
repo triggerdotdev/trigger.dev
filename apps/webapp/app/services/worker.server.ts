@@ -455,7 +455,7 @@ function getWorkerQueue() {
         },
       },
       deliverRunSubscriptions: {
-        priority: 1, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 5,
         handler: async (payload, job) => {
           const service = new DeliverRunSubscriptionsService();
@@ -464,7 +464,7 @@ function getWorkerQueue() {
         },
       },
       deliverRunSubscription: {
-        priority: 1, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 13,
         handler: async (payload, job) => {
           const service = new DeliverRunSubscriptionService();
