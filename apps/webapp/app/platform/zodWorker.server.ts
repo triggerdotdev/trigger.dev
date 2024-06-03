@@ -447,9 +447,17 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     return taskList;
   }
 
+  private _queueNameCache: Map<number, string> = new Map();
+
   async #getQueueName(queueId: number | null) {
     if (queueId === null) {
       return;
+    }
+
+    const cachedQueueName = this._queueNameCache.get(queueId);
+
+    if (cachedQueueName) {
+      return cachedQueueName;
     }
 
     const schema = z.array(z.object({ queue_name: z.string() }));
@@ -461,19 +469,27 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     const queueNameResults = schema.parse(rawQueueNameResults);
 
-    return queueNameResults[0]?.queue_name;
+    if (!queueNameResults.length) {
+      return;
+    }
+
+    const queueName = queueNameResults[0].queue_name;
+
+    this._queueNameCache.set(queueId, queueName);
+
+    return queueName;
   }
 
   async #rescheduleTask(payload: unknown, helpers: JobHelpers) {
     this.#logDebug("Rescheduling task", { payload, job: helpers.job });
 
     await this.enqueue(helpers.job.task_identifier, payload, {
-      runAt: new Date(Date.now() + 1000 * 10),
+      runAt: helpers.job.run_at,
       queueName: await this.#getQueueName(helpers.job.job_queue_id),
       priority: helpers.job.priority,
       jobKey: helpers.job.key ?? undefined,
       flags: Object.keys(helpers.job.flags ?? []),
-      maxAttempts: helpers.job.max_attempts,
+      maxAttempts: helpers.job.max_attempts - (helpers.job.attempts - 1),
     });
   }
 

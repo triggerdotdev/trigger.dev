@@ -109,6 +109,10 @@ local currentSize = redis.call('ZCOUNT', setKey, timestamp - windowSize, timesta
 if currentSize < maxSize then
     redis.call('ZADD', setKey, timestamp, jobId)
 
+    if currentSize + 1 >= maxSize then
+        redis.call('SADD', forbiddenFlagsKey, forbiddenFlag)
+    end
+
     return true
 else
     redis.call('SADD', forbiddenFlagsKey, forbiddenFlag)
@@ -377,8 +381,8 @@ function getRateLimiter() {
               tls: {
                 checkServerIdentity: () => {
                   // disable TLS verification
-                  return undefined
-                }
+                  return undefined;
+                },
               },
               enableAutoPipelining: true,
             },
@@ -397,7 +401,7 @@ function getRateLimiter() {
           username: env.REDIS_USERNAME,
           password: env.REDIS_PASSWORD,
           enableAutoPipelining: true,
-          ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} })
+          ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
         },
         defaultConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
       });
