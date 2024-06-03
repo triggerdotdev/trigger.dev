@@ -77,6 +77,7 @@ type RedisRunExecutionRateLimiterOptions = {
 };
 
 const FORBIDDEN_FLAG_KEY = "forbiddenFlags";
+const PAUSED_FLAG_KEY = "pausedFlags";
 const KEY_PREFIX = "tr:exec:";
 
 class RedisRunExecutionRateLimiter implements RunExecutionRateLimiter, ZodWorkerRateLimiter {
@@ -180,7 +181,7 @@ end
   }
 
   async forbiddenFlags(): Promise<string[]> {
-    return this.redis.smembers(FORBIDDEN_FLAG_KEY);
+    return this.redis.sunion(FORBIDDEN_FLAG_KEY, PAUSED_FLAG_KEY);
   }
 
   async putConcurrencyLimitGroup(
