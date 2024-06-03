@@ -1,5 +1,5 @@
-import { z } from "zod";
 import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
+import { z } from "zod";
 import { isValidRegex } from "./utils/regex";
 import { isValidDatabaseUrl } from "./utils/db";
 
@@ -189,6 +189,10 @@ const EnvironmentSchema = z.object({
   V2_MARQS_VERBOSE: z.string().default("0"),
   V3_MARQS_CONCURRENCY_MONITOR_ENABLED: z.string().default("0"),
   V2_MARQS_CONCURRENCY_MONITOR_ENABLED: z.string().default("0"),
+  /* Usage settings */
+  USAGE_OPEN_METER_API_KEY: z.string().optional(),
+  USAGE_OPEN_METER_BASE_URL: z.string().optional(),
+  PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

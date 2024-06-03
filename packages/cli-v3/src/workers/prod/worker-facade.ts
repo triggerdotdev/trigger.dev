@@ -1,4 +1,5 @@
 import {
+  BackgroundWorkerProperties,
   Config,
   HandleErrorFunction,
   LogLevel,
@@ -16,6 +17,9 @@ import {
   OtelTaskLogger,
   ConsoleInterceptor,
   type TracingSDK,
+  usage,
+  DevUsageManager,
+  ProdUsageManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { ZodSchemaParsedError } from "@trigger.dev/core/v3/zodMessageHandler";
@@ -44,6 +48,23 @@ import {
 import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
+
+usage.setGlobalUsageManager(
+  new ProdUsageManager(new DevUsageManager(), {
+    heartbeatIntervalMs: getEnvVar("USAGE_HEARTBEAT_INTERVAL_IN_MS")
+      ? parseInt(getEnvVar("USAGE_HEARTBEAT_INTERVAL_IN_MS")!, 10)
+      : undefined,
+    subject: getEnvVar("TRIGGER_ORG_ID")!,
+    machinePreset: getEnvVar("TRIGGER_MACHINE_PRESET"),
+    openMeter:
+      getEnvVar("USAGE_OPEN_METER_API_KEY") && getEnvVar("USAGE_OPEN_METER_BASE_URL")
+        ? {
+            token: getEnvVar("USAGE_OPEN_METER_API_KEY")!,
+            baseUrl: getEnvVar("USAGE_OPEN_METER_BASE_URL")!,
+          }
+        : undefined,
+  })
+);
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
@@ -159,11 +180,18 @@ const zodIpc = new ZodIpcConnection({
         _execution = execution;
         _isRunning = true;
 
+        const measurement = usage.start();
+
         const { result } = await executor.execute(execution, metadata, traceContext);
+
+        const usageSample = usage.stop(measurement);
 
         return sender.send("TASK_RUN_COMPLETED", {
           execution,
-          result,
+          result: {
+            ...result,
+            usage: usageSample,
+          },
         });
       } finally {
         _execution = undefined;

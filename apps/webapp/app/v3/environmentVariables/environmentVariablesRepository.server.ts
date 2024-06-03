@@ -530,6 +530,22 @@ export class EnvironmentVariablesRepository implements Repository {
         key: "TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS",
         value: String(env.RUNTIME_WAIT_THRESHOLD_IN_MS),
       },
+      {
+        key: "TRIGGER_ORG_ID",
+        value: environment.organizationId,
+      },
+      ...(env.USAGE_OPEN_METER_API_KEY &&
+      env.USAGE_OPEN_METER_BASE_URL &&
+      env.PROD_USAGE_HEARTBEAT_INTERVAL_MS
+        ? [
+            { key: "USAGE_OPEN_METER_API_KEY", value: env.USAGE_OPEN_METER_API_KEY },
+            { key: "USAGE_OPEN_METER_BASE_URL", value: env.USAGE_OPEN_METER_BASE_URL },
+            {
+              key: "USAGE_HEARTBEAT_INTERVAL_MS",
+              value: String(env.PROD_USAGE_HEARTBEAT_INTERVAL_MS),
+            },
+          ]
+        : []),
       ...(env.PROD_OTEL_BATCH_PROCESSING_ENABLED === "1"
         ? [
             {
