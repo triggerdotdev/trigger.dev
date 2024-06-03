@@ -1,5 +1,5 @@
 import { vitePlugin as remix } from "@remix-run/dev";
-import { defineConfig } from "vite";
+import { defineConfig, Plugin } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { expressDevServer } from "remix-express-dev-server";
 import { installGlobals } from "@remix-run/node";
@@ -21,41 +21,6 @@ export default defineConfig({
   },
 
   optimizeDeps: {
-    // Include CJS deps or any with lots of internal modules
-    include: [
-      "@codemirror/autocomplete",
-      "@codemirror/commands",
-      "@codemirror/lang-json",
-      "@codemirror/language",
-      "@codemirror/lint",
-      "@codemirror/search",
-      "@codemirror/state",
-      "@codemirror/view",
-      "@internationalized/date",
-      "@lezer/highlight",
-      "@react-aria/datepicker",
-      "@react-stately/datepicker",
-      "@trigger.dev/billing",
-      "@trigger.dev/companyicons",
-      "@trigger.dev/core-backend",
-      "@trigger.dev/core",
-      "@trigger.dev/otlp-importer",
-      "@trigger.dev/sdk",
-      "@trigger.dev/yalt",
-      "@uiw/react-codemirror",
-      "assert-never",
-      "cookie",
-      "humanize-duration",
-      "react-dom",
-      "react-dom/client",
-      "react-popper",
-      "react-resizable-panels",
-      "react",
-      "react/jsx-dev-runtime",
-      "react/jsx-runtime",
-      "recharts",
-      "set-cookie-parser",
-    ],
     // Exclude if dep is ESM or runs server-side (just speeds up Vite on navigations)
     exclude: [
       // Include @prisma/client until @trigger-dev/database is ESM
@@ -130,22 +95,11 @@ export default defineConfig({
   },
   build: {
     minify: true,
-    sourcemap: true,
     cssCodeSplit: false,
     target: "esnext",
     cssMinify: MODE === "production",
     rollupOptions: {
-      output: {
-        sourcemap: true,
-      },
-      external: [
-        /node:.*/,
-        /.*\.node$/,
-        "https",
-        "stream",
-        "crypto",
-        "fsevents",
-      ],
+      external: [/node:.*/, /.*\.node$/, "https", "stream", "crypto", "fsevents", "deepmerge"],
     },
   },
 
@@ -155,7 +109,7 @@ export default defineConfig({
     },
     port: Number(process.env.PORT),
     warmup: {
-      clientFiles: ["./app/entry.client.tsx", "./app/root.tsx"],
+      clientFiles: ["./app/entry.client.tsx", "./app/root.tsx", "./app/routes/**/*"],
     },
   },
 
@@ -172,7 +126,7 @@ export default defineConfig({
     remix({
       ignoredRouteFiles: ["**/.*"],
       serverModuleFormat: "esm",
-    }),
-    tsconfigPaths(),
+    }).filter((plugin) => plugin.name !== "remix-dot-server"),
+    tsconfigPaths() as Plugin,
   ],
 });

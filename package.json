@@ -72,6 +72,10 @@
       "tsup@8.0.1": "patches/tsup@8.0.1.patch",
       "engine.io-parser@5.2.2": "patches/engine.io-parser@5.2.2.patch",
       "graphile-worker@0.16.6": "patches/graphile-worker@0.16.6.patch"
+    },
+    "overrides": {
+      "@vanilla-extract/integration>vite": "5.2.12",
+      "@vanilla-extract/integration>vite-node": "1.4.0"
     }
   }
 }
