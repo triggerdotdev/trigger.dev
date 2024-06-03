@@ -17,10 +17,18 @@ const MODE = process.env.NODE_ENV;
 
 export default defineConfig({
   ssr: {
-    noExternal: ["react-use", "cookie"],
+    noExternal: [
+      // Fixes Error when evaluating SSR module
+      "react-use"
+    ],
   },
 
   optimizeDeps: {
+    entries: ["./app/entry.client.tsx", "./app/root.tsx", "./app/routes/**/*"],
+    include: [
+      // Has cookie and set-cookie-parser deps that need to be optimized
+      "@remix-run/server-runtime"
+    ],
     // Exclude if dep is ESM or runs server-side (just speeds up Vite on navigations)
     exclude: [
       // Include @prisma/client until @trigger-dev/database is ESM
