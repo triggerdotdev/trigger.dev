@@ -70,6 +70,12 @@ export class ProdUsageManager implements UsageManager {
     }
   }
 
+  async flush() {
+    console.log("Flushing usage");
+
+    return await this.#reportUsage();
+  }
+
   async #reportUsage() {
     if (!this._measurement) {
       return;
@@ -90,33 +96,27 @@ export class ProdUsageManager implements UsageManager {
 
     this._lastSample = sample;
 
+    console.log("Reporting usage", {
+      wallTimeSinceLastSample,
+      cpuTimeSinceLastSample,
+      subject: this.options.subject,
+      machine: this.options.machinePreset,
+    });
+
+    if (cpuTimeSinceLastSample <= 0) {
+      return;
+    }
+
     await this._openMeter.events.ingest({
       source: "prod-usage-manager",
       type: "usage",
       time: new Date(),
       subject: this.options.subject,
       data: {
-        cpuTimeInMs: cpuTimeSinceLastSample,
+        durationMs: cpuTimeSinceLastSample,
         wallTimeInMs: wallTimeSinceLastSample,
-        durationSeconds: cpuTimeSinceLastSample / 1000,
         machinePreset: this.options.machinePreset ?? "unknown",
       },
     });
   }
 }
-
-// const startUsageHeartbeat = async (
-//   measurement: UsageMeasurement,
-//   execution: TaskRunExecution,
-//   worker: BackgroundWorkerProperties
-// ) => {
-//   const abortController = new AbortController();
-
-//   // Every scanIntervalMs, check if delay has elapsed
-
-//   return abortController;
-// };
-
-// const stopUsageHeartbeat = (abortController: AbortController) => {
-//   abortController.abort();
-// };

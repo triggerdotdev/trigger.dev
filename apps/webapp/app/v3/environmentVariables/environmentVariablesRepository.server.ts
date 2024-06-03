@@ -534,6 +534,10 @@ export class EnvironmentVariablesRepository implements Repository {
         key: "TRIGGER_ORG_ID",
         value: environment.organizationId,
       },
+      {
+        key: "TRIGGER_MACHINE_PRESET",
+        value: "tiny-1x",
+      },
       ...(env.USAGE_OPEN_METER_API_KEY &&
       env.USAGE_OPEN_METER_BASE_URL &&
       env.PROD_USAGE_HEARTBEAT_INTERVAL_MS

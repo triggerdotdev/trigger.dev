@@ -3,22 +3,29 @@ import { clock } from "../clock-api";
 import { ClockTime, calculateDurationInMs } from "../clock/clock";
 
 class DevUsageMeasurement implements UsageMeasurement {
-  private _pauses: Array<{ start: ClockTime; end: ClockTime }> = [];
+  private _pauses: Map<string, { start: ClockTime; end?: ClockTime }> = new Map();
+  private _endedAt: ClockTime | undefined;
 
   constructor(
     public readonly id: string,
     private startedAt: ClockTime = clock.preciseNow()
   ) {}
 
+  stop() {
+    this._endedAt = clock.preciseNow();
+  }
+
   sample(): UsageSample {
-    const wallTime = this.startedAt ? calculateDurationInMs(this.startedAt, clock.preciseNow()) : 0;
+    const endedAt = this._endedAt ?? clock.preciseNow();
+
+    const wallTime = this.startedAt ? calculateDurationInMs(this.startedAt, endedAt) : 0;
 
     if (wallTime === 0) {
       return { cpuTime: 0, wallTime: 0 };
     }
 
-    const totalPauses = this._pauses.reduce((total, pause) => {
-      return total + calculateDurationInMs(pause.start, pause.end);
+    const totalPauses = Array.from(this._pauses.values()).reduce((total, pause) => {
+      return total + calculateDurationInMs(pause.start, pause.end ?? endedAt);
     }, 0);
 
     const cpuTime = wallTime - totalPauses;
@@ -29,14 +36,14 @@ class DevUsageMeasurement implements UsageMeasurement {
     };
   }
 
-  registerPause(start: ClockTime, end: ClockTime) {
-    this._pauses.push({ start, end });
+  registerPause(pauseId: string, start: ClockTime, end?: ClockTime) {
+    this._pauses.set(pauseId, { start, end });
   }
 }
 
 export class DevUsageManager implements UsageManager {
   private _currentMeasurements: Map<string, DevUsageMeasurement> = new Map();
-  private _pauses: Array<{ start: ClockTime; end: ClockTime }> = [];
+  private _pauses: Map<string, { start: ClockTime; end?: ClockTime }> = new Map();
 
   disable(): void {}
 
@@ -52,6 +59,8 @@ export class DevUsageManager implements UsageManager {
   }
 
   stop(measurement: DevUsageMeasurement): UsageSample {
+    measurement.stop();
+
     const sample = measurement.sample();
 
     this._currentMeasurements.delete(measurement.id);
@@ -60,17 +69,25 @@ export class DevUsageManager implements UsageManager {
   }
 
   async pauseAsync<T>(cb: () => Promise<T>): Promise<T> {
+    const pauseId = generateRandomString();
+
     const pauseStart = clock.preciseNow();
 
     try {
+      this._pauses.set(pauseId, { start: pauseStart });
+
+      for (const measurement of this._currentMeasurements.values()) {
+        measurement.registerPause(pauseId, pauseStart);
+      }
+
       return await cb();
     } finally {
       const pauseEnd = clock.preciseNow();
 
-      this._pauses.push({ start: pauseStart, end: pauseEnd });
+      this._pauses.set(pauseId, { start: pauseStart, end: pauseEnd });
 
       for (const measurement of this._currentMeasurements.values()) {
-        measurement.registerPause(pauseStart, pauseEnd);
+        measurement.registerPause(pauseId, pauseStart, pauseEnd);
       }
     }
   }

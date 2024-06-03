@@ -16,5 +16,5 @@ export function calculateDurationInMs(start: ClockTime, end: ClockTime): number 
   const seconds = endSeconds - startSeconds;
   const nanoseconds = endNanoseconds - startNanoseconds;
 
-  return seconds * 1000 + nanoseconds / 1000000;
+  return Math.floor(seconds * 1000 + nanoseconds / 1000000);
 }

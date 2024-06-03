@@ -49,22 +49,26 @@ import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 
-usage.setGlobalUsageManager(
-  new ProdUsageManager(new DevUsageManager(), {
-    heartbeatIntervalMs: getEnvVar("USAGE_HEARTBEAT_INTERVAL_IN_MS")
-      ? parseInt(getEnvVar("USAGE_HEARTBEAT_INTERVAL_IN_MS")!, 10)
+const heartbeatIntervalMs = getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS");
+const subject = getEnvVar("TRIGGER_ORG_ID");
+const machinePreset = getEnvVar("TRIGGER_MACHINE_PRESET");
+const openMeterApiKey = getEnvVar("USAGE_OPEN_METER_API_KEY");
+const openMeterBaseUrl = getEnvVar("USAGE_OPEN_METER_BASE_URL");
+
+const prodUsageManager = new ProdUsageManager(new DevUsageManager(), {
+  heartbeatIntervalMs: heartbeatIntervalMs ? parseInt(heartbeatIntervalMs, 10) : undefined,
+  subject: subject!,
+  machinePreset: machinePreset,
+  openMeter:
+    openMeterApiKey && openMeterBaseUrl
+      ? {
+          token: openMeterApiKey,
+          baseUrl: openMeterBaseUrl,
+        }
       : undefined,
-    subject: getEnvVar("TRIGGER_ORG_ID")!,
-    machinePreset: getEnvVar("TRIGGER_MACHINE_PRESET"),
-    openMeter:
-      getEnvVar("USAGE_OPEN_METER_API_KEY") && getEnvVar("USAGE_OPEN_METER_BASE_URL")
-        ? {
-            token: getEnvVar("USAGE_OPEN_METER_API_KEY")!,
-            baseUrl: getEnvVar("USAGE_OPEN_METER_BASE_URL")!,
-          }
-        : undefined,
-  })
-);
+});
+
+usage.setGlobalUsageManager(prodUsageManager);
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
@@ -206,12 +210,12 @@ const zodIpc = new ZodIpcConnection({
     },
     CLEANUP: async ({ flush, kill }, sender) => {
       if (kill) {
-        await tracingSDK.flush();
+        await Promise.all([prodUsageManager.flush(), tracingSDK.flush()]);
         // Now we need to exit the process
         await sender.send("READY_TO_DISPOSE", undefined);
       } else {
         if (flush) {
-          await tracingSDK.flush();
+          await Promise.all([prodUsageManager.flush(), tracingSDK.flush()]);
         }
       }
     },
