@@ -38,6 +38,32 @@ client.defineJob({
 });
 
 client.defineJob({
+  id: "stress-test-errored-task",
+  name: "Stress Test Errored Task",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "stress.test.error-task",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.runTask(
+      `task-1`,
+      async (task) => {
+        return { success: true };
+      },
+      { name: `Task 1` }
+    );
+
+    await io.runTask(
+      `task-2`,
+      async (task) => {
+        return { fixed: "task" };
+      },
+      { name: `Task 1` }
+    );
+  },
+});
+
+client.defineJob({
   id: "stress-test-disabled",
   name: "Stress Test Disabled",
   version: "1.0.0",
