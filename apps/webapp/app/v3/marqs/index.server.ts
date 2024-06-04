@@ -361,6 +361,11 @@ export class MarQS {
           });
         }
 
+        await RequeueTaskRunService.enqueue(
+          messageData.messageId,
+          new Date(Date.now() + this.visibilityTimeoutInMs)
+        );
+
         return message;
       },
       {
