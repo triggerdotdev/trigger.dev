@@ -115,6 +115,7 @@ const EnvironmentSchema = z.object({
   CONTAINER_REGISTRY_USERNAME: z.string().optional(),
   CONTAINER_REGISTRY_PASSWORD: z.string().optional(),
   DEPLOY_REGISTRY_HOST: z.string().optional(),
+  DEPLOY_REGISTRY_NAMESPACE: z.string().default("trigger"),
   OBJECT_STORE_BASE_URL: z.string().optional(),
   OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
   OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),

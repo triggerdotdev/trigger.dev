@@ -25,6 +25,9 @@ const CHAOS_MONKEY_ENABLED = !!process.env.CHAOS_MONKEY_ENABLED;
 const FORCE_CHECKPOINT_SIMULATION = ["1", "true"].includes(
   process.env.FORCE_CHECKPOINT_SIMULATION ?? "true"
 );
+const DISABLE_CHECKPOINT_SUPPORT = ["1", "true"].includes(
+  process.env.DISABLE_CHECKPOINT_SUPPORT ?? "false"
+);
 
 const REGISTRY_HOST = process.env.REGISTRY_HOST || "localhost:5000";
 const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
@@ -53,6 +56,10 @@ type CheckpointAndPushOptions = {
   projectRef: string;
   deploymentVersion: string;
 };
+
+type CheckpointAndPushResult =
+  | { success: true; checkpoint: CheckpointData }
+  | { success: false; reason?: "CANCELED" | "DISABLED" | "ERROR" | "IN_PROGRESS" | "NO_SUPPORT" };
 
 type CheckpointData = {
   location: string;
@@ -93,6 +100,19 @@ async function getParsedFileSize(filePath: string) {
   };
 }
 
+// At 10 retries, the minimum total elapsed time is 5h22m, and the maximum is double that
+function exponentialBackoffMs(retryCount: number) {
+  const MS_MULTIPLIER = 1000;
+  const MAX = 2 * 60 * 60 * 1000;
+
+  const rawDelay = 3 ** retryCount * MS_MULTIPLIER;
+
+  // Equal jitter is less performant, but more predictable than other strategies
+  const boundedWithJitter = Math.min((rawDelay / 2) * (1 + Math.random()), MAX);
+
+  return boundedWithJitter;
+}
+
 class Checkpointer {
   #initialized = false;
   #canCheckpoint = false;
@@ -101,6 +121,7 @@ class Checkpointer {
   #logger = new SimpleLogger("[checkptr]");
   #abortControllers = new Map<string, AbortController>();
   #failedCheckpoints = new Map<string, unknown>();
+  #waitingForRetry = new Set<string>();
 
   constructor(private opts = { forceSimulate: false }) {}
 
@@ -184,7 +205,7 @@ class Checkpointer {
     const start = performance.now();
     logger.log(`checkpointAndPush() start`, { start, opts });
 
-    const result = await this.#checkpointAndPush(opts);
+    const result = await this.#checkpointAndPushWithBackoff(opts);
 
     const end = performance.now();
     logger.log(`checkpointAndPush() end`, {
@@ -192,7 +213,7 @@ class Checkpointer {
       end,
       diff: end - start,
       opts,
-      success: !!result,
+      success: result.success,
     });
 
     if (!result.success) {
@@ -203,7 +224,7 @@ class Checkpointer {
   }
 
   isCheckpointing(runId: string) {
-    return this.#abortControllers.has(runId);
+    return this.#abortControllers.has(runId) || this.#waitingForRetry.has(runId);
   }
 
   cancelCheckpoint(runId: string): boolean {
@@ -211,6 +232,11 @@ class Checkpointer {
     // This ensures tasks don't wait for external resume messages to continue
     if (this.#hasFailedCheckpoint(runId)) {
       this.#clearFailedCheckpoint(runId);
+      return true;
+    }
+
+    if (this.#waitingForRetry.has(runId)) {
+      this.#waitingForRetry.delete(runId);
       return true;
     }
 
@@ -227,14 +253,86 @@ class Checkpointer {
     return true;
   }
 
+  async #checkpointAndPushWithBackoff(
+    {
+      runId,
+      leaveRunning = true, // This mirrors kubernetes behaviour more accurately
+      projectRef,
+      deploymentVersion,
+    }: CheckpointAndPushOptions,
+    retryCount = 0
+  ): Promise<CheckpointAndPushResult> {
+    const MAX_RETRIES = 10;
+
+    logger.log("Checkpointing with backoff", { runId, retryCount });
+
+    const result = await this.#checkpointAndPush({
+      runId,
+      leaveRunning,
+      projectRef,
+      deploymentVersion,
+    });
+
+    if (result.success) {
+      return result;
+    }
+
+    if (result.reason === "CANCELED") {
+      logger.log("Checkpoint canceled, won't retry", { runId });
+      // Don't fail the checkpoint, as it was canceled
+      return result;
+    }
+
+    if (result.reason === "IN_PROGRESS") {
+      logger.log("Checkpoint already in progress, won't retry", { runId });
+      this.#failCheckpoint(runId, result.reason);
+      return result;
+    }
+
+    if (result.reason === "NO_SUPPORT") {
+      logger.log("No checkpoint support, won't retry", { runId });
+      this.#failCheckpoint(runId, result.reason);
+      return result;
+    }
+
+    if (retryCount >= MAX_RETRIES) {
+      logger.error(`Checkpoint failed after ${MAX_RETRIES} retries`, { runId });
+      this.#failCheckpoint(runId, result.reason);
+      return result;
+    }
+
+    const retry = retryCount + 1;
+    const delay = exponentialBackoffMs(retry);
+
+    logger.log("Retrying checkpoint", { runId, retry, delay });
+
+    this.#waitingForRetry.add(runId);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    if (!this.#waitingForRetry.has(runId)) {
+      logger.log("Checkpoint canceled while waiting for retry", { runId });
+      return { success: false, reason: "CANCELED" };
+    } else {
+      this.#waitingForRetry.delete(runId);
+    }
+
+    return this.#checkpointAndPushWithBackoff(
+      {
+        runId,
+        leaveRunning,
+        projectRef,
+        deploymentVersion,
+      },
+      retry
+    );
+  }
+
   async #checkpointAndPush({
     runId,
     leaveRunning = true, // This mirrors kubernetes behaviour more accurately
     projectRef,
     deploymentVersion,
-  }: CheckpointAndPushOptions): Promise<
-    { success: true; checkpoint: CheckpointData } | { success: false; reason?: "CANCELED" }
-  > {
+  }: CheckpointAndPushOptions): Promise<CheckpointAndPushResult> {
     await this.initialize();
 
     const options = {
@@ -246,21 +344,47 @@ class Checkpointer {
 
     if (!this.#dockerMode && !this.#canCheckpoint) {
       this.#logger.error("No checkpoint support. Simulation requires docker.");
-      return { success: false };
+      return { success: false, reason: "NO_SUPPORT" };
     }
 
     if (this.#abortControllers.has(runId)) {
       logger.error("Checkpoint procedure already in progress", { options });
-      return { success: false };
+      return { success: false, reason: "IN_PROGRESS" };
     }
 
     // This is a new checkpoint, clear any last failure for this run
     this.#clearFailedCheckpoint(runId);
 
+    // TODO: Handle this differently. Currently, this is just used for testing and will cause retries.
+    if (DISABLE_CHECKPOINT_SUPPORT) {
+      this.#logger.error("Checkpoint support disabled", { options });
+      return { success: false, reason: "DISABLED" };
+    }
+
     const controller = new AbortController();
     this.#abortControllers.set(runId, controller);
 
     const $$ = $({ signal: controller.signal });
+
+    const shortCode = nanoid(8);
+    const imageRef = this.#getImageRef(projectRef, deploymentVersion, shortCode);
+    const exportLocation = this.#getExportLocation(projectRef, deploymentVersion, shortCode);
+
+    const cleanup = async () => {
+      if (this.#dockerMode) {
+        return;
+      }
+
+      try {
+        await $$`rm ${exportLocation}`;
+        this.#logger.log("Deleted checkpoint archive", { exportLocation });
+
+        await $`buildah rmi ${imageRef}`;
+        this.#logger.log("Deleted checkpoint image", { imageRef });
+      } catch (error) {
+        this.#logger.error("Failure during checkpoint cleanup", { exportLocation, error });
+      }
+    };
 
     try {
       if (CHAOS_MONKEY_ENABLED) {
@@ -278,10 +402,6 @@ class Checkpointer {
           // no-op
         }
       }
-
-      const shortCode = nanoid(8);
-      const imageRef = this.#getImageRef(projectRef, deploymentVersion, shortCode);
-      const exportLocation = this.#getExportLocation(projectRef, deploymentVersion, shortCode);
 
       this.#logger.log("Checkpointing:", { options });
 
@@ -383,17 +503,6 @@ class Checkpointer {
 
       this.#logger.log("Checkpointed and pushed image to:", { location: imageRef, perf });
 
-      try {
-        await $$`rm ${exportLocation}`;
-        this.#logger.log("Deleted checkpoint archive", { exportLocation });
-
-        await $`buildah rmi ${imageRef}`;
-        this.#logger.log("Deleted checkpoint image", { imageRef });
-      } catch (error) {
-        this.#logger.error("Failed during checkpoint cleanup", { exportLocation });
-        throw error;
-      }
-
       return {
         success: true,
         checkpoint: {
@@ -409,19 +518,17 @@ class Checkpointer {
           return { success: false, reason: "CANCELED" };
         }
 
-        // Everything that's not a cancellation is a failure
-        this.#failCheckpoint(runId, error);
         this.#logger.error("Checkpoint command error", { options, error });
 
-        return { success: false };
+        return { success: false, reason: "ERROR" };
       }
 
-      this.#failCheckpoint(runId, error);
       this.#logger.error("Unhandled checkpoint error", { options, error });
 
-      return { success: false };
+      return { success: false, reason: "ERROR" };
     } finally {
       this.#abortControllers.delete(runId);
+      await cleanup();
     }
   }
 
@@ -1190,6 +1297,8 @@ class TaskCoordinator {
 
     // Cancel checkpointing procedure
     const checkpointCanceled = this.#checkpointer.cancelCheckpoint(runId);
+
+    logger.log("cancelCheckpoint()", { runId, checkpointCanceled });
 
     return checkpointCanceled;
   }

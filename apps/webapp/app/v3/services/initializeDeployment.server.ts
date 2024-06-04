@@ -6,6 +6,7 @@ import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { env } from "~/env.server";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
@@ -64,7 +65,7 @@ export class InitializeDeploymentService extends BaseService {
         new Date(Date.now() + 180_000) // 3 minutes
       );
 
-      const imageTag = `trigger/${environment.project.externalRef}:${deployment.version}.${environment.slug}`;
+      const imageTag = `${env.DEPLOY_REGISTRY_NAMESPACE}/${environment.project.externalRef}:${deployment.version}.${environment.slug}`;
 
       return { deployment, imageTag };
     });
