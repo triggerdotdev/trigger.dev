@@ -28,6 +28,7 @@ const FORCE_CHECKPOINT_SIMULATION = ["1", "true"].includes(
 const DISABLE_CHECKPOINT_SUPPORT = ["1", "true"].includes(
   process.env.DISABLE_CHECKPOINT_SUPPORT ?? "false"
 );
+const SIMULATE_PUSH_FAILURE = ["1", "true"].includes(process.env.SIMULATE_PUSH_FAILURE ?? "false");
 
 const REGISTRY_HOST = process.env.REGISTRY_HOST || "localhost:5000";
 const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
@@ -488,6 +489,13 @@ class Checkpointer {
 
       this.#logger.debug(await $$`buildah rm ${container}`);
       const postRm = performance.now();
+
+      if (SIMULATE_PUSH_FAILURE) {
+        if (performance.now() < 5 * 60 * 1000) {
+          this.#logger.error("Simulating push failure", { options });
+          throw new Error("SIMULATE_PUSH_FAILURE");
+        }
+      }
 
       // Push checkpoint image
       this.#logger.debug(await $$`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${imageRef}`);
