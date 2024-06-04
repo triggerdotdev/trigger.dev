@@ -376,7 +376,7 @@ class Checkpointer {
       }
 
       try {
-        await $$`rm ${exportLocation}`;
+        await $`rm ${exportLocation}`;
         this.#logger.log("Deleted checkpoint archive", { exportLocation });
 
         await $`buildah rmi ${imageRef}`;
