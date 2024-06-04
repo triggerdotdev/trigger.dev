@@ -1,9 +1,9 @@
-import { execaNode } from "execa";
-import { renameSync } from "node:fs";
+import { execa, execaNode } from "execa";
 import { join, resolve } from "node:path";
 import { typecheckProject } from "../src/commands/deploy";
 import { readConfig } from "../src/utilities/configFiles";
 import { rm } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 
 type TestCase = {
   name: string;
@@ -22,20 +22,49 @@ const allTestCases: TestCase[] = [
 ];
 
 const testCases = process.env.MOD
-  ? [allTestCases.find(({ name }) => process.env.MOD === name)]
+  ? allTestCases.filter(({ name }) => process.env.MOD === name)
   : allTestCases;
 
+const commandPath = resolve(join(process.cwd(), "dist/e2e.js"));
+const logLevel = process.env.LOG || "log";
+
 if (testCases.length > 0) {
-  describe.each(testCases as TestCase[])("fixture $name", ({ name, skipTypecheck }) => {
+  describe.each(testCases)("fixture $name", ({ name, skipTypecheck }) => {
+    const packageManager = process.env.PM || "npm";
     const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
-    const commandPath = resolve(join(process.cwd(), "dist/e2e.js"));
-    const logLevel = process.env.LOG || "log";
 
     beforeAll(async () => {
-      await rm(resolve(join(fixtureDir, ".trigger")), { recursive: true });
-      // await rm(resolve(join(fixtureDir, "node_modules")), { recursive: true });
-      // await rm(resolve(join(fixtureDir, ".pnpm_store")), { recursive: true });
+      await rm(resolve(join(fixtureDir, ".trigger")), { force: true, recursive: true });
+      await rm(resolve(join(fixtureDir, "node_modules")), { force: true, recursive: true });
     });
+
+    test(
+      "installs",
+      async () => {
+        await expect(
+          (async () => {
+            if (["pnpm", "yarn"].includes(packageManager)) {
+              const buffer = readFileSync(resolve(join(fixtureDir, "package.json")), "utf8");
+              const pkgJSON = JSON.parse(buffer.toString());
+              const version = pkgJSON.engines[packageManager];
+              console.log(
+                `Detected ${packageManager}@${version} from package.json 'engines' field`
+              );
+              const { stdout } = await execa("corepack", ["use", `${packageManager}@${version}`], {
+                cwd: fixtureDir,
+              });
+              console.log(stdout);
+            } else {
+              const { stdout } = await execa(packageManager, installArgs(packageManager), {
+                cwd: fixtureDir,
+              });
+              console.log(stdout);
+            }
+          })()
+        ).resolves.not.toThrowError();
+      },
+      { timeout: 60_000 }
+    );
 
     test(
       "compiles",
@@ -68,70 +97,21 @@ if (testCases.length > 0) {
     );
   });
 } else if (process.env.MOD) {
-  throw new Error(`Unknown fixture ${process.env.MOD}`);
+  throw new Error(`Unknown fixture '${process.env.MOD}'`);
 } else {
   throw new Error("Nothing to test");
 }
 
-// For now to avoid changes in codebase.
-function togglePackageManager(toggle: boolean, dir: string, packageManager?: string) {
+function installArgs(packageManager: string) {
   switch (packageManager) {
     case "bun":
-      renameSync(
-        join(dir, `pnpm-lock${toggle ? "" : ".muted"}.yaml`),
-        join(dir, `pnpm-lock${toggle ? ".muted" : ""}.yaml`)
-      );
-      renameSync(
-        join(dir, `yarn${toggle ? "" : ".muted"}.lock`),
-        join(dir, `yarn${toggle ? ".muted" : ""}.lock`)
-      );
-      renameSync(
-        join(dir, `package-lock${toggle ? "" : ".muted"}.json`),
-        join(dir, `package-lock${toggle ? ".muted" : ""}.json`)
-      );
-      break;
+      return ["install", "--frozen-lockfile"];
     case "pnpm":
-      renameSync(
-        join(dir, `bun${toggle ? "" : ".muted"}.lockb`),
-        join(dir, `bun${toggle ? ".muted" : ""}.lockb`)
-      );
-      renameSync(
-        join(dir, `yarn${toggle ? "" : ".muted"}.lock`),
-        join(dir, `yarn${toggle ? ".muted" : ""}.lock`)
-      );
-      renameSync(
-        join(dir, `package-lock${toggle ? "" : ".muted"}.json`),
-        join(dir, `package-lock${toggle ? ".muted" : ""}.json`)
-      );
-      break;
     case "yarn":
-      renameSync(
-        join(dir, `bun${toggle ? "" : ".muted"}.lockb`),
-        join(dir, `bun${toggle ? ".muted" : ""}.lockb`)
-      );
-      renameSync(
-        join(dir, `pnpm-lock${toggle ? "" : ".muted"}.yaml`),
-        join(dir, `pnpm-lock${toggle ? ".muted" : ""}.yaml`)
-      );
-      renameSync(
-        join(dir, `package-lock${toggle ? "" : ".muted"}.json`),
-        join(dir, `package-lock${toggle ? ".muted" : ""}.json`)
-      );
-      break;
+      throw new Error("pnpm and yarn version must be read from 'package.json' 'engines' field");
     case "npm":
+      return ["ci", "--no-audit"];
     default:
-      renameSync(
-        join(dir, `pnpm-lock${toggle ? "" : ".muted"}.yaml`),
-        join(dir, `pnpm-lock${toggle ? ".muted" : ""}.yaml`)
-      );
-      renameSync(
-        join(dir, `bun${toggle ? "" : ".muted"}.lockb`),
-        join(dir, `bun${toggle ? ".muted" : ""}.lockb`)
-      );
-      renameSync(
-        join(dir, `yarn${toggle ? "" : ".muted"}.lock`),
-        join(dir, `yarn${toggle ? ".muted" : ""}.lock`)
-      );
-      break;
+      throw new Error(`Unknown package manager '${packageManager}'`);
   }
 }
