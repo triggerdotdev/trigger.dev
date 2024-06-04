@@ -1,52 +1,76 @@
 import { execaNode } from "execa";
 import { renameSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { typecheckProject } from "../src/commands/deploy";
+import { readConfig } from "../src/utilities/configFiles";
+import { rm } from "node:fs/promises";
 
 type TestCase = {
   name: string;
-  options: string[];
+  skipTypecheck: boolean;
 };
 
-const testCases: TestCase[] = [
+const allTestCases: TestCase[] = [
   {
     name: "server-only",
-    options: ["--skip-typecheck"],
+    skipTypecheck: true,
   },
   {
     name: "infisical-sdk",
-    options: ["--skip-typecheck"],
+    skipTypecheck: true,
   },
 ];
 
-for (let testCase of testCases) {
-  const { options, name } = testCase;
+const testCases = process.env.MOD
+  ? [allTestCases.find(({ name }) => process.env.MOD === name)]
+  : allTestCases;
 
-  if (process.env.MOD && process.env.MOD !== name) continue;
+if (testCases.length > 0) {
+  describe.each(testCases as TestCase[])("fixture $name", ({ name, skipTypecheck }) => {
+    const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
+    const commandPath = resolve(join(process.cwd(), "dist/e2e.js"));
+    const logLevel = process.env.LOG || "log";
 
-  const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
-  const commandPath = resolve(join(process.cwd(), "dist/e2e.js"));
-  const logLevel = process.env.LOG || "log";
+    beforeAll(async () => {
+      await rm(resolve(join(fixtureDir, ".trigger")), { recursive: true });
+      // await rm(resolve(join(fixtureDir, "node_modules")), { recursive: true });
+      // await rm(resolve(join(fixtureDir, ".pnpm_store")), { recursive: true });
+    });
 
-  togglePackageManager(true, fixtureDir, process.env.PM);
+    test(
+      "compiles",
+      async () => {
+        const resolvedConfig = await readConfig(fixtureDir);
 
-  test(
-    `project fixture "${testCase.name}" compiles`,
-    async () => {
-      await expect(
-        (async () => {
-          const { stdout } = await execaNode(
-            commandPath,
-            ["deploy-compile", fixtureDir, "--log-level", logLevel, ...options],
-            { cwd: fixtureDir }
-          );
-          console.log(stdout);
-        })()
-      ).resolves.not.toThrowError();
-    },
-    { timeout: 60_000 }
-  );
+        if (resolvedConfig.status === "error") {
+          throw new Error(`cannot resolve config in directory ${fixtureDir}`);
+        }
 
-  togglePackageManager(false, fixtureDir, process.env.PM);
+        if (!skipTypecheck) {
+          const typecheck = await typecheckProject(resolvedConfig.config);
+
+          if (!typecheck) {
+            throw new Error("Typecheck failed, aborting deployment");
+          }
+        }
+
+        let compileArgs = ["deploy-compile", fixtureDir, "--log-level", logLevel];
+        if (skipTypecheck) compileArgs.push("--skip-typecheck");
+
+        await expect(
+          (async () => {
+            const { stdout } = await execaNode(commandPath, compileArgs, { cwd: fixtureDir });
+            console.log(stdout);
+          })()
+        ).resolves.not.toThrowError();
+      },
+      { timeout: 60_000 }
+    );
+  });
+} else if (process.env.MOD) {
+  throw new Error(`Unknown fixture ${process.env.MOD}`);
+} else {
+  throw new Error("Nothing to test");
 }
 
 // For now to avoid changes in codebase.

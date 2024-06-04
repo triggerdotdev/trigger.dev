@@ -83,7 +83,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   noCache: z.boolean().default(false),
 });
 
-export type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
+type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
 
 export function configureDeployCommand(program: Command) {
   return commonOptions(
@@ -1097,7 +1097,7 @@ function extractLogs(outputs: string[]) {
   return cleanedOutputs.map((line) => line.trim()).join("\n");
 }
 
-export async function compileProject(
+async function compileProject(
   config: ResolvedConfig,
   options: DeployCommandOptions,
   configPath?: string
@@ -1105,7 +1105,7 @@ export async function compileProject(
   return await tracer.startActiveSpan("compileProject", async (span) => {
     try {
       if (!options.skipTypecheck) {
-        const typecheck = await typecheckProject(config, options);
+        const typecheck = await typecheckProject(config);
 
         if (!typecheck) {
           throw new Error("Typecheck failed, aborting deployment");
@@ -1633,7 +1633,7 @@ async function resolveDependencies(
   });
 }
 
-async function typecheckProject(config: ResolvedConfig, options: DeployCommandOptions) {
+export async function typecheckProject(config: ResolvedConfig) {
   return await tracer.startActiveSpan("typecheckProject", async (span) => {
     try {
       const typecheckSpinner = spinner();
