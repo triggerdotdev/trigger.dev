@@ -357,8 +357,10 @@ class Checkpointer {
 
     // TODO: Handle this differently. Currently, this is just used for testing and will cause retries.
     if (DISABLE_CHECKPOINT_SUPPORT) {
-      this.#logger.error("Checkpoint support disabled", { options });
-      return { success: false, reason: "DISABLED" };
+      if (performance.now() < 5 * 60 * 1000) {
+        this.#logger.error("Checkpoint support disabled", { options });
+        return { success: false, reason: "DISABLED" };
+      }
     }
 
     const controller = new AbortController();
