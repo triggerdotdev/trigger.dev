@@ -2,7 +2,7 @@ import { execa, execaNode } from "execa";
 import { join, resolve } from "node:path";
 import { typecheckProject } from "../src/commands/deploy";
 import { readConfig } from "../src/utilities/configFiles";
-import { rm } from "node:fs/promises";
+import { rename, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 
 type TestCase = {
@@ -27,15 +27,33 @@ const testCases = process.env.MOD
 
 const commandPath = resolve(join(process.cwd(), "dist/e2e.js"));
 const logLevel = process.env.LOG || "log";
+const packageManager = process.env.PM || "npm";
 
 if (testCases.length > 0) {
+  console.log(`Using ${packageManager}`);
+
   describe.each(testCases)("fixture $name", ({ name, skipTypecheck }) => {
-    const packageManager = process.env.PM || "npm";
     const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
 
     beforeAll(async () => {
       await rm(resolve(join(fixtureDir, ".trigger")), { force: true, recursive: true });
       await rm(resolve(join(fixtureDir, "node_modules")), { force: true, recursive: true });
+      if (packageManager === "npm") {
+        // `npm ci` & `npm install` will update an existing yarn.lock
+        await rename(
+          resolve(join(fixtureDir, "yarn.lock")),
+          resolve(join(fixtureDir, "yarn.lock.copy"))
+        );
+      }
+    });
+
+    afterAll(async () => {
+      if (packageManager === "npm") {
+        await rename(
+          resolve(join(fixtureDir, "yarn.lock.copy")),
+          resolve(join(fixtureDir, "yarn.lock"))
+        );
+      }
     });
 
     test(
