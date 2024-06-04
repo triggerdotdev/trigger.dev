@@ -29,6 +29,10 @@ const DISABLE_CHECKPOINT_SUPPORT = ["1", "true"].includes(
   process.env.DISABLE_CHECKPOINT_SUPPORT ?? "false"
 );
 const SIMULATE_PUSH_FAILURE = ["1", "true"].includes(process.env.SIMULATE_PUSH_FAILURE ?? "false");
+const SIMULATE_PUSH_FAILURE_SECONDS = parseInt(
+  process.env.SIMULATE_PUSH_FAILURE_SECONDS ?? "300",
+  10
+);
 
 const REGISTRY_HOST = process.env.REGISTRY_HOST || "localhost:5000";
 const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
@@ -296,6 +300,12 @@ class Checkpointer {
       return result;
     }
 
+    if (result.reason === "DISABLED") {
+      logger.log("Checkpoint support disabled, won't retry", { runId });
+      this.#failCheckpoint(runId, result.reason);
+      return result;
+    }
+
     if (retryCount >= MAX_RETRIES) {
       logger.error(`Checkpoint failed after ${MAX_RETRIES} retries`, { runId });
       this.#failCheckpoint(runId, result.reason);
@@ -356,12 +366,9 @@ class Checkpointer {
     // This is a new checkpoint, clear any last failure for this run
     this.#clearFailedCheckpoint(runId);
 
-    // TODO: Handle this differently. Currently, this is just used for testing and will cause retries.
     if (DISABLE_CHECKPOINT_SUPPORT) {
-      if (performance.now() < 5 * 60 * 1000) {
-        this.#logger.error("Checkpoint support disabled", { options });
-        return { success: false, reason: "DISABLED" };
-      }
+      this.#logger.error("Checkpoint support disabled", { options });
+      return { success: false, reason: "DISABLED" };
     }
 
     const controller = new AbortController();
@@ -491,7 +498,7 @@ class Checkpointer {
       const postRm = performance.now();
 
       if (SIMULATE_PUSH_FAILURE) {
-        if (performance.now() < 5 * 60 * 1000) {
+        if (performance.now() < SIMULATE_PUSH_FAILURE_SECONDS * 1000) {
           this.#logger.error("Simulating push failure", { options });
           throw new Error("SIMULATE_PUSH_FAILURE");
         }
