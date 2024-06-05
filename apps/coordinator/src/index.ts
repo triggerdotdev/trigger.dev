@@ -13,6 +13,7 @@ import {
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
 import { HttpReply, getTextBody, SimpleLogger } from "@trigger.dev/core-apps";
+import { ExponentialBackoff, StopRetrying } from "./backoff";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
 collectDefaultMetrics();
@@ -31,6 +32,13 @@ const DISABLE_CHECKPOINT_SUPPORT = ["1", "true"].includes(
 const SIMULATE_PUSH_FAILURE = ["1", "true"].includes(process.env.SIMULATE_PUSH_FAILURE ?? "false");
 const SIMULATE_PUSH_FAILURE_SECONDS = parseInt(
   process.env.SIMULATE_PUSH_FAILURE_SECONDS ?? "300",
+  10
+);
+const SIMULATE_CHECKPOINT_FAILURE = ["1", "true"].includes(
+  process.env.SIMULATE_CHECKPOINT_FAILURE ?? "false"
+);
+const SIMULATE_CHECKPOINT_FAILURE_SECONDS = parseInt(
+  process.env.SIMULATE_CHECKPOINT_FAILURE_SECONDS ?? "300",
   10
 );
 
@@ -258,84 +266,100 @@ class Checkpointer {
     return true;
   }
 
-  async #checkpointAndPushWithBackoff(
-    {
-      runId,
-      leaveRunning = true, // This mirrors kubernetes behaviour more accurately
-      projectRef,
-      deploymentVersion,
-    }: CheckpointAndPushOptions,
-    retryCount = 0
-  ): Promise<CheckpointAndPushResult> {
-    const MAX_RETRIES = 10;
-
-    logger.log("Checkpointing with backoff", { runId, retryCount });
-
-    const result = await this.#checkpointAndPush({
+  async #checkpointAndPushWithBackoff({
+    runId,
+    leaveRunning = true, // This mirrors kubernetes behaviour more accurately
+    projectRef,
+    deploymentVersion,
+  }: CheckpointAndPushOptions): Promise<CheckpointAndPushResult> {
+    this.#logger.log("Checkpointing with backoff", {
       runId,
       leaveRunning,
       projectRef,
       deploymentVersion,
     });
 
-    if (result.success) {
-      return result;
+    const backoff = new ExponentialBackoff()
+      .type("EqualJitter")
+      .base(3)
+      .max(3 * 3600)
+      .maxElapsed(48 * 3600);
+
+    for await (const { delay, retry } of backoff) {
+      try {
+        if (retry > 0) {
+          this.#logger.error("Retrying checkpoint", {
+            runId,
+            retry,
+            delay,
+          });
+
+          this.#waitingForRetry.add(runId);
+          await new Promise((resolve) => setTimeout(resolve, delay.milliseconds));
+
+          if (!this.#waitingForRetry.has(runId)) {
+            this.#logger.log("Checkpoint canceled while waiting for retry", { runId });
+            return { success: false, reason: "CANCELED" };
+          } else {
+            this.#waitingForRetry.delete(runId);
+          }
+        }
+
+        const result = await this.#checkpointAndPush({
+          runId,
+          leaveRunning,
+          projectRef,
+          deploymentVersion,
+        });
+
+        if (result.success) {
+          return result;
+        }
+
+        if (result.reason === "CANCELED") {
+          this.#logger.log("Checkpoint canceled, won't retry", { runId });
+          // Don't fail the checkpoint, as it was canceled
+          return result;
+        }
+
+        if (result.reason === "IN_PROGRESS") {
+          this.#logger.log("Checkpoint already in progress, won't retry", { runId });
+          this.#failCheckpoint(runId, result.reason);
+          return result;
+        }
+
+        if (result.reason === "NO_SUPPORT") {
+          this.#logger.log("No checkpoint support, won't retry", { runId });
+          this.#failCheckpoint(runId, result.reason);
+          return result;
+        }
+
+        if (result.reason === "DISABLED") {
+          this.#logger.log("Checkpoint support disabled, won't retry", { runId });
+          this.#failCheckpoint(runId, result.reason);
+          return result;
+        }
+
+        continue;
+      } catch (error) {
+        this.#logger.error("Checkpoint error", {
+          retry,
+          runId,
+          delay,
+          error: error instanceof Error ? error.message : error,
+        });
+      }
     }
 
-    if (result.reason === "CANCELED") {
-      logger.log("Checkpoint canceled, won't retry", { runId });
-      // Don't fail the checkpoint, as it was canceled
-      return result;
-    }
+    this.#logger.error(`Checkpoint failed after exponential backoff`, {
+      runId,
+      leaveRunning,
+      projectRef,
+      deploymentVersion,
+    });
+    this.#failCheckpoint(runId, "ERROR");
 
-    if (result.reason === "IN_PROGRESS") {
-      logger.log("Checkpoint already in progress, won't retry", { runId });
-      this.#failCheckpoint(runId, result.reason);
-      return result;
-    }
-
-    if (result.reason === "NO_SUPPORT") {
-      logger.log("No checkpoint support, won't retry", { runId });
-      this.#failCheckpoint(runId, result.reason);
-      return result;
-    }
-
-    if (result.reason === "DISABLED") {
-      logger.log("Checkpoint support disabled, won't retry", { runId });
-      this.#failCheckpoint(runId, result.reason);
-      return result;
-    }
-
-    if (retryCount >= MAX_RETRIES) {
-      logger.error(`Checkpoint failed after ${MAX_RETRIES} retries`, { runId });
-      this.#failCheckpoint(runId, result.reason);
-      return result;
-    }
-
-    const retry = retryCount + 1;
-    const delay = exponentialBackoffMs(retry);
-
-    logger.log("Retrying checkpoint", { runId, retry, delay });
-
-    this.#waitingForRetry.add(runId);
-    await new Promise((resolve) => setTimeout(resolve, delay));
-
-    if (!this.#waitingForRetry.has(runId)) {
-      logger.log("Checkpoint canceled while waiting for retry", { runId });
-      return { success: false, reason: "CANCELED" };
-    } else {
-      this.#waitingForRetry.delete(runId);
-    }
-
-    return this.#checkpointAndPushWithBackoff(
-      {
-        runId,
-        leaveRunning,
-        projectRef,
-        deploymentVersion,
-      },
-      retry
-    );
+    return { success: false, reason: "ERROR" };
   }
 
   async #checkpointAndPush({
@@ -424,6 +448,13 @@ class Checkpointer {
             this.#logger.log("Simulating checkpoint");
             this.#logger.debug(await $$`docker pause ${containterName}`);
           } else {
+            if (SIMULATE_CHECKPOINT_FAILURE) {
+              if (performance.now() < SIMULATE_CHECKPOINT_FAILURE_SECONDS * 1000) {
+                this.#logger.error("Simulating checkpoint failure", { options });
+                throw new Error("SIMULATE_CHECKPOINT_FAILURE");
+              }
+            }
+
             if (leaveRunning) {
               this.#logger.debug(
                 await $$`docker checkpoint create --leave-running ${containterName} ${exportLocation}`
@@ -470,6 +501,13 @@ class Checkpointer {
       }
 
       const start = performance.now();
+
+      if (SIMULATE_CHECKPOINT_FAILURE) {
+        if (performance.now() < SIMULATE_CHECKPOINT_FAILURE_SECONDS * 1000) {
+          this.#logger.error("Simulating checkpoint failure", { options });
+          throw new Error("SIMULATE_CHECKPOINT_FAILURE");
+        }
+      }
 
       // Create checkpoint
       this.#logger.debug(await $$`crictl checkpoint --export=${exportLocation} ${containerId}`);
@@ -698,6 +736,8 @@ class TaskCoordinator {
             });
             return;
           }
+
+          this.#checkpointer.cancelCheckpoint(message.runId);
 
           if (message.delayInMs) {
             taskSocket.emit("REQUEST_EXIT", {
