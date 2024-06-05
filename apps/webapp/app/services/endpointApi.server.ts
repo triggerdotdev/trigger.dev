@@ -124,6 +124,7 @@ export class EndpointApi {
         "x-trigger-action": "INDEX_ENDPOINT",
       },
       redirect: "manual",
+      signal: AbortSignal.timeout(5_000),
     });
 
     return {

@@ -262,7 +262,7 @@ function getWorkerQueue() {
     recurringTasks: {
       // Run this every 5 minutes
       autoIndexProductionEndpoints: {
-        match: "*/5 * * * *",
+        match: "*/30 * * * *",
         handler: async (payload, job) => {
           const service = new RecurringEndpointIndexService();
 

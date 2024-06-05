@@ -27,7 +27,7 @@ export class RecurringEndpointIndexService {
         indexings: {
           none: {
             createdAt: {
-              gt: new Date(currentTimestamp - 10 * 60 * 1000),
+              gt: new Date(currentTimestamp - 60 * 60 * 1000),
             },
           },
         },
