@@ -9,7 +9,7 @@ type ExponentialBackoffOptions = {
   maxElapsed: number;
 };
 
-export class StopRetrying extends Error {
+class StopRetrying extends Error {
   constructor(message?: string) {
     super(message);
     this.name = "StopRetrying";
@@ -238,4 +238,10 @@ export class ExponentialBackoff {
     this.#retries++;
     return this.delay();
   }
+
+  stop() {
+    throw new StopRetrying();
+  }
+
+  static StopRetrying = StopRetrying;
 }

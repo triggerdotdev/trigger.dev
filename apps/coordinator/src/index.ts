@@ -13,7 +13,7 @@ import {
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
 import { HttpReply, getTextBody, SimpleLogger } from "@trigger.dev/core-apps";
-import { ExponentialBackoff, StopRetrying } from "./backoff";
+import { ExponentialBackoff } from "./backoff";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
 collectDefaultMetrics();
