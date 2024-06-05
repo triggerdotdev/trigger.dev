@@ -316,6 +316,9 @@ class KubernetesTaskOperations implements TaskOperations {
         {
           name: "registry-trigger",
         },
+        {
+          name: "registry-trigger-failover",
+        },
       ],
       nodeSelector: {
         nodetype: "worker",
