@@ -946,6 +946,14 @@ class TaskCoordinator {
             socket.data.attemptFriendlyId = executionAck.payload.execution.attempt.id;
           } catch (error) {
             logger.error("Error", { error });
+
+            await crashRun({
+              name: "ReadyForExecutionError",
+              message:
+                error instanceof Error ? `Unexpected error: ${error.message}` : "Unexpected error",
+            });
+
+            return;
           }
         });
 
@@ -986,6 +994,14 @@ class TaskCoordinator {
             });
           } catch (error) {
             logger.error("Error", { error });
+
+            await crashRun({
+              name: "ReadyForLazyAttemptError",
+              message:
+                error instanceof Error ? `Unexpected error: ${error.message}` : "Unexpected error",
+            });
+
+            return;
           }
         });
 
