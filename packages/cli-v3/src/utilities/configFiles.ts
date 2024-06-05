@@ -118,13 +118,15 @@ export type ReadConfigOptions = {
   cwd?: string;
 };
 
+export type ReadConfigFileResult = {
+  status: "file";
+  config: ResolvedConfig;
+  path: string;
+  module?: any;
+};
+
 export type ReadConfigResult =
-  | {
-      status: "file";
-      config: ResolvedConfig;
-      path: string;
-      module?: any;
-    }
+  | ReadConfigFileResult
   | {
       status: "in-memory";
       config: ResolvedConfig;

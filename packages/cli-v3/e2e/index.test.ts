@@ -1,10 +1,10 @@
-import { execa, execaNode } from "execa";
+import { execa } from "execa";
 import { readFileSync } from "node:fs";
 import { rename, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { typecheckProject } from "../src/commands/deploy";
-import { readConfig } from "../src/utilities/configFiles";
+import { readConfig, ReadConfigFileResult } from "../src/utilities/configFiles";
 import { compile } from "./compile";
 import { Metafile } from "esbuild";
 import { Loglevel, LogLevelSchema, PackageManager, PackageManagerSchema } from ".";
@@ -52,13 +52,8 @@ try {
 if (testCases.length > 0) {
   console.log(`Using ${packageManager}`);
 
-  describe.each(testCases)("fixture $name", async ({ name, skipTypecheck }) => {
+  describe.each(testCases)("fixture $name", async ({ name, skipTypecheck }: TestCase) => {
     const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
-    const resolvedConfig = await readConfig(fixtureDir, { cwd: fixtureDir });
-
-    if (resolvedConfig.status === "error") {
-      throw new Error(`cannot resolve config in directory ${fixtureDir}`);
-    }
 
     beforeAll(async () => {
       await rm(resolve(join(fixtureDir, ".trigger")), { force: true, recursive: true });
@@ -109,32 +104,47 @@ if (testCases.length > 0) {
       { timeout: 60_000 }
     );
 
-    if (!skipTypecheck) {
-      test("typechecks", async () => {
+    test("resolves config", async () => {
+      await expect(
+        (async () => {
+          global.resolvedConfig = await readConfig(fixtureDir, { cwd: fixtureDir });
+        })()
+      ).resolves.not.toThrowError();
+
+      expect(global.resolvedConfig).not.toBe("error");
+    });
+
+    describe("with resolved config", () => {
+      test.skipIf(skipTypecheck)("typechecks", async () => {
+        expect(global.resolvedConfig.status).not.toBe("error");
+
         await expect(
-          (async () => await typecheckProject(resolvedConfig.config))()
+          (async () =>
+            await typecheckProject((global.resolvedConfig as ReadConfigFileResult).config))()
         ).resolves.not.toThrowError();
       });
-    }
 
-    let entrypointMetadata: Metafile["outputs"]["out/stdin.js"];
-    let workerMetadata: Metafile["outputs"]["out/stdin.js"];
+      let entrypointMetadata: Metafile["outputs"]["out/stdin.js"];
+      let workerMetadata: Metafile["outputs"]["out/stdin.js"];
 
-    test(
-      "compiles",
-      async () => {
-        await expect(
-          (async () => {
-            const { entryPointMetaOutput, metaOutput } = await compile({
-              resolvedConfig,
-            });
-            entrypointMetadata = entryPointMetaOutput;
-            workerMetadata = metaOutput;
-          })()
-        ).resolves.not.toThrowError();
-      },
-      { timeout: 60_000 }
-    );
+      test(
+        "compiles",
+        async () => {
+          expect(global.resolvedConfig.status).not.toBe("error");
+
+          await expect(
+            (async () => {
+              const { entryPointMetaOutput, metaOutput } = await compile({
+                resolvedConfig: global.resolvedConfig,
+              });
+              entrypointMetadata = entryPointMetaOutput;
+              workerMetadata = metaOutput;
+            })()
+          ).resolves.not.toThrowError();
+        },
+        { timeout: 60_000 }
+      );
+    });
   });
 } else if (process.env.MOD) {
   throw new Error(`Unknown fixture '${process.env.MOD}'`);
