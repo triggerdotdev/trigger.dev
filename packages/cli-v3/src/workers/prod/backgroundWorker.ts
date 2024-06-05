@@ -754,10 +754,14 @@ class TaskRunProcess {
       killParentProcess,
     });
 
-    await this._ipc?.sendWithAck("CLEANUP", {
-      flush: true,
-      kill: killParentProcess,
-    });
+    await this._ipc?.sendWithAck(
+      "CLEANUP",
+      {
+        flush: true,
+        kill: killParentProcess,
+      },
+      30_000
+    );
 
     if (killChildProcess) {
       this._gracefulExitTimeoutElapsed = true;
