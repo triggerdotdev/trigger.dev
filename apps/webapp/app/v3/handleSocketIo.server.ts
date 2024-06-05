@@ -87,6 +87,7 @@ function createCoordinatorNamespace(io: Server) {
         );
 
         if (!payload) {
+          logger.error("Failed to retrieve execution payload", message);
           return { success: false };
         } else {
           return { success: true, payload };
@@ -106,6 +107,12 @@ function createCoordinatorNamespace(io: Server) {
 
           return { success: true, lazyPayload: payload };
         } catch (error) {
+          logger.error("Error while creating lazy attempt", {
+            runId: message.runId,
+            envId: message.envId,
+            totalCompletions: message.totalCompletions,
+            error,
+          });
           return { success: false };
         }
       },
@@ -152,7 +159,13 @@ function createCoordinatorNamespace(io: Server) {
 
           return { success: !!worker };
         } catch (error) {
-          logger.error("Error while creating worker", { error });
+          logger.error("Error while creating worker", {
+            error,
+            envId: message.envId,
+            projectRef: message.projectRef,
+            deploymentId: message.deploymentId,
+            version: message.version,
+          });
           return { success: false };
         }
       },
@@ -179,7 +192,10 @@ function createCoordinatorNamespace(io: Server) {
 
           return { success: true, executionPayload: payload };
         } catch (error) {
-          logger.error("Error while creating attempt", { error });
+          logger.error("Error while creating attempt", {
+            runId: message.runId,
+            error,
+          });
           return { success: false };
         }
       },
@@ -188,8 +204,11 @@ function createCoordinatorNamespace(io: Server) {
           const service = new DeploymentIndexFailed();
 
           await service.call(message.deploymentId, message.error);
-        } catch (e) {
-          logger.error("Error while processing index failure", { error: e });
+        } catch (error) {
+          logger.error("Error while processing index failure", {
+            deploymentId: message.deploymentId,
+            error,
+          });
         }
       },
       RUN_CRASHED: async (message) => {
@@ -200,8 +219,11 @@ function createCoordinatorNamespace(io: Server) {
             reason: `${message.error.name}: ${message.error.message}`,
             logs: message.error.stack,
           });
-        } catch (e) {
-          logger.error("Error while processing run failure", { error: e });
+        } catch (error) {
+          logger.error("Error while processing run failure", {
+            runId: message.runId,
+            error,
+          });
         }
       },
     },
