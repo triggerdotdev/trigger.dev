@@ -24,6 +24,7 @@ import { $replica, PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { PgListenService } from "~/services/db/pgListen.server";
 import { workerLogger as logger } from "~/services/logger.server";
 import { flattenAttributes } from "@trigger.dev/core/v3";
+import { env } from "node:process";
 
 const tracer = trace.getTracer("zodWorker", "3.0.0.dp.1");
 
@@ -258,10 +259,12 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     });
 
     this.#runner?.events.on("worker:getJob:start", ({ worker }) => {
+      if (env.VERBOSE_GRAPHILE_LOGGING !== "true") return;
       this.#logDebug("worker:getJob:start", { workerId: worker.workerId });
     });
 
     this.#runner?.events.on("job:start", ({ worker, job }) => {
+      if (env.VERBOSE_GRAPHILE_LOGGING !== "true") return;
       this.#logDebug("job:start", { workerId: worker.workerId, job });
     });
 

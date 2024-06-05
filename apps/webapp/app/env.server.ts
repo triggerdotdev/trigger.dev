@@ -172,6 +172,8 @@ const EnvironmentSchema = z.object({
 
   LOOPS_API_KEY: z.string().optional(),
   MARQS_DISABLE_REBALANCING: z.coerce.boolean().default(false),
+
+  VERBOSE_GRAPHILE_LOGGING: z.string().default("false"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
