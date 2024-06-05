@@ -24,7 +24,7 @@ import { $replica, PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { PgListenService } from "~/services/db/pgListen.server";
 import { workerLogger as logger } from "~/services/logger.server";
 import { flattenAttributes } from "@trigger.dev/core/v3";
-import { env } from "node:process";
+import { env } from "~/env.server";
 
 const tracer = trace.getTracer("zodWorker", "3.0.0.dp.1");
 
