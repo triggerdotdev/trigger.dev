@@ -31,12 +31,6 @@ export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 }
 
-const graphileLogger = new GraphileLogger((scope) => {
-  return (level, message, meta) => {
-    logger.debug(`[graphile-worker][${level}] ${message}`, { scope, meta });
-  };
-});
-
 const RawCronPayloadSchema = z.object({
   _cron: z.object({
     ts: z.coerce.date(),
@@ -173,6 +167,16 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     this.#workerUtils = await makeWorkerUtils(this.#runnerOptions);
 
+    const graphileLogger = new GraphileLogger((scope) => {
+      return (level, message, meta) => {
+        logger.debug(`[graphile-worker][${this.#name}][${level}] ${message}`, {
+          scope,
+          meta,
+          workerName: this.#name,
+        });
+      };
+    });
+
     this.#runner = await graphileRun({
       ...this.#runnerOptions,
       noHandleSignals: true,
@@ -251,6 +255,14 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     this.#runner?.events.on("worker:getJob:error", ({ worker, error }) => {
       this.#logDebug("worker:getJob:error", { workerId: worker.workerId, error });
+    });
+
+    this.#runner?.events.on("worker:getJob:start", ({ worker }) => {
+      this.#logDebug("worker:getJob:start", { workerId: worker.workerId });
+    });
+
+    this.#runner?.events.on("job:start", ({ worker, job }) => {
+      this.#logDebug("job:start", { workerId: worker.workerId, job });
     });
 
     process.on("SIGTERM", this._handleSignal.bind(this));
