@@ -170,6 +170,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     const graphileLogger = new GraphileLogger((scope) => {
       return (level, message, meta) => {
+        if (env.VERBOSE_GRAPHILE_LOGGING !== "true") return;
+
         logger.debug(`[graphile-worker][${this.#name}][${level}] ${message}`, {
           scope,
           meta,

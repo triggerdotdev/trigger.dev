@@ -1,0 +1,18 @@
+diff --git a/dist/sql/getJob.js b/dist/sql/getJob.js
+index 70cc9b49d7d08c8dd32214f15c463b2a568abd15..bb3fe15317f139edd2b24c5046512813ae88f36e 100644
+--- a/dist/sql/getJob.js
++++ b/dist/sql/getJob.js
+@@ -153,6 +153,13 @@ with j as (
+     const name = !preparedStatements
+         ? undefined
+         : `get_job${hasFlags ? "F" : ""}${useNodeTime ? "N" : ""}/${workerSchema}`;
++    
++    logger.debug("Running getJob query...", {
++      text,
++      values,
++      name
++    });
++
+     const { rows: [jobRow], } = await withPgClient.withRetries((client) => client.query({
+         text,
+         values,

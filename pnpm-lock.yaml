@@ -11,6 +11,9 @@ patchedDependencies:
   engine.io-parser@5.2.2:
     hash: e6nctogrhpxoivwiwy37ersfu4
     path: patches/engine.io-parser@5.2.2.patch
+  graphile-worker@0.16.6:
+    hash: jucduuwnhi5xpqrafqjynulvhe
+    path: patches/graphile-worker@0.16.6.patch
   tsup@8.0.1:
     hash: a5ztaafw5l4qfghy2hjjuynb34
     path: patches/tsup@8.0.1.patch
@@ -461,7 +464,7 @@ importers:
         version: 10.12.11(react-dom@18.2.0)(react@18.2.0)
       graphile-worker:
         specifier: 0.16.6
-        version: 0.16.6(typescript@5.2.2)
+        version: 0.16.6(patch_hash=jucduuwnhi5xpqrafqjynulvhe)(typescript@5.2.2)
       highlight.run:
         specifier: ^7.3.4
         version: 7.3.4
@@ -23577,7 +23580,7 @@ packages:
       - supports-color
     dev: false
 
-  /graphile-worker@0.16.6(typescript@5.2.2):
+  /graphile-worker@0.16.6(patch_hash=jucduuwnhi5xpqrafqjynulvhe)(typescript@5.2.2):
     resolution: {integrity: sha512-e7gGYDmGqzju2l83MpzX8vNG/lOtVJiSzI3eZpAFubSxh/cxs7sRrRGBGjzBP1kNG0H+c95etPpNRNlH65PYhw==}
     engines: {node: '>=14.0.0'}
     hasBin: true
@@ -23596,6 +23599,7 @@ packages:
       - supports-color
       - typescript
     dev: false
+    patched: true
 
   /graphql@15.8.0:
     resolution: {integrity: sha512-5gghUc24tP9HRznNpV2+FIoq3xKkj5dTQqf4v0CpdPbFVwFkWoxOM+o+2OC9ZSvjEMTjfmG9QT+gcvggTwW1zw==}
