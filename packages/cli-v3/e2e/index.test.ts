@@ -32,8 +32,13 @@ const packageManager = process.env.PM || "npm";
 if (testCases.length > 0) {
   console.log(`Using ${packageManager}`);
 
-  describe.each(testCases)("fixture $name", ({ name, skipTypecheck }) => {
+  describe.each(testCases)("fixture $name", async ({ name, skipTypecheck }) => {
     const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
+    const resolvedConfig = await readConfig(fixtureDir);
+
+    if (resolvedConfig.status === "error") {
+      throw new Error(`cannot resolve config in directory ${fixtureDir}`);
+    }
 
     beforeAll(async () => {
       await rm(resolve(join(fixtureDir, ".trigger")), { force: true, recursive: true });
@@ -84,23 +89,17 @@ if (testCases.length > 0) {
       { timeout: 60_000 }
     );
 
+    if (!skipTypecheck) {
+      test("typechecks", async () => {
+        await expect(
+          (async () => await typecheckProject(resolvedConfig.config))()
+        ).resolves.not.toThrowError();
+      });
+    }
+
     test(
       "compiles",
       async () => {
-        const resolvedConfig = await readConfig(fixtureDir);
-
-        if (resolvedConfig.status === "error") {
-          throw new Error(`cannot resolve config in directory ${fixtureDir}`);
-        }
-
-        if (!skipTypecheck) {
-          const typecheck = await typecheckProject(resolvedConfig.config);
-
-          if (!typecheck) {
-            throw new Error("Typecheck failed, aborting deployment");
-          }
-        }
-
         let compileArgs = ["deploy-compile", fixtureDir, "--log-level", logLevel];
         if (skipTypecheck) compileArgs.push("--skip-typecheck");
 
@@ -126,7 +125,7 @@ function installArgs(packageManager: string) {
       return ["install", "--frozen-lockfile"];
     case "pnpm":
     case "yarn":
-      throw new Error("pnpm and yarn version must be read from 'package.json' 'engines' field");
+      throw new Error("pnpm and yarn must install using `corepack use`");
     case "npm":
       return ["ci", "--no-audit"];
     default:
