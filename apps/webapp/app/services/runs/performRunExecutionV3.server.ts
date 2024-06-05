@@ -136,6 +136,12 @@ export class PerformRunExecutionV3Service {
         return;
       }
 
+      if (!run.organization.runsEnabled) {
+        return await this.#failRunExecution(this.#prismaClient, run, {
+          message: `Unable to execute run.`,
+        });
+      }
+
       if (!run.endpoint.url) {
         return await this.#failRunExecution(this.#prismaClient, run, {
           message: `Endpoint has no URL set`,
