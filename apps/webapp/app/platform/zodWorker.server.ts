@@ -237,6 +237,10 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       this.#logDebug("stop");
     });
 
+    this.#runner?.events.on("worker:getJob:error", ({ worker, error }) => {
+      this.#logDebug("worker:getJob:error", { workerId: worker.workerId, error });
+    });
+
     process.on("SIGTERM", this._handleSignal.bind(this));
     process.on("SIGINT", this._handleSignal.bind(this));
 
