@@ -1,26 +1,8 @@
-#!/usr/bin/env node
+import { z } from "zod";
 
-import { Command } from "commander";
-
-import { logger } from "../src/utilities/logger.js";
-import { configureCompileCommand } from "./compile.js";
-
-const program = new Command();
-
-program.name("trigger.e2e").description("trigger.dev program integration and e2e testing");
-
-configureCompileCommand(program);
-
-const main = async () => {
-  await program.parseAsync();
-};
-
-main().catch((err) => {
-  if (err instanceof Error) {
-    logger.error(err);
-  } else {
-    logger.error("An unknown error has occurred. Please open an issue on github with the below:");
-    logger.error(err);
-  }
-  process.exit(1);
-});
+export const LogLevelSchema = z
+  .enum(["debug", "info", "log", "warn", "error", "none"])
+  .default("log");
+export type Loglevel = z.infer<typeof LogLevelSchema>;
+export const PackageManagerSchema = z.enum(["bun", "npm", "pnpm", "yarn"]).default("npm");
+export type PackageManager = z.infer<typeof PackageManagerSchema>;

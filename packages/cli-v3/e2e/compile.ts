@@ -1,72 +1,35 @@
 #!/usr/bin/env node
 
 import { esbuildDecorators } from "@anatine/esbuild-decorators";
-import { Command, Option } from "commander";
 import { build } from "esbuild";
 import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join, posix } from "node:path";
+import { basename, join, posix, resolve } from "node:path";
 import invariant from "tiny-invariant";
-import { z } from "zod";
-import { fromZodError } from "zod-validation-error";
 
 import {
   bundleDependenciesPlugin,
   mockServerOnlyPlugin,
   workerSetupImportConfigPlugin,
 } from "../src/utilities/build.js";
-import { readConfig } from "../src/utilities/configFiles.js";
+import { ReadConfigResult } from "../src/utilities/configFiles.js";
 import { writeJSONFile } from "../src/utilities/fileSystem.js";
 import { logger } from "../src/utilities/logger.js";
-import { cliRootPath } from "../src/utilities/resolveInternalFilePath.js";
 import { createTaskFileImports, gatherTaskFiles } from "../src/utilities/taskFiles.js";
-import { escapeImportPath, spinner } from "../src/utilities/windows.js";
+import { escapeImportPath } from "../src/utilities/windows.js";
 
-const CompileCommandOptionsSchema = z.object({
-  logLevel: z.enum(["debug", "info", "log", "warn", "error", "none"]).default("log"),
-  skipTypecheck: z.boolean().default(false),
-  outputMetafile: z.string().optional(),
-});
+type CompileOptions = {
+  outputMetafile?: string;
+  resolvedConfig: ReadConfigResult;
+};
 
-export type CompileCommandOptions = z.infer<typeof CompileCommandOptionsSchema>;
-
-export function configureCompileCommand(program: Command) {
-  program
-    .command("deploy-compile")
-    .argument(
-      "[dir]",
-      "The project root directory. Usually where the top level package.json is located."
-    )
-    .option(
-      "-l, --log-level <level>",
-      "The CLI log level to use (debug, info, log, warn, error, none). This does not effect the log level of your trigger.dev tasks.",
-      "log"
-    )
-    .option("--skip-typecheck", "Whether to skip the pre-build typecheck")
-    .addOption(
-      new Option(
-        "--output-metafile <path>",
-        "If provided, will save the esbuild metafile for the build to the specified path"
-      ).hideHelp()
-    )
-    .action(compile);
-}
-
-async function compile(dir: string, options: CompileCommandOptions) {
-  const parsedOptions = CompileCommandOptionsSchema.safeParse(options);
-  if (!parsedOptions.success) {
-    throw new Error(fromZodError(parsedOptions.error).toString());
+export async function compile(options: CompileOptions) {
+  if (options.resolvedConfig.status === "error") {
+    throw new Error("cannot resolve config");
   }
-  logger.loggerLevel = parsedOptions.data.logLevel;
-
-  const resolvedConfig = await readConfig(dir);
-
-  if (resolvedConfig.status === "error") {
-    throw new Error(`cannot resolve config in directory ${dir}`);
-  }
-
-  const { config } = resolvedConfig;
-  const configPath = resolvedConfig.status === "file" ? resolvedConfig.path : undefined;
+  const { config } = options.resolvedConfig;
+  const configPath =
+    options.resolvedConfig.status === "file" ? options.resolvedConfig.path : undefined;
 
   // COPIED FROM compileProject()
   // const compileSpinner = spinner();
@@ -74,11 +37,13 @@ async function compile(dir: string, options: CompileCommandOptions) {
 
   const taskFiles = await gatherTaskFiles(config);
   const workerFacade = readFileSync(
-    join(cliRootPath(), "workers", "prod", "worker-facade.js"),
+    resolve("./dist/workers/prod/worker-facade.js"),
+    // join(cliRootPath(), "workers", "prod", "worker-facade.js"),
     "utf-8"
   );
 
-  const workerSetupPath = join(cliRootPath(), "workers", "prod", "worker-setup.js");
+  // const workerSetupPath = join(cliRootPath(), "workers", "prod", "worker-setup.js");
+  const workerSetupPath = resolve("./dist/workers/prod/worker-setup.js");
 
   let workerContents = workerFacade
     .replace("__TASKS__", createTaskFileImports(taskFiles))
@@ -106,7 +71,8 @@ async function compile(dir: string, options: CompileCommandOptions) {
   const result = await build({
     stdin: {
       contents: workerContents,
-      resolveDir: process.cwd(),
+      // resolveDir: process.cwd(),
+      resolveDir: config.projectDir,
       sourcefile: "__entryPoint.ts",
     },
     bundle: true,
@@ -118,7 +84,8 @@ async function compile(dir: string, options: CompileCommandOptions) {
     platform: "node",
     format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
     target: ["node18", "es2020"],
-    outdir: "out",
+    // outdir: "out",
+    outdir: resolve(config.projectDir, "out"),
     banner: {
       js: `process.on("uncaughtException", function(error, origin) { if (error instanceof Error) { process.send && process.send({ type: "EVENT", message: { type: "UNCAUGHT_EXCEPTION", payload: { error: { name: error.name, message: error.message, stack: error.stack }, origin }, version: "v1" } }); } else { process.send && process.send({ type: "EVENT", message: { type: "UNCAUGHT_EXCEPTION", payload: { error: { name: "Error", message: typeof error === "string" ? error : JSON.stringify(error) }, origin }, version: "v1" } }); } });`,
     },
@@ -155,14 +122,16 @@ async function compile(dir: string, options: CompileCommandOptions) {
   }
 
   const entryPointContents = readFileSync(
-    join(cliRootPath(), "workers", "prod", "entry-point.js"),
+    resolve("./dist/workers/prod/entry-point.js"),
+    // join(cliRootPath(), "workers", "prod", "entry-point.js"),
     "utf-8"
   );
 
   const entryPointResult = await build({
     stdin: {
       contents: entryPointContents,
-      resolveDir: process.cwd(),
+      // resolveDir: process.cwd(),
+      resolveDir: config.projectDir,
       sourcefile: "index.ts",
     },
     bundle: true,
@@ -175,7 +144,8 @@ async function compile(dir: string, options: CompileCommandOptions) {
     packages: "external",
     format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
     target: ["node18", "es2020"],
-    outdir: "out",
+    // outdir: "out",
+    outdir: resolve(config.projectDir, "out"),
     define: {
       __PROJECT_CONFIG__: JSON.stringify(config),
     },
@@ -210,12 +180,21 @@ async function compile(dir: string, options: CompileCommandOptions) {
   logger.debug(`Writing compiled files to ${tempDir}`);
 
   // Get the metaOutput for the result build
-  const metaOutput = result.metafile!.outputs[posix.join("out", "stdin.js")];
+  // const metaOutput = result.metafile!.outputs[posix.join("out", "stdin.js")];
+  const metaOutput =
+    result.metafile!.outputs[
+      posix.join("e2e", "fixtures", basename(config.projectDir), "out", "stdin.js")
+    ];
 
   invariant(metaOutput, "Meta output for the result build is missing");
 
   // Get the metaOutput for the entryPoint build
-  const entryPointMetaOutput = entryPointResult.metafile!.outputs[posix.join("out", "stdin.js")];
+  // const entryPointMetaOutput =
+  //       entryPointResult.metafile!.outputs[posix.join("out", "stdin.js")];
+  const entryPointMetaOutput =
+    entryPointResult.metafile!.outputs[
+      posix.join("e2e", "fixtures", basename(config.projectDir), "out", "stdin.js")
+    ];
 
   invariant(entryPointMetaOutput, "Meta output for the entryPoint build is missing");
 
@@ -249,4 +228,6 @@ async function compile(dir: string, options: CompileCommandOptions) {
   await writeFile(join(tempDir!, "worker.js.map"), workerSourcemapFile.text);
   // Save the entryPoint outputFile to /tmp/dir/index.js
   await writeFile(join(tempDir!, "index.js"), entryPointOutputFile.text);
+
+  return { metaOutput, entryPointMetaOutput };
 }

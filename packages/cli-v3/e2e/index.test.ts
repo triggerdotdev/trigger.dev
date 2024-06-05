@@ -1,9 +1,14 @@
 import { execa, execaNode } from "execa";
+import { readFileSync } from "node:fs";
+import { rename, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
+
 import { typecheckProject } from "../src/commands/deploy";
 import { readConfig } from "../src/utilities/configFiles";
-import { rename, rm } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { compile } from "./compile";
+import { Metafile } from "esbuild";
+import { Loglevel, LogLevelSchema, PackageManager, PackageManagerSchema } from ".";
+import { logger } from "../src/utilities/logger";
 
 type TestCase = {
   name: string;
@@ -25,16 +30,31 @@ const testCases = process.env.MOD
   ? allTestCases.filter(({ name }) => process.env.MOD === name)
   : allTestCases;
 
-const commandPath = resolve(join(process.cwd(), "dist/e2e.js"));
-const logLevel = process.env.LOG || "log";
-const packageManager = process.env.PM || "npm";
+let logLevel: Loglevel = "log";
+let packageManager: PackageManager = "npm";
+
+try {
+  logLevel = LogLevelSchema.parse(process.env.LOG);
+} catch (e) {
+  console.error(e);
+  console.log("Using default log level 'log'");
+}
+
+logger.loggerLevel = logLevel;
+
+try {
+  packageManager = PackageManagerSchema.parse(process.env.PM);
+} catch (e) {
+  console.error(e);
+  console.log("Using default package manager 'npm'");
+}
 
 if (testCases.length > 0) {
   console.log(`Using ${packageManager}`);
 
   describe.each(testCases)("fixture $name", async ({ name, skipTypecheck }) => {
     const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
-    const resolvedConfig = await readConfig(fixtureDir);
+    const resolvedConfig = await readConfig(fixtureDir, { cwd: fixtureDir });
 
     if (resolvedConfig.status === "error") {
       throw new Error(`cannot resolve config in directory ${fixtureDir}`);
@@ -97,16 +117,19 @@ if (testCases.length > 0) {
       });
     }
 
+    let entrypointMetadata: Metafile["outputs"]["out/stdin.js"];
+    let workerMetadata: Metafile["outputs"]["out/stdin.js"];
+
     test(
       "compiles",
       async () => {
-        let compileArgs = ["deploy-compile", fixtureDir, "--log-level", logLevel];
-        if (skipTypecheck) compileArgs.push("--skip-typecheck");
-
         await expect(
           (async () => {
-            const { stdout } = await execaNode(commandPath, compileArgs, { cwd: fixtureDir });
-            console.log(stdout);
+            const { entryPointMetaOutput, metaOutput } = await compile({
+              resolvedConfig,
+            });
+            entrypointMetadata = entryPointMetaOutput;
+            workerMetadata = metaOutput;
           })()
         ).resolves.not.toThrowError();
       },
