@@ -7,7 +7,7 @@ import {
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
   isExecaChildProcess,
-  testCheckpointSupport,
+  testDockerCheckpoint,
 } from "@trigger.dev/core-apps";
 import { setTimeout } from "node:timers/promises";
 import { PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
@@ -43,7 +43,7 @@ class DockerTaskOperations implements TaskOperations {
 
     logger.log("Initializing task operations");
 
-    const testCheckpoint = await testCheckpointSupport();
+    const testCheckpoint = await testDockerCheckpoint();
 
     if (testCheckpoint.ok) {
       return this.#getInitReturn(true);

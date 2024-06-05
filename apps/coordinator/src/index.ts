@@ -16,7 +16,7 @@ import {
   HttpReply,
   getTextBody,
   SimpleLogger,
-  testCheckpointSupport,
+  testDockerCheckpoint,
 } from "@trigger.dev/core-apps";
 import { ExponentialBackoff } from "./backoff";
 
@@ -138,7 +138,7 @@ class Checkpointer {
     this.#logger.log(`${this.#dockerMode ? "Docker" : "Kubernetes"} mode`);
 
     if (this.#dockerMode) {
-      const testCheckpoint = await testCheckpointSupport();
+      const testCheckpoint = await testDockerCheckpoint();
 
       if (testCheckpoint.ok) {
         return this.#getInitReturn(true);

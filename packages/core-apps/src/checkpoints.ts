@@ -15,7 +15,7 @@ export type CheckpointTestResult =
       error?: unknown;
     };
 
-export async function testCheckpointSupport(): Promise<CheckpointTestResult> {
+export async function testDockerCheckpoint(): Promise<CheckpointTestResult> {
   try {
     // Create a dummy container
     const container =
