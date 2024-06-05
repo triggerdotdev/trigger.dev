@@ -335,7 +335,7 @@ function getWorkerQueue() {
         },
       },
       activateSource: {
-        priority: 10, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 3,
         handler: async (payload, graphileJob) => {
           const service = new ActivateSourceService();
@@ -361,7 +361,7 @@ function getWorkerQueue() {
         },
       },
       deliverHttpSourceRequest: {
-        priority: 1, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 14,
         queueName: (payload) => `sources:${payload.id}`,
         handler: async (payload, job) => {
@@ -371,7 +371,7 @@ function getWorkerQueue() {
         },
       },
       deliverWebhookRequest: {
-        priority: 1, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 14,
         queueName: (payload) => `webhooks:${payload.id}`,
         handler: async (payload, job) => {
@@ -399,14 +399,14 @@ function getWorkerQueue() {
         },
       },
       scheduleEmail: {
-        priority: 100,
+        priority: 0,
         maxAttempts: 3,
         handler: async (payload, job) => {
           await sendEmail(payload);
         },
       },
       indexEndpoint: {
-        priority: 1, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 7,
         handler: async (payload, job) => {
           const service = new IndexEndpointService();
@@ -414,7 +414,7 @@ function getWorkerQueue() {
         },
       },
       performEndpointIndexing: {
-        priority: 1, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 7,
         handler: async (payload, job) => {
           const service = new PerformEndpointIndexService();
@@ -431,7 +431,7 @@ function getWorkerQueue() {
         },
       },
       refreshOAuthToken: {
-        priority: 8, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 7,
         handler: async (payload, job) => {
           await integrationAuthRepository.refreshConnection({
@@ -440,7 +440,7 @@ function getWorkerQueue() {
         },
       },
       probeEndpoint: {
-        priority: 10,
+        priority: 0,
         maxAttempts: 1,
         handler: async (payload, job) => {
           const service = new ProbeEndpointService();
@@ -482,7 +482,7 @@ function getWorkerQueue() {
         },
       },
       expireDispatcher: {
-        priority: 10,
+        priority: 0,
         maxAttempts: 3,
         handler: async (payload) => {
           const service = new ExpireDispatcherService();
