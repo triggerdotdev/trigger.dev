@@ -1,10 +1,14 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
 import { DiscordIcon, GitHubLightIcon } from "@trigger.dev/companyicons";
+import { ActivityIcon } from "lucide-react";
 import { ReactNode, useState } from "react";
 import { FeedbackType, feedbackTypeLabel, schema } from "~/routes/resources.feedback";
+import { cn } from "~/utils/cn";
+import { docsPath } from "~/utils/pathBuilder";
 import { Button, LinkButton } from "./primitives/Buttons";
 import { Fieldset } from "./primitives/Fieldset";
 import { FormButtons } from "./primitives/FormButtons";
@@ -13,20 +17,9 @@ import { Header1, Header2 } from "./primitives/Headers";
 import { InputGroup } from "./primitives/InputGroup";
 import { Label } from "./primitives/Label";
 import { Paragraph } from "./primitives/Paragraph";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./primitives/Select";
+import { Select, SelectItem } from "./primitives/Select";
 import { Sheet, SheetBody, SheetContent, SheetTrigger } from "./primitives/Sheet";
 import { TextArea } from "./primitives/TextArea";
-import { cn } from "~/utils/cn";
-import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { ActivityIcon, HeartPulseIcon } from "lucide-react";
-import { docsPath } from "~/utils/pathBuilder";
 
 type FeedbackProps = {
   button: ReactNode;
@@ -78,20 +71,20 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
             <Fieldset className="max-w-full gap-y-3">
               <input value={location.pathname} {...conform.input(path, { type: "hidden" })} />
               <InputGroup className="max-w-full">
-                <SelectGroup>
-                  <Select {...conform.input(feedbackType)} defaultValue={defaultValue}>
-                    <SelectTrigger size="medium" width="full">
-                      <SelectValue placeholder="Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(feedbackTypeLabel).map(([key, value]) => (
-                        <SelectItem key={key} value={key}>
-                          {value}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </SelectGroup>
+                <Select
+                  {...conform.select(feedbackType)}
+                  variant="tertiary/medium"
+                  defaultValue={defaultValue}
+                  placeholder="Select type"
+                  text={(value) => feedbackTypeLabel[value]}
+                  dropdownIcon
+                >
+                  {Object.entries(feedbackTypeLabel).map(([name, title]) => (
+                    <SelectItem key={name} value={name}>
+                      {title}
+                    </SelectItem>
+                  ))}
+                </Select>
                 <FormError id={feedbackType.errorId}>{feedbackType.error}</FormError>
               </InputGroup>
               <InputGroup className="max-w-full">
@@ -122,14 +115,7 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
               Docs
             </LinkButton>
             <LinkButton
-              to={docsPath("v3/introduction")}
-              variant="tertiary/medium"
-              LeadingIcon={BookOpenIcon}
-            >
-              v3 Docs (Developer preview)
-            </LinkButton>
-            <LinkButton
-              to={"https://trigger.openstatus.dev/"}
+              to={"https://status.trigger.dev/"}
               variant="tertiary/medium"
               LeadingIcon={ActivityIcon}
             >

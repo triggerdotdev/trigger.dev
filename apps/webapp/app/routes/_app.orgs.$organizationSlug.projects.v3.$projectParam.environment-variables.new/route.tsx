@@ -18,7 +18,7 @@ import {
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Checkbox } from "~/components/primitives/Checkbox";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -38,6 +38,7 @@ import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3EnvironmentVariablesPath } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
+import dotenv from "dotenv";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -45,13 +46,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new EnvironmentVariablesPresenter();
-    const { environmentVariables, environments } = await presenter.call({
+    const { environments } = await presenter.call({
       userId,
       projectSlug: projectParam,
     });
 
     return typedjson({
-      environmentVariables,
       environments,
     });
   } catch (error) {
@@ -70,7 +70,7 @@ const Variable = z.object({
 type Variable = z.infer<typeof Variable>;
 
 const schema = z.object({
-  overwrite: z.preprocess((i) => {
+  override: z.preprocess((i) => {
     if (i === "true") return true;
     if (i === "false") return false;
     return;
@@ -115,6 +115,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const project = await prisma.project.findUnique({
     where: {
       slug: params.projectParam,
+      organization: {
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
     },
     select: {
       id: true,
@@ -126,7 +133,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const repository = new EnvironmentVariablesRepository(prisma);
-  const result = await repository.create(project.id, userId, submission.value);
+  const result = await repository.create(project.id, submission.value);
 
   if (!result.success) {
     if (result.variableErrors) {
@@ -149,7 +156,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 export default function Page() {
   const [isOpen, setIsOpen] = useState(false);
-  const { environmentVariables, environments } = useTypedLoaderData<typeof loader>();
+  const { environments } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
   const navigate = useNavigate();
@@ -183,7 +190,7 @@ export default function Page() {
         }
       }}
     >
-      <DialogContent>
+      <DialogContent className="md:max-w-2xl lg:max-w-3xl">
         <DialogHeader>New environment variables</DialogHeader>
         <Form
           method="post"
@@ -195,7 +202,7 @@ export default function Page() {
               <Label>Environments</Label>
               <div className="flex flex-wrap items-center gap-2">
                 {environments.map((environment) => (
-                  <Checkbox
+                  <CheckboxWithLabel
                     key={environment.id}
                     id={environment.id}
                     value={environment.id}
@@ -249,7 +256,7 @@ export default function Page() {
                     type="submit"
                     variant="primary/small"
                     disabled={isLoading}
-                    name="overwrite"
+                    name="override"
                     value="false"
                   >
                     {isLoading ? "Saving" : "Save"}
@@ -257,10 +264,10 @@ export default function Page() {
                   <Button
                     variant="secondary/small"
                     disabled={isLoading}
-                    name="overwrite"
+                    name="override"
                     value="true"
                   >
-                    {isLoading ? "Overwriting" : "Overwrite"}
+                    {isLoading ? "Overriding" : "Override"}
                   </Button>
                 </div>
               }
@@ -308,20 +315,12 @@ function VariableFields({
     if (!clipboardData) return;
 
     let text = clipboardData.getData("text");
-    //replace carriage returns
-    text = text.replace(/\r/g, "");
-    const lines = text.split("\n");
+    if (!text) return;
 
-    const keyValuePairs = lines.flatMap((line) => {
-      if (line.trim().startsWith("#")) return [];
+    const variables = dotenv.parse(text);
+    const keyValuePairs = Object.entries(variables).map(([key, value]) => ({ key, value }));
 
-      const split = line.split("=");
-      if (split.length === 2) {
-        return [{ key: split[0], value: split[1] }];
-      }
-      return [];
-    });
-
+    //do the default paste
     if (keyValuePairs.length === 0) return;
 
     //prevent default pasting

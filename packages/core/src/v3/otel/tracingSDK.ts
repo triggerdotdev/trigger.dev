@@ -40,6 +40,7 @@ import {
 import { SemanticInternalAttributes } from "../semanticInternalAttributes";
 import { TaskContextLogProcessor, TaskContextSpanProcessor } from "../taskContext/otelProcessors";
 import { getEnvVar } from "../utils/getEnv";
+import { version } from "../../../package.json";
 
 class AsyncResourceDetector implements DetectorSync {
   private _promise: Promise<ResourceAttributes>;
@@ -111,6 +112,7 @@ export class TracingSDK {
         new Resource({
           [SemanticResourceAttributes.CLOUD_PROVIDER]: "trigger.dev",
           [SemanticInternalAttributes.TRIGGER]: true,
+          [SemanticInternalAttributes.CLI_VERSION]: version,
         })
       )
       .merge(config.resource ?? new Resource({}))

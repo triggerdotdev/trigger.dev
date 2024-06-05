@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SecretStoreOptionsSchema } from "./services/secrets/secretStore.server";
+import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
 import { isValidRegex } from "./utils/regex";
 import { isValidDatabaseUrl } from "./utils/db";
 
@@ -49,6 +49,8 @@ const EnvironmentSchema = z.object({
   WORKER_SCHEMA: z.string().default("graphile_worker"),
   WORKER_CONCURRENCY: z.coerce.number().int().default(10),
   WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+  /** The number of days a failed Graphile task should stay before getting cleaned up */
+  WORKER_CLEANUP_TTL_DAYS: z.coerce.number().int().default(3),
   EXECUTION_WORKER_CONCURRENCY: z.coerce.number().int().default(10),
   EXECUTION_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
   WORKER_ENABLED: z.string().default("true"),
@@ -100,16 +102,22 @@ const EnvironmentSchema = z.object({
   API_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
   API_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
 
+  //Ingesting event rate limit
+  INGEST_EVENT_RATE_LIMIT_WINDOW: z.string().default("60s"),
+  INGEST_EVENT_RATE_LIMIT_MAX: z.coerce.number().int().optional(),
+
   //v3
   V3_ENABLED: z.string().default("false"),
   PROVIDER_SECRET: z.string().default("provider-secret"),
   COORDINATOR_SECRET: z.string().default("coordinator-secret"),
   DEPOT_TOKEN: z.string().optional(),
   DEPOT_PROJECT_ID: z.string().optional(),
+  DEPOT_ORG_ID: z.string().optional(),
   CONTAINER_REGISTRY_ORIGIN: z.string().optional(),
   CONTAINER_REGISTRY_USERNAME: z.string().optional(),
   CONTAINER_REGISTRY_PASSWORD: z.string().optional(),
   DEPLOY_REGISTRY_HOST: z.string().optional(),
+  DEPLOY_REGISTRY_NAMESPACE: z.string().default("trigger"),
   OBJECT_STORE_BASE_URL: z.string().optional(),
   OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
   OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
@@ -154,6 +162,18 @@ const EnvironmentSchema = z.object({
   INTERNAL_OTEL_TRACE_SAMPLING_RATE: z.string().default("20"),
   INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED: z.string().default("0"),
   INTERNAL_OTEL_TRACE_DISABLED: z.string().default("0"),
+
+  ORG_SLACK_INTEGRATION_CLIENT_ID: z.string().optional(),
+  ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
+
+  /** These enable the alerts feature in v3 */
+  ALERT_FROM_EMAIL: z.string().optional(),
+  ALERT_RESEND_API_KEY: z.string().optional(),
+
+  MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
+
+  LOOPS_API_KEY: z.string().optional(),
+  MARQS_DISABLE_REBALANCING: z.coerce.boolean().default(false),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

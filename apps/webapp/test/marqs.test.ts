@@ -88,7 +88,10 @@ describe("SimpleWeightedChoiceStrategy", () => {
 
     const nextSelection = await stategy.nextCandidateSelection("parentQueue");
 
-    expect(nextSelection).toEqual({ range: [3, 6], selectionId: expect.any(String) });
+    expect(nextSelection).toEqual({
+      range: { offset: 3, count: 3 },
+      selectionId: expect.any(String),
+    });
 
     // Now pass some queues that have some capacity
     const chosenQueue2 = stategy.chooseQueue(
@@ -129,7 +132,10 @@ describe("SimpleWeightedChoiceStrategy", () => {
 
     const nextSelection2 = await stategy.nextCandidateSelection("parentQueue");
 
-    expect(nextSelection2).toEqual({ range: [0, 3], selectionId: expect.any(String) });
+    expect(nextSelection2).toEqual({
+      range: { offset: 6, count: 3 },
+      selectionId: expect.any(String),
+    });
   });
 
   it("should adjust the next filter range only if passed the maximum number of queues", async () => {
@@ -167,7 +173,10 @@ describe("SimpleWeightedChoiceStrategy", () => {
 
     const nextSelection = await stategy.nextCandidateSelection("parentQueue");
 
-    expect(nextSelection).toEqual({ range: [0, 3], selectionId: expect.any(String) });
+    expect(nextSelection).toEqual({
+      range: { offset: 0, count: 3 },
+      selectionId: expect.any(String),
+    });
   });
 
   it("should adjust the next candidate range ONLY for the matching parent queue", async () => {
@@ -182,7 +191,7 @@ describe("SimpleWeightedChoiceStrategy", () => {
           queue: "queue1",
           age: 4497,
           capacities: {
-            queue: { current: 10, limit: 10 },
+            queue: { current: 0, limit: 10 },
             env: { current: 0, limit: 10 },
             org: { current: 0, limit: 10 },
           },
@@ -210,15 +219,21 @@ describe("SimpleWeightedChoiceStrategy", () => {
       "selectionId"
     );
 
-    expect(chosenQueue).toEqual({ abort: true });
+    expect(chosenQueue).toEqual("queue1");
 
     const nextSelection = await stategy.nextCandidateSelection("parentQueue2");
 
-    expect(nextSelection).toEqual({ range: [0, 3], selectionId: expect.any(String) });
+    expect(nextSelection).toEqual({
+      range: { offset: 0, count: 3 },
+      selectionId: expect.any(String),
+    });
 
     const nextSelection2 = await stategy.nextCandidateSelection("parentQueue");
 
-    expect(nextSelection2).toEqual({ range: [3, 6], selectionId: expect.any(String) });
+    expect(nextSelection2).toEqual({
+      range: { offset: 3, count: 3 },
+      selectionId: expect.any(String),
+    });
 
     const chosenQueue2 = stategy.chooseQueue(
       [
@@ -250,14 +265,52 @@ describe("SimpleWeightedChoiceStrategy", () => {
           },
         },
       ],
-      "parentQueue2",
+      "parentQueue",
       "selectionId"
     );
 
-    expect(chosenQueue2).toEqual("queue3");
+    expect(chosenQueue2).toEqual("queue2");
 
-    const nextSelection3 = await stategy.nextCandidateSelection("parentQueue2");
+    const nextSelection3 = await stategy.nextCandidateSelection("parentQueue");
 
-    expect(nextSelection3).toEqual({ range: [0, 3], selectionId: expect.any(String) });
+    expect(nextSelection3).toEqual({
+      range: { offset: 6, count: 3 },
+      selectionId: expect.any(String),
+    });
+
+    // Not passed 3 queues, so the range should be reset (we've reached the end)
+    const chosenQueue3 = stategy.chooseQueue(
+      [
+        {
+          queue: "queue1",
+          age: 4497,
+          capacities: {
+            queue: { current: 0, limit: 10 },
+            env: { current: 0, limit: 10 },
+            org: { current: 0, limit: 10 },
+          },
+        },
+        {
+          queue: "queue2",
+          age: 19670,
+          capacities: {
+            queue: { current: 0, limit: 10 },
+            env: { current: 0, limit: 10 },
+            org: { current: 0, limit: 10 },
+          },
+        },
+      ],
+      "parentQueue",
+      "selectionId"
+    );
+
+    expect(chosenQueue3).toEqual("queue2");
+
+    const nextSelection4 = await stategy.nextCandidateSelection("parentQueue");
+
+    expect(nextSelection4).toEqual({
+      range: { offset: 0, count: 3 },
+      selectionId: expect.any(String),
+    });
   });
 });

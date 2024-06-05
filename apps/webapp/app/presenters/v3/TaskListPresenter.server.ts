@@ -1,19 +1,19 @@
-import {
-  Prisma,
+import type {
   RuntimeEnvironmentType,
-  TaskRunStatus,
   TaskTriggerSource,
+  TaskRunStatus as TaskRunStatusType,
 } from "@trigger.dev/database";
-import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
-import { Organization } from "~/models/organization.server";
-import { Project } from "~/models/project.server";
-import { User } from "~/models/user.server";
-import { sortEnvironments } from "~/services/environmentSort.server";
-import { logger } from "~/services/logger.server";
-import { getUsername } from "~/utils/username";
-import { BasePresenter } from "./basePresenter.server";
+import { Prisma } from "@trigger.dev/database";
 import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
-import { displayableEnvironments } from "~/models/runtimeEnvironment.server";
+import { sqlDatabaseSchema } from "~/db.server";
+import type { Organization } from "~/models/organization.server";
+import type { Project } from "~/models/project.server";
+import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
+import type { User } from "~/models/user.server";
+import { filterOrphanedEnvironments, sortEnvironments } from "~/utils/environmentSort";
+import { logger } from "~/services/logger.server";
+import { BasePresenter } from "./basePresenter.server";
+import { TaskRunStatus } from "~/database-types";
 
 export type Task = {
   slug: string;
@@ -26,10 +26,6 @@ export type Task = {
     type: RuntimeEnvironmentType;
     userName?: string;
   }[];
-  latestRun?: {
-    createdAt: Date;
-    status: TaskRunStatus;
-  };
 };
 
 type Return = Awaited<ReturnType<TaskListPresenter["call"]>>;
@@ -90,7 +86,9 @@ export class TaskListPresenter extends BasePresenter {
     WITH workers AS (
       SELECT DISTINCT ON ("runtimeEnvironmentId") id, "runtimeEnvironmentId", version
       FROM ${sqlDatabaseSchema}."BackgroundWorker"
-      WHERE "runtimeEnvironmentId" IN (${Prisma.join(project.environments.map((e) => e.id))})
+      WHERE "runtimeEnvironmentId" IN (${Prisma.join(
+        filterOrphanedEnvironments(project.environments).map((e) => e.id)
+      )})
       ORDER BY "runtimeEnvironmentId", "createdAt" DESC
     )
     SELECT tasks.id, slug, "filePath", "exportName", "triggerSource", tasks."runtimeEnvironmentId", tasks."createdAt"
@@ -98,39 +96,8 @@ export class TaskListPresenter extends BasePresenter {
     JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" tasks ON tasks."workerId" = workers.id
     ORDER BY slug ASC;`;
 
-    let latestRuns = [] as {
-      createdAt: Date;
-      status: TaskRunStatus;
-      taskIdentifier: string;
-    }[];
-
-    if (tasks.length > 0) {
-      const uniqueTaskSlugs = new Set(tasks.map((t) => t.slug));
-      latestRuns = await this._replica.$queryRaw<
-        {
-          createdAt: Date;
-          status: TaskRunStatus;
-          taskIdentifier: string;
-        }[]
-      >`
-      SELECT * FROM (
-        SELECT
-          "createdAt",
-          "status",
-          "taskIdentifier",
-          ROW_NUMBER() OVER (PARTITION BY "taskIdentifier" ORDER BY "updatedAt" DESC) AS rn
-        FROM
-          ${sqlDatabaseSchema}."TaskRun"
-        WHERE
-          "taskIdentifier" IN(${Prisma.join(Array.from(uniqueTaskSlugs))})
-          AND "projectId" = ${project.id}
-      ) t
-      WHERE rn = 1;`;
-    }
-
     //group by the task identifier (task.slug). Add the latestRun and add all the environments.
     const outputTasks = tasks.reduce((acc, task) => {
-      const latestRun = latestRuns.find((r) => r.taskIdentifier === task.slug);
       const environment = project.environments.find((env) => env.id === task.runtimeEnvironmentId);
       if (!environment) {
         throw new Error(`Environment not found for TaskRun ${task.id}`);
@@ -146,17 +113,18 @@ export class TaskListPresenter extends BasePresenter {
         acc.push(existingTask);
       }
 
-      existingTask.environments.push(displayableEnvironments(environment, userId));
+      //favour newer tasks
+      if (task.createdAt > existingTask.createdAt) {
+        existingTask.createdAt = task.createdAt;
+        existingTask.exportName = task.exportName;
+        existingTask.filePath = task.filePath;
+        existingTask.triggerSource = task.triggerSource;
+      }
+
+      existingTask.environments.push(displayableEnvironment(environment, userId));
 
       //order the environments
       existingTask.environments = sortEnvironments(existingTask.environments);
-
-      existingTask.latestRun = latestRun
-        ? {
-            createdAt: latestRun.createdAt,
-            status: latestRun.status,
-          }
-        : undefined;
 
       return acc;
     }, [] as Task[]);
@@ -186,10 +154,14 @@ export class TaskListPresenter extends BasePresenter {
   }
 
   async #getActivity(tasks: string[], projectId: string) {
+    if (tasks.length === 0) {
+      return {};
+    }
+
     const activity = await this._replica.$queryRaw<
       {
         taskIdentifier: string;
-        status: TaskRunStatus;
+        status: TaskRunStatusType;
         day: Date;
         count: BigInt;
       }[]
@@ -232,7 +204,7 @@ export class TaskListPresenter extends BasePresenter {
           existingTask.push({
             day: day.toISOString(),
             [TaskRunStatus.COMPLETED_SUCCESSFULLY]: 0,
-          } as { day: string } & Record<TaskRunStatus, number>);
+          } as { day: string } & Record<TaskRunStatusType, number>);
         }
 
         acc[a.taskIdentifier] = existingTask;
@@ -253,14 +225,18 @@ export class TaskListPresenter extends BasePresenter {
       day[a.status] = Number(a.count);
 
       return acc;
-    }, {} as Record<string, ({ day: string } & Record<TaskRunStatus, number>)[]>);
+    }, {} as Record<string, ({ day: string } & Record<TaskRunStatusType, number>)[]>);
   }
 
   async #getRunningStats(tasks: string[], projectId: string) {
+    if (tasks.length === 0) {
+      return {};
+    }
+
     const statuses = await this._replica.$queryRaw<
       {
         taskIdentifier: string;
-        status: TaskRunStatus;
+        status: TaskRunStatusType;
         count: BigInt;
       }[]
     >`
@@ -305,6 +281,10 @@ export class TaskListPresenter extends BasePresenter {
   }
 
   async #getAverageDurations(tasks: string[], projectId: string) {
+    if (tasks.length === 0) {
+      return {};
+    }
+
     const durations = await this._replica.$queryRaw<
       {
         taskIdentifier: string;

@@ -1,4 +1,4 @@
-import { $transaction, Prisma, PrismaClient, prisma } from "~/db.server";
+import { Prisma, PrismaClient, prisma } from "~/db.server";
 import { ResumeRunService } from "./resumeRun.server";
 
 const RESUMABLE_STATUSES = [
@@ -18,50 +18,44 @@ export class ContinueRunService {
   }
 
   public async call({ runId }: { runId: string }) {
-    return await $transaction(
-      this.#prismaClient,
-      async (tx) => {
-        const run = await tx.jobRun.findUniqueOrThrow({
-          where: { id: runId },
-          include: {
-            environment: true,
-          },
-        });
-
-        if (!RESUMABLE_STATUSES.includes(run.status)) {
-          throw new Error("Run is not resumable");
-        }
-
-        // Delete any tasks that are errored
-        const erroredTasks = await tx.task.findMany({
-          where: {
-            runId: runId,
-            status: "ERRORED",
-          },
-        });
-
-        await tx.jobRun.update({
-          where: { id: runId },
-          data: {
-            status: "QUEUED",
-            queuedAt: new Date(),
-            startedAt: null,
-            completedAt: null,
-            output: Prisma.DbNull,
-            timedOutAt: null,
-            timedOutReason: null,
-          },
-        });
-
-        for (const task of erroredTasks) {
-          await tx.task.delete({
-            where: { id: task.id },
-          });
-        }
-
-        await ResumeRunService.enqueue(run, tx);
+    const run = await this.#prismaClient.jobRun.findUniqueOrThrow({
+      where: { id: runId },
+      include: {
+        environment: true,
       },
-      { timeout: 30_000 }
-    );
+    });
+
+    if (!RESUMABLE_STATUSES.includes(run.status)) {
+      throw new Error("Run is not resumable");
+    }
+
+    await this.#prismaClient.jobRun.update({
+      where: { id: runId },
+      data: {
+        status: "QUEUED",
+        queuedAt: new Date(),
+        startedAt: null,
+        completedAt: null,
+        output: Prisma.DbNull,
+        timedOutAt: null,
+        timedOutReason: null,
+      },
+    });
+
+    // Now we need to reset errored tasks to PENDING
+    await this.#prismaClient.task.updateMany({
+      where: {
+        runId: runId,
+        status: "ERRORED",
+      },
+      data: {
+        status: "RUNNING",
+        output: Prisma.DbNull,
+        completedAt: null,
+        startedAt: new Date(),
+      },
+    });
+
+    await ResumeRunService.enqueue(run, this.#prismaClient);
   }
 }

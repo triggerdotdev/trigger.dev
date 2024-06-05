@@ -290,6 +290,7 @@ export function TierPro({
           options={concurrencyTiers.map((c) => ({ label: `Up to ${c.upto}`, value: c.code }))}
           fullWidth
           value={concurrentBracketCode}
+          variant="primary"
           onChange={(v) => setConcurrentBracketCode(v)}
         />
         <div className="py-6">

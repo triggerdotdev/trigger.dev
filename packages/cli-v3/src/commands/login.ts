@@ -326,7 +326,7 @@ async function createAuthorizationCode(apiClient: CliApiClient) {
     try {
       //generate authorization code
       const createAuthCodeSpinner = spinner();
-      createAuthCodeSpinner.start("Creating authorition code");
+      createAuthCodeSpinner.start("Creating authorization code");
       const authorizationCodeResult = await apiClient.createAuthorizationCode();
 
       if (!authorizationCodeResult.success) {

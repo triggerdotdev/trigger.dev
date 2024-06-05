@@ -20,7 +20,10 @@ module.exports = {
     "highlight.run",
     "random-words",
     "superjson",
+    "prismjs/components/prism-json",
+    "prismjs/components/prism-typescript",
   ],
+  browserNodeBuiltinsPolyfill: { modules: { path: true, os: true, crypto: true } },
   watchPaths: async () => {
     return [
       "../../packages/core/src/**/*",

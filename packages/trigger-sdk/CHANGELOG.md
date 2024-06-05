@@ -1,5 +1,117 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.35
+
+### Patch Changes
+
+- Updated dependencies [ece6ca678]
+- Updated dependencies [e69ffd314]
+- Updated dependencies [e69ffd314]
+  - @trigger.dev/core@3.0.0-beta.35
+  - @trigger.dev/core-backend@3.0.0-beta.35
+
+## 3.0.0-beta.34
+
+### Patch Changes
+
+- 3a1b0c486: v3: Environment variable management API and SDK, along with resolveEnvVars CLI hook
+- 3f8b6d8fc: v2: Better handle recovering from platform communication errors by auto-yielding back to the platform in case of temporary API failures
+- 1281d40e4: When a v2 run hits the rate limit, reschedule with the reset date
+- Updated dependencies [3a1b0c486]
+- Updated dependencies [3f8b6d8fc]
+- Updated dependencies [1281d40e4]
+  - @trigger.dev/core@3.0.0-beta.34
+  - @trigger.dev/core-backend@3.0.0-beta.34
+
+## 3.0.0-beta.33
+
+### Patch Changes
+
+- Updated dependencies [6a379e4e9]
+  - @trigger.dev/core@3.0.0-beta.33
+  - @trigger.dev/core-backend@3.0.0-beta.33
+
+## 3.0.0-beta.32
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.32
+- @trigger.dev/core-backend@3.0.0-beta.32
+
+## 3.0.0-beta.31
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.31
+- @trigger.dev/core-backend@3.0.0-beta.31
+
+## 3.0.0-beta.30
+
+### Patch Changes
+
+- Updated dependencies [1477a2e30]
+- Updated dependencies [0e919f56f]
+  - @trigger.dev/core@3.0.0-beta.30
+  - @trigger.dev/core-backend@3.0.0-beta.30
+
+## 3.0.0-beta.29
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.29
+- @trigger.dev/core-backend@3.0.0-beta.29
+
+## 3.0.0-beta.28
+
+### Patch Changes
+
+- 6d9dfbc75: Add configure function to be able to configure the SDK manually
+- Updated dependencies [d490bc5cb]
+- Updated dependencies [6d9dfbc75]
+  - @trigger.dev/core@3.0.0-beta.28
+  - @trigger.dev/core-backend@3.0.0-beta.28
+
+## 3.0.0-beta.27
+
+### Patch Changes
+
+- 203e00208: Add runs.retrieve management API method to get info about a run by run ID
+- Updated dependencies [1670c4c41]
+- Updated dependencies [203e00208]
+  - @trigger.dev/core@3.0.0-beta.27
+  - @trigger.dev/core-backend@3.0.0-beta.27
+
+## 3.0.0-beta.26
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.26
+- @trigger.dev/core-backend@3.0.0-beta.26
+
+## 3.0.0-beta.25
+
+### Patch Changes
+
+- Updated dependencies [e337b2165]
+- Updated dependencies [9e5382951]
+  - @trigger.dev/core@3.0.0-beta.25
+  - @trigger.dev/core-backend@3.0.0-beta.25
+
+## 3.0.0-beta.24
+
+### Patch Changes
+
+- Updated dependencies [83dc87155]
+  - @trigger.dev/core@3.0.0-beta.24
+  - @trigger.dev/core-backend@3.0.0-beta.24
+
+## 3.0.0-beta.23
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.23
+- @trigger.dev/core-backend@3.0.0-beta.23
+
 ## 3.0.0-beta.22
 
 ### Patch Changes

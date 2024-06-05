@@ -5,6 +5,7 @@ import {
   ProdTaskRunExecutionPayload,
   TaskRunError,
   TaskRunExecution,
+  TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
@@ -21,20 +22,28 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
-import { findCurrentWorkerDeployment } from "../models/workerDeployment.server";
+import {
+  findCurrentWorkerDeployment,
+  getWorkerDeploymentFromWorker,
+  getWorkerDeploymentFromWorkerTask,
+} from "../models/workerDeployment.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
-import { tracer } from "../tracer.server";
+import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
+import { CrashTaskRunService } from "../services/crashTaskRun.server";
+import { FailedTaskRunService } from "../failedTaskRun.server";
+import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
+import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
 
-const MessageBody = z.discriminatedUnion("type", [
+export const SharedQueueMessageBody = z.discriminatedUnion("type", [
   WithTraceContext.extend({
     type: z.literal("EXECUTE"),
     taskIdentifier: z.string(),
@@ -51,7 +60,13 @@ const MessageBody = z.discriminatedUnion("type", [
     resumableAttemptId: z.string(),
     checkpointEventId: z.string(),
   }),
+  WithTraceContext.extend({
+    type: z.literal("FAIL"),
+    reason: z.string(),
+  }),
 ]);
+
+export type SharedQueueMessageBody = z.infer<typeof SharedQueueMessageBody>;
 
 type BackgroundWorkerWithTasks = BackgroundWorker & { tasks: BackgroundWorkerTask[] };
 
@@ -60,7 +75,6 @@ export type SharedQueueConsumerOptions = {
   traceTimeoutSeconds?: number;
   nextTickInterval?: number;
   interval?: number;
-  parentContext?: Context;
 };
 
 export class SharedQueueConsumer {
@@ -86,7 +100,6 @@ export class SharedQueueConsumer {
       traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
       nextTickInterval: options.nextTickInterval ?? 1000, // 1 second
       interval: options.interval ?? 100, // 100ms
-      parentContext: options.parentContext ?? ROOT_CONTEXT,
     };
   }
 
@@ -186,19 +199,17 @@ export class SharedQueueConsumer {
     ) {
       this.#endCurrentSpan();
 
-      const parentContext = this._options.parentContext ?? ROOT_CONTEXT;
-
       // Create a new trace
       this._currentSpan = tracer.startSpan(
         "SharedQueueConsumer.doWork()",
         {
           kind: SpanKind.CONSUMER,
         },
-        parentContext
+        ROOT_CONTEXT
       );
 
       // Get the span trace context
-      this._currentSpanContext = trace.setSpan(parentContext, this._currentSpan);
+      this._currentSpanContext = trace.setSpan(ROOT_CONTEXT, this._currentSpan);
 
       this._perTraceCountdown = this._options.maximumItemsPerTrace;
       this._lastNewTrace = new Date();
@@ -233,7 +244,7 @@ export class SharedQueueConsumer {
 
     logger.log("dequeueMessageInSharedQueue()", { queueMessage: message });
 
-    const messageBody = MessageBody.safeParse(message.data);
+    const messageBody = SharedQueueMessageBody.safeParse(message.data);
 
     if (!messageBody.success) {
       logger.error("Failed to parse message", {
@@ -252,6 +263,14 @@ export class SharedQueueConsumer {
         const existingTaskRun = await prisma.taskRun.findUnique({
           where: {
             id: message.messageId,
+          },
+          include: {
+            lockedToVersion: {
+              include: {
+                deployment: true,
+                tasks: true,
+              },
+            },
           },
         });
 
@@ -284,7 +303,7 @@ export class SharedQueueConsumer {
           (!retryingFromCheckpoint &&
             !EXECUTABLE_RUN_STATUSES.withoutCheckpoint.includes(existingTaskRun.status))
         ) {
-          logger.debug("Task run has invalid status for execution", {
+          logger.error("Task run has invalid status for execution", {
             queueMessage: message.data,
             messageId: message.messageId,
             taskRun: existingTaskRun.id,
@@ -292,11 +311,22 @@ export class SharedQueueConsumer {
             retryingFromCheckpoint,
           });
 
+          const service = new CrashTaskRunService();
+          await service.call(existingTaskRun.id, {
+            crashAttempts: true,
+            reason: `Invalid run status for execution: ${existingTaskRun.status}`,
+          });
+
           await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
-        const deployment = await findCurrentWorkerDeployment(existingTaskRun.runtimeEnvironmentId);
+        // Check if the task run is locked to a specific worker, if not, use the current worker deployment
+        const deployment = existingTaskRun.lockedById
+          ? await getWorkerDeploymentFromWorkerTask(existingTaskRun.lockedById)
+          : existingTaskRun.lockedToVersionId
+          ? await getWorkerDeploymentFromWorker(existingTaskRun.lockedToVersionId)
+          : await findCurrentWorkerDeployment(existingTaskRun.runtimeEnvironmentId);
 
         if (!deployment || !deployment.worker) {
           logger.error("No matching deployment found for task run", {
@@ -371,6 +401,7 @@ export class SharedQueueConsumer {
           data: {
             lockedAt: new Date(),
             lockedById: backgroundTask.id,
+            lockedToVersionId: deployment.worker.id,
           },
           include: {
             runtimeEnvironment: true,
@@ -385,6 +416,7 @@ export class SharedQueueConsumer {
                 createdAt: "desc",
               },
             },
+            lockedBy: true,
           },
         });
 
@@ -405,54 +437,37 @@ export class SharedQueueConsumer {
           where: {
             runtimeEnvironmentId_name: {
               runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
-              name: lockedTaskRun.queue,
+              name: sanitizeQueueName(lockedTaskRun.queue),
             },
           },
         });
 
         if (!queue) {
+          logger.debug("SharedQueueConsumer queue not found, so nacking message", {
+            queueMessage: message,
+            taskRunQueue: lockedTaskRun.queue,
+            runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
+          });
+
           await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
           return;
         }
 
         if (!this._enabled) {
+          logger.debug("SharedQueueConsumer not enabled, so nacking message", {
+            queueMessage: message,
+          });
+
           await marqs?.nackMessage(message.messageId);
           return;
         }
 
-        const taskRunAttempt = await prisma.taskRunAttempt.create({
-          data: {
-            number: lockedTaskRun.attempts[0] ? lockedTaskRun.attempts[0].number + 1 : 1,
-            friendlyId: generateFriendlyId("attempt"),
-            taskRunId: lockedTaskRun.id,
-            startedAt: new Date(),
-            backgroundWorkerId: backgroundTask.workerId,
-            backgroundWorkerTaskId: backgroundTask.id,
-            status: "PENDING" as const,
-            queueId: queue.id,
-            runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
-          },
-          include: {
-            backgroundWorkerTask: true,
-          },
-        });
+        const nextAttemptNumber = lockedTaskRun.attempts[0]
+          ? lockedTaskRun.attempts[0].number + 1
+          : 1;
 
-        const isRetry = taskRunAttempt.number > 1;
+        const isRetry = nextAttemptNumber > 1;
 
-        const { machineConfig } = taskRunAttempt.backgroundWorkerTask;
-        const machine = Machine.safeParse(machineConfig ?? {});
-
-        if (!machine.success) {
-          logger.error("Failed to parse machine config", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-            attemptId: taskRunAttempt.id,
-            machineConfig,
-          });
-
-          await this.#ackAndDoMoreWork(message.messageId);
-          return;
-        }
         try {
           if (messageBody.data.checkpointEventId) {
             const restoreService = new RestoreCheckpointService();
@@ -471,12 +486,35 @@ export class SharedQueueConsumer {
               await this.#ackAndDoMoreWork(message.messageId);
               return;
             }
-          } else if (isRetry) {
+
+            break;
+          }
+
+          if (!deployment.worker.supportsLazyAttempts) {
+            const service = new CreateTaskRunAttemptService();
+            await service.call(lockedTaskRun.friendlyId, undefined, false);
+          }
+
+          if (isRetry) {
             socketIo.coordinatorNamespace.emit("READY_FOR_RETRY", {
               version: "v1",
-              runId: taskRunAttempt.taskRunId,
+              runId: lockedTaskRun.id,
             });
           } else {
+            const machineConfig = lockedTaskRun.lockedBy?.machineConfig;
+            const machine = Machine.safeParse(machineConfig ?? {});
+
+            if (!machine.success) {
+              logger.error("Failed to parse machine config", {
+                queueMessage: message.data,
+                messageId: message.messageId,
+                machineConfig,
+              });
+
+              await this.#ackAndDoMoreWork(message.messageId);
+              return;
+            }
+
             await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
               backgroundWorkerId: deployment.worker.friendlyId,
               data: {
@@ -485,12 +523,12 @@ export class SharedQueueConsumer {
                 version: deployment.version,
                 machine: machine.data,
                 // identifiers
-                id: taskRunAttempt.id,
+                id: "placeholder", // TODO: Remove this completely in a future release
                 envId: lockedTaskRun.runtimeEnvironment.id,
                 envType: lockedTaskRun.runtimeEnvironment.type,
                 orgId: lockedTaskRun.runtimeEnvironment.organizationId,
                 projectId: lockedTaskRun.runtimeEnvironment.projectId,
-                runId: taskRunAttempt.taskRunId,
+                runId: lockedTaskRun.id,
               },
             });
           }
@@ -512,14 +550,15 @@ export class SharedQueueConsumer {
               data: {
                 lockedAt: null,
                 lockedById: null,
-              },
-            }),
-            prisma.taskRunAttempt.delete({
-              where: {
-                id: taskRunAttempt.id,
+                status: lockedTaskRun.status,
               },
             }),
           ]);
+
+          logger.error("SharedQueueConsumer errored, so nacking message", {
+            queueMessage: message,
+            error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : e,
+          });
 
           await this.#nackAndDoMoreWork(message.messageId);
           return;
@@ -617,12 +656,17 @@ export class SharedQueueConsumer {
           where: {
             runtimeEnvironmentId_name: {
               runtimeEnvironmentId: resumableAttempt.runtimeEnvironmentId,
-              name: resumableRun.queue,
+              name: sanitizeQueueName(resumableRun.queue),
             },
           },
         });
 
         if (!queue) {
+          logger.debug("SharedQueueConsumer queue not found, so nacking message", {
+            queueName: sanitizeQueueName(resumableRun.queue),
+            attempt: resumableAttempt,
+          });
+
           await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
           return;
         }
@@ -738,6 +782,34 @@ export class SharedQueueConsumer {
         }
 
         break;
+      }
+      // Fail for whatever reason, usually runs that have been resumed but stopped heartbeating
+      case "FAIL": {
+        const existingTaskRun = await prisma.taskRun.findUnique({
+          where: {
+            id: message.messageId,
+          },
+        });
+
+        if (!existingTaskRun) {
+          logger.error("No existing task run to fail", {
+            queueMessage: messageBody,
+            messageId: message.messageId,
+          });
+
+          await this.#ackAndDoMoreWork(message.messageId);
+          return;
+        }
+
+        // TODO: Consider failing the attempt and retrying instead. This may not be a good idea, as dequeued FAIL messages tend to point towards critical, persistent errors.
+        const service = new CrashTaskRunService();
+        await service.call(existingTaskRun.id, {
+          crashAttempts: true,
+          reason: messageBody.data.reason,
+        });
+
+        await this.#ackAndDoMoreWork(message.messageId);
+        return;
       }
     }
 
@@ -1035,7 +1107,50 @@ class SharedQueueTasks {
     return this.getExecutionPayloadFromAttempt(latestAttempt.id, setToExecuting, isRetrying);
   }
 
+  async getLazyAttemptPayload(
+    envId: string,
+    runId: string
+  ): Promise<TaskRunExecutionLazyAttemptPayload | undefined> {
+    const environment = await findEnvironmentById(envId);
+
+    if (!environment) {
+      logger.error("Environment not found", { id: envId });
+      return;
+    }
+
+    const run = await prisma.taskRun.findUnique({
+      where: {
+        id: runId,
+        runtimeEnvironmentId: environment.id,
+      },
+    });
+
+    if (!run) {
+      logger.error("Run not found", { id: runId, envId });
+      return;
+    }
+
+    const environmentRepository = new EnvironmentVariablesRepository();
+    const variables = await environmentRepository.getEnvironmentVariables(
+      environment.projectId,
+      environment.id
+    );
+
+    return {
+      traceContext: run.traceContext as Record<string, unknown>,
+      environment: variables.reduce((acc: Record<string, string>, curr) => {
+        acc[curr.key] = curr.value;
+        return acc;
+      }, {}),
+      runId: run.friendlyId,
+      messageId: run.id,
+      isTest: run.isTest,
+    } satisfies TaskRunExecutionLazyAttemptPayload;
+  }
+
   async taskHeartbeat(attemptFriendlyId: string, seconds: number = 60) {
+    logger.debug("[SharedQueueConsumer] taskHeartbeat()", { id: attemptFriendlyId, seconds });
+
     const taskRunAttempt = await prisma.taskRunAttempt.findUnique({
       where: { friendlyId: attemptFriendlyId },
     });
@@ -1045,6 +1160,20 @@ class SharedQueueTasks {
     }
 
     await marqs?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
+  }
+
+  async taskRunHeartbeat(runId: string, seconds: number = 60) {
+    logger.debug("[SharedQueueConsumer] taskRunHeartbeat()", { runId, seconds });
+
+    await marqs?.heartbeatMessage(runId, seconds);
+  }
+
+  public async taskRunFailed(completion: TaskRunFailedExecutionResult) {
+    logger.debug("[SharedQueueConsumer] taskRunFailed()", { completion });
+
+    const service = new FailedTaskRunService();
+
+    await service.call(completion.id, completion);
   }
 }
 

@@ -1,5 +1,10 @@
 import { RedisOptions } from "ioredis";
-import { MarQSQueuePriorityStrategy, PriorityStrategyChoice, QueueWithScores } from "./types";
+import {
+  MarQSQueuePriorityStrategy,
+  PriorityStrategyChoice,
+  QueueRange,
+  QueueWithScores,
+} from "./types";
 import { nanoid } from "nanoid";
 import seedrandom from "seedrandom";
 
@@ -26,9 +31,7 @@ export class DynamicWeightedChoiceStrategy implements MarQSQueuePriorityStrategy
     throw new Error("Method not implemented.");
   }
 
-  nextCandidateSelection(
-    parentQueue: string
-  ): Promise<{ range: [number, number]; selectionId: string }> {
+  nextCandidateSelection(parentQueue: string): Promise<{ range: QueueRange; selectionId: string }> {
     throw new Error("Method not implemented.");
   }
 }
@@ -39,13 +42,18 @@ export type SimpleWeightedChoiceStrategyOptions = {
 };
 
 export class SimpleWeightedChoiceStrategy implements MarQSQueuePriorityStrategy {
-  private _nextRangesByParentQueue: Map<string, [number, number]> = new Map();
+  private _nextRangesByParentQueue: Map<string, QueueRange> = new Map();
   private _randomGenerator = seedrandom(this.options.randomSeed);
 
   constructor(private options: SimpleWeightedChoiceStrategyOptions) {}
 
-  private nextRangeForParentQueue(parentQueue: string) {
-    return this._nextRangesByParentQueue.get(parentQueue) ?? [0, this.options.queueSelectionCount];
+  private nextRangeForParentQueue(parentQueue: string): QueueRange {
+    return (
+      this._nextRangesByParentQueue.get(parentQueue) ?? {
+        offset: 0,
+        count: this.options.queueSelectionCount,
+      }
+    );
   }
 
   chooseQueue(
@@ -55,25 +63,23 @@ export class SimpleWeightedChoiceStrategy implements MarQSQueuePriorityStrategy 
   ): PriorityStrategyChoice {
     const filteredQueues = filterQueuesAtCapacity(queues);
 
-    if (filteredQueues.length === 0) {
-      if (queues.length === this.options.queueSelectionCount) {
-        const nextRangeForParentQueue = this.nextRangeForParentQueue(parentQueue);
-        const nextRange: [number, number] = nextRangeForParentQueue
-          ? [
-              nextRangeForParentQueue[1],
-              nextRangeForParentQueue[1] + this.options.queueSelectionCount,
-            ]
-          : [this.options.queueSelectionCount, this.options.queueSelectionCount * 2];
-        // If all queues are at capacity, and we were passed the max number of queues, then we will slide the window "to the right"
-        this._nextRangesByParentQueue.set(parentQueue, nextRange);
-      } else {
-        this._nextRangesByParentQueue.delete(parentQueue);
-      }
-
-      return { abort: true };
+    if (queues.length === this.options.queueSelectionCount) {
+      const nextRangeForParentQueue = this.nextRangeForParentQueue(parentQueue);
+      const nextRange: QueueRange = nextRangeForParentQueue
+        ? {
+            offset: nextRangeForParentQueue.offset + this.options.queueSelectionCount,
+            count: this.options.queueSelectionCount,
+          }
+        : { offset: this.options.queueSelectionCount, count: this.options.queueSelectionCount };
+      // If all queues are at capacity, and we were passed the max number of queues, then we will slide the window "to the right"
+      this._nextRangesByParentQueue.set(parentQueue, nextRange);
+    } else {
+      this._nextRangesByParentQueue.delete(parentQueue);
     }
 
-    this._nextRangesByParentQueue.delete(parentQueue);
+    if (filteredQueues.length === 0) {
+      return { abort: true };
+    }
 
     const queueWeights = this.#calculateQueueWeights(filteredQueues);
 
@@ -82,7 +88,7 @@ export class SimpleWeightedChoiceStrategy implements MarQSQueuePriorityStrategy 
 
   async nextCandidateSelection(
     parentQueue: string
-  ): Promise<{ range: [number, number]; selectionId: string }> {
+  ): Promise<{ range: QueueRange; selectionId: string }> {
     return { range: this.nextRangeForParentQueue(parentQueue), selectionId: nanoid(24) };
   }
 

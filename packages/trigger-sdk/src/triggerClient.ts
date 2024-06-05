@@ -52,6 +52,7 @@ import { ApiClient } from "./apiClient";
 import { ConcurrencyLimit, ConcurrencyLimitOptions } from "./concurrencyLimit";
 import {
   AutoYieldExecutionError,
+  AutoYieldRateLimitError,
   AutoYieldWithCompletedTaskExecutionError,
   CanceledWithTaskError,
   ErrorWithTask,
@@ -198,11 +199,15 @@ export class TriggerClient {
   constructor(options: Prettify<TriggerClientOptions>) {
     this.id = options.id;
     this.#options = options;
-    this.#client = new ApiClient(this.#options);
     this.#internalLogger = new Logger("trigger.dev", this.#options.verbose ? "debug" : "log", [
       "output",
       "noopTasksSet",
     ]);
+    this.#client = new ApiClient({
+      logLevel: this.#options.verbose ? "debug" : "log",
+      ...this.#options,
+    });
+
     this.#envStore = new KeyValueStore(this.#client);
   }
 
@@ -1228,6 +1233,13 @@ export class TriggerClient {
           ...error.data,
           limit: body.runChunkExecutionLimit,
         },
+      };
+    }
+
+    if (error instanceof AutoYieldRateLimitError) {
+      return {
+        status: "AUTO_YIELD_RATE_LIMIT",
+        reset: error.resetAtTimestamp,
       };
     }
 

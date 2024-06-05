@@ -49,12 +49,7 @@ export function DetailCell({
   const variation = variations[variant];
 
   return (
-    <div
-      className={cn(
-        "group flex h-11 w-full items-center gap-3 rounded-md p-1 pr-3 transition hover:bg-charcoal-900",
-        className
-      )}
-    >
+    <div className={cn("group flex h-11 w-full items-center gap-3 rounded-md p-1 pr-3", className)}>
       <IconInBox
         icon={leadingIcon}
         className={cn("flex-none transition group-hover:border-charcoal-750", leadingIconClassName)}
@@ -62,20 +57,14 @@ export function DetailCell({
       <div className="flex flex-1 flex-col">
         <Paragraph
           variant={variation.label.variant}
-          className={cn(
-            "flex-1 text-left transition group-hover:text-text-bright",
-            variation.label.className
-          )}
+          className={cn("flex-1 text-left", variation.label.className)}
         >
           {label}
         </Paragraph>
         {description && (
           <Paragraph
             variant={variation.description.variant}
-            className={cn(
-              "flex-1 text-left text-text-dimmed transition group-hover:text-text-bright",
-              variation.description.className
-            )}
+            className={cn("flex-1 text-left text-text-dimmed", variation.description.className)}
           >
             {description}
           </Paragraph>

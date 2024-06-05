@@ -4,6 +4,9 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { workerQueue } from "~/services/worker.server";
 import { logger } from "../logger.server";
 import { EventRecord, ExternalAccount } from "@trigger.dev/database";
+import { Duration, RateLimiter } from "../rateLimiter.server";
+import { Ratelimit } from "@upstash/ratelimit";
+import { env } from "~/env.server";
 
 type UpdateEventInput = {
   tx: PrismaClientOrTransaction;
@@ -31,9 +34,19 @@ const EVENT_UPDATE_THRESHOLD_WINDOW_IN_MSECS = 5 * 1000; // 5 seconds
 
 export class IngestSendEvent {
   #prismaClient: PrismaClientOrTransaction;
+  #rateLimiter: RateLimiter | undefined;
 
   constructor(prismaClient: PrismaClientOrTransaction = prisma, private deliverEvents = true) {
     this.#prismaClient = prismaClient;
+    this.#rateLimiter = env.INGEST_EVENT_RATE_LIMIT_MAX
+      ? new RateLimiter({
+          keyPrefix: "ingestsendevent",
+          limiter: Ratelimit.slidingWindow(
+            env.INGEST_EVENT_RATE_LIMIT_MAX,
+            env.INGEST_EVENT_RATE_LIMIT_WINDOW as Duration
+          ),
+        })
+      : undefined;
   }
 
   #calculateDeliverAt(options?: SendEventOptions) {
@@ -60,7 +73,12 @@ export class IngestSendEvent {
     try {
       const deliverAt = this.#calculateDeliverAt(options);
 
-      return await $transaction(this.#prismaClient, async (tx) => {
+      if (!environment.organization.runsEnabled) {
+        logger.debug("IngestSendEvent: Runs are disabled for this organization", environment);
+        return;
+      }
+
+      const createdEvent = await $transaction(this.#prismaClient, async (tx) => {
         const externalAccount = options?.accountId
           ? await tx.externalAccount.upsert({
               where: {
@@ -101,6 +119,23 @@ export class IngestSendEvent {
 
         return eventLog;
       });
+
+      if (!createdEvent) return;
+
+      //rate limit
+      const result = await this.#rateLimiter?.limit(environment.organizationId);
+      if (result && !result.success) {
+        logger.info("IngestSendEvent: Rate limit exceeded", {
+          eventRecordId: createdEvent.id,
+          organizationId: environment.organizationId,
+          reset: result.reset,
+          limit: result.limit,
+        });
+        return;
+      }
+
+      await this.enqueueWorkerEvent(this.#prismaClient, createdEvent);
+      return createdEvent;
     } catch (error) {
       const prismaError = PrismaErrorSchema.safeParse(error);
 
@@ -146,8 +181,6 @@ export class IngestSendEvent {
       },
     });
 
-    await this.enqueueWorkerEvent(tx, eventLog);
-
     return eventLog;
   }
 
@@ -171,8 +204,6 @@ export class IngestSendEvent {
         deliverAt: deliverAt ?? new Date(),
       },
     });
-
-    await this.enqueueWorkerEvent(tx, updatedEventLog);
 
     return updatedEventLog;
   }

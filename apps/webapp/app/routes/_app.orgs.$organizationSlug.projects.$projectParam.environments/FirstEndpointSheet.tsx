@@ -27,7 +27,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "~/components/primitives/Select";
+} from "~/components/primitives/SimpleSelect";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 
 type FirstEndpointSheetProps = {

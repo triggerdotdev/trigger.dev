@@ -10,6 +10,7 @@ import {
 import { Machine, PostStartCauses, PreStopCauses, EnvironmentType } from "@trigger.dev/core/v3";
 import { randomUUID } from "crypto";
 import { TaskMonitor } from "./taskMonitor";
+import { PodCleaner } from "./podCleaner";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 const NODE_NAME = process.env.NODE_NAME || "local";
@@ -84,8 +85,8 @@ class KubernetesTaskOperations implements TaskOperations {
                   ],
                   resources: {
                     limits: {
-                      cpu: "250m",
-                      memory: "0.5G",
+                      cpu: "1",
+                      memory: "1G",
                       "ephemeral-storage": "2Gi",
                     },
                   },
@@ -215,7 +216,8 @@ class KubernetesTaskOperations implements TaskOperations {
             },
             {
               name: "populate-taskinfo",
-              image: "docker.io/library/busybox",
+              image: "registry.digitalocean.com/trigger/busybox",
+              imagePullPolicy: "IfNotPresent",
               command: ["/bin/sh", "-c"],
               args: ["printenv COORDINATOR_HOST | tee /etc/taskinfo/coordinator-host"],
               env: [
@@ -317,6 +319,9 @@ class KubernetesTaskOperations implements TaskOperations {
       imagePullSecrets: [
         {
           name: "registry-trigger",
+        },
+        {
+          name: "registry-trigger-failover",
         },
       ],
       nodeSelector: {
@@ -546,3 +551,11 @@ const taskMonitor = new TaskMonitor({
 });
 
 taskMonitor.start();
+
+const podCleaner = new PodCleaner({
+  runtimeEnv: RUNTIME_ENV,
+  namespace: "default",
+  intervalInSeconds: 300,
+});
+
+podCleaner.start();

@@ -66,6 +66,27 @@ export type HandleErrorFunction = (
   params: HandleErrorArgs
 ) => HandleErrorResult;
 
+type ResolveEnvironmentVariablesOptions = {
+  variables: Record<string, string> | Array<{ name: string; value: string }>;
+  override?: boolean;
+};
+
+export type ResolveEnvironmentVariablesResult =
+  | ResolveEnvironmentVariablesOptions
+  | Promise<void | undefined | ResolveEnvironmentVariablesOptions>
+  | void
+  | undefined;
+
+export type ResolveEnvironmentVariablesParams = {
+  projectRef: string;
+  environment: "dev" | "staging" | "prod";
+  env: Record<string, string>;
+};
+
+export type ResolveEnvironmentVariablesFunction = (
+  params: ResolveEnvironmentVariablesParams
+) => ResolveEnvironmentVariablesResult;
+
 export type TaskMetadataWithFunctions = TaskMetadata & {
   fns: {
     run: (payload: any, params: RunFnParams<any>) => Promise<any>;

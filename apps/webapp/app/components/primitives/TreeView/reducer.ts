@@ -1,5 +1,7 @@
-import { FlatTree } from "./TreeView";
+import assertNever from "assert-never";
+import { Filter, FlatTree } from "./TreeView";
 import {
+  applyFilterToState,
   applyVisibility,
   collapsedIdsFromState,
   concreteStateFromInput,
@@ -18,12 +20,15 @@ export type NodeState = {
 
 export type Changes = {
   selectedId: string | undefined;
-  collapsedIds: string[] | undefined;
 };
 
 export type TreeState = {
+  tree: FlatTree<any>;
   nodes: NodesState;
+  filteredNodes: NodesState;
   changes: Changes;
+  filter: Filter<any, any> | undefined;
+  visibleNodeIds: string[];
 };
 
 export type NodesState = Record<string, NodeState>;
@@ -71,7 +76,6 @@ type ExpandNodeAction = {
   type: "EXPAND_NODE";
   payload: {
     id: string;
-    tree: FlatTree<any>;
   } & WithScrollToNode;
 };
 
@@ -79,7 +83,6 @@ type CollapseNodeAction = {
   type: "COLLAPSE_NODE";
   payload: {
     id: string;
-    tree: FlatTree<any>;
   };
 };
 
@@ -87,7 +90,6 @@ type ToggleExpandNodeAction = {
   type: "TOGGLE_EXPAND_NODE";
   payload: {
     id: string;
-    tree: FlatTree<any>;
   } & WithScrollToNode;
 };
 
@@ -95,7 +97,6 @@ type ExpandAllBelowDepthAction = {
   type: "EXPAND_ALL_BELOW_DEPTH";
   payload: {
     depth: number;
-    tree: FlatTree<any>;
   };
 };
 
@@ -103,7 +104,6 @@ type CollapseAllBelowDepthAction = {
   type: "COLLAPSE_ALL_BELOW_DEPTH";
   payload: {
     depth: number;
-    tree: FlatTree<any>;
   };
 };
 
@@ -111,7 +111,6 @@ type ExpandLevelAction = {
   type: "EXPAND_LEVEL";
   payload: {
     level: number;
-    tree: FlatTree<any>;
   };
 };
 
@@ -119,7 +118,6 @@ type CollapseLevelAction = {
   type: "COLLAPSE_LEVEL";
   payload: {
     level: number;
-    tree: FlatTree<any>;
   };
 };
 
@@ -127,43 +125,39 @@ type ToggleExpandLevelAction = {
   type: "TOGGLE_EXPAND_LEVEL";
   payload: {
     level: number;
-    tree: FlatTree<any>;
   };
 };
 
 type SelectFirstVisibleNodeAction = {
   type: "SELECT_FIRST_VISIBLE_NODE";
-  payload: {
-    tree: FlatTree<any>;
-  } & WithScrollToNode;
+  payload: {} & WithScrollToNode;
 };
 
 type SelectLastVisibleNodeAction = {
   type: "SELECT_LAST_VISIBLE_NODE";
-  payload: {
-    tree: FlatTree<any>;
-  } & WithScrollToNode;
+  payload: {} & WithScrollToNode;
 };
 
 type SelectNextVisibleNodeAction = {
   type: "SELECT_NEXT_VISIBLE_NODE";
-  payload: {
-    tree: FlatTree<any>;
-  } & WithScrollToNode;
+  payload: {} & WithScrollToNode;
 };
 
 type SelectPreviousVisibleNodeAction = {
   type: "SELECT_PREVIOUS_VISIBLE_NODE";
-  payload: {
-    tree: FlatTree<any>;
-  } & WithScrollToNode;
+  payload: {} & WithScrollToNode;
 };
 
 type SelectParentNodeAction = {
   type: "SELECT_PARENT_NODE";
+  payload: {} & WithScrollToNode;
+};
+
+type UpdateFilterAction = {
+  type: "UPDATE_FILTER";
   payload: {
-    tree: FlatTree<any>;
-  } & WithScrollToNode;
+    filter: Filter<any, any> | undefined;
+  };
 };
 
 export type Action =
@@ -184,7 +178,8 @@ export type Action =
   | SelectLastVisibleNodeAction
   | SelectNextVisibleNodeAction
   | SelectPreviousVisibleNodeAction
-  | SelectParentNodeAction;
+  | SelectParentNodeAction
+  | UpdateFilterAction;
 
 export function reducer(state: TreeState, action: Action): TreeState {
   switch (action.type) {
@@ -204,7 +199,12 @@ export function reducer(state: TreeState, action: Action): TreeState {
         action.payload.scrollToNodeFn(action.payload.id);
       }
 
-      return { nodes: newNodes, changes: generateChanges(state.nodes, newNodes) };
+      return applyFilterToState({
+        ...state,
+        tree: state.tree,
+        nodes: newNodes,
+        changes: generateChanges(state.nodes, newNodes),
+      });
     }
     case "DESELECT_NODE": {
       const nodes = {
@@ -212,28 +212,36 @@ export function reducer(state: TreeState, action: Action): TreeState {
         [action.payload.id]: { ...state.nodes[action.payload.id], selected: false },
       };
 
-      return { nodes, changes: generateChanges(state.nodes, nodes) };
+      return applyFilterToState({
+        ...state,
+        nodes,
+        changes: generateChanges(state.nodes, nodes),
+      });
     }
     case "DESELECT_ALL_NODES": {
       const nodes = Object.fromEntries(
         Object.entries(state.nodes).map(([key, value]) => [key, { ...value, selected: false }])
       );
-      return { nodes, changes: generateChanges(state.nodes, nodes) };
+      return applyFilterToState({
+        ...state,
+        nodes,
+        changes: generateChanges(state.nodes, nodes),
+      });
     }
     case "TOGGLE_NODE_SELECTION": {
       const currentlySelected = state.nodes[action.payload.id]?.selected ?? false;
       if (currentlySelected) {
         return reducer(state, { type: "DESELECT_NODE", payload: { id: action.payload.id } });
-      } else {
-        return reducer(state, {
-          type: "SELECT_NODE",
-          payload: {
-            id: action.payload.id,
-            scrollToNode: action.payload.scrollToNode,
-            scrollToNodeFn: action.payload.scrollToNodeFn,
-          },
-        });
       }
+
+      return reducer(state, {
+        type: "SELECT_NODE",
+        payload: {
+          id: action.payload.id,
+          scrollToNode: action.payload.scrollToNode,
+          scrollToNodeFn: action.payload.scrollToNodeFn,
+        },
+      });
     }
     case "EXPAND_NODE": {
       const newNodes = {
@@ -245,37 +253,44 @@ export function reducer(state: TreeState, action: Action): TreeState {
         action.payload.scrollToNodeFn(action.payload.id);
       }
 
-      const visibleNodes = applyVisibility(action.payload.tree, newNodes);
-      return { nodes: visibleNodes, changes: generateChanges(state.nodes, visibleNodes) };
+      const visibleNodes = applyVisibility(state.tree, newNodes);
+      return applyFilterToState({
+        ...state,
+        nodes: visibleNodes,
+        changes: generateChanges(state.nodes, visibleNodes),
+      });
     }
     case "COLLAPSE_NODE": {
-      const visibleNodes = applyVisibility(action.payload.tree, {
+      const visibleNodes = applyVisibility(state.tree, {
         ...state.nodes,
         [action.payload.id]: { ...state.nodes[action.payload.id], expanded: false },
       });
-      return { nodes: visibleNodes, changes: generateChanges(state.nodes, visibleNodes) };
+      return applyFilterToState({
+        ...state,
+        nodes: visibleNodes,
+        changes: generateChanges(state.nodes, visibleNodes),
+      });
     }
     case "TOGGLE_EXPAND_NODE": {
       const currentlyExpanded = state.nodes[action.payload.id]?.expanded ?? true;
       if (currentlyExpanded) {
         return reducer(state, {
           type: "COLLAPSE_NODE",
-          payload: { id: action.payload.id, tree: action.payload.tree },
-        });
-      } else {
-        return reducer(state, {
-          type: "EXPAND_NODE",
-          payload: {
-            id: action.payload.id,
-            tree: action.payload.tree,
-            scrollToNode: action.payload.scrollToNode,
-            scrollToNodeFn: action.payload.scrollToNodeFn,
-          },
+          payload: { id: action.payload.id },
         });
       }
+
+      return reducer(state, {
+        type: "EXPAND_NODE",
+        payload: {
+          id: action.payload.id,
+          scrollToNode: action.payload.scrollToNode,
+          scrollToNodeFn: action.payload.scrollToNodeFn,
+        },
+      });
     }
     case "EXPAND_ALL_BELOW_DEPTH": {
-      const nodesToExpand = action.payload.tree.filter(
+      const nodesToExpand = state.tree.filter(
         (n) => n.level >= action.payload.depth && n.hasChildren
       );
 
@@ -289,11 +304,15 @@ export function reducer(state: TreeState, action: Action): TreeState {
         ])
       );
 
-      const visibleNodes = applyVisibility(action.payload.tree, newNodes);
-      return { nodes: visibleNodes, changes: generateChanges(state.nodes, visibleNodes) };
+      const visibleNodes = applyVisibility(state.tree, newNodes);
+      return applyFilterToState({
+        ...state,
+        nodes: visibleNodes,
+        changes: generateChanges(state.nodes, visibleNodes),
+      });
     }
     case "COLLAPSE_ALL_BELOW_DEPTH": {
-      const nodesToCollapse = action.payload.tree.filter(
+      const nodesToCollapse = state.tree.filter(
         (n) => n.level >= action.payload.depth && n.hasChildren
       );
 
@@ -307,11 +326,15 @@ export function reducer(state: TreeState, action: Action): TreeState {
         ])
       );
 
-      const visibleNodes = applyVisibility(action.payload.tree, newNodes);
-      return { nodes: visibleNodes, changes: generateChanges(state.nodes, visibleNodes) };
+      const visibleNodes = applyVisibility(state.tree, newNodes);
+      return applyFilterToState({
+        ...state,
+        nodes: visibleNodes,
+        changes: generateChanges(state.nodes, visibleNodes),
+      });
     }
     case "EXPAND_LEVEL": {
-      const nodesToExpand = action.payload.tree.filter(
+      const nodesToExpand = state.tree.filter(
         (n) => n.level <= action.payload.level && n.hasChildren
       );
 
@@ -325,11 +348,15 @@ export function reducer(state: TreeState, action: Action): TreeState {
         ])
       );
 
-      const visibleNodes = applyVisibility(action.payload.tree, newNodes);
-      return { nodes: visibleNodes, changes: generateChanges(state.nodes, visibleNodes) };
+      const visibleNodes = applyVisibility(state.tree, newNodes);
+      return applyFilterToState({
+        ...state,
+        nodes: visibleNodes,
+        changes: generateChanges(state.nodes, visibleNodes),
+      });
     }
     case "COLLAPSE_LEVEL": {
-      const nodesToCollapse = action.payload.tree.filter(
+      const nodesToCollapse = state.tree.filter(
         (n) => n.level === action.payload.level && n.hasChildren
       );
 
@@ -343,13 +370,17 @@ export function reducer(state: TreeState, action: Action): TreeState {
         ])
       );
 
-      const visibleNodes = applyVisibility(action.payload.tree, newNodes);
-      return { nodes: visibleNodes, changes: generateChanges(state.nodes, visibleNodes) };
+      const visibleNodes = applyVisibility(state.tree, newNodes);
+      return applyFilterToState({
+        ...state,
+        nodes: visibleNodes,
+        changes: generateChanges(state.nodes, visibleNodes),
+      });
     }
     case "TOGGLE_EXPAND_LEVEL": {
       //first get the first item at that level in the tree. If it is expanded, collapse all nodes at that level
       //if it is collapsed, expand all nodes at that level
-      const nodesAtLevel = action.payload.tree.filter(
+      const nodesAtLevel = state.tree.filter(
         (n) => n.level === action.payload.level && n.hasChildren
       );
       const firstNode = nodesAtLevel[0];
@@ -364,21 +395,19 @@ export function reducer(state: TreeState, action: Action): TreeState {
           type: "COLLAPSE_LEVEL",
           payload: {
             level: action.payload.level,
-            tree: action.payload.tree,
-          },
-        });
-      } else {
-        return reducer(state, {
-          type: "EXPAND_LEVEL",
-          payload: {
-            level: action.payload.level,
-            tree: action.payload.tree,
           },
         });
       }
+
+      return reducer(state, {
+        type: "EXPAND_LEVEL",
+        payload: {
+          level: action.payload.level,
+        },
+      });
     }
     case "SELECT_FIRST_VISIBLE_NODE": {
-      const node = firstVisibleNode(action.payload.tree, state.nodes);
+      const node = firstVisibleNode(state.tree, state.filteredNodes);
       if (node) {
         return reducer(state, {
           type: "SELECT_NODE",
@@ -389,9 +418,11 @@ export function reducer(state: TreeState, action: Action): TreeState {
           },
         });
       }
+
+      return state;
     }
     case "SELECT_LAST_VISIBLE_NODE": {
-      const node = lastVisibleNode(action.payload.tree, state.nodes);
+      const node = lastVisibleNode(state.tree, state.filteredNodes);
       if (node) {
         return reducer(state, {
           type: "SELECT_NODE",
@@ -402,6 +433,8 @@ export function reducer(state: TreeState, action: Action): TreeState {
           },
         });
       }
+
+      return state;
     }
     case "SELECT_NEXT_VISIBLE_NODE": {
       const selected = selectedIdFromState(state.nodes);
@@ -409,14 +442,13 @@ export function reducer(state: TreeState, action: Action): TreeState {
         return reducer(state, {
           type: "SELECT_FIRST_VISIBLE_NODE",
           payload: {
-            tree: action.payload.tree,
             scrollToNode: action.payload.scrollToNode,
             scrollToNodeFn: action.payload.scrollToNodeFn,
           },
         });
       }
 
-      const visible = visibleNodes(action.payload.tree, state.nodes);
+      const visible = visibleNodes(state.tree, state.filteredNodes);
       const selectedIndex = visible.findIndex((node) => node.id === selected);
       const nextNode = visible[selectedIndex + 1];
       if (nextNode) {
@@ -429,6 +461,8 @@ export function reducer(state: TreeState, action: Action): TreeState {
           },
         });
       }
+
+      return state;
     }
     case "SELECT_PREVIOUS_VISIBLE_NODE": {
       const selected = selectedIdFromState(state.nodes);
@@ -437,16 +471,15 @@ export function reducer(state: TreeState, action: Action): TreeState {
         return reducer(state, {
           type: "SELECT_FIRST_VISIBLE_NODE",
           payload: {
-            tree: action.payload.tree,
             scrollToNode: action.payload.scrollToNode,
             scrollToNodeFn: action.payload.scrollToNodeFn,
           },
         });
       }
 
-      const visible = visibleNodes(action.payload.tree, state.nodes);
+      const visible = visibleNodes(state.tree, state.filteredNodes);
       const selectedIndex = visible.findIndex((node) => node.id === selected);
-      const previousNode = visible[selectedIndex - 1];
+      const previousNode = visible[Math.max(0, selectedIndex - 1)];
       if (previousNode) {
         return reducer(state, {
           type: "SELECT_NODE",
@@ -467,19 +500,18 @@ export function reducer(state: TreeState, action: Action): TreeState {
         return reducer(state, {
           type: "SELECT_FIRST_VISIBLE_NODE",
           payload: {
-            tree: action.payload.tree,
             scrollToNode: action.payload.scrollToNode,
             scrollToNodeFn: action.payload.scrollToNodeFn,
           },
         });
       }
 
-      const selectedNode = action.payload.tree.find((node) => node.id === selected);
+      const selectedNode = state.tree.find((node) => node.id === selected);
       if (!selectedNode) {
         return state;
       }
 
-      const parentNode = action.payload.tree.find((node) => node.id === selectedNode.parentId);
+      const parentNode = state.tree.find((node) => node.id === selectedNode.parentId);
       if (parentNode) {
         return reducer(state, {
           type: "SELECT_NODE",
@@ -498,11 +530,22 @@ export function reducer(state: TreeState, action: Action): TreeState {
       const selectedId = selectedIdFromState(state.nodes);
       const collapsedIds = collapsedIdsFromState(state.nodes);
       const newState = concreteStateFromInput({
+        ...state,
         tree: action.payload.tree,
         selectedId,
         collapsedIds,
       });
       return newState;
+    }
+    case "UPDATE_FILTER": {
+      const newState = applyFilterToState({
+        ...state,
+        filter: action.payload.filter,
+      });
+      return newState;
+    }
+    default: {
+      assertNever(action);
     }
   }
 

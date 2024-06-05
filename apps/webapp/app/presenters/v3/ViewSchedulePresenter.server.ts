@@ -2,6 +2,7 @@ import { PrismaClient, prisma } from "~/db.server";
 import { nextScheduledTimestamps } from "~/v3/utils/calculateNextSchedule.server";
 import { RunListPresenter } from "./RunListPresenter.server";
 import { ScheduleObject } from "@trigger.dev/core/v3";
+import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 
 type ViewScheduleOptions = {
   userId?: string;
@@ -29,7 +30,7 @@ export class ViewSchedulePresenter {
         taskIdentifier: true,
         project: {
           select: {
-            slug: true,
+            id: true,
           },
         },
         instances: {
@@ -38,6 +39,7 @@ export class ViewSchedulePresenter {
               select: {
                 id: true,
                 type: true,
+                slug: true,
                 orgMember: {
                   select: {
                     user: {
@@ -70,8 +72,9 @@ export class ViewSchedulePresenter {
       : [];
 
     const runPresenter = new RunListPresenter(this.#prismaClient);
+
     const { runs } = await runPresenter.call({
-      projectSlug: schedule.project.slug,
+      projectId: schedule.project.id,
       scheduleId: schedule.id,
       pageSize: 5,
     });
@@ -85,21 +88,7 @@ export class ViewSchedulePresenter {
         runs,
         environments: schedule.instances.map((instance) => {
           const environment = instance.environment;
-          let userName: undefined | string;
-          if (environment.orgMember) {
-            if (environment.orgMember.user.id !== userId) {
-              userName =
-                environment.orgMember.user.displayName ??
-                environment.orgMember.user.name ??
-                undefined;
-            }
-          }
-
-          return {
-            id: environment.id,
-            type: environment.type,
-            userName,
-          };
+          return displayableEnvironment(environment, userId);
         }),
       },
     };

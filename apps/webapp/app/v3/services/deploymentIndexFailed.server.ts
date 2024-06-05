@@ -1,3 +1,4 @@
+import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService } from "./baseService.server";
 
 export class DeploymentIndexFailed extends BaseService {
@@ -21,6 +22,8 @@ export class DeploymentIndexFailed extends BaseService {
         errorData: error,
       },
     });
+
+    await PerformDeploymentAlertsService.enqueue(deployment.id, this._prisma);
 
     return deployment;
   }

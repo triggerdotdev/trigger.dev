@@ -1,5 +1,7 @@
 import { Attributes } from "@opentelemetry/api";
 
+export const NULL_SENTINEL = "$@null((";
+
 export function flattenAttributes(
   obj: Record<string, unknown> | Array<unknown> | string | boolean | number | null | undefined,
   prefix?: string
@@ -7,7 +9,12 @@ export function flattenAttributes(
   const result: Attributes = {};
 
   // Check if obj is null or undefined
-  if (!obj) {
+  if (obj === undefined) {
+    return result;
+  }
+
+  if (obj === null) {
+    result[prefix || ""] = NULL_SENTINEL;
     return result;
   }
 
@@ -27,14 +34,18 @@ export function flattenAttributes(
   }
 
   for (const [key, value] of Object.entries(obj)) {
-    const newPrefix = `${prefix ? `${prefix}.` : ""}${key}`;
+    const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
     if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
         if (typeof value[i] === "object" && value[i] !== null) {
           // update null check here as well
           Object.assign(result, flattenAttributes(value[i], `${newPrefix}.[${i}]`));
         } else {
-          result[`${newPrefix}.[${i}]`] = value[i];
+          if (value[i] === null) {
+            result[`${newPrefix}.[${i}]`] = NULL_SENTINEL;
+          } else {
+            result[`${newPrefix}.[${i}]`] = value[i];
+          }
         }
       }
     } else if (isRecord(value)) {
@@ -43,6 +54,8 @@ export function flattenAttributes(
     } else {
       if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") {
         result[newPrefix] = value;
+      } else if (value === null) {
+        result[newPrefix] = NULL_SENTINEL;
       }
     }
   }
@@ -54,53 +67,67 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-export function unflattenAttributes(obj: Attributes): Record<string, unknown> {
+export function unflattenAttributes(
+  obj: Attributes
+): Record<string, unknown> | string | number | boolean | null | undefined {
   if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
     return obj;
+  }
+
+  if (
+    typeof obj === "object" &&
+    obj !== null &&
+    Object.keys(obj).length === 1 &&
+    Object.keys(obj)[0] === ""
+  ) {
+    return rehydrateNull(obj[""]) as any;
+  }
+
+  if (Object.keys(obj).length === 0) {
+    return;
   }
 
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
     const parts = key.split(".").reduce((acc, part) => {
-      // Splitting array indices as separate parts
-      if (detectIsArrayIndex(part)) {
-        acc.push(part);
+      if (part.includes("[")) {
+        // Handling nested array indices
+        const subparts = part.split(/\[|\]/).filter((p) => p !== "");
+        acc.push(...subparts);
       } else {
-        acc.push(...part.split(/\.\[(.*?)\]/).filter(Boolean));
+        acc.push(part);
       }
       return acc;
     }, [] as string[]);
 
-    let current: Record<string, unknown> = result;
+    let current: any = result;
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
-      const isArray = detectIsArrayIndex(part);
-      const cleanPart = isArray ? part.substring(1, part.length - 1) : part;
-      const nextIsArray = detectIsArrayIndex(parts[i + 1]);
-      if (!current[cleanPart]) {
-        current[cleanPart] = nextIsArray ? [] : {};
+      const nextPart = parts[i + 1];
+      const isArray = /^\d+$/.test(nextPart);
+      if (isArray && !Array.isArray(current[part])) {
+        current[part] = [];
+      } else if (!isArray && current[part] === undefined) {
+        current[part] = {};
       }
-      current = current[cleanPart] as Record<string, unknown>;
+      current = current[part];
     }
     const lastPart = parts[parts.length - 1];
-    const cleanLastPart = detectIsArrayIndex(lastPart)
-      ? parseInt(lastPart.substring(1, lastPart.length - 1), 10)
-      : lastPart;
-    current[cleanLastPart] = value;
+    current[lastPart] = rehydrateNull(value);
+  }
+
+  // Convert the result to an array if all top-level keys are numeric indices
+  if (Object.keys(result).every((k) => /^\d+$/.test(k))) {
+    const maxIndex = Math.max(...Object.keys(result).map((k) => parseInt(k)));
+    const arrayResult = Array(maxIndex + 1);
+    for (const key in result) {
+      arrayResult[parseInt(key)] = result[key];
+    }
+    return arrayResult as any;
   }
 
   return result;
-}
-
-function detectIsArrayIndex(key: string): boolean {
-  const match = key.match(/^\[(\d+)\]$/);
-
-  if (match) {
-    return true;
-  }
-
-  return false;
 }
 
 export function primitiveValueOrflattenedAttributes(
@@ -128,4 +155,12 @@ export function primitiveValueOrflattenedAttributes(
   }
 
   return attributes;
+}
+
+function rehydrateNull(value: any): any {
+  if (value === NULL_SENTINEL) {
+    return null;
+  }
+
+  return value;
 }

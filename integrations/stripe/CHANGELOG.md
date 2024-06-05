@@ -1,5 +1,101 @@
 # @trigger.dev/stripe
 
+## 3.0.0-beta.35
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.35
+- @trigger.dev/sdk@3.0.0-beta.35
+
+## 3.0.0-beta.34
+
+### Patch Changes
+
+- Updated dependencies [3a1b0c486]
+- Updated dependencies [3f8b6d8fc]
+- Updated dependencies [1281d40e4]
+  - @trigger.dev/sdk@3.0.0-beta.34
+  - @trigger.dev/integration-kit@3.0.0-beta.34
+
+## 3.0.0-beta.33
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.33
+- @trigger.dev/sdk@3.0.0-beta.33
+
+## 3.0.0-beta.32
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.32
+- @trigger.dev/sdk@3.0.0-beta.32
+
+## 3.0.0-beta.31
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.31
+- @trigger.dev/sdk@3.0.0-beta.31
+
+## 3.0.0-beta.30
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.30
+- @trigger.dev/sdk@3.0.0-beta.30
+
+## 3.0.0-beta.29
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.29
+- @trigger.dev/sdk@3.0.0-beta.29
+
+## 3.0.0-beta.28
+
+### Patch Changes
+
+- Updated dependencies [6d9dfbc75]
+  - @trigger.dev/sdk@3.0.0-beta.28
+  - @trigger.dev/integration-kit@3.0.0-beta.28
+
+## 3.0.0-beta.27
+
+### Patch Changes
+
+- Updated dependencies [203e00208]
+  - @trigger.dev/sdk@3.0.0-beta.27
+  - @trigger.dev/integration-kit@3.0.0-beta.27
+
+## 3.0.0-beta.26
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.26
+- @trigger.dev/sdk@3.0.0-beta.26
+
+## 3.0.0-beta.25
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.25
+- @trigger.dev/sdk@3.0.0-beta.25
+
+## 3.0.0-beta.24
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.24
+- @trigger.dev/sdk@3.0.0-beta.24
+
+## 3.0.0-beta.23
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.23
+- @trigger.dev/sdk@3.0.0-beta.23
+
 ## 3.0.0-beta.22
 
 ### Patch Changes

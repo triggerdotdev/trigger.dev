@@ -157,17 +157,17 @@ function TreeViewParent({
     onSelectedIdChanged: (id) => {
       console.log("onSelectedIdChanged", id);
     },
-    onCollapsedIdsChanged: (ids) => {
-      console.log("onCollapsedIdsChanged", ids);
-    },
     estimatedRowHeight: () => 32,
     parentRef,
-    filter: (node) => {
-      if (filterText === "") return true;
-      if (node.data.title.toLowerCase().includes(filterText.toLowerCase())) {
-        return true;
-      }
-      return false;
+    filter: {
+      value: filterText,
+      fn: (text, node) => {
+        if (text === "") return true;
+        if (node.data.title.toLowerCase().includes(text.toLowerCase())) {
+          return true;
+        }
+        return false;
+      },
     },
   });
 

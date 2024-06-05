@@ -54,7 +54,10 @@ export class AuthenticatedSocketConnection {
       schema: clientWebsocketMessages,
       messages: {
         READY_FOR_TASKS: async (payload) => {
-          await this._consumer.registerBackgroundWorker(payload.backgroundWorkerId);
+          await this._consumer.registerBackgroundWorker(
+            payload.backgroundWorkerId,
+            payload.inProgressRuns ?? []
+          );
         },
         BACKGROUND_WORKER_DEPRECATED: async (payload) => {
           await this._consumer.deprecateBackgroundWorker(payload.backgroundWorkerId);
@@ -69,8 +72,20 @@ export class AuthenticatedSocketConnection {
               );
               break;
             }
+            case "TASK_RUN_FAILED_TO_RUN": {
+              await this._consumer.taskRunFailed(
+                payload.backgroundWorkerId,
+                payload.data.completion
+              );
+
+              break;
+            }
             case "TASK_HEARTBEAT": {
               await this._consumer.taskHeartbeat(payload.backgroundWorkerId, payload.data.id);
+              break;
+            }
+            case "TASK_RUN_HEARTBEAT": {
+              await this._consumer.taskRunHeartbeat(payload.backgroundWorkerId, payload.data.id);
               break;
             }
           }

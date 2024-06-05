@@ -8,6 +8,7 @@ import { $transaction, prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
 import { ResumeRunService } from "./resumeRun.server";
 import { createHash } from "node:crypto";
+import { logger } from "../logger.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type RunConnectionsByKey = Awaited<ReturnType<typeof createRunConnections>>;
@@ -36,6 +37,13 @@ export class StartRunService {
   }
 
   #runIsStartable(run: FoundRun) {
+    if (!run.organization.runsEnabled) {
+      logger.debug("StartRunService: Runs are disabled for this organization", {
+        organizationId: run.organization.id,
+      });
+      return false;
+    }
+
     const startableStatuses = ["PENDING", "WAITING_ON_CONNECTIONS"] as const;
     return startableStatuses.includes(run.status);
   }
@@ -64,8 +72,6 @@ export class StartRunService {
     await $transaction(
       this.#prismaClient,
       async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockId})`;
-
         const counter = await tx.jobCounter.upsert({
           where: { jobId: run.jobId },
           update: { lastNumber: { increment: 1 } },
@@ -146,6 +152,7 @@ async function findRun(tx: PrismaClientOrTransaction, id: string) {
     include: {
       queue: true,
       environment: true,
+      organization: true,
       version: {
         include: {
           integrations: {

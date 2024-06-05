@@ -1,8 +1,10 @@
 import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
 import {
   TaskRunExecution,
+  TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
+  TaskRunFailedExecutionResult,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
 import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
@@ -12,18 +14,18 @@ import { prisma } from "~/db.server";
 import { createNewSession, disconnectSession } from "~/models/runtimeEnvironment.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
-import { CancelAttemptService } from "../services/cancelAttempt.server";
 import { CancelTaskRunService } from "../services/cancelTaskRun.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
+import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
 import {
   SEMINTATTRS_FORCE_RECORDING,
   attributesFromAuthenticatedEnv,
   tracer,
 } from "../tracer.server";
 import { DevSubscriber, devPubSub } from "./devPubSub.server";
+import { FailedTaskRunService } from "../failedTaskRun.server";
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
@@ -54,7 +56,6 @@ export class DevQueueConsumer {
   private _taskSuccesses: number = 0;
   private _currentSpan: Span | undefined;
   private _endSpanInNextIteration = false;
-  private _inProgressAttempts: Map<string, string> = new Map(); // Keys are task attempt friendly IDs, values are TaskRun ids/queue message ids
   private _inProgressRuns: Map<string, string> = new Map(); // Keys are task run friendly IDs, values are TaskRun internal ids/queue message ids
 
   constructor(
@@ -78,7 +79,7 @@ export class DevQueueConsumer {
     this._backgroundWorkers.delete(id);
   }
 
-  public async registerBackgroundWorker(id: string) {
+  public async registerBackgroundWorker(id: string, inProgressRuns: string[] = []) {
     const backgroundWorker = await prisma.backgroundWorker.findUnique({
       where: { friendlyId: id, runtimeEnvironmentId: this.env.id },
       include: {
@@ -90,9 +91,16 @@ export class DevQueueConsumer {
       return;
     }
 
+    if (this._backgroundWorkers.has(backgroundWorker.id)) {
+      return;
+    }
+
     this._backgroundWorkers.set(backgroundWorker.id, backgroundWorker);
 
-    logger.debug("Registered background worker", { backgroundWorker: backgroundWorker.id });
+    logger.debug("Registered background worker", {
+      backgroundWorker: backgroundWorker.id,
+      inProgressRuns,
+    });
 
     const subscriber = await devPubSub.subscribe(`backgroundWorker:${backgroundWorker.id}:*`);
 
@@ -109,6 +117,10 @@ export class DevQueueConsumer {
 
     this._backgroundWorkerSubscriber.set(backgroundWorker.id, subscriber);
 
+    for (const runId of inProgressRuns) {
+      this._inProgressRuns.set(runId, runId);
+    }
+
     // Start reading from the queue if we haven't already
     await this.#enable();
   }
@@ -118,15 +130,16 @@ export class DevQueueConsumer {
     completion: TaskRunExecutionResult,
     execution: TaskRunExecution
   ) {
-    this._inProgressAttempts.delete(execution.attempt.id);
-
     if (completion.ok) {
       this._taskSuccesses++;
     } else {
       this._taskFailures++;
     }
 
-    logger.debug("Task run completed", { taskRunCompletion: completion, execution });
+    logger.debug("[DevQueueConsumer] taskAttemptCompleted()", {
+      taskRunCompletion: completion,
+      execution,
+    });
 
     const service = new CompleteAttemptService();
     const result = await service.call({ completion, execution, env: this.env });
@@ -136,7 +149,24 @@ export class DevQueueConsumer {
     }
   }
 
+  public async taskRunFailed(workerId: string, completion: TaskRunFailedExecutionResult) {
+    this._taskFailures++;
+
+    logger.debug("[DevQueueConsumer] taskRunFailed()", { completion });
+
+    this._inProgressRuns.delete(completion.id);
+
+    const service = new FailedTaskRunService();
+
+    await service.call(completion.id, completion);
+  }
+
+  /**
+   * @deprecated Use `taskRunHeartbeat` instead
+   */
   public async taskHeartbeat(workerId: string, id: string, seconds: number = 60) {
+    logger.debug("[DevQueueConsumer] taskHeartbeat()", { id, seconds });
+
     const taskRunAttempt = await prisma.taskRunAttempt.findUnique({
       where: { friendlyId: id },
     });
@@ -146,6 +176,12 @@ export class DevQueueConsumer {
     }
 
     await marqs?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
+  }
+
+  public async taskRunHeartbeat(workerId: string, id: string, seconds: number = 60) {
+    logger.debug("[DevQueueConsumer] taskRunHeartbeat()", { id, seconds });
+
+    await marqs?.heartbeatMessage(id, seconds);
   }
 
   public async stop(reason: string = "CLI disconnected") {
@@ -180,63 +216,20 @@ export class DevQueueConsumer {
   }
 
   async #cancelInProgressRunsAndAttempts(reason: string) {
-    const cancelAttemptService = new CancelAttemptService();
     const cancelTaskRunService = new CancelTaskRunService();
 
     const cancelledAt = new Date();
 
-    const inProgressAttempts = new Map(this._inProgressAttempts);
     const inProgressRuns = new Map(this._inProgressRuns);
 
-    this._inProgressAttempts.clear();
     this._inProgressRuns.clear();
 
-    const inProgressRunsWithNoInProgressAttempts: string[] = [];
-    const inProgressAttemptRunIds = new Set(inProgressAttempts.values());
-
-    for (const [runId, messageId] of inProgressRuns) {
-      if (!inProgressAttemptRunIds.has(messageId)) {
-        inProgressRunsWithNoInProgressAttempts.push(messageId);
-      }
-    }
-
     logger.debug("Cancelling in progress runs and attempts", {
-      attempts: Array.from(inProgressAttempts.keys()),
       runs: Array.from(inProgressRuns.keys()),
     });
 
-    for (const [attemptId, messageId] of inProgressAttempts) {
-      await this.#cancelInProgressAttempt(
-        attemptId,
-        messageId,
-        cancelAttemptService,
-        cancelledAt,
-        reason
-      );
-    }
-
-    for (const runId of inProgressRunsWithNoInProgressAttempts) {
+    for (const [_, runId] of inProgressRuns) {
       await this.#cancelInProgressRun(runId, cancelTaskRunService, cancelledAt, reason);
-    }
-  }
-
-  async #cancelInProgressAttempt(
-    attemptId: string,
-    messageId: string,
-    cancelAttemptService: CancelAttemptService,
-    cancelledAt: Date,
-    reason: string
-  ) {
-    logger.debug("Cancelling in progress attempt", { attemptId, messageId });
-
-    try {
-      await cancelAttemptService.call(attemptId, messageId, cancelledAt, reason, this.env);
-    } catch (e) {
-      logger.error("Failed to cancel in progress attempt", {
-        attemptId,
-        messageId,
-        error: e,
-      });
     }
   }
 
@@ -248,16 +241,20 @@ export class DevQueueConsumer {
   ) {
     logger.debug("Cancelling in progress run", { runId });
 
-    const taskRun = await prisma.taskRun.findUnique({
-      where: { id: runId },
-    });
+    const taskRun = runId.startsWith("run_")
+      ? await prisma.taskRun.findUnique({
+          where: { friendlyId: runId },
+        })
+      : await prisma.taskRun.findUnique({
+          where: { id: runId },
+        });
 
     if (!taskRun) {
       return;
     }
 
     try {
-      await service.call(taskRun, { reason, cancelAttempts: false, cancelledAt });
+      await service.call(taskRun, { reason, cancelAttempts: true, cancelledAt });
     } catch (e) {
       logger.error("Failed to cancel in progress run", {
         runId,
@@ -271,10 +268,10 @@ export class DevQueueConsumer {
       return;
     }
 
+    this._enabled = true;
     // Create the session
     await createNewSession(this.env, this._options.ipAddress ?? "unknown");
 
-    this._enabled = true;
     this._perTraceCountdown = this._options.maximumItemsPerTrace;
     this._lastNewTrace = new Date();
     this._taskFailures = 0;
@@ -417,6 +414,7 @@ export class DevQueueConsumer {
         lockedAt: new Date(),
         lockedById: backgroundTask.id,
         status: "EXECUTING",
+        lockedToVersionId: backgroundWorker.id,
       },
       include: {
         attempts: {
@@ -448,84 +446,32 @@ export class DevQueueConsumer {
 
     const queue = await prisma.taskQueue.findUnique({
       where: {
-        runtimeEnvironmentId_name: { runtimeEnvironmentId: this.env.id, name: lockedTaskRun.queue },
+        runtimeEnvironmentId_name: {
+          runtimeEnvironmentId: this.env.id,
+          name: sanitizeQueueName(lockedTaskRun.queue),
+        },
       },
     });
 
     if (!queue) {
+      logger.debug("[DevQueueConsumer] Failed to find queue", {
+        queueName: lockedTaskRun.queue,
+        sanitizedName: sanitizeQueueName(lockedTaskRun.queue),
+        taskRun: lockedTaskRun.id,
+        messageId: message.messageId,
+      });
+
       await marqs?.nackMessage(message.messageId);
       setTimeout(() => this.#doWork(), 1000);
       return;
     }
 
     if (!this._enabled) {
+      logger.debug("Dev queue consumer is disabled", { env: this.env, queueMessage: message });
+
       await marqs?.nackMessage(message.messageId);
       return;
     }
-
-    const taskRunAttempt = await prisma.taskRunAttempt.create({
-      data: {
-        number: lockedTaskRun.attempts[0] ? lockedTaskRun.attempts[0].number + 1 : 1,
-        friendlyId: generateFriendlyId("attempt"),
-        taskRunId: lockedTaskRun.id,
-        startedAt: new Date(),
-        backgroundWorkerId: backgroundTask.workerId,
-        backgroundWorkerTaskId: backgroundTask.id,
-        status: "EXECUTING" as const,
-        queueId: queue.id,
-        runtimeEnvironmentId: this.env.id,
-      },
-    });
-
-    const execution: TaskRunExecution = {
-      task: {
-        id: backgroundTask.slug,
-        filePath: backgroundTask.filePath,
-        exportName: backgroundTask.exportName,
-      },
-      attempt: {
-        id: taskRunAttempt.friendlyId,
-        number: taskRunAttempt.number,
-        startedAt: taskRunAttempt.startedAt ?? taskRunAttempt.createdAt,
-        backgroundWorkerId: backgroundWorker.id,
-        backgroundWorkerTaskId: backgroundTask.id,
-        status: "EXECUTING" as const,
-      },
-      run: {
-        id: lockedTaskRun.friendlyId,
-        payload: lockedTaskRun.payload,
-        payloadType: lockedTaskRun.payloadType,
-        context: lockedTaskRun.context,
-        createdAt: lockedTaskRun.createdAt,
-        tags: lockedTaskRun.tags.map((tag) => tag.name),
-        isTest: lockedTaskRun.isTest,
-        idempotencyKey: lockedTaskRun.idempotencyKey ?? undefined,
-      },
-      queue: {
-        id: queue.friendlyId,
-        name: queue.name,
-      },
-      environment: {
-        id: this.env.id,
-        slug: this.env.slug,
-        type: this.env.type,
-      },
-      organization: {
-        id: this.env.organization.id,
-        slug: this.env.organization.slug,
-        name: this.env.organization.title,
-      },
-      project: {
-        id: this.env.project.id,
-        ref: this.env.project.externalRef,
-        slug: this.env.project.slug,
-        name: this.env.project.name,
-      },
-      batch:
-        lockedTaskRun.batchItems[0] && lockedTaskRun.batchItems[0].batchTaskRun
-          ? { id: lockedTaskRun.batchItems[0].batchTaskRun.friendlyId }
-          : undefined,
-    };
 
     const environmentRepository = new EnvironmentVariablesRepository();
     const variables = await environmentRepository.getEnvironmentVariables(
@@ -533,67 +479,119 @@ export class DevQueueConsumer {
       this.env.id
     );
 
-    const payload: TaskRunExecutionPayload = {
-      execution,
-      traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
-      environment: variables.reduce((acc: Record<string, string>, curr) => {
-        acc[curr.key] = curr.value;
-        return acc;
-      }, {}),
-    };
+    if (backgroundWorker.supportsLazyAttempts) {
+      const payload: TaskRunExecutionLazyAttemptPayload = {
+        traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
+        environment: variables.reduce((acc: Record<string, string>, curr) => {
+          acc[curr.key] = curr.value;
+          return acc;
+        }, {}),
+        runId: lockedTaskRun.friendlyId,
+        messageId: lockedTaskRun.id,
+        isTest: lockedTaskRun.isTest,
+      };
 
-    try {
-      // TODO: send trace context down to the CLI
-      await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
-        backgroundWorkerId: backgroundWorker.friendlyId,
-        data: {
-          type: "EXECUTE_RUNS",
-          payloads: [payload],
-        },
-      });
-
-      logger.debug("Saving the in progress attempt", {
-        taskRunAttempt: taskRunAttempt.id,
-        messageId: message.messageId,
-      });
-
-      this._inProgressAttempts.set(taskRunAttempt.friendlyId, message.messageId);
-      this._inProgressRuns.set(lockedTaskRun.friendlyId, message.messageId);
-    } catch (e) {
-      if (e instanceof Error) {
-        this._currentSpan?.recordException(e);
-      } else {
-        this._currentSpan?.recordException(new Error(String(e)));
-      }
-
-      this._endSpanInNextIteration = true;
-
-      // We now need to unlock the task run and delete the task run attempt
-      await prisma.$transaction([
-        prisma.taskRun.update({
-          where: {
-            id: lockedTaskRun.id,
-          },
+      try {
+        await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
+          backgroundWorkerId: backgroundWorker.friendlyId,
           data: {
-            lockedAt: null,
-            lockedById: null,
-            status: "PENDING",
+            type: "EXECUTE_RUN_LAZY_ATTEMPT",
+            payload,
           },
-        }),
-        prisma.taskRunAttempt.delete({
-          where: {
-            id: taskRunAttempt.id,
+        });
+
+        logger.debug("Executing the run", {
+          messageId: message.messageId,
+        });
+
+        this._inProgressRuns.set(lockedTaskRun.friendlyId, message.messageId);
+      } catch (e) {
+        if (e instanceof Error) {
+          this._currentSpan?.recordException(e);
+        } else {
+          this._currentSpan?.recordException(new Error(String(e)));
+        }
+
+        this._endSpanInNextIteration = true;
+
+        // We now need to unlock the task run and delete the task run attempt
+        await prisma.$transaction([
+          prisma.taskRun.update({
+            where: {
+              id: lockedTaskRun.id,
+            },
+            data: {
+              lockedAt: null,
+              lockedById: null,
+              status: "PENDING",
+            },
+          }),
+        ]);
+
+        this._inProgressRuns.delete(lockedTaskRun.friendlyId);
+
+        // Finally we need to nack the message so it can be retried
+        await marqs?.nackMessage(message.messageId);
+      } finally {
+        setTimeout(() => this.#doWork(), 100);
+      }
+    } else {
+      const service = new CreateTaskRunAttemptService();
+      const { execution } = await service.call(lockedTaskRun.friendlyId, this.env);
+
+      const payload: TaskRunExecutionPayload = {
+        traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
+        environment: variables.reduce((acc: Record<string, string>, curr) => {
+          acc[curr.key] = curr.value;
+          return acc;
+        }, {}),
+        execution,
+      };
+
+      try {
+        await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
+          backgroundWorkerId: backgroundWorker.friendlyId,
+          data: {
+            type: "EXECUTE_RUNS",
+            payloads: [payload],
           },
-        }),
-      ]);
+        });
 
-      this._inProgressAttempts.delete(taskRunAttempt.friendlyId);
-      this._inProgressRuns.delete(lockedTaskRun.friendlyId);
+        logger.debug("Executing the run", {
+          messageId: message.messageId,
+        });
 
-      // Finally we need to nack the message so it can be retried
-      await marqs?.nackMessage(message.messageId);
-    } finally {
-      setTimeout(() => this.#doWork(), 100);
+        this._inProgressRuns.set(lockedTaskRun.friendlyId, message.messageId);
+      } catch (e) {
+        if (e instanceof Error) {
+          this._currentSpan?.recordException(e);
+        } else {
+          this._currentSpan?.recordException(new Error(String(e)));
+        }
+
+        this._endSpanInNextIteration = true;
+
+        // We now need to unlock the task run and delete the task run attempt
+        await prisma.$transaction([
+          prisma.taskRun.update({
+            where: {
+              id: lockedTaskRun.id,
+            },
+            data: {
+              lockedAt: null,
+              lockedById: null,
+              status: "PENDING",
+            },
+          }),
+        ]);
+
+        this._inProgressRuns.delete(lockedTaskRun.friendlyId);
+
+        // Finally we need to nack the message so it can be retried
+        await marqs?.nackMessage(message.messageId);
+      } finally {
+        setTimeout(() => this.#doWork(), 100);
+      }
     }
   }
 

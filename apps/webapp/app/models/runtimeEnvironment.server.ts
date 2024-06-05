@@ -124,6 +124,7 @@ type DisplayableInputEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
   select: {
     id: true;
     type: true;
+    slug: true;
     orgMember: {
       select: {
         user: {
@@ -138,17 +139,24 @@ type DisplayableInputEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
   };
 }>;
 
-export function displayableEnvironments(
+export function displayableEnvironment(
   environment: DisplayableInputEnvironment,
   userId: string | undefined
 ) {
+  let userName: string | undefined = undefined;
+
+  if (environment.type === "DEVELOPMENT") {
+    if (!environment.orgMember) {
+      userName = "Deleted";
+    } else if (environment.orgMember.user.id !== userId) {
+      userName = getUsername(environment.orgMember.user);
+    }
+  }
+
   return {
     id: environment.id,
     type: environment.type,
-    userName: environment.orgMember
-      ? environment.orgMember.user.id === userId
-        ? undefined
-        : getUsername(environment.orgMember.user)
-      : undefined,
+    slug: environment.slug,
+    userName,
   };
 }

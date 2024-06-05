@@ -15,6 +15,35 @@ import { SnowflakeIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
+export const allTaskRunStatuses = [
+  "WAITING_FOR_DEPLOY",
+  "PENDING",
+  "EXECUTING",
+  "RETRYING_AFTER_FAILURE",
+  "WAITING_TO_RESUME",
+  "COMPLETED_SUCCESSFULLY",
+  "CANCELED",
+  "COMPLETED_WITH_ERRORS",
+  "CRASHED",
+  "PAUSED",
+  "INTERRUPTED",
+  "SYSTEM_FAILURE",
+] as const satisfies Readonly<Array<TaskRunStatus>>;
+
+export const filterableTaskRunStatuses = [
+  "WAITING_FOR_DEPLOY",
+  "PENDING",
+  "EXECUTING",
+  "RETRYING_AFTER_FAILURE",
+  "WAITING_TO_RESUME",
+  "COMPLETED_SUCCESSFULLY",
+  "CANCELED",
+  "COMPLETED_WITH_ERRORS",
+  "CRASHED",
+  "INTERRUPTED",
+  "SYSTEM_FAILURE",
+] as const satisfies Readonly<Array<TaskRunStatus>>;
+
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   PENDING: "Task is waiting to be executed",
   WAITING_FOR_DEPLOY: "Task needs to be deployed first to start executing",
@@ -36,6 +65,15 @@ export const RUNNING_STATUSES: TaskRunStatus[] = [
   "EXECUTING",
   "RETRYING_AFTER_FAILURE",
   "WAITING_TO_RESUME",
+];
+
+export const FINISHED_STATUSES: TaskRunStatus[] = [
+  "COMPLETED_SUCCESSFULLY",
+  "CANCELED",
+  "COMPLETED_WITH_ERRORS",
+  "INTERRUPTED",
+  "SYSTEM_FAILURE",
+  "CRASHED",
 ];
 
 export function descriptionForTaskRunStatus(status: TaskRunStatus): string {

@@ -5,7 +5,10 @@ description: "You can easily deploy your tasks with GitHub actions."
 
 This simple GitHub action file will deploy you Trigger.dev tasks when new code is pushed to the `main` branch and the `trigger` directory has changes in it.
 
-<Warning>The deploy step will fail if any version mismatches are detected. Please see the [version pinning](/v3/github-actions#version-pinning) section for more details.</Warning>
+<Warning>
+  The deploy step will fail if any version mismatches are detected. Please see the [version
+  pinning](/v3/github-actions#version-pinning) section for more details.
+</Warning>
 
 <CodeGroup>
 
@@ -30,7 +33,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-      
+
       - name: Install dependencies
         run: npm install
 
@@ -40,7 +43,6 @@ jobs:
         run: |
           npx trigger.dev@beta deploy
 ```
-
 
 ```yaml .github/workflows/release-trigger-staging.yml
 name: Deploy to Trigger.dev (staging)
@@ -60,7 +62,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-      
+
       - name: Install dependencies
         run: npm install
 
@@ -70,6 +72,7 @@ jobs:
         run: |
           npx trigger.dev@beta deploy --env staging
 ```
+
 </CodeGroup>
 
 If you already have a GitHub action file, you can just add the final step "🚀 Deploy Trigger.dev" to your existing file.
@@ -78,18 +81,38 @@ You need to add the `TRIGGER_ACCESS_TOKEN` secret to your repository. You can cr
 
 To set it in GitHub go to your repository, click on "Settings", "Secrets and variables" and then "Actions". Add a new secret with the name `TRIGGER_ACCESS_TOKEN` and use the value of your access token.
 
+<Accordion title="How to add TRIGGER_ACCESS_TOKEN in GitHub">
+  1. Go to your repository on GitHub.
+  2. Click on "Settings".
+  3. Click on "Secrets and variables" -> "Actions"
+  4. Click on "New repository secret".
+  5. Add the name `TRIGGER_ACCESS_TOKEN` and the value of your access token.
+
+![Add TRIGGER_ACCESS_TOKEN in GitHub](/images/v3/github-access-token.png)
+
+</Accordion>
+
 ## Version pinning
 
 The CLI and `@trigger.dev/*` package versions need to be in sync, otherwise there will be errors and unpredictable behavior. Hence, the `deploy` command will automatically fail during CI on any version mismatches.
+Tip: add the deploy command to your `package.json` file to keep versions managed in the same place. For example:
 
-To ensure a smooth CI experience you can pin the CLI version in the deploy step, like so:
+```json
+{
+  "scripts": {
+    "deploy:trigger-prod": "npx trigger.dev@3.0.0-beta.34 deploy",
+    "deploy:trigger": "npx trigger.dev@3.0.0-beta.34 deploy --env staging"
+  }
+}
+```
+Your workflow file will follow the version specified in the `package.json` script, like so:
 
 ```yaml .github/workflows/release-trigger.yml
 - name: 🚀 Deploy Trigger.dev
   env:
     TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
   run: |
-    npx trigger.dev@3.0.0-beta.16 deploy
+    npm run deploy:trigger
 ```
 
 You should use the version you run locally during dev and manual deploy. The current version is displayed in the banner, but you can also check it by appending `--version` to any command.

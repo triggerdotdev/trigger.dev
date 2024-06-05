@@ -91,6 +91,22 @@ export const config: TriggerConfig = {
 };
 ```
 
+There is a [huge library of instrumentations](https://opentelemetry.io/ecosystem/registry/?language=js) you can easily add to your project like this.
+
+Some ones we recommend:
+
+| Package                                 | Description                                                                                                              |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `@opentelemetry/instrumentation-undici` | Logs all fetch calls (inc. Undici fetch)                                                                                 |
+| `@opentelemetry/instrumentation-fs`     | Logs all file system calls                                                                                               |
+| `@opentelemetry/instrumentation-http`   | Logs all HTTP calls                                                                                                      |
+| `@prisma/instrumentation`               | Logs all Prisma calls, you need to [enable tracing](https://github.com/prisma/prisma/tree/main/packages/instrumentation) |
+| `@traceloop/instrumentation-openai`     | Logs all OpenAI calls                                                                                                    |
+
+## Syncing environment variables
+
+You can sync environment variables from another service using the `resolveEnvVars` function. [Read the docs](/v3/deploy-environment-variables#sync-env-vars-from-another-service) for more information.
+
 ## ESM-only packages
 
 We'll let you know when running the CLI dev command if this is a problem. Some packages are ESM-only so they don't work directly from CJS when using Node.js. In that case you need to add them to the `dependenciesToBundle` array in your `trigger.config.ts` file.
@@ -262,4 +278,4 @@ export const taskThatUsesDecorators = task({
 
 ## Troubleshooting
 
-If you have an issue with bundling let us know on [Discord](https://trigger.dev/discord) or [via email](https://trigger.dev/contact).
+If you have an issue with bundling checkout our [troubleshooting guide](/v3/troubleshooting).

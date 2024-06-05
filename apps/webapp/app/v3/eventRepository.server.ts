@@ -10,9 +10,11 @@ import {
   SpanEvents,
   SpanMessagingEvent,
   TaskEventStyle,
+  TaskRunError,
   correctErrorStackTrace,
   createPacketAttributesAsJson,
   flattenAttributes,
+  NULL_SENTINEL,
   isExceptionSpanEvent,
   omit,
   unflattenAttributes,
@@ -21,7 +23,7 @@ import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger
 import Redis, { RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
-import { PrismaClient, prisma } from "~/db.server";
+import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -100,9 +102,27 @@ export type QueryOptions = Prisma.TaskEventWhereInput;
 
 export type TaskEventRecord = TaskEvent;
 
-export type QueriedEvent = TaskEvent;
+export type QueriedEvent = Prisma.TaskEventGetPayload<{
+  select: {
+    id: true;
+    spanId: true;
+    parentId: true;
+    runId: true;
+    idempotencyKey: true;
+    message: true;
+    style: true;
+    startTime: true;
+    duration: true;
+    isError: true;
+    isPartial: true;
+    isCancelled: true;
+    level: true;
+    events: true;
+    environmentType: true;
+  };
+}>;
 
-export type PreparedEvent = Omit<TaskEventRecord, "events" | "style" | "duration"> & {
+export type PreparedEvent = Omit<QueriedEvent, "events" | "style" | "duration"> & {
   duration: number;
   events: SpanEvents;
   style: TaskEventStyle;
@@ -138,6 +158,7 @@ export type SpanSummary = {
     isPartial: boolean;
     isCancelled: boolean;
     level: NonNullable<CreatableEvent["level"]>;
+    environmentType: CreatableEventEnvironmentType;
   };
 };
 
@@ -147,6 +168,7 @@ export type UpdateEventOptions = {
   attributes: TraceAttributes;
   endTime?: Date;
   immediate?: boolean;
+  events?: SpanEvents;
 };
 
 export class EventRepository {
@@ -159,7 +181,11 @@ export class EventRepository {
     return this._subscriberCount;
   }
 
-  constructor(private db: PrismaClient = prisma, private readonly _config: EventRepoConfig) {
+  constructor(
+    private db: PrismaClient = prisma,
+    private readReplica: PrismaReplicaClient = $replica,
+    private readonly _config: EventRepoConfig
+  ) {
     this._flushScheduler = new DynamicFlushScheduler({
       batchSize: _config.batchSize,
       flushInterval: _config.batchInterval,
@@ -217,7 +243,7 @@ export class EventRepository {
       isCancelled: false,
       status: options?.attributes.isError ? "ERROR" : "OK",
       links: event.links ?? [],
-      events: event.events ?? [],
+      events: event.events ?? (options?.events as any) ?? [],
       duration: calculateDurationFromStart(event.startTime, options?.endTime),
       properties: event.properties as Attributes,
       metadata: event.metadata as Attributes,
@@ -348,7 +374,24 @@ export class EventRepository {
   }
 
   public async getTraceSummary(traceId: string): Promise<TraceSummary | undefined> {
-    const events = await this.db.taskEvent.findMany({
+    const events = await this.readReplica.taskEvent.findMany({
+      select: {
+        id: true,
+        spanId: true,
+        parentId: true,
+        runId: true,
+        idempotencyKey: true,
+        message: true,
+        style: true,
+        startTime: true,
+        duration: true,
+        isError: true,
+        isPartial: true,
+        isCancelled: true,
+        level: true,
+        events: true,
+        environmentType: true,
+      },
       where: {
         traceId,
       },
@@ -383,6 +426,7 @@ export class EventRepository {
           startTime: getDateFromNanoseconds(event.startTime),
           level: event.level,
           events: event.events,
+          environmentType: event.environmentType,
         },
       };
     });
@@ -406,21 +450,8 @@ export class EventRepository {
 
   // A Span can be cancelled if it is partial and has a parent that is cancelled
   // And a span's duration, if it is partial and has a cancelled parent, is the time between the start of the span and the time of the cancellation event of the parent
-  public async getSpan(spanId: string) {
-    const traceSearch = await this.db.taskEvent.findFirst({
-      where: {
-        spanId,
-      },
-      select: {
-        traceId: true,
-      },
-    });
-
-    if (!traceSearch) {
-      return;
-    }
-
-    const traceSummary = await this.getTraceSummary(traceSearch.traceId);
+  public async getSpan(spanId: string, traceId: string) {
+    const traceSummary = await this.getTraceSummary(traceId);
 
     const span = traceSummary?.spans.find((span) => span.id === spanId);
 
@@ -428,7 +459,7 @@ export class EventRepository {
       return;
     }
 
-    const fullEvent = await this.db.taskEvent.findUnique({
+    const fullEvent = await this.readReplica.taskEvent.findUnique({
       where: {
         id: span.recordId,
       },
@@ -438,21 +469,10 @@ export class EventRepository {
       return;
     }
 
-    const output = isEmptyJson(fullEvent.output)
-      ? null
-      : unflattenAttributes(fullEvent.output as Attributes);
+    const output = rehydrateJson(fullEvent.output);
+    const payload = rehydrateJson(fullEvent.payload);
 
-    const payload = isEmptyJson(fullEvent.payload)
-      ? null
-      : unflattenAttributes(fullEvent.payload as Attributes);
-
-    const show = unflattenAttributes(
-      filteredAttributes(fullEvent.properties as Attributes, SemanticInternalAttributes.SHOW)
-    )[SemanticInternalAttributes.SHOW] as
-      | {
-          actions?: boolean;
-        }
-      | undefined;
+    const show = rehydrateShow(fullEvent.properties);
 
     const properties = sanitizedAttributes(fullEvent.properties);
 
@@ -491,7 +511,11 @@ export class EventRepository {
       });
     }
 
-    const events = transformEvents(span.data.events, fullEvent.metadata as Attributes);
+    const events = transformEvents(
+      span.data.events,
+      fullEvent.metadata as Attributes,
+      traceSummary?.rootSpan.data.environmentType === "DEVELOPMENT"
+    );
 
     return {
       ...fullEvent,
@@ -824,7 +848,7 @@ export class EventRepository {
 export const eventRepository = singleton("eventRepo", initializeEventRepo);
 
 function initializeEventRepo() {
-  const repo = new EventRepository(prisma, {
+  const repo = new EventRepository(prisma, $replica, {
     batchSize: env.EVENTS_BATCH_SIZE,
     batchInterval: env.EVENTS_BATCH_INTERVAL,
     retentionInDays: env.EVENTS_DEFAULT_LOG_RETENTION,
@@ -861,6 +885,36 @@ export function stripAttributePrefix(attributes: Attributes, prefix: string) {
     }
   }
   return result;
+}
+
+export function createExceptionPropertiesFromError(error: TaskRunError): ExceptionEventProperties {
+  switch (error.type) {
+    case "BUILT_IN_ERROR": {
+      return {
+        type: error.name,
+        message: error.message,
+        stacktrace: error.stackTrace,
+      };
+    }
+    case "CUSTOM_ERROR": {
+      return {
+        type: "Error",
+        message: error.raw,
+      };
+    }
+    case "INTERNAL_ERROR": {
+      return {
+        type: "Internal error",
+        message: [error.code, error.message].filter(Boolean).join(": "),
+      };
+    }
+    case "STRING_ERROR": {
+      return {
+        type: "Error",
+        message: error.raw,
+      };
+    }
+  }
 }
 
 /**
@@ -1046,7 +1100,7 @@ function isEmptyJson(json: Prisma.JsonValue) {
   return false;
 }
 
-function sanitizedAttributes(json: Prisma.JsonValue): Record<string, unknown> | undefined {
+function sanitizedAttributes(json: Prisma.JsonValue) {
   if (json === null || json === undefined) {
     return;
   }
@@ -1083,16 +1137,16 @@ function removePrivateProperties(
   return result;
 }
 
-function transformEvents(events: SpanEvents, properties: Attributes): SpanEvents {
-  return (events ?? []).map((event) => transformEvent(event, properties));
+function transformEvents(events: SpanEvents, properties: Attributes, isDev: boolean): SpanEvents {
+  return (events ?? []).map((event) => transformEvent(event, properties, isDev));
 }
 
-function transformEvent(event: SpanEvent, properties: Attributes): SpanEvent {
+function transformEvent(event: SpanEvent, properties: Attributes, isDev: boolean): SpanEvent {
   if (isExceptionSpanEvent(event)) {
     return {
       ...event,
       properties: {
-        exception: transformException(event.properties.exception, properties),
+        exception: transformException(event.properties.exception, properties, isDev),
       },
     };
   }
@@ -1102,11 +1156,12 @@ function transformEvent(event: SpanEvent, properties: Attributes): SpanEvent {
 
 function transformException(
   exception: ExceptionEventProperties,
-  properties: Attributes
+  properties: Attributes,
+  isDev: boolean
 ): ExceptionEventProperties {
   const projectDirAttributeValue = properties[SemanticInternalAttributes.PROJECT_DIR];
 
-  if (typeof projectDirAttributeValue !== "string") {
+  if (projectDirAttributeValue !== undefined && typeof projectDirAttributeValue !== "string") {
     return exception;
   }
 
@@ -1115,6 +1170,7 @@ function transformException(
     stacktrace: exception.stacktrace
       ? correctErrorStackTrace(exception.stacktrace, projectDirAttributeValue, {
           removeFirstLine: true,
+          isDev,
         })
       : undefined,
   };
@@ -1142,4 +1198,58 @@ function getNowInNanoseconds(): bigint {
 
 function getDateFromNanoseconds(nanoseconds: bigint) {
   return new Date(Number(nanoseconds) / 1_000_000);
+}
+
+function rehydrateJson(json: Prisma.JsonValue): any {
+  if (json === null) {
+    return undefined;
+  }
+
+  if (json === NULL_SENTINEL) {
+    return null;
+  }
+
+  if (typeof json === "string") {
+    return json;
+  }
+
+  if (typeof json === "number") {
+    return json;
+  }
+
+  if (typeof json === "boolean") {
+    return json;
+  }
+
+  if (Array.isArray(json)) {
+    return json.map((item) => rehydrateJson(item));
+  }
+
+  if (typeof json === "object") {
+    return unflattenAttributes(json as Attributes);
+  }
+
+  return null;
+}
+
+function rehydrateShow(properties: Prisma.JsonValue): { actions?: boolean } | undefined {
+  if (properties === null || properties === undefined) {
+    return;
+  }
+
+  if (typeof properties !== "object") {
+    return;
+  }
+
+  if (Array.isArray(properties)) {
+    return;
+  }
+
+  const actions = properties[SemanticInternalAttributes.SHOW_ACTIONS];
+
+  if (typeof actions === "boolean") {
+    return { actions };
+  }
+
+  return;
 }

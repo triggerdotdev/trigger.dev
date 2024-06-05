@@ -29,6 +29,8 @@ This task will retry 10 times with exponential backoff.
 One way to gain reliability is to break your work into smaller tasks and [trigger](/v3/triggering) them from each other. Each task can have its own retrying behavior:
 
 ```ts /trigger/multiple-tasks.ts
+import { task } from "@trigger.dev/sdk/v3";
+
 export const myTask = task({
   id: "my-task",
   retry: {
@@ -66,6 +68,8 @@ We provide some useful functions that you can use to retry smaller parts of a ta
 You can retry a block of code that can throw an error, with the same retry settings as a task.
 
 ```ts /trigger/retry-on-throw.ts
+import { task, logger, retry } from "@trigger.dev/sdk/v3";
+
 export const retryOnThrow = task({
   id: "retry-on-throw",
   run: async (payload: any) => {
@@ -100,6 +104,8 @@ You can use `fetch`, `axios`, or any other library in your code.
 But we do provide a convenient function to perform HTTP requests with conditional retrying based on the response:
 
 ```ts /trigger/retry-fetch.ts
+import { task, logger, retry } from "@trigger.dev/sdk/v3";
+
 export const taskWithFetchRetries = task({
   id: "task-with-fetch-retries",
   run: async ({ payload, ctx }) => {
@@ -193,6 +199,8 @@ In this complicated example:
 - If we've run out of requests or tokens we retry at the time specified in the headers.
 
 ```ts
+import { task } from "@trigger.dev/sdk/v3";
+
 export const openaiTask = task({
   id: "openai-task",
   retry: {

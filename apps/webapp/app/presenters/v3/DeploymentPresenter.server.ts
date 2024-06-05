@@ -1,5 +1,6 @@
 import {
   DeploymentErrorData,
+  ExternalBuildData,
   TaskMetadataFailedToParseData,
   groupTaskMetadataIssuesByTask,
 } from "@trigger.dev/core/v3";
@@ -39,6 +40,7 @@ export class DeploymentPresenter {
     const project = await this.#prismaClient.project.findFirstOrThrow({
       select: {
         id: true,
+        organizationId: true,
       },
       where: {
         slug: projectSlug,
@@ -65,6 +67,9 @@ export class DeploymentPresenter {
         shortCode: true,
         version: true,
         errorData: true,
+        imageReference: true,
+        externalBuildData: true,
+        projectId: true,
         environment: {
           select: {
             id: true,
@@ -103,6 +108,7 @@ export class DeploymentPresenter {
                 exportName: "asc",
               },
             },
+            sdkVersion: true,
           },
         },
         triggeredBy: {
@@ -115,6 +121,10 @@ export class DeploymentPresenter {
         },
       },
     });
+
+    const externalBuildData = deployment.externalBuildData
+      ? ExternalBuildData.safeParse(deployment.externalBuildData)
+      : undefined;
 
     return {
       deployment: {
@@ -134,12 +144,18 @@ export class DeploymentPresenter {
           userName: getUsername(deployment.environment.orgMember?.user),
         },
         deployedBy: deployment.triggeredBy,
-        errorData: this.#prepareErrorData(deployment.errorData),
+        sdkVersion: deployment.worker?.sdkVersion,
+        imageReference: deployment.imageReference,
+        externalBuildData:
+          externalBuildData && externalBuildData.success ? externalBuildData.data : undefined,
+        projectId: deployment.projectId,
+        organizationId: project.organizationId,
+        errorData: DeploymentPresenter.prepareErrorData(deployment.errorData),
       },
     };
   }
 
-  #prepareErrorData(errorData: WorkerDeployment["errorData"]): ErrorData | undefined {
+  public static prepareErrorData(errorData: WorkerDeployment["errorData"]): ErrorData | undefined {
     if (!errorData) {
       return;
     }

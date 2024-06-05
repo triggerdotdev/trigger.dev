@@ -1,12 +1,12 @@
 import { Prisma, TaskRun, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
-import { eventRepository } from "../eventRepository.server";
+import assertNever from "assert-never";
+import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
+import { eventRepository } from "../eventRepository.server";
+import { socketIo } from "../handleSocketIo.server";
 import { devPubSub } from "../marqs/devPubSub.server";
 import { BaseService } from "./baseService.server";
-import { socketIo } from "../handleSocketIo.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
-import { logger } from "~/services/logger.server";
-import assertNever from "assert-never";
 
 export const CANCELLABLE_STATUSES: Array<TaskRunStatus> = [
   "PENDING",
@@ -24,9 +24,15 @@ const CANCELLABLE_ATTEMPT_STATUSES: Array<TaskRunAttemptStatus> = [
   "PENDING",
 ];
 
-type ExtendedTaskRunAttempt = Prisma.TaskRunAttemptGetPayload<{
+type ExtendedTaskRun = Prisma.TaskRunGetPayload<{
   include: {
     runtimeEnvironment: true;
+    lockedToVersion: true;
+  };
+}>;
+
+type ExtendedTaskRunAttempt = Prisma.TaskRunAttemptGetPayload<{
+  include: {
     backgroundWorker: true;
   };
 }>;
@@ -71,11 +77,10 @@ export class CancelTaskRunService extends BaseService {
           },
           include: {
             backgroundWorker: true,
-            runtimeEnvironment: true,
           },
         },
-        dependency: true,
         runtimeEnvironment: true,
+        lockedToVersion: true,
       },
     });
 
@@ -96,12 +101,20 @@ export class CancelTaskRunService extends BaseService {
     // Cancel any in progress attempts
     if (opts.cancelAttempts) {
       await this.#cancelPotentiallyRunningAttempts(cancelledTaskRun, cancelledTaskRun.attempts);
+      await this.#cancelRemainingRunWorkers(cancelledTaskRun);
     }
+
+    return {
+      id: cancelledTaskRun.id,
+    };
   }
 
-  async #cancelPotentiallyRunningAttempts(run: TaskRun, attempts: ExtendedTaskRunAttempt[]) {
+  async #cancelPotentiallyRunningAttempts(
+    run: ExtendedTaskRun,
+    attempts: ExtendedTaskRunAttempt[]
+  ) {
     for (const attempt of attempts) {
-      if (attempt.runtimeEnvironment.type === "DEVELOPMENT") {
+      if (run.runtimeEnvironment.type === "DEVELOPMENT") {
         // Signal the task run attempt to stop
         await devPubSub.publish(
           `backgroundWorker:${attempt.backgroundWorkerId}:${attempt.id}`,
@@ -153,5 +166,20 @@ export class CancelTaskRunService extends BaseService {
         }
       }
     }
+  }
+
+  async #cancelRemainingRunWorkers(run: ExtendedTaskRun) {
+    if (run.runtimeEnvironment.type === "DEVELOPMENT") {
+      // Nothing to do
+      return;
+    }
+
+    // Broadcast cancel message to all coordinators
+    socketIo.coordinatorNamespace.emit("REQUEST_RUN_CANCELLATION", {
+      version: "v1",
+      runId: run.id,
+      // Give the attempts some time to exit gracefully. If the runs supports lazy attempts, it also supports exit delays.
+      delayInMs: run.lockedToVersion?.supportsLazyAttempts ? 5_000 : undefined,
+    });
   }
 }

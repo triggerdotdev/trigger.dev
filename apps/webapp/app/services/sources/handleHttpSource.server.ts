@@ -1,9 +1,8 @@
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
-import { requestUrl } from "~/utils/requestUrl.server";
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
+import { RuntimeEnvironmentType } from "~/database-types";
 
 export class HandleHttpSourceService {
   #prismaClient: PrismaClient;
@@ -19,6 +18,7 @@ export class HandleHttpSourceService {
         endpoint: true,
         environment: true,
         secretReference: true,
+        organization: true,
       },
     });
 
@@ -28,6 +28,14 @@ export class HandleHttpSourceService {
 
     if (!triggerSource.active) {
       return { status: 200 };
+    }
+
+    if (!triggerSource.endpoint.url) {
+      return { status: 404 };
+    }
+
+    if (!triggerSource.organization.runsEnabled) {
+      return { status: 404 };
     }
 
     if (!triggerSource.interactive) {

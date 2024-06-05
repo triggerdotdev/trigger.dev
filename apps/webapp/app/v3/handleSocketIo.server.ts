@@ -22,6 +22,7 @@ import { DeploymentIndexFailed } from "./services/deploymentIndexFailed.server";
 import { Redis } from "ioredis";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { CrashTaskRunService } from "./services/crashTaskRun.server";
+import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -86,9 +87,33 @@ function createCoordinatorNamespace(io: Server) {
         );
 
         if (!payload) {
+          logger.error("Failed to retrieve execution payload", message);
           return { success: false };
         } else {
           return { success: true, payload };
+        }
+      },
+      READY_FOR_LAZY_ATTEMPT: async (message) => {
+        try {
+          const payload = await sharedQueueTasks.getLazyAttemptPayload(
+            message.envId,
+            message.runId
+          );
+
+          if (!payload) {
+            logger.error("Failed to retrieve lazy attempt payload", message);
+            return { success: false, reason: "Failed to retrieve payload" };
+          }
+
+          return { success: true, lazyPayload: payload };
+        } catch (error) {
+          logger.error("Error while creating lazy attempt", {
+            runId: message.runId,
+            envId: message.envId,
+            totalCompletions: message.totalCompletions,
+            error,
+          });
+          return { success: false };
         }
       },
       READY_FOR_RESUME: async (message) => {
@@ -103,8 +128,14 @@ function createCoordinatorNamespace(io: Server) {
           checkpoint: message.checkpoint,
         });
       },
+      TASK_RUN_FAILED_TO_RUN: async (message) => {
+        await sharedQueueTasks.taskRunFailed(message.completion);
+      },
       TASK_HEARTBEAT: async (message) => {
         await sharedQueueTasks.taskHeartbeat(message.attemptFriendlyId);
+      },
+      TASK_RUN_HEARTBEAT: async (message) => {
+        await sharedQueueTasks.taskRunHeartbeat(message.runId);
       },
       CHECKPOINT_CREATED: async (message) => {
         const createCheckpoint = new CreateCheckpointService();
@@ -123,11 +154,48 @@ function createCoordinatorNamespace(io: Server) {
           const worker = await service.call(message.projectRef, environment, message.deploymentId, {
             localOnly: false,
             metadata: message.metadata,
+            supportsLazyAttempts: message.version !== "v1" && message.supportsLazyAttempts,
           });
 
           return { success: !!worker };
         } catch (error) {
-          logger.error("Error while creating worker", { error });
+          logger.error("Error while creating worker", {
+            error,
+            envId: message.envId,
+            projectRef: message.projectRef,
+            deploymentId: message.deploymentId,
+            version: message.version,
+          });
+          return { success: false };
+        }
+      },
+      CREATE_TASK_RUN_ATTEMPT: async (message) => {
+        try {
+          const environment = await findEnvironmentById(message.envId);
+
+          if (!environment) {
+            logger.error("Environment not found", { id: message.envId });
+            return { success: false, reason: "Environment not found" };
+          }
+
+          const service = new CreateTaskRunAttemptService();
+          const { attempt } = await service.call(message.runId, environment, false);
+
+          const payload = await sharedQueueTasks.getExecutionPayloadFromAttempt(attempt.id, true);
+
+          if (!payload) {
+            logger.error("Failed to retrieve payload after attempt creation", {
+              id: message.envId,
+            });
+            return { success: false, reason: "Failed to retrieve payload" };
+          }
+
+          return { success: true, executionPayload: payload };
+        } catch (error) {
+          logger.error("Error while creating attempt", {
+            runId: message.runId,
+            error,
+          });
           return { success: false };
         }
       },
@@ -136,8 +204,26 @@ function createCoordinatorNamespace(io: Server) {
           const service = new DeploymentIndexFailed();
 
           await service.call(message.deploymentId, message.error);
-        } catch (e) {
-          logger.error("Error while indexing", { error: e });
+        } catch (error) {
+          logger.error("Error while processing index failure", {
+            deploymentId: message.deploymentId,
+            error,
+          });
+        }
+      },
+      RUN_CRASHED: async (message) => {
+        try {
+          const service = new CrashTaskRunService();
+
+          await service.call(message.runId, {
+            reason: `${message.error.name}: ${message.error.message}`,
+            logs: message.error.stack,
+          });
+        } catch (error) {
+          logger.error("Error while processing run failure", {
+            runId: message.runId,
+            error,
+          });
         }
       },
     },

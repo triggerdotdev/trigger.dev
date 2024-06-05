@@ -3,6 +3,7 @@ import { parse } from "@conform-to/zod";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
@@ -14,7 +15,9 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import { prisma } from "~/db.server";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -110,6 +113,23 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title={`${project.name} project settings`} />
+
+        <PageAccessories>
+          <AdminDebugTooltip>
+            <PropertyTable>
+              <Property label="ID">
+                <div className="flex items-center gap-2">
+                  <Paragraph variant="extra-small/bright/mono">{project.id}</Paragraph>
+                </div>
+              </Property>
+              <Property label="Org ID">
+                <div className="flex items-center gap-2">
+                  <Paragraph variant="extra-small/bright/mono">{project.organizationId}</Paragraph>
+                </div>
+              </Property>
+            </PropertyTable>
+          </AdminDebugTooltip>
+        </PageAccessories>
       </NavBar>
 
       <PageBody>

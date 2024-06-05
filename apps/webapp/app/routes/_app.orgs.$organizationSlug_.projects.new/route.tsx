@@ -16,20 +16,17 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/primitives/Select";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { Select, SelectItem } from "~/components/primitives/Select";
+import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { useFeatures } from "~/hooks/useFeatures";
+import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { createProject } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
 import { OrganizationParamsSchema, organizationPath, projectPath } from "~/utils/pathBuilder";
+import { RequestV3Access } from "../resources.orgs.$organizationSlug.v3-access";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -41,10 +38,14 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       id: true,
       title: true,
       v3Enabled: true,
+      v2Enabled: true,
+      hasRequestedV3: true,
       _count: {
         select: {
           projects: {
-            where: { deletedAt: null },
+            where: {
+              deletedAt: null,
+            },
           },
         },
       },
@@ -64,6 +65,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       slug: organizationSlug,
       projectsCount: organization._count.projects,
       v3Enabled: organization.v3Enabled,
+      v2Enabled: organization.v2Enabled,
+      hasRequestedV3: organization.hasRequestedV3,
     },
     defaultVersion: url.searchParams.get("version") ?? "v2",
   });
@@ -105,11 +108,23 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function NewOrganizationPage() {
-  const { organization, defaultVersion } = useTypedLoaderData<typeof loader>();
+  const { organization } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
-  const { v3Enabled } = useFeatures();
+  const { v3Enabled, isManagedCloud } = useFeatures();
 
   const canCreateV3Projects = organization.v3Enabled && v3Enabled;
+  const canCreateV2Projects = organization.v2Enabled || !isManagedCloud;
+  const canCreateProjects = canCreateV2Projects || canCreateV3Projects;
+
+  if (!canCreateProjects) {
+    return (
+      <RequestV3Access
+        hasRequestedV3={organization.hasRequestedV3}
+        organizationSlug={organization.slug}
+        projectsCount={organization.projectsCount}
+      />
+    );
+  }
 
   const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",
@@ -126,7 +141,7 @@ export default function NewOrganizationPage() {
         <FormTitle
           LeadingIcon="folder"
           title="Create a new project"
-          description={`This will create a new project in your "${organization.title}" organization. `}
+          description={`This will create a new project in your "${organization.title}" organization.`}
         />
         <Form method="post" {...form.props}>
           {organization.projectsCount === 0 && (
@@ -145,27 +160,39 @@ export default function NewOrganizationPage() {
               />
               <FormError id={projectName.errorId}>{projectName.error}</FormError>
             </InputGroup>
-            {canCreateV3Projects ? (
+            {canCreateV2Projects && canCreateV3Projects ? (
               <InputGroup>
                 <Label htmlFor={projectVersion.id}>Project version</Label>
-                <SelectGroup>
-                  <Select
-                    {...conform.input(projectVersion, { type: "select" })}
-                    defaultValue={defaultVersion}
-                  >
-                    <SelectTrigger width="full" size="medium">
-                      <SelectValue placeholder="Project version" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="v2">Version 2</SelectItem>
-                      <SelectItem value="v3">Version 3 (Developer Preview)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </SelectGroup>
+                <Select
+                  {...conform.select(projectVersion)}
+                  defaultValue={undefined}
+                  variant="tertiary/medium"
+                  placeholder="Select version"
+                  dropdownIcon
+                  text={(value) => {
+                    switch (value) {
+                      case "v2":
+                        return "Version 2";
+                      case "v3":
+                        return "Version 3";
+                    }
+                  }}
+                >
+                  <SelectItem value="v2">Version 2</SelectItem>
+                  <SelectItem value="v3">Version 3 (Developer Preview)</SelectItem>
+                </Select>
                 <FormError id={projectVersion.errorId}>{projectVersion.error}</FormError>
               </InputGroup>
+            ) : canCreateV3Projects ? (
+              <>
+                <Callout variant="info">This will be a v3 project</Callout>
+                <input {...conform.input(projectVersion, { type: "hidden" })} value={"v3"} />
+              </>
             ) : (
-              <input {...conform.input(projectVersion, { type: "hidden" })} value="v2" />
+              <>
+                <Callout variant="info">This will be a v2 project</Callout>
+                <input {...conform.input(projectVersion, { type: "hidden" })} value={"v2"} />
+              </>
             )}
             <FormButtons
               confirmButton={

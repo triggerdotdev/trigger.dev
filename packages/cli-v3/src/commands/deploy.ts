@@ -14,7 +14,7 @@ import { execa } from "execa";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, posix, relative } from "node:path";
+import { dirname, join, posix, relative, resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import terminalLink from "terminal-link";
 import invariant from "tiny-invariant";
@@ -30,7 +30,7 @@ import {
   tracer,
   wrapCommandAction,
 } from "../cli/common.js";
-import { readConfig } from "../utilities/configFiles.js";
+import { ReadConfigResult, readConfig } from "../utilities/configFiles.js";
 import { createTempDir, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import {
@@ -45,7 +45,11 @@ import { login } from "./login";
 import { esbuildDecorators } from "@anatine/esbuild-decorators";
 import { Glob, GlobOptions } from "glob";
 import type { SetOptional } from "type-fest";
-import { bundleDependenciesPlugin, workerSetupImportConfigPlugin } from "../utilities/build";
+import {
+  bundleDependenciesPlugin,
+  mockServerOnlyPlugin,
+  workerSetupImportConfigPlugin,
+} from "../utilities/build";
 import { chalkError, chalkPurple, chalkWarning } from "../utilities/cliOutput";
 import {
   logESMRequireError,
@@ -59,6 +63,7 @@ import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { safeJsonParse } from "../utilities/safeJsonParse";
 import { escapeImportPath, spinner } from "../utilities/windows";
 import { updateTriggerPackages } from "./update";
+import { callResolveEnvVars } from "../utilities/resolveEnvVars";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   skipTypecheck: z.boolean().default(false),
@@ -75,6 +80,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string().optional(),
   saveLogs: z.boolean().default(false),
   skipUpdateCheck: z.boolean().default(false),
+  noCache: z.boolean().default(false),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -102,6 +108,12 @@ export function configureDeployCommand(program: Command) {
       new CommandOption(
         "--self-hosted",
         "Build and load the image using your local Docker. Use the --registry option to specify the registry to push the image to when using --self-hosted, or just use --push-image to push to the default registry."
+      ).hideHelp()
+    )
+    .addOption(
+      new CommandOption(
+        "--no-cache",
+        "Do not use the cache when building the image. This will slow down the build process but can be useful if you are experiencing issues with the cache."
       ).hideHelp()
     )
     .addOption(
@@ -187,7 +199,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         `Failed to connect to ${authorization.auth?.apiUrl}. Are you sure it's the correct URL?`
       );
     } else {
-      throw new Error("You must login first. Use `trigger.dev login` to login.");
+      throw new Error(
+        `You must login first. Use the \`login\` CLI command.\n\n${authorization.error}`
+      );
     }
   }
 
@@ -201,6 +215,13 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     configFile: options.config,
     projectRef: options.projectRef,
   });
+
+  if (resolvedConfig.status === "error") {
+    logger.error("Failed to read config:", resolvedConfig.error);
+    span && recordSpanException(span, resolvedConfig.error);
+
+    throw new SkipLoggingError("Failed to read config");
+  }
 
   logger.debug("Resolved config", { resolvedConfig });
 
@@ -239,6 +260,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   );
 
   logger.debug("Compilation result", { compilation });
+
+  // Optional Step 1.1: resolve environment variables
+  await resolveEnvironmentVariables(resolvedConfig, environmentClient, options);
 
   // Step 2: Initialize a deployment on the server (response will have everything we need to build an image)
   const deploymentResponse = await environmentClient.initializeDeployment({
@@ -280,6 +304,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         buildPlatform: options.buildPlatform,
         pushImage: options.push,
         selfHostedRegistry: !!options.registry,
+        noCache: options.noCache,
       });
     }
 
@@ -305,6 +330,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         projectRef: resolvedConfig.config.project,
         loadImage: options.loadImage,
         buildPlatform: options.buildPlatform,
+        noCache: options.noCache,
       },
       deploymentSpinner
     );
@@ -378,6 +404,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     deploymentResponse.data.id,
     {
       imageReference,
+      selfHosted: options.selfHosted,
     }
   );
 
@@ -675,7 +702,7 @@ async function failDeploy(
 async function waitForDeploymentToFinish(
   deploymentId: string,
   client: CliApiClient,
-  timeoutInSeconds: number = 60
+  timeoutInSeconds: number = 180
 ) {
   return tracer.startActiveSpan("waitForDeploymentToFinish", async (span) => {
     try {
@@ -741,6 +768,7 @@ type BuildAndPushImageOptions = {
   projectRef: string;
   loadImage: boolean;
   buildPlatform: string;
+  noCache: boolean;
 };
 
 type BuildAndPushImageResults =
@@ -784,6 +812,7 @@ async function buildAndPushImage(
       "build",
       "-f",
       "Containerfile",
+      options.noCache ? "--no-cache" : undefined,
       "--platform",
       options.buildPlatform,
       "--provenance",
@@ -909,6 +938,7 @@ async function buildAndPushSelfHostedImage(
       "build",
       "-f",
       "Containerfile",
+      options.noCache ? "--no-cache" : undefined,
       "--platform",
       options.buildPlatform,
       "--build-arg",
@@ -926,7 +956,9 @@ async function buildAndPushSelfHostedImage(
       ".", // The build context
     ].filter(Boolean) as string[];
 
-    logger.debug(`docker ${buildArgs.join(" ")}`);
+    logger.debug(`docker ${buildArgs.join(" ")}`, {
+      cwd: options.cwd,
+    });
 
     span.setAttribute("docker.command.build", `docker ${buildArgs.join(" ")}`);
 
@@ -1091,7 +1123,9 @@ async function compileProject(
         .replace("__TASKS__", createTaskFileImports(taskFiles))
         .replace(
           "__WORKER_SETUP__",
-          `import { tracingSDK } from "${escapeImportPath(workerSetupPath)}";`
+          `import { tracingSDK, otelTracer, otelLogger } from "${escapeImportPath(
+            workerSetupPath
+          )}";`
         );
 
       if (configPath) {
@@ -1126,11 +1160,15 @@ async function compileProject(
         format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
         target: ["node18", "es2020"],
         outdir: "out",
+        banner: {
+          js: `process.on("uncaughtException", function(error, origin) { if (error instanceof Error) { process.send && process.send({ type: "EVENT", message: { type: "UNCAUGHT_EXCEPTION", payload: { error: { name: error.name, message: error.message, stack: error.stack }, origin }, version: "v1" } }); } else { process.send && process.send({ type: "EVENT", message: { type: "UNCAUGHT_EXCEPTION", payload: { error: { name: "Error", message: typeof error === "string" ? error : JSON.stringify(error) }, origin }, version: "v1" } }); } });`,
+        },
         define: {
           TRIGGER_API_URL: `"${config.triggerUrl}"`,
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
         plugins: [
+          mockServerOnlyPlugin(),
           bundleDependenciesPlugin(
             "workerFacade",
             config.dependenciesToBundle,
@@ -1271,7 +1309,9 @@ async function compileProject(
 
       const javascriptProject = new JavascriptProject(config.projectDir);
 
-      const dependencies = await gatherRequiredDependencies(allImports, config, javascriptProject);
+      const dependencies = await resolveRequiredDependencies(allImports, config, javascriptProject);
+
+      logger.debug("gatherRequiredDependencies()", { dependencies });
 
       const packageJsonContents = {
         name: "trigger-worker",
@@ -1282,6 +1322,10 @@ async function compileProject(
           ...javascriptProject.scripts,
         },
       };
+
+      span.setAttributes({
+        ...flattenAttributes(packageJsonContents, "packageJson.contents"),
+      });
 
       await writeJSONFile(join(tempDir, "package.json"), packageJsonContents);
 
@@ -1315,8 +1359,19 @@ async function compileProject(
 
       // Write the Containerfile to /tmp/dir/Containerfile
       const containerFilePath = join(cliRootPath(), "Containerfile.prod");
-      // Copy the Containerfile to /tmp/dir/Containerfile
-      await copyFile(containerFilePath, join(tempDir, "Containerfile"));
+
+      let containerFileContents = readFileSync(containerFilePath, "utf-8");
+
+      if (config.postInstall) {
+        containerFileContents = containerFileContents.replace(
+          "__POST_INSTALL__",
+          `RUN ${config.postInstall}`
+        );
+      } else {
+        containerFileContents = containerFileContents.replace("__POST_INSTALL__", "");
+      }
+
+      await writeFile(join(tempDir, "Containerfile"), containerFileContents);
 
       const contentHasher = createHash("sha256");
       contentHasher.update(Buffer.from(entryPointOutputFile.text));
@@ -1338,6 +1393,92 @@ async function compileProject(
       span.end();
 
       throw e;
+    }
+  });
+}
+
+async function resolveEnvironmentVariables(
+  config: ReadConfigResult,
+  apiClient: CliApiClient,
+  options: DeployCommandOptions
+) {
+  if (config.status !== "file") {
+    return;
+  }
+
+  if (!config.module || typeof config.module.resolveEnvVars !== "function") {
+    return;
+  }
+
+  const projectConfig = config.config;
+
+  return await tracer.startActiveSpan("resolveEnvironmentVariables", async (span) => {
+    try {
+      const $spinner = spinner();
+      $spinner.start("Resolving environment variables");
+
+      let processEnv: Record<string, string | undefined> = {
+        ...process.env,
+      };
+
+      // Step 1: Get existing env vars from the apiClient
+      const environmentVariables = await apiClient.getEnvironmentVariables(projectConfig.project);
+
+      if (environmentVariables.success) {
+        processEnv = {
+          ...processEnv,
+          ...environmentVariables.data.variables,
+        };
+      }
+
+      logger.debug("Existing environment variables", {
+        keys: Object.keys(processEnv),
+      });
+
+      // Step 2: Call the resolveEnvVars function with the existing env vars (and process.env)
+      const resolvedEnvVars = await callResolveEnvVars(
+        config.module,
+        processEnv,
+        options.env,
+        projectConfig.project
+      );
+
+      // Step 3: Upload the new env vars via the apiClient
+      if (resolvedEnvVars) {
+        const total = Object.keys(resolvedEnvVars.variables).length;
+
+        logger.debug("Resolved env vars", {
+          keys: Object.keys(resolvedEnvVars.variables),
+        });
+
+        if (total > 0) {
+          $spinner.message(
+            `Syncing ${total} environment variable${total > 1 ? "s" : ""} with the server`
+          );
+
+          const uploadResult = await apiClient.importEnvVars(projectConfig.project, options.env, {
+            variables: resolvedEnvVars.variables,
+            override:
+              typeof resolvedEnvVars.override === "boolean" ? resolvedEnvVars.override : true,
+          });
+
+          if (uploadResult.success) {
+            $spinner.stop(`${total} environment variable${total > 1 ? "s" : ""} synced`);
+          } else {
+            $spinner.stop("Failed to sync environment variables");
+
+            throw new Error(uploadResult.error);
+          }
+        } else {
+          $spinner.stop("No environment variables to sync");
+        }
+      }
+    } catch (e) {
+      recordSpanException(span, e);
+
+      throw e;
+    } finally {
+      span.end();
     }
   });
 }
@@ -1403,10 +1544,31 @@ async function resolveDependencies(
       logger.debug(`No cached package-lock.json found for ${digest}`);
 
       try {
-        await execa("npm", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit"], {
-          cwd: projectDir,
-          stdio: logger.loggerLevel === "debug" ? "inherit" : "pipe",
-        });
+        if (logger.loggerLevel === "debug") {
+          const childProcess = await execa("npm", ["config", "list"], {
+            cwd: projectDir,
+            stdio: "inherit",
+          });
+
+          logger.debug("npm config list");
+          console.log(childProcess.stdout);
+        }
+
+        await execa(
+          "npm",
+          [
+            "install",
+            "--package-lock-only",
+            "--ignore-scripts",
+            "--no-audit",
+            "--legacy-peer-deps=false",
+            "--strict-peer-deps=false",
+          ],
+          {
+            cwd: projectDir,
+            stdio: logger.loggerLevel === "debug" ? "inherit" : "pipe",
+          }
+        );
 
         const packageLockContents = await readFile(join(projectDir, "package-lock.json"), "utf-8");
 
@@ -1520,74 +1682,123 @@ async function typecheckProject(config: ResolvedConfig, options: DeployCommandOp
 
 // Returns the dependencies that are required by the output that are found in output and the CLI package dependencies
 // Returns the dependency names and the version to use (taken from the CLI deps package.json)
-async function gatherRequiredDependencies(
+async function resolveRequiredDependencies(
   imports: Metafile["outputs"][string]["imports"],
   config: ResolvedConfig,
   project: JavascriptProject
 ) {
-  const dependencies: Record<string, string> = {};
+  return await tracer.startActiveSpan("resolveRequiredDependencies", async (span) => {
+    const resolvablePackageNames = new Set<string>();
 
-  for (const file of imports) {
-    if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
-      continue;
-    }
-
-    const packageName = detectPackageNameFromImportPath(file.path);
-
-    if (dependencies[packageName]) {
-      continue;
-    }
-
-    const externalDependencyVersion = await project.resolve(packageName);
-
-    if (externalDependencyVersion) {
-      dependencies[packageName] = stripWorkspaceFromVersion(externalDependencyVersion);
-      continue;
-    }
-
-    const internalDependencyVersion =
-      (packageJson.dependencies as Record<string, string>)[packageName] ??
-      detectDependencyVersion(packageName);
-
-    if (internalDependencyVersion) {
-      dependencies[packageName] = stripWorkspaceFromVersion(internalDependencyVersion);
-    }
-  }
-
-  if (config.additionalPackages) {
-    for (const packageName of config.additionalPackages) {
-      if (dependencies[packageName]) {
+    for (const file of imports) {
+      if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
         continue;
       }
 
-      const packageParts = parsePackageName(packageName);
+      const packageName = detectPackageNameFromImportPath(file.path);
 
-      if (packageParts.version) {
-        dependencies[packageParts.name] = packageParts.version;
+      if (!packageName) {
         continue;
-      } else {
-        const externalDependencyVersion = await project.resolve(packageParts.name, {
-          allowDev: true,
-        });
+      }
 
-        if (externalDependencyVersion) {
-          dependencies[packageParts.name] = externalDependencyVersion;
+      resolvablePackageNames.add(packageName);
+    }
+
+    span.setAttribute("resolvablePackageNames", Array.from(resolvablePackageNames));
+
+    const resolvedPackageVersions = await project.resolveAll(Array.from(resolvablePackageNames));
+    const missingPackages = Array.from(resolvablePackageNames).filter(
+      (packageName) => !resolvedPackageVersions[packageName]
+    );
+
+    span.setAttributes({
+      ...flattenAttributes(resolvedPackageVersions, "resolvedPackageVersions"),
+    });
+    span.setAttribute("missingPackages", missingPackages);
+
+    const dependencies: Record<string, string> = {};
+
+    for (const missingPackage of missingPackages) {
+      const internalDependencyVersion =
+        (packageJson.dependencies as Record<string, string>)[missingPackage] ??
+        detectDependencyVersion(missingPackage);
+
+      if (internalDependencyVersion) {
+        dependencies[missingPackage] = stripWorkspaceFromVersion(internalDependencyVersion);
+      }
+    }
+
+    for (const [packageName, version] of Object.entries(resolvedPackageVersions)) {
+      dependencies[packageName] = version;
+    }
+
+    if (config.additionalPackages) {
+      span.setAttribute("additionalPackages", config.additionalPackages);
+
+      for (const packageName of config.additionalPackages) {
+        if (dependencies[packageName]) {
+          continue;
+        }
+
+        const packageParts = parsePackageName(packageName);
+
+        if (packageParts.version) {
+          dependencies[packageParts.name] = packageParts.version;
           continue;
         } else {
-          logger.log(
-            `${chalkWarning("X Warning:")} Could not find version for package ${chalkPurple(
-              packageName
-            )}, add a version specifier to the package name (e.g. ${
-              packageParts.name
-            }@latest) or add it to your project's package.json`
-          );
+          const externalDependencyVersion = await project.resolve(packageParts.name, {
+            allowDev: true,
+          });
+
+          if (externalDependencyVersion) {
+            dependencies[packageParts.name] = externalDependencyVersion;
+            continue;
+          } else {
+            logger.log(
+              `${chalkWarning("X Warning:")} Could not find version for package ${chalkPurple(
+                packageName
+              )}, add a version specifier to the package name (e.g. ${
+                packageParts.name
+              }@latest) or add it to your project's package.json`
+            );
+          }
         }
       }
     }
-  }
 
-  // Make sure we sort the dependencies by key to ensure consistent hashing
-  return Object.fromEntries(Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b)));
+    if (!dependencies["@trigger.dev/sdk"]) {
+      logger.debug("Adding missing @trigger.dev/sdk dependency", {
+        version: packageJson.version,
+      });
+
+      span.setAttribute("addingMissingSDK", packageJson.version);
+
+      dependencies["@trigger.dev/sdk"] = packageJson.version;
+    }
+
+    if (!dependencies["@trigger.dev/core"]) {
+      logger.debug("Adding missing @trigger.dev/core dependency", {
+        version: packageJson.version,
+      });
+
+      span.setAttribute("addingMissingCore", packageJson.version);
+
+      dependencies["@trigger.dev/core"] = packageJson.version;
+    }
+
+    // Make sure we sort the dependencies by key to ensure consistent hashing
+    const result = Object.fromEntries(
+      Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b))
+    );
+
+    span.setAttributes({
+      ...flattenAttributes(result, "dependencies"),
+    });
+
+    span.end();
+
+    return result;
+  });
 }
 
 type AdditionalFilesReturn =

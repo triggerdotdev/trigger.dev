@@ -31,9 +31,8 @@ declare const handleError: HandleErrorFunction | undefined;
 
 declare const __PROJECT_CONFIG__: Config;
 declare const tracingSDK: TracingSDK;
-
-const otelTracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.version);
-const otelLogger = tracingSDK.getLogger("trigger-prod-worker", packageJson.version);
+declare const otelTracer: Tracer;
+declare const otelLogger: Logger;
 
 import {
   TaskRunErrorCodes,
@@ -43,7 +42,8 @@ import {
   runtime,
 } from "@trigger.dev/core/v3";
 import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
-import * as packageJson from "../../../package.json";
+import type { Tracer } from "@opentelemetry/api";
+import type { Logger } from "@opentelemetry/api-logs";
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
@@ -62,7 +62,7 @@ const configLogLevel = triggerLogLevel
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
   tracer: tracer,
-  level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "log",
+  level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "info",
 });
 
 logger.setGlobalTaskLogger(otelTaskLogger);
@@ -170,32 +170,15 @@ const zodIpc = new ZodIpcConnection({
         _isRunning = false;
       }
     },
-    TASK_RUN_COMPLETED_NOTIFICATION: async ({ completion, execution }) => {
-      prodRuntimeManager.resumeTask(completion, execution);
+    TASK_RUN_COMPLETED_NOTIFICATION: async ({ completion }) => {
+      prodRuntimeManager.resumeTask(completion);
     },
     WAIT_COMPLETED_NOTIFICATION: async () => {
-      prodRuntimeManager.resumeAfterRestore();
+      prodRuntimeManager.resumeAfterDuration();
     },
     CLEANUP: async ({ flush, kill }, sender) => {
       if (kill) {
         await tracingSDK.flush();
-
-        if (_execution) {
-          // Fail currently executing attempt
-          await sender.send("TASK_RUN_COMPLETED", {
-            execution: _execution,
-            result: {
-              ok: false,
-              id: _execution.run.id,
-              error: {
-                type: "INTERNAL_ERROR",
-                code: TaskRunErrorCodes.GRACEFUL_EXIT_TIMEOUT,
-                message: "Worker process killed while attempt in progress.",
-              },
-            },
-          });
-        }
-
         // Now we need to exit the process
         await sender.send("READY_TO_DISPOSE", undefined);
       } else {
@@ -228,7 +211,7 @@ zodIpc.send("TASKS_READY", { tasks: TASK_METADATA }).catch((err) => {
 
 process.title = "trigger-prod-worker";
 
-async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 5) {
+async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 20) {
   async function _doHeartbeat() {
     while (true) {
       if (_isRunning && _execution) {

@@ -1,7 +1,8 @@
-import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, LightBulbIcon, ShieldCheckIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -10,8 +11,9 @@ import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
-import { PageAccessories, NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import {
   Table,
   TableBody,
@@ -24,7 +26,6 @@ import {
 import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { useFeatures } from "~/hooks/useFeatures";
-import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { createEnvironment } from "~/models/organization.server";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
@@ -132,6 +133,18 @@ export default function Page() {
       <NavBar>
         <PageTitle title="API keys" />
         <PageAccessories>
+          <AdminDebugTooltip>
+            <PropertyTable>
+              {environments.map((environment) => (
+                <Property label={environment.slug} key={environment.id}>
+                  <div className="flex items-center gap-2">
+                    <Paragraph variant="extra-small/bright/mono">{environment.id}</Paragraph>
+                  </div>
+                </Property>
+              ))}
+            </PropertyTable>
+          </AdminDebugTooltip>
+
           <LinkButton
             variant={"minimal/small"}
             LeadingIcon={BookOpenIcon}

@@ -1,29 +1,26 @@
 import { prettyPrintPacket } from "@trigger.dev/core/v3";
 import { PrismaClient, prisma } from "~/db.server";
 import { eventRepository } from "~/v3/eventRepository.server";
+import { BasePresenter } from "./basePresenter.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<Result>["event"];
 
-export class SpanPresenter {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
+export class SpanPresenter extends BasePresenter {
   public async call({
     userId,
     projectSlug,
     organizationSlug,
     spanId,
+    runFriendlyId,
   }: {
     userId: string;
     projectSlug: string;
     organizationSlug: string;
     spanId: string;
+    runFriendlyId: string;
   }) {
-    const project = await this.#prismaClient.project.findUnique({
+    const project = await this._replica.project.findUnique({
       where: {
         slug: projectSlug,
       },
@@ -33,7 +30,20 @@ export class SpanPresenter {
       throw new Error("Project not found");
     }
 
-    const span = await eventRepository.getSpan(spanId);
+    const run = await this._prisma.taskRun.findFirst({
+      select: {
+        traceId: true,
+      },
+      where: {
+        friendlyId: runFriendlyId,
+      },
+    });
+
+    if (!run) {
+      return;
+    }
+
+    const span = await eventRepository.getSpan(spanId, run.traceId);
 
     if (!span) {
       return;
@@ -42,7 +52,7 @@ export class SpanPresenter {
     const output =
       span.outputType === "application/store"
         ? `/resources/packets/${span.environmentId}/${span.output}`
-        : typeof span.output !== "undefined" && span.output !== null
+        : typeof span.output !== "undefined"
         ? await prettyPrintPacket(span.output, span.outputType ?? undefined)
         : undefined;
 

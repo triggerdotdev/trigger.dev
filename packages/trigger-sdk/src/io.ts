@@ -1,6 +1,7 @@
 import {
   API_VERSIONS,
   CachedTask,
+  CompleteTaskBodyV2Input,
   ConnectionAuth,
   CronOptions,
   ErrorWithStackSchema,
@@ -11,6 +12,7 @@ import {
   FetchTimeoutOptions,
   InitialStatusUpdate,
   IntervalOptions,
+  RunTaskBodyInput,
   RunTaskOptions,
   SendEvent,
   SendEventOptions,
@@ -26,6 +28,7 @@ import { webcrypto } from "node:crypto";
 import { ApiClient } from "./apiClient";
 import {
   AutoYieldExecutionError,
+  AutoYieldRateLimitError,
   AutoYieldWithCompletedTaskExecutionError,
   CanceledWithTaskError,
   ErrorWithTask,
@@ -1161,19 +1164,18 @@ export class IO {
 
     const runOptions = { ...(options ?? {}), parseOutput: undefined };
 
-    const response = await this._apiClient.runTask(
-      this._id,
-      {
-        idempotencyKey,
-        displayKey: typeof cacheKey === "string" ? cacheKey : undefined,
-        noop: false,
-        ...(runOptions ?? {}),
-        parentId,
-      },
-      {
-        cachedTasksCursor: this._cachedTasksCursor,
-      }
-    );
+    const response = await this.#doRunTask({
+      idempotencyKey,
+      displayKey: typeof cacheKey === "string" ? cacheKey : undefined,
+      noop: false,
+      ...(runOptions ?? {}),
+      parentId,
+    });
+
+    if (!response) {
+      this.#forceYield("failed_task_run");
+      throw new Error("Failed to run task"); // this shouldn't actually happen, because forceYield will throw
+    }
 
     const task =
       response.version === API_VERSIONS.LAZY_LOADED_CACHED_TASKS
@@ -1267,10 +1269,15 @@ export class IO {
 
         this.#detectAutoYield("before_complete_task", 500, task, output);
 
-        const completedTask = await this._apiClient.completeTask(this._id, task.id, {
+        const completedTask = await this.#doCompleteTask(task.id, {
           output,
           properties: task.outputProperties ?? undefined,
         });
+
+        if (!completedTask) {
+          this.#forceYield("before_complete_task", task, output);
+          throw new Error("Failed to complete task"); // this shouldn't actually happen, because forceYield will throw
+        }
 
         if (completedTask.forceYield) {
           this._logger.debug("Forcing yield after task completed", {
@@ -1448,6 +1455,32 @@ export class IO {
     this._cachedTasks.set(task.idempotencyKey, task);
   }
 
+  async #doRunTask(task: RunTaskBodyInput) {
+    try {
+      return await this._apiClient.runTask(this._id, task, {
+        cachedTasksCursor: this._cachedTasksCursor,
+      });
+    } catch (error) {
+      if (error instanceof AutoYieldRateLimitError) {
+        this._logger.debug("AutoYieldRateLimitError", {
+          error,
+        });
+
+        throw error;
+      }
+
+      return;
+    }
+  }
+
+  async #doCompleteTask(id: string, task: CompleteTaskBodyV2Input) {
+    try {
+      return await this._apiClient.completeTask(this._id, id, task);
+    } catch (error) {
+      return;
+    }
+  }
+
   #detectAutoYield(location: string, threshold: number = 1500, task?: ServerTask, output?: string) {
     const timeRemaining = this.#getRemainingTimeInMillis();
 
@@ -1469,11 +1502,24 @@ export class IO {
     }
   }
 
-  #forceYield(location: string) {
+  #forceYield(location: string, task?: ServerTask, output?: string) {
     const timeRemaining = this.#getRemainingTimeInMillis();
 
     if (timeRemaining) {
-      throw new AutoYieldExecutionError(location, timeRemaining, this.#getTimeElapsed());
+      if (task) {
+        throw new AutoYieldWithCompletedTaskExecutionError(
+          task.id,
+          task.outputProperties ?? [],
+          {
+            location,
+            timeRemaining,
+            timeElapsed: this.#getTimeElapsed(),
+          },
+          output
+        );
+      } else {
+        throw new AutoYieldExecutionError(location, timeRemaining, this.#getTimeElapsed());
+      }
     }
   }
 

@@ -1,5 +1,79 @@
 # internal-platform
 
+## 3.0.0-beta.35
+
+### Patch Changes
+
+- ece6ca678: Fix issue when using SDK in non-node environments by scoping the stream import with node:
+- e69ffd314: - Clear paused states before retry
+  - Detect and handle unrecoverable worker errors
+  - Remove checkpoints after successful push
+  - Permanently switch to DO hosted busybox image
+  - Fix IPC timeout issue, or at least handle it more gracefully
+  - Handle checkpoint failures
+  - Basic chaos monkey for checkpoint testing
+  - Stack traces are back in the dashboard
+  - Display final errors on root span
+- e69ffd314: Improve handling of IPC timeouts and fix checkpoint cancellation after failures
+
+## 3.0.0-beta.34
+
+### Patch Changes
+
+- 3a1b0c486: v3: Environment variable management API and SDK, along with resolveEnvVars CLI hook
+- 3f8b6d8fc: v2: Better handle recovering from platform communication errors by auto-yielding back to the platform in case of temporary API failures
+- 1281d40e4: When a v2 run hits the rate limit, reschedule with the reset date
+
+## 3.0.0-beta.33
+
+### Patch Changes
+
+- 6a379e4e9: Fix 3rd party otel propagation from breaking our Task Events data from being properly correlated to the correct trace
+
+## 3.0.0-beta.32
+
+## 3.0.0-beta.31
+
+## 3.0.0-beta.30
+
+### Patch Changes
+
+- 1477a2e30: Increased the timeout when canceling a checkpoint to 31s (to match the timeout on the server)
+- 0e919f56f: Better handle uncaught exceptions
+
+## 3.0.0-beta.29
+
+## 3.0.0-beta.28
+
+### Patch Changes
+
+- d490bc5cb: Add the "log" level back in as an alias to "info"
+- 6d9dfbc75: Add configure function to be able to configure the SDK manually
+
+## 3.0.0-beta.27
+
+### Patch Changes
+
+- 1670c4c41: Remove "log" Log Level, unify log and info messages under the "info" log level
+- 203e00208: Add runs.retrieve management API method to get info about a run by run ID
+
+## 3.0.0-beta.26
+
+## 3.0.0-beta.25
+
+### Patch Changes
+
+- e337b2165: Add a postInstall option to allow running scripts after dependencies have been installed in deployed images
+- 9e5382951: Improve the display of non-object return types in the run trace viewer
+
+## 3.0.0-beta.24
+
+### Patch Changes
+
+- 83dc87155: Fix issues with consecutive waits
+
+## 3.0.0-beta.23
+
 ## 3.0.0-beta.22
 
 ## 3.0.0-beta.21

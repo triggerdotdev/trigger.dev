@@ -1,5 +1,128 @@
 # trigger.dev
 
+## 3.0.0-beta.35
+
+### Patch Changes
+
+- 98ef17029: Set the deploy timeout to 3mins from 1min
+- e69ffd314: - Clear paused states before retry
+  - Detect and handle unrecoverable worker errors
+  - Remove checkpoints after successful push
+  - Permanently switch to DO hosted busybox image
+  - Fix IPC timeout issue, or at least handle it more gracefully
+  - Handle checkpoint failures
+  - Basic chaos monkey for checkpoint testing
+  - Stack traces are back in the dashboard
+  - Display final errors on root span
+- Updated dependencies [ece6ca678]
+- Updated dependencies [e69ffd314]
+- Updated dependencies [e69ffd314]
+  - @trigger.dev/core@3.0.0-beta.35
+
+## 3.0.0-beta.34
+
+### Patch Changes
+
+- 5a6e79e0c: Fixing missing logs when importing client @opentelemetry/api
+- 3a1b0c486: v3: Environment variable management API and SDK, along with resolveEnvVars CLI hook
+- a86f36cef: Fix TypeScript inclusion in tsconfig.json for `cli-v3 init`
+- c092c0f9d: v3: Prevent legacy-peer-deps=true from breaking deploys
+
+  When a global `.npmrc` file includes `legacy-peer-deps=true`, deploys would fail on the `npm ci` step because the package-lock.json wouldn't match the `package.json` file. This is because inside the image build, the `.npmrc` file would not be picked up and so `legacy-peer-deps` would end up being false (which is the default). This change forces the `package-lock.json` file to be created using `legacy-peer-deps=false`
+
+- Updated dependencies [3a1b0c486]
+- Updated dependencies [3f8b6d8fc]
+- Updated dependencies [1281d40e4]
+  - @trigger.dev/core@3.0.0-beta.34
+
+## 3.0.0-beta.33
+
+### Patch Changes
+
+- 598906fc4: Fix for typo in v3 CLI login command
+- Updated dependencies [6a379e4e9]
+  - @trigger.dev/core@3.0.0-beta.33
+
+## 3.0.0-beta.32
+
+### Patch Changes
+
+- f96f1e91a: Better handle issues with resolving dependency versions during deploy
+  - @trigger.dev/core@3.0.0-beta.32
+
+## 3.0.0-beta.31
+
+### Patch Changes
+
+- b8477ea2b: Fixes an issue with scoped packages in additionalPackages option
+  - @trigger.dev/core@3.0.0-beta.31
+
+## 3.0.0-beta.30
+
+### Patch Changes
+
+- 0e919f56f: Better handle uncaught exceptions
+- Updated dependencies [1477a2e30]
+- Updated dependencies [0e919f56f]
+  - @trigger.dev/core@3.0.0-beta.30
+
+## 3.0.0-beta.29
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.29
+
+## 3.0.0-beta.28
+
+### Patch Changes
+
+- 2156e1526: Adding some additional telemetry during deploy to help debug issues
+- 6406924b0: Ensure @trigger.dev/sdk and @trigger.dev/core are always in the list of deployed dependencies
+- Updated dependencies [d490bc5cb]
+- Updated dependencies [6d9dfbc75]
+  - @trigger.dev/core@3.0.0-beta.28
+
+## 3.0.0-beta.27
+
+### Patch Changes
+
+- 1670c4c41: Remove "log" Log Level, unify log and info messages under the "info" log level
+- Updated dependencies [1670c4c41]
+- Updated dependencies [203e00208]
+  - @trigger.dev/core@3.0.0-beta.27
+
+## 3.0.0-beta.26
+
+### Patch Changes
+
+- e667028d4: Strip out server-only package from worker builds
+  - @trigger.dev/core@3.0.0-beta.26
+
+## 3.0.0-beta.25
+
+### Patch Changes
+
+- e337b2165: Add a postInstall option to allow running scripts after dependencies have been installed in deployed images
+- c37c82231: Use locked package versions when resolving dependencies in deployed workers
+- Updated dependencies [e337b2165]
+- Updated dependencies [9e5382951]
+  - @trigger.dev/core@3.0.0-beta.25
+
+## 3.0.0-beta.24
+
+### Patch Changes
+
+- 83dc87155: Fix issues with consecutive waits
+- Updated dependencies [83dc87155]
+  - @trigger.dev/core@3.0.0-beta.24
+
+## 3.0.0-beta.23
+
+### Patch Changes
+
+- 43bc7ed94: Hoist uncaughtException handler to the top of workers to better report error messages
+  - @trigger.dev/core@3.0.0-beta.23
+
 ## 3.0.0-beta.22
 
 ### Patch Changes

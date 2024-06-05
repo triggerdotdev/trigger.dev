@@ -20,6 +20,17 @@ const client = singleton(
     })
 );
 
+const alertsClient = singleton(
+  "alerts-email-client",
+  () =>
+    new EmailClient({
+      apikey: env.ALERT_RESEND_API_KEY,
+      imagesBaseUrl: env.APP_ORIGIN,
+      from: env.ALERT_FROM_EMAIL ?? "noreply@alerts.trigger.dev",
+      replyTo: env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
+    })
+);
+
 export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): Promise<void> {
   // Auto redirect when in development mode
   if (env.NODE_ENV === "development") {
@@ -66,4 +77,8 @@ export async function scheduleEmail(data: DeliverEmail, delay?: { seconds: numbe
 
 export async function sendEmail(data: DeliverEmail) {
   return client.send(data);
+}
+
+export async function sendAlertEmail(data: DeliverEmail) {
+  return alertsClient.send(data);
 }

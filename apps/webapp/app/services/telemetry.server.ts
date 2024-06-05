@@ -7,6 +7,7 @@ import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import type { User } from "~/models/user.server";
 import { singleton } from "~/utils/singleton";
+import { loopsClient } from "./loops.server";
 
 type Options = {
   postHogApiKey?: string;
@@ -44,18 +45,19 @@ class Telemetry {
 
   user = {
     identify: ({ user, isNewUser }: { user: User; isNewUser: boolean }) => {
-      if (this.#posthogClient === undefined) return;
-      this.#posthogClient.identify({
-        distinctId: user.id,
-        properties: {
-          email: user.email,
-          name: user.name,
-          authenticationMethod: user.authenticationMethod,
-          admin: user.admin,
-          createdAt: user.createdAt,
-          isNewUser,
-        },
-      });
+      if (this.#posthogClient) {
+        this.#posthogClient.identify({
+          distinctId: user.id,
+          properties: {
+            email: user.email,
+            name: user.name,
+            authenticationMethod: user.authenticationMethod,
+            admin: user.admin,
+            createdAt: user.createdAt,
+            isNewUser,
+          },
+        });
+      }
       if (isNewUser) {
         this.#capture({
           userId: user.id,
@@ -67,6 +69,12 @@ class Telemetry {
             admin: user.admin,
             createdAt: user.createdAt,
           },
+        });
+
+        loopsClient?.userCreated({
+          userId: user.id,
+          email: user.email,
+          name: user.name,
         });
 
         this.#triggerClient?.sendEvent({

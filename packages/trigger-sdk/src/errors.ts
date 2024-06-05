@@ -45,6 +45,10 @@ export class AutoYieldWithCompletedTaskExecutionError {
   ) {}
 }
 
+export class AutoYieldRateLimitError {
+  constructor(public resetAtTimestamp: number) {}
+}
+
 export class ParsedPayloadSchemaError {
   constructor(public schemaErrors: SchemaError[]) {}
 }
@@ -56,6 +60,7 @@ export type TriggerInternalError =
   | YieldExecutionError
   | AutoYieldExecutionError
   | AutoYieldWithCompletedTaskExecutionError
+  | AutoYieldRateLimitError
   | ResumeWithParallelTaskError;
 
 /** Use this function if you're using a `try/catch` block to catch errors.
@@ -72,6 +77,7 @@ export function isTriggerError(err: unknown): err is TriggerInternalError {
     err instanceof YieldExecutionError ||
     err instanceof AutoYieldExecutionError ||
     err instanceof AutoYieldWithCompletedTaskExecutionError ||
+    err instanceof AutoYieldRateLimitError ||
     err instanceof ResumeWithParallelTaskError
   );
 }

@@ -1,7 +1,7 @@
 import { PrismaClient, prisma } from "~/db.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
-import { sortEnvironments } from "~/services/environmentSort.server";
+import { sortEnvironments } from "~/utils/environmentSort";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 type Result = Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>;
@@ -79,6 +79,19 @@ export class EnvironmentVariablesPresenter {
         project: {
           slug: projectSlug,
         },
+        OR: [
+          {
+            type: {
+              in: ["PREVIEW", "STAGING", "PRODUCTION"],
+            },
+          },
+          {
+            type: "DEVELOPMENT",
+            orgMember: {
+              userId,
+            },
+          },
+        ],
       },
     });
 
@@ -87,7 +100,7 @@ export class EnvironmentVariablesPresenter {
     );
 
     const repository = new EnvironmentVariablesRepository(this.#prismaClient);
-    const variables = await repository.getProject(project.id, userId);
+    const variables = await repository.getProject(project.id);
 
     return {
       environmentVariables: environmentVariables.map((environmentVariable) => {

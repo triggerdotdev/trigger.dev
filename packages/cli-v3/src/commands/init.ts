@@ -5,7 +5,7 @@ import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import chalk from "chalk";
 import { Command } from "commander";
 import { execa } from "execa";
-import { applyEdits, modify } from "jsonc-parser";
+import { applyEdits, modify, findNodeAtLocation, parseTree, getNodeValue } from "jsonc-parser";
 import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import terminalLink from "terminal-link";
@@ -333,8 +333,29 @@ async function addConfigFileToTsConfig(dir: string, options: InitCommandOptions)
       });
 
       const tsconfigContent = await readFile(tsconfigPath);
+      const tsconfigContentTree = parseTree(tsconfigContent, undefined);
+      if (!tsconfigContentTree) {
+        span.end();
 
-      const edits = modify(tsconfigContent, ["include", -1], "trigger.config.ts", {
+        return;
+      }
+
+      const tsconfigIncludeOption = findNodeAtLocation(tsconfigContentTree, ["include"]);
+      if (!tsconfigIncludeOption) {
+        span.end();
+
+        return;
+      }
+
+      const tsConfigFileName = "trigger.config.ts";
+      const tsconfigIncludeOptionValue: string[] = getNodeValue(tsconfigIncludeOption);
+      if (tsconfigIncludeOptionValue.includes(tsConfigFileName)) {
+        span.end();
+
+        return;
+      }
+
+      const edits = modify(tsconfigContent, ["include", -1], tsConfigFileName, {
         isArrayInsertion: true,
         formattingOptions: {
           tabSize: 2,

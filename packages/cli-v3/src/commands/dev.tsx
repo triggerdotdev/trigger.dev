@@ -26,6 +26,7 @@ import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/c
 import {
   bundleDependenciesPlugin,
   bundleTriggerDevCore,
+  mockServerOnlyPlugin,
   workerSetupImportConfigPlugin,
 } from "../utilities/build";
 import { chalkError, chalkGrey, chalkPurple, chalkTask, chalkWorker } from "../utilities/cliOutput";
@@ -54,6 +55,7 @@ import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { escapeImportPath } from "../utilities/windows";
 import { updateTriggerPackages } from "./update";
 import { esbuildDecorators } from "@anatine/esbuild-decorators";
+import { callResolveEnvVars } from "../utilities/resolveEnvVars";
 
 let apiClient: CliApiClient | undefined;
 
@@ -110,7 +112,11 @@ export async function devCommand(dir: string, options: DevCommandOptions) {
         )} Connecting to the server failed. Please check your internet connection or contact eric@trigger.dev for help.`
       );
     } else {
-      logger.log(`${chalkError("X Error:")} You must login first. Use the \`login\` CLI command.`);
+      logger.log(
+        `${chalkError("X Error:")} You must login first. Use the \`login\` CLI command.\n\n${
+          authorization.error
+        }`
+      );
     }
     process.exitCode = 1;
     return;
@@ -153,10 +159,16 @@ async function startDev(
 
     logger.debug("Initial config", { config });
 
+    if (config.status === "error") {
+      logger.error("Failed to read config", config.error);
+      process.exit(1);
+    }
+
     async function getDevReactElement(
       configParam: ResolvedConfig,
       authorization: { apiUrl: string; accessToken: string },
-      configPath?: string
+      configPath?: string,
+      configModule?: any
     ) {
       const accessToken = authorization.accessToken;
       const apiUrl = authorization.apiUrl;
@@ -164,18 +176,18 @@ async function startDev(
       apiClient = new CliApiClient(apiUrl, accessToken);
 
       const devEnv = await apiClient.getProjectEnv({
-        projectRef: config.config.project,
+        projectRef: configParam.project,
         env: "dev",
       });
 
       if (!devEnv.success) {
         if (devEnv.error === "Project not found") {
           logger.error(
-            `Project not found: ${config.config.project}. Ensure you are using the correct project ref and CLI profile (use --profile). Currently using the "${options.profile}" profile, which points to ${authorization.apiUrl}`
+            `Project not found: ${configParam.project}. Ensure you are using the correct project ref and CLI profile (use --profile). Currently using the "${options.profile}" profile, which points to ${authorization.apiUrl}`
           );
         } else {
           logger.error(
-            `Failed to initialize dev environment: ${devEnv.error}. Using project ref ${config.config.project}`
+            `Failed to initialize dev environment: ${devEnv.error}. Using project ref ${configParam.project}`
           );
         }
 
@@ -195,6 +207,7 @@ async function startDev(
           debuggerOn={options.debugger}
           debugOtel={options.debugOtel}
           configPath={configPath}
+          configModule={configModule}
         />
       );
     }
@@ -203,7 +216,8 @@ async function startDev(
       await getDevReactElement(
         config.config,
         authorization,
-        config.status === "file" ? config.path : undefined
+        config.status === "file" ? config.path : undefined,
+        config.status === "file" ? config.module : undefined
       )
     );
 
@@ -230,6 +244,7 @@ type DevProps = {
   debuggerOn: boolean;
   debugOtel: boolean;
   configPath?: string;
+  configModule?: any;
 };
 
 function useDev({
@@ -242,6 +257,7 @@ function useDev({
   debuggerOn,
   debugOtel,
   configPath,
+  configModule,
 }: DevProps) {
   useEffect(() => {
     const websocketUrl = new URL(apiUrl);
@@ -273,12 +289,26 @@ function useDev({
     websocket.addEventListener("close", (event) => {});
     websocket.addEventListener("error", (event) => {});
 
+    // This is the deprecated task heart beat that uses the friendly attempt ID
     backgroundWorkerCoordinator.onWorkerTaskHeartbeat.attach(
       async ({ worker, backgroundWorkerId, id }) => {
         await sender.send("BACKGROUND_WORKER_MESSAGE", {
           backgroundWorkerId,
           data: {
             type: "TASK_HEARTBEAT",
+            id,
+          },
+        });
+      }
+    );
+
+    // "Task Run Heartbeat" id is the actual run ID that corresponds to the MarQS message ID
+    backgroundWorkerCoordinator.onWorkerTaskRunHeartbeat.attach(
+      async ({ worker, backgroundWorkerId, id }) => {
+        await sender.send("BACKGROUND_WORKER_MESSAGE", {
+          backgroundWorkerId,
+          data: {
+            type: "TASK_RUN_HEARTBEAT",
             id,
           },
         });
@@ -293,6 +323,18 @@ function useDev({
             type: "TASK_RUN_COMPLETED",
             completion,
             execution,
+          },
+        });
+      }
+    );
+
+    backgroundWorkerCoordinator.onTaskFailedToRun.attach(
+      async ({ backgroundWorkerId, completion }) => {
+        await sender.send("BACKGROUND_WORKER_MESSAGE", {
+          backgroundWorkerId,
+          data: {
+            type: "TASK_RUN_FAILED_TO_RUN",
+            completion,
           },
         });
       }
@@ -322,6 +364,7 @@ function useDev({
             for (const worker of backgroundWorkerCoordinator.currentWorkers) {
               await sender.send("READY_FOR_TASKS", {
                 backgroundWorkerId: worker.id,
+                inProgressRuns: worker.worker.inProgressRuns,
               });
             }
           },
@@ -338,6 +381,8 @@ function useDev({
     });
 
     let ctx: BuildContext | undefined;
+
+    let firstBuild = true;
 
     async function runBuild() {
       if (ctx) {
@@ -358,7 +403,9 @@ function useDev({
         .replace("__TASKS__", createTaskFileImports(taskFiles))
         .replace(
           "__WORKER_SETUP__",
-          `import { tracingSDK, sender } from "${escapeImportPath(workerSetupPath)}";`
+          `import { tracingSDK, otelTracer, otelLogger, sender } from "${escapeImportPath(
+            workerSetupPath
+          )}";`
         );
 
       if (configPath) {
@@ -378,8 +425,6 @@ function useDev({
         );
       }
 
-      let firstBuild = true;
-
       logger.log(chalkGrey("○ Building background worker…"));
 
       ctx = await context({
@@ -387,6 +432,9 @@ function useDev({
           contents: entryPointContents,
           resolveDir: process.cwd(),
           sourcefile: "__entryPoint.ts",
+        },
+        banner: {
+          js: `process.on("uncaughtException", function(error, origin) { if (error instanceof Error) { process.send && process.send({ type: "UNCAUGHT_EXCEPTION", payload: { error: { name: error.name, message: error.message, stack: error.stack }, origin }, version: "v1" }); } else { process.send && process.send({ type: "UNCAUGHT_EXCEPTION", payload: { error: { name: "Error", message: typeof error === "string" ? error : JSON.stringify(error) }, origin }, version: "v1" }); } });`,
         },
         bundle: true,
         metafile: true,
@@ -403,6 +451,7 @@ function useDev({
           __PROJECT_CONFIG__: JSON.stringify(config),
         },
         plugins: [
+          mockServerOnlyPlugin(),
           bundleTriggerDevCore("workerFacade", config.tsconfigPath),
           bundleDependenciesPlugin(
             "workerFacade",
@@ -487,20 +536,25 @@ function useDev({
 
                 const processEnv = await gatherProcessEnv();
 
-                const backgroundWorker = new BackgroundWorker(fullPath, {
-                  projectConfig: config,
-                  dependencies,
-                  env: {
-                    ...processEnv,
-                    TRIGGER_API_URL: apiUrl,
-                    TRIGGER_SECRET_KEY: apiKey,
-                    ...(environmentVariablesResponse.success
-                      ? environmentVariablesResponse.data.variables
-                      : {}),
+                const backgroundWorker = new BackgroundWorker(
+                  fullPath,
+                  {
+                    projectConfig: config,
+                    dependencies,
+                    env: {
+                      ...processEnv,
+                      TRIGGER_API_URL: apiUrl,
+                      TRIGGER_SECRET_KEY: apiKey,
+                      ...(environmentVariablesResponse.success
+                        ? environmentVariablesResponse.data.variables
+                        : {}),
+                    },
+                    debuggerOn,
+                    debugOtel,
+                    resolveEnvVariables: createResolveEnvironmentVariablesFunction(configModule),
                   },
-                  debuggerOn,
-                  debugOtel,
-                });
+                  environmentClient
+                );
 
                 try {
                   await backgroundWorker.initialize();
@@ -557,6 +611,7 @@ function useDev({
                       tasks: taskResources,
                       contentHash: contentHash,
                     },
+                    supportsLazyAttempts: true,
                   };
 
                   const backgroundWorkerRecord = await environmentClient.createBackgroundWorker(
@@ -602,10 +657,10 @@ function useDev({
                     } else {
                     }
 
-                    if (e.originalError.stack) {
+                    if (e.originalError.message || e.originalError.stack) {
                       logger.log(
                         `${chalkError("X Error:")} Worker failed to start`,
-                        e.originalError.stack
+                        e.originalError.stack ?? e.originalError.message
                       );
                     }
 
@@ -808,18 +863,9 @@ function createDuplicateTaskIdOutputErrorMessage(
 
 async function gatherProcessEnv() {
   const env = {
+    ...process.env,
     NODE_ENV: process.env.NODE_ENV ?? "development",
-    PATH: process.env.PATH,
-    USER: process.env.USER,
-    SHELL: process.env.SHELL,
-    NVM_INC: process.env.NVM_INC,
-    NVM_DIR: process.env.NVM_DIR,
-    NVM_BIN: process.env.NVM_BIN,
-    LANG: process.env.LANG,
-    TERM: process.env.TERM,
     NODE_PATH: await amendNodePathWithPnpmNodeModules(process.env.NODE_PATH),
-    HOME: process.env.HOME,
-    BUN_INSTALL: process.env.BUN_INSTALL,
   };
 
   // Filter out undefined values
@@ -857,4 +903,32 @@ async function findPnpmNodeModulesPath(): Promise<string | undefined> {
     },
     { type: "directory" }
   );
+}
+
+let hasResolvedEnvVars = false;
+let resolvedEnvVars: Record<string, string> = {};
+
+function createResolveEnvironmentVariablesFunction(configModule?: any) {
+  return async (
+    env: Record<string, string>,
+    worker: BackgroundWorker
+  ): Promise<Record<string, string> | undefined> => {
+    if (hasResolvedEnvVars) {
+      return resolvedEnvVars;
+    }
+
+    const $resolvedEnvVars = await callResolveEnvVars(
+      configModule,
+      env,
+      "dev",
+      worker.params.projectConfig.project
+    );
+
+    if ($resolvedEnvVars) {
+      resolvedEnvVars = $resolvedEnvVars.variables;
+      hasResolvedEnvVars = true;
+    }
+
+    return resolvedEnvVars;
+  };
 }

@@ -22,27 +22,67 @@ client.defineJob({
       await io.runTask(
         `task-${i}`,
         async (task) => {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+
           return {
-            output: "a".repeat(300 * 1024),
+            output: "a".repeat(30),
           };
         },
         { name: `Task ${i}` }
       );
     }
 
-    // Now run a single task with 5MB output
-    await io.runTask(
-      `task-5mb`,
-      async (task) => {
-        return {
-          output: "a".repeat(5 * 1024 * 1024),
-        };
-      },
-      { name: `Task 5MB` }
-    );
-
     // Now do a wait for 5 seconds
     await io.wait("wait", 5);
+  },
+});
+
+client.defineJob({
+  id: "stress-test-errored-task",
+  name: "Stress Test Errored Task",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "stress.test.error-task",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.runTask(
+      `task-1`,
+      async (task) => {
+        return { success: true };
+      },
+      { name: `Task 1` }
+    );
+
+    await io.runTask(
+      `task-2`,
+      async (task) => {
+        return { fixed: "task" };
+      },
+      { name: `Task 1` }
+    );
+  },
+});
+
+client.defineJob({
+  id: "stress-test-disabled",
+  name: "Stress Test Disabled",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "stress.test.disabled",
+  }),
+  enabled: false,
+  run: async (payload, io, ctx) => {
+    await io.wait("wait-1", 20);
+
+    await io.runTask(
+      `task-1`,
+      async (task) => {
+        await new Promise((resolve) => setTimeout(resolve, 10000));
+      },
+      { name: `Task 1` }
+    );
+
+    await io.wait("wait-2", 5);
   },
 });
 

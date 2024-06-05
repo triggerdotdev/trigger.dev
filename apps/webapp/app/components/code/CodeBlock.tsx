@@ -1,13 +1,22 @@
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import type { Language, PrismTheme } from "prism-react-renderer";
-import Highlight, { defaultProps } from "prism-react-renderer";
+import { Highlight, Prism } from "prism-react-renderer";
 import { forwardRef, useCallback, useState } from "react";
 import { cn } from "~/utils/cn";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { Paragraph } from "../primitives/Paragraph";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 
 //This is a fork of https://github.com/mantinedev/mantine/blob/master/src/mantine-prism/src/Prism/Prism.tsx
 //it didn't support highlighting lines by dimming the rest of the code, or animations on the highlighting
+
+async function setup() {
+  (typeof global !== "undefined" ? global : window).Prism = Prism;
+  //@ts-ignore
+  await import("prismjs/components/prism-json");
+  //@ts-ignore
+  await import("prismjs/components/prism-typescript");
+}
+setup();
 
 type CodeBlockProps = {
   /** Code which will be highlighted */
@@ -238,7 +247,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
         )}
 
         {shouldHighlight ? (
-          <Highlight {...defaultProps} theme={theme} code={code} language={language}>
+          <Highlight theme={theme} code={code} language={language}>
             {({
               className: inheritedClassName,
               style: inheritedStyle,
@@ -283,7 +292,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
 
                       return (
                         <div
-                          key={lineProps.key}
+                          key={lineNumber}
                           {...lineProps}
                           className={cn(
                             "flex w-full justify-start transition-opacity duration-500",
@@ -312,7 +321,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                               const tokenProps = getTokenProps({ token, key });
                               return (
                                 <span
-                                  key={tokenProps.key}
+                                  key={key}
                                   {...tokenProps}
                                   style={{
                                     color: tokenProps?.style?.color as string,

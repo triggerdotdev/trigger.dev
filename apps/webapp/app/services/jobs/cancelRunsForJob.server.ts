@@ -1,11 +1,11 @@
 import { $transaction, PrismaClient, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
-import { JobRunStatus } from "@trigger.dev/database";
 import { CancelRunService } from "../runs/cancelRun.server";
 import { logger } from "../logger.server";
 import { CancelRunsForJob } from "@trigger.dev/core";
+import { JobRunStatus } from "~/database-types";
 
-const CANCELLABLE_JOB_RUN_STATUS: JobRunStatus[] = [
+const CANCELLABLE_JOB_RUN_STATUS: Array<keyof typeof JobRunStatus> = [
   JobRunStatus.PENDING,
   JobRunStatus.QUEUED,
   JobRunStatus.WAITING_ON_CONNECTIONS,

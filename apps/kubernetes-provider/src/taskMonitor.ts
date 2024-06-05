@@ -30,10 +30,12 @@ type TaskMonitorOptions = {
 
 export class TaskMonitor {
   #enabled = false;
+
   #logger = new SimpleLogger("[TaskMonitor]");
   #taskInformer: ReturnType<typeof k8s.makeInformer<k8s.V1Pod>>;
   #processedPods = new Map<string, number>();
   #queue = new PQueue({ concurrency: 10 });
+
   #k8sClient: {
     core: k8s.CoreV1Api;
     kubeConfig: k8s.KubeConfig;
@@ -44,6 +46,10 @@ export class TaskMonitor {
   private labelSelector = "app in (task-index, task-run)";
 
   constructor(private opts: TaskMonitorOptions) {
+    if (opts.namespace) {
+      this.namespace = opts.namespace;
+    }
+
     this.#k8sClient = this.#createK8sClient();
 
     this.#taskInformer = this.#createTaskInformer();

@@ -37,6 +37,15 @@ import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server
 import { eventRepository } from "~/v3/eventRepository.server";
 import { ExecuteTasksWaitingForDeployService } from "~/v3/services/executeTasksWaitingForDeploy";
 import { TriggerScheduledTaskService } from "~/v3/services/triggerScheduledTask.server";
+import { PerformTaskAttemptAlertsService } from "~/v3/services/alerts/performTaskAttemptAlerts.server";
+import { DeliverAlertService } from "~/v3/services/alerts/deliverAlert.server";
+import { PerformDeploymentAlertsService } from "~/v3/services/alerts/performDeploymentAlerts.server";
+import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
+import { PerformBulkActionService } from "~/v3/services/bulk/performBulkAction.server";
+import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
+import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
+import { RequeueTaskRunService } from "~/v3/requeueTaskRun.server";
+import { RetryAttemptService } from "~/v3/services/retryAttempt.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -136,6 +145,27 @@ const workerCatalog = {
   "v3.triggerScheduledTask": z.object({
     instanceId: z.string(),
   }),
+  "v3.performTaskAttemptAlerts": z.object({
+    attemptId: z.string(),
+  }),
+  "v3.deliverAlert": z.object({
+    alertId: z.string(),
+  }),
+  "v3.performDeploymentAlerts": z.object({
+    deploymentId: z.string(),
+  }),
+  "v3.performBulkAction": z.object({
+    bulkActionGroupId: z.string(),
+  }),
+  "v3.performBulkActionItem": z.object({
+    bulkActionItemId: z.string(),
+  }),
+  "v3.requeueTaskRun": z.object({
+    runId: z.string(),
+  }),
+  "v3.retryAttempt": z.object({
+    runId: z.string(),
+  }),
 };
 
 const executionWorkerCatalog = {
@@ -199,9 +229,8 @@ if (env.NODE_ENV === "production") {
 }
 
 export async function init() {
-  // const pgNotify = new PgNotifyService();
-  // await pgNotify.call("trigger:graphile:migrate", { latestMigration: 10 });
-  // await new Promise((resolve) => setTimeout(resolve, 10000))
+  const migrationHelper = new GraphileMigrationHelperService();
+  await migrationHelper.call();
 
   if (env.WORKER_ENABLED === "true") {
     await workerQueue.initialize();
@@ -220,11 +249,6 @@ function getWorkerQueue() {
   return new ZodWorker({
     name: "workerQueue",
     prisma,
-    cleanup: {
-      frequencyExpression: "13,27,43 * * * *",
-      ttl: 7 * 24 * 60 * 60 * 1000, // 7 days
-      maxCount: 1000,
-    },
     runnerOptions: {
       connectionString: env.DATABASE_URL,
       concurrency: env.WORKER_CONCURRENCY,
@@ -238,16 +262,22 @@ function getWorkerQueue() {
     recurringTasks: {
       // Run this every 5 minutes
       autoIndexProductionEndpoints: {
-        pattern: "*/5 * * * *",
+        match: "*/5 * * * *",
         handler: async (payload, job) => {
           const service = new RecurringEndpointIndexService();
 
           await service.call(payload.ts);
         },
       },
+      scheduleImminentDeferredEvents: {
+        match: "*/10 * * * *",
+        handler: async (payload, job) => {
+          await DeliverScheduledEventService.scheduleImminentDeferredEvents();
+        },
+      },
       // Run this every hour
       purgeOldIndexings: {
-        pattern: "0 * * * *",
+        match: "0 * * * *",
         handler: async (payload, job) => {
           // Delete indexings that are older than 7 days
           await prisma.endpointIndex.deleteMany({
@@ -261,7 +291,7 @@ function getWorkerQueue() {
       },
       // Run this every hour at the 13 minute mark
       purgeOldTaskEvents: {
-        pattern: "47 * * * *",
+        match: "47 * * * *",
         handler: async (payload, job) => {
           await eventRepository.truncateEvents();
         },
@@ -279,7 +309,7 @@ function getWorkerQueue() {
       },
       "events.deliverScheduled": {
         priority: 0, // smaller number = higher priority
-        maxAttempts: 5,
+        maxAttempts: 8,
         handler: async ({ id, payload }, job) => {
           const service = new DeliverScheduledEventService();
 
@@ -305,7 +335,7 @@ function getWorkerQueue() {
         },
       },
       activateSource: {
-        priority: 10, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 3,
         handler: async (payload, graphileJob) => {
           const service = new ActivateSourceService();
@@ -331,7 +361,7 @@ function getWorkerQueue() {
         },
       },
       deliverHttpSourceRequest: {
-        priority: 1, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 14,
         queueName: (payload) => `sources:${payload.id}`,
         handler: async (payload, job) => {
@@ -341,7 +371,7 @@ function getWorkerQueue() {
         },
       },
       deliverWebhookRequest: {
-        priority: 1, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 14,
         queueName: (payload) => `webhooks:${payload.id}`,
         handler: async (payload, job) => {
@@ -369,14 +399,14 @@ function getWorkerQueue() {
         },
       },
       scheduleEmail: {
-        priority: 100,
+        priority: 0,
         maxAttempts: 3,
         handler: async (payload, job) => {
           await sendEmail(payload);
         },
       },
       indexEndpoint: {
-        priority: 1, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 7,
         handler: async (payload, job) => {
           const service = new IndexEndpointService();
@@ -384,7 +414,7 @@ function getWorkerQueue() {
         },
       },
       performEndpointIndexing: {
-        priority: 1, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 7,
         handler: async (payload, job) => {
           const service = new PerformEndpointIndexService();
@@ -401,7 +431,7 @@ function getWorkerQueue() {
         },
       },
       refreshOAuthToken: {
-        priority: 8, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 7,
         handler: async (payload, job) => {
           await integrationAuthRepository.refreshConnection({
@@ -410,7 +440,7 @@ function getWorkerQueue() {
         },
       },
       probeEndpoint: {
-        priority: 10,
+        priority: 0,
         maxAttempts: 1,
         handler: async (payload, job) => {
           const service = new ProbeEndpointService();
@@ -425,7 +455,7 @@ function getWorkerQueue() {
         },
       },
       deliverRunSubscriptions: {
-        priority: 1, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 5,
         handler: async (payload, job) => {
           const service = new DeliverRunSubscriptionsService();
@@ -434,7 +464,7 @@ function getWorkerQueue() {
         },
       },
       deliverRunSubscription: {
-        priority: 1, // smaller number = higher priority
+        priority: 0, // smaller number = higher priority
         maxAttempts: 13,
         handler: async (payload, job) => {
           const service = new DeliverRunSubscriptionService();
@@ -452,7 +482,7 @@ function getWorkerQueue() {
         },
       },
       expireDispatcher: {
-        priority: 10,
+        priority: 0,
         maxAttempts: 3,
         handler: async (payload) => {
           const service = new ExpireDispatcherService();
@@ -531,6 +561,69 @@ function getWorkerQueue() {
           const service = new TriggerScheduledTaskService();
 
           return await service.call(payload.instanceId);
+        },
+      },
+      "v3.performTaskAttemptAlerts": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PerformTaskAttemptAlertsService();
+
+          return await service.call(payload.attemptId);
+        },
+      },
+      "v3.deliverAlert": {
+        priority: 0,
+        maxAttempts: 8,
+        handler: async (payload, job) => {
+          const service = new DeliverAlertService();
+
+          return await service.call(payload.alertId);
+        },
+      },
+      "v3.performDeploymentAlerts": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PerformDeploymentAlertsService();
+
+          return await service.call(payload.deploymentId);
+        },
+      },
+      "v3.performBulkAction": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PerformBulkActionService();
+
+          return await service.call(payload.bulkActionGroupId);
+        },
+      },
+      "v3.performBulkActionItem": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PerformBulkActionService();
+
+          await service.performBulkActionItem(payload.bulkActionItemId);
+        },
+      },
+      "v3.requeueTaskRun": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new RequeueTaskRunService();
+
+          await service.call(payload.runId);
+        },
+      },
+      "v3.retryAttempt": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new RetryAttemptService();
+
+          return await service.call(payload.runId);
         },
       },
     },

@@ -25,6 +25,7 @@ import {
 import { generateErrorMessage } from "zod-error";
 import { eventRecordToApiJson } from "~/api.server";
 import {
+  MAX_JOB_RUN_EXECUTION_COUNT,
   MAX_RUN_CHUNK_EXECUTION_LIMIT,
   MAX_RUN_YIELDED_EXECUTIONS,
   RUN_CHUNK_EXECUTION_BUFFER,
@@ -34,7 +35,7 @@ import { detectResponseIsTimeout } from "~/models/endpoint.server";
 import { isRunCompleted } from "~/models/jobRun.server";
 import { resolveRunConnections } from "~/models/runConnection.server";
 import { prepareTasksForCaching, prepareTasksForCachingLegacy } from "~/models/task.server";
-import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.complete";
+import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.complete/CompleteRunTaskService.server";
 import { formatError } from "~/utils/formatErrors.server";
 import { safeJsonZodParse } from "~/utils/json";
 import { EndpointApi } from "../endpointApi.server";
@@ -139,6 +140,46 @@ export class PerformRunExecutionV3Service {
         return await this.#failRunExecution(this.#prismaClient, run, {
           message: `Endpoint has no URL set`,
         });
+      }
+
+      if (run.version.status === "DISABLED") {
+        return await this.#failRunExecution(
+          this.#prismaClient,
+          run,
+          {
+            message: `Job version ${run.version.version} is disabled, aborting run.`,
+          },
+          "ABORTED"
+        );
+      }
+
+      // If the execution duration is greater than the maximum execution time, we need to fail the run
+      if (run.executionDuration >= run.organization.maximumExecutionTimePerRunInMs) {
+        await this.#failRunExecution(
+          this.#prismaClient,
+          run,
+          {
+            message: `Execution timed out after ${
+              run.organization.maximumExecutionTimePerRunInMs / 1000
+            } seconds`,
+          },
+          "TIMED_OUT",
+          0
+        );
+        return;
+      }
+
+      if (run.executionCount >= MAX_JOB_RUN_EXECUTION_COUNT) {
+        await this.#failRunExecution(
+          this.#prismaClient,
+          run,
+          {
+            message: `Execution timed out after ${run.executionCount} executions`,
+          },
+          "TIMED_OUT",
+          0
+        );
+        return;
       }
 
       const client = new EndpointApi(run.environment.apiKey, run.endpoint.url);
@@ -441,6 +482,10 @@ export class PerformRunExecutionV3Service {
           await this.#resumeAutoYieldedRunWithCompletedTask(run, safeBody.data, durationInMs);
           break;
         }
+        case "AUTO_YIELD_RATE_LIMIT": {
+          await this.#rescheduleRun(run, safeBody.data.reset, durationInMs);
+          break;
+        }
         case "RESUME_WITH_PARALLEL_TASK": {
           await this.#resumeParallelRunWithTask(run, safeBody.data, durationInMs);
 
@@ -667,6 +712,10 @@ export class PerformRunExecutionV3Service {
 
           break;
         }
+        case "AUTO_YIELD_RATE_LIMIT": {
+          await this.#rescheduleRun(run, childError.reset, durationInMs);
+          break;
+        }
         case "CANCELED": {
           break;
         }
@@ -801,9 +850,9 @@ export class PerformRunExecutionV3Service {
     });
   }
 
-  async #resumeAutoYieldedRun(
+  async #rescheduleRun(
     run: FoundRun,
-    data: AutoYieldMetadata,
+    reset: number,
     durationInMs: number,
     executionCount: number = 1
   ) {
@@ -820,16 +869,6 @@ export class PerformRunExecutionV3Service {
           executionCount: {
             increment: executionCount,
           },
-          autoYieldExecution: {
-            create: [
-              {
-                location: data.location,
-                timeRemaining: data.timeRemaining,
-                timeElapsed: data.timeElapsed,
-                limit: data.limit ?? 0,
-              },
-            ],
-          },
           forceYieldImmediately: false,
         },
         select: {
@@ -837,7 +876,7 @@ export class PerformRunExecutionV3Service {
         },
       });
 
-      await ResumeRunService.enqueue(run, tx);
+      await ResumeRunService.enqueue(run, tx, new Date(reset));
     });
   }
 
@@ -882,6 +921,46 @@ export class PerformRunExecutionV3Service {
       await service.call(run.environment, run.id, data.id, {
         properties: data.properties,
         output: data.output ? (JSON.parse(data.output) as any) : undefined,
+      });
+
+      await ResumeRunService.enqueue(run, tx);
+    });
+  }
+
+  async #resumeAutoYieldedRun(
+    run: FoundRun,
+    data: AutoYieldMetadata,
+    durationInMs: number,
+    executionCount: number = 1
+  ) {
+    await $transaction(this.#prismaClient, async (tx) => {
+      await tx.jobRun.update({
+        where: {
+          id: run.id,
+        },
+        data: {
+          status: "WAITING_TO_EXECUTE",
+          executionDuration: {
+            increment: durationInMs,
+          },
+          executionCount: {
+            increment: executionCount,
+          },
+          autoYieldExecution: {
+            create: [
+              {
+                location: data.location,
+                timeRemaining: data.timeRemaining,
+                timeElapsed: data.timeElapsed,
+                limit: data.limit ?? 0,
+              },
+            ],
+          },
+          forceYieldImmediately: false,
+        },
+        select: {
+          executionCount: true,
+        },
       });
 
       await ResumeRunService.enqueue(run, tx);

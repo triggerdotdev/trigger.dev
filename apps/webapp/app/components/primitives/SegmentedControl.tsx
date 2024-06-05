@@ -2,6 +2,19 @@ import { RadioGroup } from "@headlessui/react";
 import { motion } from "framer-motion";
 import { cn } from "~/utils/cn";
 
+const variants = {
+  primary: {
+    base: "bg-charcoal-700",
+    active: "text-text-bright hover:bg-charcoal-750/50",
+  },
+  secondary: {
+    base: "bg-charcoal-700/50",
+    active: "text-text-bright bg-charcoal-700 rounded-[2px] border border-charcoal-600/50",
+  },
+};
+
+type Variants = keyof typeof variants;
+
 type Options = {
   label: string;
   value: string;
@@ -12,6 +25,7 @@ type SegmentedControlProps = {
   value?: string;
   defaultValue?: string;
   options: Options[];
+  variant?: Variants;
   fullWidth?: boolean;
   onChange?: (value: string) => void;
 };
@@ -21,11 +35,18 @@ export default function SegmentedControl({
   value,
   defaultValue,
   options,
+  variant = "secondary",
   fullWidth,
   onChange,
 }: SegmentedControlProps) {
   return (
-    <div className={cn("flex h-10 rounded bg-charcoal-700", fullWidth ? "w-full" : "w-fit")}>
+    <div
+      className={cn(
+        "flex h-10 rounded text-text-bright",
+        variants[variant].base,
+        fullWidth ? "w-full" : "w-fit"
+      )}
+    >
       <RadioGroup
         value={value}
         defaultValue={defaultValue ?? options[0].value}
@@ -46,11 +67,11 @@ export default function SegmentedControl({
                 cn(
                   "relative flex h-full grow cursor-pointer text-center font-normal focus:outline-none",
                   active
-                    ? "ring-offset-2 focus-visible:ring focus-visible:ring-primary focus-visible:ring-opacity-60"
+                    ? "ring-offset-2 focus-visible:ring focus-visible:ring-secondary focus-visible:ring-opacity-60"
                     : "",
                   checked
-                    ? "text-text-bright"
-                    : "rounded-[2px] text-text-dimmed transition hover:bg-charcoal-750/50 hover:text-text-bright"
+                    ? variants[variant].active
+                    : "text-text-dimmed transition hover:text-text-bright"
                 )
               }
             >
@@ -60,12 +81,12 @@ export default function SegmentedControl({
                     <div className="z-10 flex h-full w-full items-center justify-center text-sm">
                       <RadioGroup.Label as="p">{option.label}</RadioGroup.Label>
                     </div>
-                    {checked && (
+                    {checked && variant === "primary" && (
                       <motion.div
                         layoutId={`segmented-control-${name}`}
                         transition={{ duration: 0.4, type: "spring" }}
                         className="absolute inset-0 rounded-[2px] shadow-md outline outline-3 outline-primary"
-                      ></motion.div>
+                      />
                     )}
                   </div>
                 </>

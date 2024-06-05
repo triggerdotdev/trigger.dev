@@ -26,9 +26,8 @@ declare const handleError: HandleErrorFunction | undefined;
 
 declare const __PROJECT_CONFIG__: Config;
 declare const tracingSDK: TracingSDK;
-
-const otelTracer = tracingSDK.getTracer("trigger-dev-worker", packageJson.version);
-const otelLogger = tracingSDK.getLogger("trigger-dev-worker", packageJson.version);
+declare const otelTracer: Tracer;
+declare const otelLogger: Logger;
 
 import {
   TaskRunErrorCodes,
@@ -45,7 +44,8 @@ import {
   ZodMessageSender,
   ZodSchemaParsedError,
 } from "@trigger.dev/core/v3/zodMessageHandler";
-import * as packageJson from "../../../package.json";
+import type { Tracer } from "@opentelemetry/api";
+import type { Logger } from "@opentelemetry/api-logs";
 
 declare const sender: ZodMessageSender<typeof childToWorkerMessages>;
 
@@ -55,7 +55,9 @@ clock.setGlobalClock(durableClock);
 const tracer = new TriggerTracer({ tracer: otelTracer, logger: otelLogger });
 const consoleInterceptor = new ConsoleInterceptor(
   otelLogger,
-  __PROJECT_CONFIG__.enableConsoleLogging ?? false
+  typeof __PROJECT_CONFIG__.enableConsoleLogging === "boolean"
+    ? __PROJECT_CONFIG__.enableConsoleLogging
+    : true
 );
 
 const devRuntimeManager = new DevRuntimeManager();
@@ -73,7 +75,7 @@ const configLogLevel = triggerLogLevel
 const otelTaskLogger = new OtelTaskLogger({
   logger: otelLogger,
   tracer: tracer,
-  level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "log",
+  level: logLevels.includes(configLogLevel as any) ? (configLogLevel as LogLevel) : "info",
 });
 
 logger.setGlobalTaskLogger(otelTaskLogger);
@@ -180,8 +182,17 @@ const handler = new ZodMessageHandler({
         _isRunning = false;
       }
     },
-    TASK_RUN_COMPLETED_NOTIFICATION: async ({ completion, execution }) => {
-      devRuntimeManager.resumeTask(completion, execution);
+    TASK_RUN_COMPLETED_NOTIFICATION: async (payload) => {
+      switch (payload.version) {
+        case "v1": {
+          devRuntimeManager.resumeTask(payload.completion, payload.execution.run.id);
+          break;
+        }
+        case "v2": {
+          devRuntimeManager.resumeTask(payload.completion, payload.completion.id);
+          break;
+        }
+      }
     },
     CLEANUP: async ({ flush, kill }) => {
       if (kill) {
@@ -213,7 +224,7 @@ sender.send("TASKS_READY", { tasks: TASK_METADATA }).catch((err) => {
 
 process.title = "trigger-dev-worker";
 
-async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 5) {
+async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 30) {
   async function _doHeartbeat() {
     while (true) {
       if (_isRunning && _execution) {

@@ -4,14 +4,16 @@ import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabel, EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -93,6 +95,18 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Schedules" />
         <PageAccessories>
+          <AdminDebugTooltip>
+            <PropertyTable>
+              {schedules.map((schedule) => (
+                <Property label={schedule.friendlyId} key={schedule.id}>
+                  <div className="flex items-center gap-2">
+                    <Paragraph variant="extra-small/bright/mono">{schedule.id}</Paragraph>
+                  </div>
+                </Property>
+              ))}
+            </PropertyTable>
+          </AdminDebugTooltip>
+
           <LinkButton
             LeadingIcon={PlusIcon}
             to={`${v3NewSchedulePath(organization, project)}${location.search}`}
@@ -261,21 +275,13 @@ function SchedulesTable({
                   {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  <DateTime date={schedule.nextRun} />
+                  <DateTime date={schedule.nextRun} timeZone="utc" />
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  {schedule.lastRun ? <DateTime date={schedule.lastRun} /> : "–"}
+                  {schedule.lastRun ? <DateTime date={schedule.lastRun} timeZone="utc" /> : "–"}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  <div className="flex gap-1">
-                    {schedule.environments.map((environment) => (
-                      <EnvironmentLabel
-                        key={environment.id}
-                        environment={environment}
-                        userName={environment.userName}
-                      />
-                    ))}
-                  </div>
+                  <EnvironmentLabels environments={schedule.environments} size="small" />
                 </TableCell>
                 <TableCell to={path}>
                   <EnabledStatus enabled={schedule.active} />

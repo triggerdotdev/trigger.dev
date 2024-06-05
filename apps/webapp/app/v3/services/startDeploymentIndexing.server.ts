@@ -15,9 +15,10 @@ export class StartDeploymentIndexing extends BaseService {
         friendlyId: deploymentId,
       },
       data: {
-        imageReference: registryProxy
-          ? registryProxy.rewriteImageReference(body.imageReference)
-          : body.imageReference,
+        imageReference:
+          registryProxy && body.selfHosted !== true
+            ? registryProxy.rewriteImageReference(body.imageReference)
+            : body.imageReference,
         status: "DEPLOYING",
       },
     });

@@ -54,16 +54,51 @@ export function createErrorTaskError(error: TaskRunError): any {
   }
 }
 
+export const SerializedError = z.object({
+  message: z.string(),
+  name: z.string().optional(),
+  stackTrace: z.string().optional(),
+});
+
+export type SerializedError = z.infer<typeof SerializedError>;
+
+export function createJsonErrorObject(error: TaskRunError): SerializedError {
+  switch (error.type) {
+    case "BUILT_IN_ERROR": {
+      return {
+        name: error.name,
+        message: error.message,
+        stackTrace: error.stackTrace,
+      };
+    }
+    case "STRING_ERROR": {
+      return {
+        message: error.raw,
+      };
+    }
+    case "CUSTOM_ERROR": {
+      return {
+        message: error.raw,
+      };
+    }
+    case "INTERNAL_ERROR": {
+      return {
+        message: `trigger.dev internal error (${error.code})`,
+      };
+    }
+  }
+}
+
 export function correctErrorStackTrace(
   stackTrace: string,
   projectDir?: string,
-  options?: { removeFirstLine?: boolean }
+  options?: { removeFirstLine?: boolean; isDev?: boolean }
 ) {
   const [errorLine, ...traceLines] = stackTrace.split("\n");
 
   return [
     options?.removeFirstLine ? undefined : errorLine,
-    ...traceLines.map((line) => correctStackTraceLine(line, projectDir)),
+    ...traceLines.map((line) => correctStackTraceLine(line, projectDir, options?.isDev)),
   ]
     .filter(Boolean)
     .join("\n");
@@ -75,17 +110,21 @@ const LINES_TO_IGNORE = [
   /TaskExecutor/,
   /EXECUTE_TASK_RUN/,
   /@trigger.dev\/core/,
+  /packages\/core\/src\/v3/,
   /safeJsonProcess/,
   /__entryPoint.ts/,
+  /ZodIpc/,
+  /startActiveSpan/,
+  /processTicksAndRejections/,
 ];
 
-function correctStackTraceLine(line: string, projectDir?: string) {
+function correctStackTraceLine(line: string, projectDir?: string, isDev?: boolean) {
   if (LINES_TO_IGNORE.some((regex) => regex.test(line))) {
     return;
   }
 
   // Check to see if the path is inside the project directory
-  if (projectDir && !line.includes(projectDir)) {
+  if (isDev && projectDir && !line.includes(projectDir)) {
     return;
   }
 

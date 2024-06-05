@@ -1,11 +1,37 @@
-import { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
+import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { cn } from "~/utils/cn";
+import { sortEnvironments } from "~/utils/environmentSort";
+import { SimpleTooltip } from "../primitives/Tooltip";
 
 type Environment = Pick<RuntimeEnvironment, "type">;
 const variants = {
   small: "h-4 text-xxs px-[0.1875rem] rounded-[2px]",
   large: "h-6 text-xs px-1.5 rounded",
 };
+
+export function EnvironmentTypeLabel({
+  environment,
+  size = "small",
+  className,
+}: {
+  environment: Environment;
+  size?: keyof typeof variants;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "text-midnight-900 inline-flex items-center justify-center whitespace-nowrap border font-medium uppercase tracking-wider",
+        environmentBorderClassName(environment),
+        environmentTextClassName(environment),
+        variants[size],
+        className
+      )}
+    >
+      {environmentTypeTitle(environment)}
+    </span>
+  );
+}
 
 export function EnvironmentLabel({
   environment,
@@ -33,6 +59,74 @@ export function EnvironmentLabel({
   );
 }
 
+type EnvironmentWithUsername = Environment & { userName?: string };
+
+export function EnvironmentLabels({
+  environments,
+  size = "small",
+  className,
+}: {
+  environments: EnvironmentWithUsername[];
+  size?: keyof typeof variants;
+  className?: string;
+}) {
+  const devEnvironments = sortEnvironments(
+    environments.filter((env) => env.type === "DEVELOPMENT")
+  );
+  const firstDevEnvironment = devEnvironments[0];
+  const otherDevEnvironments = devEnvironments.slice(1);
+  const otherEnvironments = environments.filter((env) => env.type !== "DEVELOPMENT");
+
+  return (
+    <div className={cn("flex items-baseline gap-2", className)}>
+      {firstDevEnvironment && (
+        <EnvironmentLabel
+          environment={firstDevEnvironment}
+          userName={firstDevEnvironment.userName}
+          size={size}
+        />
+      )}
+      {otherDevEnvironments.length > 0 ? (
+        <SimpleTooltip
+          disableHoverableContent
+          button={
+            <span
+              className={cn(
+                "inline-flex items-center justify-center whitespace-nowrap border font-medium uppercase tracking-wider",
+                environmentBorderClassName({ type: "DEVELOPMENT" }),
+                environmentTextClassName({ type: "DEVELOPMENT" }),
+                variants[size]
+              )}
+            >
+              +{otherDevEnvironments.length}
+            </span>
+          }
+          content={
+            <div className="flex gap-1 py-1">
+              {otherDevEnvironments.map((environment, index) => (
+                <EnvironmentLabel
+                  key={index}
+                  environment={environment}
+                  userName={environment.userName}
+                  size={size}
+                />
+              ))}
+            </div>
+          }
+        />
+      ) : null}
+      {otherEnvironments.map((environment, index) => (
+        <EnvironmentLabel
+          key={index}
+          environment={environment}
+          userName={environment.userName}
+          size={size}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function environmentTitle(environment: Environment, username?: string) {
   switch (environment.type) {
     case "PRODUCTION":
@@ -41,6 +135,19 @@ export function environmentTitle(environment: Environment, username?: string) {
       return "Staging";
     case "DEVELOPMENT":
       return username ? `Dev: ${username}` : "Dev: You";
+    case "PREVIEW":
+      return "Preview";
+  }
+}
+
+export function environmentTypeTitle(environment: Environment) {
+  switch (environment.type) {
+    case "PRODUCTION":
+      return "Prod";
+    case "STAGING":
+      return "Staging";
+    case "DEVELOPMENT":
+      return "Dev";
     case "PREVIEW":
       return "Preview";
   }
