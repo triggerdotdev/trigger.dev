@@ -113,19 +113,6 @@ async function getParsedFileSize(filePath: string) {
   };
 }
 
-// At 10 retries, the minimum total elapsed time is 5h22m, and the maximum is double that
-function exponentialBackoffMs(retryCount: number) {
-  const MS_MULTIPLIER = 1000;
-  const MAX = 2 * 60 * 60 * 1000;
-
-  const rawDelay = 3 ** retryCount * MS_MULTIPLIER;
-
-  // Equal jitter is less performant, but more predictable than other strategies
-  const boundedWithJitter = Math.min((rawDelay / 2) * (1 + Math.random()), MAX);
-
-  return boundedWithJitter;
-}
-
 class Checkpointer {
   #initialized = false;
   #canCheckpoint = false;
