@@ -88,7 +88,6 @@ export class PerformBulkActionService extends BaseService {
       },
       {
         jobKey: `performBulkActionItem:${bulkActionItemId}`,
-        queueName: `bulkActionItem:${groupId}`,
       }
     );
   }

@@ -4,7 +4,21 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
+import { eventRepository } from "~/v3/eventRepository.server";
+import { RequeueTaskRunService } from "~/v3/requeueTaskRun.server";
+import { DeliverAlertService } from "~/v3/services/alerts/deliverAlert.server";
+import { PerformDeploymentAlertsService } from "~/v3/services/alerts/performDeploymentAlerts.server";
+import { PerformTaskAttemptAlertsService } from "~/v3/services/alerts/performTaskAttemptAlerts.server";
+import { PerformBulkActionService } from "~/v3/services/bulk/performBulkAction.server";
+import { ExecuteTasksWaitingForDeployService } from "~/v3/services/executeTasksWaitingForDeploy";
 import { IndexDeploymentService } from "~/v3/services/indexDeployment.server";
+import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
+import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.server";
+import { ResumeTaskRunDependenciesService } from "~/v3/services/resumeTaskRunDependencies.server";
+import { RetryAttemptService } from "~/v3/services/retryAttempt.server";
+import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server";
+import { TriggerScheduledTaskService } from "~/v3/services/triggerScheduledTask.server";
+import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
 import { ExpireDispatcherService } from "./dispatchers/expireDispatcher.server";
 import { InvokeEphemeralDispatcherService } from "./dispatchers/invokeEphemeralEventDispatcher.server";
 import { sendEmail } from "./email.server";
@@ -30,22 +44,6 @@ import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.se
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout.server";
 import { ResumeTaskService } from "./tasks/resumeTask.server";
-import { ResumeTaskRunDependenciesService } from "~/v3/services/resumeTaskRunDependencies.server";
-import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
-import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.server";
-import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server";
-import { eventRepository } from "~/v3/eventRepository.server";
-import { ExecuteTasksWaitingForDeployService } from "~/v3/services/executeTasksWaitingForDeploy";
-import { TriggerScheduledTaskService } from "~/v3/services/triggerScheduledTask.server";
-import { PerformTaskAttemptAlertsService } from "~/v3/services/alerts/performTaskAttemptAlerts.server";
-import { DeliverAlertService } from "~/v3/services/alerts/deliverAlert.server";
-import { PerformDeploymentAlertsService } from "~/v3/services/alerts/performDeploymentAlerts.server";
-import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
-import { PerformBulkActionService } from "~/v3/services/bulk/performBulkAction.server";
-import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
-import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
-import { RequeueTaskRunService } from "~/v3/requeueTaskRun.server";
-import { RetryAttemptService } from "~/v3/services/retryAttempt.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -363,7 +361,6 @@ function getWorkerQueue() {
       deliverHttpSourceRequest: {
         priority: 0, // smaller number = higher priority
         maxAttempts: 14,
-        queueName: (payload) => `sources:${payload.id}`,
         handler: async (payload, job) => {
           const service = new DeliverHttpSourceRequestService();
 
@@ -373,7 +370,6 @@ function getWorkerQueue() {
       deliverWebhookRequest: {
         priority: 0, // smaller number = higher priority
         maxAttempts: 14,
-        queueName: (payload) => `webhooks:${payload.id}`,
         handler: async (payload, job) => {
           const service = new DeliverWebhookRequestService();
 
