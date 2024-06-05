@@ -44,6 +44,7 @@ import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.se
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout.server";
 import { ResumeTaskService } from "./tasks/resumeTask.server";
+import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -162,6 +163,9 @@ const workerCatalog = {
     runId: z.string(),
   }),
   "v3.retryAttempt": z.object({
+    runId: z.string(),
+  }),
+  "v2.requeueMessage": z.object({
     runId: z.string(),
   }),
 };
@@ -620,6 +624,15 @@ function getWorkerQueue() {
           const service = new RetryAttemptService();
 
           return await service.call(payload.runId);
+        },
+      },
+      "v2.requeueMessage": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new RequeueV2Message();
+
+          await service.call(payload.runId);
         },
       },
     },

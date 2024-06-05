@@ -16,12 +16,7 @@ import {
   supportsFeature,
 } from "@trigger.dev/core";
 import { BloomFilter } from "@trigger.dev/core-backend";
-import {
-  ConcurrencyLimitGroup,
-  JobRun,
-  JobVersion,
-  RuntimeEnvironment,
-} from "@trigger.dev/database";
+import { ConcurrencyLimitGroup, Job, JobRun, JobVersion } from "@trigger.dev/database";
 import { generateErrorMessage } from "zod-error";
 import { eventRecordToApiJson } from "~/api.server";
 import {
@@ -38,6 +33,8 @@ import { prepareTasksForCaching, prepareTasksForCachingLegacy } from "~/models/t
 import { CompleteRunTaskService } from "~/routes/api.v1.runs.$runId.tasks.$id.complete/CompleteRunTaskService.server";
 import { formatError } from "~/utils/formatErrors.server";
 import { safeJsonZodParse } from "~/utils/json";
+import { marqsv2 } from "~/v3/marqs/v2.server";
+import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { EndpointApi } from "../endpointApi.server";
 import { createExecutionEvent } from "../executions/createExecutionEvent.server";
 import { logger } from "../logger.server";
@@ -45,8 +42,6 @@ import { ResumeTaskService } from "../tasks/resumeTask.server";
 import { executionWorker, workerQueue } from "../worker.server";
 import { forceYieldCoordinator } from "./forceYieldCoordinator.server";
 import { ResumeRunService } from "./resumeRun.server";
-import { executionRateLimiter } from "../runExecutionRateLimiter.server";
-import { env } from "~/env.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type FoundTask = FoundRun["tasks"][number];
@@ -96,9 +91,10 @@ export class PerformRunExecutionV3Service {
   static async enqueue(
     run: JobRun & {
       version: JobVersion & {
-        environment: RuntimeEnvironment;
+        environment: AuthenticatedEnvironment;
         concurrencyLimitGroup?: ConcurrencyLimitGroup | null;
       };
+      job: Job;
     },
     priority: RunExecutionPriority,
     tx: PrismaClientOrTransaction,
@@ -107,24 +103,28 @@ export class PerformRunExecutionV3Service {
       skipRetrying?: boolean;
     } = {}
   ) {
-    return await executionWorker.enqueue(
-      "performRunExecutionV3",
-      {
-        id: run.id,
-        reason: "EXECUTE_JOB",
-      },
-      {
-        tx,
-        runAt: options.runAt,
-        jobKey: `job_run:EXECUTE_JOB:${run.id}`,
-        maxAttempts: options.skipRetrying ? env.DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS : undefined,
-        flags: executionRateLimiter?.flagsForRun(run, run.version) ?? [],
-        priority: priority === "initial" ? 0 : -1,
-      }
+    let queue = `job/${run.job.slug}`;
+
+    if (run.version.concurrencyLimitGroup) {
+      queue = `group/${run.version.concurrencyLimitGroup.name}`;
+    }
+
+    const runAt =
+      priority === "initial" ? options.runAt ?? new Date() : run.startedAt ?? run.createdAt;
+
+    await marqsv2.enqueueMessage(
+      run.version.environment,
+      queue,
+      run.id,
+      { runId: run.id, attempt: 1 },
+      undefined,
+      runAt.getTime()
     );
   }
 
   static async dequeue(run: JobRun, tx: PrismaClientOrTransaction) {
+    await marqsv2.acknowledgeMessage(run.id);
+
     await executionWorker.dequeue(`job_run:EXECUTE_JOB:${run.id}`, {
       tx,
     });
@@ -253,6 +253,8 @@ export class PerformRunExecutionV3Service {
       });
 
       forceYieldCoordinator.deregisterRun(run.id);
+
+      await marqsv2.acknowledgeMessage(run.id);
 
       //if the run has been canceled while it's being executed, we shouldn't do anything more
       const updatedRun = await this.#prismaClient.jobRun.findUnique({

@@ -90,6 +90,7 @@ export class SharedQueueConsumer {
   private _currentSpan: Span | undefined;
   private _endSpanInNextIteration = false;
   private _tasks = sharedQueueTasks;
+  private _id: string;
 
   constructor(
     private _sender: ZodMessageSender<typeof serverWebsocketMessages>,
@@ -101,6 +102,8 @@ export class SharedQueueConsumer {
       nextTickInterval: options.nextTickInterval ?? 1000, // 1 second
       interval: options.interval ?? 100, // 100ms
     };
+
+    this._id = generateFriendlyId("shared-queue", 6);
   }
 
   // This method is called when a background worker is deprecated and will no longer be used unless a run is locked to it
@@ -235,7 +238,7 @@ export class SharedQueueConsumer {
     // When the task run completes, ack the message
     // Using a heartbeat mechanism, if the client keeps responding with a heartbeat, we'll keep the message processing and increase the visibility timeout.
 
-    const message = await marqs?.dequeueMessageInSharedQueue();
+    const message = await marqs?.dequeueMessageInSharedQueue(this._id);
 
     if (!message) {
       this.#doMoreWork(this._options.nextTickInterval);

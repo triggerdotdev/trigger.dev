@@ -174,6 +174,16 @@ const EnvironmentSchema = z.object({
   MARQS_DISABLE_REBALANCING: z.coerce.boolean().default(false),
 
   VERBOSE_GRAPHILE_LOGGING: z.string().default("false"),
+  V2_MARQS_CONSUMER_POOL_ENABLED: z.string().default("0"),
+  V2_MARQS_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),
+  V2_MARQS_CONSUMER_POLL_INTERVAL_MS: z.coerce.number().int().default(1000),
+  V2_MARQS_QUEUE_SELECTION_COUNT: z.coerce.number().int().default(36),
+  V2_MARQS_VISIBILITY_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .default(60 * 1000 * 15),
+  V2_MARQS_DEFAULT_ENV_CONCURRENCY: z.coerce.number().int().default(100),
+  V2_MARQS_VERBOSE: z.string().default("0"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

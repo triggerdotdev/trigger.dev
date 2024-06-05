@@ -1,4 +1,12 @@
-import { Span, SpanKind, SpanOptions, context, propagation, trace } from "@opentelemetry/api";
+import {
+  Span,
+  SpanKind,
+  SpanOptions,
+  Tracer,
+  context,
+  propagation,
+  trace,
+} from "@opentelemetry/api";
 import {
   SEMATTRS_MESSAGE_ID,
   SEMATTRS_MESSAGING_OPERATION,
@@ -13,22 +21,20 @@ import { singleton } from "~/utils/singleton";
 import { attributesFromAuthenticatedEnv } from "../tracer.server";
 import { AsyncWorker } from "./asyncWorker.server";
 import { MarQSShortKeyProducer } from "./marqsKeyProducer.server";
-import { SimpleWeightedChoiceStrategy } from "./priorityStrategy.server";
+import { SimpleWeightedChoiceStrategy } from "./simpleWeightedPriorityStrategy.server";
 import {
   MarQSKeyProducer,
   MarQSQueuePriorityStrategy,
   MessagePayload,
   QueueCapacities,
   QueueRange,
+  VisibilityTimeoutStrategy,
 } from "./types";
-import { RequeueTaskRunService } from "../requeueTaskRun.server";
-
-const tracer = trace.getTracer("marqs");
+import { V3VisibilityTimeout } from "./v3VisibilityTimeout.server";
 
 const KEY_PREFIX = "marqs:";
 
 const constants = {
-  SHARED_QUEUE: "sharedQueue",
   MESSAGE_VISIBILITY_TIMEOUT_QUEUE: "msgVisibilityTimeout",
 } as const;
 
@@ -40,6 +46,8 @@ const SemanticAttributes = {
 };
 
 export type MarQSOptions = {
+  name: string;
+  tracer: Tracer;
   redis: RedisOptions;
   defaultEnvConcurrency: number;
   defaultOrgConcurrency: number;
@@ -49,7 +57,9 @@ export type MarQSOptions = {
   keysProducer: MarQSKeyProducer;
   queuePriorityStrategy: MarQSQueuePriorityStrategy;
   envQueuePriorityStrategy: MarQSQueuePriorityStrategy;
+  visibilityTimeoutStrategy: VisibilityTimeoutStrategy;
   enableRebalancing?: boolean;
+  verbose?: boolean;
 };
 
 /**
@@ -72,6 +82,14 @@ export class MarQS {
     this.#startRequeuingWorkers();
     this.#startRebalanceWorkers();
     this.#registerCommands();
+  }
+
+  get name() {
+    return this.options.name;
+  }
+
+  get tracer() {
+    return this.options.tracer;
   }
 
   public async updateQueueConcurrencyLimits(
@@ -215,7 +233,8 @@ export class MarQS {
         const messageQueue = await this.#getRandomQueueFromParentQueue(
           parentQueue,
           this.options.envQueuePriorityStrategy,
-          (queue) => this.#calculateMessageQueueCapacities(queue)
+          (queue) => this.#calculateMessageQueueCapacities(queue),
+          env.id
         );
 
         if (!messageQueue) {
@@ -249,8 +268,9 @@ export class MarQS {
             [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
           });
         } else {
-          logger.error("Failed to read message, undoing the dequeueing of the message", {
+          logger.error(`Failed to read message, undoing the dequeueing of the message`, {
             messageData,
+            service: this.name,
           });
 
           await this.#callAcknowledgeMessage({
@@ -265,9 +285,14 @@ export class MarQS {
           });
         }
 
-        await RequeueTaskRunService.enqueue(
+        await this.options.visibilityTimeoutStrategy.heartbeat(
           messageData.messageId,
-          new Date(Date.now() + this.visibilityTimeoutInMs)
+          this.visibilityTimeoutInMs
+        );
+
+        await this.options.visibilityTimeoutStrategy.heartbeat(
+          messageData.messageId,
+          this.visibilityTimeoutInMs
         );
 
         return message;
@@ -284,10 +309,11 @@ export class MarQS {
   }
 
   public async getSharedQueueDetails() {
-    const parentQueue = constants.SHARED_QUEUE;
+    const parentQueue = this.keys.sharedQueueKey();
 
-    const { range, selectionId } = await this.queuePriorityStrategy.nextCandidateSelection(
-      parentQueue
+    const { range } = await this.queuePriorityStrategy.nextCandidateSelection(
+      parentQueue,
+      "getSharedQueueDetails"
     );
     const queues = await this.#getChildQueuesWithScores(parentQueue, range);
 
@@ -299,11 +325,12 @@ export class MarQS {
     const choice = this.queuePriorityStrategy.chooseQueue(
       queuesWithScores,
       parentQueue,
-      selectionId
+      "getSharedQueueDetails",
+      range
     );
 
     return {
-      selectionId,
+      selectionId: "getSharedQueueDetails",
       queues,
       queuesWithScores,
       nextRange: range,
@@ -315,17 +342,18 @@ export class MarQS {
   /**
    * Dequeue a message from the shared queue (this should be used in production environments)
    */
-  public async dequeueMessageInSharedQueue() {
+  public async dequeueMessageInSharedQueue(consumerId: string) {
     return this.#trace(
       "dequeueMessageInSharedQueue",
       async (span) => {
-        const parentQueue = constants.SHARED_QUEUE;
+        const parentQueue = this.keys.sharedQueueKey();
 
         // Read the parent queue for matching queues
         const messageQueue = await this.#getRandomQueueFromParentQueue(
           parentQueue,
           this.options.queuePriorityStrategy,
-          (queue) => this.#calculateMessageQueueCapacities(queue)
+          (queue) => this.#calculateMessageQueueCapacities(queue),
+          consumerId
         );
 
         if (!messageQueue) {
@@ -350,6 +378,11 @@ export class MarQS {
         }
 
         const message = await this.readMessage(messageData.messageId);
+
+        await this.options.visibilityTimeoutStrategy.heartbeat(
+          messageData.messageId,
+          this.visibilityTimeoutInMs
+        );
 
         if (message) {
           span.setAttributes({
@@ -395,7 +428,7 @@ export class MarQS {
           [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
         });
 
-        await RequeueTaskRunService.dequeue(messageId);
+        await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
 
         await this.#callAcknowledgeMessage({
           parentQueue: message.parentQueue,
@@ -462,7 +495,7 @@ export class MarQS {
           return;
         }
 
-        await RequeueTaskRunService.dequeue(messageId);
+        await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
 
         await this.#callAcknowledgeMessage({
           parentQueue: oldMessage.parentQueue,
@@ -493,27 +526,40 @@ export class MarQS {
     fn: (span: Span) => Promise<T>,
     options?: SpanOptions & { sampleRate?: number }
   ): Promise<T> {
-    return tracer.startActiveSpan(name, options ?? {}, async (span) => {
-      try {
-        return await fn(span);
-      } catch (e) {
-        if (e instanceof Error) {
-          span.recordException(e);
-        } else {
-          span.recordException(new Error(String(e)));
-        }
+    return this.tracer.startActiveSpan(
+      name,
+      {
+        ...options,
+        attributes: {
+          ...options?.attributes,
+        },
+      },
+      async (span) => {
+        try {
+          return await fn(span);
+        } catch (e) {
+          if (e instanceof Error) {
+            span.recordException(e);
+          } else {
+            span.recordException(new Error(String(e)));
+          }
 
-        throw e;
-      } finally {
-        span.end();
+          throw e;
+        } finally {
+          span.end();
+        }
       }
-    });
+    );
   }
 
   /**
    * Negative acknowledge a message, which will requeue the message
    */
-  public async nackMessage(messageId: string, retryAt: number = Date.now()) {
+  public async nackMessage(
+    messageId: string,
+    retryAt: number = Date.now(),
+    updates?: Record<string, unknown>
+  ) {
     return this.#trace(
       "nackMessage",
       async (span) => {
@@ -530,7 +576,11 @@ export class MarQS {
           [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
         });
 
-        await RequeueTaskRunService.dequeue(messageId);
+        if (updates) {
+          await this.replaceMessage(messageId, updates, retryAt, true);
+        }
+
+        await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
 
         await this.#callNackMessage({
           messageKey: this.keys.messageKey(messageId),
@@ -557,15 +607,7 @@ export class MarQS {
 
   // This should increment by the number of seconds, but with a max value of Date.now() + visibilityTimeoutInMs
   public async heartbeatMessage(messageId: string, seconds: number = 30) {
-    // We are still calling this for backwards compatibility, but we should be using the v3.requeueTaskRun job
-    await this.#callHeartbeatMessage({
-      visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
-      messageId,
-      milliseconds: seconds * 1000,
-      maxVisibilityTimeout: Date.now() + this.visibilityTimeoutInMs,
-    });
-
-    await RequeueTaskRunService.enqueue(messageId, new Date(Date.now() + seconds * 1000));
+    await this.options.visibilityTimeoutStrategy.heartbeat(messageId, seconds * 1000);
   }
 
   get visibilityTimeoutInMs() {
@@ -585,9 +627,10 @@ export class MarQS {
         const message = MessagePayload.safeParse(JSON.parse(rawMessage));
 
         if (!message.success) {
-          logger.error("Failed to parse message", {
+          logger.error(`[${this.name}] Failed to parse message`, {
             messageId,
             error: message.error,
+            service: this.name,
           });
 
           return;
@@ -609,13 +652,15 @@ export class MarQS {
   async #getRandomQueueFromParentQueue(
     parentQueue: string,
     queuePriorityStrategy: MarQSQueuePriorityStrategy,
-    calculateCapacities: (queue: string) => Promise<QueueCapacities>
+    calculateCapacities: (queue: string) => Promise<QueueCapacities>,
+    consumerId: string
   ) {
     return this.#trace(
       "getRandomQueueFromParentQueue",
       async (span) => {
-        const { range, selectionId } = await queuePriorityStrategy.nextCandidateSelection(
-          parentQueue
+        const { range } = await queuePriorityStrategy.nextCandidateSelection(
+          parentQueue,
+          consumerId
         );
 
         const queues = await this.#getChildQueuesWithScores(parentQueue, range);
@@ -626,7 +671,8 @@ export class MarQS {
         const choice = this.queuePriorityStrategy.chooseQueue(
           queuesWithScores,
           parentQueue,
-          selectionId
+          consumerId,
+          range
         );
 
         span.setAttributes({
@@ -638,6 +684,28 @@ export class MarQS {
         span.setAttribute("nextRange.offset", range.offset);
         span.setAttribute("nextRange.count", range.count);
         span.setAttribute("queueCount", queues.length);
+
+        if (this.options.verbose) {
+          if (typeof choice === "string") {
+            logger.debug(`[${this.name}] getRandomQueueFromParentQueue`, {
+              queues,
+              queuesWithScores,
+              nextRange: range,
+              queueCount: queues.length,
+              queueChoice: choice,
+              consumerId,
+            });
+          } else {
+            logger.debug(`[${this.name}] getRandomQueueFromParentQueue`, {
+              queues,
+              queuesWithScores,
+              nextRange: range,
+              queueCount: queues.length,
+              noQueueChoice: true,
+              consumerId,
+            });
+          }
+        }
 
         if (typeof choice !== "string") {
           span.setAttribute("noQueueChoice", true);
@@ -673,6 +741,7 @@ export class MarQS {
           queue: queue.value,
           capacities: await calculateCapacities(queue.value),
           age: now - queue.score,
+          size: await this.redis.zcard(queue.value),
         };
       })
     );
@@ -806,6 +875,7 @@ export class MarQS {
         pattern,
         component: "marqs",
         operation: "rebalanceParentQueues",
+        service: this.name,
       });
 
       stream.on("data", async (keys) => {
@@ -817,6 +887,7 @@ export class MarQS {
           component: "marqs",
           operation: "rebalanceParentQueues",
           parentQueues: uniqueKeys,
+          service: this.name,
         });
 
         Promise.all(
@@ -866,6 +937,7 @@ export class MarQS {
           childQueuesWithScores,
           component: "marqs",
           operation: "rebalanceParentQueues",
+          service: this.name,
         });
 
         await Promise.all(
@@ -894,6 +966,7 @@ export class MarQS {
   async #callEnqueueMessage(message: MessagePayload) {
     logger.debug("Calling enqueueMessage", {
       messagePayload: message,
+      service: this.name,
     });
 
     return this.redis.enqueueMessage(
@@ -949,6 +1022,7 @@ export class MarQS {
 
     logger.debug("Dequeue message result", {
       result,
+      service: this.name,
     });
 
     if (result.length !== 2) {
@@ -964,6 +1038,7 @@ export class MarQS {
   async #callReplaceMessage(message: MessagePayload) {
     logger.debug("Calling replaceMessage", {
       messagePayload: message,
+      service: this.name,
     });
 
     return this.redis.replaceMessage(
@@ -1000,6 +1075,7 @@ export class MarQS {
       orgConcurrencyKey,
       messageId,
       parentQueue,
+      service: this.name,
     });
 
     return this.redis.acknowledgeMessage(
@@ -1046,6 +1122,7 @@ export class MarQS {
       visibilityQueue,
       messageId,
       messageScore,
+      service: this.name,
     });
 
     return this.redis.nackMessage(
@@ -1060,28 +1137,6 @@ export class MarQS {
       messageId,
       String(Date.now()),
       String(messageScore)
-    );
-  }
-
-  /**
-   * @deprecated This is being replaced by the v3.requeueTaskRun graphile worker job
-   */
-  #callHeartbeatMessage({
-    visibilityQueue,
-    messageId,
-    milliseconds,
-    maxVisibilityTimeout,
-  }: {
-    visibilityQueue: string;
-    messageId: string;
-    milliseconds: number;
-    maxVisibilityTimeout: number;
-  }) {
-    return this.redis.heartbeatMessage(
-      visibilityQueue,
-      messageId,
-      String(milliseconds),
-      String(maxVisibilityTimeout)
     );
   }
 
@@ -1168,6 +1223,7 @@ export class MarQS {
         currentScore,
         rebalanceResult,
         operation: "rebalanceParentQueueChild",
+        service: this.name,
       });
     }
 
@@ -1603,7 +1659,10 @@ function getMarQSClient() {
       };
 
       return new MarQS({
+        name: "marqs",
+        tracer: trace.getTracer("marqs"),
         keysProducer: new MarQSShortKeyProducer(KEY_PREFIX),
+        visibilityTimeoutStrategy: new V3VisibilityTimeout(),
         queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 36 }),
         envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
         workers: 1,

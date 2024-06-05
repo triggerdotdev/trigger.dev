@@ -28,6 +28,12 @@ import { env } from "~/env.server";
 
 const tracer = trace.getTracer("zodWorker", "3.0.0.dp.1");
 
+const graphileLogger = new GraphileLogger((scope) => {
+  return (level, message, meta) => {
+    logger.debug(`[graphile-worker][${level}] ${message}`, { scope, meta });
+  };
+});
+
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 }
@@ -283,15 +289,17 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     this.#shuttingDown = true;
 
+    this.#logDebug(
+      `Received ${signal}, shutting down zodWorker with timeout ${this.#shutdownTimeoutInMs}ms`
+    );
+
     if (this.#shutdownTimeoutInMs) {
       setTimeout(() => {
-        this.#logDebug("Shutdown timeout reached, exiting process");
+        this.#logDebug(`Shutdown timeout of ${this.#shutdownTimeoutInMs} reached, exiting process`);
 
         process.exit(0);
       }, this.#shutdownTimeoutInMs);
     }
-
-    this.#logDebug(`Received ${signal}, shutting down zodWorker...`);
 
     this.stop().finally(() => {
       this.#logDebug("zodWorker stopped");
