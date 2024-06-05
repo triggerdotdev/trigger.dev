@@ -143,6 +143,12 @@ function getApiUrlArg() {
     case "https://cloud.trigger.dev":
       // don't display the arg, use the CLI default
       break;
+    case "https://test-cloud.trigger.dev":
+      apiUrl = "https://test-api.trigger.dev";
+      break;
+    case "https://internal.trigger.dev":
+      apiUrl = "https://internal-api.trigger.dev";
+      break;
     default:
       apiUrl = appOrigin;
       break;
