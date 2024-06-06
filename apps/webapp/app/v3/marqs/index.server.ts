@@ -394,9 +394,9 @@ export class MarQS {
           });
         }
 
-        await RequeueTaskRunService.enqueue(
+        await this.options.visibilityTimeoutStrategy.heartbeat(
           messageData.messageId,
-          new Date(Date.now() + this.visibilityTimeoutInMs)
+          this.visibilityTimeoutInMs
         );
 
         return message;
