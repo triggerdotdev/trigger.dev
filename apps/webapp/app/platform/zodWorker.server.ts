@@ -186,6 +186,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       taskList: this.#createTaskListFromTasks(),
       parsedCronItems,
       forbiddenFlags: this.#rateLimiter?.forbiddenFlags.bind(this.#rateLimiter),
+      logger: graphileLogger,
     });
 
     if (!this.#runner) {
