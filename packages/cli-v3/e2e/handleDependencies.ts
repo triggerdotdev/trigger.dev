@@ -1,27 +1,42 @@
 #!/usr/bin/env node
 
+import { log } from "@clack/prompts";
+import { Metafile } from "esbuild";
 import { join } from "node:path";
+import terminalLink from "terminal-link";
 
-import { ReadConfigResult } from "../src/utilities/configFiles.js";
-import { writeJSONFile } from "../src/utilities/fileSystem.js";
-import { logger } from "../src/utilities/logger.js";
-import { JavascriptProject } from "../src/utilities/javascriptProject.js";
+import { SkipLoggingError } from "../src/cli/common.js";
 import {
   copyAdditionalFiles,
   resolveDependencies,
   resolveRequiredDependencies,
 } from "../src/commands/deploy.js";
-import terminalLink from "terminal-link";
-import { SkipLoggingError } from "../src/cli/common.js";
-import { log } from "@clack/prompts";
-import { Metafile } from "esbuild";
+import { ReadConfigResult } from "../src/utilities/configFiles.js";
+import { writeJSONFile } from "../src/utilities/fileSystem.js";
+import { PackageManager } from "../src/utilities/getUserPackageManager.js";
+import { JavascriptProject } from "../src/utilities/javascriptProject.js";
+import { logger } from "../src/utilities/logger.js";
 
 type HandleDependenciesOptions = {
   entryPointMetaOutput: Metafile["outputs"]["out/stdin.js"];
   metaOutput: Metafile["outputs"]["out/stdin.js"];
+  packageManager: PackageManager;
   resolvedConfig: ReadConfigResult;
   tempDir: string;
 };
+
+class JavascriptProjectLocal extends JavascriptProject {
+  constructor(
+    projectPath: string,
+    private overridenPackageManager: PackageManager
+  ) {
+    super(projectPath);
+  }
+
+  async getPackageManager(): Promise<PackageManager> {
+    return Promise.resolve(this.overridenPackageManager);
+  }
+}
 
 export async function handleDependencies(options: HandleDependenciesOptions) {
   if (options.resolvedConfig.status === "error") {
@@ -30,6 +45,7 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
   const {
     entryPointMetaOutput,
     metaOutput,
+    packageManager,
     resolvedConfig: { config },
     tempDir,
   } = options;
@@ -43,7 +59,8 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
   // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
   const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
 
-  const javascriptProject = new JavascriptProject(config.projectDir);
+  // const javascriptProject = new JavascriptProject(config.projectDir);
+  const javascriptProject = new JavascriptProjectLocal(config.projectDir, packageManager);
 
   const dependencies = await resolveRequiredDependencies(allImports, config, javascriptProject);
 

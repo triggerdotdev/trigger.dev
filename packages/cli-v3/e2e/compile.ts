@@ -3,7 +3,7 @@
 import { esbuildDecorators } from "@anatine/esbuild-decorators";
 import { build } from "esbuild";
 import { readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { basename, join, posix, resolve } from "node:path";
 import invariant from "tiny-invariant";
 

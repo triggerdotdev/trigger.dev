@@ -3,11 +3,12 @@ import { readFileSync } from "node:fs";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import { Loglevel, LogLevelSchema, PackageManagerSchema } from "./schemas";
 import { typecheckProject } from "../src/commands/deploy";
 import { readConfig, ReadConfigFileResult } from "../src/utilities/configFiles";
-import { compile } from "./compile";
-import { Loglevel, LogLevelSchema, PackageManager, PackageManagerSchema } from ".";
+import { PackageManager } from "../src/utilities/getUserPackageManager";
 import { logger } from "../src/utilities/logger";
+import { compile } from "./compile";
 import { handleDependencies } from "./handleDependencies";
 
 type TestCase = {
@@ -212,6 +213,7 @@ if (testCases.length > 0) {
                     metaOutput: global.metaOutput!,
                     resolvedConfig: global.resolvedConfig!,
                     tempDir: global.tempDir!,
+                    packageManager,
                   });
                 })()
               );
