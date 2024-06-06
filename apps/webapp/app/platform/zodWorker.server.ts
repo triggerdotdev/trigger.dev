@@ -10,7 +10,12 @@ import type {
   TaskSpec,
   WorkerUtils,
 } from "graphile-worker";
-import { run as graphileRun, makeWorkerUtils, parseCronItems } from "graphile-worker";
+import {
+  run as graphileRun,
+  makeWorkerUtils,
+  parseCronItems,
+  Logger as GraphileLogger,
+} from "graphile-worker";
 import { SpanKind, trace } from "@opentelemetry/api";
 
 import omit from "lodash.omit";
