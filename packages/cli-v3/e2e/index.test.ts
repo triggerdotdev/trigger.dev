@@ -10,6 +10,8 @@ import { PackageManager } from "../src/utilities/getUserPackageManager";
 import { logger } from "../src/utilities/logger";
 import { compile } from "./compile";
 import { handleDependencies } from "./handleDependencies";
+import { createContainerFile } from "./createContainerFile";
+import { createDeployHash } from "./createDeployHash";
 
 type TestCase = {
   name: string;
@@ -175,12 +177,19 @@ if (testCases.length > 0) {
           async () => {
             const expectation = expect(
               (async () => {
-                const { entryPointMetaOutput, metaOutput } = await compile({
+                const {
+                  workerMetaOutput,
+                  workerOutputFile,
+                  entryPointMetaOutput,
+                  entryPointOutputFile,
+                } = await compile({
                   resolvedConfig: global.resolvedConfig!,
                   tempDir: global.tempDir!,
                 });
                 global.entryPointMetaOutput = entryPointMetaOutput;
-                global.metaOutput = metaOutput;
+                global.entryPointOutputFile = entryPointOutputFile;
+                global.workerMetaOutput = workerMetaOutput;
+                global.workerOutputFile = workerOutputFile;
               })()
             );
 
@@ -196,7 +205,9 @@ if (testCases.length > 0) {
         describe.skipIf(wantCompilationError)("with successful compilation", () => {
           afterAll(() => {
             delete global.entryPointMetaOutput;
-            delete global.metaOutput;
+            delete global.entryPointOutputFile;
+            delete global.workerMetaOutput;
+            delete global.workerOutputFile;
           });
 
           test(
@@ -204,13 +215,14 @@ if (testCases.length > 0) {
             async () => {
               const expectation = expect(
                 (async () => {
-                  await handleDependencies({
+                  const { dependencies } = await handleDependencies({
                     entryPointMetaOutput: global.entryPointMetaOutput!,
-                    metaOutput: global.metaOutput!,
+                    metaOutput: global.workerMetaOutput!,
                     resolvedConfig: global.resolvedConfig!,
                     tempDir: global.tempDir!,
                     packageManager,
                   });
+                  global.dependencies = dependencies;
                 })()
               );
 
@@ -222,6 +234,35 @@ if (testCases.length > 0) {
             },
             { timeout: 60_000 }
           );
+
+          describe.skipIf(wantDependenciesError)("with resolved dependencies", () => {
+            afterAll(() => {
+              delete global.dependencies;
+            });
+
+            test("copies postinstall command into Containerfile.prod", async () => {
+              await expect(
+                (async () => {
+                  await createContainerFile({
+                    resolvedConfig: global.resolvedConfig!,
+                    tempDir: global.tempDir!,
+                  });
+                })()
+              ).resolves.not.toThrowError();
+            });
+
+            test("creates deploy hash", async () => {
+              await expect(
+                (async () => {
+                  await createDeployHash({
+                    dependencies: global.dependencies!,
+                    entryPointOutputFile: global.entryPointOutputFile!,
+                    workerOutputFile: global.workerOutputFile!,
+                  });
+                })()
+              ).resolves.not.toThrowError();
+            });
+          });
         });
       });
     }

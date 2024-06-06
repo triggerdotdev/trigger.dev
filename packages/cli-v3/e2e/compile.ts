@@ -233,5 +233,10 @@ export async function compile(options: CompileOptions) {
   // Save the entryPoint outputFile to /tmp/dir/index.js
   await writeFile(join(tempDir, "index.js"), entryPointOutputFile.text);
 
-  return { metaOutput, entryPointMetaOutput };
+  return {
+    workerMetaOutput: metaOutput,
+    workerOutputFile,
+    entryPointMetaOutput,
+    entryPointOutputFile,
+  };
 }

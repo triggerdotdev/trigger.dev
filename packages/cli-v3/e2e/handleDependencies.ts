@@ -109,4 +109,6 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
   if (!resolvingDependenciesResult) {
     throw new SkipLoggingError("Failed to resolve dependencies");
   }
+
+  return { dependencies };
 }
