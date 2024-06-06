@@ -1,5 +1,12 @@
 # internal-platform
 
+## 3.0.0-beta.36
+
+### Patch Changes
+
+- b4f9b70ae: Support triggering tasks with non-URL friendly characters in the ID
+- ba71f959e: Management SDK overhaul and adding the runs.list API
+
 ## 3.0.0-beta.35
 
 ### Patch Changes
