@@ -4,11 +4,11 @@ import {
   type IntegrationConnection,
 } from "@trigger.dev/database";
 import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
-import { $transaction, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
+import { autoIncrementCounter } from "../autoIncrementCounter.server";
+import { logger } from "../logger.server";
 import { workerQueue } from "../worker.server";
 import { ResumeRunService } from "./resumeRun.server";
-import { createHash } from "node:crypto";
-import { logger } from "../logger.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 type RunConnectionsByKey = Awaited<ReturnType<typeof createRunConnections>>;
@@ -67,22 +67,14 @@ export class StartRunService {
           : undefined
       )
       .filter(Boolean);
-    const lockId = jobIdToLockId(run.jobId);
 
-    await $transaction(
-      this.#prismaClient,
-      async (tx) => {
-        const counter = await tx.jobCounter.upsert({
-          where: { jobId: run.jobId },
-          update: { lastNumber: { increment: 1 } },
-          create: { jobId: run.jobId, lastNumber: 1 },
-          select: { lastNumber: true },
-        });
-
-        const updatedRun = await this.#prismaClient.jobRun.update({
+    await autoIncrementCounter.incrementInTransaction(
+      `v2-run:${run.jobId}`,
+      async (num, tx) => {
+        const updatedRun = await tx.jobRun.update({
           where: { id },
           data: {
-            number: counter.lastNumber,
+            number: num,
             status: "QUEUED",
             queuedAt: new Date(),
             runConnections: {
@@ -93,7 +85,16 @@ export class StartRunService {
 
         await ResumeRunService.enqueue(updatedRun, tx);
       },
-      { timeout: 60000 }
+      async (_, tx) => {
+        const counter = await tx.jobCounter.findUnique({
+          where: { jobId: run.jobId },
+          select: { lastNumber: true },
+        });
+
+        return counter?.lastNumber;
+      },
+      this.#prismaClient,
+      { timeout: 10_000 }
     );
   }
 
@@ -241,9 +242,4 @@ async function createRunConnections(tx: PrismaClientOrTransaction, run: FoundRun
 
 function hasMissingConnections(runConnectionsByKey: RunConnectionsByKey) {
   return Object.values(runConnectionsByKey).some((connection) => connection.result === "missing");
-}
-
-function jobIdToLockId(jobId: string): number {
-  // Convert jobId to a unique lock identifier
-  return parseInt(createHash("sha256").update(jobId).digest("hex").slice(0, 8), 16);
 }
