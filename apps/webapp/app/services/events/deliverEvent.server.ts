@@ -31,6 +31,14 @@ export class DeliverEventService {
           },
         });
 
+        if (eventRecord.deliveredAt) {
+          logger.debug("Event already delivered", {
+            eventRecord: eventRecord.id,
+          });
+
+          return;
+        }
+
         const possibleEventDispatchers = await tx.eventDispatcher.findMany({
           where: {
             environmentId: eventRecord.environmentId,
@@ -78,14 +86,20 @@ export class DeliverEventService {
           )
         );
 
-        await tx.eventRecord.update({
+        // Optimistically mark the event as delivered
+        const lockedRecord = await tx.eventRecord.updateMany({
           where: {
             id: eventRecord.id,
+            deliveredAt: null,
           },
           data: {
             deliveredAt: new Date(),
           },
         });
+
+        if (lockedRecord.count === 0) {
+          throw new Error("Event already delivered");
+        }
       },
       { timeout: 10000 }
     );
