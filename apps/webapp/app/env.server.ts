@@ -34,7 +34,7 @@ const EnvironmentSchema = z.object({
   APP_ENV: z.string().default(process.env.NODE_ENV),
   SERVICE_NAME: z.string().default("trigger.dev webapp"),
   SECRET_STORE: SecretStoreOptionsSchema.default("DATABASE"),
-  POSTHOG_PROJECT_KEY: z.string().optional(),
+  POSTHOG_PROJECT_KEY: z.string().default("phc_LFH7kJiGhdIlnO22hTAKgHpaKhpM8gkzWAFvHmf5vfS"),
   TELEMETRY_TRIGGER_API_KEY: z.string().optional(),
   TELEMETRY_TRIGGER_API_URL: z.string().optional(),
   TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
