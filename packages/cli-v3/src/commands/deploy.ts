@@ -1353,8 +1353,7 @@ async function compileProject(
       const resolvingDependenciesResult = await resolveDependencies(
         tempDir,
         packageJsonContents,
-        config,
-        options
+        config
       );
 
       if (!resolvingDependenciesResult) {
@@ -1491,11 +1490,10 @@ async function resolveEnvironmentVariables(
 // in the `.trigger/cache` directory. If the package-lock.json is found, we'll write it to the project directory
 // If the package-lock.json is not found, we will run `npm install --package-lock-only` and then write the package-lock.json
 // to the project directory, and finally we'll write the digest to the `.trigger/cache` directory with the contents of the package-lock.json
-async function resolveDependencies(
+export async function resolveDependencies(
   projectDir: string,
   packageJsonContents: any,
-  config: ResolvedConfig,
-  options: DeployCommandOptions
+  config: ResolvedConfig
 ) {
   return await tracer.startActiveSpan("resolveDependencies", async (span) => {
     const resolvingDepsSpinner = spinner();
@@ -1686,7 +1684,7 @@ export async function typecheckProject(config: ResolvedConfig) {
 
 // Returns the dependencies that are required by the output that are found in output and the CLI package dependencies
 // Returns the dependency names and the version to use (taken from the CLI deps package.json)
-async function resolveRequiredDependencies(
+export async function resolveRequiredDependencies(
   imports: Metafile["outputs"][string]["imports"],
   config: ResolvedConfig,
   project: JavascriptProject
@@ -1814,7 +1812,7 @@ type AdditionalFilesReturn =
       noMatches: string[];
     };
 
-async function copyAdditionalFiles(
+export async function copyAdditionalFiles(
   config: ResolvedConfig,
   tempDir: string
 ): Promise<AdditionalFilesReturn> {

@@ -21,13 +21,18 @@ import { escapeImportPath } from "../src/utilities/windows.js";
 type CompileOptions = {
   outputMetafile?: string;
   resolvedConfig: ReadConfigResult;
+  tempDir: string;
 };
 
 export async function compile(options: CompileOptions) {
   if (options.resolvedConfig.status === "error") {
     throw new Error("cannot resolve config");
   }
-  const { config } = options.resolvedConfig;
+
+  const {
+    tempDir,
+    resolvedConfig: { config },
+  } = options;
   const configPath =
     options.resolvedConfig.status === "file" ? options.resolvedConfig.path : undefined;
 
@@ -175,7 +180,6 @@ export async function compile(options: CompileOptions) {
 
   // Create a tmp directory to store the build
   // const tempDir = await createTempDir();
-  const tempDir = await mkdir(join(config.projectDir, ".trigger"), { recursive: true });
 
   logger.debug(`Writing compiled files to ${tempDir}`);
 
@@ -221,13 +225,13 @@ export async function compile(options: CompileOptions) {
 
   // Save the result outputFile to /tmp/dir/worker.js (and make sure to map the sourceMap to the correct location in the file)
   await writeFile(
-    join(tempDir!, "worker.js"),
+    join(tempDir, "worker.js"),
     `${workerOutputFile.text}\n//# sourceMappingURL=worker.js.map`
   );
   // Save the sourceMapFile to /tmp/dir/worker.js.map
-  await writeFile(join(tempDir!, "worker.js.map"), workerSourcemapFile.text);
+  await writeFile(join(tempDir, "worker.js.map"), workerSourcemapFile.text);
   // Save the entryPoint outputFile to /tmp/dir/index.js
-  await writeFile(join(tempDir!, "index.js"), entryPointOutputFile.text);
+  await writeFile(join(tempDir, "index.js"), entryPointOutputFile.text);
 
   return { metaOutput, entryPointMetaOutput };
 }

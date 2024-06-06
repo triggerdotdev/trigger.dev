@@ -1,14 +1,14 @@
 import { execa } from "execa";
 import { readFileSync } from "node:fs";
-import { rename, rm } from "node:fs/promises";
+import { mkdir, rename, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { typecheckProject } from "../src/commands/deploy";
 import { readConfig, ReadConfigFileResult } from "../src/utilities/configFiles";
 import { compile } from "./compile";
-import { Metafile } from "esbuild";
 import { Loglevel, LogLevelSchema, PackageManager, PackageManagerSchema } from ".";
 import { logger } from "../src/utilities/logger";
+import { handleDependencies } from "./handleDependencies";
 
 type TestCase = {
   name: string;
@@ -16,6 +16,7 @@ type TestCase = {
   wantConfigNotFoundError?: boolean;
   wantBadConfigError?: boolean;
   wantCompilationError?: boolean;
+  wantDependenciesError?: boolean;
 };
 
 const allTestCases: TestCase[] = [
@@ -67,6 +68,7 @@ if (testCases.length > 0) {
       wantConfigNotFoundError,
       wantBadConfigError,
       wantCompilationError,
+      wantDependenciesError,
     }: TestCase) => {
       const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
 
@@ -148,8 +150,20 @@ if (testCases.length > 0) {
       );
 
       describe.skipIf(wantConfigNotFoundError || wantBadConfigError)("with resolved config", () => {
+        beforeAll(async () => {
+          global.tempDir = await mkdir(
+            join((global.resolvedConfig as ReadConfigFileResult).config.projectDir, ".trigger"),
+            { recursive: true }
+          );
+        });
+
+        afterAll(() => {
+          delete global.tempDir;
+          delete global.resolvedConfig;
+        });
+
         test.skipIf(skipTypecheck)("typechecks", async () => {
-          expect(global.resolvedConfig.status).not.toBe("error");
+          expect(global.resolvedConfig!.status).not.toBe("error");
 
           await expect(
             (async () =>
@@ -157,21 +171,19 @@ if (testCases.length > 0) {
           ).resolves.not.toThrowError();
         });
 
-        let entrypointMetadata: Metafile["outputs"]["out/stdin.js"];
-        let workerMetadata: Metafile["outputs"]["out/stdin.js"];
-
         test(
           wantCompilationError ? "does not compile" : "compiles",
           async () => {
-            expect(global.resolvedConfig.status).not.toBe("error");
+            expect(global.resolvedConfig!.status).not.toBe("error");
 
             const expectation = expect(
               (async () => {
                 const { entryPointMetaOutput, metaOutput } = await compile({
-                  resolvedConfig: global.resolvedConfig,
+                  resolvedConfig: global.resolvedConfig!,
+                  tempDir: global.tempDir!,
                 });
-                entrypointMetadata = entryPointMetaOutput;
-                workerMetadata = metaOutput;
+                global.entryPointMetaOutput = entryPointMetaOutput;
+                global.metaOutput = metaOutput;
               })()
             );
 
@@ -185,7 +197,33 @@ if (testCases.length > 0) {
         );
 
         describe.skipIf(wantCompilationError)("with successful compilation", () => {
-          test.todo("dependencies handling");
+          afterAll(() => {
+            delete global.entryPointMetaOutput;
+            delete global.metaOutput;
+          });
+
+          test(
+            wantDependenciesError ? "does not resolve dependencies" : "resolves dependencies",
+            async () => {
+              const expectation = expect(
+                (async () => {
+                  await handleDependencies({
+                    entryPointMetaOutput: global.entryPointMetaOutput!,
+                    metaOutput: global.metaOutput!,
+                    resolvedConfig: global.resolvedConfig!,
+                    tempDir: global.tempDir!,
+                  });
+                })()
+              );
+
+              if (wantDependenciesError) {
+                await expectation.rejects.toThrowError();
+              } else {
+                await expectation.resolves.not.toThrowError();
+              }
+            },
+            { timeout: 60_000 }
+          );
         });
       });
     }
