@@ -68,12 +68,6 @@ client.defineJob({
       prompt: "Create a good programming joke about Tasks",
     });
 
-    await io.openai.createEdit("edit", {
-      model: "text-davinci-edit-001",
-      input: "Thsi is ridddled with erors",
-      instruction: "Fix the spelling errors",
-    });
-
     await io.openai.createEmbedding("embedding", {
       model: "text-embedding-ada-002",
       input: "The food was delicious and the waiter...",
@@ -219,7 +213,11 @@ client.defineJob({
         "You are great at creating beautiful data visualizations. You analyze data present in .csv files, understand trends, and come up with data visualizations relevant to those trends. You also share a brief text summary of the trends observed.",
       model: payload.model,
       tools: [{ type: "code_interpreter" }],
-      file_ids: [file.id],
+      tool_resources: {
+        code_interpreter: {
+          file_ids: [file.id],
+        }
+      }
     });
 
     // Really we would want to save the assistant id somewhere
@@ -280,7 +278,7 @@ client.defineJob({
           {
             role: "user",
             content: "Create 3 data visualizations based on the trends in this file.",
-            file_ids: [payload.fileId],
+            attachments: [{ file_id: payload.fileId }]
           },
         ],
       },

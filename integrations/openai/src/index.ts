@@ -12,10 +12,9 @@ import {
 import OpenAIApi from "openai";
 import { Chat } from "./chat";
 import { Completions } from "./completions";
-import { Edits } from "./edits";
 import { Embeddings } from "./embeddings";
 import { Files } from "./files";
-import { FineTunes } from "./fineTunes";
+import { FineTuning } from "./fineTunes";
 import { Images } from "./images";
 import { Models } from "./models";
 import { OpenAIIntegrationOptions } from "./types";
@@ -141,10 +140,6 @@ export class OpenAI implements TriggerIntegration {
     return new Chat(this.runTask.bind(this), this._options);
   }
 
-  get edits() {
-    return new Edits(this.runTask.bind(this));
-  }
-
   get images() {
     return new Images(this.runTask.bind(this), this._options);
   }
@@ -162,7 +157,7 @@ export class OpenAI implements TriggerIntegration {
   }
 
   get fineTuning() {
-    return new FineTunes(this.runTask.bind(this));
+    return new FineTuning(this.runTask.bind(this));
   }
 
   /**
@@ -212,11 +207,6 @@ export class OpenAI implements TriggerIntegration {
   }
 
   /**
-   * @deprecated Please use openai.edits.create instead
-   */
-  createEdit = this.edits.create;
-
-  /**
    * @deprecated Please use openai.images.generate instead
    */
   async generateImage(...args: Parameters<typeof this.images.generate>) {
@@ -263,31 +253,6 @@ export class OpenAI implements TriggerIntegration {
    * @deprecated Please use openai.files.create instead
    */
   createFineTuneFile = this.files.createFineTune;
-
-  /**
-   * @deprecated Please use openai.fineTuning.create instead
-   */
-  createFineTune = this.fineTunes.create;
-
-  /**
-   * @deprecated Please use openai.fineTuning.list instead
-   */
-  listFineTunes = this.fineTunes.list;
-
-  /**
-   * @deprecated Please use openai.fineTuning.retrieve instead
-   */
-  retrieveFineTune = this.fineTunes.retrieve;
-
-  /**
-   * @deprecated Please use openai.fineTuning.cancel instead
-   */
-  cancelFineTune = this.fineTunes.cancel;
-
-  /**
-   * @deprecated Please use openai.fineTuning.listEvents instead
-   */
-  listFineTuneEvents = this.fineTunes.listEvents;
 
   /**
    * Creates a job that fine-tunes a specified model from a given dataset.

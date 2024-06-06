@@ -46,9 +46,6 @@ export class Assistants {
             text: params.model,
           },
           ...(params.name ? [{ label: "name", text: params.name }] : []),
-          ...(params.file_ids && params.file_ids.length > 0
-            ? [{ label: "files", text: params.file_ids.join(", ") }]
-            : []),
         ],
       },
       handleOpenAIError
@@ -89,9 +86,6 @@ export class Assistants {
         properties: [
           ...(params.model ? [{ label: "model", text: params.model }] : []),
           ...(params.name ? [{ label: "name", text: params.name }] : []),
-          ...(params.file_ids && params.file_ids.length > 0
-            ? [{ label: "files", text: params.file_ids.join(", ") }]
-            : []),
         ],
       },
       handleOpenAIError

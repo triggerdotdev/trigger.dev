@@ -41,7 +41,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "openai": "^4.16.1",
+    "openai": "4.39.0",
     "@trigger.dev/sdk": "workspace:^3.0.0-beta.36",
     "@trigger.dev/integration-kit": "workspace:^3.0.0-beta.36"
   },

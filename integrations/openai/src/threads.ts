@@ -16,7 +16,7 @@ export class Threads {
   constructor(
     private runTask: OpenAIRunTask,
     private options: OpenAIIntegrationOptions
-  ) {}
+  ) { }
 
   /**
    * Create a thread and run it in one task.
@@ -25,12 +25,12 @@ export class Threads {
     key: IntegrationTaskKey,
     params: Prettify<OpenAI.Beta.ThreadCreateAndRunParams>,
     options: OpenAIRequestOptions = {}
-  ): Promise<OpenAI.Beta.Threads.Run> {
+  ): Promise<OpenAI.Beta.Threads.Runs.Run> {
     return this.runTask(
       key,
       async (client, task) => {
         const { data, response } = await client.beta.threads
-          .createAndRun(params, {
+          .createAndRun({ ...params, stream: false }, {
             idempotencyKey: task.idempotencyKey,
             ...options,
           })
@@ -72,7 +72,7 @@ export class Threads {
       key,
       async (client, task, io) => {
         const { data, response } = await client.beta.threads
-          .createAndRun(params, {
+          .createAndRun({ ...params, stream: false }, {
             idempotencyKey: task.idempotencyKey,
             ...options,
           })
@@ -262,7 +262,7 @@ class Runs {
   constructor(
     private runTask: OpenAIRunTask,
     private options: OpenAIIntegrationOptions
-  ) {}
+  ) { }
 
   /**
    * Creates a run and waits for it to complete by polling in the background.
@@ -277,7 +277,7 @@ class Runs {
       key,
       async (client, task, io) => {
         const { data, response } = await client.beta.threads.runs
-          .create(threadId, params, {
+          .create(threadId, { ...params, stream: false }, {
             idempotencyKey: task.idempotencyKey,
             ...options,
           })
@@ -386,7 +386,7 @@ class Runs {
       key,
       async (client, task, io) => {
         const { data, response } = await client.beta.threads.runs
-          .create(threadId, params, {
+          .create(threadId, { ...params, stream: false }, {
             idempotencyKey: task.idempotencyKey,
             ...options,
           })
@@ -490,7 +490,7 @@ class Runs {
       key,
       async (client, task, io) => {
         const { data, response } = await client.beta.threads.runs
-          .submitToolOutputs(threadId, runId, body, {
+          .submitToolOutputs(threadId, runId, { ...body, stream: false }, {
             idempotencyKey: task.idempotencyKey,
             ...options,
           })
@@ -552,7 +552,7 @@ class Messages {
   constructor(
     private runTask: OpenAIRunTask,
     private options: OpenAIIntegrationOptions
-  ) {}
+  ) { }
 
   /**
    * Returns messages for a given thread.
@@ -562,18 +562,18 @@ class Messages {
     threadId: string,
     params?: Prettify<OpenAI.Beta.Threads.MessageListParams>,
     options?: OpenAIRequestOptions
-  ): Promise<OpenAI.Beta.Threads.ThreadMessage[]>;
+  ): Promise<OpenAI.Beta.Threads.Messages.Message[]>;
   list(
     key: IntegrationTaskKey,
     threadId: string,
     options?: OpenAIRequestOptions
-  ): Promise<OpenAI.Beta.Threads.ThreadMessage[]>;
+  ): Promise<OpenAI.Beta.Threads.Messages.Message[]>;
   async list(
     key: IntegrationTaskKey,
     threadId: string,
     params: Prettify<OpenAI.Beta.AssistantListParams> | OpenAIRequestOptions = {},
     options: OpenAIRequestOptions | undefined = undefined
-  ): Promise<OpenAI.Beta.Threads.ThreadMessage[]> {
+  ): Promise<OpenAI.Beta.Threads.Messages.Message[]> {
     return this.runTask(
       key,
       async (client, task, io) => {
@@ -616,7 +616,7 @@ class Messages {
     key: IntegrationTaskKey,
     threadId: string,
     options: OpenAIRequestOptions = {}
-  ): Promise<OpenAI.Beta.Threads.ThreadMessage[]> {
+  ): Promise<OpenAI.Beta.Threads.Messages.Message[]> {
     return this.runTask(
       key,
       async (client, task, io) => {
@@ -653,7 +653,7 @@ class Messages {
     threadId: string,
     body: Prettify<OpenAI.Beta.Threads.MessageCreateParams>,
     options: OpenAIRequestOptions = {}
-  ): Promise<OpenAI.Beta.Threads.ThreadMessage> {
+  ): Promise<OpenAI.Beta.Threads.Messages.Message> {
     return this.runTask(
       key,
       async (client, task, io) => {
@@ -684,7 +684,7 @@ class Messages {
     threadId: string,
     messageId: string,
     options: OpenAIRequestOptions = {}
-  ): Promise<OpenAI.Beta.Threads.ThreadMessage> {
+  ): Promise<OpenAI.Beta.Threads.Messages.Message> {
     return this.runTask(
       key,
       async (client, task, io) => {
@@ -719,7 +719,7 @@ class Messages {
     messageId: string,
     body: Prettify<OpenAI.Beta.Threads.MessageUpdateParams>,
     options: OpenAIRequestOptions = {}
-  ): Promise<OpenAI.Beta.Threads.ThreadMessage> {
+  ): Promise<OpenAI.Beta.Threads.Messages.Message> {
     return this.runTask(
       key,
       async (client, task, io) => {
