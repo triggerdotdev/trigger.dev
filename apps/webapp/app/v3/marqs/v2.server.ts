@@ -1,6 +1,6 @@
 import { trace } from "@opentelemetry/api";
 import { RetryOptions, calculateNextRetryDelay } from "@trigger.dev/core/v3";
-import { ConcurrencyLimitGroup, Job } from "@trigger.dev/database";
+import { ConcurrencyLimitGroup, Job, JobVersion } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -47,6 +47,10 @@ export class MarQSV2KeyProducer extends MarQSShortKeyProducer {
 export const marqsv2 = singleton("marqsv2", getMarQSClient);
 
 function getMarQSClient() {
+  if (env.V2_MARQS_ENABLED === "0") {
+    return;
+  }
+
   if (!env.REDIS_HOST || !env.REDIS_PORT) {
     throw new Error(
       "Could not initialize marqsv2 because process.env.REDIS_HOST and process.env.REDIS_PORT are required to be set. Trigger.dev v2 will not work without this."
@@ -73,7 +77,7 @@ function getMarQSClient() {
       queueSelectionCount: env.V2_MARQS_QUEUE_SELECTION_COUNT,
     }),
     envQueuePriorityStrategy: new NoopWeightedChoiceStrategy(), // We don't use this in v2, since all queues go through the shared queue
-    workers: 1,
+    workers: 0,
     redis: redisOptions,
     defaultEnvConcurrency: env.V2_MARQS_DEFAULT_ENV_CONCURRENCY, // this is so we aren't limited by the environment concurrency
     defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
@@ -151,7 +155,7 @@ export class V2QueueConsumer {
   }
 
   async #doWorkInternal() {
-    const message = await marqsv2.dequeueMessageInSharedQueue(this._id);
+    const message = await marqsv2?.dequeueMessageInSharedQueue(this._id);
 
     if (!message) {
       setTimeout(() => this.#doWork(), this._pollInterval);
@@ -166,7 +170,7 @@ export class V2QueueConsumer {
         error: messageBody.error,
       });
 
-      await marqsv2.acknowledgeMessage(message.messageId);
+      await marqsv2?.acknowledgeMessage(message.messageId);
 
       setTimeout(() => this.#doWork(), this._pollInterval);
       return;
@@ -201,9 +205,9 @@ export class V2QueueConsumer {
           attempt,
         });
 
-        await marqsv2.acknowledgeMessage(message.messageId);
+        await marqsv2?.acknowledgeMessage(message.messageId);
       } else {
-        await marqsv2.nackMessage(message.messageId, Date.now() + retryDelay, {
+        await marqsv2?.nackMessage(message.messageId, Date.now() + retryDelay, {
           attempt,
         });
       }
@@ -261,6 +265,10 @@ class V2QueueConsumerPool {
 export const v2QueueConsumerPool = singleton("v2QueueConsumerPool", initalizePool);
 
 async function initalizePool() {
+  if (env.V2_MARQS_ENABLED === "0") {
+    return;
+  }
+
   if (env.V2_MARQS_CONSUMER_POOL_ENABLED === "0") {
     return;
   }
@@ -288,7 +296,7 @@ export async function putConcurrencyLimitGroup(
     environment: env,
   });
 
-  await marqsv2.updateQueueConcurrencyLimits(
+  await marqsv2?.updateQueueConcurrencyLimits(
     env,
     `group/${concurrencyLimitGroup.name}`,
     concurrencyLimitGroup.concurrencyLimit
@@ -297,18 +305,18 @@ export async function putConcurrencyLimitGroup(
 
 export async function putJobConcurrencyLimit(
   job: Job,
-  env: AuthenticatedEnvironment,
-  concurrency: number
+  version: JobVersion,
+  env: AuthenticatedEnvironment
 ): Promise<void> {
   logger.debug(`[marqsv2] Updating job concurrency limit`, {
     job,
-    concurrency,
+    version,
     environment: env,
   });
 
-  if (concurrency === 0) {
-    await marqsv2.removeQueueConcurrencyLimits(env, `job/${job.slug}`);
+  if (typeof version.concurrencyLimit === "number" && version.concurrencyLimit > 0) {
+    await marqsv2?.updateQueueConcurrencyLimits(env, `job/${job.slug}`, version.concurrencyLimit);
   } else {
-    await marqsv2.updateQueueConcurrencyLimits(env, `job/${job.slug}`, concurrency);
+    await marqsv2?.removeQueueConcurrencyLimits(env, `job/${job.slug}`);
   }
 }

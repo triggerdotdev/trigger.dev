@@ -10,12 +10,7 @@ import type {
   TaskSpec,
   WorkerUtils,
 } from "graphile-worker";
-import {
-  run as graphileRun,
-  makeWorkerUtils,
-  parseCronItems,
-  Logger as GraphileLogger,
-} from "graphile-worker";
+import { run as graphileRun, makeWorkerUtils, parseCronItems } from "graphile-worker";
 import { SpanKind, trace } from "@opentelemetry/api";
 
 import omit from "lodash.omit";
@@ -27,12 +22,6 @@ import { flattenAttributes } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 
 const tracer = trace.getTracer("zodWorker", "3.0.0.dp.1");
-
-const graphileLogger = new GraphileLogger((scope) => {
-  return (level, message, meta) => {
-    logger.debug(`[graphile-worker][${level}] ${message}`, { scope, meta });
-  };
-});
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
@@ -192,7 +181,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       taskList: this.#createTaskListFromTasks(),
       parsedCronItems,
       forbiddenFlags: this.#rateLimiter?.forbiddenFlags.bind(this.#rateLimiter),
-      logger: graphileLogger,
     });
 
     if (!this.#runner) {

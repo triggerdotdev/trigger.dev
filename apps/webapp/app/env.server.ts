@@ -174,6 +174,7 @@ const EnvironmentSchema = z.object({
   MARQS_DISABLE_REBALANCING: z.coerce.boolean().default(false),
 
   VERBOSE_GRAPHILE_LOGGING: z.string().default("false"),
+  V2_MARQS_ENABLED: z.string().default("0"),
   V2_MARQS_CONSUMER_POOL_ENABLED: z.string().default("0"),
   V2_MARQS_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),
   V2_MARQS_CONSUMER_POLL_INTERVAL_MS: z.coerce.number().int().default(1000),

@@ -14,6 +14,7 @@ import { putConcurrencyLimitGroup, putJobConcurrencyLimit } from "~/v3/marqs/v2.
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
 import { RegisterScheduleSourceService } from "../schedules/registerScheduleSource.server";
+import { executionRateLimiter } from "../runExecutionRateLimiter.server";
 
 export class RegisterJobService {
   #prismaClient: PrismaClient;
@@ -174,11 +175,18 @@ export class RegisterJobService {
 
     try {
       if (jobVersion.concurrencyLimitGroup) {
-        // Upsert the maxSize for the concurrency limit group
+        // Upsert the maxSize for the concurrency limit group (marqs v2)
         await putConcurrencyLimitGroup(jobVersion.concurrencyLimitGroup, environment);
-      } else if (typeof jobVersion.concurrencyLimit === "number") {
-        await putJobConcurrencyLimit(job, environment, jobVersion.concurrencyLimit);
+
+        // Upsert the maxSize for the concurrency limit group (legacy)
+        await executionRateLimiter?.putConcurrencyLimitGroup(
+          jobVersion.concurrencyLimitGroup,
+          environment
+        );
       }
+
+      await putJobConcurrencyLimit(job, jobVersion, environment);
+      await executionRateLimiter?.putJobVersionConcurrencyLimit(jobVersion, environment);
     } catch (error) {
       logger.error("Error setting concurrency limit", {
         error,

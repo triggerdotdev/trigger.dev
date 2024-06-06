@@ -10,7 +10,7 @@ export class RequeueV2Message extends BaseService {
   public async call(runId: string) {
     logger.debug("[RequeueV2Message] Requeueing task run", { runId });
 
-    marqsv2.nackMessage(runId);
+    marqsv2?.nackMessage(runId);
   }
 
   public static async enqueue(runId: string, runAt?: Date, tx?: PrismaClientOrTransaction) {
