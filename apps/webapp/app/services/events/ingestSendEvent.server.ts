@@ -7,6 +7,7 @@ import { EventRecord, ExternalAccount } from "@trigger.dev/database";
 import { Duration, RateLimiter } from "../rateLimiter.server";
 import { Ratelimit } from "@upstash/ratelimit";
 import { env } from "~/env.server";
+import { singleton } from "~/utils/singleton";
 
 type UpdateEventInput = {
   tx: PrismaClientOrTransaction;
@@ -32,21 +33,25 @@ type EventSource = {
 
 const EVENT_UPDATE_THRESHOLD_WINDOW_IN_MSECS = 5 * 1000; // 5 seconds
 
+const rateLimiter = singleton("eventRateLimiter", getSharedRateLimiter);
+
+function getSharedRateLimiter() {
+  if (env.INGEST_EVENT_RATE_LIMIT_MAX) {
+    return new RateLimiter({
+      keyPrefix: "ingestsendevent",
+      limiter: Ratelimit.slidingWindow(
+        env.INGEST_EVENT_RATE_LIMIT_MAX,
+        env.INGEST_EVENT_RATE_LIMIT_WINDOW as Duration
+      ),
+    });
+  }
+}
+
 export class IngestSendEvent {
   #prismaClient: PrismaClientOrTransaction;
-  #rateLimiter: RateLimiter | undefined;
 
   constructor(prismaClient: PrismaClientOrTransaction = prisma, private deliverEvents = true) {
     this.#prismaClient = prismaClient;
-    this.#rateLimiter = env.INGEST_EVENT_RATE_LIMIT_MAX
-      ? new RateLimiter({
-          keyPrefix: "ingestsendevent",
-          limiter: Ratelimit.slidingWindow(
-            env.INGEST_EVENT_RATE_LIMIT_MAX,
-            env.INGEST_EVENT_RATE_LIMIT_WINDOW as Duration
-          ),
-        })
-      : undefined;
   }
 
   #calculateDeliverAt(options?: SendEventOptions) {
@@ -123,7 +128,7 @@ export class IngestSendEvent {
       if (!createdEvent) return;
 
       //rate limit
-      const result = await this.#rateLimiter?.limit(environment.organizationId);
+      const result = await rateLimiter?.limit(environment.organizationId);
       if (result && !result.success) {
         logger.info("IngestSendEvent: Rate limit exceeded", {
           eventRecordId: createdEvent.id,
