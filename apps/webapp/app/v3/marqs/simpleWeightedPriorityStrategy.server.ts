@@ -72,11 +72,11 @@ export class SimpleWeightedChoiceStrategy implements MarQSQueuePriorityStrategy 
       let totalWeight = 1;
 
       if (size > avgQueueSize) {
-        totalWeight += Math.min(size / avgQueueSize, 2);
+        totalWeight += Math.min(size / avgQueueSize, 4);
       }
 
       if (age > avgMessageAge) {
-        totalWeight += Math.min(age / avgMessageAge);
+        totalWeight += Math.min(age / avgMessageAge, 4);
       }
 
       return {
