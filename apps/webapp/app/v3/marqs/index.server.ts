@@ -78,8 +78,6 @@ export class MarQS {
     this.keys = options.keysProducer;
     this.queuePriorityStrategy = options.queuePriorityStrategy;
 
-    // Spawn options.workers workers to requeue visible messages
-    this.#startRequeuingWorkers();
     this.#startRebalanceWorkers();
     this.#registerCommands();
   }
@@ -787,66 +785,6 @@ export class MarQS {
       this.#rebalanceWorkers.push(worker);
 
       worker.start();
-    }
-  }
-
-  #startRequeuingWorkers() {
-    // Start a new worker to requeue visible messages
-    for (let i = 0; i < this.options.workers; i++) {
-      const worker = new AsyncWorker(this.#requeueVisibleMessages.bind(this), 1000);
-
-      this.#requeueingWorkers.push(worker);
-
-      worker.start();
-    }
-  }
-
-  async #requeueVisibleMessages() {
-    // Remove any of the messages from the timeoutQueue that have expired
-    const messages = await this.redis.zrangebyscore(
-      constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
-      0,
-      Date.now(),
-      "LIMIT",
-      0,
-      10
-    );
-
-    if (messages.length === 0) {
-      return;
-    }
-
-    for (let i = 0; i < messages.length; i++) {
-      const message = messages[i];
-
-      const messageData = await this.redis.get(this.keys.messageKey(message));
-
-      if (!messageData) {
-        // The message has been removed for some reason (TTL, etc.), so we should remove it from the timeout queue
-        await this.redis.zrem(constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE, message);
-
-        continue;
-      }
-
-      const parsedMessage = MessagePayload.safeParse(JSON.parse(messageData));
-
-      if (!parsedMessage.success) {
-        await this.redis.zrem(constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE, message);
-
-        continue;
-      }
-
-      await this.#callNackMessage({
-        messageKey: this.keys.messageKey(message),
-        messageQueue: parsedMessage.data.queue,
-        parentQueue: parsedMessage.data.parentQueue,
-        concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(parsedMessage.data.queue),
-        envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(parsedMessage.data.queue),
-        orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(parsedMessage.data.queue),
-        visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
-        messageId: parsedMessage.data.messageId,
-        messageScore: parsedMessage.data.timestamp,
-      });
     }
   }
 
