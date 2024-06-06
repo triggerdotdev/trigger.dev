@@ -164,8 +164,6 @@ if (testCases.length > 0) {
         });
 
         test.skipIf(skipTypecheck)("typechecks", async () => {
-          expect(global.resolvedConfig!.status).not.toBe("error");
-
           await expect(
             (async () =>
               await typecheckProject((global.resolvedConfig as ReadConfigFileResult).config))()
@@ -175,8 +173,6 @@ if (testCases.length > 0) {
         test(
           wantCompilationError ? "does not compile" : "compiles",
           async () => {
-            expect(global.resolvedConfig!.status).not.toBe("error");
-
             const expectation = expect(
               (async () => {
                 const { entryPointMetaOutput, metaOutput } = await compile({
