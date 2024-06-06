@@ -15,6 +15,7 @@ type TestCase = {
   skipTypecheck?: boolean;
   wantConfigNotFoundError?: boolean;
   wantBadConfigError?: boolean;
+  wantCompilationError?: boolean;
 };
 
 const allTestCases: TestCase[] = [
@@ -60,7 +61,13 @@ if (testCases.length > 0) {
 
   describe.each(testCases)(
     "fixture $name",
-    async ({ name, skipTypecheck, wantConfigNotFoundError, wantBadConfigError }: TestCase) => {
+    async ({
+      name,
+      skipTypecheck,
+      wantConfigNotFoundError,
+      wantBadConfigError,
+      wantCompilationError,
+    }: TestCase) => {
       const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
 
       beforeAll(async () => {
@@ -154,11 +161,11 @@ if (testCases.length > 0) {
         let workerMetadata: Metafile["outputs"]["out/stdin.js"];
 
         test(
-          "compiles",
+          wantCompilationError ? "does not compile" : "compiles",
           async () => {
             expect(global.resolvedConfig.status).not.toBe("error");
 
-            await expect(
+            const expectation = expect(
               (async () => {
                 const { entryPointMetaOutput, metaOutput } = await compile({
                   resolvedConfig: global.resolvedConfig,
@@ -166,10 +173,20 @@ if (testCases.length > 0) {
                 entrypointMetadata = entryPointMetaOutput;
                 workerMetadata = metaOutput;
               })()
-            ).resolves.not.toThrowError();
+            );
+
+            if (wantCompilationError) {
+              await expectation.rejects.toThrowError();
+            } else {
+              await expectation.resolves.not.toThrowError();
+            }
           },
           { timeout: 60_000 }
         );
+
+        describe.skipIf(wantCompilationError)("with successful compilation", () => {
+          test.todo("dependencies handling");
+        });
       });
     }
   );
