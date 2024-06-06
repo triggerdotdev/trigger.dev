@@ -12,10 +12,16 @@ import { logger } from "../src/utilities/logger";
 
 type TestCase = {
   name: string;
-  skipTypecheck: boolean;
+  skipTypecheck?: boolean;
+  wantConfigNotFoundError?: boolean;
+  wantBadConfigError?: boolean;
 };
 
 const allTestCases: TestCase[] = [
+  {
+    name: "no-config",
+    wantConfigNotFoundError: true,
+  },
   {
     name: "server-only",
     skipTypecheck: true,
@@ -52,100 +58,121 @@ try {
 if (testCases.length > 0) {
   console.log(`Using ${packageManager}`);
 
-  describe.each(testCases)("fixture $name", async ({ name, skipTypecheck }: TestCase) => {
-    const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
+  describe.each(testCases)(
+    "fixture $name",
+    async ({ name, skipTypecheck, wantConfigNotFoundError, wantBadConfigError }: TestCase) => {
+      const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
 
-    beforeAll(async () => {
-      await rm(resolve(join(fixtureDir, ".trigger")), { force: true, recursive: true });
-      await rm(resolve(join(fixtureDir, "node_modules")), { force: true, recursive: true });
-      if (packageManager === "npm") {
-        // `npm ci` & `npm install` will update an existing yarn.lock
-        await rename(
-          resolve(join(fixtureDir, "yarn.lock")),
-          resolve(join(fixtureDir, "yarn.lock.copy"))
-        );
-      }
-    });
-
-    afterAll(async () => {
-      if (packageManager === "npm") {
-        await rename(
-          resolve(join(fixtureDir, "yarn.lock.copy")),
-          resolve(join(fixtureDir, "yarn.lock"))
-        );
-      }
-    });
-
-    test(
-      "installs",
-      async () => {
-        await expect(
-          (async () => {
-            if (["pnpm", "yarn"].includes(packageManager)) {
-              const buffer = readFileSync(resolve(join(fixtureDir, "package.json")), "utf8");
-              const pkgJSON = JSON.parse(buffer.toString());
-              const version = pkgJSON.engines[packageManager];
-              console.log(
-                `Detected ${packageManager}@${version} from package.json 'engines' field`
-              );
-              const { stdout } = await execa("corepack", ["use", `${packageManager}@${version}`], {
-                cwd: fixtureDir,
-              });
-              console.log(stdout);
-            } else {
-              const { stdout } = await execa(packageManager, installArgs(packageManager), {
-                cwd: fixtureDir,
-              });
-              console.log(stdout);
-            }
-          })()
-        ).resolves.not.toThrowError();
-      },
-      { timeout: 60_000 }
-    );
-
-    test("resolves config", async () => {
-      await expect(
-        (async () => {
-          global.resolvedConfig = await readConfig(fixtureDir, { cwd: fixtureDir });
-        })()
-      ).resolves.not.toThrowError();
-
-      expect(global.resolvedConfig).not.toBe("error");
-    });
-
-    describe("with resolved config", () => {
-      test.skipIf(skipTypecheck)("typechecks", async () => {
-        expect(global.resolvedConfig.status).not.toBe("error");
-
-        await expect(
-          (async () =>
-            await typecheckProject((global.resolvedConfig as ReadConfigFileResult).config))()
-        ).resolves.not.toThrowError();
+      beforeAll(async () => {
+        await rm(resolve(join(fixtureDir, ".trigger")), { force: true, recursive: true });
+        await rm(resolve(join(fixtureDir, "node_modules")), { force: true, recursive: true });
+        if (packageManager === "npm") {
+          // `npm ci` & `npm install` will update an existing yarn.lock
+          await rename(
+            resolve(join(fixtureDir, "yarn.lock")),
+            resolve(join(fixtureDir, "yarn.lock.copy"))
+          );
+        }
       });
 
-      let entrypointMetadata: Metafile["outputs"]["out/stdin.js"];
-      let workerMetadata: Metafile["outputs"]["out/stdin.js"];
+      afterAll(async () => {
+        if (packageManager === "npm") {
+          await rename(
+            resolve(join(fixtureDir, "yarn.lock.copy")),
+            resolve(join(fixtureDir, "yarn.lock"))
+          );
+        }
+      });
 
       test(
-        "compiles",
+        "installs",
         async () => {
-          expect(global.resolvedConfig.status).not.toBe("error");
-
           await expect(
             (async () => {
-              const { entryPointMetaOutput, metaOutput } = await compile({
-                resolvedConfig: global.resolvedConfig,
-              });
-              entrypointMetadata = entryPointMetaOutput;
-              workerMetadata = metaOutput;
+              if (["pnpm", "yarn"].includes(packageManager)) {
+                const buffer = readFileSync(resolve(join(fixtureDir, "package.json")), "utf8");
+                const pkgJSON = JSON.parse(buffer.toString());
+                const version = pkgJSON.engines[packageManager];
+                console.log(
+                  `Detected ${packageManager}@${version} from package.json 'engines' field`
+                );
+                const { stdout } = await execa(
+                  "corepack",
+                  ["use", `${packageManager}@${version}`],
+                  {
+                    cwd: fixtureDir,
+                  }
+                );
+                console.log(stdout);
+              } else {
+                const { stdout } = await execa(packageManager, installArgs(packageManager), {
+                  cwd: fixtureDir,
+                });
+                console.log(stdout);
+              }
             })()
           ).resolves.not.toThrowError();
         },
         { timeout: 60_000 }
       );
-    });
-  });
+
+      test(
+        wantConfigNotFoundError || wantBadConfigError
+          ? "does not resolve config"
+          : "resolves config",
+        async () => {
+          const expectation = expect(
+            (async () => {
+              global.resolvedConfig = await readConfig(fixtureDir, { cwd: fixtureDir });
+            })()
+          );
+          if (wantConfigNotFoundError) {
+            await expectation.rejects.toThrowError();
+          } else {
+            await expectation.resolves.not.toThrowError();
+          }
+
+          if (wantBadConfigError) {
+            expect(global.resolvedConfig).toBe("error");
+          } else {
+            expect(global.resolvedConfig).not.toBe("error");
+          }
+        }
+      );
+
+      describe.skipIf(wantConfigNotFoundError || wantBadConfigError)("with resolved config", () => {
+        test.skipIf(skipTypecheck)("typechecks", async () => {
+          expect(global.resolvedConfig.status).not.toBe("error");
+
+          await expect(
+            (async () =>
+              await typecheckProject((global.resolvedConfig as ReadConfigFileResult).config))()
+          ).resolves.not.toThrowError();
+        });
+
+        let entrypointMetadata: Metafile["outputs"]["out/stdin.js"];
+        let workerMetadata: Metafile["outputs"]["out/stdin.js"];
+
+        test(
+          "compiles",
+          async () => {
+            expect(global.resolvedConfig.status).not.toBe("error");
+
+            await expect(
+              (async () => {
+                const { entryPointMetaOutput, metaOutput } = await compile({
+                  resolvedConfig: global.resolvedConfig,
+                });
+                entrypointMetadata = entryPointMetaOutput;
+                workerMetadata = metaOutput;
+              })()
+            ).resolves.not.toThrowError();
+          },
+          { timeout: 60_000 }
+        );
+      });
+    }
+  );
 } else if (process.env.MOD) {
   throw new Error(`Unknown fixture '${process.env.MOD}'`);
 } else {
