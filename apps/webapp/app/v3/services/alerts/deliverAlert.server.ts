@@ -808,7 +808,6 @@ export class DeliverAlertService extends BaseService {
         tx,
         runAt: options?.runAt,
         jobKey: `deliverAlert:${alertId}`,
-        queueName: options?.queueName,
       }
     );
   }
