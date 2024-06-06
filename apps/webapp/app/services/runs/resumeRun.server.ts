@@ -147,9 +147,15 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
   return await prisma.jobRun.findUnique({
     where: { id },
     include: {
+      job: true,
       version: {
         include: {
-          environment: true,
+          environment: {
+            include: {
+              organization: true,
+              project: true,
+            },
+          },
           concurrencyLimitGroup: true,
         },
       },

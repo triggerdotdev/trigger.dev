@@ -51,6 +51,9 @@ export class ResumeTaskService {
     logger.debug("ResumeTaskService.call resuming run execution", {
       parent: task.parent,
       taskId: task.id,
+      runId: task.run.id,
+      org: task.run.organizationId,
+      environment: task.run.environmentId,
     });
 
     if (task.parent && task.parent.childExecutionMode === "PARALLEL") {

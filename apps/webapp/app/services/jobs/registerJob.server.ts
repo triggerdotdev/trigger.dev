@@ -6,11 +6,11 @@ import {
   assertExhaustive,
 } from "@trigger.dev/core";
 import type { Endpoint, Integration, Job, JobIntegration, JobVersion } from "@trigger.dev/database";
-import { DEFAULT_MAX_CONCURRENT_RUNS } from "~/consts";
 import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
+import { putConcurrencyLimitGroup, putJobConcurrencyLimit } from "~/v3/marqs/v2.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
 import { RegisterScheduleSourceService } from "../schedules/registerScheduleSource.server";
@@ -175,13 +175,17 @@ export class RegisterJobService {
 
     try {
       if (jobVersion.concurrencyLimitGroup) {
-        // Upsert the maxSize for the concurrency limit group
+        // Upsert the maxSize for the concurrency limit group (marqs v2)
+        await putConcurrencyLimitGroup(jobVersion.concurrencyLimitGroup, environment);
+
+        // Upsert the maxSize for the concurrency limit group (legacy)
         await executionRateLimiter?.putConcurrencyLimitGroup(
           jobVersion.concurrencyLimitGroup,
           environment
         );
       }
 
+      await putJobConcurrencyLimit(job, jobVersion, environment);
       await executionRateLimiter?.putJobVersionConcurrencyLimit(jobVersion, environment);
     } catch (error) {
       logger.error("Error setting concurrency limit", {

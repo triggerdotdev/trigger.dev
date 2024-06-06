@@ -58,6 +58,10 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
       ].join(":");
     }
 
+    return this.sharedQueueKey();
+  }
+
+  sharedQueueKey(): string {
     return constants.SHARED_QUEUE;
   }
 
