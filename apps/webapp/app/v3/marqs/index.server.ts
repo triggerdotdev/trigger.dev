@@ -290,11 +290,6 @@ export class MarQS {
           this.visibilityTimeoutInMs
         );
 
-        await this.options.visibilityTimeoutStrategy.heartbeat(
-          messageData.messageId,
-          this.visibilityTimeoutInMs
-        );
-
         return message;
       },
       {
@@ -378,11 +373,6 @@ export class MarQS {
         }
 
         const message = await this.readMessage(messageData.messageId);
-
-        await this.options.visibilityTimeoutStrategy.heartbeat(
-          messageData.messageId,
-          this.visibilityTimeoutInMs
-        );
 
         if (message) {
           span.setAttributes({
