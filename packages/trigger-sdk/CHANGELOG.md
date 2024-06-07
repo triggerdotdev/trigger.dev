@@ -1,5 +1,16 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.36
+
+### Patch Changes
+
+- 51bb4c887: Fix for calling trigger and passing a custom queue
+- ba71f959e: Management SDK overhaul and adding the runs.list API
+- Updated dependencies [b4f9b70ae]
+- Updated dependencies [ba71f959e]
+  - @trigger.dev/core@3.0.0-beta.36
+  - @trigger.dev/core-backend@3.0.0-beta.36
+
 ## 3.0.0-beta.35
 
 ### Patch Changes

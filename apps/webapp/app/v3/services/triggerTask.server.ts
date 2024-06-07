@@ -4,9 +4,9 @@ import {
   TriggerTaskRequestBody,
   packetRequiresOffloading,
 } from "@trigger.dev/core/v3";
-import { createHash } from "node:crypto";
-import { $transaction, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
@@ -84,148 +84,151 @@ export class TriggerTaskService extends BaseService {
             environment
           );
 
-          const lockId = taskIdentifierToLockId(taskId);
-
-          const run = await $transaction(this._prisma, async (tx) => {
-            const lockedToBackgroundWorker = body.options?.lockToVersion
-              ? await tx.backgroundWorker.findUnique({
-                  where: {
-                    projectId_runtimeEnvironmentId_version: {
-                      projectId: environment.projectId,
-                      runtimeEnvironmentId: environment.id,
-                      version: body.options?.lockToVersion,
+          const run = await autoIncrementCounter.incrementInTransaction(
+            `v3-run:${environment.id}:${taskId}`,
+            async (num, tx) => {
+              const lockedToBackgroundWorker = body.options?.lockToVersion
+                ? await tx.backgroundWorker.findUnique({
+                    where: {
+                      projectId_runtimeEnvironmentId_version: {
+                        projectId: environment.projectId,
+                        runtimeEnvironmentId: environment.id,
+                        version: body.options?.lockToVersion,
+                      },
                     },
-                  },
-                })
-              : undefined;
+                  })
+                : undefined;
 
-            const counter = await tx.taskRunNumberCounter.upsert({
-              where: {
-                taskIdentifier_environmentId: {
-                  taskIdentifier: taskId,
-                  environmentId: environment.id,
-                },
-              },
-              update: { lastNumber: { increment: 1 } },
-              create: { taskIdentifier: taskId, environmentId: environment.id, lastNumber: 1 },
-              select: { lastNumber: true },
-            });
+              let queueName = sanitizeQueueName(body.options?.queue?.name ?? `task/${taskId}`);
 
-            let queueName = sanitizeQueueName(body.options?.queue?.name ?? `task/${taskId}`);
-
-            // Check that the queuename is not an empty string
-            if (!queueName) {
-              queueName = sanitizeQueueName(`task/${taskId}`);
-            }
-
-            event.setAttribute("queueName", queueName);
-            span.setAttribute("queueName", queueName);
-
-            const taskRun = await tx.taskRun.create({
-              data: {
-                status: "PENDING",
-                number: counter.lastNumber,
-                friendlyId: runFriendlyId,
-                runtimeEnvironmentId: environment.id,
-                projectId: environment.projectId,
-                idempotencyKey,
-                taskIdentifier: taskId,
-                payload: payloadPacket.data ?? "",
-                payloadType: payloadPacket.dataType,
-                context: body.context,
-                traceContext: traceContext,
-                traceId: event.traceId,
-                spanId: event.spanId,
-                lockedToVersionId: lockedToBackgroundWorker?.id,
-                concurrencyKey: body.options?.concurrencyKey,
-                queue: queueName,
-                isTest: body.options?.test ?? false,
-              },
-            });
-
-            if (payloadPacket.data) {
-              if (
-                payloadPacket.dataType === "application/json" ||
-                payloadPacket.dataType === "application/super+json"
-              ) {
-                event.setAttribute("payload", JSON.parse(payloadPacket.data) as any);
-              } else {
-                event.setAttribute("payload", payloadPacket.data);
+              // Check that the queuename is not an empty string
+              if (!queueName) {
+                queueName = sanitizeQueueName(`task/${taskId}`);
               }
 
-              event.setAttribute("payloadType", payloadPacket.dataType);
-            }
+              event.setAttribute("queueName", queueName);
+              span.setAttribute("queueName", queueName);
 
-            event.setAttribute("runId", taskRun.friendlyId);
-            span.setAttribute("runId", taskRun.friendlyId);
-
-            if (body.options?.dependentAttempt) {
-              const dependentAttempt = await tx.taskRunAttempt.findUnique({
-                where: { friendlyId: body.options.dependentAttempt },
-              });
-
-              if (dependentAttempt) {
-                await tx.taskRunDependency.create({
-                  data: {
-                    taskRunId: taskRun.id,
-                    dependentAttemptId: dependentAttempt.id,
-                  },
-                });
-              }
-            } else if (body.options?.dependentBatch) {
-              const dependentBatchRun = await tx.batchTaskRun.findUnique({
-                where: { friendlyId: body.options.dependentBatch },
-              });
-
-              if (dependentBatchRun) {
-                await tx.taskRunDependency.create({
-                  data: {
-                    taskRunId: taskRun.id,
-                    dependentBatchRunId: dependentBatchRun.id,
-                  },
-                });
-              }
-            }
-
-            if (body.options?.queue) {
-              const concurrencyLimit = body.options.queue.concurrencyLimit
-                ? Math.max(0, body.options.queue.concurrencyLimit)
-                : null;
-              const taskQueue = await prisma.taskQueue.upsert({
-                where: {
-                  runtimeEnvironmentId_name: {
-                    runtimeEnvironmentId: environment.id,
-                    name: queueName,
-                  },
-                },
-                update: {
-                  concurrencyLimit,
-                  rateLimit: body.options.queue.rateLimit,
-                },
-                create: {
-                  friendlyId: generateFriendlyId("queue"),
-                  name: queueName,
-                  concurrencyLimit,
+              const taskRun = await tx.taskRun.create({
+                data: {
+                  status: "PENDING",
+                  number: num,
+                  friendlyId: runFriendlyId,
                   runtimeEnvironmentId: environment.id,
                   projectId: environment.projectId,
-                  rateLimit: body.options.queue.rateLimit,
-                  type: "NAMED",
+                  idempotencyKey,
+                  taskIdentifier: taskId,
+                  payload: payloadPacket.data ?? "",
+                  payloadType: payloadPacket.dataType,
+                  context: body.context,
+                  traceContext: traceContext,
+                  traceId: event.traceId,
+                  spanId: event.spanId,
+                  lockedToVersionId: lockedToBackgroundWorker?.id,
+                  concurrencyKey: body.options?.concurrencyKey,
+                  queue: queueName,
+                  isTest: body.options?.test ?? false,
                 },
               });
 
-              if (typeof taskQueue.concurrencyLimit === "number") {
-                await marqs?.updateQueueConcurrencyLimits(
-                  environment,
-                  taskQueue.name,
-                  taskQueue.concurrencyLimit
-                );
-              } else {
-                await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
-              }
-            }
+              if (payloadPacket.data) {
+                if (
+                  payloadPacket.dataType === "application/json" ||
+                  payloadPacket.dataType === "application/super+json"
+                ) {
+                  event.setAttribute("payload", JSON.parse(payloadPacket.data) as any);
+                } else {
+                  event.setAttribute("payload", payloadPacket.data);
+                }
 
-            return taskRun;
-          });
+                event.setAttribute("payloadType", payloadPacket.dataType);
+              }
+
+              event.setAttribute("runId", taskRun.friendlyId);
+              span.setAttribute("runId", taskRun.friendlyId);
+
+              if (body.options?.dependentAttempt) {
+                const dependentAttempt = await tx.taskRunAttempt.findUnique({
+                  where: { friendlyId: body.options.dependentAttempt },
+                });
+
+                if (dependentAttempt) {
+                  await tx.taskRunDependency.create({
+                    data: {
+                      taskRunId: taskRun.id,
+                      dependentAttemptId: dependentAttempt.id,
+                    },
+                  });
+                }
+              } else if (body.options?.dependentBatch) {
+                const dependentBatchRun = await tx.batchTaskRun.findUnique({
+                  where: { friendlyId: body.options.dependentBatch },
+                });
+
+                if (dependentBatchRun) {
+                  await tx.taskRunDependency.create({
+                    data: {
+                      taskRunId: taskRun.id,
+                      dependentBatchRunId: dependentBatchRun.id,
+                    },
+                  });
+                }
+              }
+
+              if (body.options?.queue) {
+                const concurrencyLimit = body.options.queue.concurrencyLimit
+                  ? Math.max(0, body.options.queue.concurrencyLimit)
+                  : null;
+                const taskQueue = await prisma.taskQueue.upsert({
+                  where: {
+                    runtimeEnvironmentId_name: {
+                      runtimeEnvironmentId: environment.id,
+                      name: queueName,
+                    },
+                  },
+                  update: {
+                    concurrencyLimit,
+                    rateLimit: body.options.queue.rateLimit,
+                  },
+                  create: {
+                    friendlyId: generateFriendlyId("queue"),
+                    name: queueName,
+                    concurrencyLimit,
+                    runtimeEnvironmentId: environment.id,
+                    projectId: environment.projectId,
+                    rateLimit: body.options.queue.rateLimit,
+                    type: "NAMED",
+                  },
+                });
+
+                if (typeof taskQueue.concurrencyLimit === "number") {
+                  await marqs?.updateQueueConcurrencyLimits(
+                    environment,
+                    taskQueue.name,
+                    taskQueue.concurrencyLimit
+                  );
+                } else {
+                  await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+                }
+              }
+
+              return taskRun;
+            },
+            async (_, tx) => {
+              const counter = await tx.taskRunNumberCounter.findUnique({
+                where: {
+                  taskIdentifier_environmentId: {
+                    taskIdentifier: taskId,
+                    environmentId: environment.id,
+                  },
+                },
+                select: { lastNumber: true },
+              });
+
+              return counter?.lastNumber;
+            },
+            this._prisma
+          );
 
           if (!run) {
             return;
@@ -285,9 +288,4 @@ export class TriggerTaskService extends BaseService {
 
     return { dataType: payloadType };
   }
-}
-
-function taskIdentifierToLockId(taskIdentifier: string): number {
-  // Convert taskIdentifier to a unique lock identifier
-  return parseInt(createHash("sha256").update(taskIdentifier).digest("hex").slice(0, 8), 16);
 }

@@ -52,10 +52,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
           dataType: taskRun.payloadType,
         });
 
-        $payload =
-          payloadPacket.dataType === "application/json"
-            ? await parsePacket(payloadPacket)
-            : payloadPacket.data;
+        $payload = await parsePacket(payloadPacket);
 
         if (taskRun.status === "COMPLETED_SUCCESSFULLY") {
           const completedAttempt = taskRun.attempts.find(

@@ -10,7 +10,7 @@ export const simplestTask = task({
       body: JSON.stringify({
         hello: "world",
         taskId: "fetch-post-task",
-        foo: "barrrrrrrrrrrrrrrrrrrrrr",
+        foo: "barrrrrrrrrrrrrrrrrrrrrrr",
       }),
     });
 

@@ -122,6 +122,7 @@ model Organization {
 
   v3Enabled      Boolean @default(false)
   v2Enabled      Boolean @default(false)
+  v2MarqsEnabled Boolean @default(false)
   hasRequestedV3 Boolean @default(false)
 
   environments RuntimeEnvironment[]

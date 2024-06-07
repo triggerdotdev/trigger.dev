@@ -16,6 +16,7 @@ export type QueueWithScores = {
   queue: string;
   capacities: QueueCapacities;
   age: number;
+  size: number;
 };
 
 export type QueueRange = { offset: number; count: number };
@@ -26,6 +27,7 @@ export interface MarQSKeyProducer {
   orgConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
   queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
   envSharedQueueKey(env: AuthenticatedEnvironment): string;
+  sharedQueueKey(): string;
   sharedQueueScanPattern(): string;
   concurrencyLimitKeyFromQueue(queue: string): string;
   currentConcurrencyKeyFromQueue(queue: string): string;
@@ -52,14 +54,15 @@ export interface MarQSQueuePriorityStrategy {
    *
    * @param queues
    * @param parentQueue
-   * @param selectionId
+   * @param consumerId
    *
    * @returns The queue to process the message from, or an object with `abort: true` if no queue is available
    */
   chooseQueue(
     queues: Array<QueueWithScores>,
     parentQueue: string,
-    selectionId: string
+    consumerId: string,
+    previousRange: QueueRange
   ): PriorityStrategyChoice;
 
   /**
@@ -68,10 +71,11 @@ export interface MarQSQueuePriorityStrategy {
    * The `selectionId` is used to identify the selection and should be passed to chooseQueue
    *
    * @param parentQueue The parent queue that holds the candidate queues
+   * @param consumerId The consumerId that is making the request
    *
    * @returns The scores and the selectionId for the next candidate selection
    */
-  nextCandidateSelection(parentQueue: string): Promise<{ range: QueueRange; selectionId: string }>;
+  nextCandidateSelection(parentQueue: string, consumerId: string): Promise<{ range: QueueRange }>;
 }
 
 export const MessagePayload = z.object({
@@ -85,3 +89,8 @@ export const MessagePayload = z.object({
 });
 
 export type MessagePayload = z.infer<typeof MessagePayload>;
+
+export interface VisibilityTimeoutStrategy {
+  heartbeat(messageId: string, timeoutInMs: number): Promise<void>;
+  cancelHeartbeat(messageId: string): Promise<void>;
+}

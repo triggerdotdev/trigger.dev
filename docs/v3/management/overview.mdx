@@ -168,13 +168,13 @@ You can use `for await … of` syntax to iterate through items across all pages:
 import { runs } from "@trigger.dev/sdk/v3";
 
 async function fetchAllRuns() {
-  const runs = [];
+  const allRuns = [];
 
   for await (const run of runs.list({ limit: 10 })) {
-    runs.push(run);
+    allRuns.push(run);
   }
 
-  return runs;
+  return allRuns;
 }
 ```
 
