@@ -110,6 +110,14 @@ export class IngestSendEvent {
           },
         });
 
+        if (existingEventLog?.deliveredAt) {
+          logger.debug("Event already delivered", {
+            eventRecordId: existingEventLog.id,
+            deliveredAt: existingEventLog.deliveredAt,
+          });
+          return existingEventLog;
+        }
+
         const eventLog = await (existingEventLog
           ? this.updateEvent({ tx, existingEventLog, reqEvent: event, deliverAt })
           : this.createEvent({
@@ -126,6 +134,15 @@ export class IngestSendEvent {
       });
 
       if (!createdEvent) return;
+
+      if (createdEvent.deliveredAt) {
+        logger.debug("Event already delivered", {
+          eventRecordId: createdEvent.id,
+          deliveredAt: createdEvent.deliveredAt,
+        });
+        //return the event if it was already delivered, don't enqueue it again
+        return createdEvent;
+      }
 
       //rate limit
       const result = await rateLimiter?.limit(environment.organizationId);

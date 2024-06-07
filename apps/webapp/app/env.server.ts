@@ -187,6 +187,8 @@ const EnvironmentSchema = z.object({
     .default(60 * 1000 * 15),
   V2_MARQS_DEFAULT_ENV_CONCURRENCY: z.coerce.number().int().default(100),
   V2_MARQS_VERBOSE: z.string().default("0"),
+  V3_MARQS_CONCURRENCY_MONITOR_ENABLED: z.string().default("0"),
+  V2_MARQS_CONCURRENCY_MONITOR_ENABLED: z.string().default("0"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

@@ -175,4 +175,38 @@ client.defineJob({
   },
 });
 
+client.defineJob({
+  id: "same-event-id",
+  name: "Save event id",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "same.event.id",
+  }),
+  run: async (payload: { id: string }, io, ctx) => {
+    const event = await io.sendEvent("send-event", {
+      name: "same.event.child",
+      id: payload.id,
+      payload: { payload, ctx },
+    });
+
+    const event2 = await io.sendEvent("send-event-2", {
+      name: "same.event.child",
+      id: payload.id,
+      payload: { payload, ctx },
+    });
+  },
+});
+
+client.defineJob({
+  id: "same-event-id-child",
+  name: "Save event id: child",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "same.event.child",
+  }),
+  run: async (payload, io, ctx) => {
+    await io.logger.info(`payloadId: ${payload.id}`);
+  },
+});
+
 createExpressServer(client);
