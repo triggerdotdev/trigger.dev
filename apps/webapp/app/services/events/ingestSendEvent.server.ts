@@ -110,6 +110,14 @@ export class IngestSendEvent {
           },
         });
 
+        if (existingEventLog?.deliveredAt) {
+          logger.debug("Event already delivered", {
+            eventRecordId: existingEventLog.id,
+            deliveredAt: existingEventLog.deliveredAt,
+          });
+          return;
+        }
+
         const eventLog = await (existingEventLog
           ? this.updateEvent({ tx, existingEventLog, reqEvent: event, deliverAt })
           : this.createEvent({
