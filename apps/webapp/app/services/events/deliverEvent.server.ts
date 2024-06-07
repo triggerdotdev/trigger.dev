@@ -115,7 +115,7 @@ export class DeliverEventService {
     }
     catch (error) {
       if (error instanceof AlreadyDeliveredError) {
-        logger.debug("Event already delivered", {
+        logger.debug("Event already delivered, AlreadyDeliveredError", {
           eventRecord: id,
         });
 
