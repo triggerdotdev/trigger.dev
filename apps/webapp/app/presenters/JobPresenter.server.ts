@@ -11,13 +11,10 @@ import { User } from "~/models/user.server";
 import { z } from "zod";
 import { projectPath } from "~/utils/pathBuilder";
 import { Job } from "@trigger.dev/database";
+import { BasePresenter } from "./v3/basePresenter.server";
 
-export class JobPresenter {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
+export class JobPresenter extends BasePresenter {
+  
 
   public async call({
     userId,
@@ -30,7 +27,7 @@ export class JobPresenter {
     projectSlug: Project["slug"];
     organizationSlug: Organization["slug"];
   }) {
-    const job = await this.#prismaClient.job.findFirst({
+    const job = await this._replica.job.findFirst({
       select: {
         id: true,
         slug: true,

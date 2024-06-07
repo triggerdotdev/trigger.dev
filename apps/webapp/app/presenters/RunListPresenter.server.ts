@@ -7,6 +7,7 @@ import {
 } from "~/components/runs/RunStatuses";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
+import { BasePresenter } from "./v3/basePresenter.server";
 
 type RunListOptions = {
   userId: string;
@@ -27,12 +28,8 @@ const DEFAULT_PAGE_SIZE = 20;
 
 export type RunList = Awaited<ReturnType<RunListPresenter["call"]>>;
 
-export class RunListPresenter {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
+export class RunListPresenter extends BasePresenter {
+  
 
   public async call({
     userId,
@@ -53,7 +50,7 @@ export class RunListPresenter {
     const directionMultiplier = direction === "forward" ? 1 : -1;
 
     // Find the organization that the user is a member of
-    const organization = await this.#prismaClient.organization.findFirstOrThrow({
+    const organization = await this._replica.organization.findFirstOrThrow({
       select: {
         id: true,
       },
@@ -64,7 +61,7 @@ export class RunListPresenter {
     });
 
     // Find the project scoped to the organization
-    const project = await this.#prismaClient.project.findFirstOrThrow({
+    const project = await this._replica.project.findFirstOrThrow({
       select: {
         id: true,
       },
@@ -75,7 +72,7 @@ export class RunListPresenter {
     });
 
     const job = jobSlug
-      ? await this.#prismaClient.job.findFirstOrThrow({
+      ? await this._replica.job.findFirstOrThrow({
           where: {
             slug: jobSlug,
             projectId: project.id,
@@ -84,10 +81,10 @@ export class RunListPresenter {
       : undefined;
 
     const event = eventId
-      ? await this.#prismaClient.eventRecord.findUnique({ where: { id: eventId } })
+      ? await this._replica.eventRecord.findUnique({ where: { id: eventId } })
       : undefined;
 
-    const runs = await this.#prismaClient.jobRun.findMany({
+    const runs = await this._replica.jobRun.findMany({
       select: {
         id: true,
         number: true,
