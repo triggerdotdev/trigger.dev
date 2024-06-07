@@ -11,9 +11,15 @@ description: "You can self-host Trigger.dev on your own infrastructure."
 
 The self-hosting guide comes in two parts. The first part is a simple setup where you run everything on one server. In the second part, the webapp and worker components are split on two separate machines.
 
+You're going to need at least one Debian (or derivative) machine with Docker and Docker Compose installed. We'll also use Ngrok to expose the webapp to the internet.
+
 ## Caveats
 
 This guide outlines a quick way to start self-hosting Trigger.dev. Scaling, security, and reliability concerns are not fully addressed here. It's unlikely to result in a production-ready deployment on its own, but it's a good starting point.
+
+Because self-hosted deployments can be highly tailored, we don't provide specific recommendations for scaling up or improving security and reliability.
+
+If you've had enough of self-hosting, you can always join us on [Trigger.dev cloud](https://trigger.dev/pricing) where we deal with all these concerns so you don't have to.
 
 <Accordion title="Please consider these additional warnings">
 - The Docker [checkpoint command](https://docs.docker.com/reference/cli/docker/checkpoint/) is an experimental feature which may not work as expected. It won't be enabled by default. Instead, the containers will stay up and their processes frozen. They won't consume CPU but they _will_ consume RAM.
