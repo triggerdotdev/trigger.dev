@@ -16,7 +16,7 @@ function isManagedCloud(host: string): boolean {
   );
 }
 
-export function featuresForHost(host: string): TriggerFeatures {
+function featuresForHost(host: string): TriggerFeatures {
   return {
     isManagedCloud: isManagedCloud(host),
     v3Enabled: env.V3_ENABLED === "true",
@@ -26,12 +26,9 @@ export function featuresForHost(host: string): TriggerFeatures {
 
 export function featuresForRequest(request: Request): TriggerFeatures {
   const url = requestUrl(request);
-
-  return featuresForHost(url.host);
+  return featuresForUrl(url);
 }
 
-export function featuresForUrl(urlString: string): TriggerFeatures {
-  const url = new URL(urlString);
-
+export function featuresForUrl(url: URL): TriggerFeatures {
   return featuresForHost(url.host);
 }
