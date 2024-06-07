@@ -131,6 +131,37 @@ TRIGGER_DOMAIN=1234-42-42-42-42.ngrok-free.app
 ./stop.sh full && ./start.sh full
 ```
 
+### Registry setup
+
+If you want to deploy v3 projects, you will need access to a Docker registry. The [CLI deploy](/v3/cli-deploy) command will push the images, and then the worker machine can pull them when needed. We will use Docker Hub as an example.
+
+1. Sign up for a free account at [Docker Hub](https://hub.docker.com/)
+
+2. Edit the `.env` file and add the registry details
+
+```bash
+DEPLOY_REGISTRY_HOST=docker.io
+DEPLOY_REGISTRY_NAMESPACE=<your_dockerhub_username>
+```
+
+3. Log in to Docker Hub both locally and your server. For the split setup, this will be the worker machine. You may want to create an [access token](https://hub.docker.com/settings/security) for this.
+
+```bash
+docker login -u <your_dockerhub_username>
+```
+
+4. Restart the services
+
+```bash
+./stop.sh full && ./start.sh full
+```
+
+5. You can now deploy v3 projects using the CLI with these flags:
+
+```bash
+trigger deploy --self-hosted --push
+```
+
 ## Part 2: Split services
 
 With this setup, the webapp will run on a different machine than the worker components. This allows independent scaling of your workload capacity.
