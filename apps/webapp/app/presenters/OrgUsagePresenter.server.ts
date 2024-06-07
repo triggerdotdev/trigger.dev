@@ -1,17 +1,12 @@
 import { estimate } from "@trigger.dev/billing";
-import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
+import { sqlDatabaseSchema } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { BillingService } from "~/services/billing.server";
+import { BasePresenter } from "./v3/basePresenter.server";
 
-export class OrgUsagePresenter {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
+export class OrgUsagePresenter extends BasePresenter {
   public async call({ userId, slug, request }: { userId: string; slug: string; request: Request }) {
-    const organization = await this.#prismaClient.organization.findFirst({
+    const organization = await this._replica.organization.findFirst({
       where: {
         slug,
         members: {
@@ -27,7 +22,7 @@ export class OrgUsagePresenter {
     }
 
     // Get count of runs since the start of the current month
-    const runsCount = await this.#prismaClient.jobRun.count({
+    const runsCount = await this._replica.jobRun.count({
       where: {
         organizationId: organization.id,
         createdAt: {
@@ -48,7 +43,7 @@ export class OrgUsagePresenter {
     // ]
     // This will be used to generate the chart on the usage page
     // Use prisma queryRaw for this since prisma doesn't support grouping by month
-    const monthlyRunsDataRaw = await this.#prismaClient.$queryRaw<
+    const monthlyRunsDataRaw = await this._replica.$queryRaw<
       {
         month: string;
         count: number;
@@ -64,7 +59,7 @@ export class OrgUsagePresenter {
     const monthlyRunsDataDisplay = fillInMissingRunMonthlyData(monthlyRunsData, 6);
 
     // Max concurrency each day over past 30 days
-    const concurrencyChartRawData = await this.#prismaClient.$queryRaw<
+    const concurrencyChartRawData = await this._replica.$queryRaw<
       { day: Date; max_concurrent_runs: BigInt }[]
     >`
       WITH time_boundaries AS (
@@ -115,7 +110,7 @@ export class OrgUsagePresenter {
       concurrencyChartRawData
     );
 
-    const dailyRunsRawData = await this.#prismaClient.$queryRaw<
+    const dailyRunsRawData = await this._replica.$queryRaw<
       { day: Date; runs: BigInt }[]
     >`SELECT date_trunc('day', "createdAt") as day, COUNT(*) as runs FROM ${sqlDatabaseSchema}."JobRun" WHERE "organizationId" = ${organization.id} AND "createdAt" >= NOW() - INTERVAL '30 days' AND "internal" = FALSE GROUP BY day`;
 
