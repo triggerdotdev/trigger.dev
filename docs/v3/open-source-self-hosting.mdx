@@ -182,13 +182,20 @@ All steps are the same as in Part 1, except for the following:
 
 ### Worker setup
 
-1. Run the start script with the `worker` argument
+1. Copy your `.env` file from the webapp to the worker machine
+
+```bash
+# an example using scp
+scp -3 root@<webapp_machine>:docker/.env root@<worker_machine>:docker/.env
+```
+
+2. Run the start script with the `worker` argument
 
 ```bash
 ./start.sh worker
 ```
 
-2. Tunnelling is not required for the worker components, but you will still have to set the `TRIGGER_PROTOCOL` and `TRIGGER_DOMAIN` as above.
+2. Tunnelling is _not_ required for the worker components.
 
 ## Checkpoint support
 
