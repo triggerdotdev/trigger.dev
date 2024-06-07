@@ -16,7 +16,7 @@ The self-hosting guide comes in two parts. The first part is a simple setup wher
 This guide outlines a quick way to start self-hosting Trigger.dev. Scaling, security, and reliability concerns are not fully addressed here. It's unlikely to result in a production-ready deployment on its own, but it's a good starting point.
 
 <Accordion title="Please consider these additional warnings">
-- The Docker [checkpoint command](https://docs.docker.com/reference/cli/docker/checkpoint/) is an experimental feature which may not work as expected. It won't be enabled by default. Instead, the containers will stay up and their processes frozen. They won't consume CPU in this state but they _will_ consume RAM.
+- The Docker [checkpoint command](https://docs.docker.com/reference/cli/docker/checkpoint/) is an experimental feature which may not work as expected. It won't be enabled by default. Instead, the containers will stay up and their processes frozen. They won't consume CPU but they _will_ consume RAM.
 - The Docker provider does not currently enforce any resource limits. This means your tasks can consume up to the total machine CPU and RAM. Having no limits may be preferable when self-hosting, but can impact the performance of other services.
 - The worker components (not the tasks!) have direct access to the Docker socket. This means they can run any Docker command. To restrict access, you may want to consider using [Docker Socket Proxy](https://github.com/Tecnativa/docker-socket-proxy).
 - The task containers are running with host networking. This means there is no network isolation between them and the host machine. They will be able to access any networked service on the host.
