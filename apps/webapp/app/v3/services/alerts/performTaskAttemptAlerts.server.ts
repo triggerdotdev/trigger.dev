@@ -59,9 +59,7 @@ export class PerformTaskAttemptAlertsService extends BaseService {
         },
       });
 
-      await DeliverAlertService.enqueue(alert.id, tx, {
-        queueName: `alert-channel:${alertChannel.id}`,
-      });
+      await DeliverAlertService.enqueue(alert.id, tx);
     });
   }
 

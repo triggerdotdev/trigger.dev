@@ -1,4 +1,31 @@
+import { TriggerClient } from "@trigger.dev/sdk";
 import { triggerClient } from "./trigger";
+
+const clients: TriggerClient[] = [];
+
+const possibleKeys = [
+  "TRIGGER_API_KEY",
+  "TRIGGER_API_KEY_2",
+  "TRIGGER_API_KEY_3",
+  "TRIGGER_API_KEY_4",
+  "TRIGGER_API_KEY_5",
+  "TRIGGER_API_KEY_6",
+  "TRIGGER_API_KEY_7",
+  "TRIGGER_API_KEY_8",
+  "TRIGGER_API_KEY_9",
+];
+
+for (let i = 0; i < possibleKeys.length; i++) {
+  if (process.env[possibleKeys[i]]) {
+    clients.push(
+      new TriggerClient({
+        id: "perf",
+        apiKey: process.env[possibleKeys[i]],
+        apiUrl: process.env.TRIGGER_API_URL,
+      })
+    );
+  }
+}
 
 async function sendEvent() {
   try {
@@ -47,7 +74,7 @@ async function sendEvents(count: number) {
     },
   });
   try {
-    return await triggerClient.sendEvents(events);
+    return await Promise.all(clients.reverse().map((client) => client.sendEvents(events)));
   } catch (err) {
     console.error(err);
   }

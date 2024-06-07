@@ -48,10 +48,13 @@ client.defineJob({
     await io.runTask(
       `task-1`,
       async (task) => {
+        await new Promise((resolve) => setTimeout(resolve, 10_000));
         return { success: true };
       },
       { name: `Task 1` }
     );
+
+    await io.wait("wait-1", 1);
 
     await io.runTask(
       `task-2`,

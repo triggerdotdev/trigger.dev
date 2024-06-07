@@ -107,7 +107,7 @@ export class ResumeBatchRunService extends BaseService {
       {
         tx,
         runAt,
-        queueName: `resumeBatchRun-${batchRunId}`,
+        jobKey: `resumeBatchRun-${batchRunId}`,
       }
     );
   }

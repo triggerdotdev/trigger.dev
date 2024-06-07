@@ -1,5 +1,14 @@
 # create-trigger
 
+## 3.0.0-beta.36
+
+### Patch Changes
+
+- Updated dependencies [b4f9b70ae]
+- Updated dependencies [ba71f959e]
+  - @trigger.dev/core@3.0.0-beta.36
+  - @trigger.dev/yalt@3.0.0-beta.36
+
 ## 3.0.0-beta.35
 
 ### Patch Changes

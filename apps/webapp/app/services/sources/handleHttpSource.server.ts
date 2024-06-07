@@ -61,7 +61,6 @@ export class HandleHttpSourceService {
             id: delivery.id,
           },
           {
-            queueName: `deliver:${triggerSource.id}`,
             tx,
             maxAttempts:
               triggerSource.environment.type === RuntimeEnvironmentType.DEVELOPMENT ? 1 : undefined,

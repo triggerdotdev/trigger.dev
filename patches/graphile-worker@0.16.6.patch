@@ -1,0 +1,27 @@
+diff --git a/dist/sql/getJob.js b/dist/sql/getJob.js
+index 70cc9b49d7d08c8dd32214f15c463b2a568abd15..5bcb50a4544046e56f6d5dd70e96e26e59998ad5 100644
+--- a/dist/sql/getJob.js
++++ b/dist/sql/getJob.js
+@@ -61,7 +61,7 @@ async function getJob(compiledSharedOptions, withPgClient, tasks, workerId, flag
+      *
+      * I recommend you either use strat 0 if you can, or strat 2 otherwise.
+      */
+-    const strategy = 2;
++    const strategy = 0;
+     const queueClause = strategy === 0
+         ? `and jobs.job_queue_id is null`
+         : strategy === 1
+@@ -153,6 +153,13 @@ with j as (
+     const name = !preparedStatements
+         ? undefined
+         : `get_job${hasFlags ? "F" : ""}${useNodeTime ? "N" : ""}/${workerSchema}`;
++    
++    logger.debug("Running getJob query...", {
++      text,
++      values,
++      name
++    });
++
+     const { rows: [jobRow], } = await withPgClient.withRetries((client) => client.query({
+         text,
+         values,

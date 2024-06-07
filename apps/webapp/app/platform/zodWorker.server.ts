@@ -10,7 +10,12 @@ import type {
   TaskSpec,
   WorkerUtils,
 } from "graphile-worker";
-import { run as graphileRun, makeWorkerUtils, parseCronItems } from "graphile-worker";
+import {
+  run as graphileRun,
+  makeWorkerUtils,
+  parseCronItems,
+  Logger as GraphileLogger,
+} from "graphile-worker";
 import { SpanKind, trace } from "@opentelemetry/api";
 
 import omit from "lodash.omit";
@@ -19,6 +24,7 @@ import { $replica, PrismaClient, PrismaClientOrTransaction } from "~/db.server";
 import { PgListenService } from "~/services/db/pgListen.server";
 import { workerLogger as logger } from "~/services/logger.server";
 import { flattenAttributes } from "@trigger.dev/core/v3";
+import { env } from "~/env.server";
 
 const tracer = trace.getTracer("zodWorker", "3.0.0.dp.1");
 
@@ -56,7 +62,6 @@ const AddJobResultsSchema = z.array(GraphileJobSchema);
 
 export type ZodTasks<TConsumerSchema extends MessageCatalogSchema> = {
   [K in keyof TConsumerSchema]: {
-    queueName?: string | ((payload: z.infer<TConsumerSchema[K]>) => string);
     jobKey?: string | ((payload: z.infer<TConsumerSchema[K]>) => string | undefined);
     priority?: number;
     maxAttempts?: number;
@@ -79,7 +84,9 @@ export type ZodRecurringTasks = {
   };
 };
 
-export type ZodWorkerEnqueueOptions = TaskSpec & {
+type ZodTaskSpec = Omit<TaskSpec, "queueName">;
+
+export type ZodWorkerEnqueueOptions = ZodTaskSpec & {
   tx?: PrismaClientOrTransaction;
 };
 
@@ -162,12 +169,25 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     this.#workerUtils = await makeWorkerUtils(this.#runnerOptions);
 
+    const graphileLogger = new GraphileLogger((scope) => {
+      return (level, message, meta) => {
+        if (env.VERBOSE_GRAPHILE_LOGGING !== "true") return;
+
+        logger.debug(`[graphile-worker][${this.#name}][${level}] ${message}`, {
+          scope,
+          meta,
+          workerName: this.#name,
+        });
+      };
+    });
+
     this.#runner = await graphileRun({
       ...this.#runnerOptions,
       noHandleSignals: true,
       taskList: this.#createTaskListFromTasks(),
       parsedCronItems,
       forbiddenFlags: this.#rateLimiter?.forbiddenFlags.bind(this.#rateLimiter),
+      logger: graphileLogger,
     });
 
     if (!this.#runner) {
@@ -237,6 +257,20 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       this.#logDebug("stop");
     });
 
+    this.#runner?.events.on("worker:getJob:error", ({ worker, error }) => {
+      this.#logDebug("worker:getJob:error", { workerId: worker.workerId, error });
+    });
+
+    this.#runner?.events.on("worker:getJob:start", ({ worker }) => {
+      if (env.VERBOSE_GRAPHILE_LOGGING !== "true") return;
+      this.#logDebug("worker:getJob:start", { workerId: worker.workerId });
+    });
+
+    this.#runner?.events.on("job:start", ({ worker, job }) => {
+      if (env.VERBOSE_GRAPHILE_LOGGING !== "true") return;
+      this.#logDebug("job:start", { workerId: worker.workerId, job });
+    });
+
     process.on("SIGTERM", this._handleSignal.bind(this));
     process.on("SIGINT", this._handleSignal.bind(this));
 
@@ -250,15 +284,17 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     this.#shuttingDown = true;
 
+    this.#logDebug(
+      `Received ${signal}, shutting down zodWorker with timeout ${this.#shutdownTimeoutInMs}ms`
+    );
+
     if (this.#shutdownTimeoutInMs) {
       setTimeout(() => {
-        this.#logDebug("Shutdown timeout reached, exiting process");
+        this.#logDebug(`Shutdown timeout of ${this.#shutdownTimeoutInMs} reached, exiting process`);
 
         process.exit(0);
       }, this.#shutdownTimeoutInMs);
     }
-
-    this.#logDebug(`Received ${signal}, shutting down zodWorker...`);
 
     this.stop().finally(() => {
       this.#logDebug("zodWorker stopped");
@@ -285,10 +321,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       ...taskWithoutJobKey,
       ...optionsWithoutTx,
     };
-
-    if (typeof task.queueName === "function") {
-      spec.queueName = task.queueName(payload);
-    }
 
     if (typeof task.jobKey === "function") {
       const jobKey = task.jobKey(payload);
@@ -345,17 +377,15 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       `SELECT * FROM ${this.graphileWorkerSchema}.add_job(
           identifier => $1::text,
           payload => $2::json,
-          queue_name => $3::text,
-          run_at => $4::timestamptz,
-          max_attempts => $5::int,
-          job_key => $6::text,
-          priority => $7::int,
-          flags => $8::text[],
-          job_key_mode => $9::text
+          run_at => $3::timestamptz,
+          max_attempts => $4::int,
+          job_key => $5::text,
+          priority => $6::int,
+          flags => $7::text[],
+          job_key_mode => $8::text
         )`,
       identifier,
       JSON.stringify(payload),
-      spec.queueName || null,
       spec.runAt || null,
       spec.maxAttempts || null,
       spec.jobKey || null,
@@ -447,45 +477,11 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     return taskList;
   }
 
-  private _queueNameCache: Map<number, string> = new Map();
-
-  async #getQueueName(queueId: number | null) {
-    if (queueId === null) {
-      return;
-    }
-
-    const cachedQueueName = this._queueNameCache.get(queueId);
-
-    if (cachedQueueName) {
-      return cachedQueueName;
-    }
-
-    const schema = z.array(z.object({ queue_name: z.string() }));
-
-    const rawQueueNameResults = await $replica.$queryRawUnsafe(
-      `SELECT queue_name FROM ${this.graphileWorkerSchema}._private_job_queues WHERE id = $1`,
-      queueId
-    );
-
-    const queueNameResults = schema.parse(rawQueueNameResults);
-
-    if (!queueNameResults.length) {
-      return;
-    }
-
-    const queueName = queueNameResults[0].queue_name;
-
-    this._queueNameCache.set(queueId, queueName);
-
-    return queueName;
-  }
-
   async #rescheduleTask(payload: unknown, helpers: JobHelpers) {
     this.#logDebug("Rescheduling task", { payload, job: helpers.job });
 
     await this.enqueue(helpers.job.task_identifier, payload, {
       runAt: helpers.job.run_at,
-      queueName: await this.#getQueueName(helpers.job.job_queue_id),
       priority: helpers.job.priority,
       jobKey: helpers.job.key ?? undefined,
       flags: Object.keys(helpers.job.flags ?? []),
