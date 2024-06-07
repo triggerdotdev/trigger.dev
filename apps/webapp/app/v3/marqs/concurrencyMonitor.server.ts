@@ -27,7 +27,7 @@ export class MarqsConcurrencyMonitor {
       component: "marqs",
       operation: "concurrencyMonitor",
       dryRun: this.dryRun,
-      name: marqs.name,
+      marqs: marqs.name,
     });
   }
 
