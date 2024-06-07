@@ -10,15 +10,12 @@ import { User } from "~/models/user.server";
 import { z } from "zod";
 import { projectPath } from "~/utils/pathBuilder";
 import { JobRunStatus } from "@trigger.dev/database";
+import { BasePresenter } from "./v3/basePresenter.server";
 
 export type ProjectJob = Awaited<ReturnType<JobListPresenter["call"]>>[0];
 
-export class JobListPresenter {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
+export class JobListPresenter extends BasePresenter {
+  
 
   public async call({
     userId,
@@ -39,7 +36,7 @@ export class JobListPresenter {
       ? { some: { integration: { slug: integrationSlug } } }
       : {};
 
-    const jobs = await this.#prismaClient.job.findMany({
+    const jobs = await this._replica.job.findMany({
       select: {
         id: true,
         slug: true,
@@ -106,7 +103,7 @@ export class JobListPresenter {
     }[];
 
     if (jobs.length > 0) {
-      latestRuns = await this.#prismaClient.$queryRaw<
+      latestRuns = await this._replica.$queryRaw<
         {
           createdAt: Date;
           status: JobRunStatus;
