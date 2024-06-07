@@ -110,7 +110,7 @@ docker_compose -p=trigger up
 
 You will need to expose the webapp to the internet. You can use Ngrok for this. If you already have a working reverse proxy setup and a domain, you can skip to the last step.
 
-1. Start Ngrok
+1. Start Ngrok. You may get prompted to sign up - it's free.
 
 ```bash
 ./tunnel.sh
@@ -123,6 +123,12 @@ You will need to expose the webapp to the internet. You can use Ngrok for this. 
 ```bash
 TRIGGER_PROTOCOL=https
 TRIGGER_DOMAIN=1234-42-42-42-42.ngrok-free.app
+```
+
+4. Quit the start script and launch it again, or run this:
+
+```bash
+./stop.sh full && ./start.sh full
 ```
 
 ## Part 2: Split services
