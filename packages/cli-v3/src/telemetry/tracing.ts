@@ -29,7 +29,7 @@ function initializeTracing(): NodeTracerProvider | undefined {
   );
 
   const traceProvider = new NodeTracerProvider({
-    forceFlushTimeoutMillis: 500,
+    forceFlushTimeoutMillis: 30_000,
     resource,
     spanLimits: {
       attributeCountLimit: 1000,
