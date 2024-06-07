@@ -67,7 +67,11 @@ export type ZodTasks<TConsumerSchema extends MessageCatalogSchema> = {
     maxAttempts?: number;
     jobKeyMode?: "replace" | "preserve_run_at" | "unsafe_dedupe";
     flags?: string[];
-    handler: (payload: z.infer<TConsumerSchema[K]>, job: GraphileJob, helpers: JobHelpers) => Promise<void>;
+    handler: (
+      payload: z.infer<TConsumerSchema[K]>,
+      job: GraphileJob,
+      helpers: JobHelpers
+    ) => Promise<void>;
   };
 };
 
@@ -80,7 +84,11 @@ export type ZodRecurringTasks = {
   [key: string]: {
     match: string;
     options?: CronItemOptions;
-    handler: (payload: RecurringTaskPayload, job: GraphileJob, helpers: JobHelpers) => Promise<void>;
+    handler: (
+      payload: RecurringTaskPayload,
+      job: GraphileJob,
+      helpers: JobHelpers
+    ) => Promise<void>;
   };
 };
 
@@ -329,12 +337,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
         spec.jobKey = jobKey;
       }
     }
-
-    logger.debug("Enqueuing worker task", {
-      identifier,
-      payload,
-      spec,
-    });
 
     const { job, durationInMs } = await this.#addJob(
       identifier as string,
