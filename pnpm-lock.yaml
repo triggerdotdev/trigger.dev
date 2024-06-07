@@ -1718,9 +1718,6 @@ importers:
       '@google-cloud/precise-date':
         specifier: ^4.0.0
         version: 4.0.0
-      '@openmeter/sdk':
-        specifier: 1.0.0-beta.81
-        version: 1.0.0-beta.81
       '@opentelemetry/api':
         specifier: ^1.8.0
         version: 1.8.0
@@ -9466,13 +9463,6 @@ packages:
 
   /@open-draft/until@2.1.0:
     resolution: {integrity: sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg==}
-    dev: false
-
-  /@openmeter/sdk@1.0.0-beta.81:
-    resolution: {integrity: sha512-MSiyL7bIXKx4fa9I/SmfXKPRsQ1CvPw0WxrkDmSRUzsTpdk1j9xytLKb+2x26tyt3UXDySIxKCPIG0b4OROKNA==}
-    engines: {node: '>=18.16.1'}
-    dependencies:
-      undici: 6.18.2
     dev: false
 
   /@opentelemetry/api-logs@0.48.0:
@@ -33622,7 +33612,7 @@ packages:
       bs-logger: 0.2.6
       esbuild: 0.19.11
       fast-json-stable-stringify: 2.1.0
-      jest: 29.6.2(@types/node@20.12.7)
+      jest: 29.6.2(@types/node@18.15.13)
       jest-util: 29.6.2
       json5: 2.2.3
       lodash.memoize: 4.1.2
@@ -34635,11 +34625,6 @@ packages:
     engines: {node: '>=14.0'}
     dependencies:
       '@fastify/busboy': 2.0.0
-
-  /undici@6.18.2:
-    resolution: {integrity: sha512-o/MQLTwRm9IVhOqhZ0NQ9oXax1ygPjw6Vs+Vq/4QRjbOAC3B1GCHy7TYxxbExKlb7bzDRzt9vBWU6BDz0RFfYg==}
-    engines: {node: '>=18.17'}
-    dev: false
 
   /unfetch@4.2.0:
     resolution: {integrity: sha512-F9p7yYCn6cIW9El1zi0HI6vqpeIvBsr3dSuRO6Xuppb1u5rXpCPmMvLSyECLhybr9isec8Ohl0hPekMVrEinDA==}

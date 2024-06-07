@@ -1,6 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { UsageManager, UsageMeasurement, UsageSample } from "./types";
 import { setInterval } from "node:timers/promises";
-import { OpenMeter } from "@openmeter/sdk";
 
 export type ProdUsageManagerOptions = {
   heartbeatIntervalMs?: number;
@@ -15,14 +15,15 @@ export type ProdUsageManagerOptions = {
 export class ProdUsageManager implements UsageManager {
   private _measurement: UsageMeasurement | undefined;
   private _abortController: AbortController | undefined;
-  private _openMeter: OpenMeter | undefined;
   private _lastSample: UsageSample | undefined;
 
   constructor(
     private readonly delegageUsageManager: UsageManager,
     private readonly options: ProdUsageManagerOptions
-  ) {
-    this._openMeter = options.openMeter ? new OpenMeter(options.openMeter) : undefined;
+  ) {}
+
+  get isOpenMeterEnabled() {
+    return typeof this.options.openMeter !== "undefined";
   }
 
   disable(): void {
@@ -31,7 +32,7 @@ export class ProdUsageManager implements UsageManager {
   }
 
   start(): UsageMeasurement {
-    if (!this._openMeter || !this.options.heartbeatIntervalMs) {
+    if (!this.isOpenMeterEnabled || !this.options.heartbeatIntervalMs) {
       return this.delegageUsageManager.start();
     }
 
@@ -55,7 +56,7 @@ export class ProdUsageManager implements UsageManager {
   }
 
   async #startReportingHeartbeat() {
-    if (!this._measurement || !this._openMeter || !this.options.heartbeatIntervalMs) {
+    if (!this._measurement || !this.isOpenMeterEnabled || !this.options.heartbeatIntervalMs) {
       return;
     }
 
@@ -81,7 +82,7 @@ export class ProdUsageManager implements UsageManager {
       return;
     }
 
-    if (!this._openMeter) {
+    if (!this.isOpenMeterEnabled) {
       return;
     }
 
@@ -107,16 +108,59 @@ export class ProdUsageManager implements UsageManager {
       return;
     }
 
-    await this._openMeter.events.ingest({
+    const body = {
+      specversion: "1.0",
+      id: randomUUID(),
       source: "prod-usage-manager",
       type: "usage",
-      time: new Date(),
+      time: new Date().toISOString(),
       subject: this.options.subject,
+      datacontenttype: "application/json",
       data: {
         durationMs: cpuTimeSinceLastSample,
         wallTimeInMs: wallTimeSinceLastSample,
         machinePreset: this.options.machinePreset ?? "unknown",
       },
-    });
+    };
+
+    const url = `${this.options.openMeter!.baseUrl}/api/v1/events`;
+
+    const now = performance.now();
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: {
+          "Content-Type": "application/cloudevents+json",
+          Authorization: `Bearer ${this.options.openMeter!.token}`,
+          Accept: "application/json",
+        },
+      });
+
+      const durationInMs = performance.now() - now;
+
+      if (!response.ok) {
+        console.error(
+          "Failed to report usage",
+          response.status,
+          response.statusText,
+          body,
+          durationInMs
+        );
+      }
+
+      console.log("Reported usage", {
+        durationInMs,
+        status: response.status,
+        statusText: response.statusText,
+        body,
+      });
+    } catch (error) {
+      console.error("Reported usage failed", {
+        durationInMs: performance.now() - now,
+        error,
+      });
+    }
   }
 }

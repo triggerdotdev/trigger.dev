@@ -48,6 +48,7 @@ import {
 import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
+import { inspect } from "node:util";
 
 const heartbeatIntervalMs = getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS");
 const subject = getEnvVar("TRIGGER_ORG_ID");
@@ -190,7 +191,7 @@ const zodIpc = new ZodIpcConnection({
 
         const usageSample = usage.stop(measurement);
 
-        return sender.send("TASK_RUN_COMPLETED", {
+        return await sender.send("TASK_RUN_COMPLETED", {
           execution,
           result: {
             ...result,
