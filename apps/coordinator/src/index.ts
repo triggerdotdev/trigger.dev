@@ -12,12 +12,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
-import {
-  HttpReply,
-  getTextBody,
-  SimpleLogger,
-  testDockerCheckpoint,
-} from "@trigger.dev/core-apps";
+import { HttpReply, getTextBody, SimpleLogger, testDockerCheckpoint } from "@trigger.dev/core-apps";
 import { ExponentialBackoff } from "./backoff";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
@@ -77,7 +72,10 @@ type CheckpointAndPushOptions = {
 
 type CheckpointAndPushResult =
   | { success: true; checkpoint: CheckpointData }
-  | { success: false; reason?: "CANCELED" | "DISABLED" | "ERROR" | "IN_PROGRESS" | "NO_SUPPORT" };
+  | {
+      success: false;
+      reason?: "CANCELED" | "DISABLED" | "ERROR" | "IN_PROGRESS" | "NO_SUPPORT" | "SKIP_RETRYING";
+    };
 
 type CheckpointData = {
   location: string;
@@ -320,6 +318,11 @@ class Checkpointer {
           return result;
         }
 
+        if (result.reason === "SKIP_RETRYING") {
+          this.#logger.log("Skipping retrying", { runId });
+          return result;
+        }
+
         continue;
       } catch (error) {
         this.#logger.error("Checkpoint error", {
@@ -466,7 +469,8 @@ class Checkpointer {
 
       // Create checkpoint (CRI)
       if (!this.#canCheckpoint) {
-        throw new Error("No checkpoint support in kubernetes mode.");
+        this.#logger.error("No checkpoint support in kubernetes mode.");
+        return { success: false, reason: "SKIP_RETRYING" };
       }
 
       const containerId = this.#logger.debug(
@@ -477,7 +481,8 @@ class Checkpointer {
       );
 
       if (!containerId.stdout) {
-        throw new Error("could not find container id");
+        this.#logger.error("could not find container id", { options, containterName });
+        return { success: false, reason: "SKIP_RETRYING" };
       }
 
       const start = performance.now();
