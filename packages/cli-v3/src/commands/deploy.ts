@@ -107,7 +107,7 @@ export function configureDeployCommand(program: Command) {
     .addOption(
       new CommandOption(
         "--self-hosted",
-        "Build and load the image using your local Docker. Use the --registry option to specify the registry to push the image to when using --self-hosted, or just use --push-image to push to the default registry."
+        "Build and load the image using your local Docker. Use the --registry option to specify the registry to push the image to when using --self-hosted, or just use --push to push to the default registry."
       ).hideHelp()
     )
     .addOption(
