@@ -29,9 +29,3 @@ export function featuresForRequest(request: Request): TriggerFeatures {
 
   return featuresForHost(url.host);
 }
-
-export function featuresForUrl(urlString: string): TriggerFeatures {
-  const url = new URL(urlString);
-
-  return featuresForHost(url.host);
-}
