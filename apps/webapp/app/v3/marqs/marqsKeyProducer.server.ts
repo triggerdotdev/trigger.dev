@@ -13,10 +13,14 @@ const constants = {
 } as const;
 
 export class MarQSShortKeyProducer implements MarQSKeyProducer {
-  constructor(private _prefix: string) {}
+  constructor(private _prefix: string) { }
 
   sharedQueueScanPattern() {
     return `${this._prefix}*${constants.SHARED_QUEUE}`;
+  }
+
+  queueCurrentConcurrencyScanPattern() {
+    return `${this._prefix}${constants.ORG_PART}:*:${constants.ENV_PART}:*:queue:*:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
   stripKeyPrefix(key: string): string {
