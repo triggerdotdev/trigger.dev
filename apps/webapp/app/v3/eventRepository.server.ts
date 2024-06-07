@@ -334,14 +334,14 @@ export class EventRepository {
   }
 
   async queryEvents(queryOptions: QueryOptions): Promise<TaskEventRecord[]> {
-    return await this.db.taskEvent.findMany({
+    return await this.readReplica.taskEvent.findMany({
       where: queryOptions,
     });
   }
 
   async queryIncompleteEvents(queryOptions: QueryOptions) {
     // First we will find all the events that match the query options (selecting minimal data).
-    const taskEvents = await this.db.taskEvent.findMany({
+    const taskEvents = await this.readReplica.taskEvent.findMany({
       where: queryOptions,
       select: {
         spanId: true,
