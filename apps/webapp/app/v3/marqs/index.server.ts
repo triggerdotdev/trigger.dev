@@ -788,6 +788,33 @@ export class MarQS {
     }
   }
 
+  queueConcurrencyScanStream(count: number = 100, onEndCallback?: () => void) {
+    const pattern = this.keys.queueCurrentConcurrencyScanPattern();
+
+    logger.debug("Starting queue concurrency scan stream", {
+      pattern,
+      component: "marqs",
+      operation: "queueConcurrencyScanStream",
+      service: this.name,
+      count,
+    });
+
+    const redis = this.redis.duplicate();
+
+    const stream = redis.scanStream({
+      match: pattern,
+      type: "set",
+      count,
+    });
+
+    stream.on("end", () => {
+      onEndCallback?.();
+      redis.quit();
+    });
+
+    return { stream, redis };
+  }
+
   async #rebalanceParentQueues() {
     return await new Promise<void>((resolve, reject) => {
       // Scan for sorted sets with the parent queue pattern
