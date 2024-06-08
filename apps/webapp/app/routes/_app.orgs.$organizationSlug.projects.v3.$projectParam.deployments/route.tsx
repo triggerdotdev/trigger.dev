@@ -1,7 +1,6 @@
-import { CommandLineIcon, ServerIcon } from "@heroicons/react/20/solid";
-import { Outlet, useParams } from "@remix-run/react";
+import { ArrowPathIcon, CommandLineIcon, ServerIcon } from "@heroicons/react/20/solid";
+import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { TerminalIcon, TerminalSquareIcon } from "lucide-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
@@ -9,8 +8,9 @@ import { UserAvatar } from "~/components/UserProfilePhoto";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
+import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -24,24 +24,26 @@ import {
   TableBlankRow,
   TableBody,
   TableCell,
-  TableCellChevron,
+  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
 import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
+import { RollbackDeploymentDialog } from "~/components/runs/v3/RollbackDeploymentDialog";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
-import { DeploymentListPresenter } from "~/presenters/v3/DeploymentListPresenter.server";
+import {
+  DeploymentListItem,
+  DeploymentListPresenter,
+} from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
 import {
   ProjectParamSchema,
   docsPath,
   v3DeploymentPath,
-  v3DeploymentsPath,
   v3EnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
@@ -166,7 +168,7 @@ export default function Page() {
                                 "–"
                               )}
                             </TableCell>
-                            <TableCellChevron to={path} />
+                            <DeploymentActionsCell deployment={deployment} path={path} />
                           </TableRow>
                         );
                       })
@@ -238,5 +240,37 @@ function CreateDeploymentInstructions() {
         </div>
       </BlankstateInstructions>
     </MainCenteredContainer>
+  );
+}
+
+function DeploymentActionsCell({
+  deployment,
+  path,
+}: {
+  deployment: DeploymentListItem;
+  path: string;
+}) {
+  const location = useLocation();
+  const project = useProject();
+
+  if (deployment.isCurrent || !deployment.isDeployed) return <TableCell to={path}>{""}</TableCell>;
+
+  return (
+    <TableCellMenu isSticky>
+      {!deployment.isCurrent && deployment.isDeployed && (
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
+              Rollback
+            </Button>
+          </DialogTrigger>
+          <RollbackDeploymentDialog
+            projectId={project.id}
+            deploymentShortCode={deployment.shortCode}
+            redirectPath={`${location.pathname}${location.search}`}
+          />
+        </Dialog>
+      )}
+    </TableCellMenu>
   );
 }
