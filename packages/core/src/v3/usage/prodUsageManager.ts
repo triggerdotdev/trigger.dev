@@ -1,13 +1,10 @@
-import { randomUUID } from "node:crypto";
-import { UsageManager, UsageMeasurement, UsageSample } from "./types";
 import { setInterval } from "node:timers/promises";
+import { UsageManager, UsageMeasurement, UsageSample } from "./types";
+import { UsageClient, UsageClientOptions } from "./usageClient";
 
 export type ProdUsageManagerOptions = {
   heartbeatIntervalMs?: number;
-  openMeter?: {
-    baseUrl: string;
-    token: string;
-  };
+  client?: UsageClientOptions;
   subject: string;
   machinePreset?: string;
 };
@@ -16,14 +13,19 @@ export class ProdUsageManager implements UsageManager {
   private _measurement: UsageMeasurement | undefined;
   private _abortController: AbortController | undefined;
   private _lastSample: UsageSample | undefined;
+  private _usageClient: UsageClient | undefined;
 
   constructor(
     private readonly delegageUsageManager: UsageManager,
     private readonly options: ProdUsageManagerOptions
-  ) {}
+  ) {
+    if (typeof this.options.client !== "undefined") {
+      this._usageClient = new UsageClient(this.options.client);
+    }
+  }
 
-  get isOpenMeterEnabled() {
-    return typeof this.options.openMeter !== "undefined";
+  get isReportingEnabled() {
+    return typeof this.options.client !== "undefined";
   }
 
   disable(): void {
@@ -32,7 +34,7 @@ export class ProdUsageManager implements UsageManager {
   }
 
   start(): UsageMeasurement {
-    if (!this.isOpenMeterEnabled || !this.options.heartbeatIntervalMs) {
+    if (!this.isReportingEnabled || !this.options.heartbeatIntervalMs) {
       return this.delegageUsageManager.start();
     }
 
@@ -56,7 +58,7 @@ export class ProdUsageManager implements UsageManager {
   }
 
   async #startReportingHeartbeat() {
-    if (!this._measurement || !this.isOpenMeterEnabled || !this.options.heartbeatIntervalMs) {
+    if (!this._measurement || !this.isReportingEnabled || !this.options.heartbeatIntervalMs) {
       return;
     }
 
@@ -82,7 +84,13 @@ export class ProdUsageManager implements UsageManager {
       return;
     }
 
-    if (!this.isOpenMeterEnabled) {
+    if (!this.isReportingEnabled) {
+      return;
+    }
+
+    const client = this._usageClient;
+
+    if (!client) {
       return;
     }
 
@@ -108,14 +116,12 @@ export class ProdUsageManager implements UsageManager {
       return;
     }
 
-    const body = {
-      specversion: "1.0",
-      id: randomUUID(),
+    const now = performance.now();
+
+    const event = {
       source: "prod-usage-manager",
       type: "usage",
-      time: new Date().toISOString(),
       subject: this.options.subject,
-      datacontenttype: "application/json",
       data: {
         durationMs: cpuTimeSinceLastSample,
         wallTimeInMs: wallTimeSinceLastSample,
@@ -123,44 +129,13 @@ export class ProdUsageManager implements UsageManager {
       },
     };
 
-    const url = `${this.options.openMeter!.baseUrl}/api/v1/events`;
+    await client.sendUsageEvent(event);
 
-    const now = performance.now();
+    const durationInMs = performance.now() - now;
 
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        body: JSON.stringify(body),
-        headers: {
-          "Content-Type": "application/cloudevents+json",
-          Authorization: `Bearer ${this.options.openMeter!.token}`,
-          Accept: "application/json",
-        },
-      });
-
-      const durationInMs = performance.now() - now;
-
-      if (!response.ok) {
-        console.error(
-          "Failed to report usage",
-          response.status,
-          response.statusText,
-          body,
-          durationInMs
-        );
-      }
-
-      console.log("Reported usage", {
-        durationInMs,
-        status: response.status,
-        statusText: response.statusText,
-        body,
-      });
-    } catch (error) {
-      console.error("Reported usage failed", {
-        durationInMs: performance.now() - now,
-        error,
-      });
-    }
+    console.log("Reported usage", {
+      durationInMs,
+      event,
+    });
   }
 }

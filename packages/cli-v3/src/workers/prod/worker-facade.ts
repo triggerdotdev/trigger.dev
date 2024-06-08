@@ -1,5 +1,4 @@
 import {
-  BackgroundWorkerProperties,
   Config,
   HandleErrorFunction,
   LogLevel,
@@ -10,16 +9,16 @@ import {
   taskCatalog,
 } from "@trigger.dev/core/v3";
 import {
-  TaskExecutor,
+  ConsoleInterceptor,
+  DevUsageManager,
   DurableClock,
+  OtelTaskLogger,
+  ProdUsageManager,
+  TaskExecutor,
   getEnvVar,
   logLevels,
-  OtelTaskLogger,
-  ConsoleInterceptor,
-  type TracingSDK,
   usage,
-  DevUsageManager,
-  ProdUsageManager,
+  type TracingSDK,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { ZodSchemaParsedError } from "@trigger.dev/core/v3/zodMessageHandler";
@@ -38,6 +37,8 @@ declare const tracingSDK: TracingSDK;
 declare const otelTracer: Tracer;
 declare const otelLogger: Logger;
 
+import type { Tracer } from "@opentelemetry/api";
+import type { Logger } from "@opentelemetry/api-logs";
 import {
   TaskRunErrorCodes,
   TaskRunExecution,
@@ -46,9 +47,6 @@ import {
   runtime,
 } from "@trigger.dev/core/v3";
 import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
-import type { Tracer } from "@opentelemetry/api";
-import type { Logger } from "@opentelemetry/api-logs";
-import { inspect } from "node:util";
 
 const heartbeatIntervalMs = getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS");
 const subject = getEnvVar("TRIGGER_ORG_ID");
@@ -60,7 +58,7 @@ const prodUsageManager = new ProdUsageManager(new DevUsageManager(), {
   heartbeatIntervalMs: heartbeatIntervalMs ? parseInt(heartbeatIntervalMs, 10) : undefined,
   subject: subject!,
   machinePreset: machinePreset,
-  openMeter:
+  client:
     openMeterApiKey && openMeterBaseUrl
       ? {
           token: openMeterApiKey,
