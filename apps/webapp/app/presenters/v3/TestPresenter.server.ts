@@ -1,4 +1,5 @@
-import { PrismaClient, prisma } from "~/db.server";
+import { TaskTriggerSource } from "@trigger.dev/database";
+import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
 import { TestSearchParams } from "~/routes/_app.orgs.$organizationSlug.projects.v3.$projectParam.test/route";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { createSearchParams } from "~/utils/searchParams";
@@ -84,9 +85,8 @@ export class TestPresenter {
       };
     }
 
-    const currentDeployment = await findCurrentWorkerDeployment(matchingEnvironment.id);
-
-    const tasks = currentDeployment?.worker?.tasks ?? [];
+    const isDev = matchingEnvironment.type === "DEVELOPMENT";
+    const tasks = await this.#getTasks(matchingEnvironment.id, isDev);
 
     return {
       hasSelectedEnvironment: true as const,
@@ -103,5 +103,36 @@ export class TestPresenter {
         };
       }),
     };
+  }
+
+  async #getTasks(envId: string, isDev: boolean) {
+    if (isDev) {
+      return await this.#prismaClient.$queryRaw<
+        {
+          id: string;
+          version: string;
+          slug: string;
+          filePath: string;
+          exportName: string;
+          friendlyId: string;
+          triggerSource: TaskTriggerSource;
+        }[]
+      >`WITH workers AS (
+          SELECT 
+                bw.*,
+                ROW_NUMBER() OVER(ORDER BY string_to_array(bw.version, '.')::int[] DESC) AS rn
+          FROM 
+                ${sqlDatabaseSchema}."BackgroundWorker" bw
+          WHERE "runtimeEnvironmentId" = ${envId}
+        ),
+        latest_workers AS (SELECT * FROM workers WHERE rn = 1)
+        SELECT bwt.id, version, slug, "filePath", "exportName", bwt."friendlyId", bwt."triggerSource"
+        FROM latest_workers
+        JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" bwt ON bwt."workerId" = latest_workers.id
+        ORDER BY bwt."exportName" ASC;`;
+    } else {
+      const currentDeployment = await findCurrentWorkerDeployment(envId);
+      return currentDeployment?.worker?.tasks ?? [];
+    }
   }
 }
