@@ -10,10 +10,16 @@ import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import type { User } from "~/models/user.server";
-import { filterOrphanedEnvironments, sortEnvironments } from "~/utils/environmentSort";
+import {
+  filterOrphanedEnvironments,
+  onlyDevEnvironments,
+  exceptDevEnvironments,
+  sortEnvironments,
+} from "~/utils/environmentSort";
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
 import { TaskRunStatus } from "~/database-types";
+import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
 
 export type Task = {
   slug: string;
@@ -72,6 +78,9 @@ export class TaskListPresenter extends BasePresenter {
       },
     });
 
+    const devEnvironments = onlyDevEnvironments(project.environments);
+    const nonDevEnvironments = exceptDevEnvironments(project.environments);
+
     const tasks = await this._replica.$queryRaw<
       {
         id: string;
@@ -83,12 +92,21 @@ export class TaskListPresenter extends BasePresenter {
         triggerSource: TaskTriggerSource;
       }[]
     >`
-    WITH workers AS (
+    WITH non_dev_workers AS (
+      SELECT wd."workerId" AS id
+      FROM ${sqlDatabaseSchema}."WorkerDeploymentPromotion" wdp
+      INNER JOIN ${sqlDatabaseSchema}."WorkerDeployment" wd
+        ON wd.id = wdp."deploymentId"
+      WHERE wdp."environmentId" IN (${Prisma.join(nonDevEnvironments.map((e) => e.id))})
+        AND wdp."label" = ${CURRENT_DEPLOYMENT_LABEL}
+    ),
+    workers AS (      
       SELECT DISTINCT ON ("runtimeEnvironmentId") id, "runtimeEnvironmentId", version
       FROM ${sqlDatabaseSchema}."BackgroundWorker"
       WHERE "runtimeEnvironmentId" IN (${Prisma.join(
-        filterOrphanedEnvironments(project.environments).map((e) => e.id)
+        filterOrphanedEnvironments(devEnvironments).map((e) => e.id)
       )})
+        OR id IN (SELECT id FROM non_dev_workers)
       ORDER BY "runtimeEnvironmentId", "createdAt" DESC
     )
     SELECT tasks.id, slug, "filePath", "exportName", "triggerSource", tasks."runtimeEnvironmentId", tasks."createdAt"
