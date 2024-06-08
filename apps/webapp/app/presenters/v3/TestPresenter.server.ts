@@ -4,6 +4,7 @@ import { TestSearchParams } from "~/routes/_app.orgs.$organizationSlug.projects.
 import { sortEnvironments } from "~/utils/environmentSort";
 import { createSearchParams } from "~/utils/searchParams";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
+import { BasePresenter } from "./basePresenter.server";
 
 type TaskListOptions = {
   userId: string;
@@ -15,16 +16,10 @@ export type TaskList = Awaited<ReturnType<TestPresenter["call"]>>;
 export type TaskListItem = NonNullable<TaskList["tasks"]>[0];
 export type SelectedEnvironment = NonNullable<TaskList["selectedEnvironment"]>;
 
-export class TestPresenter {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
+export class TestPresenter extends BasePresenter {
   public async call({ userId, projectSlug, url }: TaskListOptions) {
     // Find the project scoped to the organization
-    const project = await this.#prismaClient.project.findFirstOrThrow({
+    const project = await this._replica.project.findFirstOrThrow({
       select: {
         id: true,
         environments: {
@@ -107,7 +102,7 @@ export class TestPresenter {
 
   async #getTasks(envId: string, isDev: boolean) {
     if (isDev) {
-      return await this.#prismaClient.$queryRaw<
+      return await this._replica.$queryRaw<
         {
           id: string;
           version: string;
