@@ -46,7 +46,7 @@ import { forceYieldCoordinator } from "./forceYieldCoordinator.server";
 import { ResumeRunService } from "./resumeRun.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
-type FoundTask = FoundRun["tasks"][number];
+type FoundTask = NonNullable<Awaited<ReturnType<typeof getCompletedTasksForRun>>>[number];
 
 // We need to limit the cached tasks to not be too large >3.5MB when serialized
 const TOTAL_CACHED_TASK_BYTE_LIMIT = 3500000;
@@ -81,6 +81,14 @@ export class PerformRunExecutionV3Service {
   }
 
   public async call(input: PerformRunExecutionV3Input, driftInMs: number = 0) {
+    logger.debug("PerformRunExecutionV3Service.call", { input, driftInMs });
+
+    if (Array.isArray(input.id)) {
+      logger.error("PerformRunExecutionV3Service.call: input.id is an array", { input });
+
+      throw new Error("input.id must be a string");
+    }
+
     const run = await findRun(this.#prismaClient, input.id);
 
     if (!run) {
@@ -221,11 +229,14 @@ export class PerformRunExecutionV3Service {
         });
       }
 
+      const taskCount = await getTaskCountForRun(this.#prismaClient, run.id);
+      const tasks = await getCompletedTasksForRun(this.#prismaClient, run.id);
+
       const sourceContext = RunSourceContextSchema.safeParse(run.event.sourceContext);
 
       const executionBody = await this.#createExecutionBody(
         run,
-        run.tasks,
+        tasks,
         startedAt,
         false,
         connections.auth,
@@ -418,7 +429,8 @@ export class PerformRunExecutionV3Service {
               this.#prismaClient,
               run,
               input,
-              durationInMs
+              durationInMs,
+              taskCount
             );
           } else {
             return await this.#failRunExecutionWithRetry(
@@ -1065,7 +1077,8 @@ export class PerformRunExecutionV3Service {
     prisma: PrismaClientOrTransaction,
     run: FoundRun,
     input: PerformRunExecutionV3Input,
-    durationInMs: number
+    durationInMs: number,
+    existingTaskCount: number
   ) {
     await $transaction(prisma, async (tx) => {
       const executionDuration = run.executionDuration + durationInMs;
@@ -1086,31 +1099,25 @@ export class PerformRunExecutionV3Service {
         return;
       }
 
-      const runWithLatestTask = await tx.jobRun.findUniqueOrThrow({
-        where: {
-          id: run.id,
-        },
-        select: {
-          tasks: {
-            select: {
-              id: true,
-              name: true,
-              status: true,
-              displayKey: true,
-            },
-            take: 1,
-            orderBy: { createdAt: "desc" },
-          },
-          _count: {
-            select: {
-              tasks: true,
-            },
-          },
-        },
-      });
+      const newTaskCount = await getTaskCountForRun(tx, run.id);
 
-      if (runWithLatestTask._count.tasks === run._count.tasks) {
-        const latestTask = runWithLatestTask.tasks[0];
+      if (newTaskCount === existingTaskCount) {
+        const latestTask = await tx.task.findFirst({
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            displayKey: true,
+          },
+          where: {
+            runId: run.id,
+            status: "RUNNING",
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 1,
+        });
 
         const cause =
           latestTask?.status === "RUNNING"
@@ -1254,6 +1261,35 @@ function prepareNoOpTasksBloomFilter(possibleTasks: FoundTask[]): string {
   return filter.serialize();
 }
 
+async function getTaskCountForRun(prisma: PrismaClientOrTransaction, runId: string) {
+  return await prisma.task.count({
+    where: {
+      runId,
+    },
+  });
+}
+
+async function getCompletedTasksForRun(prisma: PrismaClientOrTransaction, runId: string) {
+  return await prisma.task.findMany({
+    where: {
+      runId,
+      status: "COMPLETED",
+    },
+    select: {
+      id: true,
+      idempotencyKey: true,
+      status: true,
+      noop: true,
+      output: true,
+      outputIsUndefined: true,
+      parentId: true,
+    },
+    orderBy: {
+      id: "asc",
+    },
+  });
+}
+
 async function findRun(prisma: PrismaClientOrTransaction, id: string) {
   return await prisma.jobRun.findUnique({
     where: { id },
@@ -1278,25 +1314,6 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
           },
         },
       },
-      tasks: {
-        where: {
-          status: {
-            in: ["COMPLETED"],
-          },
-        },
-        select: {
-          id: true,
-          idempotencyKey: true,
-          status: true,
-          noop: true,
-          output: true,
-          outputIsUndefined: true,
-          parentId: true,
-        },
-        orderBy: {
-          id: "asc",
-        },
-      },
       event: true,
       version: {
         include: {
@@ -1307,11 +1324,6 @@ async function findRun(prisma: PrismaClientOrTransaction, id: string) {
       subscriptions: {
         where: {
           recipientMethod: "ENDPOINT",
-        },
-      },
-      _count: {
-        select: {
-          tasks: true,
         },
       },
     },

@@ -45,6 +45,7 @@ import { PerformTaskOperationService } from "./tasks/performTaskOperation.server
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout.server";
 import { ResumeTaskService } from "./tasks/resumeTask.server";
 import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
+import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -296,6 +297,19 @@ function getWorkerQueue() {
         match: "47 * * * *",
         handler: async (payload, job) => {
           await eventRepository.truncateEvents();
+        },
+      },
+      "marqs.v3.queueConcurrencyMonitor": {
+        // run every 5 minutes
+        match: "*/5 * * * *",
+        handler: async (payload, job, helpers) => {
+          await MarqsConcurrencyMonitor.initiateV3Monitoring(helpers.abortSignal);
+        },
+      },
+      "marqs.v2.queueConcurrencyMonitor": {
+        match: "*/5 * * * *", // run every 5 minutes
+        handler: async (payload, job, helpers) => {
+          await MarqsConcurrencyMonitor.initiateV2Monitoring(helpers.abortSignal);
         },
       },
     },

@@ -4,6 +4,7 @@ import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getUsername } from "~/utils/username";
 import { calculateNextScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
+import { BasePresenter } from "./basePresenter.server";
 
 type ScheduleListOptions = {
   projectId: string;
@@ -34,12 +35,7 @@ export type ScheduleListItem = {
 export type ScheduleList = Awaited<ReturnType<ScheduleListPresenter["call"]>>;
 export type ScheduleListAppliedFilters = ScheduleList["filters"];
 
-export class ScheduleListPresenter {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
+export class ScheduleListPresenter extends BasePresenter {
 
   public async call({
     userId,
@@ -54,7 +50,7 @@ export class ScheduleListPresenter {
       tasks !== undefined || environments !== undefined || (search !== undefined && search !== "");
 
     // Find the project scoped to the organization
-    const project = await this.#prismaClient.project.findFirstOrThrow({
+    const project = await this._replica.project.findFirstOrThrow({
       select: {
         id: true,
         environments: {
@@ -82,7 +78,7 @@ export class ScheduleListPresenter {
     });
 
     //get all possible scheduled tasks
-    const possibleTasks = await this.#prismaClient.backgroundWorkerTask.findMany({
+    const possibleTasks = await this._replica.backgroundWorkerTask.findMany({
       distinct: ["slug"],
       where: {
         projectId: project.id,
@@ -93,7 +89,7 @@ export class ScheduleListPresenter {
     //do this here to protect against SQL injection
     search = search && search !== "" ? `%${search}%` : undefined;
 
-    const totalCount = await this.#prismaClient.taskSchedule.count({
+    const totalCount = await this._replica.taskSchedule.count({
       where: {
         projectId: project.id,
         taskIdentifier: tasks ? { in: tasks } : undefined,
@@ -135,7 +131,7 @@ export class ScheduleListPresenter {
       },
     });
 
-    const rawSchedules = await this.#prismaClient.taskSchedule.findMany({
+    const rawSchedules = await this._replica.taskSchedule.findMany({
       select: {
         id: true,
         friendlyId: true,
@@ -199,7 +195,7 @@ export class ScheduleListPresenter {
 
     const latestRuns =
       rawSchedules.length > 0
-        ? await this.#prismaClient.$queryRaw<{ scheduleId: string; createdAt: Date }[]>`
+        ? await this._replica.$queryRaw<{ scheduleId: string; createdAt: Date }[]>`
     SELECT t."scheduleId", t."createdAt"
     FROM (
       SELECT "scheduleId", MAX("createdAt") as "LatestRun"

@@ -8,10 +8,10 @@ import type {
 import { customAlphabet } from "nanoid";
 import slug from "slug";
 import { prisma, PrismaClientOrTransaction } from "~/db.server";
-import { createProject } from "./project.server";
 import { generate } from "random-words";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 import { env } from "~/env.server";
+import { featuresForUrl } from "~/features.server";
 
 export type { Organization };
 
@@ -52,6 +52,8 @@ export async function createOrganization(
     );
   }
 
+  const features = featuresForUrl(new URL(env.APP_ORIGIN));
+
   const organization = await prisma.organization.create({
     data: {
       title,
@@ -64,6 +66,7 @@ export async function createOrganization(
           role: "ADMIN",
         },
       },
+      v3Enabled: features.v3Enabled && !features.isManagedCloud,
     },
     include: {
       members: true,

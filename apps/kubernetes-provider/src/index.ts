@@ -47,6 +47,10 @@ class KubernetesTaskOperations implements TaskOperations {
     this.#k8sApi = this.#createK8sApi();
   }
 
+  async init() {
+    // noop
+  }
+
   async index(opts: TaskOperationsIndexOptions) {
     await this.#createJob(
       {

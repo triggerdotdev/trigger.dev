@@ -2,7 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { GetEvent } from "@trigger.dev/core";
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { $replica } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { apiCors } from "~/utils/apiCors";
 
@@ -59,7 +59,7 @@ function toJSON(eventRecord: FoundEventRecord): GetEvent {
 type FoundEventRecord = NonNullable<Awaited<ReturnType<typeof findEventRecord>>>;
 
 async function findEventRecord(eventId: string, environmentId: string) {
-  return await prisma.eventRecord.findUnique({
+  return await $replica.eventRecord.findUnique({
     select: {
       eventId: true,
       name: true,

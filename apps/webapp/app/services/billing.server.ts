@@ -1,5 +1,5 @@
 import { BillingClient, SetPlanBody } from "@trigger.dev/billing";
-import { PrismaClient, prisma } from "~/db.server";
+import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { organizationBillingPath } from "~/utils/pathBuilder";
@@ -7,9 +7,11 @@ import { organizationBillingPath } from "~/utils/pathBuilder";
 export class BillingService {
   #billingClient: BillingClient | undefined;
   #prismaClient: PrismaClient;
+  #replica: PrismaReplicaClient;
 
-  constructor(isManagedCloud: boolean, prismaClient: PrismaClient = prisma) {
+  constructor(isManagedCloud: boolean, prismaClient: PrismaClient = prisma, replica: PrismaReplicaClient = $replica) {
     this.#prismaClient = prismaClient;
+    this.#replica = replica;
     if (isManagedCloud && process.env.BILLING_API_URL && process.env.BILLING_API_KEY) {
       this.#billingClient = new BillingClient({
         url: process.env.BILLING_API_URL,
@@ -35,7 +37,7 @@ export class BillingService {
       firstDayOfNextMonth.setMonth(firstDayOfNextMonth.getMonth() + 1);
       firstDayOfNextMonth.setHours(0, 0, 0, 0);
 
-      const currentRunCount = await this.#prismaClient.jobRun.count({
+      const currentRunCount = await this.#replica.jobRun.count({
         where: {
           organizationId: orgId,
           createdAt: {

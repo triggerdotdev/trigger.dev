@@ -1,14 +1,7 @@
-import { PrismaClient, prisma } from "~/db.server";
-import { logger } from "~/services/logger.server";
 import { BillingService } from "../services/billing.server";
+import { BasePresenter } from "./v3/basePresenter.server";
 
-export class OrgBillingPlanPresenter {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
+export class OrgBillingPlanPresenter extends BasePresenter {
   public async call({ slug, isManagedCloud }: { slug: string; isManagedCloud: boolean }) {
     const billingPresenter = new BillingService(isManagedCloud);
     const plans = await billingPresenter.getPlans();
@@ -17,7 +10,7 @@ export class OrgBillingPlanPresenter {
       return;
     }
 
-    const organization = await this.#prismaClient.organization.findFirst({
+    const organization = await this._replica.organization.findFirst({
       where: {
         slug,
       },
@@ -27,7 +20,7 @@ export class OrgBillingPlanPresenter {
       return;
     }
 
-    const maxConcurrency = await this.#prismaClient.$queryRaw<
+    const maxConcurrency = await this._replica.$queryRaw<
       { organization_id: string; max_concurrent_runs: BigInt }[]
     >`WITH events AS (
       SELECT

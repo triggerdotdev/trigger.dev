@@ -67,7 +67,11 @@ export type ZodTasks<TConsumerSchema extends MessageCatalogSchema> = {
     maxAttempts?: number;
     jobKeyMode?: "replace" | "preserve_run_at" | "unsafe_dedupe";
     flags?: string[];
-    handler: (payload: z.infer<TConsumerSchema[K]>, job: GraphileJob) => Promise<void>;
+    handler: (
+      payload: z.infer<TConsumerSchema[K]>,
+      job: GraphileJob,
+      helpers: JobHelpers
+    ) => Promise<void>;
   };
 };
 
@@ -80,7 +84,11 @@ export type ZodRecurringTasks = {
   [key: string]: {
     match: string;
     options?: CronItemOptions;
-    handler: (payload: RecurringTaskPayload, job: GraphileJob) => Promise<void>;
+    handler: (
+      payload: RecurringTaskPayload,
+      job: GraphileJob,
+      helpers: JobHelpers
+    ) => Promise<void>;
   };
 };
 
@@ -330,12 +338,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       }
     }
 
-    logger.debug("Enqueuing worker task", {
-      identifier,
-      payload,
-      spec,
-    });
-
     const { job, durationInMs } = await this.#addJob(
       identifier as string,
       payload,
@@ -581,7 +583,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       },
       async (span) => {
         try {
-          await task.handler(payload, job);
+          await task.handler(payload, job, helpers);
         } catch (error) {
           if (error instanceof Error) {
             span.recordException(error);
@@ -662,7 +664,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       },
       async (span) => {
         try {
-          await recurringTask.handler(payload._cron, job);
+          await recurringTask.handler(payload._cron, job, helpers);
         } catch (error) {
           if (error instanceof Error) {
             span.recordException(error);
