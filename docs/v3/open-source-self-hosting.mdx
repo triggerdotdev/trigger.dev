@@ -78,7 +78,7 @@ git checkout v3
 
 2. Run the start script and follow the prompts
 ```bash
-./start.sh full # hint: you can append -d to run in detached mode
+./start.sh # hint: you can append -d to run in detached mode
 ```
 
 ### Manual setup
@@ -132,7 +132,7 @@ TRIGGER_DOMAIN=1234-42-42-42-42.ngrok-free.app
 4. Quit the start script and launch it again, or run this:
 
 ```bash
-./stop.sh full && ./start.sh full
+./stop.sh && ./start.sh
 ```
 
 ### Registry setup
@@ -157,7 +157,7 @@ docker login -u <your_dockerhub_username>
 4. Restart the services
 
 ```bash
-./stop.sh full && ./start.sh full
+./stop.sh && ./start.sh
 ```
 
 5. You can now deploy v3 projects using the CLI with these flags:
@@ -262,7 +262,7 @@ echo "FORCE_CHECKPOINT_SIMULATION=0" >> .env
 
 ```bash
 # if you're running everything on the same machine
-./stop.sh full && ./start.sh full
+./stop.sh && ./start.sh
 
 # if you're running the worker on a different machine
 ./stop.sh worker && ./start.sh worker
