@@ -1,5 +1,4 @@
-import { execa } from "execa";
-import { readFileSync } from "node:fs";
+import { execa, execaNode } from "execa";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -12,6 +11,7 @@ import { compile } from "./compile";
 import { handleDependencies } from "./handleDependencies";
 import { createContainerFile } from "./createContainerFile";
 import { createDeployHash } from "./createDeployHash";
+import { readFileSync } from "node:fs";
 
 type TestCase = {
   name: string;
@@ -19,7 +19,9 @@ type TestCase = {
   wantConfigNotFoundError?: boolean;
   wantBadConfigError?: boolean;
   wantCompilationError?: boolean;
+  wantWorkerError?: boolean;
   wantDependenciesError?: boolean;
+  wantInstallationError?: boolean;
 };
 
 const allTestCases: TestCase[] = [
@@ -71,7 +73,9 @@ if (testCases.length > 0) {
       wantConfigNotFoundError,
       wantBadConfigError,
       wantCompilationError,
+      wantWorkerError,
       wantDependenciesError,
+      wantInstallationError,
     }: TestCase) => {
       const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
 
@@ -108,7 +112,7 @@ if (testCases.length > 0) {
                 console.log(
                   `Detected ${packageManager}@${version} from package.json 'engines' field`
                 );
-                const { stdout } = await execa(
+                const { stdout, stderr } = await execa(
                   "corepack",
                   ["use", `${packageManager}@${version}`],
                   {
@@ -116,11 +120,17 @@ if (testCases.length > 0) {
                   }
                 );
                 console.log(stdout);
+                if (stderr) console.error(stderr);
               } else {
-                const { stdout } = await execa(packageManager, installArgs(packageManager), {
-                  cwd: fixtureDir,
-                });
+                const { stdout, stderr } = await execa(
+                  packageManager,
+                  installArgs(packageManager),
+                  {
+                    cwd: fixtureDir,
+                  }
+                );
                 console.log(stdout);
+                if (stderr) console.error(stderr);
               }
             })()
           ).resolves.not.toThrowError();
@@ -261,6 +271,56 @@ if (testCases.length > 0) {
                   });
                 })()
               ).resolves.not.toThrowError();
+            });
+
+            describe("with Containerfile ready", () => {
+              test(
+                "installs dependencies",
+                async () => {
+                  const expectation = expect(
+                    (async () => {
+                      const { stdout, stderr } = await execa(
+                        "npm",
+                        ["ci", "--no-audit", "--no-fund"],
+                        {
+                          cwd: resolve(join(fixtureDir, ".trigger")),
+                        }
+                      );
+                      console.log(stdout);
+                      if (stderr) console.error(stderr);
+                    })()
+                  );
+
+                  if (wantInstallationError) {
+                    await expectation.rejects.toThrowError();
+                  } else {
+                    await expectation.resolves.not.toThrowError();
+                  }
+                },
+                { timeout: 60_000 }
+              );
+
+              test(
+                wantWorkerError ? "'node worker.js' fails" : "'node worker.js' succeeds",
+                async () => {
+                  const expectation = expect(
+                    (async () => {
+                      const { stdout, stderr } = await execaNode("worker.js", {
+                        cwd: resolve(join(fixtureDir, ".trigger")),
+                      });
+                      console.log(stdout);
+                      if (stderr) console.error(stderr);
+                    })()
+                  );
+
+                  if (wantWorkerError) {
+                    await expectation.rejects.toThrowError();
+                  } else {
+                    await expectation.resolves.not.toThrowError();
+                  }
+                },
+                { timeout: 60_000 }
+              );
             });
           });
         });

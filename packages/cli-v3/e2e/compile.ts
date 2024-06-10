@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { esbuildDecorators } from "@anatine/esbuild-decorators";
 import { build } from "esbuild";
 import { readFileSync } from "node:fs";
@@ -91,8 +89,11 @@ export async function compile(options: CompileOptions) {
     target: ["node18", "es2020"],
     // outdir: "out",
     outdir: resolve(config.projectDir, "out"),
-    banner: {
-      js: `process.on("uncaughtException", function(error, origin) { if (error instanceof Error) { process.send && process.send({ type: "EVENT", message: { type: "UNCAUGHT_EXCEPTION", payload: { error: { name: error.name, message: error.message, stack: error.stack }, origin }, version: "v1" } }); } else { process.send && process.send({ type: "EVENT", message: { type: "UNCAUGHT_EXCEPTION", payload: { error: { name: "Error", message: typeof error === "string" ? error : JSON.stringify(error) }, origin }, version: "v1" } }); } });`,
+    // banner: {
+    //   js: `process.on("uncaughtException", function(error, origin) { if (error instanceof Error) { process.send && process.send({ type: "EVENT", message: { type: "UNCAUGHT_EXCEPTION", payload: { error: { name: error.name, message: error.message, stack: error.stack }, origin }, version: "v1" } }); } else { process.send && process.send({ type: "EVENT", message: { type: "UNCAUGHT_EXCEPTION", payload: { error: { name: "Error", message: typeof error === "string" ? error : JSON.stringify(error) }, origin }, version: "v1" } }); } });`,
+    // },
+    footer: {
+      js: "process.exit();",
     },
     define: {
       TRIGGER_API_URL: `"${config.triggerUrl}"`,
