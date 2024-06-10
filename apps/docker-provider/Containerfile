@@ -1,16 +1,47 @@
-# syntax=docker/dockerfile:labs
-
-FROM node:18-slim AS base
-
-RUN apt-get update \
-  && apt-get install -y dumb-init
-
-FROM base
+FROM node:20-alpine@sha256:7a91aa397f2e2dfbfcdad2e2d72599f374e0b0172be1d86eeb73f1d33f36a4b2 AS node-20-alpine
 
 WORKDIR /app
 
-COPY --chown=node dist/index.mjs /app/
+FROM node-20-alpine AS pruner
+
+COPY --chown=node:node . .
+RUN npx -q turbo@1.10.9 prune --scope=docker-provider --docker
+RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
+
+FROM node-20-alpine AS base
+
+RUN apk add --no-cache dumb-init docker
+
+COPY --chown=node:node .gitignore .gitignore
+COPY --from=pruner --chown=node:node /app/out/json/ .
+COPY --from=pruner --chown=node:node /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=pruner --chown=node:node /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
+
+FROM base AS dev-deps
+RUN corepack enable
+ENV NODE_ENV development
+
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm fetch --no-frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --ignore-scripts --no-frozen-lockfile
+
+FROM base AS builder
+RUN corepack enable
+
+COPY --from=pruner --chown=node:node /app/out/full/ .
+COPY --from=dev-deps --chown=node:node /app/ .
+COPY --chown=node:node turbo.json turbo.json
+
+RUN pnpm run -r --filter docker-provider build:bundle
+
+FROM base AS runner
+
+RUN corepack enable
+ENV NODE_ENV production
+
+COPY --from=builder --chown=node:node /app/apps/docker-provider/dist/index.mjs ./index.mjs
 
 EXPOSE 8000
 
-ENTRYPOINT [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "/app/index.mjs" ]
+USER node
+
+CMD [ "/usr/bin/dumb-init", "--", "/usr/local/bin/node", "./index.mjs" ]
