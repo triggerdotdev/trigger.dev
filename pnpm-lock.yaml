@@ -480,6 +480,9 @@ importers:
       isbot:
         specifier: ^3.6.5
         version: 3.6.5
+      jose:
+        specifier: ^5.4.0
+        version: 5.4.0
       jsonpointer:
         specifier: ^5.0.1
         version: 5.0.1
@@ -25679,6 +25682,10 @@ packages:
 
   /jose@4.15.4:
     resolution: {integrity: sha512-W+oqK4H+r5sITxfxpSU+MMdr/YSWGvgZMQDIsNoBDGGy4i7GBPTtvFKibQzW06n3U3TqHjhvBJsirShsEJ6eeQ==}
+    dev: false
+
+  /jose@5.4.0:
+    resolution: {integrity: sha512-6rpxTHPAQyWMb9A35BroFl1Sp0ST3DpPcm5EVIxZxdH+e0Hv9fwhyB3XLKFUcHNpdSDnETmBfuPPTTlYz5+USw==}
     dev: false
 
   /joycon@3.1.1:

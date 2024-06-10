@@ -20,10 +20,12 @@ import {
 } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
-import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
+import { resolveVariablesForEnvironment } from "../environmentVariables/environmentVariablesRepository.server";
+import { FailedTaskRunService } from "../failedTaskRun.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
 import {
@@ -31,12 +33,10 @@ import {
   getWorkerDeploymentFromWorker,
   getWorkerDeploymentFromWorkerTask,
 } from "../models/workerDeployment.server";
-import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
-import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
 import { CrashTaskRunService } from "../services/crashTaskRun.server";
-import { FailedTaskRunService } from "../failedTaskRun.server";
 import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
-import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
+import { tracer } from "../tracer.server";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -1063,11 +1063,7 @@ class SharedQueueTasks {
       },
     };
 
-    const environmentRepository = new EnvironmentVariablesRepository();
-    const variables = await environmentRepository.getEnvironmentVariables(
-      attempt.runtimeEnvironment.projectId,
-      attempt.runtimeEnvironmentId
-    );
+    const variables = await resolveVariablesForEnvironment(attempt.runtimeEnvironment);
 
     const payload: ProdTaskRunExecutionPayload = {
       execution,
@@ -1133,11 +1129,7 @@ class SharedQueueTasks {
       return;
     }
 
-    const environmentRepository = new EnvironmentVariablesRepository();
-    const variables = await environmentRepository.getEnvironmentVariables(
-      environment.projectId,
-      environment.id
-    );
+    const variables = await resolveVariablesForEnvironment(environment);
 
     return {
       traceContext: run.traceContext as Record<string, unknown>,

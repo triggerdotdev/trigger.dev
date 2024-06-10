@@ -15,7 +15,8 @@ import { createNewSession, disconnectSession } from "~/models/runtimeEnvironment
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
-import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
+import { resolveVariablesForEnvironment } from "../environmentVariables/environmentVariablesRepository.server";
+import { FailedTaskRunService } from "../failedTaskRun.server";
 import { CancelTaskRunService } from "../services/cancelTaskRun.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
 import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
@@ -25,7 +26,6 @@ import {
   tracer,
 } from "../tracer.server";
 import { DevSubscriber, devPubSub } from "./devPubSub.server";
-import { FailedTaskRunService } from "../failedTaskRun.server";
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
@@ -473,11 +473,7 @@ export class DevQueueConsumer {
       return;
     }
 
-    const environmentRepository = new EnvironmentVariablesRepository();
-    const variables = await environmentRepository.getEnvironmentVariables(
-      this.env.project.id,
-      this.env.id
-    );
+    const variables = await resolveVariablesForEnvironment(this.env);
 
     if (backgroundWorker.supportsLazyAttempts) {
       const payload: TaskRunExecutionLazyAttemptPayload = {

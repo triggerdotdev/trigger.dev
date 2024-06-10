@@ -12,6 +12,7 @@ import {
 import { prisma } from "~/db.server";
 import { json } from "@remix-run/server-runtime";
 import { findProjectByRef } from "~/models/project.server";
+import { SignJWT } from "jose";
 
 type Optional<T, K extends keyof T> = Prettify<Omit<T, K> & Partial<Pick<T, K>>>;
 
@@ -208,4 +209,22 @@ export async function authenticatedEnvironmentForAuthentication(
       return environment;
     }
   }
+}
+
+export async function generateJWTTokenForEnvironment(environment: AuthenticatedEnvironment) {
+  const secret = new TextEncoder().encode(
+    "cc7e0d44fd473002f1c42167459001140ec6389b7353f8088f4d9a95f2f596f2"
+  );
+
+  const alg = "HS256";
+
+  const jwt = await new SignJWT({ environment_id: environment.id })
+    .setProtectedHeader({ alg })
+    .setIssuedAt()
+    .setIssuer("https://id.trigger.dev")
+    .setAudience("https://api.trigger.dev")
+    .setExpirationTime("2h")
+    .sign(secret);
+
+  return jwt;
 }

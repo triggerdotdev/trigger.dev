@@ -2,7 +2,7 @@ import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -41,9 +41,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ error: "Project not found" }, { status: 404 });
   }
 
-  const repository = new EnvironmentVariablesRepository();
-
-  const variables = await repository.getEnvironmentVariables(project.id, authenticatedEnv.id);
+  const variables = await resolveVariablesForEnvironment(authenticatedEnv);
 
   return json({
     variables: variables.reduce((acc: Record<string, string>, variable) => {

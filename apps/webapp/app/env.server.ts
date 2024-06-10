@@ -190,8 +190,7 @@ const EnvironmentSchema = z.object({
   V3_MARQS_CONCURRENCY_MONITOR_ENABLED: z.string().default("0"),
   V2_MARQS_CONCURRENCY_MONITOR_ENABLED: z.string().default("0"),
   /* Usage settings */
-  USAGE_OPEN_METER_API_KEY: z.string().optional(),
-  USAGE_OPEN_METER_BASE_URL: z.string().optional(),
+  USAGE_EVENT_URL: z.string().optional(),
   PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 });
 
