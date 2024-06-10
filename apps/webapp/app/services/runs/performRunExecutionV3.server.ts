@@ -229,6 +229,7 @@ export class PerformRunExecutionV3Service {
         });
       }
 
+      const taskCount = await getTaskCountForRun(this.#prismaClient, run.id);
       const tasks = await getCompletedTasksForRun(this.#prismaClient, run.id);
 
       const sourceContext = RunSourceContextSchema.safeParse(run.event.sourceContext);
@@ -428,7 +429,8 @@ export class PerformRunExecutionV3Service {
               this.#prismaClient,
               run,
               input,
-              durationInMs
+              durationInMs,
+              taskCount
             );
           } else {
             return await this.#failRunExecutionWithRetry(
@@ -1075,7 +1077,8 @@ export class PerformRunExecutionV3Service {
     prisma: PrismaClientOrTransaction,
     run: FoundRun,
     input: PerformRunExecutionV3Input,
-    durationInMs: number
+    durationInMs: number,
+    existingTaskCount: number
   ) {
     await $transaction(prisma, async (tx) => {
       const executionDuration = run.executionDuration + durationInMs;
@@ -1089,6 +1092,47 @@ export class PerformRunExecutionV3Service {
             message: `Execution timed out after ${
               run.organization.maximumExecutionTimePerRunInMs / 1000
             } seconds`,
+          },
+          "TIMED_OUT",
+          durationInMs
+        );
+        return;
+      }
+
+      const newTaskCount = await getTaskCountForRun(tx, run.id);
+
+      if (newTaskCount === existingTaskCount) {
+        const latestTask = await tx.task.findFirst({
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            displayKey: true,
+          },
+          where: {
+            runId: run.id,
+            status: "RUNNING",
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 1,
+        });
+
+        const cause =
+          latestTask?.status === "RUNNING"
+            ? `This is likely caused by task "${
+                latestTask.displayKey ?? latestTask.name
+              }" execution exceeding the function timeout`
+            : "This is likely caused by executing code outside of a task that exceeded the function timeout";
+
+        await this.#failRunExecution(
+          tx,
+          run,
+          {
+            message: `Function timeout detected in ${
+              durationInMs / 1000.0
+            }s without any task creation. This is unexpected behavior and could lead to an infinite execution error because the run will never finish. ${cause}`,
           },
           "TIMED_OUT",
           durationInMs
@@ -1215,6 +1259,14 @@ function prepareNoOpTasksBloomFilter(possibleTasks: FoundTask[]): string {
   }
 
   return filter.serialize();
+}
+
+async function getTaskCountForRun(prisma: PrismaClientOrTransaction, runId: string) {
+  return await prisma.task.count({
+    where: {
+      runId,
+    },
+  });
 }
 
 async function getCompletedTasksForRun(prisma: PrismaClientOrTransaction, runId: string) {
