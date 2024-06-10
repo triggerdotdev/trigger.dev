@@ -107,14 +107,14 @@ function getClient() {
         emit: "stdout",
         level: "warn",
       },
-      {
-        emit: "stdout",
-        level: "query",
-      },
-      {
-        emit: "event",
-        level: "query",
-      },
+      // {
+      //   emit: "stdout",
+      //   level: "query",
+      // },
+      // {
+      //   emit: "event",
+      //   level: "query",
+      // },
     ],
   });
 

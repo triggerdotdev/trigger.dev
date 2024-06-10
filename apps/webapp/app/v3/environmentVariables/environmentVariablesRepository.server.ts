@@ -746,10 +746,6 @@ async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmen
       key: "TRIGGER_ORG_ID",
       value: runtimeEnvironment.organizationId,
     },
-    {
-      key: "TRIGGER_MACHINE_PRESET",
-      value: "tiny-1x",
-    },
   ];
 
   if (env.PROD_OTEL_BATCH_PROCESSING_ENABLED === "1") {

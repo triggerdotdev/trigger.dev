@@ -49,22 +49,13 @@ import {
 import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
 
 const heartbeatIntervalMs = getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS");
-const subject = getEnvVar("TRIGGER_ORG_ID");
-const machinePreset = getEnvVar("TRIGGER_MACHINE_PRESET");
-const openMeterApiKey = getEnvVar("USAGE_OPEN_METER_API_KEY");
-const openMeterBaseUrl = getEnvVar("USAGE_OPEN_METER_BASE_URL");
+const usageEventUrl = getEnvVar("USAGE_EVENT_URL");
+const triggerJWT = getEnvVar("TRIGGER_JWT");
 
 const prodUsageManager = new ProdUsageManager(new DevUsageManager(), {
   heartbeatIntervalMs: heartbeatIntervalMs ? parseInt(heartbeatIntervalMs, 10) : undefined,
-  subject: subject!,
-  machinePreset: machinePreset,
-  client:
-    openMeterApiKey && openMeterBaseUrl
-      ? {
-          token: openMeterApiKey,
-          baseUrl: openMeterBaseUrl,
-        }
-      : undefined,
+  url: usageEventUrl,
+  jwt: triggerJWT,
 });
 
 usage.setGlobalUsageManager(prodUsageManager);

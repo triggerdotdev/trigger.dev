@@ -15,6 +15,8 @@ import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import {
   BackgroundWorker,
   BackgroundWorkerTask,
+  RuntimeEnvironment,
+  TaskRun,
   TaskRunAttemptStatus,
   TaskRunStatus,
 } from "@trigger.dev/database";
@@ -37,6 +39,8 @@ import { CrashTaskRunService } from "../services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
 import { tracer } from "../tracer.server";
+import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
+import { EnvironmentVariable } from "../environmentVariables/repository";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -1063,7 +1067,7 @@ class SharedQueueTasks {
       },
     };
 
-    const variables = await resolveVariablesForEnvironment(attempt.runtimeEnvironment);
+    const variables = await this.#buildEnvironmentVariables(attempt.runtimeEnvironment, taskRun);
 
     const payload: ProdTaskRunExecutionPayload = {
       execution,
@@ -1129,7 +1133,7 @@ class SharedQueueTasks {
       return;
     }
 
-    const variables = await resolveVariablesForEnvironment(environment);
+    const variables = await this.#buildEnvironmentVariables(environment, run);
 
     return {
       traceContext: run.traceContext as Record<string, unknown>,
@@ -1169,6 +1173,30 @@ class SharedQueueTasks {
     const service = new FailedTaskRunService();
 
     await service.call(completion.id, completion);
+  }
+
+  async #buildEnvironmentVariables(
+    environment: RuntimeEnvironment,
+    run: TaskRun
+  ): Promise<Array<EnvironmentVariable>> {
+    const variables = await resolveVariablesForEnvironment(environment);
+
+    const jwt = await generateJWTTokenForEnvironment(environment, {
+      run_id: run.id,
+      machine_present: "tiny-1x",
+    });
+
+    return [
+      ...variables,
+      ...[
+        { key: "TRIGGER_JWT", value: jwt },
+        { key: "TRIGGER_RUN_ID", value: run.id },
+        {
+          key: "TRIGGER_MACHINE_PRESET",
+          value: "tiny-1x",
+        },
+      ],
+    ];
   }
 }
 

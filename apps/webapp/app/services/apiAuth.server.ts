@@ -1,6 +1,7 @@
 import { Prettify } from "@trigger.dev/core";
 import { z } from "zod";
 import {
+  RuntimeEnvironment,
   findEnvironmentByApiKey,
   findEnvironmentByPublicApiKey,
 } from "~/models/runtimeEnvironment.server";
@@ -12,7 +13,8 @@ import {
 import { prisma } from "~/db.server";
 import { json } from "@remix-run/server-runtime";
 import { findProjectByRef } from "~/models/project.server";
-import { SignJWT } from "jose";
+import { SignJWT, jwtVerify } from "jose";
+import { env } from "~/env.server";
 
 type Optional<T, K extends keyof T> = Prettify<Omit<T, K> & Partial<Pick<T, K>>>;
 
@@ -211,14 +213,20 @@ export async function authenticatedEnvironmentForAuthentication(
   }
 }
 
-export async function generateJWTTokenForEnvironment(environment: AuthenticatedEnvironment) {
-  const secret = new TextEncoder().encode(
-    "cc7e0d44fd473002f1c42167459001140ec6389b7353f8088f4d9a95f2f596f2"
-  );
+export async function generateJWTTokenForEnvironment(
+  environment: RuntimeEnvironment,
+  payload: Record<string, string>
+) {
+  const secret = new TextEncoder().encode(env.SESSION_SECRET);
 
   const alg = "HS256";
 
-  const jwt = await new SignJWT({ environment_id: environment.id })
+  const jwt = await new SignJWT({
+    environment_id: environment.id,
+    org_id: environment.organizationId,
+    project_id: environment.projectId,
+    ...payload,
+  })
     .setProtectedHeader({ alg })
     .setIssuedAt()
     .setIssuer("https://id.trigger.dev")
@@ -227,4 +235,21 @@ export async function generateJWTTokenForEnvironment(environment: AuthenticatedE
     .sign(secret);
 
   return jwt;
+}
+
+export async function validateJWTToken<T extends z.ZodTypeAny>(
+  jwt: string,
+  payloadSchema: T
+): Promise<z.infer<T>> {
+  const secret = new TextEncoder().encode(env.SESSION_SECRET);
+
+  const { payload, protectedHeader } = await jwtVerify(jwt, secret, {
+    issuer: "https://id.trigger.dev",
+    audience: "https://api.trigger.dev",
+  });
+
+  console.log(protectedHeader);
+  console.log(payload);
+
+  return payloadSchema.parse(payload);
 }
