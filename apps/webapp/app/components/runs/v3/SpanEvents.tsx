@@ -2,7 +2,7 @@ import {
   isExceptionSpanEvent,
   type ExceptionEventProperties,
   type SpanEvent as OtelSpanEvent,
-} from "@trigger.dev/core/v3";
+} from "@trigger.dev/core/v3/schemas";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";

@@ -12,7 +12,7 @@ import {
   RunPanelIconProperty,
   RunPanelIconSection,
 } from "./RunCard";
-import { formatDuration } from "@trigger.dev/core/v3";
+import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 
 export function RunCompletedDetail({ run }: { run: MatchedRun }) {
   return (

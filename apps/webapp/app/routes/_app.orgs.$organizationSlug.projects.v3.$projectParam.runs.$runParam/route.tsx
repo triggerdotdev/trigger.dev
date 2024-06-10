@@ -12,7 +12,7 @@ import {
   formatDurationMilliseconds,
   millisecondsToNanoseconds,
   nanosecondsToMilliseconds,
-} from "@trigger.dev/core/v3";
+} from "@trigger.dev/core/v3/utils/durations";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -236,7 +236,7 @@ export default function Page() {
             }}
           >
             <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0]}>
-              <TasksTreeView
+              {/* <TasksTreeView
                 selectedId={selectedSpanId}
                 key={events[0]?.id ?? "-"}
                 events={events}
@@ -254,7 +254,7 @@ export default function Page() {
                 rootSpanStatus={rootSpanStatus}
                 rootStartedAt={rootStartedAt}
                 environmentType={run.environment.type}
-              />
+              /> */}
             </ResizablePanel>
             <ResizableHandle withHandle />
             {selectedSpanId && (

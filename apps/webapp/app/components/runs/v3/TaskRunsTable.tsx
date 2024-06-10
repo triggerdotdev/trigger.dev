@@ -2,7 +2,7 @@ import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { StopIcon } from "@heroicons/react/24/outline";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
-import { formatDuration } from "@trigger.dev/core/v3";
+import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { useEnvironments } from "~/hooks/useEnvironments";
