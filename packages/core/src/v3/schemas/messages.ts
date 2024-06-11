@@ -347,14 +347,6 @@ export const ProviderToPlatformMessages = {
 };
 
 export const PlatformToProviderMessages = {
-  HEALTH: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-    }),
-    callback: z.object({
-      status: z.literal("ok"),
-    }),
-  },
   INDEX: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -383,7 +375,6 @@ export const PlatformToProviderMessages = {
       }),
     ]),
   },
-  // TODO: this should be a shared queue message instead
   RESTORE: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -399,21 +390,6 @@ export const PlatformToProviderMessages = {
       orgId: z.string(),
       projectId: z.string(),
       runId: z.string(),
-    }),
-  },
-  DELETE: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      name: z.string(),
-    }),
-    callback: z.object({
-      message: z.string(),
-    }),
-  },
-  GET: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      name: z.string(),
     }),
   },
 };
