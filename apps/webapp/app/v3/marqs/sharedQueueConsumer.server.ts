@@ -1,6 +1,6 @@
 import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
 import {
-  Machine,
+  MachinePreset,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   TaskRunError,
@@ -41,6 +41,7 @@ import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
 import { tracer } from "../tracer.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
+import { machinePresetFromConfig } from "../machinePresets.server";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -409,6 +410,7 @@ export class SharedQueueConsumer {
             lockedAt: new Date(),
             lockedById: backgroundTask.id,
             lockedToVersionId: deployment.worker.id,
+            startedAt: existingTaskRun.startedAt ?? new Date(),
           },
           include: {
             runtimeEnvironment: true,
@@ -509,18 +511,7 @@ export class SharedQueueConsumer {
             });
           } else {
             const machineConfig = lockedTaskRun.lockedBy?.machineConfig;
-            const machine = Machine.safeParse(machineConfig ?? {});
-
-            if (!machine.success) {
-              logger.error("Failed to parse machine config", {
-                queueMessage: message.data,
-                messageId: message.messageId,
-                machineConfig,
-              });
-
-              await this.#ackAndDoMoreWork(message.messageId);
-              return;
-            }
+            const machine = machinePresetFromConfig(machineConfig ?? {});
 
             await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
               backgroundWorkerId: deployment.worker.friendlyId,
@@ -528,7 +519,7 @@ export class SharedQueueConsumer {
                 type: "SCHEDULE_ATTEMPT",
                 image: deployment.imageReference,
                 version: deployment.version,
-                machine: machine.data,
+                machine,
                 // identifiers
                 id: "placeholder", // TODO: Remove this completely in a future release
                 envId: lockedTaskRun.runtimeEnvironment.id,
@@ -558,6 +549,7 @@ export class SharedQueueConsumer {
                 lockedAt: null,
                 lockedById: null,
                 status: lockedTaskRun.status,
+                startedAt: existingTaskRun.startedAt,
               },
             }),
           ]);
@@ -1012,6 +1004,8 @@ class SharedQueueTasks {
 
     const { backgroundWorkerTask, taskRun, queue } = attempt;
 
+    const machinePreset = machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
+
     const execution: ProdTaskRunExecution = {
       task: {
         id: backgroundWorkerTask.slug,
@@ -1065,9 +1059,14 @@ class SharedQueueTasks {
         contentHash: attempt.backgroundWorker.contentHash,
         version: attempt.backgroundWorker.version,
       },
+      machine: machinePreset,
     };
 
-    const variables = await this.#buildEnvironmentVariables(attempt.runtimeEnvironment, taskRun);
+    const variables = await this.#buildEnvironmentVariables(
+      attempt.runtimeEnvironment,
+      taskRun,
+      machinePreset
+    );
 
     const payload: ProdTaskRunExecutionPayload = {
       execution,
@@ -1126,6 +1125,9 @@ class SharedQueueTasks {
         id: runId,
         runtimeEnvironmentId: environment.id,
       },
+      include: {
+        lockedBy: true,
+      },
     });
 
     if (!run) {
@@ -1133,7 +1135,9 @@ class SharedQueueTasks {
       return;
     }
 
-    const variables = await this.#buildEnvironmentVariables(environment, run);
+    const machinePreset = machinePresetFromConfig(run.lockedBy?.machineConfig ?? {});
+
+    const variables = await this.#buildEnvironmentVariables(environment, run, machinePreset);
 
     return {
       traceContext: run.traceContext as Record<string, unknown>,
@@ -1177,13 +1181,14 @@ class SharedQueueTasks {
 
   async #buildEnvironmentVariables(
     environment: RuntimeEnvironment,
-    run: TaskRun
+    run: TaskRun,
+    machinePreset: MachinePreset
   ): Promise<Array<EnvironmentVariable>> {
     const variables = await resolveVariablesForEnvironment(environment);
 
     const jwt = await generateJWTTokenForEnvironment(environment, {
       run_id: run.id,
-      machine_present: "tiny-1x",
+      machine_preset: machinePreset.name,
     });
 
     return [
@@ -1193,7 +1198,7 @@ class SharedQueueTasks {
         { key: "TRIGGER_RUN_ID", value: run.id },
         {
           key: "TRIGGER_MACHINE_PRESET",
-          value: "tiny-1x",
+          value: machinePreset.name,
         },
       ],
     ];

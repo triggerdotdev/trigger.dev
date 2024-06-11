@@ -42,6 +42,5 @@ export const SemanticInternalAttributes = {
   RETRY_COUNT: "retry.count",
   LINK_TITLE: "$link.title",
   IDEMPOTENCY_KEY: "ctx.run.idempotencyKey",
-  USAGE_CPU_TIME: "$usage.cpuTime",
-  USAGE_WALL_TIME: "$usage.wallTime",
+  USAGE_DURATION_MS: "$usage.durationMs",
 };

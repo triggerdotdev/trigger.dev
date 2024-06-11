@@ -192,6 +192,16 @@ const EnvironmentSchema = z.object({
   /* Usage settings */
   USAGE_EVENT_URL: z.string().optional(),
   PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
+
+  CENTS_PER_HOUR_MICRO: z.coerce.number().positive().default(0),
+  CENTS_PER_HOUR_SMALL_1X: z.coerce.number().positive().default(0),
+  CENTS_PER_HOUR_SMALL_2X: z.coerce.number().positive().default(0),
+  CENTS_PER_HOUR_MEDIUM_1X: z.coerce.number().positive().default(0),
+  CENTS_PER_HOUR_MEDIUM_2X: z.coerce.number().positive().default(0),
+  CENTS_PER_HOUR_LARGE_1X: z.coerce.number().positive().default(0),
+
+  USAGE_OPEN_METER_API_KEY: z.string().optional(),
+  USAGE_OPEN_METER_BASE_URL: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

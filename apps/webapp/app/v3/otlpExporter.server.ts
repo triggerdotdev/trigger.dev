@@ -307,13 +307,9 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
                 "."
               )
             ) ?? resourceProperties.attemptNumber,
-          wallTimeMs: extractDoubleAttribute(
+          usageDurationMs: extractDoubleAttribute(
             span.attributes ?? [],
-            SemanticInternalAttributes.USAGE_WALL_TIME
-          ),
-          cpuTimeMs: extractDoubleAttribute(
-            span.attributes ?? [],
-            SemanticInternalAttributes.USAGE_CPU_TIME
+            SemanticInternalAttributes.USAGE_DURATION_MS
           ),
         };
       })

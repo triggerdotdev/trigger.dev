@@ -1,7 +1,11 @@
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { validateJWTToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { machinePresetFromName } from "~/v3/machinePresets.server";
+import { reportUsageEvent } from "~/v3/openMeter.server";
 
 const JWTPayloadSchema = z.object({
   environment_id: z.string(),
@@ -9,6 +13,10 @@ const JWTPayloadSchema = z.object({
   project_id: z.string(),
   run_id: z.string(),
   machine_preset: z.string(),
+});
+
+const BodySchema = z.object({
+  durationMs: z.number(),
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -27,7 +35,43 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const jwtPayload = await validateJWTToken(jwt, JWTPayloadSchema);
 
-  logger.debug("Validated JWT", { jwtPayload });
+  const rawJson = await request.json();
+
+  const json = BodySchema.safeParse(rawJson);
+
+  if (!json.success) {
+    logger.error("Failed to parse request body", { rawJson });
+
+    return { status: 400, body: "Bad Request" };
+  }
+
+  const preset = machinePresetFromName(jwtPayload.machine_preset as MachinePresetName);
+
+  logger.debug("Validated JWT", { jwtPayload, json: json.data, preset });
+
+  await prisma.taskRun.update({
+    where: {
+      id: jwtPayload.run_id,
+    },
+    data: {
+      usageDurationMs: {
+        increment: json.data.durationMs,
+      },
+      costInCents: {
+        increment: json.data.durationMs * preset.centsPerMs,
+      },
+    },
+  });
+
+  await reportUsageEvent({
+    source: "webapp",
+    type: "usage",
+    subject: jwtPayload.org_id,
+    data: {
+      durationMs: json.data.durationMs,
+      costInCents: json.data.durationMs * preset.centsPerMs,
+    },
+  });
 
   return new Response(null, {
     status: 200,

@@ -175,8 +175,7 @@ export const TaskRunExecutionRetry = z.object({
 export type TaskRunExecutionRetry = z.infer<typeof TaskRunExecutionRetry>;
 
 export const TaskRunExecutionUsage = z.object({
-  cpuTime: z.number(),
-  wallTime: z.number(),
+  durationMs: z.number(),
 });
 
 export type TaskRunExecutionUsage = z.infer<typeof TaskRunExecutionUsage>;

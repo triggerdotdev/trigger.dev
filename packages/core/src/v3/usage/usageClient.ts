@@ -20,7 +20,7 @@ export class UsageClient {
         body: JSON.stringify(event),
         headers: {
           "content-type": "application/json",
-          "x-trigger-jwt": `Bearer ${this.jwt}`,
+          "x-trigger-jwt": this.jwt,
           accept: "application/json",
         },
       });

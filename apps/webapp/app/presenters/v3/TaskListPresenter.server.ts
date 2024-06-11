@@ -311,7 +311,7 @@ export class TaskListPresenter extends BasePresenter {
     >`    
     SELECT 
       tr."taskIdentifier", 
-      AVG(EXTRACT(EPOCH FROM (tr."updatedAt" - tr."lockedAt"))) as duration
+      AVG(EXTRACT(EPOCH FROM (tr."updatedAt" - tr."startedAt"))) as duration
       FROM 
       ${sqlDatabaseSchema}."TaskRun" as tr
     WHERE 

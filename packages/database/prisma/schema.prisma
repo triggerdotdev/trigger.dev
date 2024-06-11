@@ -1644,6 +1644,11 @@ model TaskRun {
   tags        TaskTag[]
   checkpoints Checkpoint[]
 
+  startedAt DateTime?
+
+  usageDurationMs Int   @default(0)
+  costInCents     Float @default(0)
+
   lockedAt   DateTime?
   lockedBy   BackgroundWorkerTask? @relation(fields: [lockedById], references: [id])
   lockedById String?
@@ -1799,12 +1804,11 @@ model TaskRunAttempt {
   startedAt   DateTime?
   completedAt DateTime?
 
+  usageDurationMs Int @default(0)
+
   error      Json?
   output     String?
   outputType String  @default("application/json")
-
-  wallTimeMs Int @default(0)
-  cpuTimeMs  Int @default(0)
 
   dependencies      TaskRunDependency[]
   batchDependencies BatchTaskRun[]
@@ -1906,8 +1910,8 @@ model TaskEvent {
 
   createdAt DateTime @default(now())
 
-  wallTimeMs Int @default(0)
-  cpuTimeMs  Int @default(0)
+  // This represents the amount of "usage time" the event took, e.g. the CPU time
+  usageDurationMs Int @default(0)
 
   /// Used on the run page
   @@index([traceId])

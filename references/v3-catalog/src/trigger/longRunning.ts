@@ -2,6 +2,9 @@ import { logger, task, wait } from "@trigger.dev/sdk/v3";
 
 export const longRunning = task({
   id: "long-running",
+  machine: {
+    preset: "medium-2x",
+  },
   run: async (payload: { message: string }) => {
     logger.info("Long running payloadddd", { payload });
 

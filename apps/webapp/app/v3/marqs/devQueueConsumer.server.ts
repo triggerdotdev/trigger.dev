@@ -415,6 +415,7 @@ export class DevQueueConsumer {
         lockedById: backgroundTask.id,
         status: "EXECUTING",
         lockedToVersionId: backgroundWorker.id,
+        startedAt: existingTaskRun.startedAt ?? new Date(),
       },
       include: {
         attempts: {
@@ -520,6 +521,7 @@ export class DevQueueConsumer {
               lockedAt: null,
               lockedById: null,
               status: "PENDING",
+              startedAt: existingTaskRun.startedAt,
             },
           }),
         ]);
@@ -577,6 +579,7 @@ export class DevQueueConsumer {
               lockedAt: null,
               lockedById: null,
               status: "PENDING",
+              startedAt: existingTaskRun.startedAt,
             },
           }),
         ]);

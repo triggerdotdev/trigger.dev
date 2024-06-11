@@ -135,8 +135,7 @@ const handler = new ZodMessageHandler({
               code: TaskRunErrorCodes.TASK_ALREADY_RUNNING,
             },
             usage: {
-              cpuTime: 0,
-              wallTime: 0,
+              durationMs: 0,
             },
           },
         });
@@ -161,8 +160,7 @@ const handler = new ZodMessageHandler({
               code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,
             },
             usage: {
-              cpuTime: 0,
-              wallTime: 0,
+              durationMs: 0,
             },
           },
         });
@@ -193,7 +191,9 @@ const handler = new ZodMessageHandler({
           execution,
           result: {
             ...result,
-            usage: usageSample,
+            usage: {
+              durationMs: usageSample.cpuTime,
+            },
           },
         });
       } finally {

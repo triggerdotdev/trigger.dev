@@ -102,8 +102,7 @@ export class TriggerTracer {
           const usageSample = usage.stop(usageMeasurement);
 
           span.setAttributes({
-            [SemanticInternalAttributes.USAGE_CPU_TIME]: usageSample.cpuTime,
-            [SemanticInternalAttributes.USAGE_WALL_TIME]: usageSample.wallTime,
+            [SemanticInternalAttributes.USAGE_DURATION_MS]: usageSample.cpuTime,
           });
 
           span.end(clock.preciseNow());

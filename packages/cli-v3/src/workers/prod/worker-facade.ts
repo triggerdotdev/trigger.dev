@@ -184,7 +184,9 @@ const zodIpc = new ZodIpcConnection({
           execution,
           result: {
             ...result,
-            usage: usageSample,
+            usage: {
+              durationMs: usageSample.cpuTime,
+            },
           },
         });
       } finally {
