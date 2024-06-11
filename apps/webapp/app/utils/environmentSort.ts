@@ -58,3 +58,11 @@ export function filterOrphanedEnvironments<T extends FilterableEnvironment>(
     return false;
   });
 }
+
+export function onlyDevEnvironments<T extends FilterableEnvironment>(environments: T[]): T[] {
+  return environments.filter((e) => e.type === "DEVELOPMENT");
+}
+
+export function exceptDevEnvironments<T extends FilterableEnvironment>(environments: T[]): T[] {
+  return environments.filter((e) => e.type !== "DEVELOPMENT");
+}

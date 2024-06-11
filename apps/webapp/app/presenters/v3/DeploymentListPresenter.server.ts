@@ -7,6 +7,9 @@ import { getUsername } from "~/utils/username";
 
 const pageSize = 20;
 
+export type DeploymentList = Awaited<ReturnType<DeploymentListPresenter["call"]>>;
+export type DeploymentListItem = DeploymentList["deployments"][0];
+
 export class DeploymentListPresenter {
   #prismaClient: PrismaClient;
 
@@ -136,6 +139,8 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
           deployedAt: deployment.deployedAt,
           tasksCount: deployment.tasksCount ? Number(deployment.tasksCount) : null,
           label: label?.label,
+          isCurrent: label?.label === "current",
+          isDeployed: deployment.status === "DEPLOYED",
           environment: {
             id: environment.id,
             type: environment.type,
