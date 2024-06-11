@@ -8,9 +8,18 @@ import { Feedback } from "~/components/Feedback";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel, EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
+import { DeleteJobDialog } from "~/components/jobs/DeleteJobModalContent";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -109,15 +118,43 @@ export default function Page() {
             </PropertyTable>
           </AdminDebugTooltip>
 
-          <LinkButton
-            LeadingIcon={PlusIcon}
-            to={`${v3NewSchedulePath(organization, project)}${location.search}`}
-            variant="primary/small"
-            shortcut={{ key: "n" }}
-            disabled={possibleTasks.length === 0 || isShowingNewPane}
-          >
-            New schedule
-          </LinkButton>
+          {limits.used >= limits.limit ? (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  LeadingIcon={PlusIcon}
+                  variant="primary/small"
+                  shortcut={{ key: "n" }}
+                  disabled={possibleTasks.length === 0 || isShowingNewPane}
+                >
+                  New schedule
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>You've exceeded your limit</DialogHeader>
+                <DialogDescription>
+                  You've used {limits.used}/{limits.limit} of your schedules. You can request more
+                  schedules.
+                </DialogDescription>
+                <DialogFooter>
+                  <Feedback
+                    button={<Button variant="primary/medium">Request more</Button>}
+                    defaultValue="help"
+                  />
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <LinkButton
+              LeadingIcon={PlusIcon}
+              to={`${v3NewSchedulePath(organization, project)}${location.search}`}
+              variant="primary/small"
+              shortcut={{ key: "n" }}
+              disabled={possibleTasks.length === 0 || isShowingNewPane}
+            >
+              New schedule
+            </LinkButton>
+          )}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -150,7 +187,11 @@ export default function Page() {
                       You've used {limits.used}/{limits.limit} of your schedules.
                     </span>{" "}
                     <Feedback
-                      button={<button className=" text-secondary underline">Request More</button>}
+                      button={
+                        <button className=" text-secondary transition hover:text-indigo-400">
+                          Request more
+                        </button>
+                      }
                       defaultValue="help"
                     />
                     .
