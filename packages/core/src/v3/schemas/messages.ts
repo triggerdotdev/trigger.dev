@@ -341,20 +341,13 @@ export const ProviderToPlatformMessages = {
         name: z.string(),
         message: z.string(),
         stack: z.string().optional(),
+        stderr: z.string().optional(),
       }),
     }),
   },
 };
 
 export const PlatformToProviderMessages = {
-  HEALTH: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-    }),
-    callback: z.object({
-      status: z.literal("ok"),
-    }),
-  },
   INDEX: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -376,6 +369,7 @@ export const PlatformToProviderMessages = {
           name: z.string(),
           message: z.string(),
           stack: z.string().optional(),
+          stderr: z.string().optional(),
         }),
       }),
       z.object({
@@ -383,7 +377,6 @@ export const PlatformToProviderMessages = {
       }),
     ]),
   },
-  // TODO: this should be a shared queue message instead
   RESTORE: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -399,21 +392,6 @@ export const PlatformToProviderMessages = {
       orgId: z.string(),
       projectId: z.string(),
       runId: z.string(),
-    }),
-  },
-  DELETE: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      name: z.string(),
-    }),
-    callback: z.object({
-      message: z.string(),
-    }),
-  },
-  GET: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      name: z.string(),
     }),
   },
 };
@@ -582,6 +560,7 @@ export const CoordinatorToPlatformMessages = {
         name: z.string(),
         message: z.string(),
         stack: z.string().optional(),
+        stderr: z.string().optional(),
       }),
     }),
   },
@@ -825,6 +804,7 @@ export const ProdWorkerToCoordinatorMessages = {
         name: z.string(),
         message: z.string(),
         stack: z.string().optional(),
+        stderr: z.string().optional(),
       }),
     }),
   },

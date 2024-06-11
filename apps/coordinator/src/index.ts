@@ -43,6 +43,7 @@ const SIMULATE_CHECKPOINT_FAILURE_SECONDS = parseInt(
 );
 
 const REGISTRY_HOST = process.env.REGISTRY_HOST || "localhost:5000";
+const REGISTRY_NAMESPACE = process.env.REGISTRY_NAMESPACE || "trigger";
 const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
 const REGISTRY_TLS_VERIFY = process.env.REGISTRY_TLS_VERIFY === "false" ? "false" : "true";
 
@@ -179,7 +180,7 @@ class Checkpointer {
   }
 
   #getImageRef(projectRef: string, deploymentVersion: string, shortCode: string) {
-    return `${REGISTRY_HOST}/trigger/${projectRef}:${deploymentVersion}.prod-${shortCode}`;
+    return `${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/${projectRef}:${deploymentVersion}.prod-${shortCode}`;
   }
 
   #getExportLocation(projectRef: string, deploymentVersion: string, shortCode: string) {

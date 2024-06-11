@@ -206,6 +206,8 @@ scp -3 root@<webapp_machine>:docker/.env root@<worker_machine>:docker/.env
 Checkpointing allows you to save the state of a running container to disk and restore it later. This can be useful for 
 long-running tasks that need to be paused and resumed without losing state. Think fan-out and fan-in, or long waits in email campaigns.
 
+The checkpoints will be pushed to the same registry as the deployed images. Please see the [Registry setup](#registry-setup) section for more information.
+
 ### Requirements
 
 - Debian, **NOT** a derivative like Ubuntu
@@ -225,7 +227,7 @@ sudo apt-get install criu
 2. Tweak the config so we can successfully checkpoint our workloads
 
 ```bash
-mkdir /etc/criu
+mkdir -p /etc/criu
 
 cat << EOF >/etc/criu/runc.conf
 tcp-close
