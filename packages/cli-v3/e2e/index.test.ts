@@ -33,10 +33,11 @@ const allTestCases: TestCase[] = [
     name: "server-only",
     skipTypecheck: true,
   },
-  // {
-  //   name: "infisical-sdk",
-  //   skipTypecheck: true,
-  // },
+  {
+    name: "infisical-sdk",
+    skipTypecheck: true,
+    wantCompilationError: true, // FIXME: remove once bug is fixed
+  },
 ];
 
 const testCases = process.env.MOD
@@ -184,14 +185,14 @@ if (testCases.length > 0) {
           delete global.resolvedConfig;
         });
 
-        test.skipIf(skipTypecheck)("typechecks", async () => {
+        test.skipIf(skipTypecheck).concurrent("typechecks", async () => {
           await expect(
             (async () =>
               await typecheckProject((global.resolvedConfig as ReadConfigFileResult).config))()
           ).resolves.not.toThrowError();
         });
 
-        test(
+        test.concurrent(
           wantCompilationError ? "does not compile" : "compiles",
           async () => {
             const expectation = expect(
@@ -259,7 +260,7 @@ if (testCases.length > 0) {
               delete global.dependencies;
             });
 
-            test("copies postinstall command into Containerfile.prod", async () => {
+            test.concurrent("copies postinstall command into Containerfile.prod", async () => {
               await expect(
                 (async () => {
                   await createContainerFile({
@@ -270,7 +271,7 @@ if (testCases.length > 0) {
               ).resolves.not.toThrowError();
             });
 
-            test("creates deploy hash", async () => {
+            test.concurrent("creates deploy hash", async () => {
               await expect(
                 (async () => {
                   await createDeployHash({
