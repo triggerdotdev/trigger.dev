@@ -4,6 +4,7 @@ import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
+import { Feedback } from "~/components/Feedback";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel, EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
@@ -78,6 +79,7 @@ export default function Page() {
     possibleEnvironments,
     hasFilters,
     filters,
+    limits,
     currentPage,
     totalPages,
   } = useTypedLoaderData<typeof loader>();
@@ -142,7 +144,17 @@ export default function Page() {
                 </div>
 
                 <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
-                <div className="mt-2 justify-end">
+                <div className="mt-2 justify-between">
+                  <Paragraph variant="extra-small" className="mt-3">
+                    <span className={limits.used >= limits.limit ? "text-warning" : ""}>
+                      You've used {limits.used}/{limits.limit} of your schedules.
+                    </span>{" "}
+                    <Feedback
+                      button={<button className=" text-secondary underline">Request More</button>}
+                      defaultValue="help"
+                    />
+                    .
+                  </Paragraph>
                   <PaginationControls currentPage={currentPage} totalPages={totalPages} />
                 </div>
               </div>

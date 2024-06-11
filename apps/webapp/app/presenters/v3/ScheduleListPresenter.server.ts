@@ -36,7 +36,6 @@ export type ScheduleList = Awaited<ReturnType<ScheduleListPresenter["call"]>>;
 export type ScheduleListAppliedFilters = ScheduleList["filters"];
 
 export class ScheduleListPresenter extends BasePresenter {
-
   public async call({
     userId,
     projectId,
@@ -71,9 +70,20 @@ export class ScheduleListPresenter extends BasePresenter {
             },
           },
         },
+        organization: {
+          select: {
+            maximumSchedulesLimit: true,
+          },
+        },
       },
       where: {
         id: projectId,
+      },
+    });
+
+    const schedulesCount = await this._prisma.taskSchedule.count({
+      where: {
+        projectId,
       },
     });
 
@@ -245,6 +255,10 @@ export class ScheduleListPresenter extends BasePresenter {
         return displayableEnvironment(environment, userId);
       }),
       hasFilters,
+      limits: {
+        used: schedulesCount,
+        limit: project.organization.maximumSchedulesLimit,
+      },
       filters: {
         tasks,
         environments,

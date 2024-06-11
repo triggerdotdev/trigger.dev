@@ -62,6 +62,39 @@ export class UpsertTaskScheduleService extends BaseService {
       );
     }
 
+    //if creating a schedule, check they're under the limits
+    if (!schedule.friendlyId) {
+      //check they're within their limit
+      const limits = await this._prisma.organization.findFirst({
+        select: {
+          maximumSchedulesLimit: true,
+        },
+        where: {
+          projects: {
+            some: {
+              id: projectId,
+            },
+          },
+        },
+      });
+
+      if (!limits) {
+        throw new ServiceValidationError("Organization not found");
+      }
+
+      const schedulesCount = await this._prisma.taskSchedule.count({
+        where: {
+          projectId,
+        },
+      });
+
+      if (schedulesCount >= limits.maximumSchedulesLimit) {
+        throw new ServiceValidationError(
+          `You have created ${schedulesCount}/${limits.maximumSchedulesLimit} schedules so need to increase your limits or delete some schedules.`
+        );
+      }
+    }
+
     const result = await $transaction(this._prisma, async (tx) => {
       const deduplicationKey =
         typeof schedule.deduplicationKey === "string" && schedule.deduplicationKey !== ""
