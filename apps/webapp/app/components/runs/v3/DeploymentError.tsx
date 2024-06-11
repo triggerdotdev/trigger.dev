@@ -22,7 +22,7 @@ export function DeploymentError({ errorData }: DeploymentErrorProps) {
       )}
       {errorData.stderr && (
         <>
-          <DeploymentErrorHeader title="stderr" />
+          <DeploymentErrorHeader title="Error logs:" />
           <CodeBlock
             showCopyButton={false}
             showLineNumbers={false}
