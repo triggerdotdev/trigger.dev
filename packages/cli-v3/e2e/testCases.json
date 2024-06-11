@@ -1,0 +1,10 @@
+[
+  {
+    "name": "no-config",
+    "wantConfigNotFoundError": true
+  },
+  {
+    "name": "server-only",
+    "skipTypecheck": true
+  }
+]

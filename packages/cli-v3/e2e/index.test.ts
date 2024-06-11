@@ -1,17 +1,18 @@
 import { execa, execaNode } from "execa";
+import { readFileSync } from "node:fs";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-import { Loglevel, LogLevelSchema, PackageManagerSchema } from "./schemas";
 import { typecheckProject } from "../src/commands/deploy";
 import { readConfig, ReadConfigFileResult } from "../src/utilities/configFiles";
 import { PackageManager } from "../src/utilities/getUserPackageManager";
 import { logger } from "../src/utilities/logger";
 import { compile } from "./compile";
-import { handleDependencies } from "./handleDependencies";
 import { createContainerFile } from "./createContainerFile";
 import { createDeployHash } from "./createDeployHash";
-import { readFileSync } from "node:fs";
+import { handleDependencies } from "./handleDependencies";
+import { Loglevel, LogLevelSchema, PackageManagerSchema } from "./schemas";
+import allTestCases from "./testCases.json";
 
 type TestCase = {
   name: string;
@@ -24,23 +25,7 @@ type TestCase = {
   wantInstallationError?: boolean;
 };
 
-const allTestCases: TestCase[] = [
-  {
-    name: "no-config",
-    wantConfigNotFoundError: true,
-  },
-  {
-    name: "server-only",
-    skipTypecheck: true,
-  },
-  {
-    name: "infisical-sdk",
-    skipTypecheck: true,
-    wantCompilationError: true, // FIXME: remove once bug is fixed
-  },
-];
-
-const testCases = process.env.MOD
+const testCases: TestCase[] = process.env.MOD
   ? allTestCases.filter(({ name }) => process.env.MOD === name)
   : allTestCases;
 
