@@ -85,37 +85,23 @@ class DockerTaskOperations implements TaskOperations {
       port: COORDINATOR_PORT,
     });
 
-    try {
-      logger.debug(
-        await execa("docker", [
-          "run",
-          "--network=host",
-          "--rm",
-          `--env=INDEX_TASKS=true`,
-          `--env=TRIGGER_SECRET_KEY=${opts.apiKey}`,
-          `--env=TRIGGER_API_URL=${opts.apiUrl}`,
-          `--env=TRIGGER_ENV_ID=${opts.envId}`,
-          `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}`,
-          `--env=POD_NAME=${containerName}`,
-          `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
-          `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
-          `--name=${containerName}`,
-          `${opts.imageRef}`,
-        ])
-      );
-    } catch (error: any) {
-      if (!isExecaChildProcess(error)) {
-        throw error;
-      }
-
-      logger.error("Index failed:", {
-        opts,
-        exitCode: error.exitCode,
-        escapedCommand: error.escapedCommand,
-        stdout: error.stdout,
-        stderr: error.stderr,
-      });
-    }
+    logger.debug(
+      await execa("docker", [
+        "run",
+        "--network=host",
+        "--rm",
+        `--env=INDEX_TASKS=true`,
+        `--env=TRIGGER_SECRET_KEY=${opts.apiKey}`,
+        `--env=TRIGGER_API_URL=${opts.apiUrl}`,
+        `--env=TRIGGER_ENV_ID=${opts.envId}`,
+        `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}`,
+        `--env=POD_NAME=${containerName}`,
+        `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
+        `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
+        `--name=${containerName}`,
+        `${opts.imageRef}`,
+      ])
+    );
   }
 
   async create(opts: TaskOperationsCreateOptions) {

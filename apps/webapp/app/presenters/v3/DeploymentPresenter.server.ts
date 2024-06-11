@@ -17,6 +17,7 @@ export type ErrorData = {
   name: string;
   message: string;
   stack?: string;
+  stderr?: string;
 };
 
 export class DeploymentPresenter {
@@ -177,17 +178,20 @@ export class DeploymentPresenter {
             name: parsedErrorData.data.name,
             message: parsedErrorData.data.message,
             stack: createTaskMetadataFailedErrorStack(parsedError.data),
+            stderr: parsedErrorData.data.stderr,
           };
         } else {
           return {
             name: parsedErrorData.data.name,
             message: parsedErrorData.data.message,
+            stderr: parsedErrorData.data.stderr,
           };
         }
       } else {
         return {
           name: parsedErrorData.data.name,
           message: parsedErrorData.data.message,
+          stderr: parsedErrorData.data.stderr,
         };
       }
     }
@@ -196,6 +200,7 @@ export class DeploymentPresenter {
       name: parsedErrorData.data.name,
       message: parsedErrorData.data.message,
       stack: parsedErrorData.data.stack,
+      stderr: parsedErrorData.data.stderr,
     };
   }
 }

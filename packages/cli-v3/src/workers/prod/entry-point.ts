@@ -9,7 +9,8 @@ import {
   WaitReason,
 } from "@trigger.dev/core/v3";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
-import { HttpReply, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
+import { HttpReply, getRandomPortNumber } from "@trigger.dev/core-apps/http";
+import { SimpleLogger } from "@trigger.dev/core-apps/logger";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { ProdBackgroundWorker } from "./backgroundWorker";
@@ -633,6 +634,8 @@ class ProdWorker {
               process.exit(1);
             }
           } catch (e) {
+            const stderr = this.#backgroundWorker.stderr.join("\n");
+
             if (e instanceof TaskMetadataParseError) {
               logger.error("tasks metadata parse error", {
                 zodIssues: e.zodIssues,
@@ -646,6 +649,7 @@ class ProdWorker {
                   name: "TaskMetadataParseError",
                   message: "There was an error parsing the task metadata",
                   stack: JSON.stringify({ zodIssues: e.zodIssues, tasks: e.tasks }),
+                  stderr,
                 },
               });
             } else if (e instanceof UncaughtExceptionError) {
@@ -653,6 +657,7 @@ class ProdWorker {
                 name: e.originalError.name,
                 message: e.originalError.message,
                 stack: e.originalError.stack,
+                stderr,
               };
 
               logger.error("uncaught exception", { originalError: error });
@@ -667,6 +672,7 @@ class ProdWorker {
                 name: e.name,
                 message: e.message,
                 stack: e.stack,
+                stderr,
               };
 
               logger.error("error", { error });
@@ -685,6 +691,7 @@ class ProdWorker {
                 error: {
                   name: "Error",
                   message: e,
+                  stderr,
                 },
               });
             } else {
@@ -696,6 +703,7 @@ class ProdWorker {
                 error: {
                   name: "Error",
                   message: "Unknown error",
+                  stderr,
                 },
               });
             }

@@ -245,6 +245,7 @@ export async function revokeInvite({
   const invite = await prisma.orgMemberInvite.delete({
     where: {
       id: inviteId,
+      organizationId: org.id,
     },
     select: {
       email: true,
