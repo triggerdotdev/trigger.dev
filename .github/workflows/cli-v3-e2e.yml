@@ -1,0 +1,36 @@
+name: "🧪 v3 CLI e2e tests"
+on:
+  push:
+    branches:
+      - cli-v3-integration-test-suite-setup
+jobs:
+  e2e:
+    name: "🧪 v3 CLI e2e tests"
+    runs-on: buildjet-8vcpu-ubuntu-2204
+    strategy:
+      fail-fast: false
+      matrix:
+        package-manager: ["npm", "pnpm", "yarn"]
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@v2.2.4
+        with:
+          version: 8.15.5
+
+      - name: ⎔ Setup node
+        uses: buildjet/setup-node@v3
+        with:
+          node-version: 20.11.1
+          cache: "pnpm"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile --filter trigger.dev
+
+      - name: Run Unit Tests
+        run: |
+          PM=${{ matrix.package-manager }} pnpm --filter trigger.dev run test:e2e
