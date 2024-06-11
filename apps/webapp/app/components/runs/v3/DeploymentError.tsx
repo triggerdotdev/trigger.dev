@@ -20,6 +20,17 @@ export function DeploymentError({ errorData }: DeploymentErrorProps) {
           maxLines={20}
         />
       )}
+      {errorData.stderr && (
+        <>
+          <DeploymentErrorHeader title="stderr" />
+          <CodeBlock
+            showCopyButton={false}
+            showLineNumbers={false}
+            code={errorData.stderr}
+            maxLines={20}
+          />
+        </>
+      )}
     </div>
   );
 }

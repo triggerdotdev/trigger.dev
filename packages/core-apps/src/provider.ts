@@ -12,6 +12,8 @@ import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
 import { getRandomPortNumber, HttpReply, getTextBody } from "./http";
 import { SimpleLogger } from "./logger";
+import { isExecaChildProcess } from "./checkpoints";
+import { setTimeout } from "node:timers/promises";
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
@@ -187,7 +189,43 @@ export class ProviderShell implements Provider {
               deploymentId: message.deploymentId,
             });
           } catch (error) {
-            logger.error("index failed", error);
+            if (isExecaChildProcess(error)) {
+              logger.error("Index failed", {
+                socketMessage: message,
+                exitCode: error.exitCode,
+                escapedCommand: error.escapedCommand,
+                stdout: error.stdout,
+                stderr: error.stderr,
+              });
+
+              if (error.exitCode === 111) {
+                logger.error("Index failure already reported by the worker", {
+                  socketMessage: message,
+                });
+
+                // Add a brief delay to avoid messaging race conditions
+                await setTimeout(2000);
+              }
+
+              function normalizeStderr(stderr: string) {
+                return stderr
+                  .split("\n")
+                  .map((line) => line.trim())
+                  .filter((line) => line.length > 0)
+                  .join("\n");
+              }
+
+              return {
+                success: false,
+                error: {
+                  name: "Index error",
+                  message: `Crashed with exit code ${error.exitCode}`,
+                  stderr: normalizeStderr(error.stderr),
+                },
+              };
+            } else {
+              logger.error("Index failed", error);
+            }
 
             if (error instanceof Error) {
               return {

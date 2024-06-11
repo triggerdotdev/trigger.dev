@@ -162,6 +162,7 @@ export const DeploymentErrorData = z.object({
   name: z.string(),
   message: z.string(),
   stack: z.string().optional(),
+  stderr: z.string().optional(),
 });
 
 export const GetDeploymentResponseBody = z.object({

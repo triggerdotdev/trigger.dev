@@ -78,6 +78,7 @@ export class ProdBackgroundWorker {
   private _onClose: Evt<void> = new Evt();
 
   public tasks: Array<TaskMetadataWithFilePath> = [];
+  public stderr: Array<string> = [];
 
   _taskRunProcess: TaskRunProcess | undefined;
   private _taskRunProcessesBeingKilled: Map<number, TaskRunProcess> = new Map();
@@ -161,6 +162,23 @@ export class ProdBackgroundWorker {
         reject(new Error("Worker timed out"));
       }, 10_000);
 
+      child.stdout?.on("data", (data) => {
+        console.log(data.toString());
+      });
+
+      child.stderr?.on("data", (data) => {
+        console.error(data.toString());
+        this.stderr.push(data.toString());
+      });
+
+      child.on("exit", (code) => {
+        if (!resolved) {
+          clearTimeout(timeout);
+          resolved = true;
+          reject(new Error(`Worker exited with code ${code}`));
+        }
+      });
+
       new ZodIpcConnection({
         listenSchema: ProdChildToWorkerMessages,
         emitSchema: ProdWorkerToChildMessages,
@@ -191,22 +209,6 @@ export class ProdBackgroundWorker {
             }
           },
         },
-      });
-
-      child.stdout?.on("data", (data) => {
-        console.log(data.toString());
-      });
-
-      child.stderr?.on("data", (data) => {
-        console.error(data.toString());
-      });
-
-      child.on("exit", (code) => {
-        if (!resolved) {
-          clearTimeout(timeout);
-          resolved = true;
-          reject(new Error(`Worker exited with code ${code}`));
-        }
       });
     });
 
