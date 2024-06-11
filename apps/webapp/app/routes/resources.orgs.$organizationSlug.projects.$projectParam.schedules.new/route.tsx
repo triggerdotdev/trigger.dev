@@ -3,9 +3,11 @@ import { parse } from "@conform-to/zod";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { parseExpression } from "cron-parser";
 import cronstrue from "cronstrue";
-import { useState } from "react";
+import { matchSorter } from "match-sorter";
+import { useRef, useState } from "react";
 import {
   environmentTextClassName,
   environmentTitle,
@@ -121,6 +123,7 @@ export function UpsertScheduleForm({
   showGenerateField,
 }: EditableScheduleElements & { showGenerateField: boolean }) {
   const lastSubmission = useActionData();
+  const [selectedTimezone, setSelectedTimezone] = useState<string>("UTC");
   const [cronPattern, setCronPattern] = useState<string>(schedule?.cron ?? "");
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
@@ -151,7 +154,11 @@ export function UpsertScheduleForm({
       };
     } else {
       try {
-        const expression = parseExpression(cronPattern, { utc: true });
+        const isUtc = selectedTimezone === "UTC";
+        const expression = parseExpression(
+          cronPattern,
+          isUtc ? { utc: true } : { tz: selectedTimezone }
+        );
         cronPatternResult = {
           isValid: true,
           description: cronstrue.toString(cronPattern),
@@ -195,7 +202,7 @@ export function UpsertScheduleForm({
                 defaultValue={schedule?.taskIdentifier}
                 heading={"Filter..."}
                 items={possibleTasks}
-                filter={(task, search) => task.toLowerCase().includes(search.toLowerCase())}
+                filter={{ keys: [(item) => item.replace(/\//g, " ").replace(/_/, " ")] }}
                 dropdownIcon
               >
                 {(matches) => (
@@ -248,23 +255,18 @@ export function UpsertScheduleForm({
               <Select
                 {...conform.select(timezone)}
                 placeholder="Select a timezone"
-                defaultValue={schedule?.timezone ?? "utc"}
-                heading={"Filter timezones..."}
+                defaultValue={selectedTimezone}
+                value={selectedTimezone}
+                setValue={(e) => {
+                  if (Array.isArray(e)) return;
+                  setSelectedTimezone(e);
+                }}
                 items={possibleTimezones}
                 filter={(timezone, search) => timezone.toLowerCase().includes(search.toLowerCase())}
                 dropdownIcon
-                text={(timezone) => (!timezone || timezone === "utc" ? "UTC" : timezone)}
+                variant="tertiary/medium"
               >
-                {(matches) => (
-                  <>
-                    <SelectItem value={"utc"}>UTC</SelectItem>
-                    {matches?.map((timezone) => (
-                      <SelectItem key={timezone} value={timezone}>
-                        {timezone}
-                      </SelectItem>
-                    ))}
-                  </>
-                )}
+                {(matches) => <TimezoneList timezones={matches} />}
               </Select>
               <FormError id={timezone.errorId}>{timezone.error}</FormError>
             </InputGroup>
@@ -416,5 +418,61 @@ function ValidCronMessage({ isValid, message }: { isValid: boolean; message: str
       </span>
       <span>{message}</span>
     </Paragraph>
+  );
+}
+
+function TimezoneList({ timezones }: { timezones: string[] }) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: timezones.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 28,
+  });
+
+  return (
+    <div
+      ref={parentRef}
+      style={{
+        height: `${rowVirtualizer.getTotalSize()}px`,
+        width: "100%",
+        position: "relative",
+      }}
+    >
+      {rowVirtualizer.getVirtualItems().map((virtualItem) => (
+        <TimezoneCell
+          key={virtualItem.key}
+          size={virtualItem.size}
+          start={virtualItem.start}
+          timezone={timezones[virtualItem.index]}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TimezoneCell({
+  timezone,
+  size,
+  start,
+}: {
+  timezone: string;
+  size: number;
+  start: number;
+}) {
+  return (
+    <SelectItem
+      value={timezone}
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: `${size}px`,
+        transform: `translateY(${start}px)`,
+      }}
+    >
+      {timezone}
+    </SelectItem>
   );
 }

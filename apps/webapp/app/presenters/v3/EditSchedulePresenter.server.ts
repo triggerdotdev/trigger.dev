@@ -72,12 +72,13 @@ export class EditSchedulePresenter {
       return displayableEnvironment(environment, userId);
     });
 
-    const possibleTimezones = Intl.supportedValuesOf("timeZone");
+    const possibleTimezones = Intl.supportedValuesOf("timeZone").sort();
+    possibleTimezones.unshift("UTC");
 
     return {
       possibleTasks: possibleTasks.map((task) => task.slug),
       possibleEnvironments,
-      possibleTimezones: possibleTimezones.sort(),
+      possibleTimezones,
       schedule: await this.#getExistingSchedule(friendlyId, possibleEnvironments),
     };
   }
