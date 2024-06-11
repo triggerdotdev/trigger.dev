@@ -18,6 +18,7 @@ export const createSchedules = task({
       task: firstScheduledTask.id,
       //The schedule in CRON format.
       cron: "0 0 * * *",
+      deduplicationKey: "my-deduplication-key",
     });
   },
 });

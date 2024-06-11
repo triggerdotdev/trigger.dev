@@ -121,6 +121,8 @@ const createdSchedule = await schedules.create({
   task: firstScheduledTask.id,
   //The schedule in CRON format.
   cron: "0 0 * * *",
+  //this is required, it prevents you from creating duplicate schedules. It will update the schedule if it already exists.
+  deduplicationKey: "my-deduplication-key",
 });
 ```
 
@@ -139,7 +141,7 @@ const createdSchedule = await schedules.create({
   //Optionally, you can specify your own IDs (like a user ID) and then use it inside the run function of your task.
   //This allows you to have per-user CRON tasks.
   externalId: "user_123456",
-  //(Optional) You can only create one schedule with this key.
+  //You can only create one schedule with this key.
   //If you use it twice, the second call will update the schedule.
   //This is useful if you don't want to create duplicate schedules for a user.
   deduplicationKey: "user_123456-todo_reminder",
@@ -245,6 +247,7 @@ const updatedSchedule = await schedules.update(scheduleId, {
   task: firstScheduledTask.id,
   cron: "0 0 1 * *",
   externalId: "ext_1234444",
+  deduplicationKey: "my-deduplication-key",
 });
 ```
 

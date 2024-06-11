@@ -218,6 +218,7 @@ async function doSchedules() {
     task: firstScheduledTask.id,
     cron: "0 0 1 * *",
     externalId: "ext_1234444",
+    deduplicationKey: "dedup_1234444",
   });
 
   console.log("updated schedule", updatedSchedule);

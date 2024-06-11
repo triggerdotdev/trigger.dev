@@ -257,10 +257,10 @@ export const CreateScheduleOptions = z.object({
 
    */
   cron: z.string(),
-  /** (Optional) You can only create one schedule with this key. If you use it twice, the second call will update the schedule.
+  /** You can only create one schedule with this key. If you use it twice, the second call will update the schedule.
    *
-   * This is useful if you don't want to create duplicate schedules for a user. */
-  deduplicationKey: z.string().optional(),
+   * This is required to prevent you from creating duplicate schedules. */
+  deduplicationKey: z.string(),
   /** Optionally, you can specify your own IDs (like a user ID) and then use it inside the run function of your task.
    *
    * This allows you to have per-user CRON tasks.
