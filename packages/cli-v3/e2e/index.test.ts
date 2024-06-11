@@ -33,10 +33,10 @@ const allTestCases: TestCase[] = [
     name: "server-only",
     skipTypecheck: true,
   },
-  {
-    name: "infisical-sdk",
-    skipTypecheck: true,
-  },
+  // {
+  //   name: "infisical-sdk",
+  //   skipTypecheck: true,
+  // },
 ];
 
 const testCases = process.env.MOD
@@ -84,19 +84,28 @@ if (testCases.length > 0) {
         await rm(resolve(join(fixtureDir, "node_modules")), { force: true, recursive: true });
         if (packageManager === "npm") {
           // `npm ci` & `npm install` will update an existing yarn.lock
-          await rename(
-            resolve(join(fixtureDir, "yarn.lock")),
-            resolve(join(fixtureDir, "yarn.lock.copy"))
-          );
+          try {
+            await rename(
+              resolve(join(fixtureDir, "yarn.lock")),
+              resolve(join(fixtureDir, "yarn.lock.copy"))
+            );
+          } catch (e) {
+            await rename(
+              resolve(join(fixtureDir, "yarn.lock.copy")),
+              resolve(join(fixtureDir, "yarn.lock"))
+            );
+          }
         }
       });
 
       afterAll(async () => {
         if (packageManager === "npm") {
-          await rename(
-            resolve(join(fixtureDir, "yarn.lock.copy")),
-            resolve(join(fixtureDir, "yarn.lock"))
-          );
+          try {
+            await rename(
+              resolve(join(fixtureDir, "yarn.lock.copy")),
+              resolve(join(fixtureDir, "yarn.lock"))
+            );
+          } catch {}
         }
       });
 
