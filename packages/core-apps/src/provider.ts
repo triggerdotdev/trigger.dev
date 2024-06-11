@@ -118,7 +118,7 @@ export class ProviderShell implements Provider {
         BACKGROUND_WORKER_MESSAGE: async (message) => {
           if (message.data.type === "SCHEDULE_ATTEMPT") {
             try {
-              this.tasks.create({
+              await this.tasks.create({
                 image: message.data.image,
                 machine: message.data.machine,
                 version: message.data.version,
