@@ -508,7 +508,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         await preExitTasks();
 
         if (finishedDeployment.errorData.stderr) {
-          log.error(`stderr:\n1\n2\n3`);
+          log.error(`stderr:\n${finishedDeployment.errorData.stderr}`);
         }
 
         throw new SkipLoggingError(
