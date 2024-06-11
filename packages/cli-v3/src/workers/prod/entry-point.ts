@@ -9,7 +9,8 @@ import {
   WaitReason,
 } from "@trigger.dev/core/v3";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
-import { HttpReply, SimpleLogger, getRandomPortNumber } from "@trigger.dev/core-apps";
+import { HttpReply, getRandomPortNumber } from "@trigger.dev/core-apps/http";
+import { SimpleLogger } from "@trigger.dev/core-apps/logger";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { ProdBackgroundWorker } from "./backgroundWorker";
