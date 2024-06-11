@@ -117,6 +117,7 @@ export function UpsertScheduleForm({
   schedule,
   possibleTasks,
   possibleEnvironments,
+  possibleTimezones,
   showGenerateField,
 }: EditableScheduleElements & { showGenerateField: boolean }) {
   const lastSubmission = useActionData();
@@ -127,15 +128,16 @@ export function UpsertScheduleForm({
   const project = useProject();
   const location = useLocation();
 
-  const [form, { taskIdentifier, cron, externalId, environments, deduplicationKey }] = useForm({
-    id: "create-schedule",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
-    shouldRevalidate: "onSubmit",
-    onValidate({ formData }) {
-      return parse(formData, { schema: UpsertSchedule });
-    },
-  });
+  const [form, { taskIdentifier, cron, timezone, externalId, environments, deduplicationKey }] =
+    useForm({
+      id: "create-schedule",
+      // TODO: type this
+      lastSubmission: lastSubmission as any,
+      shouldRevalidate: "onSubmit",
+      onValidate({ formData }) {
+        return parse(formData, { schema: UpsertSchedule });
+      },
+    });
 
   let cronPatternResult: CronPatternResult | undefined = undefined;
   let nextRuns: Date[] | undefined = undefined;
@@ -240,6 +242,31 @@ export function UpsertScheduleForm({
               ) : (
                 <ValidCronMessage isValid={false} message={cronPatternResult.error} />
               )}
+            </InputGroup>
+            <InputGroup>
+              <Label htmlFor={timezone.id}>Timezone</Label>
+              <Select
+                {...conform.select(timezone)}
+                placeholder="Select a timezone"
+                defaultValue={schedule?.timezone ?? "utc"}
+                heading={"Filter timezones..."}
+                items={possibleTimezones}
+                filter={(timezone, search) => timezone.toLowerCase().includes(search.toLowerCase())}
+                dropdownIcon
+                text={(timezone) => (!timezone || timezone === "utc" ? "UTC" : timezone)}
+              >
+                {(matches) => (
+                  <>
+                    <SelectItem value={"utc"}>UTC</SelectItem>
+                    {matches?.map((timezone) => (
+                      <SelectItem key={timezone} value={timezone}>
+                        {timezone}
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
+              </Select>
+              <FormError id={timezone.errorId}>{timezone.error}</FormError>
             </InputGroup>
             {nextRuns !== undefined && (
               <div className="flex flex-col gap-1">

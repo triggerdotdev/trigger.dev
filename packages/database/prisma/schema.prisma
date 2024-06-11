@@ -2212,6 +2212,9 @@ model TaskSchedule {
   ///Can be provided by the user then accessed inside a run
   externalId           String?
 
+  /// null means "utc". These are IANA format string. See https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  timezone String?
+
   ///Instances of the schedule that are active
   instances TaskScheduleInstance[]
 
