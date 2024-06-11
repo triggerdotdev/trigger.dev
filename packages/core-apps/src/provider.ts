@@ -122,7 +122,7 @@ export class ProviderShell implements Provider {
         BACKGROUND_WORKER_MESSAGE: async (message) => {
           if (message.data.type === "SCHEDULE_ATTEMPT") {
             try {
-              this.tasks.create({
+              await this.tasks.create({
                 image: message.data.image,
                 machine: message.data.machine,
                 version: message.data.version,
@@ -172,21 +172,6 @@ export class ProviderShell implements Provider {
         "x-trigger-provider-type": this.options.type,
       },
       handlers: {
-        DELETE: async (message) => {
-          this.tasks.delete({ runId: message.name });
-
-          return {
-            message: "delete request received",
-          };
-        },
-        GET: async (message) => {
-          this.tasks.get({ runId: message.name });
-        },
-        HEALTH: async (message) => {
-          return {
-            status: "ok",
-          };
-        },
         INDEX: async (message) => {
           try {
             await this.tasks.index({
