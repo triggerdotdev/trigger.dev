@@ -3,7 +3,8 @@ import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
 import { TestSearchParams } from "~/routes/_app.orgs.$organizationSlug.projects.v3.$projectParam.test/route";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { createSearchParams } from "~/utils/searchParams";
-import { getUsername } from "~/utils/username";
+import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
+import { BasePresenter } from "./basePresenter.server";
 
 type TaskListOptions = {
   userId: string;
@@ -15,16 +16,10 @@ export type TaskList = Awaited<ReturnType<TestPresenter["call"]>>;
 export type TaskListItem = NonNullable<TaskList["tasks"]>[0];
 export type SelectedEnvironment = NonNullable<TaskList["selectedEnvironment"]>;
 
-export class TestPresenter {
-  #prismaClient: PrismaClient;
-
-  constructor(prismaClient: PrismaClient = prisma) {
-    this.#prismaClient = prismaClient;
-  }
-
+export class TestPresenter extends BasePresenter {
   public async call({ userId, projectSlug, url }: TaskListOptions) {
     // Find the project scoped to the organization
-    const project = await this.#prismaClient.project.findFirstOrThrow({
+    const project = await this._replica.project.findFirstOrThrow({
       select: {
         id: true,
         environments: {
@@ -85,31 +80,8 @@ export class TestPresenter {
       };
     }
 
-    //get all possible tasks
-    const tasks = await this.#prismaClient.$queryRaw<
-      {
-        id: string;
-        version: string;
-        taskIdentifier: string;
-        filePath: string;
-        exportName: string;
-        friendlyId: string;
-        triggerSource: TaskTriggerSource;
-      }[]
-    >`WITH workers AS (
-      SELECT 
-            bw.*,
-            ROW_NUMBER() OVER(ORDER BY string_to_array(bw.version, '.')::int[] DESC) AS rn
-      FROM 
-            ${sqlDatabaseSchema}."BackgroundWorker" bw
-      WHERE "runtimeEnvironmentId" = ${matchingEnvironment.id}
-    ),
-    latest_workers AS (SELECT * FROM workers WHERE rn = 1)
-    SELECT bwt.id, version, slug as "taskIdentifier", "filePath", "exportName", bwt."friendlyId", bwt."triggerSource"
-    FROM latest_workers
-    JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" bwt ON bwt."workerId" = latest_workers.id
-    ORDER BY bwt."exportName" ASC;
-    `;
+    const isDev = matchingEnvironment.type === "DEVELOPMENT";
+    const tasks = await this.#getTasks(matchingEnvironment.id, isDev);
 
     return {
       hasSelectedEnvironment: true as const,
@@ -118,8 +90,7 @@ export class TestPresenter {
       tasks: tasks.map((task) => {
         return {
           id: task.id,
-          version: task.version,
-          taskIdentifier: task.taskIdentifier,
+          taskIdentifier: task.slug,
           filePath: task.filePath,
           exportName: task.exportName,
           friendlyId: task.friendlyId,
@@ -127,5 +98,36 @@ export class TestPresenter {
         };
       }),
     };
+  }
+
+  async #getTasks(envId: string, isDev: boolean) {
+    if (isDev) {
+      return await this._replica.$queryRaw<
+        {
+          id: string;
+          version: string;
+          slug: string;
+          filePath: string;
+          exportName: string;
+          friendlyId: string;
+          triggerSource: TaskTriggerSource;
+        }[]
+      >`WITH workers AS (
+          SELECT 
+                bw.*,
+                ROW_NUMBER() OVER(ORDER BY string_to_array(bw.version, '.')::int[] DESC) AS rn
+          FROM 
+                ${sqlDatabaseSchema}."BackgroundWorker" bw
+          WHERE "runtimeEnvironmentId" = ${envId}
+        ),
+        latest_workers AS (SELECT * FROM workers WHERE rn = 1)
+        SELECT bwt.id, version, slug, "filePath", "exportName", bwt."friendlyId", bwt."triggerSource"
+        FROM latest_workers
+        JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" bwt ON bwt."workerId" = latest_workers.id
+        ORDER BY bwt."exportName" ASC;`;
+    } else {
+      const currentDeployment = await findCurrentWorkerDeployment(envId);
+      return currentDeployment?.worker?.tasks ?? [];
+    }
   }
 }
