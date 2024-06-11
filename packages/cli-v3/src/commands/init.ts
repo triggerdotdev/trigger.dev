@@ -30,6 +30,8 @@ import { logger } from "../utilities/logger";
 import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { login } from "./login";
 import { spinner } from "../utilities/windows";
+import { CLOUD_API_URL } from "../consts";
+import * as packageJson from "../../package.json";
 
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -53,7 +55,7 @@ export function configureInitCommand(program: Command) {
       .option(
         "-t, --tag <package tag>",
         "The version of the @trigger.dev/sdk package to install",
-        "beta"
+        packageJson.version
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")
       .option("--override-config", "Override the existing config file if it exists")
@@ -160,7 +162,9 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   log.info("Next steps:");
   log.info(
     `   1. To start developing, run ${chalk.green(
-      `npx trigger.dev@${options.tag} dev`
+      `npx trigger.dev@${options.tag} dev${
+        options.apiUrl === CLOUD_API_URL ? "" : ` -a ${options.apiUrl}`
+      }`
     )} in your project directory`
   );
   log.info(`   2. Visit your ${projectDashboard} to view your newly created tasks.`);
@@ -401,7 +405,8 @@ async function installPackages(dir: string, options: InitCommandOptions) {
         case "npm": {
           installSpinner.start(`Running npm install @trigger.dev/sdk@${options.tag}`);
 
-          await execa("npm", ["install", `@trigger.dev/sdk@${options.tag}`], {
+          // --save-exact: pin version, e.g. 3.0.0-beta.20 instead of ^3.0.0-beta.20
+          await execa("npm", ["install", "--save-exact", `@trigger.dev/sdk@${options.tag}`], {
             cwd: projectDir,
             stdio: options.logLevel === "debug" ? "inherit" : "ignore",
           });
@@ -411,6 +416,7 @@ async function installPackages(dir: string, options: InitCommandOptions) {
         case "pnpm": {
           installSpinner.start(`Running pnpm add @trigger.dev/sdk@${options.tag}`);
 
+          // pins version by default
           await execa("pnpm", ["add", `@trigger.dev/sdk@${options.tag}`], {
             cwd: projectDir,
             stdio: options.logLevel === "debug" ? "inherit" : "ignore",
@@ -421,6 +427,7 @@ async function installPackages(dir: string, options: InitCommandOptions) {
         case "yarn": {
           installSpinner.start(`Running yarn add @trigger.dev/sdk@${options.tag}`);
 
+          // pins version by default
           await execa("yarn", ["add", `@trigger.dev/sdk@${options.tag}`], {
             cwd: projectDir,
             stdio: options.logLevel === "debug" ? "inherit" : "ignore",

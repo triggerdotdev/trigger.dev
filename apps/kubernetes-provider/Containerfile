@@ -1,14 +1,14 @@
-FROM node:18-alpine@sha256:ca9f6cb0466f9638e59e0c249d335a07c867cd50c429b5c7830dda1bed584649 AS node-18-alpine
+FROM node:20-alpine@sha256:7a91aa397f2e2dfbfcdad2e2d72599f374e0b0172be1d86eeb73f1d33f36a4b2 AS node-20-alpine
 
 WORKDIR /app
 
-FROM node-18-alpine AS pruner
+FROM node-20-alpine AS pruner
 
 COPY --chown=node:node . .
 RUN npx -q turbo@1.10.9 prune --scope=kubernetes-provider --docker
 RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 
-FROM node-18-alpine AS base
+FROM node-20-alpine AS base
 
 RUN apk add --no-cache dumb-init
 

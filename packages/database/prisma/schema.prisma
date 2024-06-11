@@ -1904,6 +1904,8 @@ model TaskEvent {
 
   /// Used on the run page
   @@index([traceId])
+  /// Used when looking up span events to complete when a run completes
+  @@index([spanId])
 }
 
 enum TaskEventLevel {

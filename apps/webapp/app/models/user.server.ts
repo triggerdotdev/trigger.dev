@@ -47,12 +47,21 @@ export async function findOrCreateMagicLinkUser(
     },
   });
 
+  const adminEmailRegex = env.ADMIN_EMAILS ? new RegExp(env.ADMIN_EMAILS) : undefined;
+  const makeAdmin = adminEmailRegex ? adminEmailRegex.test(input.email) : false;
+
   const user = await prisma.user.upsert({
     where: {
       email: input.email,
     },
-    update: { email: input.email },
-    create: { email: input.email, authenticationMethod: "MAGIC_LINK" },
+    update: {
+      email: input.email,
+    },
+    create: {
+      email: input.email,
+      authenticationMethod: "MAGIC_LINK",
+      admin: makeAdmin, // only on create, to prevent automatically removing existing admins
+    },
   });
 
   return {

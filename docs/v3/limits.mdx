@@ -1,0 +1,25 @@
+---
+title: "Limits"
+description: "There are some hard and soft limits in v3 that you might hit."
+---
+
+## Concurrency limits
+
+These are the default limits on a free account.
+
+Before we introduce paid plans in July you can request more [on Discord](https://trigger.dev/discord) or by [contacting us](https://trigger.dev/contact). If you increase these defaults you may have to subscribe to a paid plan when we introduce them. For more details on the v3 Cloud pricing see the [pricing page](https://trigger.dev/blog/v3-developer-preview-launch#cloud-pricing).
+
+| Limit        | Details            |
+| ------------ | ------------------ |
+| Organization | 10 concurrent runs |
+| Environment  | 5 concurrent runs  |
+
+## Rate limits
+
+| Limit | Details                   |
+| ----- | ------------------------- |
+| API   | 1,500 requests per minute |
+
+Generally speaking each SDK call is an API call.
+
+The most common cause of hitting the API rate limit is if you're calling `trigger()` on a task in a loop, instead of doing this use `batchTrigger()` which will trigger multiple tasks in a single API call. You can have up to 100 tasks in a single batch trigger call.

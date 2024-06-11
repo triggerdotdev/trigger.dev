@@ -57,3 +57,8 @@ jobs:
     needs: [typecheck, units]
     uses: ./.github/workflows/publish-docker.yml
     secrets: inherit
+
+  publish-infra:
+    needs: [typecheck, units]
+    uses: ./.github/workflows/publish-infra.yml
+    secrets: inherit

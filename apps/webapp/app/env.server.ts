@@ -27,15 +27,17 @@ const EnvironmentSchema = z.object({
     .string()
     .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
     .optional(),
+  ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
   REMIX_APP_PORT: z.string().optional(),
   LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ENV: z.string().default(process.env.NODE_ENV),
   SERVICE_NAME: z.string().default("trigger.dev webapp"),
   SECRET_STORE: SecretStoreOptionsSchema.default("DATABASE"),
-  POSTHOG_PROJECT_KEY: z.string().optional(),
+  POSTHOG_PROJECT_KEY: z.string().default("phc_LFH7kJiGhdIlnO22hTAKgHpaKhpM8gkzWAFvHmf5vfS"),
   TELEMETRY_TRIGGER_API_KEY: z.string().optional(),
   TELEMETRY_TRIGGER_API_URL: z.string().optional(),
+  TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
   HIGHLIGHT_PROJECT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),

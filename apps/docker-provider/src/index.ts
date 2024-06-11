@@ -6,6 +6,8 @@ import {
   TaskOperationsRestoreOptions,
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
+  isExecaChildProcess,
+  testDockerCheckpoint,
 } from "@trigger.dev/core-apps";
 import { setTimeout } from "node:timers/promises";
 import { PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
@@ -23,14 +25,10 @@ const FORCE_CHECKPOINT_SIMULATION = ["1", "true"].includes(
 
 const logger = new SimpleLogger(`[${MACHINE_NAME}]`);
 
-type InitializeReturn = {
+type TaskOperationsInitReturn = {
   canCheckpoint: boolean;
   willSimulate: boolean;
 };
-
-function isExecaChildProcess(maybeExeca: unknown): maybeExeca is Awaited<ExecaChildProcess> {
-  return typeof maybeExeca === "object" && maybeExeca !== null && "escapedCommand" in maybeExeca;
-}
 
 class DockerTaskOperations implements TaskOperations {
   #initialized = false;
@@ -38,55 +36,47 @@ class DockerTaskOperations implements TaskOperations {
 
   constructor(private opts = { forceSimulate: false }) {}
 
-  async #initialize(): Promise<InitializeReturn> {
+  async init(): Promise<TaskOperationsInitReturn> {
     if (this.#initialized) {
-      return this.#getInitializeReturn();
+      return this.#getInitReturn(this.#canCheckpoint);
     }
 
     logger.log("Initializing task operations");
 
-    if (this.opts.forceSimulate) {
-      logger.log("Forced simulation enabled. Will simulate regardless of checkpoint support.");
+    const testCheckpoint = await testDockerCheckpoint();
+
+    if (testCheckpoint.ok) {
+      return this.#getInitReturn(true);
     }
 
-    try {
-      await $`criu --version`;
-    } catch (error) {
-      logger.error("No checkpoint support: Missing CRIU binary. Will simulate instead.");
-      this.#canCheckpoint = false;
-      this.#initialized = true;
-
-      return this.#getInitializeReturn();
-    }
-
-    try {
-      await $`docker checkpoint`;
-    } catch (error) {
-      logger.error("No checkpoint support: Docker needs to have experimental features enabled");
-      logger.error("Will simulate instead");
-      this.#canCheckpoint = false;
-      this.#initialized = true;
-
-      return this.#getInitializeReturn();
-    }
-
-    logger.log("Full checkpoint support!");
-
-    this.#initialized = true;
-    this.#canCheckpoint = true;
-
-    return this.#getInitializeReturn();
+    logger.error(testCheckpoint.message, testCheckpoint.error);
+    return this.#getInitReturn(false);
   }
 
-  #getInitializeReturn(): InitializeReturn {
+  #getInitReturn(canCheckpoint: boolean): TaskOperationsInitReturn {
+    this.#initialized = true;
+    this.#canCheckpoint = canCheckpoint;
+
+    if (canCheckpoint) {
+      logger.log("Full checkpoint support!");
+    }
+
+    const willSimulate = !canCheckpoint || this.opts.forceSimulate;
+
+    if (willSimulate) {
+      logger.log("Simulation mode enabled. Containers will be paused, not checkpointed.", {
+        forceSimulate: this.opts.forceSimulate,
+      });
+    }
+
     return {
-      canCheckpoint: this.#canCheckpoint,
-      willSimulate: !this.#canCheckpoint || this.opts.forceSimulate,
+      canCheckpoint,
+      willSimulate,
     };
   }
 
   async index(opts: TaskOperationsIndexOptions) {
-    await this.#initialize();
+    await this.init();
 
     const containerName = this.#getIndexContainerName(opts.shortCode);
 
@@ -129,7 +119,7 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   async create(opts: TaskOperationsCreateOptions) {
-    await this.#initialize();
+    await this.init();
 
     const containerName = this.#getRunContainerName(opts.runId);
 
@@ -165,7 +155,7 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   async restore(opts: TaskOperationsRestoreOptions) {
-    await this.#initialize();
+    await this.init();
 
     const containerName = this.#getRunContainerName(opts.runId);
 
@@ -194,7 +184,7 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   async delete(opts: { runId: string }) {
-    await this.#initialize();
+    await this.init();
 
     const containerName = this.#getRunContainerName(opts.runId);
     await this.#sendPreStop(containerName);
@@ -203,7 +193,7 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   async get(opts: { runId: string }) {
-    await this.#initialize();
+    await this.init();
 
     logger.log("noop: get");
   }

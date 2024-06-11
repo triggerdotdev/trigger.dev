@@ -9,9 +9,15 @@ import {
   SEMRESATTRS_SERVICE_NAME,
   SEMRESATTRS_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
+import { logger } from "../utilities/logger";
 
 function initializeTracing(): NodeTracerProvider | undefined {
-  if (process.argv.includes("--skip-telemetry") || process.env.TRIGGER_DEV_SKIP_TELEMETRY) {
+  if (
+    process.argv.includes("--skip-telemetry") ||
+    process.env.TRIGGER_DEV_SKIP_TELEMETRY || // only for backwards compat
+    process.env.TRIGGER_TELEMETRY_DISABLED
+  ) {
+    logger.debug("📉 Telemetry disabled");
     return;
   }
 
