@@ -670,7 +670,7 @@ function useDev({
                   const parsedError = parseNpmInstallError(e);
 
                   if (typeof parsedError === "string") {
-                    logger.log(`${chalkError("X Error:")} ${parsedError}`);
+                    logger.log(`\n${chalkError("X Error:")} ${parsedError}`);
                   } else {
                     switch (parsedError.type) {
                       case "package-not-found-error": {
@@ -692,6 +692,15 @@ function useDev({
                         break;
                       }
                     }
+                  }
+
+                  const stderr = backgroundWorker.stderr
+                    .map((line) => line.trim())
+                    .filter((line) => line.length > 0)
+                    .join("\n");
+
+                  if (stderr) {
+                    logger.log(`\n${chalkError("X Error logs:")}\n${stderr}`);
                   }
                 }
               });
