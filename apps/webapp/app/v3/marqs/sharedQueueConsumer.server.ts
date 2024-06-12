@@ -42,6 +42,7 @@ import { tracer } from "../tracer.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
+import { env } from "~/env.server";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -411,6 +412,7 @@ export class SharedQueueConsumer {
             lockedById: backgroundTask.id,
             lockedToVersionId: deployment.worker.id,
             startedAt: existingTaskRun.startedAt ?? new Date(),
+            baseCostInCents: env.BASE_RUN_COST_IN_CENTS,
           },
           include: {
             runtimeEnvironment: true,
@@ -1032,6 +1034,7 @@ class SharedQueueTasks {
         idempotencyKey: taskRun.idempotencyKey ?? undefined,
         durationMs: taskRun.usageDurationMs,
         costInCents: taskRun.costInCents,
+        baseCostInCents: taskRun.baseCostInCents,
       },
       queue: {
         id: queue.friendlyId,

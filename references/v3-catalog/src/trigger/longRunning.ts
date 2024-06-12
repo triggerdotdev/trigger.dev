@@ -1,39 +1,14 @@
-import { logger, task, wait, usage } from "@trigger.dev/sdk/v3";
+import { logger, task, wait } from "@trigger.dev/sdk/v3";
 
 export const longRunning = task({
   id: "long-running",
-  machine: {
-    preset: "medium-2x",
-  },
   run: async (payload: { message: string }, { ctx }) => {
     logger.info("Long running payloadddd", { payload });
-
-    if (ctx.machine) {
-      logger.info("Machine preset", { preset: ctx.machine });
-    }
-
-    logger.info("Cost and duration", { cost: ctx.run.costInCents, duration: ctx.run.durationMs });
 
     // Wait for 3 minutes
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
-    let currentUsage = usage.getCurrent();
-
-    logger.info("Current Cost and duration (before wait)", {
-      cost: currentUsage.costInCents,
-      duration: currentUsage.durationMs,
-    });
-
     await wait.for({ seconds: 5 });
-
-    currentUsage = usage.getCurrent();
-
-    logger.info("Current Cost and duration (after wait)", {
-      cost: currentUsage.costInCents,
-      duration: currentUsage.durationMs,
-    });
-
-    throw new Error(`This is an error at ${new Date().toISOString()}`);
   },
 });
 

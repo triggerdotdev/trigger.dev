@@ -1648,6 +1648,7 @@ model TaskRun {
 
   usageDurationMs Int   @default(0)
   costInCents     Float @default(0)
+  baseCostInCents Float @default(0)
 
   lockedAt   DateTime?
   lockedBy   BackgroundWorkerTask? @relation(fields: [lockedById], references: [id])

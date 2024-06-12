@@ -12,14 +12,12 @@ export type CurrentUsage = {
     total: ComputeUsage;
   };
   baseCostInCents: number;
-  totalInCents: number;
+  totalCostInCents: number;
 };
 
 export const usage = {
   /**
-   * Get the current usage of this task run attempt.
-   *
-   * @returns The current usage of this task run attempt.
+   * Get the current running usage of this task run.
    *
    * @example
    *
@@ -33,15 +31,22 @@ export const usage = {
    *
    *   const currentUsage = usage.getCurrent();
    *
-   *   console.log("Current cost and duration", {
-   *     cost: currentUsage.costInCents,
-   *     duration: currentUsage.durationMs,
+   *   // You have access to the current compute cost and duration up to this point
+   *   console.log("Current attempt compute cost and duration", {
+   *     cost: currentUsage.compute.attempt.costInCents,
+   *     duration: currentUsage.compute.attempt.durationMs,
    *   });
    *
-   *   // Use ctx to access the total run cost and duration
-   *   console.log("Total cost and duration", {
-   *     cost: ctx.run.costInCents + currentUsage.costInCents,
-   *     duration: ctx.run.durationMs + currentUsage.durationMs,
+   *   // You also can see the total compute cost and duration up to this point in the run, across all attempts
+   *   console.log("Current total compute cost and duration", {
+   *     cost: currentUsage.compute.total.costInCents,
+   *     duration: currentUsage.compute.total.durationMs,
+   *   });
+   *
+   *   // You can see the base cost of the run, which is the cost of the run before any compute costs
+   *   console.log("Total cost", {
+   *     cost: currentUsage.totalCostInCents,
+   *     baseCost: currentUsage.baseCostInCents,
    *   });
    *  },
    * });
@@ -49,19 +54,81 @@ export const usage = {
    */
   getCurrent: (): CurrentUsage => {
     const sample = usageApi.sample();
+    const machine = taskContext.ctx?.machine;
+    const run = taskContext.ctx?.run;
 
     if (!sample) {
       return {
-        costInCents: 0,
-        durationMs: 0,
+        compute: {
+          attempt: {
+            costInCents: 0,
+            durationMs: 0,
+          },
+          total: {
+            costInCents: run?.costInCents ?? 0,
+            durationMs: run?.durationMs ?? 0,
+          },
+        },
+        baseCostInCents: run?.baseCostInCents ?? 0,
+        totalCostInCents: (run?.costInCents ?? 0) + (run?.baseCostInCents ?? 0),
       };
     }
 
-    const machine = taskContext.ctx?.machine;
+    const currentCostInCents = machine?.centsPerMs ? sample.cpuTime * machine.centsPerMs : 0;
 
     return {
-      costInCents: machine?.centsPerMs ? sample.cpuTime * machine.centsPerMs : 0,
-      durationMs: sample.cpuTime,
+      compute: {
+        attempt: {
+          costInCents: currentCostInCents,
+          durationMs: sample.cpuTime,
+        },
+        total: {
+          costInCents: (run?.costInCents ?? 0) + currentCostInCents,
+          durationMs: (run?.durationMs ?? 0) + sample.cpuTime,
+        },
+      },
+      baseCostInCents: run?.baseCostInCents ?? 0,
+      totalCostInCents: (run?.costInCents ?? 0) + currentCostInCents + (run?.baseCostInCents ?? 0),
+    };
+  },
+  /**
+   * Measure the cost and duration of a function.
+   *
+   * @example
+   *
+   * ```typescript
+   * import { usage } from "@trigger.dev/sdk/v3";
+   *
+   * export const myTask = task({
+   *  id: "my-task",
+   *  run: async (payload, { ctx }) => {
+   *    const { result, usage } = await usage.measure(async () => {
+   *      // Do some work
+   *      return "result";
+   *    });
+   *
+   *    console.log("Result", result);
+   *    console.log("Cost and duration", { cost: usage.costInCents, duration: usage.durationMs });
+   *  },
+   * });
+   * ```
+   */
+  measure: async <T>(cb: () => Promise<T>): Promise<{ result: T; usage: ComputeUsage }> => {
+    const measurement = usageApi.start();
+
+    const result = await cb();
+
+    const sample = usageApi.stop(measurement);
+    const machine = taskContext.ctx?.machine;
+
+    const costInCents = machine?.centsPerMs ? sample.cpuTime * machine.centsPerMs : 0;
+
+    return {
+      result,
+      usage: {
+        costInCents,
+        durationMs: sample.cpuTime,
+      },
     };
   },
 };
