@@ -3090,9 +3090,6 @@ importers:
       '@sindresorhus/slugify':
         specifier: ^2.2.1
         version: 2.2.1
-      '@t3-oss/env-core':
-        specifier: ^0.10.1
-        version: 0.10.1(typescript@5.3.3)(zod@3.22.3)
       '@traceloop/instrumentation-openai':
         specifier: ^0.3.9
         version: 0.3.9(@opentelemetry/api@1.4.1)
@@ -3138,9 +3135,6 @@ importers:
       yt-dlp-wrap:
         specifier: ^2.3.12
         version: 2.3.12
-      zod:
-        specifier: 3.22.3
-        version: 3.22.3
     devDependencies:
       '@opentelemetry/core':
         specifier: ^1.22.0
@@ -3171,7 +3165,7 @@ importers:
         version: 1.22.0(@opentelemetry/api@1.4.1)
       '@opentelemetry/sdk-logs':
         specifier: ^0.49.1
-        version: 0.49.1(@opentelemetry/api-logs@0.49.1)(@opentelemetry/api@1.4.1)
+        version: 0.49.1(@opentelemetry/api-logs@0.51.1)(@opentelemetry/api@1.4.1)
       '@opentelemetry/sdk-node':
         specifier: ^0.49.1
         version: 0.49.1(@opentelemetry/api@1.4.1)
@@ -10047,6 +10041,19 @@ packages:
       '@opentelemetry/resources': 1.22.0(@opentelemetry/api@1.8.0)
     dev: false
 
+  /@opentelemetry/sdk-logs@0.49.1(@opentelemetry/api-logs@0.51.1)(@opentelemetry/api@1.4.1):
+    resolution: {integrity: sha512-gCzYWsJE0h+3cuh3/cK+9UwlVFyHvj3PReIOCDOmdeXOp90ZjKRoDOJBc3mvk1LL6wyl1RWIivR8Rg9OToyesw==}
+    engines: {node: '>=14'}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.4.0 <1.9.0'
+      '@opentelemetry/api-logs': '>=0.39.1'
+    dependencies:
+      '@opentelemetry/api': 1.4.1
+      '@opentelemetry/api-logs': 0.51.1
+      '@opentelemetry/core': 1.22.0(@opentelemetry/api@1.4.1)
+      '@opentelemetry/resources': 1.22.0(@opentelemetry/api@1.4.1)
+    dev: true
+
   /@opentelemetry/sdk-metrics@1.22.0(@opentelemetry/api@1.4.1):
     resolution: {integrity: sha512-k6iIx6H3TZ+BVMr2z8M16ri2OxWaljg5h8ihGJxi/KQWcjign6FEaEzuigXt5bK9wVEhqAcWLCfarSftaNWkkg==}
     engines: {node: '>=14'}
@@ -15297,19 +15304,6 @@ packages:
       defer-to-connect: 2.0.1
     dev: false
 
-  /@t3-oss/env-core@0.10.1(typescript@5.3.3)(zod@3.22.3):
-    resolution: {integrity: sha512-GcKZiCfWks5CTxhezn9k5zWX3sMDIYf6Kaxy2Gx9YEQftFcz8hDRN56hcbylyAO3t4jQnQ5ifLawINsNgCDpOg==}
-    peerDependencies:
-      typescript: '>=5.0.0'
-      zod: ^3.0.0
-    peerDependenciesMeta:
-      typescript:
-        optional: true
-    dependencies:
-      typescript: 5.3.3
-      zod: 3.22.3
-    dev: false
-
   /@tabler/icons-react@2.40.0(react@18.2.0):
     resolution: {integrity: sha512-C+dDOZowFbwI3LGQP0fdua+hOPkGkW7XeMcRXTSdEKc5fD75W6zRO5nXnWivIMRKsi/Y26EDmnQo15N8JX378w==}
     peerDependencies:
@@ -19847,6 +19841,17 @@ packages:
 
   /debug@4.3.2:
     resolution: {integrity: sha512-mOp8wKcvj7XxC78zLgw/ZA+6TSgkoE2C/ienthhRD298T7UNwAg9diBpLRxC0mOezLl4B0xV7M0cCO6P/O0Xhw==}
+    engines: {node: '>=6.0'}
+    peerDependencies:
+      supports-color: '*'
+    peerDependenciesMeta:
+      supports-color:
+        optional: true
+    dependencies:
+      ms: 2.1.2
+
+  /debug@4.3.4:
+    resolution: {integrity: sha512-PRWFHuSU3eDtQJPvnNY7Jcket1j0t5OuOsFzPPzsekD52Zl8qUfFIPEiswXqIvHWGVHOgX+7G/vCNNhehwxfkQ==}
     engines: {node: '>=6.0'}
     peerDependencies:
       supports-color: '*'
@@ -31285,7 +31290,7 @@ packages:
     resolution: {integrity: sha512-OScOjQjrrjhAdFpQmnkE/qbIBGCRFhQB/YaJhcC3CPOlmhe7llnW46Ac1J5+EjcNXOTnDdpF96Erw/yedsGksQ==}
     engines: {node: '>=8.6.0'}
     dependencies:
-      debug: 4.3.4(supports-color@8.1.1)
+      debug: 4.3.4
       module-details-from-path: 1.0.3
       resolve: 1.22.4
     transitivePeerDependencies:
@@ -34490,7 +34495,7 @@ packages:
       chalk: 4.1.2
       cli-highlight: 2.1.11
       dayjs: 1.11.10
-      debug: 4.3.4(supports-color@8.1.1)
+      debug: 4.3.4
       dotenv: 16.4.5
       glob: 10.3.10
       mkdirp: 2.1.6
