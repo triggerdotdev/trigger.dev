@@ -47,4 +47,5 @@ export const SemanticInternalAttributes = {
   LINK_TITLE: "$link.title",
   IDEMPOTENCY_KEY: "ctx.run.idempotencyKey",
   USAGE_DURATION_MS: "$usage.durationMs",
+  USAGE_COST_IN_CENTS: "$usage.costInCents",
 };

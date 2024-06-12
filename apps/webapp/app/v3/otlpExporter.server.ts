@@ -307,9 +307,18 @@ function convertSpansToCreateableEvents(resourceSpan: ResourceSpans): Array<Crea
                 "."
               )
             ) ?? resourceProperties.attemptNumber,
-          usageDurationMs: extractDoubleAttribute(
+          usageDurationMs:
+            extractDoubleAttribute(
+              span.attributes ?? [],
+              SemanticInternalAttributes.USAGE_DURATION_MS
+            ) ??
+            extractNumberAttribute(
+              span.attributes ?? [],
+              SemanticInternalAttributes.USAGE_DURATION_MS
+            ),
+          usageCostInCents: extractDoubleAttribute(
             span.attributes ?? [],
-            SemanticInternalAttributes.USAGE_DURATION_MS
+            SemanticInternalAttributes.USAGE_COST_IN_CENTS
           ),
         };
       })

@@ -1912,7 +1912,8 @@ model TaskEvent {
   createdAt DateTime @default(now())
 
   // This represents the amount of "usage time" the event took, e.g. the CPU time
-  usageDurationMs Int @default(0)
+  usageDurationMs  Int   @default(0)
+  usageCostInCents Float @default(0)
 
   machinePreset           String?
   machinePresetCpu        Float?

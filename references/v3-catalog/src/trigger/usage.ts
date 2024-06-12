@@ -12,7 +12,9 @@ export const usagePlayground = task({
 
     logger.info("Cost and duration", { cost: ctx.run.costInCents, duration: ctx.run.durationMs });
 
-    await new Promise((resolve) => setTimeout(resolve, payload.duration));
+    await logger.trace("Doing some work...", async () => {
+      await new Promise((resolve) => setTimeout(resolve, payload.duration));
+    });
 
     let currentUsage = usage.getCurrent();
 

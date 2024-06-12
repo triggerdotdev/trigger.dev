@@ -12,6 +12,7 @@ import { Logger, logs } from "@opentelemetry/api-logs";
 import { SemanticInternalAttributes } from "./semanticInternalAttributes";
 import { clock } from "./clock-api";
 import { usage } from "./usage-api";
+import { taskContext } from "./task-context-api";
 
 export type TriggerTracerConfig =
   | {
@@ -100,9 +101,13 @@ export class TriggerTracer {
           throw e;
         } finally {
           const usageSample = usage.stop(usageMeasurement);
+          const machine = taskContext.ctx?.machine;
 
           span.setAttributes({
             [SemanticInternalAttributes.USAGE_DURATION_MS]: usageSample.cpuTime,
+            [SemanticInternalAttributes.USAGE_COST_IN_CENTS]: machine?.centsPerMs
+              ? usageSample.cpuTime * machine.centsPerMs
+              : 0,
           });
 
           span.end(clock.preciseNow());
