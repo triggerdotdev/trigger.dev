@@ -18,4 +18,8 @@ export class NoopUsageManager implements UsageManager {
   pauseAsync<T>(cb: () => Promise<T>): Promise<T> {
     return cb();
   }
+
+  sample(): UsageSample | undefined {
+    return undefined;
+  }
 }

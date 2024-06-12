@@ -183,7 +183,7 @@ const handler = new ZodMessageHandler({
 
         const measurement = usage.start();
 
-        const { result } = await executor.execute(execution, metadata, traceContext);
+        const { result } = await executor.execute(execution, metadata, traceContext, measurement);
 
         const usageSample = usage.stop(measurement);
 

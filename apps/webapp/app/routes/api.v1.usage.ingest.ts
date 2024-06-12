@@ -49,29 +49,33 @@ export async function action({ request }: ActionFunctionArgs) {
 
   logger.debug("Validated JWT", { jwtPayload, json: json.data, preset });
 
-  await prisma.taskRun.update({
-    where: {
-      id: jwtPayload.run_id,
-    },
-    data: {
-      usageDurationMs: {
-        increment: json.data.durationMs,
-      },
-      costInCents: {
-        increment: json.data.durationMs * preset.centsPerMs,
-      },
-    },
-  });
+  if (json.data.durationMs > 10) {
+    const costInCents = json.data.durationMs * preset.centsPerMs;
 
-  await reportUsageEvent({
-    source: "webapp",
-    type: "usage",
-    subject: jwtPayload.org_id,
-    data: {
-      durationMs: json.data.durationMs,
-      costInCents: json.data.durationMs * preset.centsPerMs,
-    },
-  });
+    await prisma.taskRun.update({
+      where: {
+        id: jwtPayload.run_id,
+      },
+      data: {
+        usageDurationMs: {
+          increment: json.data.durationMs,
+        },
+        costInCents: {
+          increment: json.data.durationMs * preset.centsPerMs,
+        },
+      },
+    });
+
+    await reportUsageEvent({
+      source: "webapp",
+      type: "usage",
+      subject: jwtPayload.org_id,
+      data: {
+        durationMs: json.data.durationMs,
+        costInCents: String(costInCents),
+      },
+    });
+  }
 
   return new Response(null, {
     status: 200,

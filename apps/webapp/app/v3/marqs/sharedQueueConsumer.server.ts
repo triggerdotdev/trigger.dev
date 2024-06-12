@@ -1026,9 +1026,12 @@ class SharedQueueTasks {
         payloadType: taskRun.payloadType,
         context: taskRun.context,
         createdAt: taskRun.createdAt,
+        startedAt: taskRun.startedAt ?? taskRun.createdAt,
         tags: taskRun.tags.map((tag) => tag.name),
         isTest: taskRun.isTest,
         idempotencyKey: taskRun.idempotencyKey ?? undefined,
+        durationMs: taskRun.usageDurationMs,
+        costInCents: taskRun.costInCents,
       },
       queue: {
         id: queue.friendlyId,

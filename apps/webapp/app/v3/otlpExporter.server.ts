@@ -364,6 +364,20 @@ function extractResourceProperties(attributes: KeyValue[]) {
     queueName: extractStringAttribute(attributes, SemanticInternalAttributes.QUEUE_NAME),
     batchId: extractStringAttribute(attributes, SemanticInternalAttributes.BATCH_ID),
     idempotencyKey: extractStringAttribute(attributes, SemanticInternalAttributes.IDEMPOTENCY_KEY),
+    machinePreset: extractStringAttribute(
+      attributes,
+      SemanticInternalAttributes.MACHINE_PRESET_NAME
+    ),
+    machinePresetCpu:
+      extractDoubleAttribute(attributes, SemanticInternalAttributes.MACHINE_PRESET_CPU) ??
+      extractNumberAttribute(attributes, SemanticInternalAttributes.MACHINE_PRESET_CPU),
+    machinePresetMemory:
+      extractDoubleAttribute(attributes, SemanticInternalAttributes.MACHINE_PRESET_MEMORY) ??
+      extractNumberAttribute(attributes, SemanticInternalAttributes.MACHINE_PRESET_MEMORY),
+    machinePresetCentsPerMs: extractDoubleAttribute(
+      attributes,
+      SemanticInternalAttributes.MACHINE_PRESET_CENTS_PER_MS
+    ),
   };
 }
 

@@ -40,6 +40,10 @@ export class UsageAPI implements UsageManager {
     return this.#getUsageManager().pauseAsync(cb);
   }
 
+  public sample(): UsageSample | undefined {
+    return this.#getUsageManager().sample();
+  }
+
   #getUsageManager(): UsageManager {
     return getGlobal(API_NAME) ?? NOOP_USAGE_MANAGER;
   }

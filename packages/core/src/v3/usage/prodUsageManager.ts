@@ -32,6 +32,10 @@ export class ProdUsageManager implements UsageManager {
     this._abortController?.abort();
   }
 
+  sample(): UsageSample | undefined {
+    return this._measurement?.sample();
+  }
+
   start(): UsageMeasurement {
     if (!this.isReportingEnabled || !this.options.heartbeatIntervalMs) {
       return this.delegageUsageManager.start();

@@ -42,16 +42,25 @@ class DevUsageMeasurement implements UsageMeasurement {
 }
 
 export class DevUsageManager implements UsageManager {
+  private _firstMeasurement?: DevUsageMeasurement;
   private _currentMeasurements: Map<string, DevUsageMeasurement> = new Map();
   private _pauses: Map<string, { start: ClockTime; end?: ClockTime }> = new Map();
 
   disable(): void {}
+
+  sample(): UsageSample | undefined {
+    return this._firstMeasurement?.sample();
+  }
 
   start(): DevUsageMeasurement {
     // generate a random ID
     const id = generateRandomString();
 
     const measurement = new DevUsageMeasurement(id);
+
+    if (!this._firstMeasurement) {
+      this._firstMeasurement = measurement;
+    }
 
     this._currentMeasurements.set(id, measurement);
 

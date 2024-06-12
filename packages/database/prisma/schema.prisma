@@ -1913,6 +1913,11 @@ model TaskEvent {
   // This represents the amount of "usage time" the event took, e.g. the CPU time
   usageDurationMs Int @default(0)
 
+  machinePreset           String?
+  machinePresetCpu        Float?
+  machinePresetMemory     Float?
+  machinePresetCentsPerMs Float?
+
   /// Used on the run page
   @@index([traceId])
   /// Used when looking up span events to complete when a run completes

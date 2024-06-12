@@ -1,65 +1,12 @@
 import { z } from "zod";
 import { RequireKeys } from "../types";
-import { TaskRunExecution } from "./common";
+import { MachineConfig, MachinePreset, TaskRunExecution } from "./common";
 
 /*
     WARNING: Never import anything from ./messages here. If it's needed in both, put it here instead.
 */
-
 export const EnvironmentType = z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"]);
 export type EnvironmentType = z.infer<typeof EnvironmentType>;
-
-// Defaults to 0.5
-export const MachineCpu = z.union([
-  z.literal(0.25),
-  z.literal(0.5),
-  z.literal(1),
-  z.literal(2),
-  z.literal(4),
-]);
-
-export type MachineCpu = z.infer<typeof MachineCpu>;
-
-// Defaults to 1
-export const MachineMemory = z.union([
-  z.literal(0.25),
-  z.literal(0.5),
-  z.literal(1),
-  z.literal(2),
-  z.literal(4),
-  z.literal(8),
-]);
-
-export type MachineMemory = z.infer<typeof MachineMemory>;
-
-// Default is small-1x
-export const MachinePresetName = z.enum([
-  "micro",
-  "small-1x",
-  "small-2x",
-  "medium-1x",
-  "medium-2x",
-  "large-1x",
-]);
-
-export type MachinePresetName = z.infer<typeof MachinePresetName>;
-
-export const MachineConfig = z.object({
-  cpu: MachineCpu.optional(),
-  memory: MachineMemory.optional(),
-  preset: MachinePresetName.optional(),
-});
-
-export type MachineConfig = z.infer<typeof MachineConfig>;
-
-export const MachinePreset = z.object({
-  name: MachinePresetName,
-  cpu: z.number(),
-  memory: z.number(),
-  centsPerMs: z.number(),
-});
-
-export type MachinePreset = z.infer<typeof MachinePreset>;
 
 export const TaskRunExecutionPayload = z.object({
   execution: TaskRunExecution,
