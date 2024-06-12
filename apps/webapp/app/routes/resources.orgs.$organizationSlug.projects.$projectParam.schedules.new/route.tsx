@@ -6,7 +6,6 @@ import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { parseExpression } from "cron-parser";
 import cronstrue from "cronstrue";
-import { matchSorter } from "match-sorter";
 import { useRef, useState } from "react";
 import {
   environmentTextClassName,
@@ -202,7 +201,7 @@ export function UpsertScheduleForm({
                 defaultValue={schedule?.taskIdentifier}
                 heading={"Filter..."}
                 items={possibleTasks}
-                filter={{ keys: [(item) => item.replace(/\//g, " ").replace(/_/, " ")] }}
+                filter={(task, search) => task.toLowerCase().includes(search.toLowerCase())}
                 dropdownIcon
               >
                 {(matches) => (
@@ -262,7 +261,7 @@ export function UpsertScheduleForm({
                   setSelectedTimezone(e);
                 }}
                 items={possibleTimezones}
-                filter={(timezone, search) => timezone.toLowerCase().includes(search.toLowerCase())}
+                filter={{ keys: [(item) => item.replace(/\//g, " ").replace(/_/g, " ")] }}
                 dropdownIcon
                 variant="tertiary/medium"
               >
