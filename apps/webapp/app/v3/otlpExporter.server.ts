@@ -121,7 +121,14 @@ class OTLPExporter {
         (attribute) => attribute.key === SemanticInternalAttributes.TRIGGER
       );
 
-      if (!triggerAttribute) return false;
+      if (!triggerAttribute) {
+        logger.debug("Skipping resource span without trigger attribute", {
+          attributes: resourceSpan.resource?.attributes,
+          spans: resourceSpan.scopeSpans.flatMap((scopeSpan) => scopeSpan.spans),
+        });
+
+        return;
+      }
 
       return isBoolValue(triggerAttribute.value) ? triggerAttribute.value.boolValue : false;
     });
