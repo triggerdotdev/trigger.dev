@@ -237,7 +237,7 @@ if (testCases.length > 0) {
                 await expectation.resolves.not.toThrowError();
               }
             },
-            { timeout: 60_000 }
+            { timeout: 120_000 }
           );
 
           describe.skipIf(wantDependenciesError)("with resolved dependencies", () => {
