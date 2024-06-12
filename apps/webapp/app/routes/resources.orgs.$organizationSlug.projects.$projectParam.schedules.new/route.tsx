@@ -432,20 +432,24 @@ function TimezoneList({ timezones }: { timezones: string[] }) {
   return (
     <div
       ref={parentRef}
-      style={{
-        height: `${rowVirtualizer.getTotalSize()}px`,
-        width: "100%",
-        position: "relative",
-      }}
+      className="max-h-[calc(min(480px,var(--popover-available-height))-2.35rem)] overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
     >
-      {rowVirtualizer.getVirtualItems().map((virtualItem) => (
-        <TimezoneCell
-          key={virtualItem.key}
-          size={virtualItem.size}
-          start={virtualItem.start}
-          timezone={timezones[virtualItem.index]}
-        />
-      ))}
+      <div
+        style={{
+          height: `${rowVirtualizer.getTotalSize()}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {rowVirtualizer.getVirtualItems().map((virtualItem) => (
+          <TimezoneCell
+            key={virtualItem.key}
+            size={virtualItem.size}
+            start={virtualItem.start}
+            timezone={timezones[virtualItem.index]}
+          />
+        ))}
+      </div>
     </div>
   );
 }
