@@ -1,5 +1,20 @@
 # trigger.dev
 
+## 3.0.0-beta.37
+
+### Patch Changes
+
+- c11a77f50: cli v3: increase otel force flush timeout to 30s from 500ms
+- 01633c9c0: Output stderr logs on dev worker failure
+- 68d32429b: Capture and display stderr on index failures
+- 35dbaedf6: - Fix init command SDK pinning
+  - Show --api-url / -a flag where needed
+  - CLI now also respects `TRIGGER_TELEMETRY_DISABLED`
+  - Dedicated docker checkpoint test function
+- Updated dependencies [68d32429b]
+- Updated dependencies [68d32429b]
+  - @trigger.dev/core@3.0.0-beta.37
+
 ## 3.0.0-beta.36
 
 ### Patch Changes
