@@ -1,5 +1,17 @@
 # @trigger.dev/core-apps
 
+## 3.0.0-beta.37
+
+### Patch Changes
+
+- 68d32429b: Capture and display stderr on index failures
+- 68d32429b: - Fix uncaught provider exception
+  - Remove unused provider messages
+- 35dbaedf6: - Fix init command SDK pinning
+  - Show --api-url / -a flag where needed
+  - CLI now also respects `TRIGGER_TELEMETRY_DISABLED`
+  - Dedicated docker checkpoint test function
+
 ## 3.0.0-beta.36
 
 ## 3.0.0-beta.35
