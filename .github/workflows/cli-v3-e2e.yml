@@ -1,11 +1,11 @@
-name: "🧪 v3 CLI e2e tests"
+name: "v3 CLI E2E"
 on:
   push:
     branches:
       - cli-v3-integration-test-suite-setup
 jobs:
   e2e:
-    name: "🧪 v3 CLI e2e tests"
+    name: "🧪 Tests"
     runs-on: buildjet-8vcpu-ubuntu-2204
     strategy:
       fail-fast: false
@@ -29,8 +29,11 @@ jobs:
           cache: "pnpm"
 
       - name: 📥 Download deps
-        run: pnpm install --frozen-lockfile --filter trigger.dev
+        run: pnpm install --frozen-lockfile --filter trigger.dev...
 
-      - name: Run Unit Tests
+      - name: 🔧 Build monorepo deps
+        run: pnpm build --filter trigger.dev...
+
+      - name: Run E2E Tests
         run: |
           PM=${{ matrix.package-manager }} pnpm --filter trigger.dev run test:e2e
