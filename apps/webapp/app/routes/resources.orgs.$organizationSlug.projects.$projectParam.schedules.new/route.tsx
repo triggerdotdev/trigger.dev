@@ -123,6 +123,7 @@ export function UpsertScheduleForm({
 }: EditableScheduleElements & { showGenerateField: boolean }) {
   const lastSubmission = useActionData();
   const [selectedTimezone, setSelectedTimezone] = useState<string>("UTC");
+  const isUtc = selectedTimezone === "UTC";
   const [cronPattern, setCronPattern] = useState<string>(schedule?.cron ?? "");
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
@@ -143,6 +144,7 @@ export function UpsertScheduleForm({
 
   let cronPatternResult: CronPatternResult | undefined = undefined;
   let nextRuns: Date[] | undefined = undefined;
+
   if (cronPattern !== "") {
     const result = CronPattern.safeParse(cronPattern);
 
@@ -153,7 +155,6 @@ export function UpsertScheduleForm({
       };
     } else {
       try {
-        const isUtc = selectedTimezone === "UTC";
         const expression = parseExpression(
           cronPattern,
           isUtc ? { utc: true } : { tz: selectedTimezone }
@@ -203,6 +204,7 @@ export function UpsertScheduleForm({
                 items={possibleTasks}
                 filter={(task, search) => task.toLowerCase().includes(search.toLowerCase())}
                 dropdownIcon
+                variant="tertiary/medium"
               >
                 {(matches) => (
                   <>
@@ -267,6 +269,11 @@ export function UpsertScheduleForm({
               >
                 {(matches) => <TimezoneList timezones={matches} />}
               </Select>
+              <Hint>
+                {isUtc
+                  ? "UTC will not change with daylight savings time."
+                  : "This will automatically adjust for daylight savings time."}
+              </Hint>
               <FormError id={timezone.errorId}>{timezone.error}</FormError>
             </InputGroup>
             {nextRuns !== undefined && (
@@ -275,18 +282,20 @@ export function UpsertScheduleForm({
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {!isUtc && <TableHeaderCell>{selectedTimezone}</TableHeaderCell>}
                       <TableHeaderCell>UTC</TableHeaderCell>
-                      <TableHeaderCell>Local time</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {nextRuns.map((run, index) => (
                       <TableRow key={index}>
+                        {!isUtc && (
+                          <TableCell>
+                            <DateTime date={run} timeZone={selectedTimezone} />
+                          </TableCell>
+                        )}
                         <TableCell>
                           <DateTime date={run} timeZone="UTC" />
-                        </TableCell>
-                        <TableCell>
-                          <DateTime date={run} />
                         </TableCell>
                       </TableRow>
                     ))}
