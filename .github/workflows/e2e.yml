@@ -1,9 +1,50 @@
-name: "🧪 E2E Tests"
+name: "E2E"
 on:
   workflow_call:
+    inputs:
+      package:
+        description: The identifier of the job to run
+        default: webapp
+        required: false
+        type: string
 jobs:
-  e2e:
-    name: "🧪 E2E Tests"
+  cli-v3:
+    name: "🧪 CLI v3 tests"
+    if: inputs.package == 'cli-v3' || inputs.package == ''
+    runs-on: buildjet-8vcpu-ubuntu-2204
+    strategy:
+      fail-fast: false
+      matrix:
+        package-manager: ["npm", "pnpm", "yarn"]
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@v2.2.4
+        with:
+          version: 8.15.5
+
+      - name: ⎔ Setup node
+        uses: buildjet/setup-node@v3
+        with:
+          node-version: 20.11.1
+          cache: "pnpm"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile --filter trigger.dev...
+
+      - name: 🔧 Build monorepo deps
+        run: pnpm build --filter trigger.dev...
+
+      - name: Run E2E Tests
+        run: |
+          PM=${{ matrix.package-manager }} pnpm --filter trigger.dev run test:e2e
+  webapp:
+    name: "🧪 Webapp tests"
+    if: inputs.package == 'webapp' || inputs.package == ''
     runs-on: buildjet-16vcpu-ubuntu-2204
     steps:
       - name: 🐳 Login to Docker Hub
