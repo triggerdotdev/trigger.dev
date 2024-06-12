@@ -36,8 +36,11 @@ jobs:
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile --filter trigger.dev...
 
-      - name: 🔧 Build monorepo deps
-        run: pnpm build --filter trigger.dev...
+      - name: 🔧 Build v3 cli monorepo dependencies
+        run: pnpm run build --filter trigger.dev^...
+
+      - name: 🔧 Build worker template files
+        run: pnpm --filter trigger.dev run build:workers
 
       - name: Run E2E Tests
         run: |
