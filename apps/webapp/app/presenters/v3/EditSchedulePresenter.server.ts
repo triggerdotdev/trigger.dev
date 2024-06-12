@@ -2,6 +2,7 @@ import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
+import { getTimezones } from "~/utils/timezones.server";
 
 type EditScheduleOptions = {
   userId: string;
@@ -72,13 +73,10 @@ export class EditSchedulePresenter {
       return displayableEnvironment(environment, userId);
     });
 
-    const possibleTimezones = Intl.supportedValuesOf("timeZone").sort();
-    possibleTimezones.unshift("UTC");
-
     return {
       possibleTasks: possibleTasks.map((task) => task.slug),
       possibleEnvironments,
-      possibleTimezones,
+      possibleTimezones: getTimezones(),
       schedule: await this.#getExistingSchedule(friendlyId, possibleEnvironments),
     };
   }

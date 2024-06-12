@@ -8,6 +8,9 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import cronstrue from "cronstrue";
 import { calculateNextScheduledTimestamp } from "../utils/calculateNextSchedule.server";
+import { getTimezones } from "~/utils/timezones.server";
+import { env } from "~/env.server";
+import { time } from "console";
 
 export type UpsertTaskScheduleServiceOptions = UpsertSchedule;
 
@@ -95,6 +98,18 @@ export class UpsertTaskScheduleService extends BaseService {
       }
     }
 
+    //we don't want to store "UTC" in the database
+    schedule.timezone = schedule.timezone === "UTC" ? undefined : schedule.timezone;
+
+    if (schedule.timezone) {
+      const possibleTimezones = getTimezones();
+      if (!possibleTimezones.includes(schedule.timezone)) {
+        throw new ServiceValidationError(
+          `Invalid IANA timezone: ${schedule.timezone}. View the list of valid timezones at ${env.APP_ORIGIN}/timezones`
+        );
+      }
+    }
+
     const result = await $transaction(this._prisma, async (tx) => {
       const deduplicationKey =
         typeof schedule.deduplicationKey === "string" && schedule.deduplicationKey !== ""
@@ -148,6 +163,7 @@ export class UpsertTaskScheduleService extends BaseService {
           options.deduplicationKey !== undefined && options.deduplicationKey !== "",
         generatorExpression: options.cron,
         generatorDescription: cronstrue.toString(options.cron),
+        timezone: options.timezone ? options.timezone : null,
         externalId: options.externalId ? options.externalId : undefined,
       },
     });
@@ -197,6 +213,7 @@ export class UpsertTaskScheduleService extends BaseService {
       data: {
         generatorExpression: options.cron,
         generatorDescription: cronstrue.toString(options.cron),
+        timezone: options.timezone ? options.timezone : null,
         externalId: options.externalId ? options.externalId : null,
       },
     });
@@ -313,6 +330,7 @@ export class UpsertTaskScheduleService extends BaseService {
         : undefined,
       cron: taskSchedule.generatorExpression,
       cronDescription: taskSchedule.generatorDescription,
+      timezone: taskSchedule.timezone,
       nextRun: calculateNextScheduledTimestamp(taskSchedule.generatorExpression),
       environments: instances.map((instance) => ({
         id: instance.environment.id,
