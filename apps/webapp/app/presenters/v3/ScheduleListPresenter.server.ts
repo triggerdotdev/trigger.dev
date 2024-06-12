@@ -22,6 +22,7 @@ export type ScheduleListItem = {
   userProvidedDeduplicationKey: boolean;
   cron: string;
   cronDescription: string;
+  timezone: string | null;
   externalId: string | null;
   nextRun: Date;
   lastRun: Date | undefined;
@@ -150,6 +151,7 @@ export class ScheduleListPresenter extends BasePresenter {
         userProvidedDeduplicationKey: true,
         generatorExpression: true,
         generatorDescription: true,
+        timezone: true,
         externalId: true,
         instances: {
           select: {
@@ -228,10 +230,11 @@ export class ScheduleListPresenter extends BasePresenter {
         userProvidedDeduplicationKey: schedule.userProvidedDeduplicationKey,
         cron: schedule.generatorExpression,
         cronDescription: schedule.generatorDescription,
+        timezone: schedule.timezone,
         active: schedule.active,
         externalId: schedule.externalId,
         lastRun: latestRun?.createdAt,
-        nextRun: calculateNextScheduledTimestamp(schedule.generatorExpression),
+        nextRun: calculateNextScheduledTimestamp(schedule.generatorExpression, schedule.timezone),
         environments: schedule.instances.map((instance) => {
           const environment = project.environments.find((env) => env.id === instance.environmentId);
           if (!environment) {

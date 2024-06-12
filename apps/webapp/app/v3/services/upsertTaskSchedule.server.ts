@@ -331,7 +331,10 @@ export class UpsertTaskScheduleService extends BaseService {
       cron: taskSchedule.generatorExpression,
       cronDescription: taskSchedule.generatorDescription,
       timezone: taskSchedule.timezone,
-      nextRun: calculateNextScheduledTimestamp(taskSchedule.generatorExpression),
+      nextRun: calculateNextScheduledTimestamp(
+        taskSchedule.generatorExpression,
+        taskSchedule.timezone
+      ),
       environments: instances.map((instance) => ({
         id: instance.environment.id,
         shortcode: instance.environment.shortcode,

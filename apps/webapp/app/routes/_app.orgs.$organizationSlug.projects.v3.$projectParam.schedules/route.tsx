@@ -291,10 +291,11 @@ function SchedulesTable({
           <TableHeaderCell>Task ID</TableHeaderCell>
           <TableHeaderCell>CRON</TableHeaderCell>
           <TableHeaderCell hiddenLabel>CRON description</TableHeaderCell>
+          <TableHeaderCell>Timezone</TableHeaderCell>
           <TableHeaderCell>External ID</TableHeaderCell>
           <TableHeaderCell>Deduplication key</TableHeaderCell>
-          <TableHeaderCell>Next run (UTC)</TableHeaderCell>
-          <TableHeaderCell>Last run (UTC)</TableHeaderCell>
+          <TableHeaderCell>Next run</TableHeaderCell>
+          <TableHeaderCell>Last run</TableHeaderCell>
           <TableHeaderCell>Environments</TableHeaderCell>
           <TableHeaderCell>Enabled</TableHeaderCell>
         </TableRow>
@@ -322,16 +323,31 @@ function SchedulesTable({
                   {schedule.cronDescription}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
+                  {schedule.timezone ? schedule.timezone : "UTC"}
+                </TableCell>
+                <TableCell to={path} className={cellClass}>
                   {schedule.externalId ? schedule.externalId : "–"}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
                   {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  <DateTime date={schedule.nextRun} timeZone="utc" />
+                  <DateTime
+                    date={schedule.nextRun}
+                    timeZone={schedule.timezone ?? "UTC"}
+                    showTimezone
+                  />
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  {schedule.lastRun ? <DateTime date={schedule.lastRun} timeZone="utc" /> : "–"}
+                  {schedule.lastRun ? (
+                    <DateTime
+                      date={schedule.lastRun}
+                      timeZone={schedule.timezone ?? "UTC"}
+                      showTimezone
+                    />
+                  ) : (
+                    "–"
+                  )}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
                   <EnvironmentLabels environments={schedule.environments} size="small" />
