@@ -1,7 +1,6 @@
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { logger } from "~/services/logger.server";
 import { getTimezones } from "~/utils/timezones.server";
 
 type EditScheduleOptions = {
