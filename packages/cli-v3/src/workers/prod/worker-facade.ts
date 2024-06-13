@@ -223,11 +223,27 @@ const prodRuntimeManager = new ProdRuntimeManager(zodIpc, {
 
 runtime.setGlobalRuntimeManager(prodRuntimeManager);
 
-const TASK_METADATA = taskCatalog.getAllTaskMetadata();
+let taskMetadata = taskCatalog.getAllTaskMetadata();
 
-zodIpc.send("TASKS_READY", { tasks: TASK_METADATA }).catch((err) => {
+if (typeof importedConfig?.machine === "string") {
+  // Set the machine preset on all tasks that don't have it
+  taskMetadata = taskMetadata.map((task) => {
+    if (typeof task.machine?.preset !== "string") {
+      return {
+        ...task,
+        machine: {
+          preset: importedConfig.machine,
+        },
+      };
+    }
+
+    return task;
+  });
+}
+
+zodIpc.send("TASKS_READY", { tasks: taskMetadata }).catch((err) => {
   if (err instanceof ZodSchemaParsedError) {
-    zodIpc.send("TASKS_FAILED_TO_PARSE", { zodIssues: err.error.issues, tasks: TASK_METADATA });
+    zodIpc.send("TASKS_FAILED_TO_PARSE", { zodIssues: err.error.issues, tasks: taskMetadata });
   } else {
     console.error("Failed to send TASKS_READY message", err);
   }

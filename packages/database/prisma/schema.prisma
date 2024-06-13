@@ -1644,7 +1644,8 @@ model TaskRun {
   tags        TaskTag[]
   checkpoints Checkpoint[]
 
-  startedAt DateTime?
+  startedAt     DateTime?
+  machinePreset String?
 
   usageDurationMs Int   @default(0)
   costInCents     Float @default(0)

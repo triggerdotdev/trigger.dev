@@ -33,6 +33,11 @@ export const presets = {
     memory: 8,
     centsPerMs: env.CENTS_PER_HOUR_LARGE_1X / 3_600_000,
   },
+  "large-2x": {
+    cpu: 8,
+    memory: 16,
+    centsPerMs: env.CENTS_PER_HOUR_LARGE_2X / 3_600_000,
+  },
 };
 
 export function machinePresetFromConfig(config: unknown): MachinePreset {

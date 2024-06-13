@@ -34,6 +34,7 @@ export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async ({
 
 export const config: TriggerConfig = {
   project: "yubjwjsfkxnylobaqvqz",
+  machine: "small-2x",
   retries: {
     enabledInDev: true,
     default: {

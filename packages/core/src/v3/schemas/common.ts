@@ -31,6 +31,7 @@ export const MachinePresetName = z.enum([
   "medium-1x",
   "medium-2x",
   "large-1x",
+  "large-2x",
 ]);
 
 export type MachinePresetName = z.infer<typeof MachinePresetName>;
