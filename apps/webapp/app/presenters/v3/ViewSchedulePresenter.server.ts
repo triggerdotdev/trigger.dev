@@ -24,6 +24,7 @@ export class ViewSchedulePresenter {
         friendlyId: true,
         generatorExpression: true,
         generatorDescription: true,
+        timezone: true,
         externalId: true,
         deduplicationKey: true,
         userProvidedDeduplicationKey: true,
@@ -68,7 +69,7 @@ export class ViewSchedulePresenter {
     }
 
     const nextRuns = schedule.active
-      ? nextScheduledTimestamps(schedule.generatorExpression, new Date(), 5)
+      ? nextScheduledTimestamps(schedule.generatorExpression, schedule.timezone, new Date(), 5)
       : [];
 
     const runPresenter = new RunListPresenter(this.#prismaClient);
@@ -105,6 +106,7 @@ export class ViewSchedulePresenter {
         expression: result.schedule.cron,
         description: result.schedule.cronDescription,
       },
+      timezone: result.schedule.timezone ?? undefined,
       externalId: result.schedule.externalId ?? undefined,
       deduplicationKey: result.schedule.userProvidedDeduplicationKey
         ? result.schedule.deduplicationKey ?? undefined

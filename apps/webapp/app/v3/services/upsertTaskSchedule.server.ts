@@ -10,7 +10,6 @@ import cronstrue from "cronstrue";
 import { calculateNextScheduledTimestamp } from "../utils/calculateNextSchedule.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { env } from "~/env.server";
-import { time } from "console";
 
 export type UpsertTaskScheduleServiceOptions = UpsertSchedule;
 

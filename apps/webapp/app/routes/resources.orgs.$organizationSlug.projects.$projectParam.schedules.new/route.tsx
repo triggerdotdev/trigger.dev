@@ -122,7 +122,7 @@ export function UpsertScheduleForm({
   showGenerateField,
 }: EditableScheduleElements & { showGenerateField: boolean }) {
   const lastSubmission = useActionData();
-  const [selectedTimezone, setSelectedTimezone] = useState<string>("UTC");
+  const [selectedTimezone, setSelectedTimezone] = useState<string>(schedule?.timezone ?? "UTC");
   const isUtc = selectedTimezone === "UTC";
   const [cronPattern, setCronPattern] = useState<string>(schedule?.cron ?? "");
   const navigation = useNavigation();

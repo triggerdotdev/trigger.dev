@@ -289,6 +289,7 @@ export const ScheduleObject = z.object({
   deduplicationKey: z.string().nullish(),
   externalId: z.string().nullish(),
   generator: ScheduleGenerator,
+  timezone: z.string().nullish(),
   nextRun: z.coerce.date().nullish(),
   environments: z.array(
     z.object({
