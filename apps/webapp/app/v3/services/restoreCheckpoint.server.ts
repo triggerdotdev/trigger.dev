@@ -45,7 +45,7 @@ export class RestoreCheckpointService extends BaseService {
     });
 
     if (!checkpointEvent) {
-      logger.error("Checkpoint event not found", params);
+      logger.error("Checkpoint event not found", { eventId: params.eventId });
       return;
     }
 
@@ -56,16 +56,20 @@ export class RestoreCheckpointService extends BaseService {
 
     if (!runIsRestorable) {
       logger.error("Run is unrestorable", {
-        id: checkpoint.runId,
-        status: checkpoint.run.status,
+        eventId: params.eventId,
+        runId: checkpoint.runId,
+        runStatus: checkpoint.run.status,
+        attemptId: checkpoint.attemptId,
       });
       return;
     }
 
     if (!attemptIsRestorable && !params.isRetry) {
       logger.error("Attempt is unrestorable", {
-        id: checkpoint.attemptId,
-        status: checkpoint.attempt.status,
+        eventId: params.eventId,
+        runId: checkpoint.runId,
+        attemptId: checkpoint.attemptId,
+        attemptStatus: checkpoint.attempt.status,
       });
       return;
     }
@@ -75,6 +79,8 @@ export class RestoreCheckpointService extends BaseService {
 
     if (!machine.success) {
       logger.error("Failed to parse machine config", {
+        eventId: params.eventId,
+        runId: checkpoint.runId,
         attemptId: checkpoint.attemptId,
         machineConfig: checkpoint.attempt.backgroundWorkerTask.machineConfig,
       });
@@ -90,6 +96,8 @@ export class RestoreCheckpointService extends BaseService {
 
     if (restoreEvent) {
       logger.error("Restore event already exists", {
+        runId: checkpoint.runId,
+        attemptId: checkpoint.attemptId,
         checkpointId: checkpoint.id,
         restoreEventId: restoreEvent.id,
       });
