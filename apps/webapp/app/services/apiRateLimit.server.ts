@@ -150,6 +150,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     /^\/api\/v1\/http-endpoints\/[^\/]+\/env\/[^\/]+\/[^\/]+$/, // /api/v1/http-endpoints/$httpEndpointId/env/$envType/$shortcode
     /^\/api\/v1\/sources\/http\/[^\/]+$/, // /api/v1/sources/http/$id
     /^\/api\/v1\/endpoints\/[^\/]+\/[^\/]+\/index\/[^\/]+$/, // /api/v1/endpoints/$environmentId/$endpointSlug/index/$indexHookIdentifier
+    "/api/v1/timezones",
   ],
   log: {
     rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",
