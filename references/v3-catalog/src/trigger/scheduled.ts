@@ -1,4 +1,5 @@
 import { logger, schedules, task } from "@trigger.dev/sdk/v3";
+import { log } from "node:console";
 
 export const firstScheduledTask = schedules.task({
   id: "first-scheduled-task",
@@ -6,7 +7,15 @@ export const firstScheduledTask = schedules.task({
     const distanceInMs =
       payload.timestamp.getTime() - (payload.lastTimestamp ?? new Date()).getTime();
 
+    logger.log(payload.timezone);
+
     logger.log("First scheduled tasks", { payload, distanceInMs });
+
+    const formatted = payload.timestamp.toLocaleString("en-US", {
+      timeZone: payload.timezone,
+    });
+
+    logger.log(formatted);
   },
 });
 
