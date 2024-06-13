@@ -1118,18 +1118,6 @@ export class MarQS {
     parentQueueConcurrencyLimitKey: string;
     parentQueueCurrentConcurrencyKey: string;
   }): Promise<QueueCapacities> {
-    logger.debug("Calling calculateMessageQueueCapacities", {
-      currentConcurrencyKey,
-      currentEnvConcurrencyKey,
-      currentOrgConcurrencyKey,
-      concurrencyLimitKey,
-      envConcurrencyLimitKey,
-      orgConcurrencyLimitKey,
-      parentQueueConcurrencyLimitKey,
-      parentQueueCurrentConcurrencyKey,
-      service: this.name,
-    });
-
     const capacities = await this.redis.calculateMessageQueueCapacities(
       currentConcurrencyKey,
       currentEnvConcurrencyKey,
