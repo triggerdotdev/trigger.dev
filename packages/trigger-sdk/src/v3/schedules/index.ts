@@ -27,6 +27,7 @@ export function task<TOutput, TInitOutput extends InitOutput>(
  * @param options
  * @param options.task - The identifier of the task to be scheduled (Must already exist and be a scheduled task)
  * @param options.cron - The cron expression for the schedule (e.g. `0 0 * * *`)
+ * @param options.timezone - An optional timezone for the schedule in the IANA format (e.g. `America/Los_Angeles`). Defaults to "UTC".
  * @param options.externalId - An optional external identifier for the schedule
  * @param options.deduplicationKey - An optional deduplication key for the schedule
  * @returns The created schedule
@@ -62,6 +63,7 @@ export function retrieve(scheduleId: string): ApiPromise<ScheduleObject> {
  * @param options - The updated schedule options
  * @param options.task - The identifier of the task to be scheduled (Must already exist and be a scheduled task)
  * @param options.cron - The cron expression for the schedule (e.g. `0 0 * * *`)
+ * @param options.timezone - An optional timezone for the schedule in the IANA format (e.g. `America/Los_Angeles`). Defaults to "UTC".
  * @param options.externalId - An optional external identifier for the schedule
  * @returns The updated schedule
  */
