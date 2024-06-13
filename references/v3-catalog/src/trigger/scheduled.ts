@@ -26,8 +26,9 @@ export const createSchedules = task({
       //The id of the scheduled task you want to attach to.
       task: firstScheduledTask.id,
       //The schedule in CRON format.
-      cron: "0 0 * * *",
-      deduplicationKey: "my-deduplication-key",
+      cron: "* * * * *",
+      deduplicationKey: `create-schedule-1718277290717`,
+      timezone: "America/Los_Angeles",
     });
   },
 });
