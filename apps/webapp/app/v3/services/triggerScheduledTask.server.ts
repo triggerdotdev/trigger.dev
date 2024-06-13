@@ -96,7 +96,7 @@ export class TriggerScheduledTaskService extends BaseService {
         timestamp: instance.nextScheduledTimestamp,
         lastTimestamp: instance.lastScheduledTimestamp ?? undefined,
         externalId: instance.taskSchedule.externalId ?? undefined,
-        timezone: instance.taskSchedule.timezone ?? "UTC",
+        timezone: instance.taskSchedule.timezone,
         upcoming: nextScheduledTimestamps(
           instance.taskSchedule.generatorExpression,
           instance.taskSchedule.timezone,

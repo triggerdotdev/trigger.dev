@@ -3,6 +3,7 @@ import { nextScheduledTimestamps } from "~/v3/utils/calculateNextSchedule.server
 import { RunListPresenter } from "./RunListPresenter.server";
 import { ScheduleObject } from "@trigger.dev/core/v3";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
+import { time } from "node:console";
 
 type ViewScheduleOptions = {
   userId?: string;
@@ -83,6 +84,7 @@ export class ViewSchedulePresenter {
     return {
       schedule: {
         ...schedule,
+        timezone: schedule.timezone,
         cron: schedule.generatorExpression,
         cronDescription: schedule.generatorDescription,
         nextRuns,
@@ -106,7 +108,7 @@ export class ViewSchedulePresenter {
         expression: result.schedule.cron,
         description: result.schedule.cronDescription,
       },
-      timezone: result.schedule.timezone ?? undefined,
+      timezone: result.schedule.timezone,
       externalId: result.schedule.externalId ?? undefined,
       deduplicationKey: result.schedule.userProvidedDeduplicationKey
         ? result.schedule.deduplicationKey ?? undefined

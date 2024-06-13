@@ -2209,11 +2209,12 @@ model TaskSchedule {
   generatorExpression  String
   generatorDescription String                @default("")
   generatorType        ScheduleGeneratorType @default(CRON)
-  ///Can be provided by the user then accessed inside a run
-  externalId           String?
 
-  /// null means "utc". These are IANA format string. See https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
-  timezone String?
+  /// These are IANA format string, or the default "UTC". E.g. "America/New_York"
+  timezone String @default("UTC")
+
+  ///Can be provided by the user then accessed inside a run
+  externalId String?
 
   ///Instances of the schedule that are active
   instances TaskScheduleInstance[]

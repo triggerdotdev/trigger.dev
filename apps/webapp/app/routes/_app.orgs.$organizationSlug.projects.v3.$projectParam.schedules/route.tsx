@@ -326,14 +326,14 @@ function SchedulesTable({
                   {schedule.cronDescription}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  {schedule.timezone ? schedule.timezone : "UTC"}
+                  {schedule.timezone}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  <DateTime date={schedule.nextRun} timeZone={schedule.timezone ?? "UTC"} />
+                  <DateTime date={schedule.nextRun} timeZone={schedule.timezone} />
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
                   {schedule.lastRun ? (
-                    <DateTime date={schedule.lastRun} timeZone={schedule.timezone ?? "UTC"} />
+                    <DateTime date={schedule.lastRun} timeZone={schedule.timezone} />
                   ) : (
                     "–"
                   )}

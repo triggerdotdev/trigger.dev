@@ -22,7 +22,7 @@ export type ScheduleListItem = {
   userProvidedDeduplicationKey: boolean;
   cron: string;
   cronDescription: string;
-  timezone: string | null;
+  timezone: string;
   externalId: string | null;
   nextRun: Date;
   lastRun: Date | undefined;

@@ -97,14 +97,11 @@ export class UpsertTaskScheduleService extends BaseService {
       }
     }
 
-    //we don't want to store "UTC" in the database
-    schedule.timezone = schedule.timezone === "UTC" ? undefined : schedule.timezone;
-
     if (schedule.timezone) {
       const possibleTimezones = getTimezones();
       if (!possibleTimezones.includes(schedule.timezone)) {
         throw new ServiceValidationError(
-          `Invalid IANA timezone: ${schedule.timezone}. View the list of valid timezones at ${env.APP_ORIGIN}/timezones`
+          `Invalid IANA timezone: "${schedule.timezone}". View the list of valid timezones at ${env.APP_ORIGIN}/timezones`
         );
       }
     }
@@ -162,7 +159,7 @@ export class UpsertTaskScheduleService extends BaseService {
           options.deduplicationKey !== undefined && options.deduplicationKey !== "",
         generatorExpression: options.cron,
         generatorDescription: cronstrue.toString(options.cron),
-        timezone: options.timezone ? options.timezone : null,
+        timezone: options.timezone ?? "UTC",
         externalId: options.externalId ? options.externalId : undefined,
       },
     });
@@ -212,7 +209,7 @@ export class UpsertTaskScheduleService extends BaseService {
       data: {
         generatorExpression: options.cron,
         generatorDescription: cronstrue.toString(options.cron),
-        timezone: options.timezone ? options.timezone : null,
+        timezone: options.timezone ?? "UTC",
         externalId: options.externalId ? options.externalId : null,
       },
     });

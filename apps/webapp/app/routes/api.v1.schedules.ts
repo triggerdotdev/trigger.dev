@@ -113,7 +113,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         expression: schedule.cron,
         description: schedule.cronDescription,
       },
-      timezone: schedule.timezone ?? "UTC",
+      timezone: schedule.timezone,
       deduplicationKey: schedule.userProvidedDeduplicationKey
         ? schedule.deduplicationKey
         : undefined,

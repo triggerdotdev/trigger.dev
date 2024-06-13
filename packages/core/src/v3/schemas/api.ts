@@ -241,7 +241,7 @@ export const ScheduledTaskPayload = z.object({
   /** The IANA timezone the schedule is set to. The default is UTC.
    * You can see the full list of supported timezones here: https://cloud.trigger.dev/timezones
    */
-  timezone: z.string().default("UTC"),
+  timezone: z.string(),
   /** The next 5 dates this task is scheduled to run */
   upcoming: z.array(z.date()),
 });
@@ -292,7 +292,7 @@ export const CreateScheduleOptions = z.object({
 
 export type CreateScheduleOptions = z.infer<typeof CreateScheduleOptions>;
 
-export const UpdateScheduleOptions = CreateScheduleOptions;
+export const UpdateScheduleOptions = CreateScheduleOptions.omit({ deduplicationKey: true });
 
 export type UpdateScheduleOptions = z.infer<typeof UpdateScheduleOptions>;
 

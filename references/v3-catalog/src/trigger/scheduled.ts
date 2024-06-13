@@ -1,5 +1,4 @@
 import { logger, schedules, task } from "@trigger.dev/sdk/v3";
-import { log } from "node:console";
 
 export const firstScheduledTask = schedules.task({
   id: "first-scheduled-task",
@@ -19,8 +18,8 @@ export const firstScheduledTask = schedules.task({
   },
 });
 
-export const createSchedules = task({
-  id: "creates-schedules",
+export const manageSchedules = task({
+  id: "manage-schedules",
   run: async (payload) => {
     const createdSchedule = await schedules.create({
       //The id of the scheduled task you want to attach to.
@@ -28,7 +27,23 @@ export const createSchedules = task({
       //The schedule in CRON format.
       cron: "* * * * *",
       deduplicationKey: `create-schedule-1718277290717`,
-      timezone: "America/Los_Angeles",
+      timezone: "Asia/Tokyo",
     });
+    logger.log("Created schedule", createdSchedule);
+
+    const editedSchedule = await schedules.update(createdSchedule.id, {
+      //The id of the scheduled task you want to attach to.
+      task: firstScheduledTask.id,
+      //The schedule in CRON format.
+      cron: "* * * * *",
+      timezone: "Europe/Athens",
+    });
+    logger.log("Edited schedule", editedSchedule);
+
+    const sched = await schedules.retrieve(createdSchedule.id);
+    logger.log("Retrieved schedule", sched);
+
+    const allSchedules = await schedules.list();
+    logger.log("All schedules", { allSchedules });
   },
 });
