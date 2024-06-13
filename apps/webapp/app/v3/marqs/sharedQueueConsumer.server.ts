@@ -424,7 +424,7 @@ export class SharedQueueConsumer {
         });
 
         if (!lockedTaskRun) {
-          logger.warn("Failed to lock task run", {
+          logger.error("Failed to lock task run", {
             taskRun: existingTaskRun.id,
             taskIdentifier: existingTaskRun.taskIdentifier,
             deployment: deployment.id,
@@ -446,13 +446,13 @@ export class SharedQueueConsumer {
         });
 
         if (!queue) {
-          logger.debug("SharedQueueConsumer queue not found, so nacking message", {
+          logger.error("SharedQueueConsumer queue not found, so acking message", {
             queueMessage: message,
             taskRunQueue: lockedTaskRun.queue,
             runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
           });
 
-          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
+          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 

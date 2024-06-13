@@ -83,6 +83,7 @@ const EnvironmentSchema = z.object({
 
   DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
+  DEFAULT_PARENT_QUEUE_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(250),
   DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS: z.coerce.number().int().positive().default(1),
 
   TUNNEL_HOST: z.string().optional(),

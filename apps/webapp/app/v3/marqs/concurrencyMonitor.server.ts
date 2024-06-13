@@ -135,6 +135,10 @@ export class MarqsConcurrencyMonitor {
     pipeline.srem(key, ...completedRunIds);
     pipeline.srem(orgKey, ...completedRunIds);
     pipeline.srem(envKey, ...completedRunIds);
+    pipeline.srem(
+      this.keys.parentQueueCurrentConcurrencyKey(this.keys.sharedQueueKey()),
+      ...completedRunIds
+    );
 
     try {
       await pipeline.exec();

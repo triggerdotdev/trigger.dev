@@ -10,6 +10,7 @@ export type QueueCapacities = {
   queue: QueueCapacity;
   env: QueueCapacity;
   org: QueueCapacity;
+  parentQueue: QueueCapacity;
 };
 
 export type QueueWithScores = {
@@ -43,6 +44,8 @@ export interface MarQSKeyProducer {
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
   orgCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
   envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
+  parentQueueConcurrencyLimitKey(parentQueue: string): string;
+  parentQueueCurrentConcurrencyKey(parentQueue: string): string;
   messageKey(messageId: string): string;
   stripKeyPrefix(key: string): string;
 }

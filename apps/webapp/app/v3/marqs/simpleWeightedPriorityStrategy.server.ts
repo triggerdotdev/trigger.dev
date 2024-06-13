@@ -1,4 +1,3 @@
-import { RedisOptions } from "ioredis";
 import { nanoid } from "nanoid";
 import {
   MarQSQueuePriorityStrategy,
@@ -92,7 +91,8 @@ function filterQueuesAtCapacity(queues: QueueWithScores[]) {
     (queue) =>
       queue.capacities.queue.current < queue.capacities.queue.limit &&
       queue.capacities.env.current < queue.capacities.env.limit &&
-      queue.capacities.org.current < queue.capacities.org.limit
+      queue.capacities.org.current < queue.capacities.org.limit &&
+      queue.capacities.parentQueue.current < queue.capacities.parentQueue.limit
   );
 }
 

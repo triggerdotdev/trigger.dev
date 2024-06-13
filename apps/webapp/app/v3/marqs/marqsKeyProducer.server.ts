@@ -13,7 +13,7 @@ const constants = {
 } as const;
 
 export class MarQSShortKeyProducer implements MarQSKeyProducer {
-  constructor(private _prefix: string) { }
+  constructor(private _prefix: string) {}
 
   sharedQueueScanPattern() {
     return `${this._prefix}*${constants.SHARED_QUEUE}`;
@@ -87,6 +87,14 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return [this.queueKey(env, queue, concurrencyKey), constants.CURRENT_CONCURRENCY_PART].join(
       ":"
     );
+  }
+
+  parentQueueConcurrencyLimitKey(parentQueue: string): string {
+    return `${parentQueue}:${constants.CONCURRENCY_LIMIT_PART}`;
+  }
+
+  parentQueueCurrentConcurrencyKey(parentQueue: string): string {
+    return `${parentQueue}:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
   orgConcurrencyLimitKeyFromQueue(queue: string) {
