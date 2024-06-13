@@ -14,7 +14,8 @@ import { prisma } from "~/db.server";
 import { createNewSession, disconnectSession } from "~/models/runtimeEnvironment.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
+import { sanitizeQueueName } from "~/v3/marqs/queue.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 import { CancelTaskRunService } from "../services/cancelTaskRun.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
@@ -175,13 +176,13 @@ export class DevQueueConsumer {
       return;
     }
 
-    await marqs?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
+    await marqsv3?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
   }
 
   public async taskRunHeartbeat(workerId: string, id: string, seconds: number = 60) {
     logger.debug("[DevQueueConsumer] taskRunHeartbeat()", { id, seconds });
 
-    await marqs?.heartbeatMessage(id, seconds);
+    await marqsv3?.heartbeatMessage(id, seconds);
   }
 
   public async stop(reason: string = "CLI disconnected") {
@@ -343,7 +344,7 @@ export class DevQueueConsumer {
     // When the task run completes, ack the message
     // Using a heartbeat mechanism, if the client keeps responding with a heartbeat, we'll keep the message processing and increase the visibility timeout.
 
-    const message = await marqs?.dequeueMessageInEnv(this.env);
+    const message = await marqsv3?.dequeueMessageInEnv(this.env);
 
     if (!message) {
       setTimeout(() => this.#doWork(), 1000);
@@ -359,7 +360,7 @@ export class DevQueueConsumer {
         env: this.env,
       });
 
-      await marqs?.acknowledgeMessage(message.messageId);
+      await marqsv3?.acknowledgeMessage(message.messageId);
 
       setTimeout(() => this.#doWork(), 100);
       return;
@@ -372,7 +373,7 @@ export class DevQueueConsumer {
     });
 
     if (!existingTaskRun) {
-      await marqs?.acknowledgeMessage(message.messageId);
+      await marqsv3?.acknowledgeMessage(message.messageId);
       setTimeout(() => this.#doWork(), 100);
       return;
     }
@@ -383,7 +384,7 @@ export class DevQueueConsumer {
       : this.#getLatestBackgroundWorker();
 
     if (!backgroundWorker) {
-      await marqs?.acknowledgeMessage(message.messageId);
+      await marqsv3?.acknowledgeMessage(message.messageId);
       setTimeout(() => this.#doWork(), 100);
       return;
     }
@@ -400,7 +401,7 @@ export class DevQueueConsumer {
         taskSlugs: backgroundWorker.tasks.map((task) => task.slug),
       });
 
-      await marqs?.acknowledgeMessage(message.messageId);
+      await marqsv3?.acknowledgeMessage(message.messageId);
 
       setTimeout(() => this.#doWork(), 100);
       return;
@@ -438,7 +439,7 @@ export class DevQueueConsumer {
         messageId: message.messageId,
       });
 
-      await marqs?.acknowledgeMessage(message.messageId);
+      await marqsv3?.acknowledgeMessage(message.messageId);
 
       setTimeout(() => this.#doWork(), 100);
       return;
@@ -461,7 +462,7 @@ export class DevQueueConsumer {
         messageId: message.messageId,
       });
 
-      await marqs?.nackMessage(message.messageId);
+      await marqsv3?.nackMessage(message.messageId);
       setTimeout(() => this.#doWork(), 1000);
       return;
     }
@@ -469,7 +470,7 @@ export class DevQueueConsumer {
     if (!this._enabled) {
       logger.debug("Dev queue consumer is disabled", { env: this.env, queueMessage: message });
 
-      await marqs?.nackMessage(message.messageId);
+      await marqsv3?.nackMessage(message.messageId);
       return;
     }
 
@@ -531,7 +532,7 @@ export class DevQueueConsumer {
         this._inProgressRuns.delete(lockedTaskRun.friendlyId);
 
         // Finally we need to nack the message so it can be retried
-        await marqs?.nackMessage(message.messageId);
+        await marqsv3?.nackMessage(message.messageId);
       } finally {
         setTimeout(() => this.#doWork(), 100);
       }
@@ -588,7 +589,7 @@ export class DevQueueConsumer {
         this._inProgressRuns.delete(lockedTaskRun.friendlyId);
 
         // Finally we need to nack the message so it can be retried
-        await marqs?.nackMessage(message.messageId);
+        await marqsv3?.nackMessage(message.messageId);
       } finally {
         setTimeout(() => this.#doWork(), 100);
       }

@@ -1,7 +1,7 @@
 import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   // Next authenticate the request
@@ -25,7 +25,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ error: "You must be an admin to perform this action" }, { status: 403 });
   }
 
-  const details = await marqs?.getSharedQueueDetails();
+  const details = await marqsv3?.getSharedQueueDetails();
 
   return json(details);
 }

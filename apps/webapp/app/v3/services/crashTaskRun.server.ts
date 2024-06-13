@@ -5,7 +5,7 @@ import {
   TaskRunStatus,
 } from "@trigger.dev/database";
 import { eventRepository } from "../eventRepository.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -57,7 +57,7 @@ export class CrashTaskRunService extends BaseService {
     }
 
     // Remove the task run from the queue if it's there for some reason
-    await marqs?.acknowledgeMessage(taskRun.id);
+    await marqsv3?.acknowledgeMessage(taskRun.id);
 
     // Set the task run status to crashed
     const crashedTaskRun = await this._prisma.taskRun.update({
@@ -136,7 +136,7 @@ export class CrashTaskRunService extends BaseService {
       span.setAttribute("taskRunId", run.id);
       span.setAttribute("attemptId", attempt.id);
 
-      await marqs?.acknowledgeMessage(run.id);
+      await marqsv3?.acknowledgeMessage(run.id);
 
       await this._prisma.taskRunAttempt.update({
         where: {

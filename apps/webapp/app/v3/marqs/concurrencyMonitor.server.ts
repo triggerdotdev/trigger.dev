@@ -2,7 +2,7 @@ import { Logger } from "@trigger.dev/core-backend";
 import { Redis } from "ioredis";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { MarQS, marqs as marqsv3 } from "./index.server";
+import { MarQS, marqs as marqsv3 } from "./queue.server";
 import { env } from "~/env.server";
 import { marqsv2 } from "./v2.server";
 

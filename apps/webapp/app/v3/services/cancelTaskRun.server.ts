@@ -1,7 +1,7 @@
 import { Prisma, TaskRun, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 import { eventRepository } from "../eventRepository.server";
 import { socketIo } from "../handleSocketIo.server";
 import { devPubSub } from "../marqs/devPubSub.server";
@@ -58,7 +58,7 @@ export class CancelTaskRunService extends BaseService {
     }
 
     // Remove the task run from the queue if it's there for some reason
-    await marqs?.acknowledgeMessage(taskRun.id);
+    await marqsv3?.acknowledgeMessage(taskRun.id);
 
     // Set the task run status to cancelled
     const cancelledTaskRun = await this._prisma.taskRun.update({

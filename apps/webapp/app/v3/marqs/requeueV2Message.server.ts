@@ -1,9 +1,7 @@
-import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
-
-import { BaseService } from "../services/baseService.server";
 import { PrismaClientOrTransaction } from "~/db.server";
+import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
+import { BaseService } from "../services/baseService.server";
 import { marqsv2 } from "./v2.server";
 
 export class RequeueV2Message extends BaseService {

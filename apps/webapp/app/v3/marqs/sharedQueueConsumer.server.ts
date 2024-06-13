@@ -22,7 +22,8 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
+import { sanitizeQueueName } from "~/v3/marqs/queue.server";
 import { EnvironmentVariablesRepository } from "../environmentVariables/environmentVariablesRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
@@ -238,7 +239,7 @@ export class SharedQueueConsumer {
     // When the task run completes, ack the message
     // Using a heartbeat mechanism, if the client keeps responding with a heartbeat, we'll keep the message processing and increase the visibility timeout.
 
-    const message = await marqs?.dequeueMessageInSharedQueue(this._id);
+    const message = await marqsv3?.dequeueMessageInSharedQueue(this._id);
 
     if (!message) {
       this.#doMoreWork(this._options.nextTickInterval);
@@ -461,7 +462,7 @@ export class SharedQueueConsumer {
             queueMessage: message,
           });
 
-          await marqs?.nackMessage(message.messageId);
+          await marqsv3?.nackMessage(message.messageId);
           return;
         }
 
@@ -675,7 +676,7 @@ export class SharedQueueConsumer {
         }
 
         if (!this._enabled) {
-          await marqs?.nackMessage(message.messageId);
+          await marqsv3?.nackMessage(message.messageId);
           return;
         }
 
@@ -825,13 +826,13 @@ export class SharedQueueConsumer {
   }
 
   async #ackAndDoMoreWork(messageId: string, intervalInMs?: number) {
-    await marqs?.acknowledgeMessage(messageId);
+    await marqsv3?.acknowledgeMessage(messageId);
     this.#doMoreWork(intervalInMs);
   }
 
   async #nackAndDoMoreWork(messageId: string, queueIntervalInMs?: number, nackRetryInMs?: number) {
     const retryAt = nackRetryInMs ? Date.now() + nackRetryInMs : undefined;
-    await marqs?.nackMessage(messageId, retryAt);
+    await marqsv3?.nackMessage(messageId, retryAt);
     this.#doMoreWork(queueIntervalInMs);
   }
 
@@ -1162,13 +1163,13 @@ class SharedQueueTasks {
       return;
     }
 
-    await marqs?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
+    await marqsv3?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
   }
 
   async taskRunHeartbeat(runId: string, seconds: number = 60) {
     logger.debug("[SharedQueueConsumer] taskRunHeartbeat()", { runId, seconds });
 
-    await marqs?.heartbeatMessage(runId, seconds);
+    await marqsv3?.heartbeatMessage(runId, seconds);
   }
 
   public async taskRunFailed(completion: TaskRunFailedExecutionResult) {

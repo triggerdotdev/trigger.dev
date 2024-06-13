@@ -7,7 +7,7 @@ import type {
 } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { BaseService } from "./baseService.server";
 import { CrashTaskRunService } from "./crashTaskRun.server";
@@ -131,7 +131,7 @@ export class CreateCheckpointService extends BaseService {
           dependencyFriendlyRunId: reason.friendlyId,
         });
 
-        await marqs?.acknowledgeMessage(attempt.taskRunId);
+        await marqsv3?.acknowledgeMessage(attempt.taskRunId);
         break;
       }
       case "WAIT_FOR_BATCH": {
@@ -140,7 +140,7 @@ export class CreateCheckpointService extends BaseService {
           batchDependencyFriendlyId: reason.batchFriendlyId,
         });
 
-        await marqs?.acknowledgeMessage(attempt.taskRunId);
+        await marqsv3?.acknowledgeMessage(attempt.taskRunId);
         break;
       }
       case "RETRYING_AFTER_FAILURE": {
@@ -161,12 +161,12 @@ export class CreateCheckpointService extends BaseService {
         attemptId: attempt.id,
         checkpointId: checkpoint.id,
       });
-      await marqs?.acknowledgeMessage(attempt.taskRunId);
+      await marqsv3?.acknowledgeMessage(attempt.taskRunId);
       return;
     }
 
     if (reason.type === "WAIT_FOR_DURATION") {
-      await marqs?.replaceMessage(
+      await marqsv3?.replaceMessage(
         attempt.taskRunId,
         {
           type: "RESUME_AFTER_DURATION",

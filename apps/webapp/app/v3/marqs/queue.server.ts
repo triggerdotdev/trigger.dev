@@ -1,12 +1,4 @@
-import {
-  Span,
-  SpanKind,
-  SpanOptions,
-  Tracer,
-  context,
-  propagation,
-  trace,
-} from "@opentelemetry/api";
+import { Span, SpanKind, SpanOptions, Tracer, context, propagation } from "@opentelemetry/api";
 import {
   SEMATTRS_MESSAGE_ID,
   SEMATTRS_MESSAGING_OPERATION,
@@ -14,14 +6,10 @@ import {
 } from "@opentelemetry/semantic-conventions";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import Redis, { type Callback, type RedisOptions, type Result } from "ioredis";
-import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { singleton } from "~/utils/singleton";
 import { attributesFromAuthenticatedEnv } from "../tracer.server";
 import { AsyncWorker } from "./asyncWorker.server";
-import { MarQSShortKeyProducer } from "./marqsKeyProducer.server";
-import { SimpleWeightedChoiceStrategy } from "./simpleWeightedPriorityStrategy.server";
 import {
   MarQSKeyProducer,
   MarQSQueuePriorityStrategy,
@@ -30,13 +18,6 @@ import {
   QueueRange,
   VisibilityTimeoutStrategy,
 } from "./types";
-import { V3VisibilityTimeout } from "./v3VisibilityTimeout.server";
-
-const KEY_PREFIX = "marqs:";
-
-const constants = {
-  MESSAGE_VISIBILITY_TIMEOUT_QUEUE: "msgVisibilityTimeout",
-} as const;
 
 const SemanticAttributes = {
   QUEUE: "marqs.queue",
@@ -70,7 +51,6 @@ export class MarQS {
   private redis: Redis;
   public keys: MarQSKeyProducer;
   private queuePriorityStrategy: MarQSQueuePriorityStrategy;
-  #requeueingWorkers: Array<AsyncWorker> = [];
   #rebalanceWorkers: Array<AsyncWorker> = [];
 
   constructor(private readonly options: MarQSOptions) {
@@ -130,6 +110,14 @@ export class MarQS {
     return result ? Number(result) : this.options.defaultOrgConcurrency;
   }
 
+  public async getSharedQueueConcurrencyLimit() {
+    const result = await this.redis.get(
+      this.keys.parentQueueConcurrencyLimitKey(this.keys.sharedQueueKey())
+    );
+
+    return result ? Number(result) : this.options.defaultParentQueueConcurrency;
+  }
+
   public async lengthOfQueue(
     env: AuthenticatedEnvironment,
     queue: string,
@@ -172,6 +160,10 @@ export class MarQS {
 
   public async currentConcurrencyOfOrg(env: AuthenticatedEnvironment) {
     return this.redis.scard(this.keys.orgCurrentConcurrencyKey(env));
+  }
+
+  public async currentSharedQueueConcurrency() {
+    return this.redis.scard(this.keys.parentQueueCurrentConcurrencyKey(this.keys.sharedQueueKey()));
   }
 
   public async enqueueMessage(
@@ -243,7 +235,6 @@ export class MarQS {
         const messageData = await this.#callDequeueMessage({
           messageQueue,
           parentQueue,
-          visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
           concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(messageQueue),
           currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
           envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
@@ -358,7 +349,6 @@ export class MarQS {
         const messageData = await this.#callDequeueMessage({
           messageQueue,
           parentQueue,
-          visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
           concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(messageQueue),
           currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
           envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
@@ -947,7 +937,6 @@ export class MarQS {
   async #callDequeueMessage({
     messageQueue,
     parentQueue,
-    visibilityQueue,
     concurrencyLimitKey,
     envConcurrencyLimitKey,
     orgConcurrencyLimitKey,
@@ -957,7 +946,6 @@ export class MarQS {
   }: {
     messageQueue: string;
     parentQueue: string;
-    visibilityQueue: string;
     concurrencyLimitKey: string;
     envConcurrencyLimitKey: string;
     orgConcurrencyLimitKey: string;
@@ -1580,14 +1568,6 @@ declare module "ioredis" {
       callback?: Callback<void>
     ): Result<void, Context>;
 
-    heartbeatMessage(
-      visibilityQueue: string,
-      messageId: string,
-      milliseconds: string,
-      maxVisibilityTimeout: string,
-      callback?: Callback<void>
-    ): Result<void, Context>;
-
     calculateMessageQueueCapacities(
       currentConcurrencyKey: string,
       currentEnvConcurrencyKey: string,
@@ -1618,45 +1598,6 @@ declare module "ioredis" {
       currentScore: string,
       callback?: Callback<number | string | null>
     ): Result<number | string | null, Context>;
-  }
-}
-
-export const marqs = singleton("marqs", getMarQSClient);
-
-function getMarQSClient() {
-  if (env.V3_ENABLED) {
-    if (env.REDIS_HOST && env.REDIS_PORT) {
-      const redisOptions = {
-        keyPrefix: KEY_PREFIX,
-        port: env.REDIS_PORT,
-        host: env.REDIS_HOST,
-        username: env.REDIS_USERNAME,
-        password: env.REDIS_PASSWORD,
-        enableAutoPipelining: true,
-        ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-      };
-
-      return new MarQS({
-        name: "marqs",
-        tracer: trace.getTracer("marqs"),
-        keysProducer: new MarQSShortKeyProducer(KEY_PREFIX),
-        visibilityTimeoutStrategy: new V3VisibilityTimeout(),
-        queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 36 }),
-        envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
-        workers: 1,
-        redis: redisOptions,
-        defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
-        defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
-        defaultParentQueueConcurrency: env.DEFAULT_PARENT_QUEUE_EXECUTION_CONCURRENCY_LIMIT,
-        visibilityTimeoutInMs: 120 * 1000, // 2 minutes,
-        enableRebalancing: !env.MARQS_DISABLE_REBALANCING,
-        verbose: false,
-      });
-    } else {
-      console.warn(
-        "Could not initialize MarQS because process.env.REDIS_HOST and process.env.REDIS_PORT are required to be set. Trigger.dev v3 will not work without this."
-      );
-    }
   }
 }
 

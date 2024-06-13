@@ -2,13 +2,39 @@ import { TaskQueue } from "@trigger.dev/database";
 import { Gauge, Registry } from "prom-client";
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 
 export async function registerProjectMetrics(
   registry: Registry,
   projectId: string,
   userId: string
 ) {
+  new Gauge({
+    name: sanitizeMetricName(`trigger_global_shared_concurrency`),
+    help: `The number of tasks currently being executed in the global shared queue`,
+    registers: [registry],
+    async collect() {
+      const value = await marqsv3?.currentSharedQueueConcurrency();
+
+      if (value) {
+        this.set(value);
+      }
+    },
+  });
+
+  new Gauge({
+    name: sanitizeMetricName(`trigger_global_shared_concurrency_limit`),
+    help: `The concurrency limit for the global shared queue`,
+    registers: [registry],
+    async collect() {
+      const value = await marqsv3?.getSharedQueueConcurrencyLimit();
+
+      if (value) {
+        this.set(value);
+      }
+    },
+  });
+
   // Register project metrics here
   // Register queue metrics here
 
@@ -33,7 +59,7 @@ export async function registerProjectMetrics(
       help: `The number of tasks currently being executed in the org environment queue`,
       registers: [registry],
       async collect() {
-        const length = await marqs?.currentConcurrencyOfOrg(firstEnv);
+        const length = await marqsv3?.currentConcurrencyOfOrg(firstEnv);
 
         if (length) {
           this.set(length);
@@ -46,7 +72,7 @@ export async function registerProjectMetrics(
       help: `The concurrency limit for the org queue`,
       registers: [registry],
       async collect() {
-        const length = await marqs?.getOrgConcurrencyLimit(firstEnv);
+        const length = await marqsv3?.getOrgConcurrencyLimit(firstEnv);
 
         if (length) {
           this.set(length);
@@ -59,8 +85,8 @@ export async function registerProjectMetrics(
       help: "The capacity of the org queue",
       registers: [registry],
       async collect() {
-        const concurrencyLimit = await marqs?.getOrgConcurrencyLimit(firstEnv);
-        const currentConcurrency = await marqs?.currentConcurrencyOfOrg(firstEnv);
+        const concurrencyLimit = await marqsv3?.getOrgConcurrencyLimit(firstEnv);
+        const currentConcurrency = await marqsv3?.currentConcurrencyOfOrg(firstEnv);
 
         if (typeof concurrencyLimit === "number" && typeof currentConcurrency === "number") {
           this.set(concurrencyLimit - currentConcurrency);
@@ -87,7 +113,7 @@ async function registerEnvironmentMetrics(
     help: `The number of tasks currently being executed in the dev environment queue`,
     registers: [registry],
     async collect() {
-      const length = await marqs?.currentConcurrencyOfEnvironment(env);
+      const length = await marqsv3?.currentConcurrencyOfEnvironment(env);
 
       if (length) {
         this.set(length);
@@ -100,7 +126,7 @@ async function registerEnvironmentMetrics(
     help: `The concurrency limit for the dev environment queue`,
     registers: [registry],
     async collect() {
-      const length = await marqs?.getEnvConcurrencyLimit(env);
+      const length = await marqsv3?.getEnvConcurrencyLimit(env);
 
       if (length) {
         this.set(length);
@@ -113,8 +139,8 @@ async function registerEnvironmentMetrics(
     help: `The capacity of the dev environment queue`,
     registers: [registry],
     async collect() {
-      const concurrencyLimit = await marqs?.getEnvConcurrencyLimit(env);
-      const currentConcurrency = await marqs?.currentConcurrencyOfEnvironment(env);
+      const concurrencyLimit = await marqsv3?.getEnvConcurrencyLimit(env);
+      const currentConcurrency = await marqsv3?.currentConcurrencyOfEnvironment(env);
 
       if (typeof concurrencyLimit === "number" && typeof currentConcurrency === "number") {
         this.set(concurrencyLimit - currentConcurrency);
@@ -137,7 +163,7 @@ function registerTaskQueueMetrics(
     help: `The number of tasks in the ${queue.name} queue`,
     registers: [registry],
     async collect() {
-      const length = await marqs?.lengthOfQueue(env, queue.name);
+      const length = await marqsv3?.lengthOfQueue(env, queue.name);
 
       if (length) {
         this.set(length);
@@ -150,7 +176,7 @@ function registerTaskQueueMetrics(
     help: `The number of tasks currently being executed in the ${queue.name} queue`,
     registers: [registry],
     async collect() {
-      const length = await marqs?.currentConcurrencyOfQueue(env, queue.name);
+      const length = await marqsv3?.currentConcurrencyOfQueue(env, queue.name);
 
       if (length) {
         this.set(length);
@@ -163,7 +189,7 @@ function registerTaskQueueMetrics(
     help: `The concurrency limit for the ${queue.name} queue`,
     registers: [registry],
     async collect() {
-      const length = await marqs?.getQueueConcurrencyLimit(env, queue.name);
+      const length = await marqsv3?.getQueueConcurrencyLimit(env, queue.name);
 
       if (length) {
         this.set(length);
@@ -176,8 +202,8 @@ function registerTaskQueueMetrics(
     help: `The capacity of the ${queue.name} queue`,
     registers: [registry],
     async collect() {
-      const concurrencyLimit = await marqs?.getQueueConcurrencyLimit(env, queue.name);
-      const currentConcurrency = await marqs?.currentConcurrencyOfQueue(env, queue.name);
+      const concurrencyLimit = await marqsv3?.getQueueConcurrencyLimit(env, queue.name);
+      const currentConcurrency = await marqsv3?.currentConcurrencyOfQueue(env, queue.name);
 
       if (typeof concurrencyLimit === "number" && typeof currentConcurrency === "number") {
         this.set(concurrencyLimit - currentConcurrency);
@@ -190,7 +216,7 @@ function registerTaskQueueMetrics(
     help: `The age of the oldest message in the ${queue.name} queue`,
     registers: [registry],
     async collect() {
-      const oldestMessage = await marqs?.oldestMessageInQueue(env, queue.name);
+      const oldestMessage = await marqsv3?.oldestMessageInQueue(env, queue.name);
 
       if (oldestMessage) {
         this.set(oldestMessage);
