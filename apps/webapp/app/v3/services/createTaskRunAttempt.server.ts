@@ -5,18 +5,21 @@ import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { machinePresetFromConfig } from "../machinePresets.server";
+import { workerQueue } from "~/services/worker.server";
 
 export class CreateTaskRunAttemptService extends BaseService {
   public async call(
     runId: string,
-    env?: AuthenticatedEnvironment,
+    authenticatedEnv?: AuthenticatedEnvironment,
     setToExecuting = true
   ): Promise<{
     execution: TaskRunExecution;
     run: TaskRun;
     attempt: TaskRunAttempt;
   }> {
-    const environment = env ?? (await getAuthenticatedEnvironmentFromRun(runId, this._prisma));
+    const environment =
+      authenticatedEnv ?? (await getAuthenticatedEnvironmentFromRun(runId, this._prisma));
 
     if (!environment) {
       throw new ServiceValidationError("Environment not found", 404);
@@ -128,6 +131,20 @@ export class CreateTaskRunAttemptService extends BaseService {
         throw new ServiceValidationError("Failed to create task run attempt", 500);
       }
 
+      if (taskRunAttempt.number === 1 && taskRun.baseCostInCents > 0) {
+        await workerQueue.enqueue("v3.reportUsage", {
+          orgId: environment.organizationId,
+          data: {
+            costInCents: String(taskRun.baseCostInCents),
+          },
+          additionalData: {
+            runId: taskRun.id,
+          },
+        });
+      }
+
+      const machinePreset = machinePresetFromConfig(taskRun.lockedBy.machineConfig ?? {});
+
       const execution: TaskRunExecution = {
         task: {
           id: taskRun.lockedBy.slug,
@@ -151,6 +168,10 @@ export class CreateTaskRunAttemptService extends BaseService {
           tags: taskRun.tags.map((tag) => tag.name),
           isTest: taskRun.isTest,
           idempotencyKey: taskRun.idempotencyKey ?? undefined,
+          startedAt: taskRun.startedAt ?? taskRun.createdAt,
+          durationMs: taskRun.usageDurationMs,
+          costInCents: taskRun.costInCents,
+          baseCostInCents: taskRun.baseCostInCents,
         },
         queue: {
           id: queue.friendlyId,
@@ -176,6 +197,7 @@ export class CreateTaskRunAttemptService extends BaseService {
           taskRun.batchItems[0] && taskRun.batchItems[0].batchTaskRun
             ? { id: taskRun.batchItems[0].batchTaskRun.friendlyId }
             : undefined,
+        machine: machinePreset,
       };
 
       return {

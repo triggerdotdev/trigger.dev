@@ -102,18 +102,18 @@ export const usage = {
    * export const myTask = task({
    *  id: "my-task",
    *  run: async (payload, { ctx }) => {
-   *    const { result, usage } = await usage.measure(async () => {
+   *    const { result, compute } = await usage.measure(async () => {
    *      // Do some work
    *      return "result";
    *    });
    *
    *    console.log("Result", result);
-   *    console.log("Cost and duration", { cost: usage.costInCents, duration: usage.durationMs });
+   *    console.log("Cost and duration", { cost: compute.costInCents, duration: compute.durationMs });
    *  },
    * });
    * ```
    */
-  measure: async <T>(cb: () => Promise<T>): Promise<{ result: T; usage: ComputeUsage }> => {
+  measure: async <T>(cb: () => Promise<T>): Promise<{ result: T; compute: ComputeUsage }> => {
     const measurement = usageApi.start();
 
     const result = await cb();
@@ -125,7 +125,7 @@ export const usage = {
 
     return {
       result,
-      usage: {
+      compute: {
         costInCents,
         durationMs: sample.cpuTime,
       },

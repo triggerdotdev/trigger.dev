@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { validateJWTToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { workerQueue } from "~/services/worker.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { reportUsageEvent } from "~/v3/openMeter.server";
 
@@ -66,15 +67,29 @@ export async function action({ request }: ActionFunctionArgs) {
       },
     });
 
-    await reportUsageEvent({
-      source: "webapp",
-      type: "usage",
-      subject: jwtPayload.org_id,
-      data: {
-        durationMs: json.data.durationMs,
-        costInCents: String(costInCents),
-      },
-    });
+    try {
+      await reportUsageEvent({
+        source: "webapp",
+        type: "usage",
+        subject: jwtPayload.org_id,
+        data: {
+          durationMs: json.data.durationMs,
+          costInCents: String(costInCents),
+        },
+      });
+    } catch (e) {
+      logger.error("Failed to report usage event, enqueing v3.reportUsage", { error: e });
+
+      await workerQueue.enqueue("v3.reportUsage", {
+        orgId: jwtPayload.org_id,
+        data: {
+          costInCents: String(costInCents),
+        },
+        additionalData: {
+          durationMs: json.data.durationMs,
+        },
+      });
+    }
   }
 
   return new Response(null, {
