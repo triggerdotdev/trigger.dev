@@ -45,5 +45,11 @@ export const manageSchedules = task({
 
     const allSchedules = await schedules.list();
     logger.log("All schedules", { allSchedules });
+
+    const { timezones } = await schedules.timezones();
+    logger.log("Timezones", { timezones });
+
+    const withoutUtc = await schedules.timezones({ excludeUtc: true });
+    logger.log("Timezones without UTC", { withoutUtc });
   },
 });

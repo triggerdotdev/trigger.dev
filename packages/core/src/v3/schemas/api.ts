@@ -348,6 +348,12 @@ export const ListScheduleOptions = z.object({
 
 export type ListScheduleOptions = z.infer<typeof ListScheduleOptions>;
 
+export const TimezonesResult = z.object({
+  timezones: z.array(z.string()),
+});
+
+export type TimezonesResult = z.infer<typeof TimezonesResult>;
+
 export const RunStatus = z.enum([
   /// Task hasn't been deployed yet but is waiting to be executed
   "WAITING_FOR_DEPLOY",

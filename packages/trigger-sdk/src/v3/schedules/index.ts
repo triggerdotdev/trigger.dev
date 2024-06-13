@@ -2,13 +2,15 @@ import {
   ApiPromise,
   DeletedScheduleObject,
   InitOutput,
+  OffsetLimitPagePromise,
   ScheduleObject,
+  TimezonesResult,
   apiClientManager,
   taskCatalog,
+  zodfetch,
 } from "@trigger.dev/core/v3";
 import { Task, TaskOptions, apiClientMissingError, createTask } from "../shared";
 import * as SchedulesAPI from "./api";
-import { OffsetLimitPagePromise } from "@trigger.dev/core/v3/apiClient/core";
 
 export function task<TOutput, TInitOutput extends InitOutput>(
   params: TaskOptions<SchedulesAPI.ScheduledTaskPayload, TOutput, TInitOutput>
@@ -139,4 +141,23 @@ export function list(
   }
 
   return apiClient.listSchedules(options);
+}
+
+/**
+ * Lists the possible timezones we support
+ * @param excludeUtc - By default "UTC" is included and is first. If true, "UTC" will be excluded.
+ */
+export function timezones(options?: { excludeUtc?: boolean }) {
+  const baseUrl = apiClientManager.baseURL;
+
+  return zodfetch(
+    TimezonesResult,
+    `${baseUrl}/api/v1/timezones${options?.excludeUtc === true ? "?excludeUtc=true" : ""}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  );
 }
