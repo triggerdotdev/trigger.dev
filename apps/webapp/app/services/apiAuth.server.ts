@@ -231,7 +231,7 @@ export async function generateJWTTokenForEnvironment(
     .setIssuedAt()
     .setIssuer("https://id.trigger.dev")
     .setAudience("https://api.trigger.dev")
-    .setExpirationTime("2h")
+    .setExpirationTime("24h")
     .sign(secret);
 
   return jwt;
