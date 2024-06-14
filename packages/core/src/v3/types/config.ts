@@ -1,7 +1,7 @@
 import { FailureFnParams, InitFnParams, StartFnParams, SuccessFnParams } from ".";
 import { LogLevel } from "../logger/taskLogger";
 import { RetryOptions } from "../schemas";
-import type { InstrumentationOption } from "@opentelemetry/instrumentation";
+import type { Instrumentation } from "@opentelemetry/instrumentation";
 
 export interface ProjectConfig {
   project: string;
@@ -34,7 +34,7 @@ export interface ProjectConfig {
   /**
    * The OpenTelemetry instrumentations to enable
    */
-  instrumentations?: InstrumentationOption[];
+  instrumentations?: Instrumentation[];
 
   /**
    * Set the log level for the logger. Defaults to "info", so you will see "log", "info", "warn", and "error" messages, but not "debug" messages.

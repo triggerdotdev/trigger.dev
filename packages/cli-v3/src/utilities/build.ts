@@ -41,6 +41,8 @@ export function bundleTriggerDevCore(buildIdentifier: string, tsconfigPath?: str
     name: "trigger-bundle-core",
     setup(build) {
       build.onResolve({ filter: /.*/ }, (args) => {
+        return undefined;
+
         if (!args.path.startsWith("@trigger.dev/core/v3")) {
           return undefined;
         }

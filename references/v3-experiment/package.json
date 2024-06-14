@@ -1,0 +1,22 @@
+{
+  "name": "@references/v3-experiment",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --no-warnings=ExperimentalWarning -r dotenv/config --loader ts-node/esm --inspect ./src/dev.ts"
+  },
+  "dependencies": {
+    "@traceloop/instrumentation-openai": "^0.3.9",
+    "@trigger.dev/sdk": "workspace:*",
+    "openai": "^4.47.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.4.2",
+    "trigger.dev": "workspace:*",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.4.0",
+    "dotenv": "16.4.5"
+  }
+}

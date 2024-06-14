@@ -2,10 +2,7 @@ import { DiagConsoleLogger, DiagLogLevel, TracerProvider, diag } from "@opentele
 import { logs } from "@opentelemetry/api-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import {
-  registerInstrumentations,
-  type InstrumentationOption,
-} from "@opentelemetry/instrumentation";
+import { registerInstrumentations, type Instrumentation } from "@opentelemetry/instrumentation";
 import {
   DetectorSync,
   IResource,
@@ -84,7 +81,7 @@ export type TracingSDKConfig = {
   url: string;
   forceFlushTimeoutMillis?: number;
   resource?: IResource;
-  instrumentations?: InstrumentationOption[];
+  instrumentations?: Instrumentation[];
   diagLogLevel?: TracingDiagnosticLogLevel;
 };
 

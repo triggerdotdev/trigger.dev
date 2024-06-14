@@ -443,7 +443,7 @@ function useDev({
         sourcemap: "external", // does not set the //# sourceMappingURL= comment in the file, we handle it ourselves
         logLevel: "error",
         platform: "node",
-        format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
+        format: "esm", // This is needed to support opentelemetry instrumentation that uses module patching
         target: ["node18", "es2020"],
         outdir: "out",
         define: {
@@ -512,7 +512,7 @@ function useDev({
                 }
 
                 // Create a file at join(dir, ".trigger", path) with the fileContents
-                const fullPath = join(config.projectDir, ".trigger", `${contentHash}.js`);
+                const fullPath = join(config.projectDir, ".trigger", `${contentHash}.mjs`);
                 const sourceMapPath = `${fullPath}.map`;
 
                 const outputFileWithSourceMap = `${
@@ -800,7 +800,12 @@ async function gatherRequiredDependencies(
   });
 
   for (const file of outputMeta.imports) {
-    if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
+    if (
+      (file.kind !== "require-call" &&
+        file.kind !== "dynamic-import" &&
+        file.kind !== "import-statement") ||
+      !file.external
+    ) {
       continue;
     }
 
