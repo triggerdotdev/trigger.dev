@@ -4,9 +4,8 @@ import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import cronParser from "cron-parser";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import cronstrue from "cronstrue";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   environmentTextClassName,
   environmentTitle,
@@ -32,6 +31,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
+import { TimezoneList } from "~/components/scheduled/timezones";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -43,7 +43,6 @@ import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuild
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
-import { TimezoneList } from "~/components/scheduled/timezones";
 
 const { parseExpression } = cronParser;
 const cronFormat = `*    *    *    *    *
