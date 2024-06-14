@@ -29,6 +29,14 @@
       "require": "./dist/v3/index.js",
       "types": "./dist/v3/index.d.ts"
     },
+    "./v3/unstable-core-do-not-import": {
+      "import": {
+        "types": "./dist/v3/unstable-core-do-not-import.d.mts",
+        "default": "./dist/v3/unstable-core-do-not-import.mjs"
+      },
+      "require": "./dist/v3/unstable-core-do-not-import.js",
+      "types": "./dist/v3/unstable-core-do-not-import.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "typesVersions": {

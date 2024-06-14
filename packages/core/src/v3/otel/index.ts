@@ -1,5 +1,8 @@
 import { Span, SpanStatusCode } from "@opentelemetry/api";
+import type { Tracer } from "@opentelemetry/api";
+import type { Logger } from "@opentelemetry/api-logs";
 
+export type { Tracer as OtelTracer, Logger as OtelLogger };
 export { TracingSDK, type TracingSDKConfig, type TracingDiagnosticLogLevel } from "./tracingSDK";
 
 export function recordSpanException(span: Span, error: unknown) {

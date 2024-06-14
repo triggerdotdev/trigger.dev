@@ -37,6 +37,14 @@
       "require": "./dist/v3/otel/index.js",
       "types": "./dist/v3/otel/index.d.ts"
     },
+    "./v3/schemas": {
+      "import": {
+        "types": "./dist/v3/schemas/index.d.mts",
+        "default": "./dist/v3/schemas/index.mjs"
+      },
+      "require": "./dist/v3/schemas/index.js",
+      "types": "./dist/v3/schemas/index.d.ts"
+    },
     "./v3/zodfetch": {
       "import": {
         "types": "./dist/v3/zodfetch.d.mts",
@@ -149,7 +157,8 @@
     "ulidx": "^2.2.1",
     "zod": "3.22.3",
     "zod-error": "1.5.0",
-    "zod-validation-error": "^1.5.0"
+    "zod-validation-error": "^1.5.0",
+    "source-map-support": "^0.5.21"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
