@@ -2,7 +2,7 @@ import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { validateJWTToken } from "~/services/apiAuth.server";
+import { validateJWTTokenAndRenew } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
@@ -26,15 +26,11 @@ export async function action({ request }: ActionFunctionArgs) {
     return { status: 405, body: "Method Not Allowed" };
   }
 
-  const jwt = request.headers.get("x-trigger-jwt");
+  const jwtResult = await validateJWTTokenAndRenew(request, JWTPayloadSchema);
 
-  if (!jwt) {
+  if (!jwtResult) {
     return { status: 401, body: "Unauthorized" };
   }
-
-  logger.debug("Validating JWT", { jwt });
-
-  const jwtPayload = await validateJWTToken(jwt, JWTPayloadSchema);
 
   const rawJson = await request.json();
 
@@ -46,16 +42,16 @@ export async function action({ request }: ActionFunctionArgs) {
     return { status: 400, body: "Bad Request" };
   }
 
-  const preset = machinePresetFromName(jwtPayload.machine_preset as MachinePresetName);
+  const preset = machinePresetFromName(jwtResult.payload.machine_preset as MachinePresetName);
 
-  logger.debug("Validated JWT", { jwtPayload, json: json.data, preset });
+  logger.debug("[/api/v1/usage/ingest] Reporting usage", { jwtResult, json: json.data, preset });
 
-  if (json.data.durationMs > 10) {
+  if (json.data.durationMs > 0) {
     const costInCents = json.data.durationMs * preset.centsPerMs;
 
     await prisma.taskRun.update({
       where: {
-        id: jwtPayload.run_id,
+        id: jwtResult.payload.run_id,
       },
       data: {
         usageDurationMs: {
@@ -71,7 +67,7 @@ export async function action({ request }: ActionFunctionArgs) {
       await reportUsageEvent({
         source: "webapp",
         type: "usage",
-        subject: jwtPayload.org_id,
+        subject: jwtResult.payload.org_id,
         data: {
           durationMs: json.data.durationMs,
           costInCents: String(costInCents),
@@ -81,7 +77,7 @@ export async function action({ request }: ActionFunctionArgs) {
       logger.error("Failed to report usage event, enqueing v3.reportUsage", { error: e });
 
       await workerQueue.enqueue("v3.reportUsage", {
-        orgId: jwtPayload.org_id,
+        orgId: jwtResult.payload.org_id,
         data: {
           costInCents: String(costInCents),
         },
@@ -94,5 +90,8 @@ export async function action({ request }: ActionFunctionArgs) {
 
   return new Response(null, {
     status: 200,
+    headers: {
+      "x-trigger-jwt": jwtResult.jwt,
+    },
   });
 }

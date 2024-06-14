@@ -29,7 +29,7 @@ export async function reportUsageEvent(event: UsageEvent) {
 
   const url = `${env.USAGE_OPEN_METER_BASE_URL}/api/v1/events`;
 
-  logger.debug("Reporting usage event", { url, body });
+  logger.debug("Reporting usage event to OpenMeter", { url, body });
 
   const response = await fetch(url, {
     method: "POST",
@@ -42,6 +42,6 @@ export async function reportUsageEvent(event: UsageEvent) {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to report usage event: ${response.status} ${response.statusText}`);
+    logger.error(`Failed to report usage event: ${response.status} ${response.statusText}`);
   }
 }

@@ -13,8 +13,9 @@ import {
 import { prisma } from "~/db.server";
 import { json } from "@remix-run/server-runtime";
 import { findProjectByRef } from "~/models/project.server";
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT, jwtVerify, errors } from "jose";
 import { env } from "~/env.server";
+import { logger } from "./logger.server";
 
 type Optional<T, K extends keyof T> = Prettify<Omit<T, K> & Partial<Pick<T, K>>>;
 
@@ -213,40 +214,126 @@ export async function authenticatedEnvironmentForAuthentication(
   }
 }
 
+const JWT_SECRET = new TextEncoder().encode(env.SESSION_SECRET);
+const JWT_ALGORITHM = "HS256";
+const DEFAULT_JWT_EXPIRATION_IN_MS = 1000 * 60 * 60; // 1 hour
+
 export async function generateJWTTokenForEnvironment(
   environment: RuntimeEnvironment,
   payload: Record<string, string>
 ) {
-  const secret = new TextEncoder().encode(env.SESSION_SECRET);
-
-  const alg = "HS256";
-
   const jwt = await new SignJWT({
     environment_id: environment.id,
     org_id: environment.organizationId,
     project_id: environment.projectId,
     ...payload,
   })
-    .setProtectedHeader({ alg })
+    .setProtectedHeader({ alg: JWT_ALGORITHM })
     .setIssuedAt()
     .setIssuer("https://id.trigger.dev")
     .setAudience("https://api.trigger.dev")
-    .setExpirationTime("24h")
-    .sign(secret);
+    .setExpirationTime(calculateJWTExpiration())
+    .sign(JWT_SECRET);
 
   return jwt;
 }
 
-export async function validateJWTToken<T extends z.ZodTypeAny>(
-  jwt: string,
+export async function validateJWTTokenAndRenew<T extends z.ZodTypeAny>(
+  request: Request,
   payloadSchema: T
-): Promise<z.infer<T>> {
-  const secret = new TextEncoder().encode(env.SESSION_SECRET);
+): Promise<{ payload: z.infer<T>; jwt: string } | undefined> {
+  try {
+    const jwt = request.headers.get("x-trigger-jwt");
 
-  const { payload, protectedHeader } = await jwtVerify(jwt, secret, {
-    issuer: "https://id.trigger.dev",
-    audience: "https://api.trigger.dev",
-  });
+    if (!jwt) {
+      logger.debug("Missing JWT token in request", {
+        headers: Object.fromEntries(request.headers),
+      });
 
-  return payloadSchema.parse(payload);
+      return;
+    }
+
+    const { payload: rawPayload } = await jwtVerify(jwt, JWT_SECRET, {
+      issuer: "https://id.trigger.dev",
+      audience: "https://api.trigger.dev",
+    });
+
+    const payload = payloadSchema.safeParse(rawPayload);
+
+    if (!payload.success) {
+      logger.error("Failed to validate JWT", { payload: rawPayload, issues: payload.error.issues });
+
+      return;
+    }
+
+    const renewedJwt = await renewJWTToken(payload.data);
+
+    return {
+      payload: payload.data,
+      jwt: renewedJwt,
+    };
+  } catch (error) {
+    if (error instanceof errors.JWTExpired) {
+      // Now we need to try and renew the token using the API key auth
+      const authenticatedEnv = await authenticateApiRequest(request);
+
+      if (!authenticatedEnv) {
+        logger.error("Failed to renew JWT token, missing or invalid Authorization header", {
+          error: error.message,
+        });
+
+        return;
+      }
+
+      const payload = payloadSchema.safeParse(error.payload);
+
+      if (!payload.success) {
+        logger.error("Failed to parse jwt payload after expired", {
+          payload: error.payload,
+          issues: payload.error.issues,
+        });
+
+        return;
+      }
+
+      const renewedJwt = await generateJWTTokenForEnvironment(authenticatedEnv.environment, {
+        ...payload.data,
+      });
+
+      logger.debug("Renewed JWT token from Authorization header API Key", {
+        environment: authenticatedEnv.environment,
+        payload: payload.data,
+      });
+
+      return {
+        payload: payload.data,
+        jwt: renewedJwt,
+      };
+    }
+
+    logger.error("Failed to validate JWT token", { error });
+  }
+}
+
+async function renewJWTToken(payload: Record<string, string>) {
+  const jwt = await new SignJWT(payload)
+    .setProtectedHeader({ alg: JWT_ALGORITHM })
+    .setIssuedAt()
+    .setIssuer("https://id.trigger.dev")
+    .setAudience("https://api.trigger.dev")
+    .setExpirationTime(calculateJWTExpiration())
+    .sign(JWT_SECRET);
+
+  return jwt;
+}
+
+function calculateJWTExpiration() {
+  if (env.PROD_USAGE_HEARTBEAT_INTERVAL_MS) {
+    return (
+      (Date.now() + Math.max(DEFAULT_JWT_EXPIRATION_IN_MS, env.PROD_USAGE_HEARTBEAT_INTERVAL_MS)) /
+      1000
+    );
+  }
+
+  return (Date.now() + DEFAULT_JWT_EXPIRATION_IN_MS) / 1000;
 }

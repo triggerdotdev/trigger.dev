@@ -3,12 +3,13 @@ import { logger, task, wait } from "@trigger.dev/sdk/v3";
 export const longRunning = task({
   id: "long-running",
   run: async (payload: { message: string }, { ctx }) => {
-    logger.info("Long running payloadddd", { payload });
+    logger.info("Long running", { payload });
 
-    // Wait for 3 minutes
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, 20000));
 
-    await wait.for({ seconds: 5 });
+    await wait.for({ seconds: 10 });
+
+    await new Promise((resolve) => setTimeout(resolve, 20000));
   },
 });
 
