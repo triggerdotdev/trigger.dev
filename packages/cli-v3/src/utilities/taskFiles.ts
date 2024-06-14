@@ -67,8 +67,8 @@ async function gatherTaskFilesFromDir(
   return taskFiles;
 }
 
-export function resolveTriggerDirectories(dirs: string[]): string[] {
-  return dirs.map((dir) => resolve(dir));
+export function resolveTriggerDirectories(projectDir: string, dirs: string[]): string[] {
+  return dirs.map((dir) => resolve(projectDir, dir));
 }
 
 const IGNORED_DIRS = ["node_modules", ".git", "dist", "build"];

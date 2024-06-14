@@ -7,3 +7,4 @@ packages:
   - "docs"
   - "perf"
   - "runtime_tests"
+  - "!packages/cli-v3/e2e/**"
