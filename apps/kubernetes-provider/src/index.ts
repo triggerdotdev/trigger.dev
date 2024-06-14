@@ -16,6 +16,7 @@ const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 const NODE_NAME = process.env.NODE_NAME || "local";
 const OTEL_EXPORTER_OTLP_ENDPOINT =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318";
+const POD_CLEANER_INTERVAL_SECONDS = Number(process.env.POD_CLEANER_INTERVAL_SECONDS || "300");
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 logger.log(`running in ${RUNTIME_ENV} mode`);
@@ -555,7 +556,7 @@ taskMonitor.start();
 const podCleaner = new PodCleaner({
   runtimeEnv: RUNTIME_ENV,
   namespace: "default",
-  intervalInSeconds: 300,
+  intervalInSeconds: POD_CLEANER_INTERVAL_SECONDS,
 });
 
 podCleaner.start();
