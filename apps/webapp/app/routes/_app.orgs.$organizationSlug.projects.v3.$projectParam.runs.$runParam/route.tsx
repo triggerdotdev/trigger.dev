@@ -236,7 +236,7 @@ export default function Page() {
             }}
           >
             <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0]}>
-              {/* <TasksTreeView
+              <TasksTreeView
                 selectedId={selectedSpanId}
                 key={events[0]?.id ?? "-"}
                 events={events}
@@ -254,7 +254,7 @@ export default function Page() {
                 rootSpanStatus={rootSpanStatus}
                 rootStartedAt={rootStartedAt}
                 environmentType={run.environment.type}
-              /> */}
+              />
             </ResizablePanel>
             <ResizableHandle withHandle />
             {selectedSpanId && (
