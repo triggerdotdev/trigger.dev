@@ -248,8 +248,5 @@ export async function validateJWTToken<T extends z.ZodTypeAny>(
     audience: "https://api.trigger.dev",
   });
 
-  console.log(protectedHeader);
-  console.log(payload);
-
   return payloadSchema.parse(payload);
 }
