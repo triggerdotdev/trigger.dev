@@ -528,7 +528,7 @@ export class EnvironmentVariablesRepository implements Repository {
       },
       {
         key: "TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS",
-        value: String(env.RUNTIME_WAIT_THRESHOLD_IN_MS),
+        value: String(env.CHECKPOINT_THRESHOLD_IN_MS),
       },
       ...(env.PROD_OTEL_BATCH_PROCESSING_ENABLED === "1"
         ? [
