@@ -11,7 +11,7 @@ import { join, resolve } from "path";
 import { JavascriptProject } from "../utilities/javascriptProject.js";
 import { PackageManager } from "../utilities/getUserPackageManager.js";
 import { getVersion } from "../utilities/getVersion.js";
-import { chalkError, prettyWarning } from "../utilities/cliOutput.js";
+import { chalkError, prettyError, prettyWarning } from "../utilities/cliOutput.js";
 
 export const UpdateCommandOptions = CommonCommandOptions.pick({
   logLevel: true,
@@ -81,7 +81,13 @@ export async function updateTriggerPackages(
 
   const triggerDependencies = getTriggerDependencies(packageJson);
 
-  function getVersionMismatches(deps: Dependency[], targetVersion: string): Dependency[] {
+  function getVersionMismatches(
+    deps: Dependency[],
+    targetVersion: string
+  ): {
+    mismatches: Dependency[];
+    isDowngrade: boolean;
+  } {
     const mismatches: Dependency[] = [];
 
     for (const dep of deps) {
@@ -92,12 +98,35 @@ export async function updateTriggerPackages(
       mismatches.push(dep);
     }
 
-    return mismatches;
+    const extractRelease = (version: string) => {
+      const release = Number(version.split("3.0.0-beta.")[1]);
+      return release || undefined;
+    };
+
+    let isDowngrade = false;
+    const targetRelease = extractRelease(targetVersion);
+
+    if (targetRelease) {
+      isDowngrade = mismatches.some((dep) => {
+        const depRelease = extractRelease(dep.version);
+
+        if (!depRelease) {
+          return false;
+        }
+
+        return depRelease > targetRelease;
+      });
+    }
+
+    return {
+      mismatches,
+      isDowngrade,
+    };
   }
 
-  const versionMismatches = getVersionMismatches(triggerDependencies, cliVersion);
+  const { mismatches, isDowngrade } = getVersionMismatches(triggerDependencies, cliVersion);
 
-  if (versionMismatches.length === 0) {
+  if (mismatches.length === 0) {
     if (!embedded) {
       outro(`Nothing to do${newCliVersion ? " ..but you should really update your CLI!" : ""}`);
       return hasOutput;
@@ -105,10 +134,14 @@ export async function updateTriggerPackages(
     return hasOutput;
   }
 
-  prettyWarning(
-    "Mismatch between your CLI version and installed packages",
-    "We recommend pinned versions for guaranteed compatibility"
-  );
+  if (isDowngrade) {
+    prettyError("Some of the installed @trigger.dev packages are newer than your CLI version");
+  } else {
+    prettyWarning(
+      "Mismatch between your CLI version and installed packages",
+      "We recommend pinned versions for guaranteed compatibility"
+    );
+  }
 
   if (!process.stdout.isTTY) {
     // Running in CI with version mismatch detected
@@ -124,7 +157,22 @@ export async function updateTriggerPackages(
   CLI version: ${cliVersion}
   
   Current package versions that don't match the CLI:
-  ${versionMismatches.map((dep) => `- ${dep.name}@${dep.version}`).join("\n")}\n`
+  ${mismatches.map((dep) => `- ${dep.name}@${dep.version}`).join("\n")}\n`
+    );
+    process.exit(1);
+  }
+
+  // WARNING: We can only start accepting user input once we know this is a TTY, otherwise, the process will exit with an error in CI
+
+  if (isDowngrade) {
+    printUpdateTable("Versions", mismatches, cliVersion, "installed", "CLI");
+
+    outro("CLI update required!");
+
+    logger.log(
+      `${chalkError(
+        "X Error:"
+      )} Please update your CLI. Alternatively, use \`--skip-update-check\` at your own risk.\n`
     );
     process.exit(1);
   }
@@ -132,7 +180,7 @@ export async function updateTriggerPackages(
   log.message(""); // spacing
 
   // Always require user confirmation
-  const userWantsToUpdate = await updateConfirmation(versionMismatches, cliVersion);
+  const userWantsToUpdate = await updateConfirmation(mismatches, cliVersion);
 
   if (isCancel(userWantsToUpdate)) {
     throw new OutroCommandError();
@@ -175,7 +223,7 @@ export async function updateTriggerPackages(
   process.prependOnceListener("exit", exitHandler);
 
   // Update package.json
-  mutatePackageJsonWithUpdatedPackages(packageJson, versionMismatches, cliVersion);
+  mutatePackageJsonWithUpdatedPackages(packageJson, mismatches, cliVersion);
   await writeJSONFile(packageJsonPath, packageJson, true);
 
   async function revertPackageJsonChanges() {
@@ -274,20 +322,26 @@ function mutatePackageJsonWithUpdatedPackages(
   }
 }
 
-function printUpdateTable(depsToUpdate: Dependency[], targetVersion: string): void {
-  log.message("Suggested updates");
+function printUpdateTable(
+  heading: string,
+  depsToUpdate: Dependency[],
+  targetVersion: string,
+  oldColumn = "old",
+  newColumn = "new"
+): void {
+  log.message(heading);
 
   const tableData = depsToUpdate.map((dep) => ({
     package: dep.name,
-    old: dep.version,
-    new: targetVersion,
+    [oldColumn]: dep.version,
+    [newColumn]: targetVersion,
   }));
 
   logger.table(tableData);
 }
 
 async function updateConfirmation(depsToUpdate: Dependency[], targetVersion: string) {
-  printUpdateTable(depsToUpdate, targetVersion);
+  printUpdateTable("Suggested updates", depsToUpdate, targetVersion);
 
   let confirmMessage = "Would you like to apply those updates?";
 
