@@ -1,8 +1,7 @@
 export * from "./apiClient";
 export * from "./apiClient/types";
 export * from "./apiClient/pagination";
-export type { ApiPromise, OffsetLimitPagePromise } from "./apiClient/core";
-export { zodfetch } from "./apiClient/core";
+export type { ApiPromise, OffsetLimitPagePromise, CursorPagePromise } from "./apiClient/core";
 export * from "./apiClient/errors";
 export * from "./clock-api";
 export * from "./errors";

@@ -92,7 +92,7 @@ export class UpsertTaskScheduleService extends BaseService {
 
       if (schedulesCount >= limits.maximumSchedulesLimit) {
         throw new ServiceValidationError(
-          `You have created ${schedulesCount}/${limits.maximumSchedulesLimit} schedules so need to increase your limits or delete some schedules.`
+          `You have created ${schedulesCount}/${limits.maximumSchedulesLimit} schedules so you'll need to increase your limits or delete some schedules. Increase your limits by contacting support.`
         );
       }
     }

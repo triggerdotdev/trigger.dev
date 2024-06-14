@@ -218,7 +218,6 @@ async function doSchedules() {
     task: firstScheduledTask.id,
     cron: "0 0 1 * *",
     externalId: "ext_1234444",
-    deduplicationKey: "dedup_1234444",
   });
 
   console.log("updated schedule", updatedSchedule);
@@ -274,8 +273,8 @@ async function doTriggerUnfriendlyTaskId() {
 }
 
 // doRuns().catch(console.error);
-// doListRuns().catch(console.error);
+doListRuns().catch(console.error);
 // doScheduleLists().catch(console.error);
 // doSchedules().catch(console.error);
 // doEnvVars().catch(console.error);
-doTriggerUnfriendlyTaskId().catch(console.error);
+// doTriggerUnfriendlyTaskId().catch(console.error);

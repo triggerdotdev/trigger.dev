@@ -7,8 +7,8 @@ import {
   TimezonesResult,
   apiClientManager,
   taskCatalog,
-  zodfetch,
 } from "@trigger.dev/core/v3";
+import { zodfetch } from "@trigger.dev/core/v3/zodfetch";
 import { Task, TaskOptions, apiClientMissingError, createTask } from "../shared";
 import * as SchedulesAPI from "./api";
 
@@ -149,6 +149,10 @@ export function list(
  */
 export function timezones(options?: { excludeUtc?: boolean }) {
   const baseUrl = apiClientManager.baseURL;
+
+  if (!baseUrl) {
+    throw apiClientMissingError();
+  }
 
   return zodfetch(
     TimezonesResult,
