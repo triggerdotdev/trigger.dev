@@ -241,7 +241,7 @@
     "ts-node": "^10.7.0",
     "tsconfig-paths": "^3.14.1",
     "typescript": "^5.4.5",
-    "vite": "^5.2.12",
+    "vite": "^5.3.1",
     "vite-tsconfig-paths": "^4.0.5",
     "vitest": "^1.4.0"
   },
