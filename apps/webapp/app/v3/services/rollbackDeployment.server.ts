@@ -2,6 +2,7 @@ import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { WorkerDeployment } from "@trigger.dev/database";
 import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
+import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 
 export class RollbackDeploymentService extends BaseService {
   public async call(deployment: WorkerDeployment) {
@@ -38,6 +39,10 @@ export class RollbackDeploymentService extends BaseService {
         deploymentId: deployment.id,
       },
     });
+
+    if (deployment.workerId) {
+      await ExecuteTasksWaitingForDeployService.enqueue(deployment.workerId, this._prisma);
+    }
 
     return {
       id: deployment.id,

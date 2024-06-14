@@ -279,6 +279,7 @@ export class BackgroundWorker {
 
   public tasks: Array<TaskMetadataWithFilePath> = [];
   public metadata: BackgroundWorkerProperties | undefined;
+  public stderr: Array<string> = [];
 
   _taskRunProcesses: Map<string, TaskRunProcess> = new Map();
   private _taskRunProcessesBeingKilled: Set<number> = new Set();
@@ -405,6 +406,10 @@ export class BackgroundWorker {
 
       child.stdout?.on("data", (data) => {
         logger.log(data.toString());
+      });
+
+      child.stderr?.on("data", (data) => {
+        this.stderr.push(data.toString());
       });
     });
 

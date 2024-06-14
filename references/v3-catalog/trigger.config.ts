@@ -46,7 +46,7 @@ export const config: TriggerConfig = {
   },
   additionalPackages: ["wrangler@3.35.0", "pg@8.11.5"],
   additionalFiles: ["./wrangler/wrangler.toml"],
-  dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp", "@t3-oss/env-core"],
+  dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp"],
   instrumentations: [new OpenAIInstrumentation()],
   logLevel: "info",
   onStart: async (payload, { ctx }) => {

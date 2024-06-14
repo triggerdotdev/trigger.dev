@@ -7,7 +7,8 @@ version=${1:-'v3-prerelease'}
 
 # Ensure git stage is clear
 if [[ $(git status --porcelain) ]]; then
-    echo "Your git status is not clean.";
+    echo "Your git status is not clean. Please commit your changes before running this script.";
+    echo "To reset all your changes, run this instead: git reset --hard HEAD"
     exit 1;
 else
     echo "Git status is clean. Proceeding with the script.";
@@ -23,7 +24,7 @@ echo "Running: pnpm run build --filter \"@trigger.dev/*\" --filter \"trigger.dev
 pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
 
 echo "Going to run: pnpm exec changeset publish --no-git-tag --snapshot --tag $version"
-read -p "Do you wish to continue? (Y/n): " prompt
+read -p "Do you wish to continue? (y/N): " prompt
 if [[ $prompt =~ [yY](es)* ]]; then
     pnpm exec changeset publish --no-git-tag --snapshot --tag $version
 else
