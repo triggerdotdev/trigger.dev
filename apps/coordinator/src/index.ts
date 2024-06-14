@@ -1028,7 +1028,7 @@ class TaskCoordinator {
             return;
           }
 
-          if (completion.retry.delay < this.#delayThresholdInMs) {
+          if (completion.retry.delay <= this.#delayThresholdInMs) {
             completeWithoutCheckpoint(false);
             return;
           }
