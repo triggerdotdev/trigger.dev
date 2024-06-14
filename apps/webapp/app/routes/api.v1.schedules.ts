@@ -43,6 +43,7 @@ export async function action({ request }: ActionFunctionArgs) {
       environments: [authenticationResult.environment.id],
       externalId: body.data.externalId,
       deduplicationKey: body.data.deduplicationKey,
+      timezone: body.data.timezone,
     };
 
     const schedule = await service.call(authenticationResult.environment.projectId, options);
@@ -56,6 +57,7 @@ export async function action({ request }: ActionFunctionArgs) {
         expression: schedule.cron,
         description: schedule.cronDescription,
       },
+      timezone: schedule.timezone,
       externalId: schedule.externalId ?? undefined,
       deduplicationKey: schedule.deduplicationKey,
       environments: schedule.environments,
@@ -111,6 +113,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         expression: schedule.cron,
         description: schedule.cronDescription,
       },
+      timezone: schedule.timezone,
       deduplicationKey: schedule.userProvidedDeduplicationKey
         ? schedule.deduplicationKey
         : undefined,

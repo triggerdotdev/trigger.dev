@@ -3,9 +3,10 @@ import { parse } from "@conform-to/zod";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { parseExpression } from "cron-parser";
 import cronstrue from "cronstrue";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   environmentTextClassName,
   environmentTitle,
@@ -42,6 +43,7 @@ import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuild
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
+import { TimezoneList } from "~/components/scheduled/timezones";
 
 const cronFormat = `*    *    *    *    *
 ┬    ┬    ┬    ┬    ┬
@@ -117,9 +119,12 @@ export function UpsertScheduleForm({
   schedule,
   possibleTasks,
   possibleEnvironments,
+  possibleTimezones,
   showGenerateField,
 }: EditableScheduleElements & { showGenerateField: boolean }) {
   const lastSubmission = useActionData();
+  const [selectedTimezone, setSelectedTimezone] = useState<string>(schedule?.timezone ?? "UTC");
+  const isUtc = selectedTimezone === "UTC";
   const [cronPattern, setCronPattern] = useState<string>(schedule?.cron ?? "");
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
@@ -127,18 +132,20 @@ export function UpsertScheduleForm({
   const project = useProject();
   const location = useLocation();
 
-  const [form, { taskIdentifier, cron, externalId, environments, deduplicationKey }] = useForm({
-    id: "create-schedule",
-    // TODO: type this
-    lastSubmission: lastSubmission as any,
-    shouldRevalidate: "onSubmit",
-    onValidate({ formData }) {
-      return parse(formData, { schema: UpsertSchedule });
-    },
-  });
+  const [form, { taskIdentifier, cron, timezone, externalId, environments, deduplicationKey }] =
+    useForm({
+      id: "create-schedule",
+      // TODO: type this
+      lastSubmission: lastSubmission as any,
+      shouldRevalidate: "onSubmit",
+      onValidate({ formData }) {
+        return parse(formData, { schema: UpsertSchedule });
+      },
+    });
 
   let cronPatternResult: CronPatternResult | undefined = undefined;
   let nextRuns: Date[] | undefined = undefined;
+
   if (cronPattern !== "") {
     const result = CronPattern.safeParse(cronPattern);
 
@@ -149,7 +156,10 @@ export function UpsertScheduleForm({
       };
     } else {
       try {
-        const expression = parseExpression(cronPattern, { utc: true });
+        const expression = parseExpression(
+          cronPattern,
+          isUtc ? { utc: true } : { tz: selectedTimezone }
+        );
         cronPatternResult = {
           isValid: true,
           description: cronstrue.toString(cronPattern),
@@ -195,6 +205,7 @@ export function UpsertScheduleForm({
                 items={possibleTasks}
                 filter={(task, search) => task.toLowerCase().includes(search.toLowerCase())}
                 dropdownIcon
+                variant="tertiary/medium"
               >
                 {(matches) => (
                   <>
@@ -241,24 +252,51 @@ export function UpsertScheduleForm({
                 <ValidCronMessage isValid={false} message={cronPatternResult.error} />
               )}
             </InputGroup>
+            <InputGroup>
+              <Label htmlFor={timezone.id}>Timezone</Label>
+              <Select
+                {...conform.select(timezone)}
+                placeholder="Select a timezone"
+                defaultValue={selectedTimezone}
+                value={selectedTimezone}
+                setValue={(e) => {
+                  if (Array.isArray(e)) return;
+                  setSelectedTimezone(e);
+                }}
+                items={possibleTimezones}
+                filter={{ keys: [(item) => item.replace(/\//g, " ").replace(/_/g, " ")] }}
+                dropdownIcon
+                variant="tertiary/medium"
+              >
+                {(matches) => <TimezoneList timezones={matches} />}
+              </Select>
+              <Hint>
+                {isUtc
+                  ? "UTC will not change with daylight savings time."
+                  : "This will automatically adjust for daylight savings time."}
+              </Hint>
+              <FormError id={timezone.errorId}>{timezone.error}</FormError>
+            </InputGroup>
             {nextRuns !== undefined && (
               <div className="flex flex-col gap-1">
                 <Header3>Next 5 runs</Header3>
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {!isUtc && <TableHeaderCell>{selectedTimezone}</TableHeaderCell>}
                       <TableHeaderCell>UTC</TableHeaderCell>
-                      <TableHeaderCell>Local time</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {nextRuns.map((run, index) => (
                       <TableRow key={index}>
+                        {!isUtc && (
+                          <TableCell>
+                            <DateTime date={run} timeZone={selectedTimezone} />
+                          </TableCell>
+                        )}
                         <TableCell>
                           <DateTime date={run} timeZone="UTC" />
-                        </TableCell>
-                        <TableCell>
-                          <DateTime date={run} />
                         </TableCell>
                       </TableRow>
                     ))}

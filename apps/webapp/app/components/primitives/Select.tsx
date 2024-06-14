@@ -8,6 +8,7 @@ import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { ShortcutKey } from "./ShortcutKey";
 import { ChevronDown } from "lucide-react";
+import { MatchSorterOptions, matchSorter } from "match-sorter";
 
 const sizes = {
   small: {
@@ -75,7 +76,10 @@ export interface SelectProps<TValue extends string | string[], TItem>
   showHeading?: boolean;
   items?: TItem[] | Section<TItem>[];
   empty?: React.ReactNode;
-  filter?: (item: ItemFromSection<TItem>, search: string, title?: string) => boolean;
+  filter?:
+    | boolean
+    | MatchSorterOptions<TItem>
+    | ((item: ItemFromSection<TItem>, search: string, title?: string) => boolean);
   children:
     | React.ReactNode
     | ((
@@ -129,18 +133,44 @@ export function Select<TValue extends string | string[], TItem>({
     if (!items) return [];
     if (!searchValue || !filter) return items;
 
+    if (typeof filter === "function") {
+      if (isSection(items)) {
+        return items
+          .map((section) => ({
+            ...section,
+            items: section.items.filter((item) =>
+              filter(item as ItemFromSection<TItem>, searchValue, section.title)
+            ),
+          }))
+          .filter((section) => section.items.length > 0);
+      }
+
+      return items.filter((item) => filter(item as ItemFromSection<TItem>, searchValue));
+    }
+
+    if (typeof filter === "boolean" && filter) {
+      if (isSection(items)) {
+        return items
+          .map((section) => ({
+            ...section,
+            items: matchSorter(section.items, searchValue),
+          }))
+          .filter((section) => section.items.length > 0);
+      }
+
+      return matchSorter(items, searchValue);
+    }
+
     if (isSection(items)) {
       return items
         .map((section) => ({
           ...section,
-          items: section.items.filter((item) =>
-            filter(item as ItemFromSection<TItem>, searchValue, section.title)
-          ),
+          items: matchSorter(section.items, searchValue, filter),
         }))
         .filter((section) => section.items.length > 0);
     }
 
-    return items.filter((item) => filter(item as ItemFromSection<TItem>, searchValue));
+    return matchSorter(items, searchValue, filter);
   }, [searchValue, items]);
 
   const enableItemShortcuts = allowItemShortcuts && matches.length === items?.length;

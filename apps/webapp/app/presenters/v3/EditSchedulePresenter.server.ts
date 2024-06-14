@@ -1,6 +1,7 @@
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
+import { getTimezones } from "~/utils/timezones.server";
 
 type EditScheduleOptions = {
   userId: string;
@@ -74,6 +75,7 @@ export class EditSchedulePresenter {
     return {
       possibleTasks: possibleTasks.map((task) => task.slug),
       possibleEnvironments,
+      possibleTimezones: getTimezones(),
       schedule: await this.#getExistingSchedule(friendlyId, possibleEnvironments),
     };
   }
@@ -91,6 +93,7 @@ export class EditSchedulePresenter {
         externalId: true,
         deduplicationKey: true,
         userProvidedDeduplicationKey: true,
+        timezone: true,
         taskIdentifier: true,
         instances: {
           select: {
