@@ -115,15 +115,18 @@ async function findFilePath(dir: string, fileName: string): Promise<string | und
 export type ReadConfigOptions = {
   projectRef?: string;
   configFile?: string;
+  cwd?: string;
+};
+
+export type ReadConfigFileResult = {
+  status: "file";
+  config: ResolvedConfig;
+  path: string;
+  module?: any;
 };
 
 export type ReadConfigResult =
-  | {
-      status: "file";
-      config: ResolvedConfig;
-      path: string;
-      module?: any;
-    }
+  | ReadConfigFileResult
   | {
       status: "in-memory";
       config: ResolvedConfig;
@@ -137,7 +140,7 @@ export async function readConfig(
   dir: string,
   options?: ReadConfigOptions
 ): Promise<ReadConfigResult> {
-  const absoluteDir = path.resolve(process.cwd(), dir);
+  const absoluteDir = path.resolve(options?.cwd || process.cwd(), dir);
 
   const configPath = await getConfigPath(dir, options?.configFile);
 
@@ -226,7 +229,7 @@ export async function resolveConfig(path: string, config: Config): Promise<Resol
     config.triggerDirectories = await findTriggerDirectories(path);
   }
 
-  config.triggerDirectories = resolveTriggerDirectories(config.triggerDirectories);
+  config.triggerDirectories = resolveTriggerDirectories(path, config.triggerDirectories);
 
   logger.debug("Resolved trigger directories", { triggerDirectories: config.triggerDirectories });
 

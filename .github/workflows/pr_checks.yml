@@ -29,4 +29,6 @@ jobs:
 
   # e2e:
   #   uses: ./.github/workflows/e2e.yml
+  #   with:
+  #     package: webapp
   #   secrets: inherit
