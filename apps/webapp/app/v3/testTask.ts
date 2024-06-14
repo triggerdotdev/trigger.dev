@@ -32,6 +32,7 @@ export const TestTaskData = z
         (val) => (val === "" ? undefined : val),
         z.coerce.date().optional()
       ),
+      timezone: z.string(),
       externalId: z.preprocess((val) => (val === "" ? undefined : val), z.string().optional()),
     }),
   ])

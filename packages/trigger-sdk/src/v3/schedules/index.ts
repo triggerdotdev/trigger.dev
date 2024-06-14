@@ -2,13 +2,15 @@ import {
   ApiPromise,
   DeletedScheduleObject,
   InitOutput,
+  OffsetLimitPagePromise,
   ScheduleObject,
+  TimezonesResult,
   apiClientManager,
   taskCatalog,
 } from "@trigger.dev/core/v3";
+import { zodfetch } from "@trigger.dev/core/v3/zodfetch";
 import { Task, TaskOptions, apiClientMissingError, createTask } from "../shared";
 import * as SchedulesAPI from "./api";
-import { OffsetLimitPagePromise } from "@trigger.dev/core/v3/apiClient/core";
 
 export function task<TOutput, TInitOutput extends InitOutput>(
   params: TaskOptions<SchedulesAPI.ScheduledTaskPayload, TOutput, TInitOutput>
@@ -27,6 +29,7 @@ export function task<TOutput, TInitOutput extends InitOutput>(
  * @param options
  * @param options.task - The identifier of the task to be scheduled (Must already exist and be a scheduled task)
  * @param options.cron - The cron expression for the schedule (e.g. `0 0 * * *`)
+ * @param options.timezone - An optional timezone for the schedule in the IANA format (e.g. `America/Los_Angeles`). Defaults to "UTC".
  * @param options.externalId - An optional external identifier for the schedule
  * @param options.deduplicationKey - An optional deduplication key for the schedule
  * @returns The created schedule
@@ -62,6 +65,7 @@ export function retrieve(scheduleId: string): ApiPromise<ScheduleObject> {
  * @param options - The updated schedule options
  * @param options.task - The identifier of the task to be scheduled (Must already exist and be a scheduled task)
  * @param options.cron - The cron expression for the schedule (e.g. `0 0 * * *`)
+ * @param options.timezone - An optional timezone for the schedule in the IANA format (e.g. `America/Los_Angeles`). Defaults to "UTC".
  * @param options.externalId - An optional external identifier for the schedule
  * @returns The updated schedule
  */
@@ -137,4 +141,27 @@ export function list(
   }
 
   return apiClient.listSchedules(options);
+}
+
+/**
+ * Lists the possible timezones we support
+ * @param excludeUtc - By default "UTC" is included and is first. If true, "UTC" will be excluded.
+ */
+export function timezones(options?: { excludeUtc?: boolean }) {
+  const baseUrl = apiClientManager.baseURL;
+
+  if (!baseUrl) {
+    throw apiClientMissingError();
+  }
+
+  return zodfetch(
+    TimezonesResult,
+    `${baseUrl}/api/v1/timezones${options?.excludeUtc === true ? "?excludeUtc=true" : ""}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  );
 }

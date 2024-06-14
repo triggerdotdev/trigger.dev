@@ -6,6 +6,7 @@ type DateTimeProps = {
   timeZone?: string;
   includeSeconds?: boolean;
   includeTime?: boolean;
+  showTimezone?: boolean;
 };
 
 export const DateTime = ({
@@ -13,6 +14,7 @@ export const DateTime = ({
   timeZone,
   includeSeconds = true,
   includeTime = true,
+  showTimezone = false,
 }: DateTimeProps) => {
   const locales = useLocales();
 
@@ -42,7 +44,12 @@ export const DateTime = ({
     );
   }, [locales, includeSeconds, realDate]);
 
-  return <Fragment>{formattedDateTime.replace(/\s/g, String.fromCharCode(32))}</Fragment>;
+  return (
+    <Fragment>
+      {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
+      {showTimezone ? ` (${timeZone ?? "UTC"})` : null}
+    </Fragment>
+  );
 };
 
 export function formatDateTime(

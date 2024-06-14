@@ -29,6 +29,16 @@ export const firstScheduledTask = schedules.task({
     //this can be undefined if it's never been run
     console.log(payload.lastTimestamp); //is a Date object or undefined
 
+    //the timezone the schedule was registered with, defaults to "UTC"
+    //this is in IANA format, e.g. "America/New_York"
+    //See the full list here: https://cloud.trigger.dev/timezones
+    console.log(payload.timezone); //is a string
+
+    //If you want to output the time in the user's timezone do this:
+    const formatted = payload.timestamp.toLocaleString("en-US", {
+      timeZone: payload.timezone,
+    });
+
     //the schedule id (you can have many schedules for the same task)
     //using this you can remove the schedule, update it, etc
     console.log(payload.scheduleId); //is a string
@@ -46,8 +56,9 @@ export const firstScheduledTask = schedules.task({
 
 You can see from the comments that the payload has several useful properties:
 
-- `timestamp` - the time the task was scheduled to run
-- `lastTimestamp` - the time the task was last run
+- `timestamp` - the time the task was scheduled to run, as a UTC date.
+- `lastTimestamp` - the time the task was last run, as a UTC date.
+- `timezone` - the timezone the schedule was registered with, defaults to "UTC". In IANA format, e.g. "America/New_York".
 - `scheduleId` - the id of the schedule that triggered the task
 - `externalId` - the external id you (optionally) provided when creating the schedule
 - `upcoming` - the next 5 times the task is scheduled to run
@@ -103,6 +114,7 @@ These are the options when creating a schedule:
 | ----------------- | --------------------------------------------------------------------------------------------- |
 | Task              | The id of the task you want to attach to.                                                     |
 | CRON pattern      | The schedule in CRON format.                                                                  |
+| Timezone          | The timezone the schedule will run in. Defaults to "UTC"                                      |
 | External id       | An optional external id, usually you'd use a userId.                                          |
 | Deduplication key | An optional deduplication key. If you pass the same value, it will update rather than create. |
 | Environments      | The environments this schedule will run in.                                                   |
@@ -121,6 +133,8 @@ const createdSchedule = await schedules.create({
   task: firstScheduledTask.id,
   //The schedule in CRON format.
   cron: "0 0 * * *",
+  //this is required, it prevents you from creating duplicate schedules. It will update the schedule if it already exists.
+  deduplicationKey: "my-deduplication-key",
 });
 ```
 
@@ -136,17 +150,21 @@ const createdSchedule = await schedules.create({
   task: firstScheduledTask.id,
   //The schedule in CRON format.
   cron: "0 0 * * *",
+  // Optional, it defaults to "UTC". In IANA format, e.g. "America/New_York".
+  // In this case, the task will run at midnight every day in New York time.
+  // If you specify a timezone it will automatically work with daylight saving time.
+  timezone: "America/New_York",
   //Optionally, you can specify your own IDs (like a user ID) and then use it inside the run function of your task.
   //This allows you to have per-user CRON tasks.
   externalId: "user_123456",
-  //(Optional) You can only create one schedule with this key.
+  //You can only create one schedule with this key.
   //If you use it twice, the second call will update the schedule.
-  //This is useful if you don't want to create duplicate schedules for a user.
+  //This is useful because you don't want to create duplicate schedules for a user.
   deduplicationKey: "user_123456-todo_reminder",
 });
 ```
 
-See [the SDK reference](/v3/management-create-schedule) for full details.
+See [the SDK reference](/v3/management/schedules/create) for full details.
 
 ### Dynamic schedules (or multi-tenant schedules)
 
@@ -189,6 +207,8 @@ export async function POST(request: Request) {
     task: reminderTask.id,
     //8am every day
     cron: "0 8 * * *",
+    //the user's timezone
+    timezone: data.timezone,
     //the user id
     externalId: data.userId,
     //this makes it impossible to have two reminder schedules for the same user
@@ -228,7 +248,7 @@ You can test a scheduled task in the dashboard. Note that the `scheduleId` will 
 const retrievedSchedule = await schedules.retrieve(scheduleId);
 ```
 
-See [the SDK reference](/v3/management-retrieve-schedule) for full details.
+See [the SDK reference](/v3/management/schedules/retrieve) for full details.
 
 ### Listing schedules
 
@@ -236,7 +256,7 @@ See [the SDK reference](/v3/management-retrieve-schedule) for full details.
 const allSchedules = await schedules.list();
 ```
 
-See [the SDK reference](/v3/management-list-schedules) for full details.
+See [the SDK reference](/v3/management/schedules/list) for full details.
 
 ### Updating a schedule
 
@@ -245,10 +265,11 @@ const updatedSchedule = await schedules.update(scheduleId, {
   task: firstScheduledTask.id,
   cron: "0 0 1 * *",
   externalId: "ext_1234444",
+  deduplicationKey: "my-deduplication-key",
 });
 ```
 
-See [the SDK reference](/v3/management-update-schedule) for full details.
+See [the SDK reference](/v3/management/schedules/update) for full details.
 
 ### Deactivating a schedule
 
@@ -256,7 +277,7 @@ See [the SDK reference](/v3/management-update-schedule) for full details.
 const deactivatedSchedule = await schedules.deactivate(scheduleId);
 ```
 
-See [the SDK reference](/v3/management-deactivate-schedule) for full details.
+See [the SDK reference](/v3/management/schedules/deactivate) for full details.
 
 ### Activating a schedule
 
@@ -264,7 +285,7 @@ See [the SDK reference](/v3/management-deactivate-schedule) for full details.
 const activatedSchedule = await schedules.activate(scheduleId);
 ```
 
-See [the SDK reference](/v3/management-activate-schedule) for full details.
+See [the SDK reference](/v3/management/schedules/activate) for full details.
 
 ### Deleting a schedule
 
@@ -272,4 +293,14 @@ See [the SDK reference](/v3/management-activate-schedule) for full details.
 const deletedSchedule = await schedules.del(scheduleId);
 ```
 
-See [the SDK reference](/v3/management-delete-schedule) for full details.
+See [the SDK reference](/v3/management/schedules/delete) for full details.
+
+### Getting possible timezones
+
+You might want to show a dropdown menu in your UI so your users can select their timezone. You can get a list of all possible timezones using the SDK:
+
+```ts
+const timezones = await schedules.timezones();
+```
+
+See [the SDK reference](/v3/management/schedules/timezones) for full details.
