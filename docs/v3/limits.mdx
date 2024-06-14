@@ -30,10 +30,10 @@ The most common cause of hitting the API rate limit is if you're calling `trigge
 | --------- | ------------- |
 | Schedules | 5 per project |
 
-When attached schedules to tasks we strongly recommend you add them in our dashboard if they're "static". That way you can control them easily per environment.
+When attaching schedules to tasks we strongly recommend you add them in our dashboard if they're "static". That way you can control them easily per environment.
 
-If you add them dynamically using code make sure you add a `deduplicateKey` so you don't add the same schedule to a task multiple times. If you don't your task will get triggered multiple times, it will cost you more, and you will hit the limit.
+If you add them dynamically using code make sure you add a `deduplicationKey` so you don't add the same schedule to a task multiple times. If you don't your task will get triggered multiple times, it will cost you more, and you will hit the limit.
 
-If you're creating schedules for your user you will definitely want to request more schedules from us.
+If you're creating schedules for your user you will definitely need to request more schedules from us.
 
 <Snippet file="v3/soft-limit.mdx" />
