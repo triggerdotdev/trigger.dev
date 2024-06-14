@@ -22,7 +22,7 @@ import {
 import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
 import Redis, { RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
-import { EventEmitter } from "node:stream";
+import { EventEmitter } from "node:events";
 import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -781,6 +781,7 @@ export class EventRepository {
     const unsubscribe = async () => {
       await redis.punsubscribe(channel);
       redis.quit();
+      eventEmitter.removeAllListeners();
       this._subscriberCount--;
     };
 
