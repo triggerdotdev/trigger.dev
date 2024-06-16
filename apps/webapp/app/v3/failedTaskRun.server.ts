@@ -1,6 +1,6 @@
 import { TaskRunFailedExecutionResult } from "@trigger.dev/core/v3";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 
 import { TaskRunStatus } from "@trigger.dev/database";
 import { createExceptionPropertiesFromError, eventRepository } from "./eventRepository.server";
@@ -35,7 +35,7 @@ export class FailedTaskRunService extends BaseService {
     // No more retries, we need to fail the task run
     logger.debug("[FailedTaskRunService] Failing task run", { taskRun, completion });
 
-    await marqs?.acknowledgeMessage(taskRun.id);
+    await marqsv3?.acknowledgeMessage(taskRun.id);
 
     // Now we need to "complete" the task run event/span
     await eventRepository.completeEvent(taskRun.spanId, {

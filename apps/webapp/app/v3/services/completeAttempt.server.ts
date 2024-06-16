@@ -12,7 +12,7 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
 import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
@@ -100,7 +100,7 @@ export class CompleteAttemptService extends BaseService {
 
     logger.debug("Completed attempt successfully, ACKing message");
 
-    await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
+    await marqsv3?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
     // Now we need to "complete" the task run event/span
     await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
@@ -206,7 +206,7 @@ export class CompleteAttemptService extends BaseService {
 
       if (environment.type === "DEVELOPMENT") {
         // This is already an EXECUTE message so we can just NACK
-        await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
+        await marqsv3?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
         return "RETRIED";
       }
 
@@ -244,7 +244,7 @@ export class CompleteAttemptService extends BaseService {
           },
         });
 
-        await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
+        await marqsv3?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
         return "COMPLETED";
       }
@@ -260,7 +260,7 @@ export class CompleteAttemptService extends BaseService {
       // No more retries, we need to fail the task run
       logger.debug("Completed attempt, ACKing message", taskRunAttempt);
 
-      await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
+      await marqsv3?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
       // Now we need to "complete" the task run event/span
       await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
@@ -342,7 +342,7 @@ export class CompleteAttemptService extends BaseService {
   ) {
     if (checkpointEventId || !supportsLazyAttempts) {
       // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
-      return await marqs?.replaceMessage(
+      return await marqsv3?.replaceMessage(
         run.id,
         {
           type: "EXECUTE",

@@ -3,7 +3,8 @@ import type { BackgroundWorker } from "@trigger.dev/database";
 import { Prisma, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
+import { sanitizeQueueName } from "~/v3/marqs/queue.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
@@ -83,7 +84,7 @@ export class CreateBackgroundWorkerService extends BaseService {
           }
         );
 
-        await marqs?.updateEnvConcurrencyLimits(environment);
+        await marqsv3?.updateEnvConcurrencyLimits(environment);
       } catch (err) {
         logger.error(
           "Error publishing WORKER_CREATED event or updating global concurrency limits",
@@ -174,13 +175,13 @@ export async function createBackgroundTasks(
       });
 
       if (typeof taskQueue.concurrencyLimit === "number") {
-        await marqs?.updateQueueConcurrencyLimits(
+        await marqsv3?.updateQueueConcurrencyLimits(
           environment,
           taskQueue.name,
           taskQueue.concurrencyLimit
         );
       } else {
-        await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+        await marqsv3?.removeQueueConcurrencyLimits(environment, taskQueue.name);
       }
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {

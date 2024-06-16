@@ -1,6 +1,6 @@
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { eventRepository } from "../eventRepository.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 
@@ -43,7 +43,7 @@ export class CancelAttemptService extends BaseService {
         return;
       }
 
-      await marqs?.acknowledgeMessage(taskRunId);
+      await marqsv3?.acknowledgeMessage(taskRunId);
 
       await this._prisma.taskRunAttempt.update({
         where: {

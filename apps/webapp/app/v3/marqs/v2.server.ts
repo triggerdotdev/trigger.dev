@@ -8,7 +8,7 @@ import { logger } from "~/services/logger.server";
 import { PerformRunExecutionV3Service } from "~/services/runs/performRunExecutionV3.server";
 import { singleton } from "~/utils/singleton";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { MarQS } from "./index.server";
+import { MarQS } from "./queue.server";
 import { MarQSShortKeyProducer } from "./marqsKeyProducer.server";
 import { RequeueV2Message } from "./requeueV2Message.server";
 import {
@@ -82,6 +82,7 @@ function getMarQSClient() {
     defaultEnvConcurrency: env.V2_MARQS_DEFAULT_ENV_CONCURRENCY, // this is so we aren't limited by the environment concurrency
     defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
     visibilityTimeoutInMs: env.V2_MARQS_VISIBILITY_TIMEOUT_MS, // 15 minutes
+    defaultParentQueueConcurrency: env.DEFAULT_PARENT_QUEUE_EXECUTION_CONCURRENCY_LIMIT,
     enableRebalancing: env.V2_MARQS_CONSUMER_POOL_ENABLED === "1",
   });
 }

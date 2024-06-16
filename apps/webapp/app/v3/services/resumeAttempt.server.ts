@@ -7,7 +7,7 @@ import {
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 import { socketIo } from "../handleSocketIo.server";
 import { SharedQueueMessageBody, sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
 import { BaseService } from "./baseService.server";
@@ -189,7 +189,7 @@ export class ResumeAttemptService extends BaseService {
           attemptId: attempt.id,
           completedAttemptId,
         });
-        await marqs?.acknowledgeMessage(attempt.taskRunId);
+        await marqsv3?.acknowledgeMessage(attempt.taskRunId);
         return;
       }
 
@@ -202,7 +202,7 @@ export class ResumeAttemptService extends BaseService {
           attemptId: attempt.id,
           completedAttemptId,
         });
-        await marqs?.acknowledgeMessage(attempt.taskRunId);
+        await marqsv3?.acknowledgeMessage(attempt.taskRunId);
         return;
       }
 
@@ -217,7 +217,7 @@ export class ResumeAttemptService extends BaseService {
           attemptId: attempt.id,
           completedAttemptId,
         });
-        await marqs?.acknowledgeMessage(attempt.taskRunId);
+        await marqsv3?.acknowledgeMessage(attempt.taskRunId);
         return;
       }
 
@@ -255,7 +255,7 @@ export class ResumeAttemptService extends BaseService {
   }
 
   async #replaceResumeWithFailMessage(messageId: string, waitReason: WaitReason) {
-    const currentMessage = await marqs?.readMessage(messageId);
+    const currentMessage = await marqsv3?.readMessage(messageId);
 
     if (!currentMessage) {
       logger.debug("No message to replace", { messageId, waitReason });
@@ -297,6 +297,6 @@ export class ResumeAttemptService extends BaseService {
       reason,
     };
 
-    return await marqs?.replaceMessage(messageId, failMessage, undefined, true);
+    return await marqsv3?.replaceMessage(messageId, failMessage, undefined, true);
   }
 }

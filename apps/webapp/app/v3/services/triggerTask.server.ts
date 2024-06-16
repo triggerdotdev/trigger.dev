@@ -7,7 +7,8 @@ import {
 import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
-import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
+import { sanitizeQueueName } from "~/v3/marqs/queue.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { uploadToObjectStore } from "../r2.server";
@@ -202,13 +203,13 @@ export class TriggerTaskService extends BaseService {
                 });
 
                 if (typeof taskQueue.concurrencyLimit === "number") {
-                  await marqs?.updateQueueConcurrencyLimits(
+                  await marqsv3?.updateQueueConcurrencyLimits(
                     environment,
                     taskQueue.name,
                     taskQueue.concurrencyLimit
                   );
                 } else {
-                  await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+                  await marqsv3?.removeQueueConcurrencyLimits(environment, taskQueue.name);
                 }
               }
 
@@ -235,7 +236,7 @@ export class TriggerTaskService extends BaseService {
           }
 
           // We need to enqueue the task run into the appropriate queue. This is done after the tx completes to prevent a race condition where the task run hasn't been created yet by the time we dequeue.
-          await marqs?.enqueueMessage(
+          await marqsv3?.enqueueMessage(
             environment,
             run.queue,
             run.id,

@@ -6,7 +6,7 @@ import { BaseService } from "./baseService.server";
 import { createBackgroundTasks } from "./createBackgroundWorker.server";
 import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
 import { projectPubSub } from "./projectPubSub.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 import { logger } from "~/services/logger.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
@@ -94,7 +94,7 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
             type: "deployed",
           }
         );
-        await marqs?.updateEnvConcurrencyLimits(environment);
+        await marqsv3?.updateEnvConcurrencyLimits(environment);
       } catch (err) {
         logger.error("Failed to publish WORKER_CREATED event", { err });
       }

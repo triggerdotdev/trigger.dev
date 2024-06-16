@@ -1,6 +1,6 @@
 import { PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 
@@ -67,11 +67,11 @@ export class ResumeBatchRunService extends BaseService {
           batchRunId: batchRun.id,
         });
 
-        await marqs?.acknowledgeMessage(dependentRun.id);
+        await marqsv3?.acknowledgeMessage(dependentRun.id);
         return;
       }
 
-      await marqs?.enqueueMessage(
+      await marqsv3?.enqueueMessage(
         environment,
         dependentRun.queue,
         dependentRun.id,
@@ -84,7 +84,7 @@ export class ResumeBatchRunService extends BaseService {
         dependentRun.concurrencyKey ?? undefined
       );
     } else {
-      await marqs?.replaceMessage(dependentRun.id, {
+      await marqsv3?.replaceMessage(dependentRun.id, {
         type: "RESUME",
         completedAttemptIds: batchRun.items.map((item) => item.taskRunAttemptId).filter(Boolean),
         resumableAttemptId: batchRun.dependentTaskAttempt.id,

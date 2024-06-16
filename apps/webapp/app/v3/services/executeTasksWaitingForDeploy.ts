@@ -1,6 +1,6 @@
 import { PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 
@@ -63,7 +63,7 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
       });
     }
 
-    if (!marqs) {
+    if (!marqsv3) {
       return;
     }
 
@@ -72,7 +72,7 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
 
     for (const run of runsWaitingForDeploy) {
       enqueues.push(
-        marqs.enqueueMessage(
+        marqsv3.enqueueMessage(
           backgroundWorker.runtimeEnvironment,
           run.queue,
           run.id,

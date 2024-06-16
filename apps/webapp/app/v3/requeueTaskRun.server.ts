@@ -1,5 +1,5 @@
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqsv3 } from "~/v3/marqs/v3.server";
 
 import assertNever from "assert-never";
 import { FailedTaskRunService } from "./failedTaskRun.server";
@@ -25,7 +25,7 @@ export class RequeueTaskRunService extends BaseService {
       case "PENDING": {
         logger.debug("[RequeueTaskRunService] Requeueing task run", { taskRun });
 
-        await marqs?.nackMessage(taskRun.id);
+        await marqsv3?.nackMessage(taskRun.id);
 
         break;
       }
@@ -51,7 +51,7 @@ export class RequeueTaskRunService extends BaseService {
       case "WAITING_FOR_DEPLOY": {
         logger.debug("[RequeueTaskRunService] Removing task run from queue", { taskRun });
 
-        await marqs?.acknowledgeMessage(taskRun.id);
+        await marqsv3?.acknowledgeMessage(taskRun.id);
 
         break;
       }
@@ -59,7 +59,7 @@ export class RequeueTaskRunService extends BaseService {
       case "PAUSED": {
         logger.debug("[RequeueTaskRunService] Requeueing task run", { taskRun });
 
-        await marqs?.nackMessage(taskRun.id);
+        await marqsv3?.nackMessage(taskRun.id);
 
         break;
       }
@@ -71,7 +71,7 @@ export class RequeueTaskRunService extends BaseService {
       case "CANCELED": {
         logger.debug("[RequeueTaskRunService] Task run is completed", { taskRun });
 
-        await marqs?.acknowledgeMessage(taskRun.id);
+        await marqsv3?.acknowledgeMessage(taskRun.id);
 
         break;
       }

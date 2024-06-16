@@ -2,7 +2,8 @@ import { Logger } from "@trigger.dev/core-backend";
 import { Redis } from "ioredis";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { MarQS, marqs as marqsv3 } from "./index.server";
+import { MarQS } from "./queue.server";
+import { marqsv3 } from "./v3.server";
 import { env } from "~/env.server";
 import { marqsv2 } from "./v2.server";
 
@@ -135,6 +136,10 @@ export class MarqsConcurrencyMonitor {
     pipeline.srem(key, ...completedRunIds);
     pipeline.srem(orgKey, ...completedRunIds);
     pipeline.srem(envKey, ...completedRunIds);
+    pipeline.srem(
+      this.keys.parentQueueCurrentConcurrencyKey(this.keys.sharedQueueKey()),
+      ...completedRunIds
+    );
 
     try {
       await pipeline.exec();
