@@ -18,7 +18,7 @@ type TestCase = {
   name: string;
   skipTypecheck?: boolean;
   wantConfigNotFoundError?: boolean;
-  wantBadConfigError?: boolean;
+  wantConfigInvalidError?: boolean;
   wantCompilationError?: boolean;
   wantWorkerError?: boolean;
   wantDependenciesError?: boolean;
@@ -109,7 +109,7 @@ if (testCases.length > 0) {
         name,
         skipTypecheck,
         wantConfigNotFoundError,
-        wantBadConfigError,
+        wantConfigInvalidError,
         wantCompilationError,
         wantWorkerError,
         wantDependenciesError,
@@ -157,7 +157,7 @@ if (testCases.length > 0) {
             (async () => {
               global.resolvedConfig = await readConfig(fixtureDir, { cwd: fixtureDir });
             })(),
-            wantConfigNotFoundError || wantBadConfigError
+            wantConfigNotFoundError || wantConfigInvalidError
               ? "does not resolve config"
               : "resolves config"
           );
@@ -167,9 +167,9 @@ if (testCases.length > 0) {
             await configExpect.resolves.not.toThrowError();
           }
 
-          if (wantConfigNotFoundError || wantBadConfigError) {
-            if (wantBadConfigError) {
-              expect(global.resolvedConfig).toBe("error");
+          if (wantConfigNotFoundError || wantConfigInvalidError) {
+            if (wantConfigInvalidError) {
+              expect(global.resolvedConfig!.status).toBe("error");
             }
             return;
           }

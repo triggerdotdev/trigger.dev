@@ -5,8 +5,8 @@ __metadata:
   version: 8
   cacheKey: 10c0
 
-"no-config@workspace:.":
+"trigger-dir-missing@workspace:.":
   version: 0.0.0-use.local
-  resolution: "no-config@workspace:."
+  resolution: "trigger-dir-missing@workspace:."
   languageName: unknown
   linkType: soft

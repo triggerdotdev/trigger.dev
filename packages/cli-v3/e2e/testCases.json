@@ -1,6 +1,10 @@
 [
   {
-    "name": "no-config",
+    "name": "config-invalid",
+    "wantConfigInvalidError": true
+  },
+  {
+    "name": "config-not-found",
     "wantConfigNotFoundError": true
   },
   {
