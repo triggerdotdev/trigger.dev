@@ -112,7 +112,7 @@ This will test your fixture project, and generate outputs in the `packages/cli-v
     rm -rf node_modules
     npm install
     rm -rf node_modules
-    corepack use yarn # will update the yarn lockfile
+    corepack use yarn@4.2.2 # will update the yarn lockfile
     ```
 
     > Do it in this order, otherwise `npm install` will update the existing `yarn.lock` file with legacy version 1.
