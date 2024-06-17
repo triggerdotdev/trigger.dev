@@ -118,7 +118,7 @@ if (testCases.length > 0) {
       const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
 
       test(
-        `fixture ${name}`,
+        `fixture '${name}'`,
         async () => {
           await expect(
             (async () => {

@@ -8,6 +8,10 @@
     "wantConfigNotFoundError": true
   },
   {
+    "name": "dep-to-add-scope-parsing",
+    "skipTypecheck": true
+  },
+  {
     "name": "server-only",
     "skipTypecheck": true
   }
