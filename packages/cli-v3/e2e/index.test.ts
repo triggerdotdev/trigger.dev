@@ -1,17 +1,21 @@
 import { execa, execaNode } from "execa";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { typecheckProject } from "../src/commands/deploy";
 import { readConfig, ReadConfigFileResult } from "../src/utilities/configFiles";
-import { PackageManager } from "../src/utilities/getUserPackageManager";
+import {
+  detectPackageManagerFromArtifacts,
+  LOCKFILES,
+  PackageManager,
+} from "../src/utilities/getUserPackageManager";
 import { logger } from "../src/utilities/logger";
 import { compile } from "./compile";
 import { createContainerFile } from "./createContainerFile";
 import { createDeployHash } from "./createDeployHash";
 import { handleDependencies } from "./handleDependencies";
-import { Loglevel, LogLevelSchema, PackageManagerSchema } from "./schemas";
+import { E2EOptions, E2EOptionsSchema } from "./schemas";
 import allTestCases from "./testCases.json";
 
 type TestCase = {
@@ -31,36 +35,36 @@ const testCases: TestCase[] = process.env.MOD
   ? allTestCases.filter(({ name }) => process.env.MOD === name)
   : allTestCases;
 
-let logLevel: Loglevel = "log";
-let packageManager: PackageManager = "npm";
+let options: E2EOptions;
 
 try {
-  logLevel = LogLevelSchema.parse(process.env.LOG);
+  options = E2EOptionsSchema.parse({
+    logLevel: process.env.LOG,
+    packageManager: process.env.PM,
+  });
 } catch (e) {
-  console.error(e);
-  console.log("Using default log level 'log'");
+  options = {
+    logLevel: "log",
+  };
 }
 
-logger.loggerLevel = logLevel;
-
-try {
-  packageManager = PackageManagerSchema.parse(process.env.PM);
-} catch (e) {
-  console.error(e);
-  console.log("Using default package manager 'npm'");
-}
+logger.loggerLevel = options.logLevel;
 
 if (testCases.length > 0) {
-  console.log(`Using ${packageManager}`);
-
-  describe.concurrent("bundling", () => {
+  describe.concurrent("bundling", async () => {
     beforeAll(async () => {
       for (let testCase of testCases) {
         const { name } = testCase;
         const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
         await rm(resolve(join(fixtureDir, ".trigger")), { force: true, recursive: true });
         await rm(resolve(join(fixtureDir, "node_modules")), { force: true, recursive: true });
-        if (packageManager === "npm") {
+        const packageManager: PackageManager = await parsepackageManager(options, fixtureDir);
+
+        if (
+          packageManager === "npm" &&
+          (existsSync(resolve(join(fixtureDir, "yarn.lock"))) ||
+            existsSync(resolve(join(fixtureDir, "yarn.lock.copy"))))
+        ) {
           // `npm ci` & `npm install` will update an existing yarn.lock
           try {
             await rename(
@@ -90,10 +94,12 @@ if (testCases.length > 0) {
     });
 
     afterAll(async () => {
-      if (packageManager === "npm") {
-        for (let testCase of testCases) {
-          const { name } = testCase;
-          const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
+      for (let testCase of testCases) {
+        const { name } = testCase;
+        const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
+        const packageManager: PackageManager = await parsepackageManager(options, fixtureDir);
+
+        if (packageManager === "npm") {
           try {
             await rename(
               resolve(join(fixtureDir, "yarn.lock.copy")),
@@ -116,8 +122,13 @@ if (testCases.length > 0) {
         wantInstallationError,
       } = testCase;
       const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
+      let shouldSkipFixture: boolean = false;
+      const packageManager: PackageManager = await parsepackageManager(options, fixtureDir);
 
-      test(
+      if (options.packageManager)
+        shouldSkipFixture = !existsSync(resolve(fixtureDir, LOCKFILES[options.packageManager]));
+
+      test.skipIf(shouldSkipFixture)(
         `fixture '${name}'`,
         async () => {
           await expect(
@@ -315,4 +326,19 @@ function installArgs(packageManager: string) {
     default:
       throw new Error(`Unknown package manager '${packageManager}'`);
   }
+}
+
+async function parsepackageManager(
+  options: E2EOptions,
+  fixtureDir: string
+): Promise<PackageManager> {
+  let packageManager: PackageManager;
+
+  if (options.packageManager) {
+    packageManager = options.packageManager;
+  } else {
+    packageManager = await detectPackageManagerFromArtifacts(fixtureDir);
+  }
+
+  return packageManager;
 }
