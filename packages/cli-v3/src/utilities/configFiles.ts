@@ -178,7 +178,7 @@ export async function readConfig(
     write: true,
     format: "cjs",
     platform: "node",
-    target: ["es2018", "node18"],
+    target: ["node18", "es2020"],
     outfile: builtConfigFilePath,
     logLevel: "silent",
     plugins: [
