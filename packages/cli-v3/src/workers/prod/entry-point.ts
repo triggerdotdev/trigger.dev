@@ -15,7 +15,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { ProdBackgroundWorker } from "./backgroundWorker";
 import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors";
-import { setTimeout } from "node:timers/promises";
+import { setTimeout as timeout } from "node:timers/promises";
 
 declare const __PROJECT_CONFIG__: Config;
 
@@ -82,7 +82,7 @@ class ProdWorker {
         });
 
         // Wait for termination grace period minus 5s to give cleanup a chance to complete
-        await setTimeout(terminationGracePeriodSeconds * 1000 - 5000);
+        await timeout(terminationGracePeriodSeconds * 1000 - 5000);
         gracefulExitTimeoutElapsed = true;
 
         logger.log("Termination timeout reached, exiting gracefully.");
@@ -114,7 +114,7 @@ class ProdWorker {
     this.#coordinatorSocket.close();
 
     if (!reconnectImmediately) {
-      await setTimeout(1000);
+      await timeout(1000);
     }
 
     let coordinatorHost = COORDINATOR_HOST;
@@ -169,7 +169,7 @@ class ProdWorker {
     backgroundWorker.onReadyForCheckpoint.attach(async (message) => {
       await this.#prepareForCheckpoint();
 
-      this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
+      this.#readyForCheckpoint();
     });
 
     // Currently, this is only used for duration waits. Might need adjusting for other use cases.
@@ -348,7 +348,14 @@ class ProdWorker {
   async #prepareForCheckpoint(flush = true) {
     if (flush) {
       // Flush before checkpointing so we don't flush the same spans again after restore
-      await this.#backgroundWorker.flushTelemetry();
+      try {
+        await this.#backgroundWorker.flushTelemetry();
+      } catch (error) {
+        logger.error(
+          "Failed to flush telemetry while preparing for checkpoint, will proceed anyway",
+          { error }
+        );
+      }
     }
 
     // Kill the previous worker process to prevent large checkpoints
@@ -361,6 +368,18 @@ class ProdWorker {
     this.waitForPostStart = false;
 
     this.#backgroundWorker.waitCompletedNotification();
+  }
+
+  #readyForLazyAttempt() {
+    this.#coordinatorSocket.socket.emit("READY_FOR_LAZY_ATTEMPT", {
+      version: "v1",
+      runId: this.runId,
+      totalCompletions: this.completed.size,
+    });
+  }
+
+  #readyForCheckpoint() {
+    this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
   }
 
   #returnValidatedExtraHeaders(headers: Record<string, string>) {
@@ -557,7 +576,7 @@ class ProdWorker {
         REQUEST_EXIT: async (message) => {
           if (message.version === "v2" && message.delayInMs) {
             logger.log("exit requested with delay", { delayInMs: message.delayInMs });
-            await setTimeout(message.delayInMs);
+            await timeout(message.delayInMs);
           }
 
           this.#coordinatorSocket.close();
@@ -565,14 +584,11 @@ class ProdWorker {
         },
         READY_FOR_RETRY: async (message) => {
           if (this.completed.size < 1) {
+            logger.error("Received READY_FOR_RETRY but no completions yet. This is a bug.");
             return;
           }
 
-          this.#coordinatorSocket.socket.emit("READY_FOR_LAZY_ATTEMPT", {
-            version: "v1",
-            runId: this.runId,
-            totalCompletions: this.completed.size,
-          });
+          this.#readyForLazyAttempt();
         },
       },
       onConnection: async (socket, handler, sender, logger) => {
@@ -708,7 +724,7 @@ class ProdWorker {
               });
             }
 
-            await setTimeout(200);
+            await timeout(200);
             // Use exit code 111 so we can ignore those failures in the task monitor
             process.exit(111);
           }
@@ -718,11 +734,7 @@ class ProdWorker {
           return;
         }
 
-        socket.emit("READY_FOR_LAZY_ATTEMPT", {
-          version: "v1",
-          runId: this.runId,
-          totalCompletions: this.completed.size,
-        });
+        this.#readyForLazyAttempt();
       },
       onError: async (socket, err, logger) => {
         logger.error("onError", {
@@ -862,7 +874,7 @@ class ProdWorker {
 
       this.#httpPort = getRandomPortNumber();
 
-      await setTimeout(100);
+      await timeout(100);
       this.start();
     });
 
