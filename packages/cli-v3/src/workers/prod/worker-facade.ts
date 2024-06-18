@@ -9,12 +9,15 @@ import {
   taskCatalog,
 } from "@trigger.dev/core/v3";
 import {
-  TaskExecutor,
+  ConsoleInterceptor,
+  DevUsageManager,
   DurableClock,
+  OtelTaskLogger,
+  ProdUsageManager,
+  TaskExecutor,
   getEnvVar,
   logLevels,
-  OtelTaskLogger,
-  ConsoleInterceptor,
+  usage,
   type TracingSDK,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
@@ -34,6 +37,8 @@ declare const tracingSDK: TracingSDK;
 declare const otelTracer: Tracer;
 declare const otelLogger: Logger;
 
+import type { Tracer } from "@opentelemetry/api";
+import type { Logger } from "@opentelemetry/api-logs";
 import {
   TaskRunErrorCodes,
   TaskRunExecution,
@@ -42,8 +47,18 @@ import {
   runtime,
 } from "@trigger.dev/core/v3";
 import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
-import type { Tracer } from "@opentelemetry/api";
-import type { Logger } from "@opentelemetry/api-logs";
+
+const heartbeatIntervalMs = getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS");
+const usageEventUrl = getEnvVar("USAGE_EVENT_URL");
+const triggerJWT = getEnvVar("TRIGGER_JWT");
+
+const prodUsageManager = new ProdUsageManager(new DevUsageManager(), {
+  heartbeatIntervalMs: heartbeatIntervalMs ? parseInt(heartbeatIntervalMs, 10) : undefined,
+  url: usageEventUrl,
+  jwt: triggerJWT,
+});
+
+usage.setGlobalUsageManager(prodUsageManager);
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
@@ -159,11 +174,20 @@ const zodIpc = new ZodIpcConnection({
         _execution = execution;
         _isRunning = true;
 
-        const result = await executor.execute(execution, metadata, traceContext);
+        const measurement = usage.start();
 
-        return sender.send("TASK_RUN_COMPLETED", {
+        const { result } = await executor.execute(execution, metadata, traceContext, measurement);
+
+        const usageSample = usage.stop(measurement);
+
+        return await sender.send("TASK_RUN_COMPLETED", {
           execution,
-          result,
+          result: {
+            ...result,
+            usage: {
+              durationMs: usageSample.cpuTime,
+            },
+          },
         });
       } finally {
         _execution = undefined;
@@ -178,12 +202,12 @@ const zodIpc = new ZodIpcConnection({
     },
     CLEANUP: async ({ flush, kill }, sender) => {
       if (kill) {
-        await tracingSDK.flush();
+        await Promise.all([prodUsageManager.flush(), tracingSDK.flush()]);
         // Now we need to exit the process
         await sender.send("READY_TO_DISPOSE", undefined);
       } else {
         if (flush) {
-          await tracingSDK.flush();
+          await Promise.all([prodUsageManager.flush(), tracingSDK.flush()]);
         }
       }
     },
@@ -199,11 +223,27 @@ const prodRuntimeManager = new ProdRuntimeManager(zodIpc, {
 
 runtime.setGlobalRuntimeManager(prodRuntimeManager);
 
-const TASK_METADATA = taskCatalog.getAllTaskMetadata();
+let taskMetadata = taskCatalog.getAllTaskMetadata();
 
-zodIpc.send("TASKS_READY", { tasks: TASK_METADATA }).catch((err) => {
+if (typeof importedConfig?.machine === "string") {
+  // Set the machine preset on all tasks that don't have it
+  taskMetadata = taskMetadata.map((task) => {
+    if (typeof task.machine?.preset !== "string") {
+      return {
+        ...task,
+        machine: {
+          preset: importedConfig.machine,
+        },
+      };
+    }
+
+    return task;
+  });
+}
+
+zodIpc.send("TASKS_READY", { tasks: taskMetadata }).catch((err) => {
   if (err instanceof ZodSchemaParsedError) {
-    zodIpc.send("TASKS_FAILED_TO_PARSE", { zodIssues: err.error.issues, tasks: TASK_METADATA });
+    zodIpc.send("TASKS_FAILED_TO_PARSE", { zodIssues: err.error.issues, tasks: taskMetadata });
   } else {
     console.error("Failed to send TASKS_READY message", err);
   }

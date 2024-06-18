@@ -16,25 +16,7 @@ client.defineJob({
   trigger: eventTrigger({
     name: "stress.test.1",
   }),
-  run: async (payload, io, ctx) => {
-    // Run 10 tasks, each with a 300KB output
-    for (let i = 0; i < 10; i++) {
-      await io.runTask(
-        `task-${i}`,
-        async (task) => {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-
-          return {
-            output: "a".repeat(30),
-          };
-        },
-        { name: `Task ${i}` }
-      );
-    }
-
-    // Now do a wait for 5 seconds
-    await io.wait("wait", 5);
-  },
+  run: async (payload, io, ctx) => {},
 });
 
 client.defineJob({

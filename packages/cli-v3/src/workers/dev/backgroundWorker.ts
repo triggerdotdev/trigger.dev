@@ -942,6 +942,10 @@ class TaskRunProcess {
       case "TASK_RUN_COMPLETED": {
         const { result, execution } = message.payload;
 
+        logger.debug(`[${this.runId}] task run completed`, {
+          result,
+        });
+
         const promiseStatus = this._attemptStatuses.get(execution.attempt.id);
 
         if (promiseStatus !== "PENDING") {

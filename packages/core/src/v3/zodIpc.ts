@@ -10,6 +10,7 @@ import {
 } from "./zodSocket";
 import { z } from "zod";
 import { ZodSchemaParsedError } from "./zodMessageHandler";
+import { inspect } from "node:util";
 
 interface ZodIpcMessageSender<TEmitCatalog extends ZodSocketMessageCatalogSchema> {
   send<K extends GetSocketMessagesWithoutCallback<TEmitCatalog>>(
@@ -193,11 +194,8 @@ export class ZodIpcConnection<
     const parsedPacket = Packet.safeParse(packet);
 
     if (!parsedPacket.success) {
-      // console.error("dropping invalid packet", packet);
       return;
     }
-
-    // console.log("<-", packet);
 
     switch (parsedPacket.data.type) {
       case "ACK": {
@@ -256,7 +254,6 @@ export class ZodIpcConnection<
   }
 
   async #sendPacket(packet: Packet) {
-    // console.log("->", packet);
     await this.opts.process.send?.(packet);
   }
 

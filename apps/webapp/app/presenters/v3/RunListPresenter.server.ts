@@ -156,6 +156,7 @@ export class RunListPresenter extends BasePresenter {
         runtimeEnvironmentId: string;
         status: TaskRunStatus;
         createdAt: Date;
+        startedAt: Date | null;
         lockedAt: Date | null;
         updatedAt: Date;
         isTest: boolean;
@@ -172,6 +173,7 @@ export class RunListPresenter extends BasePresenter {
     tr."runtimeEnvironmentId" AS "runtimeEnvironmentId",
     tr.status AS status,
     tr."createdAt" AS "createdAt",
+    tr."startedAt" AS "startedAt",
     tr."lockedAt" AS "lockedAt",
     tr."updatedAt" AS "updatedAt",
     tr."isTest" AS "isTest",
@@ -272,13 +274,15 @@ export class RunListPresenter extends BasePresenter {
 
         const hasFinished = FINISHED_STATUSES.includes(run.status);
 
+        const startedAt = run.startedAt ?? run.lockedAt;
+
         return {
           id: run.id,
           friendlyId: run.runFriendlyId,
           number: Number(run.number),
           createdAt: run.createdAt.toISOString(),
           updatedAt: run.updatedAt.toISOString(),
-          startedAt: run.lockedAt ? run.lockedAt.toISOString() : undefined,
+          startedAt: startedAt ? startedAt.toISOString() : undefined,
           hasFinished,
           finishedAt: hasFinished ? run.updatedAt.toISOString() : undefined,
           isTest: run.isTest,

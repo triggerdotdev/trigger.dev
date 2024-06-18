@@ -145,6 +145,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     "/api/internal/stripe_webhooks",
     "/api/v1/authorization-code",
     "/api/v1/token",
+    "/api/v1/usage/ingest",
     /^\/api\/v1\/tasks\/[^\/]+\/callback\/[^\/]+$/, // /api/v1/tasks/$id/callback/$secret
     /^\/api\/v1\/runs\/[^\/]+\/tasks\/[^\/]+\/callback\/[^\/]+$/, // /api/v1/runs/$runId/tasks/$id/callback/$secret
     /^\/api\/v1\/http-endpoints\/[^\/]+\/env\/[^\/]+\/[^\/]+$/, // /api/v1/http-endpoints/$httpEndpointId/env/$envType/$shortcode

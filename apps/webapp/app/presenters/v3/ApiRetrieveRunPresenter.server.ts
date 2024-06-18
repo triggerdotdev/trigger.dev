@@ -80,7 +80,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         version: taskRun.lockedToVersion ? taskRun.lockedToVersion.version : undefined,
         createdAt: taskRun.createdAt ?? undefined,
         updatedAt: taskRun.updatedAt ?? undefined,
-        startedAt: taskRun.lockedAt ?? undefined,
+        startedAt: taskRun.startedAt ?? taskRun.lockedAt ?? undefined,
         finishedAt: ApiRetrieveRunPresenter.isStatusFinished(apiStatus)
           ? taskRun.updatedAt
           : undefined,

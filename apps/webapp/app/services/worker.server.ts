@@ -46,6 +46,7 @@ import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout.se
 import { ResumeTaskService } from "./tasks/resumeTask.server";
 import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
 import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
+import { reportUsageEvent } from "~/v3/openMeter.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -168,6 +169,13 @@ const workerCatalog = {
   }),
   "v2.requeueMessage": z.object({
     runId: z.string(),
+  }),
+  "v3.reportUsage": z.object({
+    orgId: z.string(),
+    data: z.object({
+      costInCents: z.string(),
+    }),
+    additionalData: z.record(z.any()).optional(),
   }),
 };
 
@@ -647,6 +655,21 @@ function getWorkerQueue() {
           const service = new RequeueV2Message();
 
           await service.call(payload.runId);
+        },
+      },
+      "v3.reportUsage": {
+        priority: 0,
+        maxAttempts: 8,
+        handler: async (payload, job) => {
+          await reportUsageEvent({
+            source: "webapp",
+            type: "usage",
+            subject: payload.orgId,
+            data: {
+              costInCents: payload.data.costInCents,
+              ...payload.additionalData,
+            },
+          });
         },
       },
     },
