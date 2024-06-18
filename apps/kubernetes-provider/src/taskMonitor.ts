@@ -146,6 +146,9 @@ export class TaskMonitor {
 
     // We use this special exit code to signal any errors were already handled elsewhere
     if (exitCode === 111) {
+      this.#logger.debug("Ignoring pod failure, already handled by worker", {
+        podName,
+      });
       return;
     }
 
