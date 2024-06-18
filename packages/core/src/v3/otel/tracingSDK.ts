@@ -119,7 +119,7 @@ export class TracingSDK {
       .merge(new Resource(envResourceAttributes));
 
     const traceProvider = new NodeTracerProvider({
-      forceFlushTimeoutMillis: config.forceFlushTimeoutMillis ?? 500,
+      forceFlushTimeoutMillis: config.forceFlushTimeoutMillis,
       resource: commonResources,
       spanLimits: {
         attributeCountLimit: OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
@@ -133,7 +133,7 @@ export class TracingSDK {
 
     const spanExporter = new OTLPTraceExporter({
       url: `${config.url}/v1/traces`,
-      timeoutMillis: config.forceFlushTimeoutMillis ?? 1000,
+      timeoutMillis: config.forceFlushTimeoutMillis,
     });
 
     traceProvider.addSpanProcessor(
