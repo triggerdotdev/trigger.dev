@@ -76,16 +76,8 @@ export interface Repository {
   create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult>;
   edit(projectId: string, options: EditEnvironmentVariable): Promise<Result>;
   getProject(projectId: string): Promise<ProjectEnvironmentVariable[]>;
-  getEnvironment(
-    projectId: string,
-    environmentId: string,
-    excludeInternalVariables?: boolean
-  ): Promise<EnvironmentVariable[]>;
-  getEnvironmentVariables(
-    projectId: string,
-    environmentId: string,
-    excludeInternalVariables?: boolean
-  ): Promise<EnvironmentVariable[]>;
+  getEnvironment(projectId: string, environmentId: string): Promise<EnvironmentVariable[]>;
+  getEnvironmentVariables(projectId: string, environmentId: string): Promise<EnvironmentVariable[]>;
   delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result>;
   deleteValue(projectId: string, options: DeleteEnvironmentVariableValue): Promise<Result>;
 }

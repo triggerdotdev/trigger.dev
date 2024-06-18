@@ -7,7 +7,12 @@ import {
   TaskOperationsIndexOptions,
   TaskOperationsRestoreOptions,
 } from "@trigger.dev/core-apps";
-import { Machine, PostStartCauses, PreStopCauses, EnvironmentType } from "@trigger.dev/core/v3";
+import {
+  MachinePreset,
+  PostStartCauses,
+  PreStopCauses,
+  EnvironmentType,
+} from "@trigger.dev/core/v3";
 import { randomUUID } from "crypto";
 import { TaskMonitor } from "./taskMonitor";
 import { PodCleaner } from "./podCleaner";
@@ -399,10 +404,10 @@ class KubernetesTaskOperations implements TaskOperations {
     };
   }
 
-  #getResourcesFromMachineConfig(config: Machine): ComputeResources {
+  #getResourcesFromMachineConfig(preset: MachinePreset): ComputeResources {
     return {
-      cpu: `${config.cpu}`,
-      memory: `${config.memory}G`,
+      cpu: `${preset.cpu}`,
+      memory: `${preset.memory}G`,
     };
   }
 

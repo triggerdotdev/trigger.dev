@@ -480,6 +480,9 @@ importers:
       isbot:
         specifier: ^3.6.5
         version: 3.6.5
+      jose:
+        specifier: ^5.4.0
+        version: 5.4.0
       jsonpointer:
         specifier: ^5.0.1
         version: 5.0.1
@@ -3433,7 +3436,7 @@ packages:
       dset: 3.1.2
       is-docker: 3.0.0
       is-wsl: 3.0.0
-      undici: 5.25.4
+      undici: 5.28.4
       which-pm-runs: 1.1.0
     transitivePeerDependencies:
       - supports-color
@@ -5857,7 +5860,7 @@ packages:
     dependencies:
       '@bufbuild/protobuf': 1.7.2
       '@connectrpc/connect': 0.13.2(@bufbuild/protobuf@1.7.2)
-      undici: 5.25.4
+      undici: 5.28.4
     dev: false
 
   /@connectrpc/connect@0.13.2(@bufbuild/protobuf@1.7.2):
@@ -25681,6 +25684,10 @@ packages:
     resolution: {integrity: sha512-W+oqK4H+r5sITxfxpSU+MMdr/YSWGvgZMQDIsNoBDGGy4i7GBPTtvFKibQzW06n3U3TqHjhvBJsirShsEJ6eeQ==}
     dev: false
 
+  /jose@5.4.0:
+    resolution: {integrity: sha512-6rpxTHPAQyWMb9A35BroFl1Sp0ST3DpPcm5EVIxZxdH+e0Hv9fwhyB3XLKFUcHNpdSDnETmBfuPPTTlYz5+USw==}
+    dev: false
+
   /joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
     engines: {node: '>=10'}
@@ -27109,7 +27116,7 @@ packages:
       glob-to-regexp: 0.4.1
       source-map-support: 0.5.21
       stoppable: 1.1.0
-      undici: 5.25.4
+      undici: 5.28.4
       workerd: 1.20231030.0
       ws: 8.16.0
       youch: 3.3.3
@@ -27132,7 +27139,7 @@ packages:
       glob-to-regexp: 0.4.1
       source-map-support: 0.5.21
       stoppable: 1.1.0
-      undici: 5.25.4
+      undici: 5.28.4
       workerd: 1.20231030.0
       ws: 8.16.0
       youch: 3.3.3
@@ -34618,13 +34625,13 @@ packages:
     engines: {node: '>=14.0'}
     dependencies:
       '@fastify/busboy': 2.0.0
+    dev: true
 
   /undici@5.28.4:
     resolution: {integrity: sha512-72RFADWFqKmUb2hmmvNODKL3p9hcB6Gt2DOQMis1SEBaV6a4MH8soBvzg+95CYhCKPFedut2JY9bMfrDl9D23g==}
     engines: {node: '>=14.0'}
     dependencies:
       '@fastify/busboy': 2.0.0
-    dev: true
 
   /unfetch@4.2.0:
     resolution: {integrity: sha512-F9p7yYCn6cIW9El1zi0HI6vqpeIvBsr3dSuRO6Xuppb1u5rXpCPmMvLSyECLhybr9isec8Ohl0hPekMVrEinDA==}

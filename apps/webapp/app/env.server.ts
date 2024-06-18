@@ -1,5 +1,5 @@
-import { z } from "zod";
 import { SecretStoreOptionsSchema } from "./services/secrets/secretStoreOptionsSchema.server";
+import { z } from "zod";
 import { isValidRegex } from "./utils/regex";
 import { isValidDatabaseUrl } from "./utils/db";
 
@@ -189,6 +189,21 @@ const EnvironmentSchema = z.object({
   V2_MARQS_VERBOSE: z.string().default("0"),
   V3_MARQS_CONCURRENCY_MONITOR_ENABLED: z.string().default("0"),
   V2_MARQS_CONCURRENCY_MONITOR_ENABLED: z.string().default("0"),
+  /* Usage settings */
+  USAGE_EVENT_URL: z.string().optional(),
+  PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
+
+  CENTS_PER_HOUR_MICRO: z.coerce.number().default(0),
+  CENTS_PER_HOUR_SMALL_1X: z.coerce.number().default(0),
+  CENTS_PER_HOUR_SMALL_2X: z.coerce.number().default(0),
+  CENTS_PER_HOUR_MEDIUM_1X: z.coerce.number().default(0),
+  CENTS_PER_HOUR_MEDIUM_2X: z.coerce.number().default(0),
+  CENTS_PER_HOUR_LARGE_1X: z.coerce.number().default(0),
+  CENTS_PER_HOUR_LARGE_2X: z.coerce.number().default(0),
+  BASE_RUN_COST_IN_CENTS: z.coerce.number().default(0),
+
+  USAGE_OPEN_METER_API_KEY: z.string().optional(),
+  USAGE_OPEN_METER_BASE_URL: z.string().optional(),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

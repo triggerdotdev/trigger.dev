@@ -1467,6 +1467,7 @@ async function resolveEnvironmentVariables(
 
           if (uploadResult.success) {
             $spinner.stop(`${total} environment variable${total > 1 ? "s" : ""} synced`);
+            return;
           } else {
             $spinner.stop("Failed to sync environment variables");
 
@@ -1474,8 +1475,11 @@ async function resolveEnvironmentVariables(
           }
         } else {
           $spinner.stop("No environment variables to sync");
+          return;
         }
       }
+
+      $spinner.stop("Environment variables resolved");
     } catch (e) {
       recordSpanException(span, e);
 

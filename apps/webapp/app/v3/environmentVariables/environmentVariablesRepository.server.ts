@@ -1,4 +1,9 @@
-import { Prisma, PrismaClient, RuntimeEnvironmentType } from "@trigger.dev/database";
+import {
+  Prisma,
+  PrismaClient,
+  RuntimeEnvironment,
+  RuntimeEnvironmentType,
+} from "@trigger.dev/database";
 import { z } from "zod";
 import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { $transaction, prisma } from "~/db.server";
@@ -427,11 +432,7 @@ export class EnvironmentVariablesRepository implements Repository {
     return results;
   }
 
-  async getEnvironment(
-    projectId: string,
-    environmentId: string,
-    excludeInternalVariables?: boolean
-  ): Promise<EnvironmentVariable[]> {
+  async getEnvironment(projectId: string, environmentId: string): Promise<EnvironmentVariable[]> {
     const project = await this.prismaClient.project.findUnique({
       where: {
         id: projectId,
@@ -453,124 +454,7 @@ export class EnvironmentVariablesRepository implements Repository {
       return [];
     }
 
-    return this.getEnvironmentVariables(projectId, environmentId, excludeInternalVariables);
-  }
-
-  async #getTriggerEnvironmentVariables(environmentId: string): Promise<EnvironmentVariable[]> {
-    const environment = await this.prismaClient.runtimeEnvironment.findFirst({
-      where: {
-        id: environmentId,
-      },
-    });
-
-    if (!environment) {
-      return [];
-    }
-
-    if (environment.type === "DEVELOPMENT") {
-      return [
-        {
-          key: "OTEL_EXPORTER_OTLP_ENDPOINT",
-          value: env.DEV_OTEL_EXPORTER_OTLP_ENDPOINT ?? env.APP_ORIGIN,
-        },
-      ].concat(
-        env.DEV_OTEL_BATCH_PROCESSING_ENABLED === "1"
-          ? [
-              {
-                key: "OTEL_BATCH_PROCESSING_ENABLED",
-                value: "1",
-              },
-              {
-                key: "OTEL_SPAN_MAX_EXPORT_BATCH_SIZE",
-                value: env.DEV_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE,
-              },
-              {
-                key: "OTEL_SPAN_SCHEDULED_DELAY_MILLIS",
-                value: env.DEV_OTEL_SPAN_SCHEDULED_DELAY_MILLIS,
-              },
-              {
-                key: "OTEL_SPAN_EXPORT_TIMEOUT_MILLIS",
-                value: env.DEV_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS,
-              },
-              {
-                key: "OTEL_SPAN_MAX_QUEUE_SIZE",
-                value: env.DEV_OTEL_SPAN_MAX_QUEUE_SIZE,
-              },
-              {
-                key: "OTEL_LOG_MAX_EXPORT_BATCH_SIZE",
-                value: env.DEV_OTEL_LOG_MAX_EXPORT_BATCH_SIZE,
-              },
-              {
-                key: "OTEL_LOG_SCHEDULED_DELAY_MILLIS",
-                value: env.DEV_OTEL_LOG_SCHEDULED_DELAY_MILLIS,
-              },
-              {
-                key: "OTEL_LOG_EXPORT_TIMEOUT_MILLIS",
-                value: env.DEV_OTEL_LOG_EXPORT_TIMEOUT_MILLIS,
-              },
-              {
-                key: "OTEL_LOG_MAX_QUEUE_SIZE",
-                value: env.DEV_OTEL_LOG_MAX_QUEUE_SIZE,
-              },
-            ]
-          : []
-      );
-    }
-
-    return [
-      {
-        key: "TRIGGER_SECRET_KEY",
-        value: environment.apiKey,
-      },
-      {
-        key: "TRIGGER_API_URL",
-        value: env.APP_ORIGIN,
-      },
-      {
-        key: "TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS",
-        value: String(env.RUNTIME_WAIT_THRESHOLD_IN_MS),
-      },
-      ...(env.PROD_OTEL_BATCH_PROCESSING_ENABLED === "1"
-        ? [
-            {
-              key: "OTEL_BATCH_PROCESSING_ENABLED",
-              value: "1",
-            },
-            {
-              key: "OTEL_SPAN_MAX_EXPORT_BATCH_SIZE",
-              value: env.PROD_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE,
-            },
-            {
-              key: "OTEL_SPAN_SCHEDULED_DELAY_MILLIS",
-              value: env.PROD_OTEL_SPAN_SCHEDULED_DELAY_MILLIS,
-            },
-            {
-              key: "OTEL_SPAN_EXPORT_TIMEOUT_MILLIS",
-              value: env.PROD_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS,
-            },
-            {
-              key: "OTEL_SPAN_MAX_QUEUE_SIZE",
-              value: env.PROD_OTEL_SPAN_MAX_QUEUE_SIZE,
-            },
-            {
-              key: "OTEL_LOG_MAX_EXPORT_BATCH_SIZE",
-              value: env.PROD_OTEL_LOG_MAX_EXPORT_BATCH_SIZE,
-            },
-            {
-              key: "OTEL_LOG_SCHEDULED_DELAY_MILLIS",
-              value: env.PROD_OTEL_LOG_SCHEDULED_DELAY_MILLIS,
-            },
-            {
-              key: "OTEL_LOG_EXPORT_TIMEOUT_MILLIS",
-              value: env.PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS,
-            },
-            {
-              key: "OTEL_LOG_MAX_QUEUE_SIZE",
-              value: env.PROD_OTEL_LOG_MAX_QUEUE_SIZE,
-            },
-          ]
-        : []),
-    ];
+    return this.getEnvironmentVariables(projectId, environmentId);
   }
 
   async #getSecretEnvironmentVariables(
@@ -597,18 +481,9 @@ export class EnvironmentVariablesRepository implements Repository {
 
   async getEnvironmentVariables(
     projectId: string,
-    environmentId: string,
-    excludeInternalVariables?: boolean
+    environmentId: string
   ): Promise<EnvironmentVariable[]> {
-    const secretEnvVars = await this.#getSecretEnvironmentVariables(projectId, environmentId);
-
-    if (excludeInternalVariables) {
-      return secretEnvVars;
-    }
-
-    const triggerEnvVars = await this.#getTriggerEnvironmentVariables(environmentId);
-
-    return [...secretEnvVars, ...triggerEnvVars];
+    return this.#getSecretEnvironmentVariables(projectId, environmentId);
   }
 
   async delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result> {
@@ -781,4 +656,159 @@ export class EnvironmentVariablesRepository implements Repository {
       };
     }
   }
+}
+
+export const environmentVariablesRepository = new EnvironmentVariablesRepository();
+
+export async function resolveVariablesForEnvironment(runtimeEnvironment: RuntimeEnvironment) {
+  const projectSecrets = await environmentVariablesRepository.getEnvironmentVariables(
+    runtimeEnvironment.projectId,
+    runtimeEnvironment.id
+  );
+
+  const builtInVariables =
+    runtimeEnvironment.type === "DEVELOPMENT"
+      ? await resolveBuiltInDevVariables(runtimeEnvironment)
+      : await resolveBuiltInProdVariables(runtimeEnvironment);
+
+  return [...projectSecrets, ...builtInVariables];
+}
+
+async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment) {
+  let result: Array<EnvironmentVariable> = [
+    {
+      key: "OTEL_EXPORTER_OTLP_ENDPOINT",
+      value: env.DEV_OTEL_EXPORTER_OTLP_ENDPOINT ?? env.APP_ORIGIN,
+    },
+  ];
+
+  if (env.DEV_OTEL_BATCH_PROCESSING_ENABLED === "1") {
+    result = result.concat([
+      {
+        key: "OTEL_BATCH_PROCESSING_ENABLED",
+        value: "1",
+      },
+      {
+        key: "OTEL_SPAN_MAX_EXPORT_BATCH_SIZE",
+        value: env.DEV_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE,
+      },
+      {
+        key: "OTEL_SPAN_SCHEDULED_DELAY_MILLIS",
+        value: env.DEV_OTEL_SPAN_SCHEDULED_DELAY_MILLIS,
+      },
+      {
+        key: "OTEL_SPAN_EXPORT_TIMEOUT_MILLIS",
+        value: env.DEV_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS,
+      },
+      {
+        key: "OTEL_SPAN_MAX_QUEUE_SIZE",
+        value: env.DEV_OTEL_SPAN_MAX_QUEUE_SIZE,
+      },
+      {
+        key: "OTEL_LOG_MAX_EXPORT_BATCH_SIZE",
+        value: env.DEV_OTEL_LOG_MAX_EXPORT_BATCH_SIZE,
+      },
+      {
+        key: "OTEL_LOG_SCHEDULED_DELAY_MILLIS",
+        value: env.DEV_OTEL_LOG_SCHEDULED_DELAY_MILLIS,
+      },
+      {
+        key: "OTEL_LOG_EXPORT_TIMEOUT_MILLIS",
+        value: env.DEV_OTEL_LOG_EXPORT_TIMEOUT_MILLIS,
+      },
+      {
+        key: "OTEL_LOG_MAX_QUEUE_SIZE",
+        value: env.DEV_OTEL_LOG_MAX_QUEUE_SIZE,
+      },
+    ]);
+  }
+
+  const commonVariables = await resolveCommonBuiltInVariables(runtimeEnvironment);
+
+  return [...result, ...commonVariables];
+}
+
+async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironment) {
+  let result: Array<EnvironmentVariable> = [
+    {
+      key: "TRIGGER_SECRET_KEY",
+      value: runtimeEnvironment.apiKey,
+    },
+    {
+      key: "TRIGGER_API_URL",
+      value: env.APP_ORIGIN,
+    },
+    {
+      key: "TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS",
+      value: String(env.RUNTIME_WAIT_THRESHOLD_IN_MS),
+    },
+    {
+      key: "TRIGGER_ORG_ID",
+      value: runtimeEnvironment.organizationId,
+    },
+  ];
+
+  if (env.PROD_OTEL_BATCH_PROCESSING_ENABLED === "1") {
+    result = result.concat([
+      {
+        key: "OTEL_BATCH_PROCESSING_ENABLED",
+        value: "1",
+      },
+      {
+        key: "OTEL_SPAN_MAX_EXPORT_BATCH_SIZE",
+        value: env.PROD_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE,
+      },
+      {
+        key: "OTEL_SPAN_SCHEDULED_DELAY_MILLIS",
+        value: env.PROD_OTEL_SPAN_SCHEDULED_DELAY_MILLIS,
+      },
+      {
+        key: "OTEL_SPAN_EXPORT_TIMEOUT_MILLIS",
+        value: env.PROD_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS,
+      },
+      {
+        key: "OTEL_SPAN_MAX_QUEUE_SIZE",
+        value: env.PROD_OTEL_SPAN_MAX_QUEUE_SIZE,
+      },
+      {
+        key: "OTEL_LOG_MAX_EXPORT_BATCH_SIZE",
+        value: env.PROD_OTEL_LOG_MAX_EXPORT_BATCH_SIZE,
+      },
+      {
+        key: "OTEL_LOG_SCHEDULED_DELAY_MILLIS",
+        value: env.PROD_OTEL_LOG_SCHEDULED_DELAY_MILLIS,
+      },
+      {
+        key: "OTEL_LOG_EXPORT_TIMEOUT_MILLIS",
+        value: env.PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS,
+      },
+      {
+        key: "OTEL_LOG_MAX_QUEUE_SIZE",
+        value: env.PROD_OTEL_LOG_MAX_QUEUE_SIZE,
+      },
+    ]);
+  }
+
+  if (env.PROD_USAGE_HEARTBEAT_INTERVAL_MS && env.USAGE_EVENT_URL) {
+    result = result.concat([
+      {
+        key: "USAGE_HEARTBEAT_INTERVAL_MS",
+        value: String(env.PROD_USAGE_HEARTBEAT_INTERVAL_MS),
+      },
+      {
+        key: "USAGE_EVENT_URL",
+        value: env.USAGE_EVENT_URL,
+      },
+    ]);
+  }
+
+  const commonVariables = await resolveCommonBuiltInVariables(runtimeEnvironment);
+
+  return [...result, ...commonVariables];
+}
+
+async function resolveCommonBuiltInVariables(
+  runtimeEnvironment: RuntimeEnvironment
+): Promise<Array<EnvironmentVariable>> {
+  return [];
 }

@@ -1,9 +1,9 @@
-import { TaskRunStatus, type Checkpoint, TaskRunAttemptStatus } from "@trigger.dev/database";
+import { TaskRunAttemptStatus, TaskRunStatus, type Checkpoint } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";
-import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
+import { machinePresetFromConfig } from "../machinePresets.server";
 import { BaseService } from "./baseService.server";
-import { Machine } from "@trigger.dev/core/v3";
+import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 
 const RESTORABLE_RUN_STATUSES: TaskRunStatus[] = ["WAITING_TO_RESUME"];
 const RESTORABLE_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["PAUSED"];
@@ -75,17 +75,7 @@ export class RestoreCheckpointService extends BaseService {
     }
 
     const { machineConfig } = checkpoint.attempt.backgroundWorkerTask;
-    const machine = Machine.safeParse(machineConfig ?? {});
-
-    if (!machine.success) {
-      logger.error("Failed to parse machine config", {
-        eventId: params.eventId,
-        runId: checkpoint.runId,
-        attemptId: checkpoint.attemptId,
-        machineConfig: checkpoint.attempt.backgroundWorkerTask.machineConfig,
-      });
-      return;
-    }
+    const machine = machinePresetFromConfig(machineConfig ?? {});
 
     const restoreEvent = await this._prisma.checkpointRestoreEvent.findFirst({
       where: {
@@ -114,7 +104,7 @@ export class RestoreCheckpointService extends BaseService {
       location: checkpoint.location,
       reason: checkpoint.reason ?? undefined,
       imageRef: checkpoint.imageRef,
-      machine: machine.data,
+      machine,
       // identifiers
       checkpointId: checkpoint.id,
       envId: checkpoint.runtimeEnvironment.id,

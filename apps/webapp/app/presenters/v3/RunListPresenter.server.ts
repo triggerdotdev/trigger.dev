@@ -156,7 +156,7 @@ export class RunListPresenter extends BasePresenter {
         runtimeEnvironmentId: string;
         status: TaskRunStatus;
         createdAt: Date;
-        lockedAt: Date | null;
+        startedAt: Date | null;
         updatedAt: Date;
         isTest: boolean;
         spanId: string;
@@ -172,7 +172,7 @@ export class RunListPresenter extends BasePresenter {
     tr."runtimeEnvironmentId" AS "runtimeEnvironmentId",
     tr.status AS status,
     tr."createdAt" AS "createdAt",
-    tr."lockedAt" AS "lockedAt",
+    tr."startedAt" AS "startedAt",
     tr."updatedAt" AS "updatedAt",
     tr."isTest" AS "isTest",
     tr."spanId" AS "spanId",
@@ -278,7 +278,7 @@ export class RunListPresenter extends BasePresenter {
           number: Number(run.number),
           createdAt: run.createdAt.toISOString(),
           updatedAt: run.updatedAt.toISOString(),
-          startedAt: run.lockedAt ? run.lockedAt.toISOString() : undefined,
+          startedAt: run.startedAt ? run.startedAt.toISOString() : undefined,
           hasFinished,
           finishedAt: hasFinished ? run.updatedAt.toISOString() : undefined,
           isTest: run.isTest,

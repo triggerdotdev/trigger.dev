@@ -125,6 +125,7 @@ export type TaskOptions<
      * - 1
      * - 2
      * - 4
+     * @deprecated use preset instead
      */
     cpu?: MachineCpu;
     /** In GBs of RAM. The default is 1.
@@ -136,8 +137,19 @@ export type TaskOptions<
      * - 2
      * - 4
      * - 8
+     * * @deprecated use preset instead
      */
     memory?: MachineMemory;
+
+    /** Preset to use for the machine. Defaults to small-1x */
+    preset?:
+      | "micro"
+      | "small-1x"
+      | "small-2x"
+      | "medium-1x"
+      | "medium-2x"
+      | "large-1x"
+      | "large-2x";
   };
   /** This gets called when a task is triggered. It's where you put the code you want to execute.
    *
