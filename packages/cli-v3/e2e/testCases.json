@@ -14,5 +14,9 @@
   {
     "name": "server-only",
     "skipTypecheck": true
+  },
+  {
+    "name": "resolve-trigger-deps",
+    "skipTypecheck": true
   }
 ]

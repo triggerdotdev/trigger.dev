@@ -270,9 +270,20 @@ if (testCases.length > 0) {
 
           const installBundleDepsExpect = expect(
             (async () => {
-              const { stdout, stderr } = await execa("npm", ["ci", "--no-audit", "--no-fund"], {
-                cwd: resolve(join(fixtureDir, ".trigger")),
-              });
+              const { stdout, stderr } = await execa(
+                "npm",
+                [
+                  "ci",
+                  "--no-audit",
+                  "--no-fund",
+                  "--legacy-peer-deps=false",
+                  "--strict-peer-deps=false",
+                ],
+                {
+                  cwd: global.tempDir!,
+                  NODE_PATH: resolve(join(global.tempDir!, "node_modules")),
+                }
+              );
               console.log(stdout);
               if (stderr) console.error(stderr);
             })(),
@@ -289,7 +300,11 @@ if (testCases.length > 0) {
           const workerStartExpect = expect(
             (async () => {
               const { stdout, stderr } = await execaNode("worker.js", {
-                cwd: resolve(join(fixtureDir, ".trigger")),
+                cwd: global.tempDir!,
+                env: {
+                  // Since we don't start the worker in a container, limit node resolution algorithm to the '.trigger/node_modules' folder
+                  NODE_PATH: resolve(join(global.tempDir!, "node_modules")),
+                },
               });
               console.log(stdout);
               if (stderr) console.error(stderr);
