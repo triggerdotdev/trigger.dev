@@ -272,7 +272,7 @@ class ProdWorker {
         }
       );
 
-      this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
+      await this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
     });
 
     backgroundWorker.onWaitForBatch.attach(async (message) => {
@@ -292,7 +292,7 @@ class ProdWorker {
         }
       );
 
-      this.#prepareForWait("WAIT_FOR_BATCH", willCheckpointAndRestore);
+      await this.#prepareForWait("WAIT_FOR_BATCH", willCheckpointAndRestore);
     });
 
     return backgroundWorker;
@@ -508,7 +508,7 @@ class ProdWorker {
 
           logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
 
-          this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
+          await this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
         },
         EXECUTE_TASK_RUN_LAZY_ATTEMPT: async (message) => {
           if (this.executing) {
@@ -535,7 +535,7 @@ class ProdWorker {
 
             logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
 
-            this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
+            await this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
           } catch (error) {
             const completion: TaskRunFailedExecutionResult = {
               ok: false,
