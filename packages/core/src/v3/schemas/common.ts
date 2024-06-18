@@ -130,7 +130,7 @@ export const TaskRun = z.object({
   tags: z.array(z.string()),
   isTest: z.boolean().default(false),
   createdAt: z.coerce.date(),
-  startedAt: z.coerce.date(),
+  startedAt: z.coerce.date().default(() => new Date()),
   idempotencyKey: z.string().optional(),
   durationMs: z.number().default(0),
   costInCents: z.number().default(0),
