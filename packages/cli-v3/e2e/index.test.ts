@@ -19,8 +19,8 @@ import { handleDependencies } from "./handleDependencies";
 import { E2EOptions, E2EOptionsSchema } from "./schemas";
 import allTestCases from "./testCases.json";
 
-type TestCase = {
-  name: string;
+interface TestCase {
+  id: string;
   skipTypecheck?: boolean;
   wantConfigNotFoundError?: boolean;
   wantConfigInvalidError?: boolean;
@@ -158,6 +158,7 @@ if (testCases.length > 0) {
                   installArgs(packageManager),
                   {
                     cwd: fixtureDir,
+                    NODE_PATH: resolve(join(fixtureDir, "node_modules")),
                   }
                 );
                 console.log(stdout);

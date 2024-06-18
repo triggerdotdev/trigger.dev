@@ -12,11 +12,15 @@
     "skipTypecheck": true
   },
   {
-    "name": "server-only",
+    "name": "legacy-peer-deps",
     "skipTypecheck": true
   },
   {
     "name": "resolve-trigger-deps",
+    "skipTypecheck": true
+  },
+  {
+    "name": "server-only",
     "skipTypecheck": true
   }
 ]
