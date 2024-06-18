@@ -478,7 +478,7 @@ export class SharedQueueConsumer {
           ? lockedTaskRun.attempts[0].number + 1
           : 1;
 
-        const isRetry = nextAttemptNumber > 1;
+        const isRetry = lockedTaskRun.status === "RETRYING_AFTER_FAILURE" && nextAttemptNumber > 1;
 
         try {
           if (messageBody.data.checkpointEventId) {
