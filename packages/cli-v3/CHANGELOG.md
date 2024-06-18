@@ -1,5 +1,18 @@
 # trigger.dev
 
+## 3.0.0-beta.38
+
+### Patch Changes
+
+- d4ccdf710: Add an e2e suite to test compiling with v3 CLI.
+- 1b90ffbb8: v3: Usage tracking
+- e02320f65: fix: allow command login to read api url from cli args
+- Updated dependencies [1b90ffbb8]
+- Updated dependencies [0ed93a748]
+- Updated dependencies [c405ae711]
+- Updated dependencies [c405ae711]
+  - @trigger.dev/core@3.0.0-beta.38
+
 ## 3.0.0-beta.37
 
 ### Patch Changes
