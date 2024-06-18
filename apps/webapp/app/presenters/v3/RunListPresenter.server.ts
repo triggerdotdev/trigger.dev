@@ -157,6 +157,7 @@ export class RunListPresenter extends BasePresenter {
         status: TaskRunStatus;
         createdAt: Date;
         startedAt: Date | null;
+        lockedAt: Date | null;
         updatedAt: Date;
         isTest: boolean;
         spanId: string;
@@ -173,6 +174,7 @@ export class RunListPresenter extends BasePresenter {
     tr.status AS status,
     tr."createdAt" AS "createdAt",
     tr."startedAt" AS "startedAt",
+    tr."lockedAt" AS "lockedAt",
     tr."updatedAt" AS "updatedAt",
     tr."isTest" AS "isTest",
     tr."spanId" AS "spanId",
@@ -272,13 +274,15 @@ export class RunListPresenter extends BasePresenter {
 
         const hasFinished = FINISHED_STATUSES.includes(run.status);
 
+        const startedAt = run.startedAt ?? run.lockedAt;
+
         return {
           id: run.id,
           friendlyId: run.runFriendlyId,
           number: Number(run.number),
           createdAt: run.createdAt.toISOString(),
           updatedAt: run.updatedAt.toISOString(),
-          startedAt: run.startedAt ? run.startedAt.toISOString() : undefined,
+          startedAt: startedAt ? startedAt.toISOString() : undefined,
           hasFinished,
           finishedAt: hasFinished ? run.updatedAt.toISOString() : undefined,
           isTest: run.isTest,
