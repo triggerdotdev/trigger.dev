@@ -2,6 +2,7 @@ import { execa, execaNode } from "execa";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, rename, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { rimraf } from "rimraf";
 
 import { typecheckProject } from "../src/commands/deploy";
 import { readConfig, ReadConfigFileResult } from "../src/utilities/configFiles";
@@ -57,8 +58,10 @@ if (testCases.length > 0) {
         const { name } = testCase;
         const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
         await rm(resolve(join(fixtureDir, ".trigger")), { force: true, recursive: true });
-        await rm(resolve(join(fixtureDir, "node_modules")), { force: true, recursive: true });
-        const packageManager: PackageManager = await parsepackageManager(options, fixtureDir);
+        await rimraf(join(fixtureDir, "**/node_modules/**"), {
+          glob: true,
+        });
+        const packageManager: PackageManager = await parsePackageManager(options, fixtureDir);
 
         if (
           packageManager === "npm" &&
@@ -97,7 +100,7 @@ if (testCases.length > 0) {
       for (let testCase of testCases) {
         const { name } = testCase;
         const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
-        const packageManager: PackageManager = await parsepackageManager(options, fixtureDir);
+        const packageManager: PackageManager = await parsePackageManager(options, fixtureDir);
 
         if (packageManager === "npm") {
           try {
@@ -123,7 +126,7 @@ if (testCases.length > 0) {
       } = testCase;
       const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
       let shouldSkipFixture: boolean = false;
-      const packageManager: PackageManager = await parsepackageManager(options, fixtureDir);
+      const packageManager: PackageManager = await parsePackageManager(options, fixtureDir);
 
       if (options.packageManager)
         shouldSkipFixture = !existsSync(resolve(fixtureDir, LOCKFILES[options.packageManager]));
@@ -343,7 +346,7 @@ function installArgs(packageManager: string) {
   }
 }
 
-async function parsepackageManager(
+async function parsePackageManager(
   options: E2EOptions,
   fixtureDir: string
 ): Promise<PackageManager> {
