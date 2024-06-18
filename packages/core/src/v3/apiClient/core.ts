@@ -4,7 +4,8 @@ import { ApiConnectionError, ApiError } from "./errors";
 import { RetryOptions } from "../schemas";
 import { calculateNextRetryDelay } from "../utils/retries";
 import { FormDataEncoder } from "form-data-encoder";
-import { Readable } from "node:stream";
+import { Readable } from "readable-stream";
+
 import {
   CursorPage,
   CursorPageParams,
