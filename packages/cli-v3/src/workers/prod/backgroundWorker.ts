@@ -132,7 +132,12 @@ export class ProdBackgroundWorker {
   }
 
   async flushTelemetry() {
+    console.log("Flushing telemetry");
+    const start = performance.now();
+
     await this._taskRunProcess?.cleanup(false);
+
+    console.log("Flushed telemetry", { duration: performance.now() - start });
   }
 
   async initialize(options?: { env?: Record<string, string> }) {
@@ -372,6 +377,8 @@ export class ProdBackgroundWorker {
     kill = false,
     initialSignal: number | NodeJS.Signals = "SIGTERM"
   ) {
+    console.log("Trying graceful exit", { kill, initialSignal });
+
     try {
       const initialExit = taskRunProcess.onExit.waitFor(5_000);
 
@@ -388,6 +395,8 @@ export class ProdBackgroundWorker {
   }
 
   async #tryForcefulExit(taskRunProcess: TaskRunProcess) {
+    console.log("Trying forceful exit");
+
     try {
       const forcedKill = taskRunProcess.onExit.waitFor(5_000);
       taskRunProcess.kill("SIGKILL");
