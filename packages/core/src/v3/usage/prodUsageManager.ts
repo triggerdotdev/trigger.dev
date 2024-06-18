@@ -77,8 +77,6 @@ export class ProdUsageManager implements UsageManager {
   }
 
   async flush() {
-    console.log("Flushing usage");
-
     return await this.#reportUsage();
   }
 
@@ -105,22 +103,10 @@ export class ProdUsageManager implements UsageManager {
 
     this._lastSample = sample;
 
-    console.log("Reporting usage", {
-      cpuTimeSinceLastSample,
-    });
-
     if (cpuTimeSinceLastSample <= 0) {
       return;
     }
 
-    const now = performance.now();
-
     await client.sendUsageEvent({ durationMs: cpuTimeSinceLastSample });
-
-    const durationInMs = performance.now() - now;
-
-    console.log("Reported usage", {
-      durationInMs,
-    });
   }
 }

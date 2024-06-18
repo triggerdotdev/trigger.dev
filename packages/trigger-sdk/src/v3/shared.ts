@@ -142,7 +142,14 @@ export type TaskOptions<
     memory?: MachineMemory;
 
     /** Preset to use for the machine. Defaults to small-1x */
-    preset?: "micro" | "small-1x" | "small-2x" | "medium-1x" | "medium-2x" | "large-1x";
+    preset?:
+      | "micro"
+      | "small-1x"
+      | "small-2x"
+      | "medium-1x"
+      | "medium-2x"
+      | "large-1x"
+      | "large-2x";
   };
   /** This gets called when a task is triggered. It's where you put the code you want to execute.
    *
