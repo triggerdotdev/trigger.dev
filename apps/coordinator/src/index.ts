@@ -158,12 +158,15 @@ class Checkpointer {
   }
 
   #getInitReturn(canCheckpoint: boolean): CheckpointerInitializeReturn {
-    this.#initialized = true;
     this.#canCheckpoint = canCheckpoint;
 
     if (canCheckpoint) {
-      this.#logger.log("Full checkpoint support!");
+      if (!this.#initialized) {
+        this.#logger.log("Full checkpoint support!");
+      }
     }
+
+    this.#initialized = true;
 
     const willSimulate = this.#dockerMode && (!this.#canCheckpoint || this.opts.forceSimulate);
 

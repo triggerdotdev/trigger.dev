@@ -54,12 +54,15 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   #getInitReturn(canCheckpoint: boolean): TaskOperationsInitReturn {
-    this.#initialized = true;
     this.#canCheckpoint = canCheckpoint;
 
     if (canCheckpoint) {
-      logger.log("Full checkpoint support!");
+      if (!this.#initialized) {
+        logger.log("Full checkpoint support!");
+      }
     }
+
+    this.#initialized = true;
 
     const willSimulate = !canCheckpoint || this.opts.forceSimulate;
 
