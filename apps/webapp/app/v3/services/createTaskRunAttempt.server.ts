@@ -7,6 +7,8 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
 import { machinePresetFromConfig } from "../machinePresets.server";
 import { workerQueue } from "~/services/worker.server";
+import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
+import { CrashTaskRunService } from "./crashTaskRun.server";
 
 export class CreateTaskRunAttemptService extends BaseService {
   public async call(
@@ -92,6 +94,17 @@ export class CreateTaskRunAttemptService extends BaseService {
       }
 
       const nextAttemptNumber = taskRun.attempts[0] ? taskRun.attempts[0].number + 1 : 1;
+
+      if (nextAttemptNumber > MAX_TASK_RUN_ATTEMPTS) {
+        const service = new CrashTaskRunService(this._prisma);
+        await service.call(taskRun.id, {
+          reason: taskRun.lockedBy.worker.supportsLazyAttempts
+            ? "Max attempts reached."
+            : "Max attempts reached. Please upgrade your CLI and SDK.",
+        });
+
+        throw new ServiceValidationError("Max attempts reached", 400);
+      }
 
       const taskRunAttempt = await $transaction(this._prisma, async (tx) => {
         const taskRunAttempt = await tx.taskRunAttempt.create({

@@ -503,8 +503,18 @@ export class SharedQueueConsumer {
           }
 
           if (!deployment.worker.supportsLazyAttempts) {
-            const service = new CreateTaskRunAttemptService();
-            await service.call(lockedTaskRun.friendlyId, undefined, false);
+            try {
+              const service = new CreateTaskRunAttemptService();
+              await service.call(lockedTaskRun.friendlyId, undefined, false);
+            } catch (error) {
+              logger.error("Failed to create task run attempt for outdate worker", {
+                error,
+                taskRun: lockedTaskRun.id,
+              });
+
+              await this.#ackAndDoMoreWork(message.messageId);
+              return;
+            }
           }
 
           if (isRetry) {
