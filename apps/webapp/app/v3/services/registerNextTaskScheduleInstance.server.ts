@@ -20,6 +20,7 @@ export class RegisterNextTaskScheduleInstanceService extends BaseService {
 
     const nextScheduledTimestamp = calculateNextScheduledTimestamp(
       instance.taskSchedule.generatorExpression,
+      instance.taskSchedule.timezone,
       instance.lastScheduledTimestamp ?? new Date()
     );
 

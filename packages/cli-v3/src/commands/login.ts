@@ -78,7 +78,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
       if (accessTokenFromEnv) {
         const auth = {
           accessToken: accessTokenFromEnv,
-          apiUrl: process.env.TRIGGER_API_URL ?? "https://api.trigger.dev",
+          apiUrl: process.env.TRIGGER_API_URL ?? opts.defaultApiUrl ?? "https://api.trigger.dev",
         };
         const apiClient = new CliApiClient(auth.apiUrl, auth.accessToken);
         const userData = await apiClient.whoAmI();

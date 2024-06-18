@@ -1,6 +1,6 @@
 // See: https://www.totaltypescript.com/tsconfig-cheat-sheet
 {
-  "include": ["./src/**/*.ts", "./src/**/*.tsx"],
+  "include": ["./src/**/*.ts", "./src/**/*.tsx", "./e2e/**/*.ts"],
   "compilerOptions": {
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -30,5 +30,5 @@
       "@trigger.dev/core-apps/*": ["../core-apps/src/*"]
     }
   },
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "./e2e/fixtures"]
 }

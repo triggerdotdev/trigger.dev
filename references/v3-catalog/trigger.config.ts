@@ -34,6 +34,7 @@ export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async ({
 
 export const config: TriggerConfig = {
   project: "yubjwjsfkxnylobaqvqz",
+  machine: "small-2x",
   retries: {
     enabledInDev: true,
     default: {
@@ -44,6 +45,7 @@ export const config: TriggerConfig = {
       randomize: true,
     },
   },
+  enableConsoleLogging: false,
   additionalPackages: ["wrangler@3.35.0", "pg@8.11.5"],
   additionalFiles: ["./wrangler/wrangler.toml"],
   dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp"],

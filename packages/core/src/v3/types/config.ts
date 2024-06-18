@@ -1,6 +1,6 @@
 import { FailureFnParams, InitFnParams, StartFnParams, SuccessFnParams } from ".";
 import { LogLevel } from "../logger/taskLogger";
-import { RetryOptions } from "../schemas";
+import { MachinePresetName, RetryOptions } from "../schemas";
 import type { InstrumentationOption } from "@opentelemetry/instrumentation";
 
 export interface ProjectConfig {
@@ -12,6 +12,12 @@ export interface ProjectConfig {
     default?: RetryOptions;
   };
   additionalPackages?: string[];
+
+  /**
+   * The default machine preset to use for your deployed trigger.dev tasks. You can override this on a per-task basis.
+   * @default "small-1x"
+   */
+  machine?: MachinePresetName;
 
   /**
    * List of additional files to include in your trigger.dev bundle. e.g. ["./prisma/schema.prisma"]

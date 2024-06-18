@@ -3,7 +3,7 @@ import {
   ClientToSharedQueueMessages,
   clientWebsocketMessages,
   EnvironmentType,
-  Machine,
+  MachinePreset,
   PlatformToProviderMessages,
   ProviderToPlatformMessages,
   SharedQueueToClientMessages,
@@ -40,7 +40,7 @@ export interface TaskOperationsIndexOptions {
 
 export interface TaskOperationsCreateOptions {
   image: string;
-  machine: Machine;
+  machine: MachinePreset;
   version: string;
   // identifiers
   envId: string;
@@ -53,7 +53,7 @@ export interface TaskOperationsCreateOptions {
 export interface TaskOperationsRestoreOptions {
   imageRef: string;
   checkpointRef: string;
-  machine: Machine;
+  machine: MachinePreset;
   // identifiers
   envId: string;
   envType: EnvironmentType;

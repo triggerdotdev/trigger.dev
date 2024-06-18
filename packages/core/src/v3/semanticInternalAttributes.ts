@@ -18,6 +18,10 @@ export const SemanticInternalAttributes = {
   TASK_EXPORT_NAME: "ctx.task.exportName",
   QUEUE_NAME: "ctx.queue.name",
   QUEUE_ID: "ctx.queue.id",
+  MACHINE_PRESET_NAME: "ctx.machine.name",
+  MACHINE_PRESET_CPU: "ctx.machine.cpu",
+  MACHINE_PRESET_MEMORY: "ctx.machine.memory",
+  MACHINE_PRESET_CENTS_PER_MS: "ctx.machine.centsPerMs",
   SPAN_PARTIAL: "$span.partial",
   SPAN_ID: "$span.span_id",
   OUTPUT: "$output",
@@ -42,4 +46,6 @@ export const SemanticInternalAttributes = {
   RETRY_COUNT: "retry.count",
   LINK_TITLE: "$link.title",
   IDEMPOTENCY_KEY: "ctx.run.idempotencyKey",
+  USAGE_DURATION_MS: "$usage.durationMs",
+  USAGE_COST_IN_CENTS: "$usage.costInCents",
 };

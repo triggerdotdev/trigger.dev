@@ -1,33 +1,12 @@
 import { z } from "zod";
 import { RequireKeys } from "../types";
-import { TaskRunExecution } from "./common";
+import { MachineConfig, MachinePreset, TaskRunExecution } from "./common";
 
 /*
     WARNING: Never import anything from ./messages here. If it's needed in both, put it here instead.
 */
-
 export const EnvironmentType = z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"]);
 export type EnvironmentType = z.infer<typeof EnvironmentType>;
-
-export const MachineCpu = z
-  .union([z.literal(0.25), z.literal(0.5), z.literal(1), z.literal(2), z.literal(4)])
-  .default(0.5);
-
-export type MachineCpu = z.infer<typeof MachineCpu>;
-
-export const MachineMemory = z
-  .union([z.literal(0.25), z.literal(0.5), z.literal(1), z.literal(2), z.literal(4), z.literal(8)])
-  .default(1);
-
-export type MachineMemory = z.infer<typeof MachineMemory>;
-
-export const Machine = z.object({
-  version: z.literal("v1").default("v1"),
-  cpu: MachineCpu,
-  memory: MachineMemory,
-});
-
-export type Machine = z.infer<typeof Machine>;
 
 export const TaskRunExecutionPayload = z.object({
   execution: TaskRunExecution,
@@ -43,6 +22,7 @@ export const ProdTaskRunExecution = TaskRunExecution.extend({
     contentHash: z.string(),
     version: z.string(),
   }),
+  machine: MachinePreset,
 });
 
 export type ProdTaskRunExecution = z.infer<typeof ProdTaskRunExecution>;
@@ -163,7 +143,7 @@ export const TaskMetadata = z.object({
   packageVersion: z.string(),
   queue: QueueOptions.optional(),
   retry: RetryOptions.optional(),
-  machine: Machine.partial().optional(),
+  machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
 });
 
@@ -181,7 +161,7 @@ export const TaskMetadataWithFilePath = z.object({
   packageVersion: z.string(),
   queue: QueueOptions.optional(),
   retry: RetryOptions.optional(),
-  machine: Machine.partial().optional(),
+  machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
   filePath: z.string(),
   exportName: z.string(),

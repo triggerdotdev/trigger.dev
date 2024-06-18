@@ -145,11 +145,13 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     "/api/internal/stripe_webhooks",
     "/api/v1/authorization-code",
     "/api/v1/token",
+    "/api/v1/usage/ingest",
     /^\/api\/v1\/tasks\/[^\/]+\/callback\/[^\/]+$/, // /api/v1/tasks/$id/callback/$secret
     /^\/api\/v1\/runs\/[^\/]+\/tasks\/[^\/]+\/callback\/[^\/]+$/, // /api/v1/runs/$runId/tasks/$id/callback/$secret
     /^\/api\/v1\/http-endpoints\/[^\/]+\/env\/[^\/]+\/[^\/]+$/, // /api/v1/http-endpoints/$httpEndpointId/env/$envType/$shortcode
     /^\/api\/v1\/sources\/http\/[^\/]+$/, // /api/v1/sources/http/$id
     /^\/api\/v1\/endpoints\/[^\/]+\/[^\/]+\/index\/[^\/]+$/, // /api/v1/endpoints/$environmentId/$endpointSlug/index/$indexHookIdentifier
+    "/api/v1/timezones",
   ],
   log: {
     rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",

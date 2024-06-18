@@ -1,9 +1,9 @@
-import { TaskRunStatus, type Checkpoint, TaskRunAttemptStatus } from "@trigger.dev/database";
+import { TaskRunAttemptStatus, TaskRunStatus, type Checkpoint } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";
-import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
+import { machinePresetFromConfig } from "../machinePresets.server";
 import { BaseService } from "./baseService.server";
-import { Machine } from "@trigger.dev/core/v3";
+import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 
 const RESTORABLE_RUN_STATUSES: TaskRunStatus[] = ["WAITING_TO_RESUME"];
 const RESTORABLE_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["PAUSED"];
@@ -45,7 +45,7 @@ export class RestoreCheckpointService extends BaseService {
     });
 
     if (!checkpointEvent) {
-      logger.error("Checkpoint event not found", params);
+      logger.error("Checkpoint event not found", { eventId: params.eventId });
       return;
     }
 
@@ -56,30 +56,26 @@ export class RestoreCheckpointService extends BaseService {
 
     if (!runIsRestorable) {
       logger.error("Run is unrestorable", {
-        id: checkpoint.runId,
-        status: checkpoint.run.status,
+        eventId: params.eventId,
+        runId: checkpoint.runId,
+        runStatus: checkpoint.run.status,
+        attemptId: checkpoint.attemptId,
       });
       return;
     }
 
     if (!attemptIsRestorable && !params.isRetry) {
       logger.error("Attempt is unrestorable", {
-        id: checkpoint.attemptId,
-        status: checkpoint.attempt.status,
+        eventId: params.eventId,
+        runId: checkpoint.runId,
+        attemptId: checkpoint.attemptId,
+        attemptStatus: checkpoint.attempt.status,
       });
       return;
     }
 
     const { machineConfig } = checkpoint.attempt.backgroundWorkerTask;
-    const machine = Machine.safeParse(machineConfig ?? {});
-
-    if (!machine.success) {
-      logger.error("Failed to parse machine config", {
-        attemptId: checkpoint.attemptId,
-        machineConfig: checkpoint.attempt.backgroundWorkerTask.machineConfig,
-      });
-      return;
-    }
+    const machine = machinePresetFromConfig(machineConfig ?? {});
 
     const restoreEvent = await this._prisma.checkpointRestoreEvent.findFirst({
       where: {
@@ -90,6 +86,8 @@ export class RestoreCheckpointService extends BaseService {
 
     if (restoreEvent) {
       logger.error("Restore event already exists", {
+        runId: checkpoint.runId,
+        attemptId: checkpoint.attemptId,
         checkpointId: checkpoint.id,
         restoreEventId: restoreEvent.id,
       });
@@ -106,7 +104,7 @@ export class RestoreCheckpointService extends BaseService {
       location: checkpoint.location,
       reason: checkpoint.reason ?? undefined,
       imageRef: checkpoint.imageRef,
-      machine: machine.data,
+      machine,
       // identifiers
       checkpointId: checkpoint.id,
       envId: checkpoint.runtimeEnvironment.id,

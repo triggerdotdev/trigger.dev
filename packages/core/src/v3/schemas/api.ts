@@ -222,15 +222,26 @@ export const ScheduledTaskPayload = z.object({
     You can use this to remove the schedule, update it, etc */
   scheduleId: z.string(),
   /** When the task was scheduled to run.
-   * Note this will be slightly different from `new Date()` because it takes a few ms to run the task. */
+   * Note this will be slightly different from `new Date()` because it takes a few ms to run the task.
+   * 
+   * This date is UTC. To output it as a string with a timezone you would do this: 
+   * ```ts
+   * const formatted = payload.timestamp.toLocaleString("en-US", {
+        timeZone: payload.timezone,
+    });
+    ```  */
   timestamp: z.date(),
   /** When the task was last run (it has been).
-    This can be undefined if it's never been run */
+    This can be undefined if it's never been run. This date is UTC. */
   lastTimestamp: z.date().optional(),
   /** You can optionally provide an external id when creating the schedule.
     Usually you would use a userId or some other unique identifier.
     This defaults to undefined if you didn't provide one. */
   externalId: z.string().optional(),
+  /** The IANA timezone the schedule is set to. The default is UTC.
+   * You can see the full list of supported timezones here: https://cloud.trigger.dev/timezones
+   */
+  timezone: z.string(),
   /** The next 5 dates this task is scheduled to run */
   upcoming: z.array(z.date()),
 });
@@ -257,20 +268,31 @@ export const CreateScheduleOptions = z.object({
 
    */
   cron: z.string(),
-  /** (Optional) You can only create one schedule with this key. If you use it twice, the second call will update the schedule.
+  /** You can only create one schedule with this key. If you use it twice, the second call will update the schedule.
    *
-   * This is useful if you don't want to create duplicate schedules for a user. */
-  deduplicationKey: z.string().optional(),
+   * This is required to prevent you from creating duplicate schedules. */
+  deduplicationKey: z.string(),
   /** Optionally, you can specify your own IDs (like a user ID) and then use it inside the run function of your task.
    *
    * This allows you to have per-user CRON tasks.
    */
   externalId: z.string().optional(),
+  /** Optionally, you can specify a timezone in the IANA format. If unset it will use UTC.
+   * If specified then the CRON will be evaluated in that timezone and will respect daylight savings.
+   *
+   * If you set the CRON to `0 0 * * *` and the timezone to `America/New_York` then the task will run at midnight in New York time, no matter whether it's daylight savings or not.
+   *
+   * You can see the full list of supported timezones here: https://cloud.trigger.dev/timezones
+   *
+   * @example "America/New_York", "Europe/London", "Asia/Tokyo", "Africa/Cairo"
+   *
+   */
+  timezone: z.string().optional(),
 });
 
 export type CreateScheduleOptions = z.infer<typeof CreateScheduleOptions>;
 
-export const UpdateScheduleOptions = CreateScheduleOptions;
+export const UpdateScheduleOptions = CreateScheduleOptions.omit({ deduplicationKey: true });
 
 export type UpdateScheduleOptions = z.infer<typeof UpdateScheduleOptions>;
 
@@ -289,6 +311,7 @@ export const ScheduleObject = z.object({
   deduplicationKey: z.string().nullish(),
   externalId: z.string().nullish(),
   generator: ScheduleGenerator,
+  timezone: z.string(),
   nextRun: z.coerce.date().nullish(),
   environments: z.array(
     z.object({
@@ -324,6 +347,12 @@ export const ListScheduleOptions = z.object({
 });
 
 export type ListScheduleOptions = z.infer<typeof ListScheduleOptions>;
+
+export const TimezonesResult = z.object({
+  timezones: z.array(z.string()),
+});
+
+export type TimezonesResult = z.infer<typeof TimezonesResult>;
 
 export const RunStatus = z.enum([
   /// Task hasn't been deployed yet but is waiting to be executed

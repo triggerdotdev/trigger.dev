@@ -7,7 +7,12 @@ import {
   TaskOperationsIndexOptions,
   TaskOperationsRestoreOptions,
 } from "@trigger.dev/core-apps";
-import { Machine, PostStartCauses, PreStopCauses, EnvironmentType } from "@trigger.dev/core/v3";
+import {
+  MachinePreset,
+  PostStartCauses,
+  PreStopCauses,
+  EnvironmentType,
+} from "@trigger.dev/core/v3";
 import { randomUUID } from "crypto";
 import { TaskMonitor } from "./taskMonitor";
 import { PodCleaner } from "./podCleaner";
@@ -16,6 +21,7 @@ const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 const NODE_NAME = process.env.NODE_NAME || "local";
 const OTEL_EXPORTER_OTLP_ENDPOINT =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318";
+const POD_CLEANER_INTERVAL_SECONDS = Number(process.env.POD_CLEANER_INTERVAL_SECONDS || "300");
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 logger.log(`running in ${RUNTIME_ENV} mode`);
@@ -398,10 +404,10 @@ class KubernetesTaskOperations implements TaskOperations {
     };
   }
 
-  #getResourcesFromMachineConfig(config: Machine): ComputeResources {
+  #getResourcesFromMachineConfig(preset: MachinePreset): ComputeResources {
     return {
-      cpu: `${config.cpu}`,
-      memory: `${config.memory}G`,
+      cpu: `${preset.cpu}`,
+      memory: `${preset.memory}G`,
     };
   }
 
@@ -555,7 +561,7 @@ taskMonitor.start();
 const podCleaner = new PodCleaner({
   runtimeEnv: RUNTIME_ENV,
   namespace: "default",
-  intervalInSeconds: 300,
+  intervalInSeconds: POD_CLEANER_INTERVAL_SECONDS,
 });
 
 podCleaner.start();
