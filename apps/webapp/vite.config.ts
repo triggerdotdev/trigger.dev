@@ -5,6 +5,8 @@ import { expressDevServer } from "remix-express-dev-server";
 import { installGlobals } from "@remix-run/node";
 import { config } from "dotenv";
 import { expand } from "dotenv-expand";
+import { denyImports } from "vite-env-only";
+
 expand(
   config({
     path: "../../.env",
@@ -22,7 +24,6 @@ export default defineConfig({
       "react-use",
     ],
   },
-
   optimizeDeps: {
     entries: ["./app/entry.client.tsx", "./app/root.tsx", "./app/routes/**/*"],
     include: [
@@ -137,5 +138,13 @@ export default defineConfig({
       serverModuleFormat: "esm",
     }).filter((plugin) => plugin.name !== "remix-dot-server"),
     tsconfigPaths() as Plugin,
+    denyImports({
+      client: {
+        specifiers: ["node:stream", "@trigger.dev/core"],
+      },
+      server: {
+        specifiers: ["@trigger.dev/core"],
+      },
+    }),
   ],
 });
