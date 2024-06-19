@@ -1,5 +1,14 @@
 # internal-platform
 
+## 3.0.0-beta.38
+
+### Patch Changes
+
+- 1b90ffbb8: v3: Usage tracking
+- 0ed93a748: v3: Remove aggressive otel flush timeouts in dev/prod
+- c405ae711: Make deduplicationKey required when creating/updating a schedule
+- c405ae711: Added timezone support to schedules
+
 ## 3.0.0-beta.37
 
 ### Patch Changes
