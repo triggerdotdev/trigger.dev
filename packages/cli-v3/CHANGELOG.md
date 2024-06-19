@@ -1,5 +1,12 @@
 # trigger.dev
 
+## 3.0.0-beta.39
+
+### Patch Changes
+
+- 8757fdcee: v3: [prod] force flush timeout should be 1s
+  - @trigger.dev/core@3.0.0-beta.39
+
 ## 3.0.0-beta.38
 
 ### Patch Changes

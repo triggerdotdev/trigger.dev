@@ -1,5 +1,12 @@
 # @trigger.dev/replicate
 
+## 3.0.0-beta.39
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.39
+- @trigger.dev/sdk@3.0.0-beta.39
+
 ## 3.0.0-beta.38
 
 ### Patch Changes
