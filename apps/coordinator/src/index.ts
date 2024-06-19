@@ -636,7 +636,7 @@ class TaskCoordinator {
     { resolve: (value: void) => void; reject: (err?: any) => void }
   >();
 
-  #delayThresholdInMs: number;
+  #delayThresholdInMs: number = DEFAULT_RETRY_DELAY_THRESHOLD_IN_MS;
 
   constructor(
     private port: number,
@@ -644,12 +644,6 @@ class TaskCoordinator {
   ) {
     this.#httpServer = this.#createHttpServer();
     this.#checkpointer.init();
-    this.#delayThresholdInMs = this.#getDelayThreshold();
-
-    if (process.env.DELAY_THRESHOLD_IN_MS) {
-      this.#delayThresholdInMs = this.#getDelayThreshold();
-    }
-
     this.#platformSocket = this.#createPlatformSocket();
 
     const connectedTasksTotal = new Gauge({
@@ -660,27 +654,6 @@ class TaskCoordinator {
       },
     });
     register.registerMetric(connectedTasksTotal);
-  }
-
-  #getDelayThreshold() {
-    if (!process.env.RETRY_DELAY_THRESHOLD_IN_MS) {
-      return DEFAULT_RETRY_DELAY_THRESHOLD_IN_MS;
-    }
-
-    const threshold = parseInt(process.env.RETRY_DELAY_THRESHOLD_IN_MS);
-
-    if (isNaN(threshold)) {
-      logger.log(
-        "RETRY_DELAY_THRESHOLD_IN_MS parses as NaN, must supply integer. Will use default instead.",
-        {
-          RETRY_DELAY_THRESHOLD_IN_MS: process.env.RETRY_DELAY_THRESHOLD_IN_MS,
-          DEFAULT_DELAY_THRESHOLD_IN_MS: DEFAULT_RETRY_DELAY_THRESHOLD_IN_MS,
-        }
-      );
-      return DEFAULT_RETRY_DELAY_THRESHOLD_IN_MS;
-    }
-
-    return threshold;
   }
 
   #returnValidatedExtraHeaders(headers: Record<string, string>) {
