@@ -18,7 +18,7 @@ export const tracingSDK = new TracingSDK({
   diagLogLevel: (process.env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
   forceFlushTimeoutMillis: process.env.OTEL_FORCE_FLUSH_TIMEOUT
     ? parseInt(process.env.OTEL_FORCE_FLUSH_TIMEOUT, 10)
-    : 1_000,
+    : undefined,
 });
 
 export const otelTracer: Tracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.version);
