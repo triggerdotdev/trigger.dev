@@ -22,7 +22,7 @@ export const ProdTaskRunExecution = TaskRunExecution.extend({
     contentHash: z.string(),
     version: z.string(),
   }),
-  machine: MachinePreset,
+  machine: MachinePreset.default({ name: "small-1x", cpu: 1, memory: 1, centsPerMs: 0 }),
 });
 
 export type ProdTaskRunExecution = z.infer<typeof ProdTaskRunExecution>;
