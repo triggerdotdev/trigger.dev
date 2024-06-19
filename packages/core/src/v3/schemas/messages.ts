@@ -618,6 +618,12 @@ export const PlatformToCoordinatorMessages = {
       runId: z.string(),
     }),
   },
+  DYNAMIC_CONFIG: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      checkpointThresholdInMs: z.number().optional(),
+    }),
+  },
 };
 
 export const ClientToSharedQueueMessages = {
@@ -901,4 +907,8 @@ export const ProdWorkerSocketData = z.object({
   podName: z.string(),
   deploymentId: z.string(),
   deploymentVersion: z.string(),
+});
+
+export const CoordinatorSocketData = z.object({
+  supportsDynamicConfig: z.string().optional(),
 });

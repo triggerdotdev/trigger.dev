@@ -621,7 +621,7 @@ class TaskCoordinator {
     heartbeat: this.#sendRunHeartbeat.bind(this),
   });
 
-  #prodWorkerNamespace: ZodNamespace<
+  #prodWorkerNamespace?: ZodNamespace<
     typeof ProdWorkerToCoordinatorMessages,
     typeof CoordinatorToProdWorkerMessages,
     typeof ProdWorkerSocketData
@@ -650,16 +650,13 @@ class TaskCoordinator {
       this.#delayThresholdInMs = this.#getDelayThreshold();
     }
 
-    const io = new Server(this.#httpServer);
-    this.#prodWorkerNamespace = this.#createProdWorkerNamespace(io);
-
     this.#platformSocket = this.#createPlatformSocket();
 
     const connectedTasksTotal = new Gauge({
       name: "daemon_connected_tasks_total", // don't change this without updating dashboard config
       help: "The number of tasks currently connected.",
       collect: () => {
-        connectedTasksTotal.set(this.#prodWorkerNamespace.namespace.sockets.size);
+        connectedTasksTotal.set(this.#prodWorkerNamespace?.namespace.sockets.size ?? 0);
       },
     });
     register.registerMetric(connectedTasksTotal);
@@ -686,17 +683,38 @@ class TaskCoordinator {
     return threshold;
   }
 
+  #returnValidatedExtraHeaders(headers: Record<string, string>) {
+    for (const [key, value] of Object.entries(headers)) {
+      if (value === undefined) {
+        throw new Error(`Extra header is undefined: ${key}`);
+      }
+    }
+
+    return headers;
+  }
+
   #createPlatformSocket() {
     if (!PLATFORM_ENABLED) {
       console.log("INFO: platform connection disabled");
       return;
     }
 
+    const extraHeaders = this.#returnValidatedExtraHeaders({
+      "x-supports-dynamic-config": "yes",
+    });
+
+    const host = PLATFORM_HOST;
+    const port = Number(PLATFORM_WS_PORT);
+
+    logger.log(`connecting to platform: ${host}:${port}`);
+    logger.debug(`connecting with extra headers`, { extraHeaders });
+
     const platformConnection = new ZodSocketConnection({
       namespace: "coordinator",
-      host: PLATFORM_HOST,
-      port: Number(PLATFORM_WS_PORT),
+      host,
+      port,
       secure: SECURE_CONNECTION,
+      extraHeaders,
       clientMessages: CoordinatorToPlatformMessages,
       serverMessages: PlatformToCoordinatorMessages,
       authToken: PLATFORM_SECRET,
@@ -776,6 +794,17 @@ class TaskCoordinator {
 
           taskSocket.emit("READY_FOR_RETRY", message);
         },
+        DYNAMIC_CONFIG: async (message) => {
+          if (message.checkpointThresholdInMs) {
+            this.#delayThresholdInMs = message.checkpointThresholdInMs;
+          }
+
+          // The first time we receive a dynamic config, the worker namespace will be created
+          if (!this.#prodWorkerNamespace) {
+            const io = new Server(this.#httpServer);
+            this.#prodWorkerNamespace = this.#createProdWorkerNamespace(io);
+          }
+        },
       },
     });
 
@@ -783,7 +812,7 @@ class TaskCoordinator {
   }
 
   async #getRunSocket(runId: string) {
-    const sockets = await this.#prodWorkerNamespace.fetchSockets();
+    const sockets = (await this.#prodWorkerNamespace?.fetchSockets()) ?? [];
 
     for (const socket of sockets) {
       if (socket.data.runId === runId) {
@@ -793,7 +822,7 @@ class TaskCoordinator {
   }
 
   async #getAttemptSocket(attemptFriendlyId: string) {
-    const sockets = await this.#prodWorkerNamespace.fetchSockets();
+    const sockets = (await this.#prodWorkerNamespace?.fetchSockets()) ?? [];
 
     for (const socket of sockets) {
       if (socket.data.attemptFriendlyId === attemptFriendlyId) {
