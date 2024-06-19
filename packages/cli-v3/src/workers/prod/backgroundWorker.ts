@@ -530,6 +530,8 @@ export class ProdBackgroundWorker {
     let execution: ProdTaskRunExecution;
 
     try {
+      const start = performance.now();
+
       // ..and wait for response
       const attemptCreated = await this.attemptCreatedNotification.waitFor(30_000);
 
@@ -538,6 +540,11 @@ export class ProdBackgroundWorker {
           `Failed to create attempt${attemptCreated.reason ? `: ${attemptCreated.reason}` : ""}`
         );
       }
+
+      console.log("Attempt created", {
+        number: attemptCreated.execution.attempt.number,
+        duration: performance.now() - start,
+      });
 
       execution = attemptCreated.execution;
     } catch (error) {
