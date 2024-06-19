@@ -69,6 +69,7 @@ type CheckpointAndPushOptions = {
   leaveRunning?: boolean;
   projectRef: string;
   deploymentVersion: string;
+  shouldHeartbeat?: boolean;
 };
 
 type CheckpointAndPushResult =
@@ -81,6 +82,11 @@ type CheckpointAndPushResult =
 type CheckpointData = {
   location: string;
   docker: boolean;
+};
+
+type CheckpointerOptions = {
+  forceSimulate: boolean;
+  heartbeat: (runId: string) => void;
 };
 
 function isExecaChildProcess(maybeExeca: unknown): maybeExeca is Awaited<ExecaChildProcess> {
@@ -127,7 +133,7 @@ class Checkpointer {
   #failedCheckpoints = new Map<string, unknown>();
   #waitingForRetry = new Set<string>();
 
-  constructor(private opts = { forceSimulate: false }) {}
+  constructor(private opts: CheckpointerOptions) {}
 
   async init(): Promise<CheckpointerInitializeReturn> {
     if (this.#initialized) {
@@ -200,22 +206,37 @@ class Checkpointer {
     const start = performance.now();
     logger.log(`checkpointAndPush() start`, { start, opts });
 
-    const result = await this.#checkpointAndPushWithBackoff(opts);
+    let interval: NodeJS.Timer | undefined;
 
-    const end = performance.now();
-    logger.log(`checkpointAndPush() end`, {
-      start,
-      end,
-      diff: end - start,
-      opts,
-      success: result.success,
-    });
-
-    if (!result.success) {
-      return;
+    if (opts.shouldHeartbeat) {
+      interval = setInterval(() => {
+        logger.log("Sending heartbeat", { runId: opts.runId });
+        this.opts.heartbeat(opts.runId);
+      }, 20_000);
     }
 
-    return result.checkpoint;
+    try {
+      const result = await this.#checkpointAndPushWithBackoff(opts);
+
+      const end = performance.now();
+      logger.log(`checkpointAndPush() end`, {
+        start,
+        end,
+        diff: end - start,
+        opts,
+        success: result.success,
+      });
+
+      if (!result.success) {
+        return;
+      }
+
+      return result.checkpoint;
+    } finally {
+      if (opts.shouldHeartbeat) {
+        clearInterval(interval);
+      }
+    }
   }
 
   isCheckpointing(runId: string) {
@@ -595,7 +616,10 @@ class Checkpointer {
 
 class TaskCoordinator {
   #httpServer: ReturnType<typeof createServer>;
-  #checkpointer = new Checkpointer({ forceSimulate: FORCE_CHECKPOINT_SIMULATION });
+  #checkpointer = new Checkpointer({
+    forceSimulate: FORCE_CHECKPOINT_SIMULATION,
+    heartbeat: this.#sendRunHeartbeat.bind(this),
+  });
 
   #prodWorkerNamespace: ZodNamespace<
     typeof ProdWorkerToCoordinatorMessages,
@@ -1062,6 +1086,7 @@ class TaskCoordinator {
             runId: socket.data.runId,
             projectRef: socket.data.projectRef,
             deploymentVersion: socket.data.deploymentVersion,
+            shouldHeartbeat: true,
           });
 
           if (!checkpoint) {
@@ -1341,12 +1366,19 @@ class TaskCoordinator {
           this.#platformSocket?.send("TASK_HEARTBEAT", message);
         },
         TASK_RUN_HEARTBEAT: async (message) => {
-          this.#platformSocket?.send("TASK_RUN_HEARTBEAT", message);
+          this.#sendRunHeartbeat(message.runId);
         },
       },
     });
 
     return provider;
+  }
+
+  #sendRunHeartbeat(runId: string) {
+    this.#platformSocket?.send("TASK_RUN_HEARTBEAT", {
+      version: "v1",
+      runId,
+    });
   }
 
   #cancelCheckpoint(runId: string): boolean {
