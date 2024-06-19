@@ -20,6 +20,7 @@ import { E2EOptions, E2EOptionsSchema } from "./schemas";
 import allTestCases from "./testCases.json";
 
 interface TestCase {
+  resolveEnv?: { [key: string]: string };
   id: string;
   skipTypecheck?: boolean;
   wantConfigNotFoundError?: boolean;
@@ -92,6 +93,8 @@ if (testCases.length > 0) {
           await rename(resolve(join(dir, "yarn.lock.copy")), resolve(join(dir, "yarn.lock")));
         } catch {}
       }
+
+      vi.unstubAllEnvs();
     });
 
     for (let testCase of testCases) {
@@ -113,6 +116,7 @@ if (testCases.length > 0) {
         async ({
           dir,
           packageManager,
+          resolveEnv,
           skip,
           skipTypecheck,
           tempDir,
@@ -221,6 +225,12 @@ if (testCases.length > 0) {
 
           await compileExpect.resolves.not.toThrowError();
 
+          if (resolveEnv) {
+            for (let envKey in resolveEnv) {
+              vi.stubEnv(envKey, resolveEnv[envKey]!);
+            }
+          }
+
           const depsExpectation = expect(
             (async () => {
               const { dependencies } = await handleDependencies({
@@ -241,6 +251,10 @@ if (testCases.length > 0) {
           }
 
           await depsExpectation.resolves.not.toThrowError();
+
+          if (resolveEnv) {
+            vi.unstubAllEnvs();
+          }
 
           await expect(
             (async () => {
@@ -265,20 +279,21 @@ if (testCases.length > 0) {
 
           const installBundleDepsExpect = expect(
             (async () => {
-              const { stdout, stderr } = await execa(
+              const { stdout: installStdout, stderr: installStderr } = await execa(
                 "npm",
-                [
-                  "ci",
-                  "--no-audit",
-                  "--no-fund",
-                  "--legacy-peer-deps=false",
-                  "--strict-peer-deps=false",
-                ],
+                ["ci", "--no-audit", "--no-fund"],
                 {
                   cwd: tempDir,
                   NODE_PATH: resolve(join(tempDir, "node_modules")),
                 }
               );
+              console.log(installStdout);
+              if (installStderr) console.error(installStderr);
+
+              const { stdout, stderr } = await execa("npm", ["cache", "clean", "--force"], {
+                cwd: tempDir,
+                NODE_PATH: resolve(join(tempDir, "node_modules")),
+              });
               console.log(stdout);
               if (stderr) console.error(stderr);
             })(),

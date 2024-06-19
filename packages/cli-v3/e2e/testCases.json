@@ -12,8 +12,11 @@
     "skipTypecheck": true
   },
   {
-    "id": "legacy-peer-deps",
-    "skipTypecheck": true
+    "id": "lock-nested-peer-deps",
+    "skipTypecheck": true,
+    "resolveEnv": {
+      "npm_config_legacy_peer_deps": "true"
+    }
   },
   {
     "id": "resolve-trigger-deps",
