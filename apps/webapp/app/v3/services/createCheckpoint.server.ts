@@ -1,6 +1,6 @@
 import { CoordinatorToPlatformMessages } from "@trigger.dev/core/v3";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
-import type { CheckpointRestoreEvent } from "@trigger.dev/database";
+import type { Checkpoint, CheckpointRestoreEvent } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "~/v3/marqs/index.server";
@@ -15,7 +15,14 @@ export class CreateCheckpointService extends BaseService {
       InferSocketMessageSchema<typeof CoordinatorToPlatformMessages, "CHECKPOINT_CREATED">,
       "version"
     >
-  ) {
+  ): Promise<
+    | {
+        checkpoint: Checkpoint;
+        event: CheckpointRestoreEvent;
+        keepRunAlive: boolean;
+      }
+    | undefined
+  > {
     logger.debug(`Creating checkpoint`, params);
 
     const attempt = await this._prisma.taskRunAttempt.findUnique({
@@ -109,7 +116,9 @@ export class CreateCheckpointService extends BaseService {
     });
 
     const { reason } = params;
+
     let checkpointEvent: CheckpointRestoreEvent | undefined;
+    let keepRunAlive = false;
 
     switch (reason.type) {
       case "WAIT_FOR_DURATION": {
@@ -125,7 +134,12 @@ export class CreateCheckpointService extends BaseService {
           dependencyFriendlyRunId: reason.friendlyId,
         });
 
-        await marqs?.acknowledgeMessage(attempt.taskRunId);
+        keepRunAlive = await this.#isRunCompleted(reason.friendlyId);
+
+        if (!keepRunAlive) {
+          await marqs?.acknowledgeMessage(attempt.taskRunId);
+        }
+
         break;
       }
       case "WAIT_FOR_BATCH": {
@@ -134,7 +148,12 @@ export class CreateCheckpointService extends BaseService {
           batchDependencyFriendlyId: reason.batchFriendlyId,
         });
 
-        await marqs?.acknowledgeMessage(attempt.taskRunId);
+        keepRunAlive = await this.#isBatchCompleted(reason.batchFriendlyId);
+
+        if (!keepRunAlive) {
+          await marqs?.acknowledgeMessage(attempt.taskRunId);
+        }
+
         break;
       }
       case "RETRYING_AFTER_FAILURE": {
@@ -174,6 +193,37 @@ export class CreateCheckpointService extends BaseService {
     return {
       checkpoint,
       event: checkpointEvent,
+      keepRunAlive,
     };
+  }
+
+  async #isBatchCompleted(friendlyId: string): Promise<boolean> {
+    const batch = await this._prisma.batchTaskRun.findUnique({
+      where: {
+        friendlyId,
+      },
+    });
+
+    if (!batch) {
+      logger.error("Batch not found", { friendlyId });
+      return false;
+    }
+
+    return batch.status === "COMPLETED";
+  }
+
+  async #isRunCompleted(friendlyId: string): Promise<boolean> {
+    const run = await this._prisma.taskRun.findUnique({
+      where: {
+        friendlyId,
+      },
+    });
+
+    if (!run) {
+      logger.error("Run not found", { friendlyId });
+      return false;
+    }
+
+    return isFinalRunStatus(run.status);
   }
 }

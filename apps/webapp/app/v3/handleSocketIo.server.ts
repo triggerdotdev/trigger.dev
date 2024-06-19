@@ -138,8 +138,19 @@ function createCoordinatorNamespace(io: Server) {
         await sharedQueueTasks.taskRunHeartbeat(message.runId);
       },
       CHECKPOINT_CREATED: async (message) => {
-        const createCheckpoint = new CreateCheckpointService();
-        await createCheckpoint.call(message);
+        try {
+          const createCheckpoint = new CreateCheckpointService();
+          const result = await createCheckpoint.call(message);
+
+          return { keepRunAlive: result?.keepRunAlive ?? false };
+        } catch (error) {
+          logger.error("Error while creating checkpoint", {
+            rawMessage: message,
+            error: error instanceof Error ? error.message : error,
+          });
+
+          return { keepRunAlive: false };
+        }
       },
       CREATE_WORKER: async (message) => {
         try {

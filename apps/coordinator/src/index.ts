@@ -1162,13 +1162,7 @@ class TaskCoordinator {
             return;
           }
 
-          if (!checkpoint.docker || !willSimulate) {
-            socket.emit("REQUEST_EXIT", {
-              version: "v1",
-            });
-          }
-
-          this.#platformSocket?.send("CHECKPOINT_CREATED", {
+          const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
             version: "v1",
             attemptFriendlyId: message.attemptFriendlyId,
             docker: checkpoint.docker,
@@ -1179,6 +1173,17 @@ class TaskCoordinator {
               now: message.now,
             },
           });
+
+          if (ack?.keepRunAlive) {
+            logger.log("keeping run alive after duration checkpoint", { runId: socket.data.runId });
+            return;
+          }
+
+          if (!checkpoint.docker || !willSimulate) {
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+          }
         });
 
         socket.on("WAIT_FOR_TASK", async (message, callback) => {
@@ -1205,13 +1210,7 @@ class TaskCoordinator {
             return;
           }
 
-          if (!checkpoint.docker || !willSimulate) {
-            socket.emit("REQUEST_EXIT", {
-              version: "v1",
-            });
-          }
-
-          this.#platformSocket?.send("CHECKPOINT_CREATED", {
+          const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
             version: "v1",
             attemptFriendlyId: message.attemptFriendlyId,
             docker: checkpoint.docker,
@@ -1221,6 +1220,17 @@ class TaskCoordinator {
               friendlyId: message.friendlyId,
             },
           });
+
+          if (ack?.keepRunAlive) {
+            logger.log("keeping run alive after task checkpoint", { runId: socket.data.runId });
+            return;
+          }
+
+          if (!checkpoint.docker || !willSimulate) {
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+          }
         });
 
         socket.on("WAIT_FOR_BATCH", async (message, callback) => {
@@ -1247,13 +1257,7 @@ class TaskCoordinator {
             return;
           }
 
-          if (!checkpoint.docker || !willSimulate) {
-            socket.emit("REQUEST_EXIT", {
-              version: "v1",
-            });
-          }
-
-          this.#platformSocket?.send("CHECKPOINT_CREATED", {
+          const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
             version: "v1",
             attemptFriendlyId: message.attemptFriendlyId,
             docker: checkpoint.docker,
@@ -1264,6 +1268,17 @@ class TaskCoordinator {
               runFriendlyIds: message.runFriendlyIds,
             },
           });
+
+          if (ack?.keepRunAlive) {
+            logger.log("keeping run alive after batch checkpoint", { runId: socket.data.runId });
+            return;
+          }
+
+          if (!checkpoint.docker || !willSimulate) {
+            socket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+          }
         });
 
         socket.on("INDEX_TASKS", async (message, callback) => {
