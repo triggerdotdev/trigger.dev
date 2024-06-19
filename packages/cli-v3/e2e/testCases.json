@@ -1,26 +1,26 @@
 [
   {
-    "name": "config-invalid",
+    "id": "config-invalid",
     "wantConfigInvalidError": true
   },
   {
-    "name": "config-not-found",
+    "id": "config-not-found",
     "wantConfigNotFoundError": true
   },
   {
-    "name": "dep-to-add-scope-parsing",
+    "id": "dep-to-add-scope-parsing",
     "skipTypecheck": true
   },
   {
-    "name": "legacy-peer-deps",
+    "id": "legacy-peer-deps",
     "skipTypecheck": true
   },
   {
-    "name": "resolve-trigger-deps",
+    "id": "resolve-trigger-deps",
     "skipTypecheck": true
   },
   {
-    "name": "server-only",
+    "id": "server-only",
     "skipTypecheck": true
   }
 ]

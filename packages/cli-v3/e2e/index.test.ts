@@ -28,12 +28,18 @@ interface TestCase {
   wantWorkerError?: boolean;
   wantDependenciesError?: boolean;
   wantInstallationError?: boolean;
-};
+}
+
+interface E2EFixtureTest extends TestCase {
+  dir: string;
+  tempDir: string;
+  packageManager: PackageManager;
+}
 
 const TIMEOUT = 120_000;
 
 const testCases: TestCase[] = process.env.MOD
-  ? allTestCases.filter(({ name }) => process.env.MOD === name)
+  ? allTestCases.filter(({ id }) => process.env.MOD === id)
   : allTestCases;
 
 let options: E2EOptions;
@@ -53,39 +59,25 @@ logger.loggerLevel = options.logLevel;
 
 if (testCases.length > 0) {
   describe.concurrent("bundling", async () => {
-    beforeAll(async () => {
-      for (let testCase of testCases) {
-        const { name } = testCase;
-        const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
-        await rm(resolve(join(fixtureDir, ".trigger")), { force: true, recursive: true });
-        await rimraf(join(fixtureDir, "**/node_modules/**"), {
-          glob: true,
-        });
-        const packageManager: PackageManager = await parsePackageManager(options, fixtureDir);
-
-        if (
-          packageManager === "npm" &&
-          (existsSync(resolve(join(fixtureDir, "yarn.lock"))) ||
-            existsSync(resolve(join(fixtureDir, "yarn.lock.copy"))))
-        ) {
-          // `npm ci` & `npm install` will update an existing yarn.lock
-          try {
-            await rename(
-              resolve(join(fixtureDir, "yarn.lock")),
-              resolve(join(fixtureDir, "yarn.lock.copy"))
-            );
-          } catch (e) {
-            await rename(
-              resolve(join(fixtureDir, "yarn.lock.copy")),
-              resolve(join(fixtureDir, "yarn.lock"))
-            );
-          }
+    beforeEach<E2EFixtureTest>(async ({ dir, packageManager }) => {
+      await rimraf(join(dir, "**/node_modules/**"), {
+        glob: true,
+      });
+      if (
+        packageManager === "npm" &&
+        (existsSync(resolve(join(dir, "yarn.lock"))) ||
+          existsSync(resolve(join(dir, "yarn.lock.copy"))))
+      ) {
+        // `npm ci` & `npm install` will update an existing yarn.lock
+        try {
+          await rename(resolve(join(dir, "yarn.lock")), resolve(join(dir, "yarn.lock.copy")));
+        } catch (e) {
+          await rename(resolve(join(dir, "yarn.lock.copy")), resolve(join(dir, "yarn.lock")));
         }
       }
     });
 
-    afterEach(() => {
-      delete global.tempDir;
+    afterEach<E2EFixtureTest>(async ({ dir, packageManager }) => {
       delete global.resolvedConfig;
 
       delete global.entryPointMetaOutput;
@@ -94,50 +86,54 @@ if (testCases.length > 0) {
       delete global.workerOutputFile;
 
       delete global.dependencies;
-    });
 
-    afterAll(async () => {
-      for (let testCase of testCases) {
-        const { name } = testCase;
-        const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
-        const packageManager: PackageManager = await parsePackageManager(options, fixtureDir);
-
-        if (packageManager === "npm") {
-          try {
-            await rename(
-              resolve(join(fixtureDir, "yarn.lock.copy")),
-              resolve(join(fixtureDir, "yarn.lock"))
-            );
-          } catch {}
-        }
+      if (packageManager === "npm") {
+        try {
+          await rename(resolve(join(dir, "yarn.lock.copy")), resolve(join(dir, "yarn.lock")));
+        } catch {}
       }
     });
 
     for (let testCase of testCases) {
-      const {
-        name,
-        skipTypecheck,
-        wantConfigNotFoundError,
-        wantConfigInvalidError,
-        wantCompilationError,
-        wantWorkerError,
-        wantDependenciesError,
-        wantInstallationError,
-      } = testCase;
-      const fixtureDir = resolve(join(process.cwd(), "e2e/fixtures", name));
-      let shouldSkipFixture: boolean = false;
-      const packageManager: PackageManager = await parsePackageManager(options, fixtureDir);
+      test.extend<E2EFixtureTest>({
+        ...testCase,
+        dir: async ({ id }, use) => await use(resolve(join(process.cwd(), "e2e/fixtures", id))),
+        packageManager: async ({ dir }, use) => await use(await parsePackageManager(options, dir)),
+        tempDir: async ({ dir }, use) => {
+          const existingTempDir = resolve(join(dir, ".trigger"));
 
-      if (options.packageManager)
-        shouldSkipFixture = !existsSync(resolve(fixtureDir, LOCKFILES[options.packageManager]));
+          if (existsSync(existingTempDir)) {
+            await rm(existingTempDir, { force: true, recursive: true });
+          }
+          await use((await mkdir(join(dir, ".trigger"), { recursive: true })) as string);
+        },
+      })(
+        `fixture '${testCase.id}'`,
+        { timeout: TIMEOUT },
+        async ({
+          dir,
+          packageManager,
+          skip,
+          skipTypecheck,
+          tempDir,
+          wantCompilationError,
+          wantConfigInvalidError,
+          wantConfigNotFoundError,
+          wantDependenciesError,
+          wantInstallationError,
+          wantWorkerError,
+        }) => {
+          if (
+            options.packageManager &&
+            !existsSync(resolve(dir, LOCKFILES[options.packageManager]))
+          ) {
+            skip();
+          }
 
-      test.skipIf(shouldSkipFixture)(
-        `fixture '${name}'`,
-        async () => {
           await expect(
             (async () => {
               if (["pnpm", "yarn"].includes(packageManager)) {
-                const buffer = readFileSync(resolve(join(fixtureDir, "package.json")), "utf8");
+                const buffer = readFileSync(resolve(join(dir, "package.json")), "utf8");
                 const pkgJSON = JSON.parse(buffer.toString());
                 const version = pkgJSON.engines[packageManager];
                 console.log(
@@ -147,7 +143,7 @@ if (testCases.length > 0) {
                   "corepack",
                   ["use", `${packageManager}@${version}`],
                   {
-                    cwd: fixtureDir,
+                    cwd: dir,
                   }
                 );
                 console.log(stdout);
@@ -157,8 +153,8 @@ if (testCases.length > 0) {
                   packageManager,
                   installArgs(packageManager),
                   {
-                    cwd: fixtureDir,
-                    NODE_PATH: resolve(join(fixtureDir, "node_modules")),
+                    cwd: dir,
+                    NODE_PATH: resolve(join(dir, "node_modules")),
                   }
                 );
                 console.log(stdout);
@@ -170,7 +166,7 @@ if (testCases.length > 0) {
 
           const configExpect = expect(
             (async () => {
-              global.resolvedConfig = await readConfig(fixtureDir, { cwd: fixtureDir });
+              global.resolvedConfig = await readConfig(dir, { cwd: dir });
             })(),
             wantConfigNotFoundError || wantConfigInvalidError
               ? "does not resolve config"
@@ -191,11 +187,6 @@ if (testCases.length > 0) {
 
           expect(global.resolvedConfig).not.toBe("error");
 
-          global.tempDir = await mkdir(
-            join((global.resolvedConfig as ReadConfigFileResult).config.projectDir, ".trigger"),
-            { recursive: true }
-          );
-
           if (!skipTypecheck) {
             await expect(
               (async () =>
@@ -213,7 +204,7 @@ if (testCases.length > 0) {
                 entryPointOutputFile,
               } = await compile({
                 resolvedConfig: global.resolvedConfig!,
-                tempDir: global.tempDir!,
+                tempDir,
               });
               global.entryPointMetaOutput = entryPointMetaOutput;
               global.entryPointOutputFile = entryPointOutputFile;
@@ -236,7 +227,7 @@ if (testCases.length > 0) {
                 entryPointMetaOutput: global.entryPointMetaOutput!,
                 metaOutput: global.workerMetaOutput!,
                 resolvedConfig: global.resolvedConfig!,
-                tempDir: global.tempDir!,
+                tempDir,
                 packageManager,
               });
               global.dependencies = dependencies;
@@ -255,7 +246,7 @@ if (testCases.length > 0) {
             (async () => {
               await createContainerFile({
                 resolvedConfig: global.resolvedConfig!,
-                tempDir: global.tempDir!,
+                tempDir,
               });
             })(),
             "copies postinstall command into Containerfile.prod"
@@ -284,8 +275,8 @@ if (testCases.length > 0) {
                   "--strict-peer-deps=false",
                 ],
                 {
-                  cwd: global.tempDir!,
-                  NODE_PATH: resolve(join(global.tempDir!, "node_modules")),
+                  cwd: tempDir,
+                  NODE_PATH: resolve(join(tempDir, "node_modules")),
                 }
               );
               console.log(stdout);
@@ -304,10 +295,10 @@ if (testCases.length > 0) {
           const workerStartExpect = expect(
             (async () => {
               const { stdout, stderr } = await execaNode("worker.js", {
-                cwd: global.tempDir!,
+                cwd: tempDir,
                 env: {
                   // Since we don't start the worker in a container, limit node resolution algorithm to the '.trigger/node_modules' folder
-                  NODE_PATH: resolve(join(global.tempDir!, "node_modules")),
+                  NODE_PATH: resolve(join(tempDir, "node_modules")),
                 },
               });
               console.log(stdout);
@@ -322,8 +313,7 @@ if (testCases.length > 0) {
           }
 
           await workerStartExpect.resolves.not.toThrowError();
-        },
-        { timeout: TIMEOUT }
+        }
       );
     }
   });
