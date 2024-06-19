@@ -202,17 +202,53 @@ const zodIpc = new ZodIpcConnection({
     },
     CLEANUP: async ({ flush, kill }, sender) => {
       if (kill) {
-        await Promise.all([prodUsageManager.flush(), tracingSDK.flush()]);
+        await flushAll();
         // Now we need to exit the process
         await sender.send("READY_TO_DISPOSE", undefined);
       } else {
         if (flush) {
-          await Promise.all([prodUsageManager.flush(), tracingSDK.flush()]);
+          await flushAll();
         }
       }
     },
   },
 });
+
+async function flushAll(timeoutInMs: number = 10_000) {
+  const now = performance.now();
+
+  console.log(`Flushing at ${now}`);
+
+  await Promise.all([flushUsage(), flushTracingSDK()]);
+
+  const duration = performance.now() - now;
+
+  console.log(`Flushed in ${duration}ms`);
+}
+
+async function flushUsage() {
+  const now = performance.now();
+
+  console.log(`Flushing usage at ${now}`);
+
+  await prodUsageManager.flush();
+
+  const duration = performance.now() - now;
+
+  console.log(`Flushed usage in ${duration}ms`);
+}
+
+async function flushTracingSDK() {
+  const now = performance.now();
+
+  console.log(`Flushing tracingSDK at ${now}`);
+
+  await tracingSDK.flush();
+
+  const duration = performance.now() - now;
+
+  console.log(`Flushed tracingSDK in ${duration}ms`);
+}
 
 // Ignore SIGTERM, handled by entry point
 process.on("SIGTERM", async () => {});
