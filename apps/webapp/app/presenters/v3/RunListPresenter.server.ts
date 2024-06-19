@@ -4,8 +4,8 @@ import { Direction } from "~/components/runs/RunStatuses";
 import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 import { BasePresenter } from "./basePresenter.server";
+import { isCancellableRunStatus } from "~/v3/taskStatus";
 
 export type RunListOptions = {
   userId?: string;
@@ -291,7 +291,7 @@ export class RunListPresenter extends BasePresenter {
           taskIdentifier: run.taskIdentifier,
           spanId: run.spanId,
           isReplayable: true,
-          isCancellable: CANCELLABLE_STATUSES.includes(run.status),
+          isCancellable: isCancellableRunStatus(run.status),
           environment: displayableEnvironment(environment, userId),
           idempotencyKey: run.idempotencyKey ? run.idempotencyKey : undefined,
         };

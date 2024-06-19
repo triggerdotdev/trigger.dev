@@ -1,19 +1,13 @@
 import { CoordinatorToPlatformMessages } from "@trigger.dev/core/v3";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
-import type {
-  CheckpointRestoreEvent,
-  TaskRunAttemptStatus,
-  TaskRunStatus,
-} from "@trigger.dev/database";
+import type { CheckpointRestoreEvent } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "~/v3/marqs/index.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { BaseService } from "./baseService.server";
 import { CrashTaskRunService } from "./crashTaskRun.server";
-
-const FREEZABLE_RUN_STATUSES: TaskRunStatus[] = ["EXECUTING", "RETRYING_AFTER_FAILURE"];
-const FREEZABLE_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["EXECUTING", "FAILED"];
+import { isFinalRunStatus, isFreezableAttemptStatus, isFreezableRunStatus } from "../taskStatus";
 
 export class CreateCheckpointService extends BaseService {
   public async call(
@@ -49,8 +43,8 @@ export class CreateCheckpointService extends BaseService {
     }
 
     if (
-      !FREEZABLE_ATTEMPT_STATUSES.includes(attempt.status) ||
-      !FREEZABLE_RUN_STATUSES.includes(attempt.taskRun.status)
+      !isFreezableAttemptStatus(attempt.status) ||
+      !isFreezableRunStatus(attempt.taskRun.status)
     ) {
       logger.error("Unfreezable state", {
         attempt: {
