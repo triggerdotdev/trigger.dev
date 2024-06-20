@@ -1,5 +1,4 @@
 import { RunStatus } from "../schemas";
-import { BlobLikePart, Uploadable } from "./core";
 import { CursorPageParams } from "./pagination";
 
 export interface ImportEnvironmentVariablesParams {
@@ -11,7 +10,7 @@ export interface ImportEnvironmentVariablesParams {
    * 1. As a record of key-value pairs. e.g. `{ "key1": "value1", "key2": "value2" }`
    * 2. As an "uploadable" object in dotenv format. An uploadable can be a Node readable stream, a string, or a Buffer. You can also pass the return value of a `fetch` call.
    */
-  variables: Uploadable | BlobLikePart | Record<string, string>;
+  variables: Record<string, string>;
 
   override?: boolean;
 }
