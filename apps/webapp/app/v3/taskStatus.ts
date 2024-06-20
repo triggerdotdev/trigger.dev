@@ -1,4 +1,4 @@
-import { TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
+import type { TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 
 export const CANCELLABLE_RUN_STATUSES: TaskRunStatus[] = [
   "PENDING",
