@@ -16,12 +16,17 @@ import {
 import { randomUUID } from "crypto";
 import { TaskMonitor } from "./taskMonitor";
 import { PodCleaner } from "./podCleaner";
+import { UptimeHeartbeat } from "./uptimeHeartbeat";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 const NODE_NAME = process.env.NODE_NAME || "local";
 const OTEL_EXPORTER_OTLP_ENDPOINT =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318";
+
 const POD_CLEANER_INTERVAL_SECONDS = Number(process.env.POD_CLEANER_INTERVAL_SECONDS || "300");
+
+const UPTIME_HEARTBEAT_URL = process.env.UPTIME_HEARTBEAT_URL;
+const UPTIME_INTERVAL_SECONDS = Number(process.env.UPTIME_INTERVAL_SECONDS || "30");
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 logger.log(`running in ${RUNTIME_ENV} mode`);
@@ -565,3 +570,16 @@ const podCleaner = new PodCleaner({
 });
 
 podCleaner.start();
+
+if (UPTIME_HEARTBEAT_URL) {
+  const uptimeHeartbeat = new UptimeHeartbeat({
+    runtimeEnv: RUNTIME_ENV,
+    namespace: "default",
+    intervalInSeconds: UPTIME_INTERVAL_SECONDS,
+    pingUrl: UPTIME_HEARTBEAT_URL,
+  });
+
+  uptimeHeartbeat.start();
+} else {
+  logger.log("Uptime heartbeat is disabled, set UPTIME_HEARTBEAT_URL to enable.");
+}
