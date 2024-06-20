@@ -42,6 +42,7 @@ async function detectPackageManagerFromArtifacts(path: string): Promise<PackageM
     pnpm: "pnpm-lock.yaml",
     npm: "package-lock.json",
     npmShrinkwrap: "npm-shrinkwrap.json",
+    bun: "bun.lockb",
   };
 
   const foundPath = await findUp(Object.values(artifacts), { cwd: path });
@@ -54,11 +55,16 @@ async function detectPackageManagerFromArtifacts(path: string): Promise<PackageM
 
   switch (basename(foundPath)) {
     case artifacts.yarn:
+      logger.debug("Found yarn artifact", { foundPath });
       return "yarn";
     case artifacts.pnpm:
+      logger.debug("Found pnpm artifact", { foundPath });
       return "pnpm";
     case artifacts.npm:
     case artifacts.npmShrinkwrap:
+      logger.debug("Found npm artifact", { foundPath });
+    case artifacts.bun:
+      logger.debug("Found bun artifact", { foundPath });
       return "npm";
     default:
       throw new Error(`Unhandled package manager detection path: ${foundPath}`);
