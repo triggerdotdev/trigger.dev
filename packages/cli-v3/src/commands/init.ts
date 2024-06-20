@@ -32,6 +32,7 @@ import { login } from "./login";
 import { spinner } from "../utilities/windows";
 import { CLOUD_API_URL } from "../consts";
 import * as packageJson from "../../package.json";
+import { prettyError } from "../utilities/cliOutput";
 
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -77,6 +78,9 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   const span = trace.getSpan(context.active());
 
   intro("Initializing project");
+
+  // Detect tsconfig.json and exit if not found
+  await detectTsConfig(dir, options);
 
   const authorization = await login({
     embedded: true,
@@ -321,8 +325,46 @@ async function gitIgnoreDotTriggerDir(dir: string, options: InitCommandOptions) 
   });
 }
 
+async function detectTsConfig(dir: string, options: InitCommandOptions) {
+  return await tracer.startActiveSpan("detectTsConfig", async (span) => {
+    try {
+      const projectDir = resolve(process.cwd(), dir);
+      const tsconfigPath = join(projectDir, "tsconfig.json");
+
+      span.setAttributes({
+        "cli.projectDir": projectDir,
+        "cli.tsconfigPath": tsconfigPath,
+      });
+
+      const tsconfigExists = await pathExists(tsconfigPath);
+
+      if (!tsconfigExists) {
+        prettyError(
+          "No tsconfig.json found",
+          `The init command needs to be run in a TypeScript project. You can create one like this:`,
+          `npm install typescript --save-dev\nnpx tsc --init\n`
+        );
+
+        throw new Error("TypeScript required");
+      }
+
+      logger.debug("tsconfig.json exists", { tsconfigPath });
+
+      span.end();
+    } catch (e) {
+      if (!(e instanceof SkipCommandError)) {
+        recordSpanException(span, e);
+      }
+
+      span.end();
+
+      throw e;
+    }
+  });
+}
+
 async function addConfigFileToTsConfig(dir: string, options: InitCommandOptions) {
-  return await tracer.startActiveSpan("createTriggerDir", async (span) => {
+  return await tracer.startActiveSpan("addConfigFileToTsConfig", async (span) => {
     try {
       const projectDir = resolve(process.cwd(), dir);
       const tsconfigPath = join(projectDir, "tsconfig.json");
