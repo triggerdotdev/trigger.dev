@@ -1,5 +1,5 @@
-import type { JobRun, Task, TaskAttempt } from "@trigger.dev/database";
-import { CachedTask, ServerTask } from "@trigger.dev/core";
+import type { CachedTask, ServerTask } from "@trigger.dev/core";
+import type { Task, TaskAttempt } from "@trigger.dev/database";
 
 export type TaskWithAttempts = Task & {
   attempts: TaskAttempt[];

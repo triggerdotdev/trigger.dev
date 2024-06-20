@@ -6,7 +6,10 @@ import {
 } from "@heroicons/react/20/solid";
 import { useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
+import {
+  formatDurationNanoseconds,
+  nanosecondsToMilliseconds,
+} from "@trigger.dev/core/v3/utils/durations";
 import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";

@@ -11,7 +11,7 @@ import {
   RunPanelIconSection,
   RunPanelProperties,
 } from "./RunCard";
-import { DisplayProperty } from "@trigger.dev/core";
+import type { DisplayProperty } from "@trigger.dev/core";
 
 export function TriggerDetail({
   trigger,

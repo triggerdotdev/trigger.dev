@@ -20,7 +20,7 @@ import {
   UpdatingDuration,
 } from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
-import { formatDuration } from "@trigger.dev/core/v3";
+import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 
 type TaskCardProps = ViewTask & {
   selectedId?: string;

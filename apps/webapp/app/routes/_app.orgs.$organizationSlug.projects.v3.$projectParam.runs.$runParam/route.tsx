@@ -12,7 +12,7 @@ import {
   formatDurationMilliseconds,
   millisecondsToNanoseconds,
   nanosecondsToMilliseconds,
-} from "@trigger.dev/core/v3";
+} from "@trigger.dev/core/v3/utils/durations";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";

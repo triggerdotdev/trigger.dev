@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "../primitives/Table";
 import { RunStatus } from "./RunStatuses";
-import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
 
 type RunTableItem = {
   id: string;

@@ -1,7 +1,7 @@
 import { ChatBubbleLeftRightIcon, ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
 import { TaskRunStatus } from "@trigger.dev/database";
 import { Fragment, Suspense, useEffect, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps } from "recharts";

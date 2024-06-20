@@ -1,4 +1,4 @@
-import { Prettify } from "@trigger.dev/core";
+import type { Prettify } from "@trigger.dev/core";
 import { z } from "zod";
 import {
   RuntimeEnvironment,

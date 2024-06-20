@@ -6,6 +6,8 @@ export default defineConfig({
   entry: [
     "./src/index.ts",
     "./src/v3/index.ts",
+    "./src/v3/utils/durations.ts",
+    "./src/v3/schemas/index.ts",
     "./src/v3/otel/index.ts",
     "./src/v3/zodMessageHandler.ts",
     "./src/v3/zodNamespace.ts",

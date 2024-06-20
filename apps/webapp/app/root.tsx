@@ -1,11 +1,11 @@
 import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import type { ShouldRevalidateFunction } from "@remix-run/react";
-import { Links, LiveReload, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
 import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExternalScripts } from "remix-utils/external-scripts";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
-import tailwindStylesheetUrl from "~/tailwind.css";
+import tailwindStylesheetUrl from "~/tailwind.css?url";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
 import { HighlightInit } from "./components/HighlightInit";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
@@ -115,7 +115,6 @@ function App() {
           <ScrollRestoration />
           <ExternalScripts />
           <Scripts />
-          <LiveReload />
         </body>
       </html>
     </>

@@ -37,6 +37,22 @@
       "require": "./dist/v3/otel/index.js",
       "types": "./dist/v3/otel/index.d.ts"
     },
+    "./v3/schemas": {
+      "import": {
+        "types": "./dist/v3/schemas/index.d.mts",
+        "default": "./dist/v3/schemas/index.mjs"
+      },
+      "require": "./dist/v3/schemas/index.js",
+      "types": "./dist/v3/schemas/index.d.ts"
+    },
+    "./v3/utils/durations": {
+      "import": {
+        "types": "./dist/v3/utils/durations.d.mts",
+        "default": "./dist/v3/utils/durations.mjs"
+      },
+      "require": "./dist/v3/utils/durations.js",
+      "types": "./dist/v3/utils/durations.d.ts"
+    },
     "./v3/zodfetch": {
       "import": {
         "types": "./dist/v3/zodfetch.d.mts",

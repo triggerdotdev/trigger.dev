@@ -1,5 +1,5 @@
 import * as Slider from "@radix-ui/react-slider";
-import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
 import { useState } from "react";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Switch } from "~/components/primitives/Switch";
