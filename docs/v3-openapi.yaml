@@ -811,17 +811,7 @@ paths:
                   description: Whether to override existing variables or not
                   default: false
               required: ["variables"]
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                variables:
-                  type: string
-                  format: binary
-                override:
-                  type: boolean
-              required:
-                - variables
+
       responses:
         "200":
           description: Environment variables imported successfully
@@ -864,57 +854,11 @@ paths:
           source: |-
             import { envvars } from "@trigger.dev/sdk/v3";
 
-            // Import variables from an array
             await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
-              variables: [
-                {
-                  name: "SLACK_API_KEY",
-                  value: "slack_123456"
-                }
-              ],
+              variables: { SLACK_API_KEY: "slack_key_1234" },
               override: false
             });
-        - lang: typescript
-          label: Import variables from a read stream
-          source: |-
-            import { envvars } from "@trigger.dev/sdk/v3";
-            import { createReadStream } from "node:fs";
 
-            // Import variables in dotenv format from a file
-            await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
-              variables: createReadStream(".env"),
-              override: false
-            });
-        - lang: typescript
-          label: Import variables from a response
-          source: |-
-            import { envvars } from "@trigger.dev/sdk/v3";
-
-            // Import variables in dotenv format from a response
-            await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
-              variables: await fetch("https://example.com/.env"),
-              override: false
-            });
-        - lang: typescript
-          label: Import variables from a Buffer
-          source: |-
-            import { envvars } from "@trigger.dev/sdk/v3";
-
-            // Import variables in dotenv format from a buffer
-            await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
-              variables: Buffer.from("SLACK_API_KEY=slack_1234"),
-              override: false
-            });
-        - lang: typescript
-          label: Import variables from a File
-          source: |-
-            import { envvars } from "@trigger.dev/sdk/v3";
-
-            // Import variables in dotenv format from a file
-            await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
-              variables: new File(["SLACK_API_KEY=slack_1234"], ".env"),
-              override: false
-            });
 
   "/api/v1/projects/{projectRef}/envvars/{env}/{name}":
     parameters:

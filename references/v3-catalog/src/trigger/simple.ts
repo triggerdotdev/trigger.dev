@@ -31,18 +31,6 @@ export const taskWithSpecialCharacters = task({
   },
 });
 
-export const updateEnvVars = task({
-  id: "update-env-vars",
-  run: async () => {
-    return await envvars.upload({
-      variables: await fetch(
-        "https://gist.githubusercontent.com/ericallam/7a1001c6b03986a74d0f8aad4fd890aa/raw/fe2bc4da82f3b17178d47f58ec1458af47af5035/.env"
-      ),
-      override: true,
-    });
-  },
-});
-
 export const createJsonHeroDoc = task({
   id: "create-jsonhero-doc",
   run: async (payload: { title: string; content: any }, { ctx }) => {
