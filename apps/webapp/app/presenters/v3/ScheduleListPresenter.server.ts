@@ -22,6 +22,7 @@ export type ScheduleListItem = {
   userProvidedDeduplicationKey: boolean;
   cron: string;
   cronDescription: string;
+  timezone: string;
   externalId: string | null;
   nextRun: Date;
   lastRun: Date | undefined;
@@ -36,7 +37,6 @@ export type ScheduleList = Awaited<ReturnType<ScheduleListPresenter["call"]>>;
 export type ScheduleListAppliedFilters = ScheduleList["filters"];
 
 export class ScheduleListPresenter extends BasePresenter {
-
   public async call({
     userId,
     projectId,
@@ -71,9 +71,20 @@ export class ScheduleListPresenter extends BasePresenter {
             },
           },
         },
+        organization: {
+          select: {
+            maximumSchedulesLimit: true,
+          },
+        },
       },
       where: {
         id: projectId,
+      },
+    });
+
+    const schedulesCount = await this._prisma.taskSchedule.count({
+      where: {
+        projectId,
       },
     });
 
@@ -140,6 +151,7 @@ export class ScheduleListPresenter extends BasePresenter {
         userProvidedDeduplicationKey: true,
         generatorExpression: true,
         generatorDescription: true,
+        timezone: true,
         externalId: true,
         instances: {
           select: {
@@ -218,10 +230,11 @@ export class ScheduleListPresenter extends BasePresenter {
         userProvidedDeduplicationKey: schedule.userProvidedDeduplicationKey,
         cron: schedule.generatorExpression,
         cronDescription: schedule.generatorDescription,
+        timezone: schedule.timezone,
         active: schedule.active,
         externalId: schedule.externalId,
         lastRun: latestRun?.createdAt,
-        nextRun: calculateNextScheduledTimestamp(schedule.generatorExpression),
+        nextRun: calculateNextScheduledTimestamp(schedule.generatorExpression, schedule.timezone),
         environments: schedule.instances.map((instance) => {
           const environment = project.environments.find((env) => env.id === instance.environmentId);
           if (!environment) {
@@ -245,6 +258,10 @@ export class ScheduleListPresenter extends BasePresenter {
         return displayableEnvironment(environment, userId);
       }),
       hasFilters,
+      limits: {
+        used: schedulesCount,
+        limit: project.organization.maximumSchedulesLimit,
+      },
       filters: {
         tasks,
         environments,

@@ -5,10 +5,10 @@ import {
   ReplayRunResponse,
   RetrieveRunResponse,
   apiClientManager,
+  CursorPagePromise,
 } from "@trigger.dev/core/v3";
 import type { ListProjectRunsQueryParams, ListRunsQueryParams } from "@trigger.dev/core/v3";
 import { apiClientMissingError } from "./shared";
-import { CursorPagePromise } from "@trigger.dev/core/v3/apiClient/core";
 
 export type RetrieveRunResult = RetrieveRunResponse;
 

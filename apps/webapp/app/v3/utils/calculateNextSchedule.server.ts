@@ -2,21 +2,23 @@ import { parseExpression } from "cron-parser";
 
 export function calculateNextScheduledTimestamp(
   schedule: string,
+  timezone: string | null,
   lastScheduledTimestamp: Date = new Date()
 ) {
-  let nextStep = calculateNextStep(schedule, lastScheduledTimestamp);
+  let nextStep = calculateNextStep(schedule, timezone, lastScheduledTimestamp);
 
   while (nextStep.getTime() < Date.now()) {
-    nextStep = calculateNextStep(schedule, nextStep);
+    nextStep = calculateNextStep(schedule, timezone, nextStep);
   }
 
   return nextStep;
 }
 
-function calculateNextStep(schedule: string, currentDate: Date) {
+function calculateNextStep(schedule: string, timezone: string | null, currentDate: Date) {
   return parseExpression(schedule, {
     currentDate,
-    utc: true,
+    utc: timezone === null,
+    tz: timezone ?? undefined,
   })
     .next()
     .toDate();
@@ -24,6 +26,7 @@ function calculateNextStep(schedule: string, currentDate: Date) {
 
 export function nextScheduledTimestamps(
   cron: string,
+  timezone: string | null,
   lastScheduledTimestamp: Date,
   count: number = 1
 ) {
@@ -31,7 +34,11 @@ export function nextScheduledTimestamps(
   let nextScheduledTimestamp = lastScheduledTimestamp;
 
   for (let i = 0; i < count; i++) {
-    nextScheduledTimestamp = calculateNextScheduledTimestamp(cron, nextScheduledTimestamp);
+    nextScheduledTimestamp = calculateNextScheduledTimestamp(
+      cron,
+      timezone,
+      nextScheduledTimestamp
+    );
 
     result.push(nextScheduledTimestamp);
   }

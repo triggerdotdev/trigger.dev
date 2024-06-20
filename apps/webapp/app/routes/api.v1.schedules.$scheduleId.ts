@@ -79,9 +79,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
           friendlyId: parsedParams.data.scheduleId,
           taskIdentifier: body.data.task,
           cron: body.data.cron,
+          timezone: body.data.timezone,
           environments: [authenticationResult.environment.id],
           externalId: body.data.externalId,
-          deduplicationKey: body.data.deduplicationKey,
         };
 
         const schedule = await service.call(authenticationResult.environment.projectId, options);
@@ -95,6 +95,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
             expression: schedule.cron,
             description: schedule.cronDescription,
           },
+          timezone: schedule.timezone,
           externalId: schedule.externalId ?? undefined,
           deduplicationKey: schedule.deduplicationKey,
           environments: schedule.environments,

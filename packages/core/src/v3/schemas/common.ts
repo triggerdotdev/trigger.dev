@@ -1,5 +1,58 @@
 import { z } from "zod";
 
+// Defaults to 0.5
+export const MachineCpu = z.union([
+  z.literal(0.25),
+  z.literal(0.5),
+  z.literal(1),
+  z.literal(2),
+  z.literal(4),
+]);
+
+export type MachineCpu = z.infer<typeof MachineCpu>;
+
+// Defaults to 1
+export const MachineMemory = z.union([
+  z.literal(0.25),
+  z.literal(0.5),
+  z.literal(1),
+  z.literal(2),
+  z.literal(4),
+  z.literal(8),
+]);
+
+export type MachineMemory = z.infer<typeof MachineMemory>;
+
+// Default is small-1x
+export const MachinePresetName = z.enum([
+  "micro",
+  "small-1x",
+  "small-2x",
+  "medium-1x",
+  "medium-2x",
+  "large-1x",
+  "large-2x",
+]);
+
+export type MachinePresetName = z.infer<typeof MachinePresetName>;
+
+export const MachineConfig = z.object({
+  cpu: MachineCpu.optional(),
+  memory: MachineMemory.optional(),
+  preset: MachinePresetName.optional(),
+});
+
+export type MachineConfig = z.infer<typeof MachineConfig>;
+
+export const MachinePreset = z.object({
+  name: MachinePresetName,
+  cpu: z.number(),
+  memory: z.number(),
+  centsPerMs: z.number(),
+});
+
+export type MachinePreset = z.infer<typeof MachinePreset>;
+
 export const TaskRunBuiltInError = z.object({
   type: z.literal("BUILT_IN_ERROR"),
   name: z.string(),
@@ -77,7 +130,11 @@ export const TaskRun = z.object({
   tags: z.array(z.string()),
   isTest: z.boolean().default(false),
   createdAt: z.coerce.date(),
+  startedAt: z.coerce.date().default(() => new Date()),
   idempotencyKey: z.string().optional(),
+  durationMs: z.number().default(0),
+  costInCents: z.number().default(0),
+  baseCostInCents: z.number().default(0),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;
@@ -146,6 +203,7 @@ export const TaskRunExecution = z.object({
   organization: TaskRunExecutionOrganization,
   project: TaskRunExecutionProject,
   batch: TaskRunExecutionBatch.optional(),
+  machine: MachinePreset.optional(),
 });
 
 export type TaskRunExecution = z.infer<typeof TaskRunExecution>;
@@ -162,6 +220,7 @@ export const TaskRunContext = z.object({
   organization: TaskRunExecutionOrganization,
   project: TaskRunExecutionProject,
   batch: TaskRunExecutionBatch.optional(),
+  machine: MachinePreset.optional(),
 });
 
 export type TaskRunContext = z.infer<typeof TaskRunContext>;
@@ -174,12 +233,19 @@ export const TaskRunExecutionRetry = z.object({
 
 export type TaskRunExecutionRetry = z.infer<typeof TaskRunExecutionRetry>;
 
+export const TaskRunExecutionUsage = z.object({
+  durationMs: z.number(),
+});
+
+export type TaskRunExecutionUsage = z.infer<typeof TaskRunExecutionUsage>;
+
 export const TaskRunFailedExecutionResult = z.object({
   ok: z.literal(false),
   id: z.string(),
   error: TaskRunError,
   retry: TaskRunExecutionRetry.optional(),
   skippedRetrying: z.boolean().optional(),
+  usage: TaskRunExecutionUsage.optional(),
 });
 
 export type TaskRunFailedExecutionResult = z.infer<typeof TaskRunFailedExecutionResult>;
@@ -189,6 +255,7 @@ export const TaskRunSuccessfulExecutionResult = z.object({
   id: z.string(),
   output: z.string().optional(),
   outputType: z.string(),
+  usage: TaskRunExecutionUsage.optional(),
 });
 
 export type TaskRunSuccessfulExecutionResult = z.infer<typeof TaskRunSuccessfulExecutionResult>;

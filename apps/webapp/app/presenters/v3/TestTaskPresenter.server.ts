@@ -6,6 +6,7 @@ import {
   TaskTriggerSource,
 } from "@trigger.dev/database";
 import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
+import { getTimezones } from "~/utils/timezones.server";
 import { getUsername } from "~/utils/username";
 
 type TestTaskOptions = {
@@ -37,6 +38,7 @@ export type TestTask =
   | {
       triggerSource: "SCHEDULED";
       task: Task;
+      possibleTimezones: string[];
       runs: ScheduledRun[];
     };
 
@@ -61,6 +63,7 @@ export type ScheduledRun = Omit<RawRun, "number" | "payload"> & {
     timestamp: Date;
     lastTimestamp?: Date;
     externalId?: string;
+    timezone: string;
   };
 };
 
@@ -168,9 +171,11 @@ export class TestTaskPresenter {
           ),
         };
       case "SCHEDULED":
+        const possibleTimezones = getTimezones();
         return {
           triggerSource: "SCHEDULED",
           task: taskWithEnvironment,
+          possibleTimezones,
           runs: (
             await Promise.all(
               latestRuns.map(async (r) => {
@@ -195,6 +200,9 @@ export class TestTaskPresenter {
 
 async function getScheduleTaskRunPayload(run: RawRun) {
   const payload = await parsePacket({ data: run.payload, dataType: run.payloadType });
+  if (!payload.timezone) {
+    payload.timezone = "UTC";
+  }
   const parsed = ScheduledTaskPayload.safeParse(payload);
   return parsed;
 }

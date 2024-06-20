@@ -190,7 +190,8 @@
             "v3/management/schedules/update",
             "v3/management/schedules/delete",
             "v3/management/schedules/deactivate",
-            "v3/management/schedules/activate"
+            "v3/management/schedules/activate",
+            "v3/management/schedules/timezones"
           ]
         },
         {

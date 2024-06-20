@@ -185,7 +185,8 @@ export default function Page() {
   const location = useLocation();
   const organization = useOrganization();
   const project = useProject();
-  const user = useUser();
+
+  const isUtc = schedule.timezone === "UTC";
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
@@ -210,6 +211,7 @@ export default function Page() {
                   <Paragraph variant="small">{schedule.cronDescription}</Paragraph>
                 </div>
               </Property>
+              <Property label="Timezone">{schedule.timezone}</Property>
               <Property label="Environments">
                 <EnvironmentLabels size="small" environments={schedule.environments} />
               </Property>
@@ -245,18 +247,20 @@ export default function Page() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {!isUtc && <TableHeaderCell>{schedule.timezone}</TableHeaderCell>}
                     <TableHeaderCell>UTC</TableHeaderCell>
-                    <TableHeaderCell>Local time</TableHeaderCell>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {schedule.nextRuns.map((run, index) => (
                     <TableRow key={index}>
+                      {!isUtc && (
+                        <TableCell>
+                          <DateTime date={run} timeZone={schedule.timezone} />
+                        </TableCell>
+                      )}
                       <TableCell>
                         <DateTime date={run} timeZone="UTC" />
-                      </TableCell>
-                      <TableCell>
-                        <DateTime date={run} />
                       </TableCell>
                     </TableRow>
                   ))}

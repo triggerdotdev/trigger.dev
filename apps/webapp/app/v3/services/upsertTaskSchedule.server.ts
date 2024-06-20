@@ -8,6 +8,8 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import cronstrue from "cronstrue";
 import { calculateNextScheduledTimestamp } from "../utils/calculateNextSchedule.server";
+import { getTimezones } from "~/utils/timezones.server";
+import { env } from "~/env.server";
 
 export type UpsertTaskScheduleServiceOptions = UpsertSchedule;
 
@@ -60,6 +62,48 @@ export class UpsertTaskScheduleService extends BaseService {
       throw new ServiceValidationError(
         `Task with identifier ${schedule.taskIdentifier} is not a scheduled task.`
       );
+    }
+
+    //if creating a schedule, check they're under the limits
+    if (!schedule.friendlyId) {
+      //check they're within their limit
+      const limits = await this._prisma.organization.findFirst({
+        select: {
+          maximumSchedulesLimit: true,
+        },
+        where: {
+          projects: {
+            some: {
+              id: projectId,
+            },
+          },
+        },
+      });
+
+      if (!limits) {
+        throw new ServiceValidationError("Organization not found");
+      }
+
+      const schedulesCount = await this._prisma.taskSchedule.count({
+        where: {
+          projectId,
+        },
+      });
+
+      if (schedulesCount >= limits.maximumSchedulesLimit) {
+        throw new ServiceValidationError(
+          `You have created ${schedulesCount}/${limits.maximumSchedulesLimit} schedules so you'll need to increase your limits or delete some schedules. Increase your limits by contacting support.`
+        );
+      }
+    }
+
+    if (schedule.timezone) {
+      const possibleTimezones = getTimezones();
+      if (!possibleTimezones.includes(schedule.timezone)) {
+        throw new ServiceValidationError(
+          `Invalid IANA timezone: "${schedule.timezone}". View the list of valid timezones at ${env.APP_ORIGIN}/timezones`
+        );
+      }
     }
 
     const result = await $transaction(this._prisma, async (tx) => {
@@ -115,6 +159,7 @@ export class UpsertTaskScheduleService extends BaseService {
           options.deduplicationKey !== undefined && options.deduplicationKey !== "",
         generatorExpression: options.cron,
         generatorDescription: cronstrue.toString(options.cron),
+        timezone: options.timezone ?? "UTC",
         externalId: options.externalId ? options.externalId : undefined,
       },
     });
@@ -164,12 +209,14 @@ export class UpsertTaskScheduleService extends BaseService {
       data: {
         generatorExpression: options.cron,
         generatorDescription: cronstrue.toString(options.cron),
+        timezone: options.timezone ?? "UTC",
         externalId: options.externalId ? options.externalId : null,
       },
     });
 
     const scheduleHasChanged =
-      scheduleRecord.generatorExpression !== existingSchedule.generatorExpression;
+      scheduleRecord.generatorExpression !== existingSchedule.generatorExpression ||
+      scheduleRecord.timezone !== existingSchedule.timezone;
 
     // find the existing instances
     const existingInstances = await tx.taskScheduleInstance.findMany({
@@ -280,7 +327,11 @@ export class UpsertTaskScheduleService extends BaseService {
         : undefined,
       cron: taskSchedule.generatorExpression,
       cronDescription: taskSchedule.generatorDescription,
-      nextRun: calculateNextScheduledTimestamp(taskSchedule.generatorExpression),
+      timezone: taskSchedule.timezone,
+      nextRun: calculateNextScheduledTimestamp(
+        taskSchedule.generatorExpression,
+        taskSchedule.timezone
+      ),
       environments: instances.map((instance) => ({
         id: instance.environment.id,
         shortcode: instance.environment.shortcode,

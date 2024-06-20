@@ -27,6 +27,7 @@ export function detectResponseIsTimeout(rawBody: string, response?: Response) {
 
   return (
     isResponseVercelTimeout(response) ||
+    isResponseCloudfrontTimeout(response) ||
     isResponseDenoDeployTimeout(rawBody, response) ||
     isResponseCloudflareTimeout(rawBody, response)
   );
@@ -49,4 +50,8 @@ function isResponseVercelTimeout(response: Response) {
 
 function isResponseDenoDeployTimeout(rawBody: string, response: Response) {
   return response.status === 502 && rawBody.includes("TIME_LIMIT");
+}
+
+function isResponseCloudfrontTimeout(response: Response) {
+  return response.status === 504 && typeof response.headers.get("x-amz-cf-id") === "string";
 }

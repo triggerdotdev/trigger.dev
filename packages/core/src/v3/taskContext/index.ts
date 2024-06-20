@@ -75,6 +75,10 @@ export class TaskContextAPI {
         [SemanticInternalAttributes.ORGANIZATION_NAME]: this.ctx.organization.name,
         [SemanticInternalAttributes.BATCH_ID]: this.ctx.batch?.id,
         [SemanticInternalAttributes.IDEMPOTENCY_KEY]: this.ctx.run.idempotencyKey,
+        [SemanticInternalAttributes.MACHINE_PRESET_NAME]: this.ctx.machine?.name,
+        [SemanticInternalAttributes.MACHINE_PRESET_CPU]: this.ctx.machine?.cpu,
+        [SemanticInternalAttributes.MACHINE_PRESET_MEMORY]: this.ctx.machine?.memory,
+        [SemanticInternalAttributes.MACHINE_PRESET_CENTS_PER_MS]: this.ctx.machine?.centsPerMs,
       };
     }
 

@@ -119,7 +119,7 @@ export class TracingSDK {
       .merge(new Resource(envResourceAttributes));
 
     const traceProvider = new NodeTracerProvider({
-      forceFlushTimeoutMillis: config.forceFlushTimeoutMillis ?? 500,
+      forceFlushTimeoutMillis: config.forceFlushTimeoutMillis,
       resource: commonResources,
       spanLimits: {
         attributeCountLimit: OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
@@ -133,7 +133,7 @@ export class TracingSDK {
 
     const spanExporter = new OTLPTraceExporter({
       url: `${config.url}/v1/traces`,
-      timeoutMillis: config.forceFlushTimeoutMillis ?? 1000,
+      timeoutMillis: config.forceFlushTimeoutMillis,
     });
 
     traceProvider.addSpanProcessor(
@@ -197,13 +197,11 @@ export class TracingSDK {
   }
 
   public async flush() {
-    await this._traceProvider.forceFlush();
-    await this._logProvider.forceFlush();
+    await Promise.all([this._traceProvider.forceFlush(), this._logProvider.forceFlush()]);
   }
 
   public async shutdown() {
-    await this._traceProvider.shutdown();
-    await this._logProvider.shutdown();
+    await Promise.all([this._traceProvider.shutdown(), this._logProvider.shutdown()]);
   }
 }
 

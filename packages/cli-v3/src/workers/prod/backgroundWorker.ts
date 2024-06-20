@@ -624,6 +624,7 @@ class TaskRunProcess {
         ...(this.worker.debugOtel ? { OTEL_LOG_LEVEL: "debug" } : {}),
       },
     });
+
     this._childPid = this._child?.pid;
 
     this._ipc = new ZodIpcConnection({
@@ -754,6 +755,9 @@ class TaskRunProcess {
     console.log("Cleaning up task run process", {
       killChildProcess,
       killParentProcess,
+      ipc: this._ipc,
+      childPid: this._childPid,
+      realChildPid: this._child?.pid,
     });
 
     await this._ipc?.sendWithAck(
@@ -859,33 +863,11 @@ class TaskRunProcess {
   }
 
   #handleLog(data: Buffer) {
-    if (!this._currentExecution) {
-      return;
-    }
-
-    console.log(
-      `[${this.metadata.version}][${this._currentExecution.run.id}.${
-        this._currentExecution.attempt.number
-      }] ${data.toString()}`
-    );
+    console.log(data.toString());
   }
 
   #handleStdErr(data: Buffer) {
-    if (this._isBeingKilled) {
-      return;
-    }
-
-    if (!this._currentExecution) {
-      console.error(`[${this.metadata.version}] ${data.toString()}`);
-
-      return;
-    }
-
-    console.error(
-      `[${this.metadata.version}][${this._currentExecution.run.id}.${
-        this._currentExecution.attempt.number
-      }] ${data.toString()}`
-    );
+    console.error(data.toString());
   }
 
   async kill(signal?: number | NodeJS.Signals, timeoutInMs?: number) {

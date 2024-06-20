@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { QueueOptions, RetryOptions, Machine } from "./schemas";
+import { QueueOptions, RetryOptions } from "./schemas";
+import { MachineConfig } from "./common";
 
 export const TaskResource = z.object({
   id: z.string(),
@@ -7,7 +8,7 @@ export const TaskResource = z.object({
   exportName: z.string(),
   queue: QueueOptions.optional(),
   retry: RetryOptions.optional(),
-  machine: Machine.partial().optional(),
+  machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
 });
 

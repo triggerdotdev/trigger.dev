@@ -7,12 +7,12 @@ description: "There are some hard and soft limits in v3 that you might hit."
 
 These are the default limits on a free account.
 
-Before we introduce paid plans in July you can request more [on Discord](https://trigger.dev/discord) or by [contacting us](https://trigger.dev/contact). If you increase these defaults you may have to subscribe to a paid plan when we introduce them. For more details on the v3 Cloud pricing see the [pricing page](https://trigger.dev/blog/v3-developer-preview-launch#cloud-pricing).
-
 | Limit        | Details            |
 | ------------ | ------------------ |
 | Organization | 10 concurrent runs |
 | Environment  | 5 concurrent runs  |
+
+<Snippet file="v3/soft-limit.mdx" />
 
 ## Rate limits
 
@@ -23,3 +23,17 @@ Before we introduce paid plans in July you can request more [on Discord](https:/
 Generally speaking each SDK call is an API call.
 
 The most common cause of hitting the API rate limit is if you're calling `trigger()` on a task in a loop, instead of doing this use `batchTrigger()` which will trigger multiple tasks in a single API call. You can have up to 100 tasks in a single batch trigger call.
+
+## Schedules
+
+| Limit     | Details       |
+| --------- | ------------- |
+| Schedules | 5 per project |
+
+When attaching schedules to tasks we strongly recommend you add them in our dashboard if they're "static". That way you can control them easily per environment.
+
+If you add them dynamically using code make sure you add a `deduplicationKey` so you don't add the same schedule to a task multiple times. If you don't your task will get triggered multiple times, it will cost you more, and you will hit the limit.
+
+If you're creating schedules for your user you will definitely need to request more schedules from us.
+
+<Snippet file="v3/soft-limit.mdx" />

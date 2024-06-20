@@ -1,5 +1,25 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.39
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.39
+- @trigger.dev/core-backend@3.0.0-beta.39
+
+## 3.0.0-beta.38
+
+### Patch Changes
+
+- 1b90ffbb8: v3: Usage tracking
+- c405ae711: Added timezone support to schedules
+- Updated dependencies [1b90ffbb8]
+- Updated dependencies [0ed93a748]
+- Updated dependencies [c405ae711]
+- Updated dependencies [c405ae711]
+  - @trigger.dev/core@3.0.0-beta.38
+  - @trigger.dev/core-backend@3.0.0-beta.38
+
 ## 3.0.0-beta.37
 
 ### Patch Changes

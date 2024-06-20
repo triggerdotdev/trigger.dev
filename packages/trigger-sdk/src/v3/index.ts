@@ -4,6 +4,7 @@ export { retry, type RetryOptions } from "./retry";
 export { queue } from "./shared";
 export * from "./tasks";
 export * from "./wait";
+export * from "./usage";
 export type { Context };
 
 import type { Context } from "./shared";

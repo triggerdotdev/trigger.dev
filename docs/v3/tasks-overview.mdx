@@ -113,8 +113,7 @@ Some tasks require more vCPUs or GBs of RAM. You can specify these requirements 
 export const heavyTask = task({
   id: "heavy-task",
   machine: {
-    cpu: 2,
-    memory: 4,
+    preset: "large-1x", // 4 vCPU, 8 GB RAM
   },
   run: async (payload: any, { ctx }) => {
     //...

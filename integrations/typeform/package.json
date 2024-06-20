@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/typeform",
-  "version": "3.0.0-beta.37",
+  "version": "3.0.0-beta.39",
   "description": "The official Typeform integration for Trigger.dev",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,8 +24,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@trigger.dev/integration-kit": "workspace:^3.0.0-beta.37",
-    "@trigger.dev/sdk": "workspace:^3.0.0-beta.37",
+    "@trigger.dev/integration-kit": "workspace:^3.0.0-beta.39",
+    "@trigger.dev/sdk": "workspace:^3.0.0-beta.39",
     "@typeform/api-client": "^1.8.0",
     "zod": "3.22.3"
   },

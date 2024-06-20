@@ -7,3 +7,6 @@ export { ConsoleInterceptor } from "../consoleInterceptor";
 export { TracingSDK, type TracingDiagnosticLogLevel, recordSpanException } from "../otel";
 export { StandardTaskCatalog } from "../task-catalog/standardTaskCatalog";
 export { TaskContextSpanProcessor, TaskContextLogProcessor } from "../taskContext/otelProcessors";
+export * from "../usage-api";
+export { DevUsageManager } from "../usage/devUsageManager";
+export { ProdUsageManager, type ProdUsageManagerOptions } from "../usage/prodUsageManager";

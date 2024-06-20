@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "TaskRun" ADD COLUMN     "baseCostInCents" DOUBLE PRECISION NOT NULL DEFAULT 0;

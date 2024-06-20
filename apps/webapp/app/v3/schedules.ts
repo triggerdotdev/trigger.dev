@@ -55,6 +55,7 @@ export const UpsertSchedule = z.object({
   ),
   externalId: z.string().optional(),
   deduplicationKey: z.string().optional(),
+  timezone: z.string().optional(),
 });
 
 export type UpsertSchedule = z.infer<typeof UpsertSchedule>;

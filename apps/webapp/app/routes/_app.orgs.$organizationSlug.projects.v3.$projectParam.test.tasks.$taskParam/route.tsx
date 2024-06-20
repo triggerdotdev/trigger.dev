@@ -26,8 +26,10 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
+import { Select } from "~/components/primitives/Select";
 import { TextLink } from "~/components/primitives/TextLink";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
+import { TimezoneList } from "~/components/scheduled/timezones";
 import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import {
   ScheduledRun,
@@ -95,7 +97,13 @@ export default function Page() {
       return <StandardTaskForm task={result.task} runs={result.runs} />;
     }
     case "SCHEDULED": {
-      return <ScheduledTaskForm task={result.task} runs={result.runs} />;
+      return (
+        <ScheduledTaskForm
+          task={result.task}
+          runs={result.runs}
+          possibleTimezones={result.possibleTimezones}
+        />
+      );
     }
   }
 }
@@ -215,12 +223,21 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
   );
 }
 
-function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: ScheduledRun[] }) {
+function ScheduledTaskForm({
+  task,
+  runs,
+  possibleTimezones,
+}: {
+  task: TestTask["task"];
+  runs: ScheduledRun[];
+  possibleTimezones: string[];
+}) {
   const lastSubmission = useActionData();
   const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
   const [timestampValue, setTimestampValue] = useState<Date | undefined>();
   const [lastTimestampValue, setLastTimestampValue] = useState<Date | undefined>();
   const [externalIdValue, setExternalIdValue] = useState<string | undefined>();
+  const [timezoneValue, setTimezoneValue] = useState<string>("UTC");
 
   //set initial values
   useEffect(() => {
@@ -233,11 +250,20 @@ function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: Sched
     setTimestampValue(initialRun.payload.timestamp);
     setLastTimestampValue(initialRun.payload.lastTimestamp);
     setExternalIdValue(initialRun.payload.externalId);
+    setTimezoneValue(initialRun.payload.timezone);
   }, [selectedCodeSampleId]);
 
   const [
     form,
-    { timestamp, lastTimestamp, externalId, triggerSource, taskIdentifier, environmentId },
+    {
+      timestamp,
+      lastTimestamp,
+      externalId,
+      triggerSource,
+      taskIdentifier,
+      environmentId,
+      timezone,
+    },
   ] = useForm({
     id: "test-task-scheduled",
     // TODO: type this
@@ -313,6 +339,30 @@ function ScheduledTaskForm({ task, runs }: { task: TestTask["task"]; runs: Sched
                   previous run.
                 </Hint>
                 <FormError id={lastTimestamp.errorId}>{lastTimestamp.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={timezone.id}>Timezone</Label>
+                <Select
+                  {...conform.select(timezone)}
+                  placeholder="Select a timezone"
+                  defaultValue={timezoneValue}
+                  value={timezoneValue}
+                  setValue={(e) => {
+                    if (Array.isArray(e)) return;
+                    setTimezoneValue(e);
+                  }}
+                  items={possibleTimezones}
+                  filter={{ keys: [(item) => item.replace(/\//g, " ").replace(/_/g, " ")] }}
+                  dropdownIcon
+                  variant="tertiary/medium"
+                >
+                  {(matches) => <TimezoneList timezones={matches} />}
+                </Select>
+                <Hint>
+                  The Timestamp and Last timestamp are in UTC so this just changes the timezone
+                  string that comes through in the payload.
+                </Hint>
+                <FormError id={timezone.errorId}>{timezone.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label required={false} htmlFor={externalId.id}>

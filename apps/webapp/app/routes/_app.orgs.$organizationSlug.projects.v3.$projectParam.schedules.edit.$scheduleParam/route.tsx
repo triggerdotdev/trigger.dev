@@ -21,7 +21,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { schedule, possibleTasks, possibleEnvironments, showGenerateField } =
+  const { schedule, possibleTasks, possibleEnvironments, possibleTimezones, showGenerateField } =
     useTypedLoaderData<typeof loader>();
 
   return (
@@ -29,6 +29,7 @@ export default function Page() {
       schedule={schedule}
       possibleTasks={possibleTasks}
       possibleEnvironments={possibleEnvironments}
+      possibleTimezones={possibleTimezones}
       showGenerateField={showGenerateField}
     />
   );

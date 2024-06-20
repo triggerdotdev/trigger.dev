@@ -27,6 +27,7 @@ export class TestTaskService extends BaseService {
           scheduleId: "sched_1234",
           timestamp: data.timestamp,
           lastTimestamp: data.lastTimestamp,
+          timezone: data.timezone,
           externalId: data.externalId,
           upcoming: [],
         };

@@ -1,5 +1,9 @@
 # @trigger.dev/core-apps
 
+## 3.0.0-beta.39
+
+## 3.0.0-beta.38
+
 ## 3.0.0-beta.37
 
 ### Patch Changes

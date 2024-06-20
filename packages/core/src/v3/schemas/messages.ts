@@ -1,9 +1,12 @@
 import { z } from "zod";
-import { TaskRunExecution, TaskRunExecutionResult, TaskRunFailedExecutionResult } from "./common";
-
+import {
+  MachinePreset,
+  TaskRunExecution,
+  TaskRunExecutionResult,
+  TaskRunFailedExecutionResult,
+} from "./common";
 import {
   EnvironmentType,
-  Machine,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   TaskMetadataWithFilePath,
@@ -27,7 +30,7 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     type: z.literal("SCHEDULE_ATTEMPT"),
     image: z.string(),
     version: z.string(),
-    machine: Machine,
+    machine: MachinePreset,
     // identifiers
     id: z.string().optional(), // TODO: Remove this completely in a future release
     envId: z.string(),
@@ -384,7 +387,7 @@ export const PlatformToProviderMessages = {
       location: z.string(),
       reason: z.string().optional(),
       imageRef: z.string(),
-      machine: Machine,
+      machine: MachinePreset,
       // identifiers
       checkpointId: z.string(),
       envId: z.string(),
@@ -550,6 +553,10 @@ export const CoordinatorToPlatformMessages = {
           attemptNumber: z.number(),
         }),
       ]),
+    }),
+    callback: z.object({
+      version: z.literal("v1").default("v1"),
+      keepRunAlive: z.boolean(),
     }),
   },
   INDEXING_FAILED: {

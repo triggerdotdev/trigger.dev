@@ -4,8 +4,8 @@ import { Direction } from "~/components/runs/RunStatuses";
 import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 import { BasePresenter } from "./basePresenter.server";
+import { isCancellableRunStatus } from "~/v3/taskStatus";
 
 export type RunListOptions = {
   userId?: string;
@@ -156,6 +156,7 @@ export class RunListPresenter extends BasePresenter {
         runtimeEnvironmentId: string;
         status: TaskRunStatus;
         createdAt: Date;
+        startedAt: Date | null;
         lockedAt: Date | null;
         updatedAt: Date;
         isTest: boolean;
@@ -172,6 +173,7 @@ export class RunListPresenter extends BasePresenter {
     tr."runtimeEnvironmentId" AS "runtimeEnvironmentId",
     tr.status AS status,
     tr."createdAt" AS "createdAt",
+    tr."startedAt" AS "startedAt",
     tr."lockedAt" AS "lockedAt",
     tr."updatedAt" AS "updatedAt",
     tr."isTest" AS "isTest",
@@ -272,13 +274,15 @@ export class RunListPresenter extends BasePresenter {
 
         const hasFinished = FINISHED_STATUSES.includes(run.status);
 
+        const startedAt = run.startedAt ?? run.lockedAt;
+
         return {
           id: run.id,
           friendlyId: run.runFriendlyId,
           number: Number(run.number),
           createdAt: run.createdAt.toISOString(),
           updatedAt: run.updatedAt.toISOString(),
-          startedAt: run.lockedAt ? run.lockedAt.toISOString() : undefined,
+          startedAt: startedAt ? startedAt.toISOString() : undefined,
           hasFinished,
           finishedAt: hasFinished ? run.updatedAt.toISOString() : undefined,
           isTest: run.isTest,
@@ -287,7 +291,7 @@ export class RunListPresenter extends BasePresenter {
           taskIdentifier: run.taskIdentifier,
           spanId: run.spanId,
           isReplayable: true,
-          isCancellable: CANCELLABLE_STATUSES.includes(run.status),
+          isCancellable: isCancellableRunStatus(run.status),
           environment: displayableEnvironment(environment, userId),
           idempotencyKey: run.idempotencyKey ? run.idempotencyKey : undefined,
         };

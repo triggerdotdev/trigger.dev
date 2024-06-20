@@ -4,12 +4,21 @@ import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
+import { Feedback } from "~/components/Feedback";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabel, EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -78,6 +87,7 @@ export default function Page() {
     possibleEnvironments,
     hasFilters,
     filters,
+    limits,
     currentPage,
     totalPages,
   } = useTypedLoaderData<typeof loader>();
@@ -107,15 +117,43 @@ export default function Page() {
             </PropertyTable>
           </AdminDebugTooltip>
 
-          <LinkButton
-            LeadingIcon={PlusIcon}
-            to={`${v3NewSchedulePath(organization, project)}${location.search}`}
-            variant="primary/small"
-            shortcut={{ key: "n" }}
-            disabled={possibleTasks.length === 0 || isShowingNewPane}
-          >
-            New schedule
-          </LinkButton>
+          {limits.used >= limits.limit ? (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  LeadingIcon={PlusIcon}
+                  variant="primary/small"
+                  shortcut={{ key: "n" }}
+                  disabled={possibleTasks.length === 0 || isShowingNewPane}
+                >
+                  New schedule
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>You've exceeded your limit</DialogHeader>
+                <DialogDescription>
+                  You've used {limits.used}/{limits.limit} of your schedules. You can request more
+                  schedules.
+                </DialogDescription>
+                <DialogFooter>
+                  <Feedback
+                    button={<Button variant="primary/medium">Request more</Button>}
+                    defaultValue="help"
+                  />
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <LinkButton
+              LeadingIcon={PlusIcon}
+              to={`${v3NewSchedulePath(organization, project)}${location.search}`}
+              variant="primary/small"
+              shortcut={{ key: "n" }}
+              disabled={possibleTasks.length === 0 || isShowingNewPane}
+            >
+              New schedule
+            </LinkButton>
+          )}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -142,7 +180,21 @@ export default function Page() {
                 </div>
 
                 <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
-                <div className="mt-2 justify-end">
+                <div className="mt-2 justify-between">
+                  <Paragraph variant="extra-small" className="mt-3">
+                    <span className={limits.used >= limits.limit ? "text-warning" : ""}>
+                      You've used {limits.used}/{limits.limit} of your schedules.
+                    </span>{" "}
+                    <Feedback
+                      button={
+                        <button className=" text-secondary transition hover:text-indigo-400">
+                          Request more
+                        </button>
+                      }
+                      defaultValue="help"
+                    />
+                    .
+                  </Paragraph>
                   <PaginationControls currentPage={currentPage} totalPages={totalPages} />
                 </div>
               </div>
@@ -236,12 +288,13 @@ function SchedulesTable({
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>
           <TableHeaderCell>Task ID</TableHeaderCell>
+          <TableHeaderCell>External ID</TableHeaderCell>
           <TableHeaderCell>CRON</TableHeaderCell>
           <TableHeaderCell hiddenLabel>CRON description</TableHeaderCell>
-          <TableHeaderCell>External ID</TableHeaderCell>
+          <TableHeaderCell>Timezone</TableHeaderCell>
+          <TableHeaderCell>Next run</TableHeaderCell>
+          <TableHeaderCell>Last run</TableHeaderCell>
           <TableHeaderCell>Deduplication key</TableHeaderCell>
-          <TableHeaderCell>Next run (UTC)</TableHeaderCell>
-          <TableHeaderCell>Last run (UTC)</TableHeaderCell>
           <TableHeaderCell>Environments</TableHeaderCell>
           <TableHeaderCell>Enabled</TableHeaderCell>
         </TableRow>
@@ -263,22 +316,29 @@ function SchedulesTable({
                   {schedule.taskIdentifier}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
+                  {schedule.externalId ? schedule.externalId : "–"}
+                </TableCell>
+                <TableCell to={path} className={cellClass}>
                   {schedule.cron}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
                   {schedule.cronDescription}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  {schedule.externalId ? schedule.externalId : "–"}
+                  {schedule.timezone}
+                </TableCell>
+                <TableCell to={path} className={cellClass}>
+                  <DateTime date={schedule.nextRun} timeZone={schedule.timezone} />
+                </TableCell>
+                <TableCell to={path} className={cellClass}>
+                  {schedule.lastRun ? (
+                    <DateTime date={schedule.lastRun} timeZone={schedule.timezone} />
+                  ) : (
+                    "–"
+                  )}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
                   {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
-                </TableCell>
-                <TableCell to={path} className={cellClass}>
-                  <DateTime date={schedule.nextRun} timeZone="utc" />
-                </TableCell>
-                <TableCell to={path} className={cellClass}>
-                  {schedule.lastRun ? <DateTime date={schedule.lastRun} timeZone="utc" /> : "–"}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
                   <EnvironmentLabels environments={schedule.environments} size="small" />

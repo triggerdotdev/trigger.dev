@@ -16,6 +16,9 @@ export const tracingSDK = new TracingSDK({
   url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
   instrumentations: setupImportedConfig?.instrumentations ?? [],
   diagLogLevel: (process.env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
+  forceFlushTimeoutMillis: process.env.OTEL_FORCE_FLUSH_TIMEOUT
+    ? parseInt(process.env.OTEL_FORCE_FLUSH_TIMEOUT, 10)
+    : 5_000,
 });
 
 export const otelTracer: Tracer = tracingSDK.getTracer("trigger-prod-worker", packageJson.version);
