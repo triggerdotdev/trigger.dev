@@ -31,9 +31,8 @@ function after(asyncId: number) {
 }
 
 export const eventLoopMonitor = singleton("eventLoopMonitor", () => {
-  console.log("🥸 Initializing event loop monitor");
-
-  const asyncHook = createHook({ before, after });
-  asyncHook.enable();
-  return asyncHook;
+  // console.log("🥸 Initializing event loop monitor");
+  // const asyncHook = createHook({ before, after });
+  // asyncHook.enable();
+  // return asyncHook;
 });
