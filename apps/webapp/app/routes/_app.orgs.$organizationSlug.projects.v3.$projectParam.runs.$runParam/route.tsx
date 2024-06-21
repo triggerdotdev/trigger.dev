@@ -1,4 +1,5 @@
 import {
+  BoltSlashIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   MagnifyingGlassMinusIcon,
@@ -69,6 +70,9 @@ import {
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+
+const MAX_LIVE_RELOADING_EVENTS = 500;
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -167,6 +171,7 @@ export default function Page() {
   }
 
   const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
+  const shouldLiveReload = events.length <= MAX_LIVE_RELOADING_EVENTS;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan);
@@ -175,6 +180,7 @@ export default function Page() {
   const revalidator = useRevalidator();
   const streamedEvents = useEventSource(v3RunStreamingPath(organization, project, run), {
     event: "message",
+    disabled: !shouldLiveReload,
   });
   useEffect(() => {
     if (streamedEvents !== null) {
@@ -254,6 +260,7 @@ export default function Page() {
                 rootSpanStatus={rootSpanStatus}
                 rootStartedAt={rootStartedAt}
                 environmentType={run.environment.type}
+                shouldLiveReload={shouldLiveReload}
               />
             </ResizablePanel>
             <ResizableHandle withHandle />
@@ -282,6 +289,7 @@ type TasksTreeViewProps = {
   rootSpanStatus: "executing" | "completed" | "failed";
   rootStartedAt: Date | undefined;
   environmentType: RuntimeEnvironmentType;
+  shouldLiveReload: boolean;
 };
 
 function TasksTreeView({
@@ -293,6 +301,7 @@ function TasksTreeView({
   rootSpanStatus,
   rootStartedAt,
   environmentType,
+  shouldLiveReload,
 }: TasksTreeViewProps) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -367,7 +376,10 @@ function TasksTreeView({
                   This is the root task
                 </Paragraph>
               )}
-              <LiveReloadingStatus rootSpanCompleted={rootSpanStatus !== "executing"} />
+              <LiveReloadingStatus
+                rootSpanCompleted={rootSpanStatus !== "executing"}
+                isLiveReloading={shouldLiveReload}
+              />
             </div>
             <TreeView
               parentRef={parentRef}
@@ -834,16 +846,38 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
   );
 }
 
-function LiveReloadingStatus({ rootSpanCompleted }: { rootSpanCompleted: boolean }) {
+function LiveReloadingStatus({
+  rootSpanCompleted,
+  isLiveReloading,
+}: {
+  rootSpanCompleted: boolean;
+  isLiveReloading: boolean;
+}) {
   if (rootSpanCompleted) return null;
 
   return (
-    <div className="flex items-center gap-1">
-      <PulsingDot />
-      <Paragraph variant="extra-small" className="whitespace-nowrap text-blue-500">
-        Live reloading
-      </Paragraph>
-    </div>
+    <>
+      {isLiveReloading ? (
+        <div className="flex items-center gap-1">
+          <PulsingDot />
+          <Paragraph variant="extra-small" className="whitespace-nowrap text-blue-500">
+            Live reloading
+          </Paragraph>
+        </div>
+      ) : (
+        <SimpleTooltip
+          content={`Live reloading is disabled because you've exceeded ${MAX_LIVE_RELOADING_EVENTS} logs.`}
+          button={
+            <div className="flex items-center gap-1">
+              <BoltSlashIcon className="size-3.5 text-text-dimmed" />
+              <Paragraph variant="extra-small" className="whitespace-nowrap text-text-dimmed">
+                Live reloading disabled
+              </Paragraph>
+            </div>
+          }
+        ></SimpleTooltip>
+      )}
+    </>
   );
 }
 
