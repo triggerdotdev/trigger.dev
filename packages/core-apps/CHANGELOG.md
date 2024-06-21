@@ -1,5 +1,7 @@
 # @trigger.dev/core-apps
 
+## 3.0.0-beta.40
+
 ## 3.0.0-beta.39
 
 ## 3.0.0-beta.38
