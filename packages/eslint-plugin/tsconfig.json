@@ -1,0 +1,41 @@
+{
+  "include": ["**/*.ts", "**/*.tsx"],
+  "compilerOptions": {
+    "types": ["vitest/globals"],
+    "lib": ["ES2019"],
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "moduleResolution": "NodeNext",
+    "module": "NodeNext",
+    "resolveJsonModule": true,
+    "target": "ES2019",
+    "strict": true,
+    "allowJs": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "baseUrl": ".",
+    // Need paths for the no-trigger-core-import plugin
+    "paths": {
+      "~/*": ["./app/*"],
+      "@/*": ["./*"],
+      "@trigger.dev/sdk": ["../../packages/trigger-sdk/src/index"],
+      "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
+      "@trigger.dev/core": ["../../packages/core/src/index"],
+      "@trigger.dev/core/*": ["../../packages/core/src/*"],
+      "@trigger.dev/core-backend": ["../../packages/core-backend/src/index"],
+      "@trigger.dev/core-backend/*": ["../../packages/core-backend/src/*"],
+      "@trigger.dev/database": ["../../packages/database/src/index"],
+      "@trigger.dev/database/*": ["../../packages/database/src/*"],
+      "@trigger.dev/yalt": ["../../packages/yalt/src/index"],
+      "@trigger.dev/yalt/*": ["../../packages/yalt/src/*"],
+      "@trigger.dev/otlp-importer": ["../../packages/otlp-importer/src/index"],
+      "@trigger.dev/otlp-importer/*": ["../../packages/otlp-importer/src/*"],
+      "emails": ["../../packages/emails/src/index"],
+      "emails/*": ["../../packages/emails/src/*"]
+    },
+    "noEmit": true
+  }
+}
