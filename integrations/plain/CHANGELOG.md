@@ -1,5 +1,12 @@
 # @trigger.dev/plain
 
+## 3.0.0-beta.40
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.40
+- @trigger.dev/sdk@3.0.0-beta.40
+
 ## 3.0.0-beta.39
 
 ### Patch Changes
