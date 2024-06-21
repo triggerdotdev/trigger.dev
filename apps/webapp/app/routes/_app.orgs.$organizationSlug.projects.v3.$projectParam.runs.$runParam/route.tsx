@@ -6,8 +6,8 @@ import {
   MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
 import type { Location } from "@remix-run/react";
-import { useParams, useRevalidator } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { useLoaderData, useParams, useRevalidator } from "@remix-run/react";
+import { LoaderFunctionArgs, SerializeFrom } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
 import {
   formatDurationMilliseconds,
@@ -18,10 +18,10 @@ import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
@@ -33,6 +33,7 @@ import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
+import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -55,7 +56,7 @@ import { useProject } from "~/hooks/useProject";
 import { useReplaceLocation } from "~/hooks/useReplaceLocation";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useUser } from "~/hooks/useUser";
-import { RunEvent, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -68,11 +69,11 @@ import {
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
-import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 
 const MAX_LIVE_RELOADING_EVENTS = 500;
+
+type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0];
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -89,10 +90,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   //resizable settings
   const resizeSettings = await getResizableRunSettings(request);
 
-  return typedjson({
-    ...result,
+  return {
+    run: result.run,
+    trace: result.trace,
     resizeSettings,
-  });
+  };
 };
 
 function getSpanId(location: Location<any>): string | undefined {
@@ -101,7 +103,7 @@ function getSpanId(location: Location<any>): string | undefined {
 }
 
 export default function Page() {
-  const { run, trace, resizeSettings } = useTypedLoaderData<typeof loader>();
+  const { run, trace, resizeSettings } = useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const user = useUser();
@@ -258,7 +260,7 @@ export default function Page() {
                 }}
                 totalDuration={duration}
                 rootSpanStatus={rootSpanStatus}
-                rootStartedAt={rootStartedAt}
+                rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
                 environmentType={run.environment.type}
                 shouldLiveReload={shouldLiveReload}
               />
@@ -281,7 +283,7 @@ export default function Page() {
 }
 
 type TasksTreeViewProps = {
-  events: RunEvent[];
+  events: TraceEvent[];
   selectedId?: string;
   parentRunFriendlyId?: string;
   onSelectedIdChanged: (selectedId: string | undefined) => void;
@@ -762,7 +764,7 @@ function TimelineView({
   );
 }
 
-function NodeText({ node }: { node: RunEvent }) {
+function NodeText({ node }: { node: TraceEvent }) {
   const className = "truncate";
   return (
     <Paragraph variant="small" className={cn(className)}>
@@ -771,7 +773,7 @@ function NodeText({ node }: { node: RunEvent }) {
   );
 }
 
-function NodeStatusIcon({ node }: { node: RunEvent }) {
+function NodeStatusIcon({ node }: { node: TraceEvent }) {
   if (node.data.level !== "TRACE") return null;
   if (node.data.style.variant !== "primary") return null;
 
@@ -896,7 +898,7 @@ function SpanWithDuration({
   showDuration,
   node,
   ...props
-}: Timeline.SpanProps & { node: RunEvent; showDuration: boolean }) {
+}: Timeline.SpanProps & { node: TraceEvent; showDuration: boolean }) {
   return (
     <Timeline.Span {...props}>
       <motion.div

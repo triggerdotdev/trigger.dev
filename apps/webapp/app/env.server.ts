@@ -204,6 +204,7 @@ const EnvironmentSchema = z.object({
 
   USAGE_OPEN_METER_API_KEY: z.string().optional(),
   USAGE_OPEN_METER_BASE_URL: z.string().optional(),
+  EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
