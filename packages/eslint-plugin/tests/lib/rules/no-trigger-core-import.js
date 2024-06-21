@@ -34,7 +34,7 @@ ruleTester.run("no-trigger-core-import", rule, {
       output: `import { parsePacket } from '@trigger.dev/core/v3/utils/ioSerialization';`,
       errors: [
         {
-          messageId: "noTriggerCoreImport",
+          messageId: "noTriggerCoreImportFixable",
         },
       ],
     },
@@ -44,7 +44,7 @@ ruleTester.run("no-trigger-core-import", rule, {
 import { TaskResource } from '@trigger.dev/core/v3/schemas';`,
       errors: [
         {
-          messageId: "noTriggerCoreImport",
+          messageId: "noTriggerCoreImportFixable",
         },
       ],
     },
@@ -54,7 +54,22 @@ import { TaskResource } from '@trigger.dev/core/v3/schemas';`,
 import { stringifyIO } from '@trigger.dev/core/v3/utils/ioSerialization';`,
       errors: [
         {
-          messageId: "noTriggerCoreImport",
+          messageId: "noTriggerCoreImportFixable",
+        },
+      ],
+    },
+    {
+      code: `import {
+  isExceptionSpanEvent,
+  type ExceptionEventProperties,
+  type SpanEvent as OtelSpanEvent,
+} from "@trigger.dev/core/v3";`,
+      output: `import { isExceptionSpanEvent } from "@trigger.dev/core/v3/schemas";
+import { type ExceptionEventProperties } from "@trigger.dev/core/v3/schemas";
+import { type SpanEvent as OtelSpanEvent } from "@trigger.dev/core/v3/schemas";`,
+      errors: [
+        {
+          messageId: "noTriggerCoreImportFixable",
         },
       ],
     },

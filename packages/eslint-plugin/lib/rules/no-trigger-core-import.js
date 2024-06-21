@@ -14,101 +14,129 @@ const tsconfigPaths = require("tsconfig-paths");
 //------------------------------------------------------------------------------
 
 const blockedImportSources = ["@trigger.dev/core", "@trigger.dev/core/v3"];
-const allowedBarrelFiles = ["@trigger.dev/core/schemas", "@trigger.dev/core/v3/schemas"];
+const allowedBarrelFiles = getAllowedBarrelFiles();
+
+function getAllowedBarrelFiles() {
+  const packageJsonPath = path.resolve(
+    process.cwd().replace("apps/webapp", ""),
+    "packages/core/package.json"
+  );
+
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  const exports = packageJson.exports;
+
+  let allowedFiles = [];
+  for (let key in exports) {
+    if (exports.hasOwnProperty(key)) {
+      key = key.replace(/^\.\/?/, "");
+      if (key === "package.json") continue;
+
+      allowedFiles.push(["@trigger.dev/core", key].filter(Boolean).join("/"));
+    }
+  }
+
+  // Filter out the blocked import sources
+  return allowedFiles.filter((file) => !blockedImportSources.includes(file));
+}
+
+function pathToCorePath(filePath) {
+  const baseName = "@trigger.dev/core";
+  const relativePath = filePath.split("packages/core/src/")[1].replace(/\\/g, "/");
+  return `${baseName}/${relativePath}`;
+}
 
 function resolveSpecifier(importSource, specifier, context) {
   const corePath = resolveModulePath(importSource);
   const coreDir = path.dirname(corePath);
 
+  let barrelFile;
   const resolvedPath = resolveExport(coreDir, specifier);
   if (resolvedPath) {
-    const baseName = "@trigger.dev/core";
-    const relativePath = resolvedPath.split("packages/core/src/")[1].replace(/\\/g, "/");
-    const finalPath = `${baseName}/${relativePath}`;
+    return barrelFile;
+  }
+  return null;
+
+  function resolveExport(fileOrDir, specifier) {
+    const filePath = fs.lstatSync(fileOrDir).isDirectory()
+      ? path.join(fileOrDir, "index.ts")
+      : fileOrDir;
+
+    if (!fs.existsSync(filePath)) return null;
 
     // Check if the resolved path should map to an allowed barrel file
-    for (const barrelFile of allowedBarrelFiles) {
-      if (finalPath.startsWith(barrelFile)) {
-        return barrelFile;
+    for (const allowedBarrelFile of allowedBarrelFiles) {
+      if (pathToCorePath(filePath).startsWith(allowedBarrelFile)) {
+        barrelFile = allowedBarrelFile;
       }
     }
 
-    return removeExtensionAndIndex(finalPath);
-  }
-  return null;
-}
+    const code = fs.readFileSync(filePath, "utf8");
+    const ast = parser.parse(code, { sourceType: "module", plugins: ["typescript"] });
 
-function resolveExport(fileOrDir, specifier) {
-  const filePath = fs.lstatSync(fileOrDir).isDirectory()
-    ? path.join(fileOrDir, "index.ts")
-    : fileOrDir;
+    let foundPath = null;
 
-  if (!fs.existsSync(filePath)) return null;
+    traverse(ast, {
+      ExportNamedDeclaration({ node }) {
+        if (node.declaration) {
+          if (
+            node.declaration.type === "VariableDeclaration" &&
+            node.declaration.declarations.some((decl) => decl.id.name === specifier)
+          ) {
+            foundPath = filePath;
+            return;
+          }
 
-  const code = fs.readFileSync(filePath, "utf8");
-  const ast = parser.parse(code, { sourceType: "module", plugins: ["typescript"] });
+          if (
+            node.declaration.type === "FunctionDeclaration" &&
+            node.declaration.id.name === specifier
+          ) {
+            foundPath = filePath;
+            return;
+          }
 
-  let foundPath = null;
+          if (
+            node.declaration.type === "ClassDeclaration" &&
+            node.declaration.id.name === specifier
+          ) {
+            foundPath = filePath;
+            return;
+          }
+        } else if (node.specifiers) {
+          for (const exportSpecifier of node.specifiers) {
+            if (exportSpecifier.exported.name === specifier) {
+              const sourcePath = node.source.value;
+              const dir = fs.lstatSync(fileOrDir).isDirectory()
+                ? fileOrDir
+                : path.dirname(fileOrDir);
+              const resolvedSourcePath = tryResolveSourcePath(dir, sourcePath);
 
-  traverse(ast, {
-    ExportNamedDeclaration({ node }) {
-      if (node.declaration) {
-        if (
-          node.declaration.type === "VariableDeclaration" &&
-          node.declaration.declarations.some((decl) => decl.id.name === specifier)
-        ) {
-          foundPath = filePath;
-          return;
-        }
-
-        if (
-          node.declaration.type === "FunctionDeclaration" &&
-          node.declaration.id.name === specifier
-        ) {
-          foundPath = filePath;
-          return;
-        }
-
-        if (
-          node.declaration.type === "ClassDeclaration" &&
-          node.declaration.id.name === specifier
-        ) {
-          foundPath = filePath;
-          return;
-        }
-      } else if (node.specifiers) {
-        for (const exportSpecifier of node.specifiers) {
-          if (exportSpecifier.exported.name === specifier) {
-            const sourcePath = node.source.value;
-            const dir = fs.lstatSync(fileOrDir).isDirectory() ? fileOrDir : path.dirname(fileOrDir);
-            const resolvedSourcePath = tryResolveSourcePath(dir, sourcePath);
-
-            if (resolvedSourcePath) {
-              const resolvedExport = resolveExport(resolvedSourcePath, specifier);
-              if (resolvedExport) {
-                foundPath = resolvedExport;
-                return;
+              if (resolvedSourcePath) {
+                const resolvedExport = resolveExport(resolvedSourcePath, specifier);
+                if (resolvedExport) {
+                  foundPath = resolvedExport;
+                  return;
+                }
               }
             }
           }
         }
-      }
-    },
-    ExportAllDeclaration({ node }) {
-      const sourcePath = node.source.value;
-      const dir = fs.lstatSync(fileOrDir).isDirectory() ? fileOrDir : path.dirname(fileOrDir);
-      const resolvedSourcePath = tryResolveSourcePath(dir, sourcePath);
+      },
+      ExportAllDeclaration({ node }) {
+        const sourcePath = node.source.value;
+        const dir = fs.lstatSync(fileOrDir).isDirectory() ? fileOrDir : path.dirname(fileOrDir);
+        const resolvedSourcePath = tryResolveSourcePath(dir, sourcePath);
 
-      if (resolvedSourcePath) {
-        const resolvedExport = resolveExport(resolvedSourcePath, specifier);
-        if (resolvedExport) {
-          foundPath = resolvedExport;
+        if (resolvedSourcePath) {
+          const resolvedExport = resolveExport(resolvedSourcePath, specifier);
+          if (resolvedExport) {
+            foundPath = resolvedExport;
+          }
         }
-      }
-    },
-  });
+      },
+    });
 
-  return foundPath ? foundPath : null;
+    return foundPath ? foundPath : null;
+  }
 }
 
 function tryResolveSourcePath(baseDir, sourcePath) {
@@ -135,17 +163,10 @@ function tryResolveSourcePath(baseDir, sourcePath) {
   return null;
 }
 
-function removeExtensionAndIndex(filePath) {
-  return filePath
-    .replace(/\/index(\.ts|\.tsx|\.js|\.jsx)$/, "")
-    .replace(/(\.ts|\.tsx|\.js|\.jsx)$/, "");
-}
-
 // Configure tsconfig-paths
 function resolveModulePath(sourcePath) {
   const cwd = path.resolve(process.cwd());
   const tsconfigPath = path.resolve(cwd, "tsconfig.json");
-  const tsconfig = require(tsconfigPath);
   const { absoluteBaseUrl, paths } = tsconfigPaths.loadConfig(tsconfigPath);
 
   if (!absoluteBaseUrl || !paths) {
@@ -186,7 +207,9 @@ module.exports = {
     fixable: "code",
     schema: [],
     messages: {
-      noTriggerCoreImport: "{{name}} should be imported from '{{resolvedPath}}'",
+      noTriggerCoreImportFixable: "Use specific import from '{{resolvedPath}}'",
+      noTriggerCoreImport:
+        "Cannot import from {{importSource}} but no specific import is available",
     },
   },
 
@@ -198,10 +221,11 @@ module.exports = {
         if (blockedImportSources.includes(importSource)) {
           const specifierFixes = node.specifiers
             .map((specifier) => {
-              const resolvedPath = resolveSpecifier(importSource, specifier.local.name, context);
+              console.log("Specifier", specifier);
+              const resolvedPath = resolveSpecifier(importSource, specifier.imported.name, context);
               if (resolvedPath) {
                 return {
-                  name: specifier.local.name,
+                  original: context.getSourceCode().getText(specifier),
                   path: resolvedPath,
                 };
               }
@@ -212,19 +236,28 @@ module.exports = {
           if (specifierFixes.length > 0) {
             const fixes = specifierFixes
               .map((fix) => {
-                return `import { ${fix.name} } from '${fix.path}';`;
+                return `import { ${fix.original} } from '${fix.path}';`;
               })
               .join("\n");
 
             context.report({
               node,
-              messageId: "noTriggerCoreImport",
+              messageId: "noTriggerCoreImportFixable",
               data: {
+                importSource,
                 name: node.specifiers.map((spec) => spec.local.name).join(", "),
-                resolvedPath: fixes,
+                resolvedPath: Array.from(new Set(specifierFixes.map((fix) => fix.path))).join(", "),
               },
               fix(fixer) {
                 return fixer.replaceText(node, fixes);
+              },
+            });
+          } else {
+            context.report({
+              node,
+              messageId: "noTriggerCoreImport",
+              data: {
+                importSource,
               },
             });
           }
