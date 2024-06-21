@@ -1754,9 +1754,6 @@ importers:
       '@opentelemetry/semantic-conventions':
         specifier: ^1.22.0
         version: 1.22.0
-      form-data-encoder:
-        specifier: ^4.0.2
-        version: 4.0.2
       humanize-duration:
         specifier: ^3.27.3
         version: 3.27.3
@@ -1794,6 +1791,9 @@ importers:
       '@types/node':
         specifier: 20.12.7
         version: 20.12.7
+      '@types/readable-stream':
+        specifier: ^4.0.14
+        version: 4.0.14
       jest:
         specifier: ^29.6.2
         version: 29.6.2(@types/node@20.12.7)
@@ -16125,6 +16125,13 @@ packages:
       '@types/prop-types': 15.7.5
       csstype: 3.1.1
 
+  /@types/readable-stream@4.0.14:
+    resolution: {integrity: sha512-xZn/AuUbCMShGsqH/ehZtGDwQtbx00M9rZ2ENLe4tOjFZ/JFeWMhEZkk2fEe1jAUqqEAURIkFJ7Az/go8mM1/w==}
+    dependencies:
+      '@types/node': 18.19.20
+      safe-buffer: 5.1.2
+    dev: true
+
   /@types/request@2.48.12:
     resolution: {integrity: sha512-G3sY+NpsA9jnwm0ixhAFQSJ3Q9JkpLZpJbI3GMv0mIAT0y3mRabYeINzal5WOChIiaTEGQYlHOKgkaM9EisWHw==}
     dependencies:
@@ -22963,11 +22970,6 @@ packages:
   /form-data-encoder@2.1.4:
     resolution: {integrity: sha512-yDYSgNMraqvnxiEXO4hi88+YZxaHC6QKzb5N84iRCTDeRO7ZALpir/lVmf/uXUhnwUr2O4HU8s/n6x+yNjQkHw==}
     engines: {node: '>= 14.17'}
-    dev: false
-
-  /form-data-encoder@4.0.2:
-    resolution: {integrity: sha512-KQVhvhK8ZkWzxKxOr56CPulAhH3dobtuQ4+hNQ+HekH/Wp5gSOafqRAeTphQUJAIk0GBvHZgJ2ZGRWd5kphMuw==}
-    engines: {node: '>= 18'}
     dev: false
 
   /form-data@2.3.3:
