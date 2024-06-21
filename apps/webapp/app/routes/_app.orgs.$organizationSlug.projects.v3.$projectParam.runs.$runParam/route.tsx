@@ -70,8 +70,7 @@ import {
 } from "~/utils/pathBuilder";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-
-const MAX_LIVE_RELOADING_EVENTS = 500;
+import { env } from "~/env.server";
 
 type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0];
 
@@ -93,6 +92,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return {
     run: result.run,
     trace: result.trace,
+    maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
     resizeSettings,
   };
 };
@@ -103,7 +103,8 @@ function getSpanId(location: Location<any>): string | undefined {
 }
 
 export default function Page() {
-  const { run, trace, resizeSettings } = useLoaderData<typeof loader>();
+  const { run, trace, resizeSettings, maximumLiveReloadingSetting } =
+    useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const user = useUser();
@@ -173,7 +174,7 @@ export default function Page() {
   }
 
   const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
-  const shouldLiveReload = events.length <= MAX_LIVE_RELOADING_EVENTS;
+  const shouldLiveReload = events.length <= maximumLiveReloadingSetting;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan);
@@ -263,6 +264,7 @@ export default function Page() {
                 rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
                 environmentType={run.environment.type}
                 shouldLiveReload={shouldLiveReload}
+                maximumLiveReloadingSetting={maximumLiveReloadingSetting}
               />
             </ResizablePanel>
             <ResizableHandle withHandle />
@@ -292,6 +294,7 @@ type TasksTreeViewProps = {
   rootStartedAt: Date | undefined;
   environmentType: RuntimeEnvironmentType;
   shouldLiveReload: boolean;
+  maximumLiveReloadingSetting: number;
 };
 
 function TasksTreeView({
@@ -304,6 +307,7 @@ function TasksTreeView({
   rootStartedAt,
   environmentType,
   shouldLiveReload,
+  maximumLiveReloadingSetting,
 }: TasksTreeViewProps) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -381,6 +385,7 @@ function TasksTreeView({
               <LiveReloadingStatus
                 rootSpanCompleted={rootSpanStatus !== "executing"}
                 isLiveReloading={shouldLiveReload}
+                settingValue={maximumLiveReloadingSetting}
               />
             </div>
             <TreeView
@@ -851,9 +856,11 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
 function LiveReloadingStatus({
   rootSpanCompleted,
   isLiveReloading,
+  settingValue,
 }: {
   rootSpanCompleted: boolean;
   isLiveReloading: boolean;
+  settingValue: number;
 }) {
   if (rootSpanCompleted) return null;
 
@@ -868,7 +875,7 @@ function LiveReloadingStatus({
         </div>
       ) : (
         <SimpleTooltip
-          content={`Live reloading is disabled because you've exceeded ${MAX_LIVE_RELOADING_EVENTS} logs.`}
+          content={`Live reloading is disabled because you've exceeded ${settingValue} logs.`}
           button={
             <div className="flex items-center gap-1">
               <BoltSlashIcon className="size-3.5 text-text-dimmed" />
