@@ -21,6 +21,70 @@
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./eventFilterMatches": {
+      "import": {
+        "types": "./dist/eventFilterMatches.d.mts",
+        "default": "./dist/eventFilterMatches.mjs"
+      },
+      "require": "./dist/eventFilterMatches.js",
+      "types": "./dist/eventFilterMatches.d.ts"
+    },
+    "./replacements": {
+      "import": {
+        "types": "./dist/replacements.d.mts",
+        "default": "./dist/replacements.mjs"
+      },
+      "require": "./dist/replacements.js",
+      "types": "./dist/replacements.d.ts"
+    },
+    "./requestFilterMatches": {
+      "import": {
+        "types": "./dist/requestFilterMatches.d.mts",
+        "default": "./dist/requestFilterMatches.mjs"
+      },
+      "require": "./dist/requestFilterMatches.js",
+      "types": "./dist/requestFilterMatches.d.ts"
+    },
+    "./retry": {
+      "import": {
+        "types": "./dist/retry.d.mts",
+        "default": "./dist/retry.mjs"
+      },
+      "require": "./dist/retry.js",
+      "types": "./dist/retry.d.ts"
+    },
+    "./utils": {
+      "import": {
+        "types": "./dist/utils.d.mts",
+        "default": "./dist/utils.mjs"
+      },
+      "require": "./dist/utils.js",
+      "types": "./dist/utils.d.ts"
+    },
+    "./schemas": {
+      "import": {
+        "types": "./dist/schemas/index.d.mts",
+        "default": "./dist/schemas/index.mjs"
+      },
+      "require": "./dist/schemas/index.js",
+      "types": "./dist/schemas/index.d.ts"
+    },
+    "./types": {
+      "import": {
+        "types": "./dist/types.d.mts",
+        "default": "./dist/types.mjs"
+      },
+      "require": "./dist/types.js",
+      "types": "./dist/types.d.ts"
+    },
+    "./versions": {
+      "import": {
+        "types": "./dist/versions.d.mts",
+        "default": "./dist/versions.mjs"
+      },
+      "require": "./dist/versions.js",
+      "types": "./dist/versions.d.ts"
+    },
     "./v3": {
       "import": {
         "types": "./dist/v3/index.d.mts",
@@ -29,6 +93,30 @@
       "require": "./dist/v3/index.js",
       "types": "./dist/v3/index.d.ts"
     },
+    "./v3/dev": {
+      "import": {
+        "types": "./dist/v3/dev/index.d.mts",
+        "default": "./dist/v3/dev/index.mjs"
+      },
+      "require": "./dist/v3/dev/index.js",
+      "types": "./dist/v3/dev/index.d.ts"
+    },
+    "./v3/errors": {
+      "import": {
+        "types": "./dist/v3/errors.d.mts",
+        "default": "./dist/v3/errors.mjs"
+      },
+      "require": "./dist/v3/errors.js",
+      "types": "./dist/v3/errors.d.ts"
+    },
+    "./v3/logger-api": {
+      "import": {
+        "types": "./dist/v3/logger-api.d.mts",
+        "default": "./dist/v3/logger-api.mjs"
+      },
+      "require": "./dist/v3/logger-api.js",
+      "types": "./dist/v3/logger-api.d.ts"
+    },
     "./v3/otel": {
       "import": {
         "types": "./dist/v3/otel/index.d.mts",
@@ -36,6 +124,86 @@
       },
       "require": "./dist/v3/otel/index.js",
       "types": "./dist/v3/otel/index.d.ts"
+    },
+    "./v3/prod": {
+      "import": {
+        "types": "./dist/v3/prod/index.d.mts",
+        "default": "./dist/v3/prod/index.mjs"
+      },
+      "require": "./dist/v3/prod/index.js",
+      "types": "./dist/v3/prod/index.d.ts"
+    },
+    "./v3/schemas": {
+      "import": {
+        "types": "./dist/v3/schemas/index.d.mts",
+        "default": "./dist/v3/schemas/index.mjs"
+      },
+      "require": "./dist/v3/schemas/index.js",
+      "types": "./dist/v3/schemas/index.d.ts"
+    },
+    "./v3/semanticInternalAttributes": {
+      "import": {
+        "types": "./dist/v3/semanticInternalAttributes.d.mts",
+        "default": "./dist/v3/semanticInternalAttributes.mjs"
+      },
+      "require": "./dist/v3/semanticInternalAttributes.js",
+      "types": "./dist/v3/semanticInternalAttributes.d.ts"
+    },
+    "./v3/utils/durations": {
+      "import": {
+        "types": "./dist/v3/utils/durations.d.mts",
+        "default": "./dist/v3/utils/durations.mjs"
+      },
+      "require": "./dist/v3/utils/durations.js",
+      "types": "./dist/v3/utils/durations.d.ts"
+    },
+    "./v3/utils/flattenAttributes": {
+      "import": {
+        "types": "./dist/v3/utils/flattenAttributes.d.mts",
+        "default": "./dist/v3/utils/flattenAttributes.mjs"
+      },
+      "require": "./dist/v3/utils/flattenAttributes.js",
+      "types": "./dist/v3/utils/flattenAttributes.d.ts"
+    },
+    "./v3/utils/ioSerialization": {
+      "import": {
+        "types": "./dist/v3/utils/ioSerialization.d.mts",
+        "default": "./dist/v3/utils/ioSerialization.mjs"
+      },
+      "require": "./dist/v3/utils/ioSerialization.js",
+      "types": "./dist/v3/utils/ioSerialization.d.ts"
+    },
+    "./v3/utils/omit": {
+      "import": {
+        "types": "./dist/v3/utils/omit.d.mts",
+        "default": "./dist/v3/utils/omit.mjs"
+      },
+      "require": "./dist/v3/utils/omit.js",
+      "types": "./dist/v3/utils/omit.d.ts"
+    },
+    "./v3/utils/retries": {
+      "import": {
+        "types": "./dist/v3/utils/retries.d.mts",
+        "default": "./dist/v3/utils/retries.mjs"
+      },
+      "require": "./dist/v3/utils/retries.js",
+      "types": "./dist/v3/utils/retries.d.ts"
+    },
+    "./v3/utils/structuredLogger": {
+      "import": {
+        "types": "./dist/v3/utils/structuredLogger.d.mts",
+        "default": "./dist/v3/utils/structuredLogger.mjs"
+      },
+      "require": "./dist/v3/utils/structuredLogger.js",
+      "types": "./dist/v3/utils/structuredLogger.d.ts"
+    },
+    "./v3/workers": {
+      "import": {
+        "types": "./dist/v3/workers/index.d.mts",
+        "default": "./dist/v3/workers/index.mjs"
+      },
+      "require": "./dist/v3/workers/index.js",
+      "types": "./dist/v3/workers/index.d.ts"
     },
     "./v3/zodfetch": {
       "import": {
@@ -76,46 +244,6 @@
       },
       "require": "./dist/v3/zodIpc.js",
       "types": "./dist/v3/zodIpc.d.ts"
-    },
-    "./v3/utils/structuredLogger": {
-      "import": {
-        "types": "./dist/v3/utils/structuredLogger.d.mts",
-        "default": "./dist/v3/utils/structuredLogger.mjs"
-      },
-      "require": "./dist/v3/utils/structuredLogger.js",
-      "types": "./dist/v3/utils/structuredLogger.d.ts"
-    },
-    "./v3/utils/durations": {
-      "import": {
-        "types": "./dist/v3/utils/durations.d.mts",
-        "default": "./dist/v3/utils/durations.mjs"
-      },
-      "require": "./dist/v3/utils/durations.js",
-      "types": "./dist/v3/utils/durations.d.ts"
-    },
-    "./v3/dev": {
-      "import": {
-        "types": "./dist/v3/dev/index.d.mts",
-        "default": "./dist/v3/dev/index.mjs"
-      },
-      "require": "./dist/v3/dev/index.js",
-      "types": "./dist/v3/dev/index.d.ts"
-    },
-    "./v3/prod": {
-      "import": {
-        "types": "./dist/v3/prod/index.d.mts",
-        "default": "./dist/v3/prod/index.mjs"
-      },
-      "require": "./dist/v3/prod/index.js",
-      "types": "./dist/v3/prod/index.d.ts"
-    },
-    "./v3/workers": {
-      "import": {
-        "types": "./dist/v3/workers/index.d.mts",
-        "default": "./dist/v3/workers/index.mjs"
-      },
-      "require": "./dist/v3/workers/index.js",
-      "types": "./dist/v3/workers/index.d.ts"
     },
     "./package.json": "./package.json"
   },
