@@ -35,13 +35,19 @@ function getAllowedBarrelFiles() {
     }
   }
 
+  // sort by length so that longest path is first
+  allowedFiles.sort((a, b) => b.length - a.length);
+
   // Filter out the blocked import sources
   return allowedFiles.filter((file) => !blockedImportSources.includes(file));
 }
 
 function pathToCorePath(filePath) {
   const baseName = "@trigger.dev/core";
-  const relativePath = filePath.split("packages/core/src/")[1].replace(/\\/g, "/");
+  const relativePath = filePath
+    .split("packages/core/src/")[1]
+    .replace(/\\/g, "/")
+    .replace("/index.ts", "");
   return `${baseName}/${relativePath}`;
 }
 
@@ -49,10 +55,15 @@ function resolveSpecifier(importSource, specifier, context) {
   const corePath = resolveModulePath(importSource);
   const coreDir = path.dirname(corePath);
 
-  let barrelFile;
   const resolvedPath = resolveExport(coreDir, specifier);
   if (resolvedPath) {
-    return barrelFile;
+    for (const allowedBarrelFile of allowedBarrelFiles) {
+      if (pathToCorePath(resolvedPath).startsWith(allowedBarrelFile)) {
+        return allowedBarrelFile;
+      }
+    }
+
+    return pathToCorePath(resolvedPath);
   }
   return null;
 
@@ -62,13 +73,6 @@ function resolveSpecifier(importSource, specifier, context) {
       : fileOrDir;
 
     if (!fs.existsSync(filePath)) return null;
-
-    // Check if the resolved path should map to an allowed barrel file
-    for (const allowedBarrelFile of allowedBarrelFiles) {
-      if (pathToCorePath(filePath).startsWith(allowedBarrelFile)) {
-        barrelFile = allowedBarrelFile;
-      }
-    }
 
     const code = fs.readFileSync(filePath, "utf8");
     const ast = parser.parse(code, { sourceType: "module", plugins: ["typescript"] });
@@ -208,6 +212,8 @@ module.exports = {
     schema: [],
     messages: {
       noTriggerCoreImportFixable: "Use specific import from '{{resolvedPath}}'",
+      noTriggerCoreImportNeedsExport:
+        "Should export from {{resolvedPath}} but not covered by @trigger.dev/core/package.json#exports",
       noTriggerCoreImport:
         "Cannot import from {{importSource}} but no specific import is available",
     },
@@ -221,14 +227,17 @@ module.exports = {
         if (blockedImportSources.includes(importSource)) {
           const specifierFixes = node.specifiers
             .map((specifier) => {
-              console.log("Specifier", specifier);
               const resolvedPath = resolveSpecifier(importSource, specifier.imported.name, context);
-              if (resolvedPath) {
+              if (
+                resolvedPath &&
+                !blockedImportSources.includes(resolvedPath.replace("/index.ts", ""))
+              ) {
                 return {
                   original: context.getSourceCode().getText(specifier),
                   path: resolvedPath,
                 };
               }
+
               return null;
             })
             .filter(Boolean);
@@ -236,22 +245,38 @@ module.exports = {
           if (specifierFixes.length > 0) {
             const fixes = specifierFixes
               .map((fix) => {
-                return `import { ${fix.original} } from '${fix.path}';`;
+                return `import { ${fix.original.replace("type ", "")} } from '${fix.path}';`;
               })
               .join("\n");
 
-            context.report({
-              node,
-              messageId: "noTriggerCoreImportFixable",
-              data: {
-                importSource,
-                name: node.specifiers.map((spec) => spec.local.name).join(", "),
-                resolvedPath: Array.from(new Set(specifierFixes.map((fix) => fix.path))).join(", "),
-              },
-              fix(fixer) {
-                return fixer.replaceText(node, fixes);
-              },
-            });
+            if (specifierFixes.every((fix) => allowedBarrelFiles.includes(fix.path))) {
+              context.report({
+                node,
+                messageId: "noTriggerCoreImportFixable",
+                data: {
+                  importSource,
+                  name: node.specifiers.map((spec) => spec.local.name).join(", "),
+                  resolvedPath: Array.from(new Set(specifierFixes.map((fix) => fix.path))).join(
+                    ", "
+                  ),
+                },
+                fix(fixer) {
+                  return fixer.replaceText(node, fixes);
+                },
+              });
+            } else {
+              context.report({
+                node,
+                messageId: "noTriggerCoreImportNeedsExport",
+                data: {
+                  importSource,
+                  name: node.specifiers.map((spec) => spec.local.name).join(", "),
+                  resolvedPath: Array.from(new Set(specifierFixes.map((fix) => fix.path))).join(
+                    ", "
+                  ),
+                },
+              });
+            }
           } else {
             context.report({
               node,
