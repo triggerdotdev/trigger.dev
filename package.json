@@ -53,6 +53,7 @@
     "@types/node": "18.17.1",
     "autoprefixer": "^10.4.12",
     "eslint-config-custom": "workspace:*",
+    "eslint-plugin-turbo": "^2.0.4",
     "prettier": "^3.0.0",
     "tsx": "^3.7.1",
     "turbo": "^1.10.3",
