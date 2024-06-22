@@ -83,24 +83,21 @@ function resolveSpecifier(importSource, specifier, context) {
       ExportNamedDeclaration({ node }) {
         if (node.declaration) {
           if (
-            node.declaration.type === "VariableDeclaration" &&
-            node.declaration.declarations.some((decl) => decl.id.name === specifier)
-          ) {
-            foundPath = filePath;
-            return;
-          }
-
-          if (
-            node.declaration.type === "FunctionDeclaration" &&
-            node.declaration.id.name === specifier
-          ) {
-            foundPath = filePath;
-            return;
-          }
-
-          if (
-            node.declaration.type === "ClassDeclaration" &&
-            node.declaration.id.name === specifier
+            // export const foo = 'bar';
+            (node.declaration.type === "VariableDeclaration" &&
+              node.declaration.declarations.some((decl) => decl.id.name === specifier)) ||
+            // export function foo() {}
+            (node.declaration.type === "FunctionDeclaration" &&
+              node.declaration.id.name === specifier) ||
+            // export class Foo {}
+            (node.declaration.type === "ClassDeclaration" &&
+              node.declaration.id.name === specifier) ||
+            // export type Foo = {};
+            (node.declaration.type === "TSTypeAliasDeclaration" &&
+              node.declaration.id.name === specifier) ||
+            // export interface Foo {}
+            (node.declaration.type === "TSInterfaceDeclaration" &&
+              node.declaration.id.name === specifier)
           ) {
             foundPath = filePath;
             return;
