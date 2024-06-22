@@ -268,9 +268,13 @@ module.exports = {
                 data: {
                   importSource,
                   name: node.specifiers.map((spec) => spec.local.name).join(", "),
-                  resolvedPath: Array.from(new Set(specifierFixes.map((fix) => fix.path))).join(
-                    ", "
-                  ),
+                  resolvedPath: Array.from(
+                    new Set(
+                      specifierFixes
+                        .filter((fix) => !allowedBarrelFiles.includes(fix.path))
+                        .map((fix) => fix.path)
+                    )
+                  ).join(", "),
                 },
               });
             }
