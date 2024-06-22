@@ -18,7 +18,7 @@ const allowedBarrelFiles = getAllowedBarrelFiles();
 
 function getAllowedBarrelFiles() {
   const packageJsonPath = path.resolve(
-    process.cwd().replace("apps/webapp", ""),
+    process.cwd().replace("apps/webapp", "").replace("packages/eslint-plugin", ""),
     "packages/core/package.json"
   );
 

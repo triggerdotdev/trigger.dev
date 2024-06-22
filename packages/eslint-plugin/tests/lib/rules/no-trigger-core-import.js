@@ -61,12 +61,12 @@ import { stringifyIO } from '@trigger.dev/core/v3/utils/ioSerialization';`,
     {
       code: `import {
   isExceptionSpanEvent,
-  type ExceptionEventProperties,
-  type SpanEvent as OtelSpanEvent,
+ ExceptionEventProperties,
+ SpanEvent as OtelSpanEvent,
 } from "@trigger.dev/core/v3";`,
-      output: `import { isExceptionSpanEvent } from "@trigger.dev/core/v3/schemas";
-import { type ExceptionEventProperties } from "@trigger.dev/core/v3/schemas";
-import { type SpanEvent as OtelSpanEvent } from "@trigger.dev/core/v3/schemas";`,
+      output: `import { isExceptionSpanEvent } from '@trigger.dev/core/v3/schemas';
+import { ExceptionEventProperties } from '@trigger.dev/core/v3/schemas';
+import { SpanEvent as OtelSpanEvent } from '@trigger.dev/core/v3/schemas';`,
       errors: [
         {
           messageId: "noTriggerCoreImportFixable",
