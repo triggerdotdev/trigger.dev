@@ -441,6 +441,14 @@ export function v3DeploymentPath(
   return `${v3DeploymentsPath(organization, project)}/${deployment.shortCode}`;
 }
 
+export function v3PlansPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/v3/billing/plans`;
+}
+
+export function v3SubscribedPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/v3/subscribed`;
+}
+
 // Integration
 export function integrationClientPath(organization: OrgForPath, client: IntegrationForPath) {
   return `${organizationIntegrationsPath(organization)}/${clientParam(client)}`;
