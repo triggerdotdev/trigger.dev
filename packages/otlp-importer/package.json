@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/otlp-importer",
-  "version": "3.0.0-beta.40",
+  "version": "3.0.0-beta.41",
   "description": "OpenTelemetry OTLP Importer for Node.js written in TypeScript",
   "license": "MIT",
   "main": "./dist/index.js",

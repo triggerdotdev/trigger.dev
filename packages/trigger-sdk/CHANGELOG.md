@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.41
+
+### Patch Changes
+
+- 7c36a1a4b: v3: Adding SDK functions for triggering tasks in a typesafe way, without importing task file
+  - @trigger.dev/core@3.0.0-beta.41
+  - @trigger.dev/core-backend@3.0.0-beta.41
+
 ## 3.0.0-beta.40
 
 ### Patch Changes
