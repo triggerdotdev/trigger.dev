@@ -29,7 +29,14 @@ import {
   mockServerOnlyPlugin,
   workerSetupImportConfigPlugin,
 } from "../utilities/build";
-import { chalkError, chalkGrey, chalkPurple, chalkTask, chalkWorker } from "../utilities/cliOutput";
+import {
+  chalkError,
+  chalkGrey,
+  chalkLink,
+  chalkPurple,
+  chalkTask,
+  chalkWorker,
+} from "../utilities/cliOutput";
 import { readConfig } from "../utilities/configFiles";
 import { readJSONFile } from "../utilities/fileSystem";
 import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
@@ -56,6 +63,7 @@ import { escapeImportPath } from "../utilities/windows";
 import { updateTriggerPackages } from "./update";
 import { esbuildDecorators } from "@anatine/esbuild-decorators";
 import { callResolveEnvVars } from "../utilities/resolveEnvVars";
+import terminalLink from "terminal-link";
 
 let apiClient: CliApiClient | undefined;
 
@@ -624,13 +632,23 @@ function useDev({
                   }
 
                   backgroundWorker.metadata = backgroundWorkerRecord.data;
+                  backgroundWorker;
+
+                  const testUrl = `${dashboardUrl}/projects/v3/${config.project}/test?environment=dev`;
+                  const runsUrl = `${dashboardUrl}/projects/v3/${config.project}/runs?envSlug=dev`;
+
+                  const pipe = chalkGrey("|");
+                  const bullet = chalkGrey("○");
+                  const arrow = chalkGrey("->");
+
+                  const testLink = chalkLink(terminalLink("Test tasks", testUrl));
+                  const runsLink = chalkLink(terminalLink("View runs", runsUrl));
+
+                  const workerStarted = chalkGrey("Background worker started");
+                  const workerVersion = chalkWorker(backgroundWorkerRecord.data.version);
 
                   logger.log(
-                    `${chalkGrey(
-                      `○ Background worker started -> ${chalkWorker(
-                        backgroundWorkerRecord.data.version
-                      )}`
-                    )}`
+                    `${bullet} ${workerStarted} ${arrow} ${workerVersion} ${pipe} ${testLink} ${pipe} ${runsLink}`
                   );
 
                   firstBuild = false;
