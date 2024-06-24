@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "3.0.0-beta.41",
+  "version": "3.0.0-beta.42",
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -48,8 +48,8 @@
     "@opentelemetry/api": "^1.8.0",
     "@opentelemetry/api-logs": "^0.48.0",
     "@opentelemetry/semantic-conventions": "^1.22.0",
-    "@trigger.dev/core": "workspace:3.0.0-beta.41",
-    "@trigger.dev/core-backend": "workspace:3.0.0-beta.41",
+    "@trigger.dev/core": "workspace:3.0.0-beta.42",
+    "@trigger.dev/core-backend": "workspace:3.0.0-beta.42",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
