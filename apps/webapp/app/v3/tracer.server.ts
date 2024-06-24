@@ -117,7 +117,7 @@ function getTracer() {
   const samplingRate = 1.0 / Math.max(parseInt(env.INTERNAL_OTEL_TRACE_SAMPLING_RATE, 10), 1);
 
   const provider = new NodeTracerProvider({
-    forceFlushTimeoutMillis: 500,
+    forceFlushTimeoutMillis: 5000,
     resource: new Resource({
       [SEMRESATTRS_SERVICE_NAME]: env.SERVICE_NAME,
     }),
