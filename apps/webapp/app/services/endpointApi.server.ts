@@ -149,6 +149,15 @@ export class EndpointApi {
       body: JSON.stringify(options),
     });
 
+    if (response) {
+      logger.debug("executeJobRequest() response from endpoint", {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+      });
+    } else {
+      logger.debug("executeJobRequest() no response from endpoint");
+    }
+
     return {
       response,
       parser: RunJobResponseSchema,

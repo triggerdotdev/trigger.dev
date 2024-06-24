@@ -929,6 +929,25 @@ export class PerformRunExecutionV3Service {
     executionCount: number = 1
   ) {
     await $transaction(this.#prismaClient, async (tx) => {
+      const service = new CompleteRunTaskService(tx);
+
+      const task = await service.call(run.environment, run.id, data.id, {
+        properties: data.properties,
+        output: data.output ? (JSON.parse(data.output) as any) : undefined,
+      });
+
+      if (!task || task.status === "ERRORED") {
+        return await this.#failRunExecution(
+          tx,
+          run,
+          {
+            message: task ? `Task '${task.name}' failed to complete` : "Task failed to complete",
+          },
+          "FAILURE",
+          durationInMs
+        );
+      }
+
       await tx.jobRun.update({
         where: {
           id: run.id,
@@ -956,13 +975,6 @@ export class PerformRunExecutionV3Service {
         select: {
           executionCount: true,
         },
-      });
-
-      const service = new CompleteRunTaskService(tx);
-
-      await service.call(run.environment, run.id, data.id, {
-        properties: data.properties,
-        output: data.output ? (JSON.parse(data.output) as any) : undefined,
       });
 
       await ResumeRunService.enqueue(run, tx);

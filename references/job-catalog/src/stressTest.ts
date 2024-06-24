@@ -6,7 +6,7 @@ export const client = new TriggerClient({
   id: "job-catalog",
   apiKey: process.env["TRIGGER_API_KEY"],
   apiUrl: process.env["TRIGGER_API_URL"],
-  verbose: false,
+  verbose: true,
   ioLogLocalEnabled: false,
 });
 
