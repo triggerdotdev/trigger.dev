@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.42
+
+### Patch Changes
+
+- ecef19966: Use global setTimeout to ensure cross-runtime support
+  - @trigger.dev/core@3.0.0-beta.42
+  - @trigger.dev/core-backend@3.0.0-beta.42
+
 ## 3.0.0-beta.41
 
 ### Patch Changes

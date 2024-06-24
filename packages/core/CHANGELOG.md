@@ -1,5 +1,7 @@
 # internal-platform
 
+## 3.0.0-beta.42
+
 ## 3.0.0-beta.41
 
 ## 3.0.0-beta.40
