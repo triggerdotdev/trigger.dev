@@ -1,4 +1,4 @@
-import { logger, task, wait } from "@trigger.dev/sdk/v3";
+import { logger, task, wait, tasks } from "@trigger.dev/sdk/v3";
 import { taskWithRetries } from "./retries";
 
 export const simpleParentTask = task({
@@ -114,7 +114,7 @@ export const triggerAndWaitLoops = task({
       ]);
     }
 
-    await taskWithNoPayload.trigger();
+    const handle = await taskWithNoPayload.trigger();
     await taskWithNoPayload.triggerAndWait();
     await taskWithNoPayload.batchTrigger([{}]);
     await taskWithNoPayload.batchTriggerAndWait([{}]);

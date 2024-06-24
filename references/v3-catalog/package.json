@@ -5,7 +5,9 @@
   "scripts": {
     "dev:trigger": "triggerdev dev",
     "management": "ts-node -r tsconfig-paths/register ./src/management.ts",
-    "queues": "ts-node -r tsconfig-paths/register ./src/queues.ts"
+    "queues": "ts-node -r tsconfig-paths/register ./src/queues.ts",
+    "build:client": "tsup-node ./src/clientUsage.ts --format esm,cjs",
+    "client": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/clientUsage.ts"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
@@ -53,6 +55,8 @@
     "trigger.dev": "workspace:*",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "esbuild": "^0.19.11",
+    "tsup": "^8.0.1"
   }
 }

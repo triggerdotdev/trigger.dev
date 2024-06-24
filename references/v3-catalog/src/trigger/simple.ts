@@ -54,7 +54,7 @@ export const createJsonHeroDoc = task({
 
     const json: any = await response.json();
 
-    return json;
+    return json as { id: string; title: string; location: string };
   },
 });
 
