@@ -8,7 +8,6 @@ import {
   RetrieveRunResponse,
   apiClientManager,
 } from "@trigger.dev/core/v3";
-import { setTimeout } from "timers/promises";
 import { Prettify, RunHandle, apiClientMissingError } from "./shared";
 
 export type RetrieveRunResult<TOutput> = Prettify<
@@ -98,6 +97,6 @@ async function poll<TRunHandle extends RunHandle<any> | string>(
       return run;
     }
 
-    await setTimeout(Math.max(options?.pollIntervalMs ?? 5000, 1000));
+    await new Promise((resolve) => setTimeout(resolve, options?.pollIntervalMs ?? 1000));
   }
 }

@@ -1,5 +1,18 @@
 # trigger.dev
 
+## 3.0.0-beta.42
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.42
+
+## 3.0.0-beta.41
+
+### Patch Changes
+
+- c7a55804d: Fix jsonc-parser import
+  - @trigger.dev/core@3.0.0-beta.41
+
 ## 3.0.0-beta.40
 
 ### Patch Changes
