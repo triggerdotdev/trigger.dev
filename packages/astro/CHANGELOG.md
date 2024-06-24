@@ -1,5 +1,12 @@
 # @trigger.dev/astro
 
+## 3.0.0-beta.41
+
+### Patch Changes
+
+- Updated dependencies [7c36a1a4b]
+  - @trigger.dev/sdk@3.0.0-beta.41
+
 ## 3.0.0-beta.40
 
 ### Patch Changes
