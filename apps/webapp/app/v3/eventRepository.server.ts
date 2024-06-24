@@ -929,6 +929,7 @@ export function createExceptionPropertiesFromError(error: TaskRunError): Excepti
       return {
         type: "Internal error",
         message: [error.code, error.message].filter(Boolean).join(": "),
+        stacktrace: error.stackTrace,
       };
     }
     case "STRING_ERROR": {
