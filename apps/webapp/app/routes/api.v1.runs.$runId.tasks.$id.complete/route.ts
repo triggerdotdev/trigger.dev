@@ -9,8 +9,10 @@ import {
 import { z } from "zod";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { logger } from "~/services/logger.server";
 import { CompleteRunTaskService } from "./CompleteRunTaskService.server";
+import { startActiveSpan } from "~/v3/tracer.server";
+import { parseRequestJsonAsync } from "~/utils/parseRequestJson.server";
+import { FailRunTaskService } from "../api.v1.runs.$runId.tasks.$id.fail/FailRunTaskService.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -44,27 +46,33 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid headers" }, { status: 400 });
   }
 
+  // Check the content size of the request and make sure it's not too large
+  const contentLength = request.headers.get("content-length");
+
+  if (!contentLength || parseInt(contentLength) > 3 * 1024 * 1024) {
+    const service = new FailRunTaskService();
+
+    await service.call(authenticatedEnv, runId, id, {
+      error: {
+        message: "Task output is too large. The limit is 3MB",
+      },
+    });
+
+    return json({ error: "Task output is too large. The limit is 3MB" }, { status: 413 });
+  }
+
   const { "trigger-version": triggerVersion } = headers.data;
 
   // Now parse the request body
-  const anyBody = await request.json();
-
-  logger.debug("CompleteRunTaskService.call() request body", {
-    body: anyBody,
-    runId,
-    id,
-  });
+  const anyBody = await parseRequestJsonAsync(request, { runId });
 
   if (triggerVersion === API_VERSIONS.SERIALIZED_TASK_OUTPUT) {
-    const body = CompleteTaskBodyV2InputSchema.safeParse(anyBody);
+    const body = await startActiveSpan("CompleteTaskBodyV2InputSchema.safeParse()", async () => {
+      return CompleteTaskBodyV2InputSchema.safeParse(anyBody);
+    });
 
     if (!body.success) {
       return json({ error: "Invalid request body" }, { status: 400 });
-    }
-
-    // Make sure the length of the output is less than 3MB
-    if (body.data.output && body.data.output.length > 3 * 1024 * 1024) {
-      return json({ error: "Output must be less than 3MB" }, { status: 400 });
     }
 
     return await completeRunTask(authenticatedEnv, runId, id, {
@@ -72,18 +80,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
       output: body.data.output ? (JSON.parse(body.data.output) as any) : undefined,
     });
   } else {
-    const body = CompleteTaskBodyInputSchema.safeParse(anyBody);
+    const body = await startActiveSpan("CompleteTaskBodyInputSchema.safeParse()", async () => {
+      return CompleteTaskBodyInputSchema.omit({ output: true }).safeParse(anyBody);
+    });
 
     if (!body.success) {
       return json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    // Make sure the length of the output is less than 3MB
-    if (JSON.stringify(body.data.output).length > 3 * 1024 * 1024) {
-      return json({ error: "Output must be less than 3MB" }, { status: 400 });
-    }
+    const output = (anyBody as any).output;
 
-    return await completeRunTask(authenticatedEnv, runId, id, body.data);
+    return await completeRunTask(authenticatedEnv, runId, id, { ...body.data, output });
   }
 }
 
@@ -97,12 +104,6 @@ async function completeRunTask(
 
   try {
     const task = await service.call(environment, runId, id, taskBody);
-
-    logger.debug("CompleteRunTaskService.call() response body", {
-      runId,
-      id,
-      task,
-    });
 
     if (!task) {
       return json({ message: "Task not found" }, { status: 404 });

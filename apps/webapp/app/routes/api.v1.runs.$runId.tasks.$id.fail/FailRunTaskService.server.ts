@@ -57,10 +57,6 @@ export class FailRunTaskService {
         existingTask.status === "ERRORED" ||
         existingTask.status === "CANCELED"
       ) {
-        logger.debug("Task already completed", {
-          existingTask,
-        });
-
         return existingTask;
       }
 
