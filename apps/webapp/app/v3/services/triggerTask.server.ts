@@ -176,10 +176,12 @@ export class TriggerTaskService extends BaseService {
               }
 
               if (body.options?.queue) {
-                const concurrencyLimit = body.options.queue.concurrencyLimit
-                  ? Math.max(0, body.options.queue.concurrencyLimit)
-                  : null;
-                const taskQueue = await prisma.taskQueue.upsert({
+                const concurrencyLimit =
+                  typeof body.options.queue.concurrencyLimit === "number"
+                    ? Math.max(0, body.options.queue.concurrencyLimit)
+                    : undefined;
+
+                const taskQueue = await tx.taskQueue.upsert({
                   where: {
                     runtimeEnvironmentId_name: {
                       runtimeEnvironmentId: environment.id,
