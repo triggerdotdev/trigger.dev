@@ -1,5 +1,13 @@
 # internal-platform
 
+## 3.0.0-beta.40
+
+### Patch Changes
+
+- 55d1f8c67: Add callback to checkpoint created message
+- 098932ea9: v3: vercel edge runtime support
+- 9835f4ec5: v3: fix otel flushing causing CLEANUP ack timeout errors by always setting a forceFlushTimeoutMillis value
+
 ## 3.0.0-beta.39
 
 ## 3.0.0-beta.38

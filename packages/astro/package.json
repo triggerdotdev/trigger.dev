@@ -1,7 +1,7 @@
 {
   "name": "@trigger.dev/astro",
   "description": "An Astro-native integration for Trigger.dev background jobs platform",
-  "version": "3.0.0-beta.39",
+  "version": "3.0.0-beta.40",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
@@ -20,7 +20,7 @@
     "build:tsup": "tsup"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:^3.0.0-beta.39"
+    "@trigger.dev/sdk": "workspace:^3.0.0-beta.40"
   },
   "devDependencies": {
     "astro": "^3.0.12",

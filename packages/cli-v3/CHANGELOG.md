@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 3.0.0-beta.40
+
+### Patch Changes
+
+- 098932ea9: v3: vercel edge runtime support
+- 9835f4ec5: v3: fix otel flushing causing CLEANUP ack timeout errors by always setting a forceFlushTimeoutMillis value
+- Updated dependencies [55d1f8c67]
+- Updated dependencies [098932ea9]
+- Updated dependencies [9835f4ec5]
+  - @trigger.dev/core@3.0.0-beta.40
+
 ## 3.0.0-beta.39
 
 ### Patch Changes

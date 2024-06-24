@@ -3,7 +3,7 @@ title: "Triggering"
 description: "Tasks need to be triggered to run."
 ---
 
-There are currently four ways you can trigger any task from your own code:
+There are currently six ways you can trigger tasks:
 
 | Function                         | Where does this work? | What it does                                                                                                                       |
 | -------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -11,6 +11,8 @@ There are currently four ways you can trigger any task from your own code:
 | `yourTask.batchTrigger()`        | Anywhere              | Triggers a task multiple times and gets a handle you can use to monitor and manage the runs. It does not wait for the results.     |
 | `yourTask.triggerAndWait()`      | Inside a task         | Triggers a task and then waits until it's complete. You get the result data to continue with.                                      |
 | `yourTask.batchTriggerAndWait()` | Inside a task         | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. |
+| `tasks.trigger()`                | Outside of a task     | Triggers a task and gets a handle you can use to fetch and manage the run.                                                         |
+| `tasks.batchTrigger()`           | Outside of a task     | Triggers a task multiple times and gets a handle you can use to fetch and manage the runs.                                         |
 
 Additionally, [scheduled tasks](/v3/tasks-scheduled) get automatically triggered on their schedule and [webhooks](/v3/tasks-webhooks) when receiving a webhook.
 
@@ -18,24 +20,19 @@ Additionally, [scheduled tasks](/v3/tasks-scheduled) get automatically triggered
 
 You should attach one or more schedules to your `schedules.task()` to trigger it on a recurring schedule. [Read the scheduled tasks docs](/v3/tasks-scheduled).
 
-## From outside of a task
-
-You can trigger any task from your backend code, using either `trigger()` or `batchTrigger()`.
-
-<Note>
-  Do not trigger tasks directly from your frontend. If you do, you will leak your private
-  Trigger.dev API key to the world.
-</Note>
-
-You can use Next.js Server Actions but [you need to be careful with bundling](#next-js-server-actions).
-
-### Authentication
+## Authentication
 
 When you trigger a task from your backend code, you need to set the `TRIGGER_SECRET_KEY` environment variable. You can find the value on the API keys page in the Trigger.dev dashboard. [More info on API keys](/v3/apikeys).
 
-### trigger()
+## Task instance methods
+
+Task instance methods are available on the `Task` object you receive when you define a task. They can be called from your backend code or from inside another task.
+
+### Task.trigger()
 
 Triggers a single run of a task with the payload you pass in, and any options you specify. It does NOT wait for the result, you cannot do that from outside a task.
+
+If called from within a task, you can use the `AndWait` version to pause execution until the triggered run is complete.
 
 <CodeGroup>
 
@@ -74,11 +71,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 ```
 
+```ts /trigger/my-task.ts
+import { myOtherTask } from "~/trigger/my-other-task";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: string) => {
+    const handle = await myOtherTask.trigger("some data");
+
+    //...do other stuff
+  },
+});
+```
+
 </CodeGroup>
 
-### batchTrigger()
+### Task.batchTrigger()
 
-Triggers multiples runs of a task with the payloads you pass in, and any options you specify. It does NOT wait for the results, you cannot do that from outside a task.
+Triggers multiples runs of a task with the payloads you pass in, and any options you specify.
 
 <CodeGroup>
 
@@ -121,33 +131,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 ```
 
-</CodeGroup>
-
-## From inside a task
-
-You can trigger tasks from other tasks using `trigger()` or `batchTrigger()`. You can also trigger and wait for the result of triggered tasks using `triggerAndWait()` and `batchTriggerAndWait()`. This is a powerful way to build complex tasks.
-
-### trigger()
-
-This works the same as from outside a task. You call it and you get a handle back, but it does not wait for the result.
-
-```ts /trigger/my-task.ts
-import { myOtherTask } from "~/trigger/my-other-task";
-
-export const myTask = task({
-  id: "my-task",
-  run: async (payload: string) => {
-    const handle = await myOtherTask.trigger("some data");
-
-    //...do other stuff
-  },
-});
-```
-
-### batchTrigger()
-
-This works the same as from outside a task. You call it and you get a handle back, but it does not wait for the results.
-
 ```ts /trigger/my-task.ts
 import { myOtherTask } from "~/trigger/my-other-task";
 
@@ -161,7 +144,9 @@ export const myTask = task({
 });
 ```
 
-### triggerAndWait()
+</CodeGroup>
+
+### Task.triggerAndWait()
 
 This is where it gets interesting. You can trigger a task and then wait for the result. This is useful when you need to call a different task and then use the result to continue with your task.
 
@@ -219,7 +204,7 @@ export const parentTask = task({
 });
 ```
 
-### batchTriggerAndWait()
+### Task.batchTriggerAndWait()
 
 You can batch trigger a task and wait for all the results. This is useful for the fan-out pattern, where you need to call a task multiple times and then wait for all the results to continue with your task.
 
@@ -284,11 +269,213 @@ export const batchParentTask = task({
 });
 ```
 
+## SDK functions
+
+You can trigger any task from your backend code using the `tasks.trigger()` or `tasks.batchTrigger()` SDK functions.
+
+<Note>
+  Do not trigger tasks directly from your frontend. If you do, you will leak your private
+  Trigger.dev API key.
+</Note>
+
+You can use Next.js Server Actions but [you need to be careful with bundling](#next-js-server-actions).
+
+### tasks.trigger()
+
+Triggers a single run of a task with the payload you pass in, and any options you specify, without needing to import the task.
+
+<Note>
+  Why would you use this instead of the `Task.trigger()` instance method? Tasks can import
+  dependencies/modules that you might not want included in your application code or cause problems
+  with building.
+</Note>
+
+<CodeGroup>
+
+```ts Next.js API route
+import { tasks } from "@trigger.dev/sdk/v3";
+import type { emailSequence } from "~/trigger/emails";
+//     👆 **type-only** import
+
+//app/email/route.ts
+export async function POST(request: Request) {
+  //get the JSON from the request
+  const data = await request.json();
+
+  // Pass the task type to `trigger()` as a generic argument, giving you full type checking
+  const handle = await tasks.trigger<typeof emailSequence>("email-sequence", {
+    to: data.email,
+    name: data.name,
+  });
+
+  //return a success response with the handle
+  return Response.json(handle);
+}
+```
+
+```ts Remix
+import { tasks } from "@trigger.dev/sdk/v3";
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  if (request.method.toUpperCase() !== "POST") {
+    return json("Method Not Allowed", { status: 405 });
+  }
+
+  //get the JSON from the request
+  const data = await request.json();
+
+  // The generic argument is optional, but recommended for full type checking
+  const handle = await tasks.trigger("email-sequence", {
+    to: data.email,
+    name: data.name,
+  });
+
+  //return a success response with the handle
+  return json(handle);
+}
+```
+
+</CodeGroup>
+
+<Tip>
+  By importing the task with the type modifier, the import of `"~/trigger/emails"` is a type-only
+  import. This means that the task code is not included in your application at build time.
+</Tip>
+
+### tasks.batchTrigger()
+
+Triggers multiples runs of a task with the payloads you pass in, and any options you specify, without needing to import the task.
+
+<CodeGroup>
+
+```ts Next.js API route
+import { tasks } from "@trigger.dev/sdk/v3";
+import type { emailSequence } from "~/trigger/emails";
+//     👆 **type-only** import
+
+//app/email/route.ts
+export async function POST(request: Request) {
+  //get the JSON from the request
+  const data = await request.json();
+
+  // Pass the task type to `batchTrigger()` as a generic argument, giving you full type checking
+  const batchHandle = await tasks.batchTrigger<typeof emailSequence>(
+    "email-sequence",
+    data.users.map((u) => ({ payload: { to: u.email, name: u.name } }))
+  );
+
+  //return a success response with the handle
+  return Response.json(batchHandle);
+}
+```
+
+</CodeGroup>
+
+### tasks.triggerAndPoll()
+
+Triggers a single run of a task with the payload you pass in, and any options you specify, and then polls the run until it's complete.
+
+<CodeGroup>
+
+```ts Next.js API route
+import { tasks } from "@trigger.dev/sdk/v3";
+import type { emailSequence } from "~/trigger/emails";
+
+//app/email/route.ts
+export async function POST(request: Request) {
+  //get the JSON from the request
+  const data = await request.json();
+
+  // Pass the task type to `triggerAndPoll()` as a generic argument, giving you full type checking
+  const result = await tasks.triggerAndPoll<typeof emailSequence>(
+    "email-sequence",
+    {
+      to: data.email,
+      name: data.name,
+    },
+    { pollIntervalMs: 5000 }
+  );
+
+  //return a success response with the result
+  return Response.json(result);
+}
+```
+
+</CodeGroup>
+
+<Note>
+  The above code is just a demonstration of the API and is not recommended to use in an API route
+  this way as it will block the request until the task is complete.
+</Note>
+
+### runs.retrieve()
+
+You can retrieve a run by its handle using the `runs.retrieve()` function.
+
+<CodeGroup>
+
+```ts Next.js API route
+import { tasks, runs } from "@trigger.dev/sdk/v3";
+import type { emailSequence } from "~/trigger/emails";
+//     👆 **type-only** import
+
+//app/email/route.ts
+export async function POST(request: Request) {
+  //get the JSON from the request
+  const data = await request.json();
+
+  // Pass the task type to `trigger()` as a generic argument, giving you full type checking
+  const handle = await tasks.trigger<typeof emailSequence>("email-sequence", {
+    to: data.email,
+    name: data.name,
+  });
+
+  const run = await runs.retrieve(handle);
+
+  // run.output will be correctly typed as the return value of the task
+  return Response.json(run.output);
+}
+```
+
+</CodeGroup>
+
+### runs.poll()
+
+You can poll a run by its handle using the `runs.poll()` function.
+
+<CodeGroup>
+
+```ts Next.js API route
+import { tasks, runs } from "@trigger.dev/sdk/v3";
+import type { emailSequence } from "~/trigger/emails";
+//     👆 **type-only** import
+
+//app/email/route.ts
+export async function POST(request: Request) {
+  //get the JSON from the request
+  const data = await request.json();
+
+  // Pass the task type to `trigger()` as a generic argument, giving you full type checking
+  const handle = await tasks.trigger<typeof emailSequence>("email-sequence", {
+    to: data.email,
+    name: data.name,
+  });
+
+  // Poll the run until it's complete
+  const run = await runs.poll(handle, { pollIntervalMs: 5000 });
+
+  // run.output will be correctly typed as the return value of the task
+  return Response.json(run.output);
+}
+```
+
+</CodeGroup>
+
 ## Next.js Server Actions
 
 Server Actions allow you to call your backend code without creating API routes. This is very useful for triggering tasks but you need to be careful you don't accidentally bundle the Trigger.dev SDK into your frontend code.
 
-If you see an error like this then you've bundled `@trigger.dev/sdk` into your frontend code:
+If you see an error like this then you've bundled `@trigger.dev/sdk/v3` into your frontend code:
 
 ```bash
 Module build failed: UnhandledSchemeError: Reading from "node:crypto" is not handled by plugins (Unhandled scheme).
@@ -297,7 +484,7 @@ Webpack supports "data:" and "file:" URIs by default.
 You may need an additional plugin to handle "node:" URIs.
 ```
 
-When you use server actions that use `@trigger.dev/sdk`:
+When you use server actions that use `@trigger.dev/sdk/v3`:
 
 - The file can't have any React components in it.
 - The file should have `"use server"` on the first line.

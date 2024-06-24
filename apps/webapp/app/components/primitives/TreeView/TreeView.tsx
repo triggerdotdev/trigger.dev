@@ -528,7 +528,7 @@ export type Tree<TData> = {
 /** A tree but flattened so it can easily be used for DOM elements */
 export type FlatTreeItem<TData> = {
   id: string;
-  parentId: string | undefined;
+  parentId?: string | undefined;
   children: string[];
   hasChildren: boolean;
   /** The indentation level, the root is 0 */
