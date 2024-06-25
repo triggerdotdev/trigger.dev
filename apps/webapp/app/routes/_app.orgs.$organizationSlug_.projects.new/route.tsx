@@ -3,7 +3,7 @@ import { parse } from "@conform-to/zod";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -25,8 +25,14 @@ import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { createProject } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
-import { OrganizationParamsSchema, organizationPath, projectPath } from "~/utils/pathBuilder";
+import {
+  OrganizationParamsSchema,
+  organizationPath,
+  projectPath,
+  selectPlanPath,
+} from "~/utils/pathBuilder";
 import { RequestV3Access } from "../resources.orgs.$organizationSlug.v3-access";
+import { featuresForRequest } from "~/features.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -56,8 +62,13 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
   }
 
-  const url = new URL(request.url);
+  //if you don't have v3 access, you must select a plan
+  const { isManagedCloud, v3Enabled } = featuresForRequest(request);
+  if (isManagedCloud && v3Enabled && !organization.v3Enabled) {
+    return redirect(selectPlanPath({ slug: organizationSlug }));
+  }
 
+  const url = new URL(request.url);
   return typedjson({
     organization: {
       id: organization.id,
@@ -107,24 +118,13 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 };
 
-export default function NewOrganizationPage() {
+export default function Page() {
   const { organization } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const { v3Enabled, isManagedCloud } = useFeatures();
 
   const canCreateV3Projects = organization.v3Enabled && v3Enabled;
   const canCreateV2Projects = organization.v2Enabled || !isManagedCloud;
-  const canCreateProjects = canCreateV2Projects || canCreateV3Projects;
-
-  if (!canCreateProjects) {
-    return (
-      <RequestV3Access
-        hasRequestedV3={organization.hasRequestedV3}
-        organizationSlug={organization.slug}
-        projectsCount={organization.projectsCount}
-      />
-    );
-  }
 
   const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",
