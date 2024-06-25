@@ -129,6 +129,10 @@ export type PreparedEvent = Omit<QueriedEvent, "events" | "style" | "duration"> 
   style: TaskEventStyle;
 };
 
+export type RunPreparedEvent = PreparedEvent & {
+  taskSlug?: string;
+};
+
 export type SpanLink =
   | {
       type: "run";
@@ -400,13 +404,19 @@ export class EventRepository {
         orderBy: {
           startTime: "asc",
         },
+        take: env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT,
       });
 
       let preparedEvents: Array<PreparedEvent> = [];
+      let rootSpanId: string | undefined;
       const eventsBySpanId = new Map<string, PreparedEvent>();
 
       for (const event of events) {
         preparedEvents.push(prepareEvent(event));
+
+        if (!rootSpanId && !event.parentId) {
+          rootSpanId = event.spanId;
+        }
       }
 
       for (const event of preparedEvents) {
@@ -424,6 +434,8 @@ export class EventRepository {
 
       preparedEvents = Array.from(eventsBySpanId.values());
 
+      const spansBySpanId = new Map<string, SpanSummary>();
+
       const spans = preparedEvents.map((event) => {
         const ancestorCancelled = isAncestorCancelled(eventsBySpanId, event.spanId);
         const duration = calculateDurationIfAncestorIsCancelled(
@@ -432,7 +444,7 @@ export class EventRepository {
           event.duration
         );
 
-        return {
+        const span = {
           recordId: event.id,
           id: event.spanId,
           parentId: event.parentId ?? undefined,
@@ -451,14 +463,17 @@ export class EventRepository {
             environmentType: event.environmentType,
           },
         };
+
+        spansBySpanId.set(event.spanId, span);
+
+        return span;
       });
 
-      const rootSpanId = events.find((event) => !event.parentId);
       if (!rootSpanId) {
         return;
       }
 
-      const rootSpan = spans.find((span) => span.id === rootSpanId.spanId);
+      const rootSpan = spansBySpanId.get(rootSpanId);
 
       if (!rootSpan) {
         return;
@@ -468,6 +483,46 @@ export class EventRepository {
         rootSpan,
         spans,
       };
+    });
+  }
+
+  public async getRunEvents(runId: string): Promise<RunPreparedEvent[]> {
+    return await startActiveSpan("getRunEvents", async (span) => {
+      const events = await this.readReplica.taskEvent.findMany({
+        select: {
+          id: true,
+          spanId: true,
+          parentId: true,
+          runId: true,
+          idempotencyKey: true,
+          message: true,
+          style: true,
+          startTime: true,
+          duration: true,
+          isError: true,
+          isPartial: true,
+          isCancelled: true,
+          level: true,
+          events: true,
+          environmentType: true,
+          taskSlug: true,
+        },
+        where: {
+          runId,
+          isPartial: false,
+        },
+        orderBy: {
+          startTime: "asc",
+        },
+      });
+
+      let preparedEvents: Array<PreparedEvent> = [];
+
+      for (const event of events) {
+        preparedEvents.push(prepareEvent(event));
+      }
+
+      return preparedEvents;
     });
   }
 
@@ -1224,7 +1279,7 @@ function getNowInNanoseconds(): bigint {
   return BigInt(new Date().getTime() * 1_000_000);
 }
 
-function getDateFromNanoseconds(nanoseconds: bigint) {
+export function getDateFromNanoseconds(nanoseconds: bigint) {
   return new Date(Number(nanoseconds) / 1_000_000);
 }
 

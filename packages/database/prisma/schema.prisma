@@ -1925,6 +1925,10 @@ model TaskEvent {
   @@index([traceId])
   /// Used when looking up span events to complete when a run completes
   @@index([spanId])
+  /// Used on eventRepository.getTraceSummary()
+  @@index([traceId, startTime])
+  // Used for getting all logs for a run
+  @@index([runId])
 }
 
 enum TaskEventLevel {

@@ -85,6 +85,14 @@
       "require": "./dist/v3/utils/structuredLogger.js",
       "types": "./dist/v3/utils/structuredLogger.d.ts"
     },
+    "./v3/utils/durations": {
+      "import": {
+        "types": "./dist/v3/utils/durations.d.mts",
+        "default": "./dist/v3/utils/durations.mjs"
+      },
+      "require": "./dist/v3/utils/durations.js",
+      "types": "./dist/v3/utils/durations.d.ts"
+    },
     "./v3/dev": {
       "import": {
         "types": "./dist/v3/dev/index.d.mts",
