@@ -1,12 +1,14 @@
 import { logger, task, wait } from "@trigger.dev/sdk/v3";
 
+import { env } from "../env";
+
 export const oneAtATime = task({
   id: "on-at-a-time",
   queue: {
     concurrencyLimit: 1,
   },
   run: async (payload: { message: string }) => {
-    logger.info("One at a time task payload", { payload });
+    logger.info("One at a time task payload", { payload, env });
 
     await wait.for({ seconds: 10 });
 

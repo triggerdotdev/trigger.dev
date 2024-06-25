@@ -27,17 +27,10 @@ export function parseBuildErrorStack(error: unknown): BuildError | undefined {
 
   if (errorIsErrorLike(error)) {
     if (typeof error.stack === "string") {
-      const isErrRequireEsm = error.stack.includes("ERR_REQUIRE_ESM");
+      if (error.stack.includes("ERR_REQUIRE_ESM")) {
+        const moduleName = getPackageNameFromEsmRequireError(error.stack);
 
-      let moduleName = null;
-
-      if (isErrRequireEsm) {
-        // Regular expression to match the module path
-        const moduleRegex = /node_modules\/(@[^\/]+\/[^\/]+|[^\/]+)\/[^\/]+\s/;
-        const match = moduleRegex.exec(error.stack);
-        if (match) {
-          moduleName = match[1] as string; // Capture the module name
-
+        if (moduleName) {
           return {
             type: "esm-require-error",
             moduleName,
@@ -48,6 +41,38 @@ export function parseBuildErrorStack(error: unknown): BuildError | undefined {
       return error.message;
     }
   }
+}
+
+function getPackageNameFromEsmRequireError(stack: string): string | undefined {
+  const pathRegex = /require\(\) of ES Module (.*) from/;
+  const pathMatch = pathRegex.exec(stack);
+
+  if (!pathMatch) {
+    return;
+  }
+
+  const filePath = pathMatch[1];
+
+  if (!filePath) {
+    return;
+  }
+
+  const lastPart = filePath.split("node_modules/").pop();
+
+  if (!lastPart) {
+    return;
+  }
+
+  // regular expression to match the package name
+  const moduleRegex = /(@[^\/]+\/[^\/]+|[^\/]+)/;
+
+  const match = moduleRegex.exec(lastPart);
+
+  if (!match) {
+    return;
+  }
+
+  return match[1];
 }
 
 export function logESMRequireError(parsedError: ESMRequireError, resolvedConfig: ReadConfigResult) {
