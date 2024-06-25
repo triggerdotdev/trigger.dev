@@ -60,10 +60,10 @@ export function PricingPlans({ plans }: PricingPlansProps) {
   );
 }
 
-export function TierFree({ plan }: { plan: FreePlanDefinition }) {
+export function TierFree({ plan }: { plan: FreePlanDefinition | PaidPlanDefinition }) {
   return (
     <TierContainer>
-      <PricingHeader title="Free" cost={0} />
+      <PricingHeader title={plan.title} cost={0} />
       <TierLimit href="https://trigger.dev/pricing#computePricing">
         ${plan.limits.includedUsage} free usage
       </TierLimit>
@@ -95,104 +95,13 @@ export function TierFree({ plan }: { plan: FreePlanDefinition }) {
   );
 }
 
-function ConcurrentRuns({ limits }: { limits: Limits }) {
-  return (
-    <FeatureItem checked>
-      {limits.concurrentRuns.number}
-      {limits.concurrentRuns.canExceed ? "+" : ""}{" "}
-      <DefinitionTip
-        title={pricingDefinitions.concurrentRuns.title}
-        content={pricingDefinitions.concurrentRuns.content}
-      >
-        concurrent runs
-      </DefinitionTip>
-    </FeatureItem>
-  );
-}
-
-function TeamMembers({ limits }: { limits: Limits }) {
-  return (
-    <FeatureItem checked>
-      {limits.teamMembers.number}
-      {limits.concurrentRuns.canExceed ? "+" : ""} team members
-    </FeatureItem>
-  );
-}
-
-function Environments({ limits }: { limits: Limits }) {
-  return (
-    <FeatureItem checked>
-      {limits.hasStagingEnvironment ? "Dev, Staging and Prod" : "Dev and Prod"}{" "}
-      <DefinitionTip
-        title={pricingDefinitions.environment.title}
-        content={pricingDefinitions.environment.content}
-      >
-        environments
-      </DefinitionTip>
-    </FeatureItem>
-  );
-}
-
-function Schedules({ limits }: { limits: Limits }) {
-  return (
-    <FeatureItem checked>
-      {limits.schedules.number}
-      {limits.schedules.canExceed ? "+" : ""}{" "}
-      <DefinitionTip
-        title={pricingDefinitions.schedules.title}
-        content={pricingDefinitions.schedules.content}
-      >
-        schedules
-      </DefinitionTip>
-    </FeatureItem>
-  );
-}
-
-function LogRetention({ limits }: { limits: Limits }) {
-  return <FeatureItem checked>{limits.logRetentionDays.number} day log retention</FeatureItem>;
-}
-
-function SupportLevel({ limits }: { limits: Limits }) {
-  return (
-    <FeatureItem checked>
-      {limits.support === "community" ? "Community support" : "Dedicated Slack support"}
-    </FeatureItem>
-  );
-}
-
-function Alerts({ limits }: { limits: Limits }) {
-  if (limits.alerts.number === 0) {
-    return (
-      <FeatureItem>
-        <DefinitionTip
-          title={pricingDefinitions.alerts.title}
-          content={pricingDefinitions.alerts.content}
-        >
-          Alert destinations
-        </DefinitionTip>
-      </FeatureItem>
-    );
-  }
-
-  return (
-    <FeatureItem checked>
-      {limits.alerts.number}
-      {limits.alerts.canExceed ? "+" : ""}{" "}
-      <DefinitionTip
-        title={pricingDefinitions.alerts.title}
-        content={pricingDefinitions.alerts.content}
-      >
-        alert destinations
-      </DefinitionTip>
-    </FeatureItem>
-  );
-}
-
 export function TierHobby({ plan }: { plan: PaidPlanDefinition }) {
   return (
     <TierContainer isHighlighted>
-      <PricingHeader title="Hobby" isHighlighted cost={10} />
-      <TierLimit href="https://trigger.dev/pricing#computePricing">$10 usage included</TierLimit>
+      <PricingHeader title={plan.title} isHighlighted cost={plan.tierPrice} />
+      <TierLimit href="https://trigger.dev/pricing#computePricing">
+        ${plan.limits.includedUsage} usage included
+      </TierLimit>
       <div className="py-6">
         <Button variant="primary/large" fullWidth className="text-md font-medium">
           Select plan
@@ -222,8 +131,10 @@ export function TierHobby({ plan }: { plan: PaidPlanDefinition }) {
 export function TierPro({ plan }: { plan: PaidPlanDefinition }) {
   return (
     <TierContainer>
-      <PricingHeader title="Pro" cost={50} />
-      <TierLimit href="https://trigger.dev/pricing#computePricing">$50 usage included</TierLimit>
+      <PricingHeader title={plan.title} isHighlighted cost={plan.tierPrice} />
+      <TierLimit href="https://trigger.dev/pricing#computePricing">
+        ${plan.limits.includedUsage} usage included
+      </TierLimit>
       <div className="py-6">
         <Button variant="tertiary/large" fullWidth className="text-md font-medium">
           Select plan
@@ -412,5 +323,98 @@ function FeatureItem({
         {children}
       </div>
     </li>
+  );
+}
+
+function ConcurrentRuns({ limits }: { limits: Limits }) {
+  return (
+    <FeatureItem checked>
+      {limits.concurrentRuns.number}
+      {limits.concurrentRuns.canExceed ? "+" : ""}{" "}
+      <DefinitionTip
+        title={pricingDefinitions.concurrentRuns.title}
+        content={pricingDefinitions.concurrentRuns.content}
+      >
+        concurrent runs
+      </DefinitionTip>
+    </FeatureItem>
+  );
+}
+
+function TeamMembers({ limits }: { limits: Limits }) {
+  return (
+    <FeatureItem checked>
+      {limits.teamMembers.number}
+      {limits.concurrentRuns.canExceed ? "+" : ""} team members
+    </FeatureItem>
+  );
+}
+
+function Environments({ limits }: { limits: Limits }) {
+  return (
+    <FeatureItem checked>
+      {limits.hasStagingEnvironment ? "Dev, Staging and Prod" : "Dev and Prod"}{" "}
+      <DefinitionTip
+        title={pricingDefinitions.environment.title}
+        content={pricingDefinitions.environment.content}
+      >
+        environments
+      </DefinitionTip>
+    </FeatureItem>
+  );
+}
+
+function Schedules({ limits }: { limits: Limits }) {
+  return (
+    <FeatureItem checked>
+      {limits.schedules.number}
+      {limits.schedules.canExceed ? "+" : ""}{" "}
+      <DefinitionTip
+        title={pricingDefinitions.schedules.title}
+        content={pricingDefinitions.schedules.content}
+      >
+        schedules
+      </DefinitionTip>
+    </FeatureItem>
+  );
+}
+
+function LogRetention({ limits }: { limits: Limits }) {
+  return <FeatureItem checked>{limits.logRetentionDays.number} day log retention</FeatureItem>;
+}
+
+function SupportLevel({ limits }: { limits: Limits }) {
+  return (
+    <FeatureItem checked>
+      {limits.support === "community" ? "Community support" : "Dedicated Slack support"}
+    </FeatureItem>
+  );
+}
+
+function Alerts({ limits }: { limits: Limits }) {
+  if (limits.alerts.number === 0) {
+    return (
+      <FeatureItem>
+        <DefinitionTip
+          title={pricingDefinitions.alerts.title}
+          content={pricingDefinitions.alerts.content}
+        >
+          Alert destinations
+        </DefinitionTip>
+      </FeatureItem>
+    );
+  }
+
+  return (
+    <FeatureItem checked>
+      {limits.alerts.number}
+      {limits.alerts.canExceed ? "+" : ""}{" "}
+      <DefinitionTip
+        title={pricingDefinitions.alerts.title}
+        content={pricingDefinitions.alerts.content}
+      >
+        alert destinations
+      </DefinitionTip>
+    </FeatureItem>
   );
 }
