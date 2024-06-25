@@ -676,6 +676,10 @@ class TaskRunProcess {
           if (this.messageId) {
             this.onTaskRunHeartbeat.post(this.messageId);
           } else {
+            console.error(
+              "No message id for task heartbeat, falling back to (deprecated) attempt heartbeat",
+              { id: message.id }
+            );
             this.onTaskHeartbeat.post(message.id);
           }
         },

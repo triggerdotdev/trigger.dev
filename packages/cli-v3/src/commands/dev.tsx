@@ -290,6 +290,7 @@ function useDev({
     websocket.addEventListener("error", (event) => {});
 
     // This is the deprecated task heart beat that uses the friendly attempt ID
+    // It will only be used if the worker does not support lazy attempts
     backgroundWorkerCoordinator.onWorkerTaskHeartbeat.attach(
       async ({ worker, backgroundWorkerId, id }) => {
         await sender.send("BACKGROUND_WORKER_MESSAGE", {

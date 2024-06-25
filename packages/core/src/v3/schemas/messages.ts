@@ -212,12 +212,6 @@ export const ProdChildToWorkerMessages = {
       id: z.string(),
     }),
   },
-  TASK_RUN_HEARTBEAT: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      id: z.string(),
-    }),
-  },
   READY_TO_DISPOSE: {
     message: z.undefined(),
   },
