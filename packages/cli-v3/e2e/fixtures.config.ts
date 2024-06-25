@@ -57,5 +57,7 @@ export const fixturesConfig: TestCase[] = [
   {
     id: "trigger-dir-not-found",
     skipTypecheck: true,
+    // Should fail way before
+    wantCompilationError: true,
   },
 ];

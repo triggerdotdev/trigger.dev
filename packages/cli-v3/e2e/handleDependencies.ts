@@ -110,5 +110,5 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
     throw new SkipLoggingError("Failed to resolve dependencies");
   }
 
-  return { dependencies };
+  return dependencies;
 }

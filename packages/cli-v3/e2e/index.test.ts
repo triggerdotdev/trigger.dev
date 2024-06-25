@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { rimraf } from "rimraf";
 
 import { typecheckProject } from "../src/commands/deploy";
-import { readConfig, ReadConfigFileResult } from "../src/utilities/configFiles";
+import { readConfig, ReadConfigFileResult, ReadConfigResult } from "../src/utilities/configFiles";
 import {
   detectPackageManagerFromArtifacts,
   LOCKFILES,
@@ -18,14 +18,15 @@ import { createDeployHash } from "./createDeployHash";
 import { handleDependencies } from "./handleDependencies";
 import { E2EOptions, E2EOptionsSchema } from "./schemas";
 import { fixturesConfig, TestCase } from "./fixtures.config";
+import { Metafile, OutputFile } from "esbuild";
 
 interface E2EFixtureTest extends TestCase {
   dir: string;
-  tempDir: string;
   packageManager: PackageManager;
+  tempDir: string;
 }
 
-const TIMEOUT = 180_000;
+const TIMEOUT = 120_000;
 
 const testCases: TestCase[] = process.env.MOD
   ? fixturesConfig.filter(({ id }) => process.env.MOD === id)
@@ -65,18 +66,11 @@ if (testCases.length > 0) {
           await rename(resolve(join(dir, "yarn.lock.copy")), resolve(join(dir, "yarn.lock")));
         }
       }
-    });
+
+      await installFixtureDeps(dir, packageManager);
+    }, TIMEOUT);
 
     afterEach<E2EFixtureTest>(async ({ dir, packageManager }) => {
-      delete global.resolvedConfig;
-
-      delete global.entryPointMetaOutput;
-      delete global.entryPointOutputFile;
-      delete global.workerMetaOutput;
-      delete global.workerOutputFile;
-
-      delete global.dependencies;
-
       if (packageManager === "npm") {
         try {
           await rename(resolve(join(dir, "yarn.lock.copy")), resolve(join(dir, "yarn.lock")));
@@ -123,86 +117,53 @@ if (testCases.length > 0) {
             skip();
           }
 
-          await expect(
-            (async () => {
-              if (["pnpm", "yarn"].includes(packageManager)) {
-                const buffer = readFileSync(resolve(join(dir, "package.json")), "utf8");
-                const pkgJSON = JSON.parse(buffer.toString());
-                const version = pkgJSON.engines[packageManager];
-                console.log(
-                  `Detected ${packageManager}@${version} from package.json 'engines' field`
-                );
-                const { stdout, stderr } = await execa(
-                  "corepack",
-                  ["use", `${packageManager}@${version}`],
-                  {
-                    cwd: dir,
-                  }
-                );
-                console.log(stdout);
-                if (stderr) console.error(stderr);
-              } else {
-                const { stdout, stderr } = await execa(
-                  packageManager,
-                  installArgs(packageManager),
-                  {
-                    cwd: dir,
-                    NODE_PATH: resolve(join(dir, "node_modules")),
-                  }
-                );
-                console.log(stdout);
-                if (stderr) console.error(stderr);
-              }
-            })(),
-            "installs fixture dependencies"
-          ).resolves.not.toThrowError();
-
+          let resolvedConfig: ReadConfigResult;
           const configExpect = expect(
             (async () => {
-              global.resolvedConfig = await readConfig(dir, { cwd: dir });
+              resolvedConfig = await readConfig(dir, { cwd: dir });
             })(),
             wantConfigNotFoundError || wantConfigInvalidError
               ? "does not resolve config"
               : "resolves config"
           );
+
           if (wantConfigNotFoundError) {
             await configExpect.rejects.toThrowError();
-          } else {
-            await configExpect.resolves.not.toThrowError();
-          }
-
-          if (wantConfigNotFoundError || wantConfigInvalidError) {
-            if (wantConfigInvalidError) {
-              expect(global.resolvedConfig!.status).toBe("error");
-            }
             return;
           }
 
-          expect(global.resolvedConfig).not.toBe("error");
+          await configExpect.resolves.not.toThrowError();
+
+          if (wantConfigInvalidError) {
+            expect(resolvedConfig!.status).toBe("error");
+            return;
+          }
+
+          expect(resolvedConfig!).not.toBe("error");
 
           if (!skipTypecheck) {
             await expect(
               (async () =>
-                await typecheckProject((global.resolvedConfig as ReadConfigFileResult).config))(),
+                await typecheckProject((resolvedConfig! as ReadConfigFileResult).config))(),
               "typechecks"
             ).resolves.not.toThrowError();
           }
 
+          let entryPointMetaOutput: Metafile["outputs"]["out/stdin.js"];
+          let entryPointOutputFile: OutputFile;
+          let workerMetaOutput: Metafile["outputs"]["out/stdin.js"];
+          let workerOutputFile: OutputFile;
+
           const compileExpect = expect(
             (async () => {
-              const {
-                workerMetaOutput,
-                workerOutputFile,
-                entryPointMetaOutput,
-                entryPointOutputFile,
-              } = await compile({
-                resolvedConfig: global.resolvedConfig!,
+              const compilationResult = await compile({
+                resolvedConfig: resolvedConfig!,
                 tempDir,
               });
-              global.entryPointMetaOutput = entryPointMetaOutput;
-              global.entryPointOutputFile = entryPointOutputFile;
-              global.workerMetaOutput = workerMetaOutput;
-              global.workerOutputFile = workerOutputFile;
+              entryPointMetaOutput = compilationResult.entryPointMetaOutput;
+              entryPointOutputFile = compilationResult.entryPointOutputFile;
+              workerMetaOutput = compilationResult.workerMetaOutput;
+              workerOutputFile = compilationResult.workerOutputFile;
             })(),
             wantCompilationError ? "does not compile" : "compiles"
           );
@@ -214,6 +175,8 @@ if (testCases.length > 0) {
 
           await compileExpect.resolves.not.toThrowError();
 
+          let dependencies: { [k: string]: string };
+
           if (resolveEnv) {
             for (let envKey in resolveEnv) {
               vi.stubEnv(envKey, resolveEnv[envKey]!);
@@ -222,14 +185,13 @@ if (testCases.length > 0) {
 
           const depsExpectation = expect(
             (async () => {
-              const { dependencies } = await handleDependencies({
-                entryPointMetaOutput: global.entryPointMetaOutput!,
-                metaOutput: global.workerMetaOutput!,
-                resolvedConfig: global.resolvedConfig!,
+              dependencies = await handleDependencies({
+                entryPointMetaOutput: entryPointMetaOutput!,
+                metaOutput: workerMetaOutput!,
+                resolvedConfig: resolvedConfig!,
                 tempDir,
                 packageManager,
               });
-              global.dependencies = dependencies;
             })(),
             wantDependenciesError ? "does not resolve dependencies" : "resolves dependencies"
           );
@@ -248,7 +210,7 @@ if (testCases.length > 0) {
           await expect(
             (async () => {
               await createContainerFile({
-                resolvedConfig: global.resolvedConfig!,
+                resolvedConfig: resolvedConfig!,
                 tempDir,
               });
             })(),
@@ -258,9 +220,9 @@ if (testCases.length > 0) {
           await expect(
             (async () => {
               await createDeployHash({
-                dependencies: global.dependencies!,
-                entryPointOutputFile: global.entryPointOutputFile!,
-                workerOutputFile: global.workerOutputFile!,
+                dependencies: dependencies!,
+                entryPointOutputFile: entryPointOutputFile!,
+                workerOutputFile: workerOutputFile!,
               });
             })(),
             "creates deploy hash"
@@ -278,13 +240,6 @@ if (testCases.length > 0) {
               );
               console.log(installStdout);
               if (installStderr) console.error(installStderr);
-
-              const { stdout, stderr } = await execa("npm", ["cache", "clean", "--force"], {
-                cwd: tempDir,
-                NODE_PATH: resolve(join(tempDir, "node_modules")),
-              });
-              console.log(stdout);
-              if (stderr) console.error(stderr);
             })(),
             wantInstallationError ? "does not install dependencies" : "installs dependencies"
           );
@@ -325,6 +280,27 @@ if (testCases.length > 0) {
   throw new Error(`Unknown fixture '${process.env.MOD}'`);
 } else {
   throw new Error("Nothing to test");
+}
+
+async function installFixtureDeps(dir: string, packageManager: PackageManager) {
+  if (["pnpm", "yarn"].includes(packageManager)) {
+    const buffer = readFileSync(resolve(join(dir, "package.json")), "utf8");
+    const pkgJSON = JSON.parse(buffer.toString());
+    const version = pkgJSON.engines[packageManager];
+    console.log(`Detected ${packageManager}@${version} from package.json 'engines' field`);
+    const { stdout, stderr } = await execa("corepack", ["use", `${packageManager}@${version}`], {
+      cwd: dir,
+    });
+    console.log(stdout);
+    if (stderr) console.error(stderr);
+  } else {
+    const { stdout, stderr } = await execa(packageManager, installArgs(packageManager), {
+      cwd: dir,
+      NODE_PATH: resolve(join(dir, "node_modules")),
+    });
+    console.log(stdout);
+    if (stderr) console.error(stderr);
+  }
 }
 
 function installArgs(packageManager: string) {
