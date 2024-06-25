@@ -1,20 +1,19 @@
 import { CheckBadgeIcon } from "@heroicons/react/24/solid";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { RunsVolumeDiscountTable } from "~/components/billing/RunsVolumeDiscountTable";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormTitle } from "~/components/primitives/FormTitle";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { useNewCustomerSubscribed } from "~/hooks/useNewCustomerSubscribed";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { Handle } from "~/utils/handle";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { requireUserId } from "~/services/session.server";
-import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
-import { OrganizationParamsSchema } from "~/utils/pathBuilder";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { featuresForRequest } from "~/features.server";
-import { BillingService } from "~/services/billing.server";
+import { useNewCustomerSubscribed } from "~/hooks/useNewCustomerSubscribed";
+import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
+import { BillingService } from "~/services/billing.v2.server";
+import { requireUserId } from "~/services/session.server";
+import { Handle } from "~/utils/handle";
+import { OrganizationParamsSchema } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

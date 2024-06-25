@@ -385,8 +385,8 @@ importers:
         specifier: ^3.5.0
         version: 3.5.0
       '@trigger.dev/billing':
-        specifier: ^1.0.10
-        version: 1.0.10
+        specifier: link:../../../cloud/packages/billing
+        version: link:../../../cloud/packages/billing
       '@trigger.dev/companyicons':
         specifier: ^1.5.35
         version: 1.5.35(react-dom@18.2.0)(react@18.2.0)
@@ -15434,12 +15434,6 @@ packages:
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - supports-color
-    dev: false
-
-  /@trigger.dev/billing@1.0.10:
-    resolution: {integrity: sha512-vkPd1UD0fRji4qFP+s2pP26oztYzyQezQqT4+12I/5+7pOKFbOr2j0tVZj/sf7BTWgRE1Ybsk4CKT0gc9yXfKA==}
-    dependencies:
-      zod: 3.22.3
     dev: false
 
   /@trigger.dev/companyicons@1.5.35(react-dom@18.2.0)(react@18.2.0):
