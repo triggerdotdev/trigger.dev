@@ -321,7 +321,7 @@ class ProdWorker {
     // Graceful shutdown on final attempt
     if (shouldExit) {
       if (willCheckpointAndRestore) {
-        logger.log("WARNING: Will checkpoint but also requested exit. This won't end well.");
+        logger.error("WARNING: Will checkpoint but also requested exit. This won't end well.");
       }
 
       await this.#exitGracefully();
@@ -334,15 +334,16 @@ class ProdWorker {
     this.executing = false;
     this.attemptFriendlyId = undefined;
 
-    if (willCheckpointAndRestore) {
-      this.waitForPostStart = true;
-
-      // We already flush after completion, so we don't need to do it here
-      this.#prepareForCheckpoint(false);
-
-      this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
+    if (!willCheckpointAndRestore) {
       return;
     }
+
+    this.waitForPostStart = true;
+
+    // We already flush after completion, so we don't need to do it here
+    await this.#prepareForCheckpoint(false);
+
+    this.#readyForCheckpoint();
   }
 
   async #prepareForCheckpoint(flush = true) {
@@ -358,8 +359,15 @@ class ProdWorker {
       }
     }
 
-    // Kill the previous worker process to prevent large checkpoints
-    await this.#backgroundWorker.forceKillOldTaskRunProcesses();
+    try {
+      // Kill the previous worker process to prevent large checkpoints
+      await this.#backgroundWorker.forceKillOldTaskRunProcesses();
+    } catch (error) {
+      logger.error(
+        "Failed to kill previous worker while preparing for checkpoint, will proceed anyway",
+        { error }
+      );
+    }
   }
 
   #resumeAfterDuration() {
