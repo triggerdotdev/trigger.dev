@@ -3093,6 +3093,9 @@ importers:
       '@sindresorhus/slugify':
         specifier: ^2.2.1
         version: 2.2.1
+      '@t3-oss/env-nextjs':
+        specifier: ^0.10.1
+        version: 0.10.1(typescript@5.3.3)(zod@3.22.3)
       '@traceloop/instrumentation-openai':
         specifier: ^0.3.9
         version: 0.3.9(@opentelemetry/api@1.4.1)
@@ -3138,6 +3141,9 @@ importers:
       yt-dlp-wrap:
         specifier: ^2.3.12
         version: 2.3.12
+      zod:
+        specifier: 3.22.3
+        version: 3.22.3
     devDependencies:
       '@opentelemetry/core':
         specifier: ^1.22.0
@@ -15295,6 +15301,33 @@ packages:
     engines: {node: '>=14.16'}
     dependencies:
       defer-to-connect: 2.0.1
+    dev: false
+
+  /@t3-oss/env-core@0.10.1(typescript@5.3.3)(zod@3.22.3):
+    resolution: {integrity: sha512-GcKZiCfWks5CTxhezn9k5zWX3sMDIYf6Kaxy2Gx9YEQftFcz8hDRN56hcbylyAO3t4jQnQ5ifLawINsNgCDpOg==}
+    peerDependencies:
+      typescript: '>=5.0.0'
+      zod: ^3.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      typescript: 5.3.3
+      zod: 3.22.3
+    dev: false
+
+  /@t3-oss/env-nextjs@0.10.1(typescript@5.3.3)(zod@3.22.3):
+    resolution: {integrity: sha512-iy2qqJLnFh1RjEWno2ZeyTu0ufomkXruUsOZludzDIroUabVvHsrSjtkHqwHp1/pgPUzN3yBRHMILW162X7x2Q==}
+    peerDependencies:
+      typescript: '>=5.0.0'
+      zod: ^3.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      '@t3-oss/env-core': 0.10.1(typescript@5.3.3)(zod@3.22.3)
+      typescript: 5.3.3
+      zod: 3.22.3
     dev: false
 
   /@tabler/icons-react@2.40.0(react@18.2.0):
