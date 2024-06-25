@@ -50,3 +50,52 @@ export async function uploadToObjectStore(
 
   return url.href;
 }
+
+export async function generatePresignedRequest(
+  projectRef: string,
+  envSlug: string,
+  filename: string,
+  method: "PUT" | "GET" = "PUT"
+) {
+  if (!env.OBJECT_STORE_BASE_URL) {
+    return;
+  }
+
+  if (!r2) {
+    return;
+  }
+
+  const url = new URL(env.OBJECT_STORE_BASE_URL);
+  url.pathname = `/packets/${projectRef}/${envSlug}/${filename}`;
+  url.searchParams.set("X-Amz-Expires", "300"); // 5 minutes
+
+  const signed = await r2.sign(
+    new Request(url, {
+      method,
+    }),
+    {
+      aws: { signQuery: true },
+    }
+  );
+
+  logger.debug("Generated presigned URL", {
+    url: signed.url,
+    headers: Object.fromEntries(signed.headers),
+    projectRef,
+    envSlug,
+    filename,
+  });
+
+  return signed;
+}
+
+export async function generatePresignedUrl(
+  projectRef: string,
+  envSlug: string,
+  filename: string,
+  method: "PUT" | "GET" = "PUT"
+) {
+  const signed = await generatePresignedRequest(projectRef, envSlug, filename, method);
+
+  return signed?.url;
+}

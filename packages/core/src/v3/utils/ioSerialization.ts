@@ -186,8 +186,6 @@ async function importPacket(packet: IOPacket, span?: Span): Promise<IOPacket> {
     data,
     dataType: response.headers.get("content-type") ?? "application/json",
   };
-
-  return packet;
 }
 
 export async function createPacketAttributes(
