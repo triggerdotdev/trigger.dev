@@ -58,7 +58,7 @@ import { ImpersonationBanner } from "../ImpersonationBanner";
 import { LogoIcon } from "../LogoIcon";
 import { StepContentContainer } from "../StepContentContainer";
 import { UserProfilePhoto } from "../UserProfilePhoto";
-import { FreePlanUsage } from "../billing/FreePlanUsage";
+import { FreePlanUsage } from "../billing/v2/FreePlanUsage";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Buttons";
 import { Callout } from "../primitives/Callout";

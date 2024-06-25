@@ -1,9 +1,9 @@
 import { ChartBarIcon } from "@heroicons/react/20/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
-import { PricingCalculator } from "~/components/billing/PricingCalculator";
-import { PricingTiers } from "~/components/billing/PricingTiers";
-import { RunsVolumeDiscountTable } from "~/components/billing/RunsVolumeDiscountTable";
+import { PricingCalculator } from "~/components/billing/v2/PricingCalculator";
+import { PricingTiers } from "~/components/billing/v2/PricingTiers";
+import { RunsVolumeDiscountTable } from "~/components/billing/v2/RunsVolumeDiscountTable";
 import { Button } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
 import {

@@ -1,7 +1,7 @@
 import { CheckBadgeIcon } from "@heroicons/react/24/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { RunsVolumeDiscountTable } from "~/components/billing/RunsVolumeDiscountTable";
+import { RunsVolumeDiscountTable } from "~/components/billing/v2/RunsVolumeDiscountTable";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { FormButtons } from "~/components/primitives/FormButtons";

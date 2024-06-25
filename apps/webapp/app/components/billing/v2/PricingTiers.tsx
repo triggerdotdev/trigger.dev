@@ -7,12 +7,12 @@ import { useState } from "react";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { cn } from "~/utils/cn";
 import { formatNumberCompact } from "~/utils/numberFormatter";
-import { DefinitionTip } from "../DefinitionTooltip";
-import { Feedback } from "../Feedback";
-import { Button, LinkButton } from "../primitives/Buttons";
-import SegmentedControl from "../primitives/SegmentedControl";
+import { DefinitionTip } from "../../DefinitionTooltip";
+import { Feedback } from "../../Feedback";
+import { Button, LinkButton } from "../../primitives/Buttons";
+import SegmentedControl from "../../primitives/SegmentedControl";
 import { RunsVolumeDiscountTable } from "./RunsVolumeDiscountTable";
-import { Spinner } from "../primitives/Spinner";
+import { Spinner } from "../../primitives/Spinner";
 
 const pricingDefinitions = {
   concurrentRuns: {

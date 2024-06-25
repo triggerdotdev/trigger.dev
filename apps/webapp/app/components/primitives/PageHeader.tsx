@@ -4,7 +4,7 @@ import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { plansPath } from "~/utils/pathBuilder";
-import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
+import { UpgradePrompt, useShowUpgradePrompt } from "../billing/v2/UpgradePrompt";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { LinkButton } from "./Buttons";
 import { Header2 } from "./Headers";

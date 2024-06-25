@@ -4,9 +4,9 @@ import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { MatchedOrganization } from "~/hooks/useOrganizations";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { formatNumberCompact } from "~/utils/numberFormatter";
-import { LinkButton } from "../primitives/Buttons";
-import { Icon } from "../primitives/Icon";
-import { Paragraph } from "../primitives/Paragraph";
+import { LinkButton } from "../../primitives/Buttons";
+import { Icon } from "../../primitives/Icon";
+import { Paragraph } from "../../primitives/Paragraph";
 
 type UpgradePromptProps = {
   runsEnabled: boolean;

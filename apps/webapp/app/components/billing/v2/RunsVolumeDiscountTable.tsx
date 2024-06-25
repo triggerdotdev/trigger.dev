@@ -1,6 +1,6 @@
 import { RunPriceBracket } from "@trigger.dev/billing/v2";
-import { Header2 } from "../primitives/Headers";
-import { Paragraph } from "../primitives/Paragraph";
+import { Header2 } from "../../primitives/Headers";
+import { Paragraph } from "../../primitives/Paragraph";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 
 export function RunsVolumeDiscountTable({

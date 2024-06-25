@@ -1,5 +1,14 @@
-import { Label, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Paragraph } from "../primitives/Paragraph";
+import {
+  Label,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { Paragraph } from "../../primitives/Paragraph";
 
 const tooltipStyle = {
   display: "flex",
@@ -13,25 +22,27 @@ const tooltipStyle = {
   color: "#E2E8F0",
 };
 
-type DataItem = { date: string; runs: number };
+type DataItem = { date: string; maxConcurrentRuns: number };
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
 });
 
-export function DailyRunsChart({
+export function ConcurrentRunsChart({
+  concurrentRunsLimit,
   data,
-  hasDailyRunsData,
+  hasConcurrencyData,
 }: {
+  concurrentRunsLimit?: number;
   data: DataItem[];
-  hasDailyRunsData: boolean;
+  hasConcurrencyData: boolean;
 }) {
   return (
     <div className="relative">
-      {!hasDailyRunsData && (
+      {!hasConcurrencyData && (
         <Paragraph className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          No daily Runs to show
+          No concurrent Runs to show
         </Paragraph>
       )}
       <ResponsiveContainer width="100%" height="100%" className="relative min-h-[20rem]">
@@ -81,7 +92,30 @@ export function DailyRunsChart({
               return dateFormatter.format(new Date(dateString));
             }}
           />
-          <Line dataKey="runs" name="Runs" stroke="#16A34A" strokeWidth={2} dot={false} />
+          {concurrentRunsLimit && (
+            <ReferenceLine
+              y={concurrentRunsLimit}
+              stroke="#F43F5E"
+              strokeWidth={1}
+              strokeDasharray={5}
+              ifOverflow="extendDomain"
+              className="text-xs"
+            >
+              <Label
+                value="Concurrent Runs limit"
+                offset={8}
+                position="insideTopLeft"
+                fill="#F43F5E"
+              />
+            </ReferenceLine>
+          )}
+          <Line
+            dataKey="maxConcurrentRuns"
+            name="Concurrent runs"
+            stroke="#16A34A"
+            strokeWidth={2}
+            dot={false}
+          />
         </LineChart>
       </ResponsiveContainer>
     </div>

@@ -1,6 +1,6 @@
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { motion, useMotionValue, useTransform } from "framer-motion";
-import { Paragraph } from "../primitives/Paragraph";
+import { Paragraph } from "../../primitives/Paragraph";
 import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";
 
