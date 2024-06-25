@@ -147,31 +147,16 @@ This will test your fixture project, and generate outputs in the `packages/cli-v
 
 9.  Commit your changes.
 
-10. Add your fixture test configuration in `testCases.json`.
+10. Add your fixture test configuration in `fixtures.config.js`.
 
-    ```json testCases.json
-    [
-      ...
+    ```javascript fixtures.config.js
+    export const fixturesConfig = [
+      // ...
       {
-        "name": "<fixture-name>",
+        id: "<fixture-name>",
       },
-      ...
-    ]
+      // ...
+    ];
     ```
 
-    You can configure your test case by adding other properties to the JSON object. Here is the `TestCase` type for reference:
-
-    ```typescript
-    type TestCase = {
-      name: string;
-      skipTypecheck?: boolean;
-      wantConfigNotFoundError?: boolean;
-      wantBadConfigError?: boolean;
-      wantCompilationError?: boolean;
-      wantWorkerError?: boolean;
-      wantDependenciesError?: boolean;
-      wantInstallationError?: boolean;
-    };
-    ```
-
-    > You might expect a specific error at a specific test, so use those configuration option at your discretion.
+    > You might expect a specific error for a specific test, so use those configuration option at your discretion.

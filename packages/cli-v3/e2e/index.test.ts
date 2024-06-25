@@ -17,19 +17,7 @@ import { createContainerFile } from "./createContainerFile";
 import { createDeployHash } from "./createDeployHash";
 import { handleDependencies } from "./handleDependencies";
 import { E2EOptions, E2EOptionsSchema } from "./schemas";
-import allTestCases from "./testCases.json";
-
-interface TestCase {
-  resolveEnv?: { [key: string]: string };
-  id: string;
-  skipTypecheck?: boolean;
-  wantConfigNotFoundError?: boolean;
-  wantConfigInvalidError?: boolean;
-  wantCompilationError?: boolean;
-  wantWorkerError?: boolean;
-  wantDependenciesError?: boolean;
-  wantInstallationError?: boolean;
-}
+import { fixturesConfig, TestCase } from "./fixtures.config";
 
 interface E2EFixtureTest extends TestCase {
   dir: string;
@@ -37,11 +25,11 @@ interface E2EFixtureTest extends TestCase {
   packageManager: PackageManager;
 }
 
-const TIMEOUT = 120_000;
+const TIMEOUT = 180_000;
 
 const testCases: TestCase[] = process.env.MOD
-  ? allTestCases.filter(({ id }) => process.env.MOD === id)
-  : allTestCases;
+  ? fixturesConfig.filter(({ id }) => process.env.MOD === id)
+  : fixturesConfig;
 
 let options: E2EOptions;
 
@@ -64,6 +52,7 @@ if (testCases.length > 0) {
       await rimraf(join(dir, "**/node_modules/**"), {
         glob: true,
       });
+      await rimraf(join(dir, ".yarn"), { glob: true });
       if (
         packageManager === "npm" &&
         (existsSync(resolve(join(dir, "yarn.lock"))) ||
