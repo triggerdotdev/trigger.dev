@@ -4,10 +4,10 @@ import { logger } from "./logger";
 
 export type PackageManager = "npm" | "pnpm" | "yarn";
 export const LOCKFILES = {
-  yarn: "yarn.lock",
-  pnpm: "pnpm-lock.yaml",
   npm: "package-lock.json",
   npmShrinkwrap: "npm-shrinkwrap.json",
+  pnpm: "pnpm-lock.yaml",
+  yarn: "yarn.lock",
 };
 
 export async function getUserPackageManager(path: string): Promise<PackageManager> {

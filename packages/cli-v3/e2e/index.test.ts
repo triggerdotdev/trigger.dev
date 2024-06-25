@@ -238,7 +238,7 @@ if (testCases.length > 0) {
                   NODE_PATH: resolve(join(tempDir, "node_modules")),
                 }
               );
-              console.log(installStdout);
+              debug(installStdout);
               if (installStderr) console.error(installStderr);
             })(),
             wantInstallationError ? "does not install dependencies" : "installs dependencies"
@@ -260,7 +260,7 @@ if (testCases.length > 0) {
                   NODE_PATH: resolve(join(tempDir, "node_modules")),
                 },
               });
-              console.log(stdout);
+              debug(stdout);
               if (stderr) console.error(stderr);
             })(),
             wantWorkerError ? "worker does not start" : "worker starts"
@@ -282,23 +282,29 @@ if (testCases.length > 0) {
   throw new Error("Nothing to test");
 }
 
+function debug(message: string) {
+  if (options.logLevel === "debug") {
+    console.log(message);
+  }
+}
+
 async function installFixtureDeps(dir: string, packageManager: PackageManager) {
   if (["pnpm", "yarn"].includes(packageManager)) {
     const buffer = readFileSync(resolve(join(dir, "package.json")), "utf8");
     const pkgJSON = JSON.parse(buffer.toString());
     const version = pkgJSON.engines[packageManager];
-    console.log(`Detected ${packageManager}@${version} from package.json 'engines' field`);
+    debug(`Detected ${packageManager}@${version} from package.json 'engines' field`);
     const { stdout, stderr } = await execa("corepack", ["use", `${packageManager}@${version}`], {
       cwd: dir,
     });
-    console.log(stdout);
+    debug(stdout);
     if (stderr) console.error(stderr);
   } else {
     const { stdout, stderr } = await execa(packageManager, installArgs(packageManager), {
       cwd: dir,
       NODE_PATH: resolve(join(dir, "node_modules")),
     });
-    console.log(stdout);
+    debug(stdout);
     if (stderr) console.error(stderr);
   }
 }
