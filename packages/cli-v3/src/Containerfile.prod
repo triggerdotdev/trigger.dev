@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dumb-init \
     git \
     openssl \
+    sox \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and set workdir with appropriate permissions
