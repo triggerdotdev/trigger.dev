@@ -269,7 +269,10 @@ export class PerformRunExecutionV3Service {
 
       // TODO: add the ability to abort the execution from any server using Redis pub/sub
       const { response, parser, errorParser, headersParser, durationInMs } =
-        await client.executeJobRequest(executionBody);
+        await client.executeJobRequest(
+          executionBody,
+          run.environment.type === "DEVELOPMENT" ? 60_000 * 5 : undefined
+        );
 
       await createExecutionEvent({
         eventType: "finish",

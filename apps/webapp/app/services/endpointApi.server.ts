@@ -136,7 +136,7 @@ export class EndpointApi {
     };
   }
 
-  async executeJobRequest(options: RunJobBody) {
+  async executeJobRequest(options: RunJobBody, timeoutInMs?: number) {
     const startTimeInMs = performance.now();
 
     const response = await safeFetch(this.url, {
@@ -147,6 +147,7 @@ export class EndpointApi {
         "x-trigger-action": "EXECUTE_JOB",
       },
       body: JSON.stringify(options),
+      signal: timeoutInMs ? AbortSignal.timeout(timeoutInMs) : undefined,
     });
 
     if (response) {
@@ -443,7 +444,10 @@ async function safeFetch(url: string, options: RequestInit) {
   } catch (error) {
     logger.debug("Error while trying to connect to endpoint", {
       url,
-      error,
+      error:
+        error instanceof Error
+          ? { name: error.name, message: error.message, stack: error.stack }
+          : String(error),
     });
   }
 }
