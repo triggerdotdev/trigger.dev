@@ -871,19 +871,26 @@ class TaskCoordinator {
         };
 
         const readyToCheckpoint = async (): Promise<
-          { success: true } | { success: false; reason?: string }
+          | {
+              success: true;
+            }
+          | {
+              success: false;
+              reason?: string;
+              crashRun: boolean;
+            }
         > => {
           if (checkpointInProgress()) {
             return {
               success: false,
               reason: "checkpoint in progress",
+              crashRun: false,
             };
           }
 
           const isCheckpointable = new Promise((resolve, reject) => {
             // We set a reasonable timeout to prevent waiting forever
-            // TODO: We may also want to cancel the task as it's unlikely to recover
-            setTimeout(() => reject("timeout"), 10_000);
+            setTimeout(() => reject("timeout"), 20_000);
 
             this.#checkpointableTasks.set(socket.data.runId, { resolve, reject });
           });
@@ -901,6 +908,7 @@ class TaskCoordinator {
             return {
               success: false,
               reason: typeof error === "string" ? error : "unknown",
+              crashRun: true,
             };
           }
         };
@@ -1081,6 +1089,14 @@ class TaskCoordinator {
               runId: socket.data.runId,
               reason: ready.reason,
             });
+
+            if (ready.crashRun) {
+              await crashRun({
+                name: "ReadyForCheckpointError",
+                message: "Failed to become checkpointable",
+              });
+            }
+
             return;
           }
 
