@@ -1,14 +1,28 @@
+# syntax=docker/dockerfile:labs
+
 FROM node:21-bookworm-slim@sha256:fb82287cf66ca32d854c05f54251fca8b572149163f154248df7e800003c90b5 AS base
 
+ARG AUDIOWAVEFORM_VERSION=1.10.1
+ARG AUDIOWAVEFORM_CHECKSUM=sha256:00b41ea4d6e7a5b4affcfe4ac99951ec89da81a8cba40af19e9b98c3a8f9b4b8
+ADD --checksum=${AUDIOWAVEFORM_CHECKSUM} \
+    # on debian major version upgrades, this url will need to be updated
+    https://github.com/bbc/audiowaveform/releases/download/${AUDIOWAVEFORM_VERSION}/audiowaveform_${AUDIOWAVEFORM_VERSION}-1-12_amd64.deb .
+# errors due to missing deps are expected here, these will get fixed in the apt install step
+RUN dpkg -i audiowaveform_${AUDIOWAVEFORM_VERSION}-1-12_amd64.deb || true
+
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    busybox \
-    ca-certificates \
-    dumb-init \
-    git \
-    openssl \
-    sox \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    # required for audiowaveform
+    apt-get --fix-broken install -y && \
+    apt-get install -y --no-install-recommends \
+        busybox \
+        ca-certificates \
+        dumb-init \
+        git \
+        openssl \
+        sox \
+    && \
+    rm -rf /var/lib/apt/lists/* audiowaveform*.deb
 
 # Create and set workdir with appropriate permissions
 RUN mkdir /app && chown node:node /app
