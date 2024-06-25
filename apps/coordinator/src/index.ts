@@ -768,9 +768,7 @@ class TaskCoordinator {
           taskSocket.emit("READY_FOR_RETRY", message);
         },
         DYNAMIC_CONFIG: async (message) => {
-          if (message.checkpointThresholdInMs) {
-            this.#delayThresholdInMs = message.checkpointThresholdInMs;
-          }
+          this.#delayThresholdInMs = message.checkpointThresholdInMs;
 
           // The first time we receive a dynamic config, the worker namespace will be created
           if (!this.#prodWorkerNamespace) {

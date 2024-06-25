@@ -619,7 +619,7 @@ export const PlatformToCoordinatorMessages = {
   DYNAMIC_CONFIG: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      checkpointThresholdInMs: z.number().optional(),
+      checkpointThresholdInMs: z.number(),
     }),
   },
 };
