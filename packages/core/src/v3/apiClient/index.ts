@@ -14,7 +14,6 @@ import {
   EnvironmentVariables,
   ListRunResponseItem,
   ListScheduleOptions,
-  ListSchedulesResult,
   ReplayRunResponse,
   RetrieveRunResponse,
   ScheduleObject,
@@ -28,11 +27,9 @@ import { taskContext } from "../task-context-api";
 import {
   CursorPagePromise,
   ZodFetchOptions,
-  isRecordLike,
   zodfetch,
   zodfetchCursorPage,
   zodfetchOffsetLimitPage,
-  zodupload,
 } from "./core";
 import { ApiError } from "./errors";
 import {
@@ -331,27 +328,15 @@ export class ApiClient {
   }
 
   importEnvVars(projectRef: string, slug: string, body: ImportEnvironmentVariablesParams) {
-    if (isRecordLike(body.variables)) {
-      return zodfetch(
-        EnvironmentVariableResponseBody,
-        `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/import`,
-        {
-          method: "POST",
-          headers: this.#getHeaders(false),
-          body: JSON.stringify(body),
-        }
-      );
-    } else {
-      return zodupload(
-        EnvironmentVariableResponseBody,
-        `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/import`,
-        body,
-        {
-          method: "POST",
-          headers: this.#getHeaders(false),
-        }
-      );
-    }
+    return zodfetch(
+      EnvironmentVariableResponseBody,
+      `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/import`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      }
+    );
   }
 
   retrieveEnvVar(projectRef: string, slug: string, key: string) {

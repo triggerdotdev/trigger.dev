@@ -1,5 +1,49 @@
 # trigger.dev
 
+## 3.0.0-beta.42
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.42
+
+## 3.0.0-beta.41
+
+### Patch Changes
+
+- c7a55804d: Fix jsonc-parser import
+  - @trigger.dev/core@3.0.0-beta.41
+
+## 3.0.0-beta.40
+
+### Patch Changes
+
+- 098932ea9: v3: vercel edge runtime support
+- 9835f4ec5: v3: fix otel flushing causing CLEANUP ack timeout errors by always setting a forceFlushTimeoutMillis value
+- Updated dependencies [55d1f8c67]
+- Updated dependencies [098932ea9]
+- Updated dependencies [9835f4ec5]
+  - @trigger.dev/core@3.0.0-beta.40
+
+## 3.0.0-beta.39
+
+### Patch Changes
+
+- 8757fdcee: v3: [prod] force flush timeout should be 1s
+  - @trigger.dev/core@3.0.0-beta.39
+
+## 3.0.0-beta.38
+
+### Patch Changes
+
+- d4ccdf710: Add an e2e suite to test compiling with v3 CLI.
+- 1b90ffbb8: v3: Usage tracking
+- e02320f65: fix: allow command login to read api url from cli args
+- Updated dependencies [1b90ffbb8]
+- Updated dependencies [0ed93a748]
+- Updated dependencies [c405ae711]
+- Updated dependencies [c405ae711]
+  - @trigger.dev/core@3.0.0-beta.38
+
 ## 3.0.0-beta.37
 
 ### Patch Changes

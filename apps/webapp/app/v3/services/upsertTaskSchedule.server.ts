@@ -215,7 +215,8 @@ export class UpsertTaskScheduleService extends BaseService {
     });
 
     const scheduleHasChanged =
-      scheduleRecord.generatorExpression !== existingSchedule.generatorExpression;
+      scheduleRecord.generatorExpression !== existingSchedule.generatorExpression ||
+      scheduleRecord.timezone !== existingSchedule.timezone;
 
     // find the existing instances
     const existingInstances = await tx.taskScheduleInstance.findMany({

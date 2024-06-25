@@ -640,6 +640,10 @@ function useDev({
                     backgroundWorker
                   );
                 } catch (e) {
+                  logger.debug("Error starting background worker", {
+                    error: e,
+                  });
+
                   if (e instanceof TaskMetadataParseError) {
                     logTaskMetadataParseError(e.zodIssues, e.tasks);
                     return;

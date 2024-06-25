@@ -879,33 +879,11 @@ class TaskRunProcess {
   }
 
   #handleLog(data: Buffer) {
-    if (!this._currentExecution) {
-      return;
-    }
-
-    console.log(
-      `[${this.metadata.version}][${this._currentExecution.run.id}.${
-        this._currentExecution.attempt.number
-      }] ${data.toString()}`
-    );
+    console.log(data.toString());
   }
 
   #handleStdErr(data: Buffer) {
-    if (this._isBeingKilled) {
-      return;
-    }
-
-    if (!this._currentExecution) {
-      console.error(`[${this.metadata.version}] ${data.toString()}`);
-
-      return;
-    }
-
-    console.error(
-      `[${this.metadata.version}][${this._currentExecution.run.id}.${
-        this._currentExecution.attempt.number
-      }] ${data.toString()}`
-    );
+    console.error(data.toString());
   }
 
   async kill(signal?: number | NodeJS.Signals, timeoutInMs?: number) {

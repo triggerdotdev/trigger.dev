@@ -4,6 +4,7 @@ import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions"
 import {
   ExceptionEventProperties,
   ExceptionSpanEvent,
+  NULL_SENTINEL,
   PRIMARY_VARIANT,
   SemanticInternalAttributes,
   SpanEvent,
@@ -14,7 +15,6 @@ import {
   correctErrorStackTrace,
   createPacketAttributesAsJson,
   flattenAttributes,
-  NULL_SENTINEL,
   isExceptionSpanEvent,
   omit,
   unflattenAttributes,
@@ -23,14 +23,15 @@ import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger
 import Redis, { RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
+import { Gauge } from "prom-client";
 import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { metricsRegister } from "~/metrics.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 import { singleton } from "~/utils/singleton";
-import { Gauge } from "prom-client";
-import { metricsRegister } from "~/metrics.server";
+import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
+import { startActiveSpan } from "./tracer.server";
 
 export type CreatableEvent = Omit<
   Prisma.TaskEventCreateInput,
@@ -374,78 +375,100 @@ export class EventRepository {
   }
 
   public async getTraceSummary(traceId: string): Promise<TraceSummary | undefined> {
-    const events = await this.readReplica.taskEvent.findMany({
-      select: {
-        id: true,
-        spanId: true,
-        parentId: true,
-        runId: true,
-        idempotencyKey: true,
-        message: true,
-        style: true,
-        startTime: true,
-        duration: true,
-        isError: true,
-        isPartial: true,
-        isCancelled: true,
-        level: true,
-        events: true,
-        environmentType: true,
-      },
-      where: {
-        traceId,
-      },
-      orderBy: {
-        startTime: "asc",
-      },
-    });
+    return await startActiveSpan("getTraceSummary", async (span) => {
+      const events = await this.readReplica.taskEvent.findMany({
+        select: {
+          id: true,
+          spanId: true,
+          parentId: true,
+          runId: true,
+          idempotencyKey: true,
+          message: true,
+          style: true,
+          startTime: true,
+          duration: true,
+          isError: true,
+          isPartial: true,
+          isCancelled: true,
+          level: true,
+          events: true,
+          environmentType: true,
+        },
+        where: {
+          traceId,
+        },
+        orderBy: {
+          startTime: "asc",
+        },
+      });
 
-    const preparedEvents = removeDuplicateEvents(events.map(prepareEvent));
+      let preparedEvents: Array<PreparedEvent> = [];
+      const eventsBySpanId = new Map<string, PreparedEvent>();
 
-    const spans = preparedEvents.map((event) => {
-      const ancestorCancelled = isAncestorCancelled(preparedEvents, event.spanId);
-      const duration = calculateDurationIfAncestorIsCancelled(
-        preparedEvents,
-        event.spanId,
-        event.duration
-      );
+      for (const event of events) {
+        preparedEvents.push(prepareEvent(event));
+      }
+
+      for (const event of preparedEvents) {
+        const existingEvent = eventsBySpanId.get(event.spanId);
+
+        if (!existingEvent) {
+          eventsBySpanId.set(event.spanId, event);
+          continue;
+        }
+
+        if (event.isCancelled || !event.isPartial) {
+          eventsBySpanId.set(event.spanId, event);
+        }
+      }
+
+      preparedEvents = Array.from(eventsBySpanId.values());
+
+      const spans = preparedEvents.map((event) => {
+        const ancestorCancelled = isAncestorCancelled(eventsBySpanId, event.spanId);
+        const duration = calculateDurationIfAncestorIsCancelled(
+          eventsBySpanId,
+          event.spanId,
+          event.duration
+        );
+
+        return {
+          recordId: event.id,
+          id: event.spanId,
+          parentId: event.parentId ?? undefined,
+          runId: event.runId,
+          idempotencyKey: event.idempotencyKey,
+          data: {
+            message: event.message,
+            style: event.style,
+            duration,
+            isError: event.isError,
+            isPartial: ancestorCancelled ? false : event.isPartial,
+            isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
+            startTime: getDateFromNanoseconds(event.startTime),
+            level: event.level,
+            events: event.events,
+            environmentType: event.environmentType,
+          },
+        };
+      });
+
+      const rootSpanId = events.find((event) => !event.parentId);
+      if (!rootSpanId) {
+        return;
+      }
+
+      const rootSpan = spans.find((span) => span.id === rootSpanId.spanId);
+
+      if (!rootSpan) {
+        return;
+      }
 
       return {
-        recordId: event.id,
-        id: event.spanId,
-        parentId: event.parentId ?? undefined,
-        runId: event.runId,
-        idempotencyKey: event.idempotencyKey,
-        data: {
-          message: event.message,
-          style: event.style,
-          duration,
-          isError: event.isError,
-          isPartial: ancestorCancelled ? false : event.isPartial,
-          isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
-          startTime: getDateFromNanoseconds(event.startTime),
-          level: event.level,
-          events: event.events,
-          environmentType: event.environmentType,
-        },
+        rootSpan,
+        spans,
       };
     });
-
-    const rootSpanId = events.find((event) => !event.parentId);
-    if (!rootSpanId) {
-      return;
-    }
-
-    const rootSpan = spans.find((span) => span.id === rootSpanId.spanId);
-
-    if (!rootSpan) {
-      return;
-    }
-
-    return {
-      rootSpan,
-      spans,
-    };
   }
 
   // A Span can be cancelled if it is partial and has a parent that is cancelled
@@ -973,34 +996,38 @@ function prepareEvent(event: QueriedEvent): PreparedEvent {
 }
 
 function parseEventsField(events: Prisma.JsonValue): SpanEvents {
-  const eventsUnflattened = events
+  const unsafe = events
     ? (events as any[]).map((e) => ({
         ...e,
         properties: unflattenAttributes(e.properties as Attributes),
       }))
     : undefined;
 
-  const spanEvents = SpanEvents.safeParse(eventsUnflattened);
-
-  if (spanEvents.success) {
-    return spanEvents.data;
-  }
-
-  return [];
+  return unsafe as SpanEvents;
 }
 
 function parseStyleField(style: Prisma.JsonValue): TaskEventStyle {
-  const parsedStyle = TaskEventStyle.safeParse(unflattenAttributes(style as Attributes));
+  const unsafe = unflattenAttributes(style as Attributes);
 
-  if (parsedStyle.success) {
-    return parsedStyle.data;
+  if (!unsafe) {
+    return {};
+  }
+
+  if (typeof unsafe === "object") {
+    return Object.assign(
+      {
+        icon: undefined,
+        variant: undefined,
+      },
+      unsafe
+    ) as TaskEventStyle;
   }
 
   return {};
 }
 
-function isAncestorCancelled(events: PreparedEvent[], spanId: string) {
-  const event = events.find((event) => event.spanId === spanId);
+function isAncestorCancelled(events: Map<string, PreparedEvent>, spanId: string) {
+  const event = events.get(spanId);
 
   if (!event) {
     return false;
@@ -1018,11 +1045,11 @@ function isAncestorCancelled(events: PreparedEvent[], spanId: string) {
 }
 
 function calculateDurationIfAncestorIsCancelled(
-  events: PreparedEvent[],
+  events: Map<string, PreparedEvent>,
   spanId: string,
   defaultDuration: number
 ) {
-  const event = events.find((event) => event.spanId === spanId);
+  const event = events.get(spanId);
 
   if (!event) {
     return defaultDuration;
@@ -1054,8 +1081,9 @@ function calculateDurationIfAncestorIsCancelled(
   return defaultDuration;
 }
 
-function findFirstCancelledAncestor(events: PreparedEvent[], spanId: string) {
-  const event = events.find((event) => event.spanId === spanId);
+function findFirstCancelledAncestor(events: Map<string, PreparedEvent>, spanId: string) {
+  const event = events.get(spanId);
+
   if (!event) {
     return;
   }

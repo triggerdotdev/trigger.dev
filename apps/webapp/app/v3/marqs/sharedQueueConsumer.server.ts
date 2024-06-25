@@ -17,7 +17,6 @@ import {
   BackgroundWorkerTask,
   RuntimeEnvironment,
   TaskRun,
-  TaskRunAttemptStatus,
   TaskRunStatus,
 } from "@trigger.dev/database";
 import { z } from "zod";
@@ -43,6 +42,7 @@ import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
 import { env } from "~/env.server";
+import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -972,19 +972,7 @@ class SharedQueueTasks {
     }
 
     if (setToExecuting) {
-      const FINAL_RUN_STATUSES: TaskRunStatus[] = [
-        "CANCELED",
-        "COMPLETED_SUCCESSFULLY",
-        "COMPLETED_WITH_ERRORS",
-        "INTERRUPTED",
-        "SYSTEM_FAILURE",
-      ];
-      const FINAL_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["CANCELED", "COMPLETED", "FAILED"];
-
-      if (
-        FINAL_ATTEMPT_STATUSES.includes(attempt.status) ||
-        FINAL_RUN_STATUSES.includes(attempt.taskRun.status)
-      ) {
+      if (isFinalAttemptStatus(attempt.status) || isFinalRunStatus(attempt.taskRun.status)) {
         logger.error("Status already in final state", {
           attempt: {
             id: attempt.id,

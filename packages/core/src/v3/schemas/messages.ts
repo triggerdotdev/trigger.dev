@@ -554,6 +554,10 @@ export const CoordinatorToPlatformMessages = {
         }),
       ]),
     }),
+    callback: z.object({
+      version: z.literal("v1").default("v1"),
+      keepRunAlive: z.boolean(),
+    }),
   },
   INDEXING_FAILED: {
     message: z.object({

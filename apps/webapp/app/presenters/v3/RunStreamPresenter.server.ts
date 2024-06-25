@@ -94,17 +94,24 @@ export class RunStreamPresenter {
 
         eventEmitter.removeAllListeners();
 
-        unsubscribe().catch((error) => {
-          logger.error("RunStreamPresenter.abort.unsubscribe", {
-            runFriendlyId,
-            traceId: run.traceId,
-            error: {
-              name: error.name,
-              message: error.message,
-              stack: error.stack,
-            },
+        unsubscribe()
+          .then(() => {
+            logger.info("RunStreamPresenter.abort.unsubscribe succeeded", {
+              runFriendlyId,
+              traceId: run.traceId,
+            });
+          })
+          .catch((error) => {
+            logger.error("RunStreamPresenter.abort.unsubscribe failed", {
+              runFriendlyId,
+              traceId: run.traceId,
+              error: {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+              },
+            });
           });
-        });
       };
     });
   }
