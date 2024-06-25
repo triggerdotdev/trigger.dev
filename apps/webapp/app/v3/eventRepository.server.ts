@@ -529,82 +529,219 @@ export class EventRepository {
   // A Span can be cancelled if it is partial and has a parent that is cancelled
   // And a span's duration, if it is partial and has a cancelled parent, is the time between the start of the span and the time of the cancellation event of the parent
   public async getSpan(spanId: string, traceId: string) {
-    const traceSummary = await this.getTraceSummary(traceId);
+    return await startActiveSpan("getSpan", async (s) => {
+      const spanEvent = await this.#getSpanEvent(spanId);
 
-    const span = traceSummary?.spans.find((span) => span.id === spanId);
+      if (!spanEvent) {
+        return;
+      }
 
-    if (!span) {
-      return;
-    }
+      const preparedEvent = prepareEvent(spanEvent);
 
-    const fullEvent = await this.readReplica.taskEvent.findUnique({
-      where: {
-        id: span.recordId,
-      },
-    });
+      const span = await this.#createSpanFromEvent(preparedEvent);
 
-    if (!fullEvent) {
-      return;
-    }
+      const output = rehydrateJson(spanEvent.output);
+      const payload = rehydrateJson(spanEvent.payload);
 
-    const output = rehydrateJson(fullEvent.output);
-    const payload = rehydrateJson(fullEvent.payload);
+      const show = rehydrateShow(spanEvent.properties);
 
-    const show = rehydrateShow(fullEvent.properties);
+      const properties = sanitizedAttributes(spanEvent.properties);
 
-    const properties = sanitizedAttributes(fullEvent.properties);
+      const messagingEvent = SpanMessagingEvent.optional().safeParse(
+        (properties as any)?.messaging
+      );
 
-    const messagingEvent = SpanMessagingEvent.optional().safeParse((properties as any)?.messaging);
+      const links: SpanLink[] = [];
 
-    const links: SpanLink[] = [];
-
-    if (messagingEvent.success && messagingEvent.data) {
-      if (messagingEvent.data.message && "id" in messagingEvent.data.message) {
-        if (messagingEvent.data.message.id.startsWith("run_")) {
-          links.push({
-            type: "run",
-            icon: "runs",
-            title: `Run ${messagingEvent.data.message.id}`,
-            runId: messagingEvent.data.message.id,
-          });
+      if (messagingEvent.success && messagingEvent.data) {
+        if (messagingEvent.data.message && "id" in messagingEvent.data.message) {
+          if (messagingEvent.data.message.id.startsWith("run_")) {
+            links.push({
+              type: "run",
+              icon: "runs",
+              title: `Run ${messagingEvent.data.message.id}`,
+              runId: messagingEvent.data.message.id,
+            });
+          }
         }
       }
-    }
 
-    const backLinks = fullEvent.links as any as Link[] | undefined;
+      const backLinks = spanEvent.links as any as Link[] | undefined;
 
-    if (backLinks && backLinks.length > 0) {
-      backLinks.forEach((l) => {
-        const title = String(
-          l.attributes?.[SemanticInternalAttributes.LINK_TITLE] ?? "Triggered by"
-        );
+      if (backLinks && backLinks.length > 0) {
+        backLinks.forEach((l) => {
+          const title = String(
+            l.attributes?.[SemanticInternalAttributes.LINK_TITLE] ?? "Triggered by"
+          );
 
-        links.push({
-          type: "span",
-          icon: "trigger",
-          title,
-          traceId: l.context.traceId,
-          spanId: l.context.spanId,
+          links.push({
+            type: "span",
+            icon: "trigger",
+            title,
+            traceId: l.context.traceId,
+            spanId: l.context.spanId,
+          });
         });
-      });
+      }
+
+      const spanEvents = transformEvents(
+        preparedEvent.events,
+        spanEvent.metadata as Attributes,
+        spanEvent.environmentType === "DEVELOPMENT"
+      );
+
+      return {
+        ...spanEvent,
+        ...span.data,
+        payload,
+        output,
+        properties,
+        events: spanEvents,
+        show,
+        links,
+      };
+    });
+  }
+
+  async #createSpanFromEvent(event: PreparedEvent) {
+    return await startActiveSpan("createSpanFromEvent", async (s) => {
+      let ancestorCancelled = false;
+      let duration = event.duration;
+
+      if (!event.isCancelled && event.isPartial) {
+        await this.#walkSpanAncestors(event, (ancestorEvent, level) => {
+          if (level >= 8) {
+            return { stop: true };
+          }
+
+          if (ancestorEvent.isCancelled) {
+            ancestorCancelled = true;
+
+            // We need to get the cancellation time from the cancellation span event
+            const cancellationEvent = ancestorEvent.events.find(
+              (event) => event.name === "cancellation"
+            );
+
+            if (cancellationEvent) {
+              duration = calculateDurationFromStart(event.startTime, cancellationEvent.time);
+            }
+
+            return { stop: true };
+          }
+
+          return { stop: false };
+        });
+      }
+
+      const span = {
+        recordId: event.id,
+        id: event.spanId,
+        parentId: event.parentId ?? undefined,
+        runId: event.runId,
+        idempotencyKey: event.idempotencyKey,
+        data: {
+          message: event.message,
+          style: event.style,
+          duration,
+          isError: event.isError,
+          isPartial: ancestorCancelled ? false : event.isPartial,
+          isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
+          startTime: getDateFromNanoseconds(event.startTime),
+          level: event.level,
+          events: event.events,
+          environmentType: event.environmentType,
+        },
+      };
+
+      return span;
+    });
+  }
+
+  async #walkSpanAncestors(
+    event: PreparedEvent,
+    callback: (event: PreparedEvent, level: number) => { stop: boolean }
+  ) {
+    const parentId = event.parentId;
+    if (!parentId) {
+      return;
     }
 
-    const events = transformEvents(
-      span.data.events,
-      fullEvent.metadata as Attributes,
-      traceSummary?.rootSpan.data.environmentType === "DEVELOPMENT"
-    );
+    await startActiveSpan("walkSpanAncestors", async (s) => {
+      let parentEvent = await this.#getSpanEvent(parentId);
+      let level = 1;
 
-    return {
-      ...fullEvent,
-      ...span.data,
-      payload,
-      output,
-      properties,
-      events,
-      show,
-      links,
-    };
+      while (parentEvent) {
+        const preparedParentEvent = prepareEvent(parentEvent);
+
+        const result = callback(preparedParentEvent, level);
+
+        if (result.stop) {
+          return;
+        }
+
+        if (!preparedParentEvent.parentId) {
+          return;
+        }
+
+        parentEvent = await this.#getSpanEvent(preparedParentEvent.parentId);
+
+        level++;
+      }
+    });
+  }
+
+  async #getSpanAncestors(event: PreparedEvent, levels = 1): Promise<Array<PreparedEvent>> {
+    if (levels >= 8) {
+      return [];
+    }
+
+    if (!event.parentId) {
+      return [];
+    }
+
+    const parentEvent = await this.#getSpanEvent(event.parentId);
+
+    if (!parentEvent) {
+      return [];
+    }
+
+    const preparedParentEvent = prepareEvent(parentEvent);
+
+    if (!preparedParentEvent.parentId) {
+      return [preparedParentEvent];
+    }
+
+    const moreAncestors = await this.#getSpanAncestors(preparedParentEvent, levels + 1);
+
+    return [preparedParentEvent, ...moreAncestors];
+  }
+
+  async #getSpanEvent(spanId: string) {
+    return await startActiveSpan("getSpanEvent", async (s) => {
+      const events = await this.readReplica.taskEvent.findMany({
+        where: {
+          spanId,
+        },
+        orderBy: {
+          startTime: "asc",
+        },
+      });
+
+      let finalEvent: TaskEvent | undefined;
+
+      for (const event of events) {
+        if (event.isPartial) {
+          continue;
+        }
+
+        if (event.spanId === spanId) {
+          finalEvent = event;
+          break;
+        }
+      }
+
+      return finalEvent;
+    });
   }
 
   public async recordEvent(message: string, options: TraceEventOptions) {

@@ -136,3 +136,45 @@ export const taskWithNoPayload = task({
     return { hello: "world" };
   },
 });
+
+export const deeplyNestedTaskParent = task({
+  id: "deeply-nested-task-parent",
+  run: async ({ message = "test" }: { message?: string }) => {
+    await deeplyNestedTaskChild.triggerAndWait({ message: `${message} - 1` });
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
+export const deeplyNestedTaskChild = task({
+  id: "deeply-nested-task-child",
+  run: async ({ message = "test" }: { message?: string }) => {
+    await deeplyNestedTaskGrandchild.triggerAndWait({ message: `${message} - 2` });
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
+export const deeplyNestedTaskGrandchild = task({
+  id: "deeply-nested-task-grandchild",
+  run: async ({ message = "test" }: { message?: string }) => {
+    await deeplyNestedTaskGreatGrandchild.triggerAndWait({ message: `${message} - 3` });
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
+export const deeplyNestedTaskGreatGrandchild = task({
+  id: "deeply-nested-task-great-grandchild",
+  run: async ({ message = "test" }: { message?: string }) => {
+    return {
+      hello: "world",
+    };
+  },
+});
