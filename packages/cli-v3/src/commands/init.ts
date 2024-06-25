@@ -8,7 +8,6 @@ import { ExecaError, Options as ExecaOptions, ResultPromise as ExecaResult, exec
 import { applyEdits, modify, findNodeAtLocation, parseTree, getNodeValue } from "jsonc-parser";
 import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
-import terminalLink from "terminal-link";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient";
 import {
@@ -32,7 +31,7 @@ import { login } from "./login";
 import { spinner } from "../utilities/windows";
 import { CLOUD_API_URL } from "../consts";
 import * as packageJson from "../../package.json";
-import { prettyError } from "../utilities/cliOutput";
+import { cliLink, prettyError } from "../utilities/cliOutput";
 
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -162,7 +161,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   // Ignore .trigger dir
   await gitIgnoreDotTriggerDir(dir, options);
 
-  const projectDashboard = terminalLink(
+  const projectDashboard = cliLink(
     "project dashboard",
     `${authorization.dashboardUrl}/projects/v3/${selectedProject.externalRef}`
   );
@@ -178,13 +177,10 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   );
   log.info(`   2. Visit your ${projectDashboard} to view your newly created tasks.`);
   log.info(
-    `   3. Head over to our ${terminalLink(
-      "v3 docs",
-      "https://trigger.dev/docs/v3"
-    )} to learn more.`
+    `   3. Head over to our ${cliLink("v3 docs", "https://trigger.dev/docs/v3")} to learn more.`
   );
   log.info(
-    `   4. Need help? Join our ${terminalLink(
+    `   4. Need help? Join our ${cliLink(
       "Discord community",
       "https://trigger.dev/discord"
     )} or email us at ${chalk.cyan("help@trigger.dev")}`
@@ -605,7 +601,7 @@ async function selectProject(apiClient: CliApiClient, dashboardUrl: string, proj
       }
 
       if (projectsResponse.data.length === 0) {
-        const newProjectLink = terminalLink(
+        const newProjectLink = cliLink(
           "Create new project",
           `${dashboardUrl}/projects/new?version=v3`
         );

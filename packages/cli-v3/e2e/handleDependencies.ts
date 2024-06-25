@@ -3,7 +3,6 @@
 import { log } from "@clack/prompts";
 import { Metafile } from "esbuild";
 import { join } from "node:path";
-import terminalLink from "terminal-link";
 
 import { SkipLoggingError } from "../src/cli/common.js";
 import {
@@ -16,6 +15,7 @@ import { writeJSONFile } from "../src/utilities/fileSystem.js";
 import { PackageManager } from "../src/utilities/getUserPackageManager.js";
 import { JavascriptProject } from "../src/utilities/javascriptProject.js";
 import { logger } from "../src/utilities/logger.js";
+import { cliLink } from "../src/utilities/cliOutput.js";
 
 type HandleDependenciesOptions = {
   entryPointMetaOutput: Metafile["outputs"]["out/stdin.js"];
@@ -90,7 +90,7 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
     log.warn(
       `No additionalFiles matches for:\n\n${copyResult.noMatches
         .map((glob) => `- "${glob}"`)
-        .join("\n")}\n\nIf this is unexpected you should check your ${terminalLink(
+        .join("\n")}\n\nIf this is unexpected you should check your ${cliLink(
         "glob patterns",
         "https://github.com/isaacs/node-glob?tab=readme-ov-file#glob-primer"
       )} are valid.`

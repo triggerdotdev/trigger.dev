@@ -23,7 +23,6 @@ import dotenv from "dotenv";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
 import { dirname, resolve } from "node:path";
-import terminalLink from "terminal-link";
 import {
   chalkError,
   chalkGrey,
@@ -33,6 +32,7 @@ import {
   chalkTask,
   chalkWarning,
   chalkWorker,
+  cliLink,
   prettyPrintDate,
 } from "../../utilities/cliOutput.js";
 import { safeDeleteFileSync } from "../../utilities/fileSystem.js";
@@ -605,7 +605,7 @@ export class BackgroundWorker {
 
     const pipe = chalkGrey("|");
     const bullet = chalkGrey("○");
-    const link = chalkLink(terminalLink("View logs", logsUrl));
+    const link = chalkLink(cliLink("View logs", logsUrl));
     let timestampPrefix = chalkGrey(prettyPrintDate(payload.execution.attempt.startedAt));
     const workerPrefix = chalkWorker(this.metadata.version);
     const taskPrefix = chalkTask(execution.task.id);

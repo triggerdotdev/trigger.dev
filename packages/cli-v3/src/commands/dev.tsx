@@ -36,6 +36,7 @@ import {
   chalkPurple,
   chalkTask,
   chalkWorker,
+  cliLink,
 } from "../utilities/cliOutput";
 import { readConfig } from "../utilities/configFiles";
 import { readJSONFile } from "../utilities/fileSystem";
@@ -63,7 +64,6 @@ import { escapeImportPath } from "../utilities/windows";
 import { updateTriggerPackages } from "./update";
 import { esbuildDecorators } from "@anatine/esbuild-decorators";
 import { callResolveEnvVars } from "../utilities/resolveEnvVars";
-import terminalLink from "terminal-link";
 
 let apiClient: CliApiClient | undefined;
 
@@ -641,8 +641,8 @@ function useDev({
                   const bullet = chalkGrey("○");
                   const arrow = chalkGrey("->");
 
-                  const testLink = chalkLink(terminalLink("Test tasks", testUrl));
-                  const runsLink = chalkLink(terminalLink("View runs", runsUrl));
+                  const testLink = chalkLink(cliLink("Test tasks", testUrl));
+                  const runsLink = chalkLink(cliLink("View runs", runsUrl));
 
                   const workerStarted = chalkGrey("Background worker started");
                   const workerVersion = chalkWorker(backgroundWorkerRecord.data.version);
