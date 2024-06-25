@@ -50,7 +50,6 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
     tempDir,
   } = options;
 
-  // COPIED FROM compileProject()
   logger.debug("Getting the imports for the worker and entryPoint builds", {
     workerImports: metaOutput.imports,
     entryPointImports: entryPointMetaOutput.imports,
@@ -59,7 +58,6 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
   // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
   const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
 
-  // const javascriptProject = new JavascriptProject(config.projectDir);
   const javascriptProject = new JavascriptProjectLocal(config.projectDir, packageManager);
 
   const dependencies = await resolveRequiredDependencies(allImports, config, javascriptProject);
@@ -75,18 +73,11 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
       ...javascriptProject.scripts,
     },
   };
-
-  // span.setAttributes({
-  //   ...flattenAttributes(packageJsonContents, "packageJson.contents"),
-  // });
-
   await writeJSONFile(join(tempDir, "package.json"), packageJsonContents);
 
   const copyResult = await copyAdditionalFiles(config, tempDir);
 
   if (!copyResult.ok) {
-    // compileSpinner.stop("Project built with warnings");
-
     log.warn(
       `No additionalFiles matches for:\n\n${copyResult.noMatches
         .map((glob) => `- "${glob}"`)
@@ -96,9 +87,6 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
       )} are valid.`
     );
   }
-  // } else {
-  //   compileSpinner.stop("Project built successfully");
-  // }
 
   const resolvingDependenciesResult = await resolveDependencies(
     tempDir,
