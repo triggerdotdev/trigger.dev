@@ -157,10 +157,7 @@ export default function Page() {
                           )}
                         <UsageBar
                           numberOfCurrentRuns={data.runsCount}
-                          tierRunLimit={
-                            currentPlan?.usage.runCountCap ??
-                            currentPlan?.subscription?.plan.runs?.pricing?.brackets.at(0)?.upto
-                          }
+                          tierRunLimit={currentPlan?.usage.runCountCap}
                           projectedRuns={data.projectedRunsCount}
                           subscribedToPaidTier={
                             (currentPlan && currentPlan.subscription?.isPaying) ?? false

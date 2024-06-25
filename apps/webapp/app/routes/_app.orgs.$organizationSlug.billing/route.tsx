@@ -29,7 +29,7 @@ function planLabel(subscription: ActiveSubscription | undefined, periodEnd: Date
     return `You're currently on the ${subscription.plan.title} plan`;
   }
   const costDescription = subscription.plan.concurrentRuns.pricing
-    ? `\$${subscription.plan.concurrentRuns.pricing?.tierCost}/mo`
+    ? `\$${subscription.plan.concurrentRuns.pricing.tierCost}/mo`
     : "";
   if (subscription.canceledAt) {
     return (
