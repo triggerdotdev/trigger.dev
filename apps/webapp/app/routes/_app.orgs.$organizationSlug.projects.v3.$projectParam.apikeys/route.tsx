@@ -57,73 +57,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
-
-  if (request.method.toUpperCase() !== "POST") {
-    return { status: 405, body: "Method Not Allowed" };
-  }
-
-  const project = await prisma.project.findUnique({
-    where: {
-      slug: params.projectParam,
-      organization: {
-        members: {
-          some: {
-            userId,
-          },
-        },
-      },
-    },
-    select: {
-      id: true,
-      organizationId: true,
-      environments: {
-        select: {
-          type: true,
-        },
-      },
-    },
-  });
-
-  if (!project) {
-    return redirectWithErrorMessage(
-      v3ApiKeysPath({ slug: organizationSlug }, { slug: projectParam }),
-      request,
-      "Project not found"
-    );
-  }
-
-  if (project.environments.some((env) => env.type === "STAGING")) {
-    return redirectWithErrorMessage(
-      v3ApiKeysPath({ slug: organizationSlug }, { slug: projectParam }),
-      request,
-      "You already have a staging environment"
-    );
-  }
-
-  const environment = await createEnvironment(
-    { id: project.organizationId },
-    { id: project.id },
-    "STAGING"
-  );
-
-  if (!environment) {
-    return redirectWithErrorMessage(
-      v3ApiKeysPath({ slug: organizationSlug }, { slug: projectParam }),
-      request,
-      "Failed to create staging environment"
-    );
-  }
-
-  return redirectWithSuccessMessage(
-    v3ApiKeysPath({ slug: organizationSlug }, { slug: projectParam }),
-    request,
-    "Staging environment created"
-  );
-};
-
 export default function Page() {
   const { environments, hasStaging } = useTypedLoaderData<typeof loader>();
   const { isManagedCloud } = useFeatures();
@@ -216,6 +149,7 @@ export default function Page() {
             </Table>
 
             {!hasStaging && (
+              // todo take you to the plans page
               <Callout
                 variant="info"
                 cta={

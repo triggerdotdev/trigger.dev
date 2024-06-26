@@ -4,17 +4,21 @@ import { prisma } from "~/db.server";
 import type { Project } from "@trigger.dev/database";
 import { Organization, createEnvironment } from "./organization.server";
 import { env } from "~/env.server";
+import { BillingService } from "~/services/billing.v3.server";
 export type { Project } from "@trigger.dev/database";
 
 const externalRefGenerator = customAlphabet("abcdefghijklmnopqrstuvwxyz", 20);
 
+type Options = {
+  organizationSlug: string;
+  name: string;
+  userId: string;
+  version: "v2" | "v3";
+  isManagedCloud: boolean;
+};
+
 export async function createProject(
-  {
-    organizationSlug,
-    name,
-    userId,
-    version,
-  }: { organizationSlug: string; name: string; userId: string; version: "v2" | "v3" },
+  { organizationSlug, name, userId, version, isManagedCloud }: Options,
   attemptCount = 0
 ): Promise<Project & { organization: Organization }> {
   //check the user has permissions to do this
@@ -58,6 +62,7 @@ export async function createProject(
         name,
         userId,
         version,
+        isManagedCloud,
       },
       attemptCount + 1
     );
@@ -89,6 +94,13 @@ export async function createProject(
 
   if (version === "v2") {
     await createEnvironment(organization, project, "STAGING");
+  } else {
+    //staging is only available on certain plans
+    const billingService = new BillingService(isManagedCloud);
+    const plan = await billingService.currentPlan(organization.id);
+    if (plan?.v3Subscription.plan?.limits.hasStagingEnvironment) {
+      await createEnvironment(organization, project, "STAGING");
+    }
   }
 
   for (const member of project.organization.members) {
