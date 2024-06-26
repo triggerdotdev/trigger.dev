@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.43
+
+### Patch Changes
+
+- 34ca7667d: v3: Include presigned urls for downloading large payloads and outputs when using runs.retrieve
+- Updated dependencies [34ca7667d]
+  - @trigger.dev/core@3.0.0-beta.43
+  - @trigger.dev/core-backend@3.0.0-beta.43
+
 ## 3.0.0-beta.42
 
 ### Patch Changes
