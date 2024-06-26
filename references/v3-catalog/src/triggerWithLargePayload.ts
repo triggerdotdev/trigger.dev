@@ -2,7 +2,7 @@ import { tasks, runs } from "@trigger.dev/sdk/v3";
 import { anyPayloadTask } from "./trigger/simple";
 
 async function main() {
-  const payload = createLargePayload(10000);
+  const payload = createLargePayload(100000);
 
   const anyHandle = await tasks.trigger<typeof anyPayloadTask>("any-payload-task", payload);
 

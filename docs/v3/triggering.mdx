@@ -536,3 +536,29 @@ export async function create() {
 ```
 
 </CodeGroup>
+
+## Large Payloads
+
+We recommend keeping your task payloads as small as possible. We currently have a hard limit on task payloads above 10MB.
+
+If your payload size is larger than 1MB, instead of saving the payload to the database, we will upload it to an S3-compatible object store and store the URL in the database.
+
+When your task runs, we automatically download the payload from the object store and pass it to your task function. We also will return to you a `payloadPresignedUrl` from the `runs.retrieve` SDK function so you can download the payload if needed:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+
+const run = await runs.retrieve(handle);
+
+if (run.payloadPresignedUrl) {
+  const response = await fetch(run.payloadPresignedUrl);
+  const payload = await response.json();
+
+  console.log("Payload", payload);
+}
+```
+
+<Note>
+  We also use this same system for dealing with large task outputs, and subsequently will return a
+  corresponding `outputPresignedUrl`
+</Note>

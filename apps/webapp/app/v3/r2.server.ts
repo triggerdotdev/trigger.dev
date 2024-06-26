@@ -3,6 +3,7 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
+import { startActiveSpan } from "./tracer.server";
 
 export const r2 = singleton("r2", initializeR2);
 
@@ -23,32 +24,40 @@ export async function uploadToObjectStore(
   contentType: string,
   environment: AuthenticatedEnvironment
 ): Promise<string> {
-  if (!r2) {
-    throw new Error("Object store credentials are not set");
-  }
+  return await startActiveSpan("uploadToObjectStore()", async (span) => {
+    if (!r2) {
+      throw new Error("Object store credentials are not set");
+    }
 
-  if (!env.OBJECT_STORE_BASE_URL) {
-    throw new Error("Object store base URL is not set");
-  }
+    if (!env.OBJECT_STORE_BASE_URL) {
+      throw new Error("Object store base URL is not set");
+    }
 
-  const url = new URL(env.OBJECT_STORE_BASE_URL);
-  url.pathname = `/packets/${environment.project.externalRef}/${environment.slug}/${filename}`;
+    span.setAttributes({
+      projectRef: environment.project.externalRef,
+      environmentSlug: environment.slug,
+      filename: filename,
+    });
 
-  logger.debug("Uploading to object store", { url: url.href });
+    const url = new URL(env.OBJECT_STORE_BASE_URL);
+    url.pathname = `/packets/${environment.project.externalRef}/${environment.slug}/${filename}`;
 
-  const response = await r2.fetch(url.toString(), {
-    method: "PUT",
-    headers: {
-      "Content-Type": contentType,
-    },
-    body: data,
+    logger.debug("Uploading to object store", { url: url.href });
+
+    const response = await r2.fetch(url.toString(), {
+      method: "PUT",
+      headers: {
+        "Content-Type": contentType,
+      },
+      body: data,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to upload output to ${url}: ${response.statusText}`);
+    }
+
+    return url.href;
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to upload output to ${url}: ${response.statusText}`);
-  }
-
-  return url.href;
 }
 
 export async function generatePresignedRequest(
