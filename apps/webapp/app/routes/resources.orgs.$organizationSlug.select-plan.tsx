@@ -16,10 +16,8 @@ import {
   SubscriptionResult,
 } from "@trigger.dev/billing/v3";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
-import { redirect } from "remix-typedjson";
 import { z } from "zod";
 import { DefinitionTip } from "~/components/DefinitionTooltip";
-import { DeleteJobDialog } from "~/components/jobs/DeleteJobModalContent";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import {
   Dialog,
@@ -97,12 +95,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
   return billingService.setPlan(organization, request, form.callerPath, payload);
 }
 
-type PricingPlansProps = {
-  plans: Plans;
-  subscription?: SubscriptionResult;
-  organizationSlug: string;
-};
-
 const pricingDefinitions = {
   usage: {
     title: "Usage",
@@ -140,17 +132,28 @@ const pricingDefinitions = {
   },
 };
 
+type PricingPlansProps = {
+  plans: Plans;
+  subscription?: SubscriptionResult;
+  organizationSlug: string;
+};
+
 export function PricingPlans({ plans, subscription, organizationSlug }: PricingPlansProps) {
+  console.log({ plans, subscription });
   return (
     <div className="flex w-full flex-col">
       <div className="flex flex-col lg:flex-row">
         <TierFree
           plan={plans.free}
-          status={subscription?.freeTierStatus ?? "requires_connect"}
+          subscription={subscription}
           organizationSlug={organizationSlug}
         />
-        <TierHobby plan={plans.hobby} organizationSlug={organizationSlug} />
-        <TierPro plan={plans.pro} organizationSlug={organizationSlug} />
+        <TierHobby
+          plan={plans.hobby}
+          organizationSlug={organizationSlug}
+          subscription={subscription}
+        />
+        <TierPro plan={plans.pro} organizationSlug={organizationSlug} subscription={subscription} />
       </div>
       <div className="mt-4">
         <TierEnterprise />
@@ -161,11 +164,11 @@ export function PricingPlans({ plans, subscription, organizationSlug }: PricingP
 
 export function TierFree({
   plan,
-  status,
+  subscription,
   organizationSlug,
 }: {
   plan: FreePlanDefinition;
-  status: FreeTierStatus;
+  subscription?: SubscriptionResult;
   organizationSlug: string;
 }) {
   const location = useLocation();
@@ -173,14 +176,17 @@ export function TierFree({
   const formAction = `/resources/orgs/${organizationSlug}/select-plan`;
   const isLoading = navigation.formAction === formAction;
 
+  const status = subscription?.freeTierStatus ?? "requires_connect";
+
   return (
     <TierContainer>
       <div className="relative">
         <PricingHeader title={plan.title} cost={0} />
         {status === "approved" && (
           <SimpleTooltip
+            buttonClassName="absolute right-1 top-1"
             button={
-              <div className="absolute right-1 top-1 flex items-center gap-1 rounded-sm bg-green-900 px-2 py-1 text-xs text-green-300">
+              <div className="flex items-center gap-1 rounded-sm bg-green-900 px-2 py-1 text-xs text-green-300">
                 <ShieldCheckIcon className="size-4" />
                 <span>GitHub verified</span>
               </div>
@@ -272,7 +278,11 @@ export function TierFree({
                 disabled={isLoading}
                 LeadingIcon={isLoading ? Spinner : undefined}
               >
-                Select plan
+                {subscription?.plan === undefined
+                  ? "Select plan"
+                  : subscription.plan.type === "free"
+                  ? "Current plan"
+                  : `Downgrade to ${plan.title}`}
               </Button>
             )}
           </div>
@@ -303,21 +313,45 @@ export function TierFree({
 export function TierHobby({
   plan,
   organizationSlug,
+  subscription,
 }: {
   plan: PaidPlanDefinition;
   organizationSlug: string;
+  subscription?: SubscriptionResult;
 }) {
+  const location = useLocation();
+  const navigation = useNavigation();
+  const formAction = `/resources/orgs/${organizationSlug}/select-plan`;
+  const isLoading = navigation.formAction === formAction;
+
   return (
     <TierContainer isHighlighted>
       <PricingHeader title={plan.title} isHighlighted cost={plan.tierPrice} />
       <TierLimit href="https://trigger.dev/pricing#computePricing">
         ${plan.limits.includedUsage} usage included
       </TierLimit>
-      <div className="py-6">
-        <Button variant="primary/large" fullWidth className="text-md font-medium">
-          Select plan
-        </Button>
-      </div>
+      <Form action={formAction} method="post" id="subscribe">
+        <div className="py-6">
+          <input type="hidden" name="type" value="paid" />
+          <input type="hidden" name="planCode" value={plan.code} />
+          <input type="hidden" name="callerPath" value={location.pathname} />
+          <Button
+            variant="primary/large"
+            fullWidth
+            className="text-md font-medium"
+            disabled={isLoading || subscription?.plan?.code === plan.code}
+            LeadingIcon={isLoading ? Spinner : undefined}
+          >
+            {subscription?.plan === undefined
+              ? "Select plan"
+              : subscription.plan.type === "free"
+              ? `Upgrade to ${plan.title}`
+              : subscription.plan.code === plan.code
+              ? "Current plan"
+              : `Downgrade to ${plan.title}`}
+          </Button>
+        </div>
+      </Form>
       <ul className="flex flex-col gap-2.5">
         <ConcurrentRuns limits={plan.limits} />
         <FeatureItem checked>
@@ -342,21 +376,45 @@ export function TierHobby({
 export function TierPro({
   plan,
   organizationSlug,
+  subscription,
 }: {
   plan: PaidPlanDefinition;
   organizationSlug: string;
+  subscription?: SubscriptionResult;
 }) {
+  const location = useLocation();
+  const navigation = useNavigation();
+  const formAction = `/resources/orgs/${organizationSlug}/select-plan`;
+  const isLoading = navigation.formAction === formAction;
+
   return (
     <TierContainer>
-      <PricingHeader title={plan.title} isHighlighted cost={plan.tierPrice} />
+      <PricingHeader title={plan.title} cost={plan.tierPrice} />
       <TierLimit href="https://trigger.dev/pricing#computePricing">
         ${plan.limits.includedUsage} usage included
       </TierLimit>
-      <div className="py-6">
-        <Button variant="tertiary/large" fullWidth className="text-md font-medium">
-          Select plan
-        </Button>
-      </div>
+      <Form action={formAction} method="post" id="subscribe">
+        <div className="py-6">
+          <input type="hidden" name="type" value="paid" />
+          <input type="hidden" name="planCode" value={plan.code} />
+          <input type="hidden" name="callerPath" value={location.pathname} />
+          <Button
+            variant="tertiary/large"
+            fullWidth
+            className="text-md font-medium"
+            disabled={isLoading || subscription?.plan?.code === plan.code}
+            LeadingIcon={isLoading ? Spinner : undefined}
+          >
+            {subscription?.plan === undefined
+              ? "Select plan"
+              : subscription.plan.type === "free"
+              ? `Upgrade to ${plan.title}`
+              : subscription.plan.code === plan.code
+              ? "Current plan"
+              : `Upgrade to ${plan.title}`}
+          </Button>
+        </div>
+      </Form>
       <ul className="flex flex-col gap-2.5">
         <ConcurrentRuns limits={plan.limits} />
         <FeatureItem checked>
