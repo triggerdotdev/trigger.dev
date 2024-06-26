@@ -14,7 +14,6 @@ import {
   TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
-  WaitReason,
   correctErrorStackTrace,
 } from "@trigger.dev/core/v3";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
@@ -56,12 +55,6 @@ export class ProdBackgroundWorker {
   public onWaitForTask: Evt<
     InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_TASK">
   > = new Evt();
-
-  public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
-  public checkpointCanceledNotification = Evt.create<{ checkpointCanceled: boolean }>();
-
-  public onReadyForCheckpoint = Evt.create<{ version?: "v1" }>();
-  public onCancelCheckpoint = Evt.create<{ version?: "v1" | "v2"; reason?: WaitReason }>();
 
   public onCreateTaskRunAttempt = Evt.create<{ version?: "v1"; runId: string }>();
   public attemptCreatedNotification = Evt.create<
@@ -304,22 +297,6 @@ export class ProdBackgroundWorker {
 
     taskRunProcess.onWaitForTask.attach((message) => {
       this.onWaitForTask.post(message);
-    });
-
-    taskRunProcess.onReadyForCheckpoint.attach((message) => {
-      this.onReadyForCheckpoint.post(message);
-    });
-
-    taskRunProcess.onCancelCheckpoint.attach((message) => {
-      this.onCancelCheckpoint.post(message);
-    });
-
-    // Notify down the chain
-    this.preCheckpointNotification.attach((message) => {
-      taskRunProcess.preCheckpointNotification.post(message);
-    });
-    this.checkpointCanceledNotification.attach((message) => {
-      taskRunProcess.checkpointCanceledNotification.post(message);
     });
 
     await taskRunProcess.initialize();
@@ -613,10 +590,6 @@ class TaskRunProcess {
   > = new Evt();
 
   public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
-  public checkpointCanceledNotification = Evt.create<{ checkpointCanceled: boolean }>();
-
-  public onReadyForCheckpoint = Evt.create<{ version?: "v1" }>();
-  public onCancelCheckpoint = Evt.create<{ version?: "v1" | "v2"; reason?: WaitReason }>();
 
   constructor(
     private runId: string,
@@ -691,55 +664,7 @@ class TaskRunProcess {
           this.onWaitForBatch.post(message);
         },
         WAIT_FOR_DURATION: async (message) => {
-          // Post to coordinator
           this.onWaitForDuration.post(message);
-
-          try {
-            // ..and wait for response
-            const { willCheckpointAndRestore } = await this.preCheckpointNotification.waitFor(
-              30_000
-            );
-
-            return {
-              willCheckpointAndRestore,
-            };
-          } catch (error) {
-            console.error("Error while waiting for pre-checkpoint notification", error);
-
-            // Assume we won't get checkpointed
-            return {
-              willCheckpointAndRestore: false,
-            };
-          }
-        },
-        READY_FOR_CHECKPOINT: async (message) => {
-          this.onReadyForCheckpoint.post(message);
-        },
-        CANCEL_CHECKPOINT: async (message) => {
-          const version = "v2";
-
-          // Post to coordinator
-          this.onCancelCheckpoint.post(message);
-
-          try {
-            // ..and wait for response
-            const { checkpointCanceled } = await this.checkpointCanceledNotification.waitFor(
-              30_000
-            );
-
-            return {
-              version,
-              checkpointCanceled,
-            };
-          } catch (error) {
-            console.error("Error while waiting for checkpoint cancellation", error);
-
-            // Assume it's been canceled
-            return {
-              version,
-              checkpointCanceled: true,
-            };
-          }
         },
       },
     });
@@ -831,21 +756,34 @@ class TaskRunProcess {
 
   taskRunCompletedNotification(completion: TaskRunExecutionResult) {
     if (!completion.ok && typeof completion.retry !== "undefined") {
+      console.error(
+        "Task run completed with error and wants to retry, won't send task run completed notification"
+      );
       return;
     }
 
-    if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
-      this._ipc?.send("TASK_RUN_COMPLETED_NOTIFICATION", {
-        version: "v2",
-        completion,
-      });
+    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
+      console.error(
+        "Child process not connected or being killed, can't send task run completed notification"
+      );
+      return;
     }
+
+    this._ipc?.send("TASK_RUN_COMPLETED_NOTIFICATION", {
+      version: "v2",
+      completion,
+    });
   }
 
   waitCompletedNotification() {
-    if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
-      this._ipc?.send("WAIT_COMPLETED_NOTIFICATION", {});
+    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
+      console.error(
+        "Child process not connected or being killed, can't send wait completed notification"
+      );
+      return;
     }
+
+    this._ipc?.send("WAIT_COMPLETED_NOTIFICATION", {});
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {

@@ -16,6 +16,7 @@ import { createServer } from "node:http";
 import { ProdBackgroundWorker } from "./backgroundWorker";
 import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors";
 import { setTimeout as timeout } from "node:timers/promises";
+import { checkpointSafeTimeout, unboundedTimeout } from "@trigger.dev/core/v3/utils/timers";
 
 declare const __PROJECT_CONFIG__: Config;
 
@@ -157,45 +158,15 @@ class ProdWorker {
     });
 
     backgroundWorker.onTaskHeartbeat.attach((attemptFriendlyId) => {
-      // TODO: Switch to .send() once coordinator uses zod handler for all messages
+      logger.log("onTaskHeartbeat", { attemptFriendlyId });
+
       this.#coordinatorSocket.socket.emit("TASK_HEARTBEAT", { version: "v1", attemptFriendlyId });
     });
 
     backgroundWorker.onTaskRunHeartbeat.attach((runId) => {
+      logger.log("onTaskRunHeartbeat", { runId });
+
       this.#coordinatorSocket.socket.emit("TASK_RUN_HEARTBEAT", { version: "v1", runId });
-    });
-
-    // Currently, this is only used for duration waits
-    backgroundWorker.onReadyForCheckpoint.attach(async (message) => {
-      await this.#prepareForCheckpoint();
-
-      this.#readyForCheckpoint();
-    });
-
-    // Currently, this is only used for duration waits. Might need adjusting for other use cases.
-    backgroundWorker.onCancelCheckpoint.attach(async (message) => {
-      logger.log("onCancelCheckpoint", { message });
-
-      const { checkpointCanceled } = await this.#coordinatorSocket.socket.emitWithAck(
-        "CANCEL_CHECKPOINT",
-        {
-          version: "v2",
-          reason: message.reason,
-        }
-      );
-
-      logger.log("onCancelCheckpoint coordinator response", { checkpointCanceled });
-
-      if (checkpointCanceled) {
-        if (message.reason === "WAIT_FOR_DURATION") {
-          // Worker will resume immediately
-          this.paused = false;
-          this.nextResumeAfter = undefined;
-          this.waitForPostStart = false;
-        }
-      }
-
-      backgroundWorker.checkpointCanceledNotification.post({ checkpointCanceled });
     });
 
     backgroundWorker.onCreateTaskRunAttempt.attach(async (message) => {
@@ -224,6 +195,8 @@ class ProdWorker {
     });
 
     backgroundWorker.attemptCreatedNotification.attach((message) => {
+      logger.log("attemptCreatedNotification", { message });
+
       if (!message.success) {
         return;
       }
@@ -233,6 +206,8 @@ class ProdWorker {
     });
 
     backgroundWorker.onWaitForDuration.attach(async (message) => {
+      logger.log("onWaitForDuration", { ...message, drift: Date.now() - message.now });
+
       if (!this.attemptFriendlyId) {
         logger.error("Failed to send wait message, attempt friendly ID not set", { message });
 
@@ -244,15 +219,64 @@ class ProdWorker {
         return;
       }
 
-      const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
-        "WAIT_FOR_DURATION",
-        {
-          ...message,
-          attemptFriendlyId: this.attemptFriendlyId,
-        }
-      );
+      noResume: {
+        const { ms, waitThresholdInMs } = message;
 
-      this.#prepareForWait("WAIT_FOR_DURATION", willCheckpointAndRestore);
+        const internalTimeout = unboundedTimeout(ms, "internal" as const);
+        const checkpointSafeInternalTimeout = checkpointSafeTimeout(ms);
+
+        if (ms <= waitThresholdInMs) {
+          await internalTimeout;
+          break noResume;
+        }
+
+        const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
+          "WAIT_FOR_DURATION",
+          {
+            ...message,
+            attemptFriendlyId: this.attemptFriendlyId,
+          }
+        );
+
+        if (!willCheckpointAndRestore) {
+          await internalTimeout;
+          break noResume;
+        }
+
+        await this.#prepareForWait("WAIT_FOR_DURATION", willCheckpointAndRestore);
+        // CHECKPOINTING AFTER THIS LINE
+
+        // internalTimeout acts as a backup and will be accurate if the checkpoint never happens
+        // checkpointSafeInternalTimeout is accurate even after non-simulated restores
+        await Promise.race([internalTimeout, checkpointSafeInternalTimeout]);
+
+        try {
+          // The coordinator should cancel any in-progress checkpoints so we don't end up with race conditions
+          const { checkpointCanceled } = await this.#coordinatorSocket.socket
+            .timeout(15_000)
+            .emitWithAck("CANCEL_CHECKPOINT", {
+              version: "v2",
+              reason: "WAIT_FOR_DURATION",
+            });
+
+          logger.log("onCancelCheckpoint coordinator response", { checkpointCanceled });
+
+          if (checkpointCanceled) {
+            break noResume;
+          }
+
+          // Otherwise, do nothing and only resume after receiving RESUME_AFTER_DURATION
+          // TODO: Think of something better to do here. Maybe let the platform we don't need to be restored.
+        } catch (error) {
+          // If the cancellation times out, we will proceed as if the checkpoint was canceled
+          logger.debug("Checkpoint cancellation timed out", { error });
+          break noResume;
+        }
+
+        return;
+      }
+
+      this.#resumeAfterDuration();
     });
 
     backgroundWorker.onWaitForTask.attach(async (message) => {
@@ -301,18 +325,15 @@ class ProdWorker {
   async #prepareForWait(reason: WaitReason, willCheckpointAndRestore: boolean) {
     logger.log(`prepare for ${reason}`, { willCheckpointAndRestore });
 
-    this.#backgroundWorker.preCheckpointNotification.post({ willCheckpointAndRestore });
-
-    if (willCheckpointAndRestore) {
-      this.paused = true;
-      this.nextResumeAfter = reason;
-      this.waitForPostStart = true;
-
-      if (reason === "WAIT_FOR_TASK" || reason === "WAIT_FOR_BATCH") {
-        // Duration waits do this via the "ready for checkpoint" event instead
-        await this.#prepareForCheckpoint();
-      }
+    if (!willCheckpointAndRestore) {
+      return;
     }
+
+    this.paused = true;
+    this.nextResumeAfter = reason;
+    this.waitForPostStart = true;
+
+    await this.#prepareForCheckpoint();
   }
 
   async #prepareForRetry(willCheckpointAndRestore: boolean, shouldExit: boolean) {
@@ -342,8 +363,6 @@ class ProdWorker {
 
     // We already flush after completion, so we don't need to do it here
     await this.#prepareForCheckpoint(false);
-
-    this.#readyForCheckpoint();
   }
 
   async #prepareForCheckpoint(flush = true) {
@@ -368,6 +387,9 @@ class ProdWorker {
         { error }
       );
     }
+
+    // TODO: Prevent automatic checkpointing on the coordinator side for ALL wait reasons
+    this.#readyForCheckpoint();
   }
 
   #resumeAfterDuration() {

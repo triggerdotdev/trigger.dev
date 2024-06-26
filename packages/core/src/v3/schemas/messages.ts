@@ -215,38 +215,12 @@ export const ProdChildToWorkerMessages = {
   READY_TO_DISPOSE: {
     message: z.undefined(),
   },
-  READY_FOR_CHECKPOINT: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-    }),
-  },
-  CANCEL_CHECKPOINT: {
-    message: z
-      .discriminatedUnion("version", [
-        z.object({
-          version: z.literal("v1"),
-        }),
-        z.object({
-          version: z.literal("v2"),
-          reason: WaitReason.optional(),
-        }),
-      ])
-      .default({ version: "v1" }),
-    callback: z.object({
-      // TODO: Figure out how best to handle callback schema parsing in zod IPC
-      version: z.literal("v2") /* .default("v2") */,
-      checkpointCanceled: z.boolean(),
-      reason: WaitReason.optional(),
-    }),
-  },
   WAIT_FOR_DURATION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       ms: z.number(),
       now: z.number(),
-    }),
-    callback: z.object({
-      willCheckpointAndRestore: z.boolean(),
+      waitThresholdInMs: z.number(),
     }),
   },
   WAIT_FOR_TASK: {
