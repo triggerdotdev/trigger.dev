@@ -24,14 +24,16 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
+import { UpgradeCallout } from "~/components/primitives/UpgradeCallout";
 import { prisma } from "~/db.server";
 import { useFeatures } from "~/hooks/useFeatures";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { createEnvironment } from "~/models/organization.server";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, docsPath, v3ApiKeysPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, docsPath, v3ApiKeysPath, v3BillingPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -60,6 +62,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export default function Page() {
   const { environments, hasStaging } = useTypedLoaderData<typeof loader>();
   const { isManagedCloud } = useFeatures();
+  const organization = useOrganization();
 
   return (
     <PageContainer>
@@ -149,19 +152,9 @@ export default function Page() {
             </Table>
 
             {!hasStaging && (
-              // todo take you to the plans page
-              <Callout
-                variant="info"
-                cta={
-                  <Form method="post">
-                    <Button variant="tertiary/small">Enable Staging</Button>
-                  </Form>
-                }
-              >
-                {isManagedCloud
-                  ? "The Staging environment will be a paid feature when we add billing. In the interim you can enable it for free."
-                  : "You can add a Staging environment to your project."}
-              </Callout>
+              <UpgradeCallout title="Add a Staging environment">
+                Upgrade to a paid plan to add a Staging environment.
+              </UpgradeCallout>
             )}
           </div>
         </div>
