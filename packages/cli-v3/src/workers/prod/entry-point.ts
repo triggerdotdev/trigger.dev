@@ -824,20 +824,14 @@ class ProdWorker {
           }
 
           case "/close": {
-            await this.#coordinatorSocket.sendWithAck("LOG", {
-              version: "v1",
-              text: `[${req.method}] ${req.url}`,
-            });
-
             this.#coordinatorSocket.close();
 
             return reply.text("Disconnected from coordinator");
           }
 
           case "/test": {
-            await this.#coordinatorSocket.sendWithAck("LOG", {
+            await this.#coordinatorSocket.socket.emitWithAck("TEST", {
               version: "v1",
-              text: `[${req.method}] ${req.url}`,
             });
 
             return reply.text("Received ACK from coordinator");

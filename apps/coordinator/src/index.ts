@@ -927,16 +927,10 @@ class TaskCoordinator {
           text: "connected",
         });
 
-        socket.on("LOG", (message, callback) => {
-          logger.log("[LOG]", message.text);
+        socket.on("TEST", (message, callback) => {
+          logger.log("[TEST]", { runId: socket.data.runId, message });
 
           callback();
-
-          this.#platformSocket?.send("LOG", {
-            version: "v1",
-            metadata: socket.data,
-            text: message.text,
-          });
         });
 
         socket.on("READY_FOR_EXECUTION", async (message) => {

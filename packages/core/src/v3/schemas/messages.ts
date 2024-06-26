@@ -644,10 +644,9 @@ const IndexTasksMessage = z.object({
 });
 
 export const ProdWorkerToCoordinatorMessages = {
-  LOG: {
+  TEST: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      text: z.string(),
     }),
     callback: z.void(),
   },
