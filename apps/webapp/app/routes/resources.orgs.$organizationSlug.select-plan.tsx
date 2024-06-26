@@ -276,7 +276,9 @@ export function TierFree({
                 fullWidth
                 className="text-md font-medium"
                 disabled={isLoading}
-                LeadingIcon={isLoading ? Spinner : undefined}
+                LeadingIcon={
+                  isLoading && navigation.formData?.get("planCode") === null ? Spinner : undefined
+                }
               >
                 {subscription?.plan === undefined
                   ? "Select plan"
@@ -340,7 +342,9 @@ export function TierHobby({
             fullWidth
             className="text-md font-medium"
             disabled={isLoading || subscription?.plan?.code === plan.code}
-            LeadingIcon={isLoading ? Spinner : undefined}
+            LeadingIcon={
+              isLoading && navigation.formData?.get("planCode") === plan.code ? Spinner : undefined
+            }
           >
             {subscription?.plan === undefined
               ? "Select plan"
@@ -403,7 +407,9 @@ export function TierPro({
             fullWidth
             className="text-md font-medium"
             disabled={isLoading || subscription?.plan?.code === plan.code}
-            LeadingIcon={isLoading ? Spinner : undefined}
+            LeadingIcon={
+              isLoading && navigation.formData?.get("planCode") === plan.code ? Spinner : undefined
+            }
           >
             {subscription?.plan === undefined
               ? "Select plan"
