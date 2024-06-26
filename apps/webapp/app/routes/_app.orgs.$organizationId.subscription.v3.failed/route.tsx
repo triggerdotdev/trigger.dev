@@ -2,7 +2,7 @@ import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { v3PlansPath } from "~/utils/pathBuilder";
+import { v3BillingPath } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
   organizationId: z.string(),
@@ -30,5 +30,5 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   let errorMessage = reason ? decodeURIComponent(reason) : "Subscribing failed to complete";
 
-  return redirectWithErrorMessage(v3PlansPath({ slug: org.slug }), request, errorMessage);
+  return redirectWithErrorMessage(v3BillingPath({ slug: org.slug }), request, errorMessage);
 };

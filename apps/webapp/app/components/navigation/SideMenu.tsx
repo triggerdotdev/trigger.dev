@@ -6,6 +6,7 @@ import {
   BellAlertIcon,
   ChartBarIcon,
   ClockIcon,
+  CurrencyDollarIcon,
   CursorArrowRaysIcon,
   IdentificationIcon,
   KeyIcon,
@@ -52,6 +53,8 @@ import {
   v3RunsPath,
   v3SchedulesPath,
   v3TestPath,
+  v3BillingPath,
+  v3UsagePath,
 } from "~/utils/pathBuilder";
 import { Feedback } from "../Feedback";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -177,12 +180,28 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               data-action="team"
             />
             <SideMenuItem
-              name={isManagedCloud ? "Usage & Billing" : "Usage"}
+              name="Usage"
               icon={ChartBarIcon}
-              to={organizationBillingPath(organization)}
+              to={v3UsagePath(organization)}
               iconColor="text-green-600"
-              data-action="usage & billing"
+              data-action="usage"
             />
+            <SideMenuItem
+              name="Billing"
+              icon={CurrencyDollarIcon}
+              to={v3BillingPath(organization)}
+              iconColor="text-sun-600"
+              data-action="billing"
+            />
+            {organization.projects.some((proj) => proj.version === "V2") && (
+              <SideMenuItem
+                name="Usage (v2)"
+                icon={ChartBarIcon}
+                to={organizationBillingPath(organization)}
+                iconColor="text-green-600"
+                data-action="usage & billing"
+              />
+            )}
             <SideMenuItem
               name="Organization settings"
               icon="settings"

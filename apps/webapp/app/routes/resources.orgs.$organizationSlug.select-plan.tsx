@@ -139,7 +139,6 @@ type PricingPlansProps = {
 };
 
 export function PricingPlans({ plans, subscription, organizationSlug }: PricingPlansProps) {
-  console.log({ plans, subscription });
   return (
     <div className="flex w-full flex-col">
       <div className="flex flex-col lg:flex-row">

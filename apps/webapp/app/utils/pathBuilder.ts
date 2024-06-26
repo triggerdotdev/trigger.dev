@@ -443,8 +443,16 @@ export function v3DeploymentPath(
   return `${v3DeploymentsPath(organization, project)}/${deployment.shortCode}`;
 }
 
-export function v3PlansPath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/v3/billing/plans`;
+export function v3BillingPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/v3/billing`;
+}
+
+export function v3StripePortalPath(organization: OrgForPath) {
+  return `/resources/${organization.slug}/subscription/v3/portal`;
+}
+
+export function v3UsagePath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/v3/usage`;
 }
 
 // Integration

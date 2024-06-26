@@ -86,15 +86,10 @@ export default function Page() {
       <PageBody scrollable={false}>
         <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
           <div className="px-4 pt-4">
-            {allV3Projects ? (
+            {hasV3Project ? (
               <Callout variant="warning" className="mb-3">
-                This organization only has v3 projects. These are currently free. Usage data and
-                billing will be available soon.
-              </Callout>
-            ) : hasV3Project ? (
-              <Callout variant="warning" className="mb-3">
-                This organization has a mix of v2 and v3 projects – v3 projects do not count towards
-                your usage (below) and are currently free.
+                This organization has a mix of v2 and v3 projects. They have separate subscriptions,
+                this is the usage and billing for v2.
               </Callout>
             ) : null}
             {hasV2Project && (
