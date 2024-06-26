@@ -25,7 +25,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   return redirectWithErrorMessage(
-    `${v3PlansPath({ slug: org.slug })}`,
+    v3PlansPath({ slug: org.slug }),
     request,
     "You didn't complete your details on Stripe. Please try again."
   );

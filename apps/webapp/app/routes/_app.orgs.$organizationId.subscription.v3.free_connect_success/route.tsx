@@ -3,7 +3,7 @@ import { redirect } from "remix-typedjson";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { newProjectPath, v3PlansPath } from "~/utils/pathBuilder";
+import { newProjectPath, selectPlanPath, v3PlansPath } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
   organizationId: z.string(),
@@ -36,11 +36,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return redirectWithSuccessMessage(
       v3PlansPath({ slug: org.slug }),
       request,
-      "Your subscription has been successfully activated."
+      "Free tier unlocked successfully."
     );
   }
 
-  return redirect(
-    newProjectPath({ slug: org.slug }, "Your subscription has been successfully activated.")
-  );
+  return redirect(newProjectPath({ slug: org.slug }, "You're on the Free plan."));
 };

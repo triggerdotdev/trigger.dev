@@ -296,8 +296,10 @@ export function endpointStreamingPath(environment: { id: string }) {
   return `/resources/environments/${environment.id}/endpoint/stream`;
 }
 
-export function newProjectPath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/projects/new`;
+export function newProjectPath(organization: OrgForPath, message?: string) {
+  return `${organizationPath(organization)}/projects/new${
+    message ? `?message=${encodeURIComponent(message)}` : ""
+  }`;
 }
 
 function projectParam(project: ProjectForPath) {
@@ -443,10 +445,6 @@ export function v3DeploymentPath(
 
 export function v3PlansPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/v3/billing/plans`;
-}
-
-export function v3SubscribedPath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/v3/subscribed`;
 }
 
 // Integration

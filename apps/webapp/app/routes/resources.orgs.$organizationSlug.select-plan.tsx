@@ -1,11 +1,91 @@
-import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { FreePlanDefinition, Limits, PaidPlanDefinition, Plans } from "@trigger.dev/billing/v3";
+import { CheckIcon, ExclamationTriangleIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { Form, useLocation, useNavigation } from "@remix-run/react";
+import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import {
+  FreePlanDefinition,
+  FreeTierStatus,
+  Limits,
+  PaidPlanDefinition,
+  Plans,
+  SetPlanBody,
+  SubscriptionResult,
+} from "@trigger.dev/billing/v3";
+import { redirect } from "remix-typedjson";
+import { z } from "zod";
 import { DefinitionTip } from "~/components/DefinitionTooltip";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { Spinner } from "~/components/primitives/Spinner";
+import { prisma } from "~/db.server";
+import { featuresForRequest } from "~/features.server";
+import { redirectWithErrorMessage } from "~/models/message.server";
+import { BillingService } from "~/services/billing.v3.server";
+import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
+
+const Params = z.object({
+  organizationSlug: z.string(),
+});
+
+const schema = z.object({
+  type: z.enum(["free", "paid"]),
+  planCode: z.string().optional(),
+  callerPath: z.string(),
+});
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  if (request.method.toLowerCase() !== "post") {
+    return new Response("Method not allowed", { status: 405 });
+  }
+
+  const { organizationSlug } = Params.parse(params);
+
+  const userId = await requireUserId(request);
+
+  const formData = Object.fromEntries(await request.formData());
+  const form = schema.parse(formData);
+
+  const { isManagedCloud } = featuresForRequest(request);
+
+  const organization = await prisma.organization.findUnique({
+    where: { slug: organizationSlug },
+  });
+
+  if (!organization) {
+    throw redirectWithErrorMessage(form.callerPath, request, "Organization not found");
+  }
+
+  let payload: SetPlanBody;
+
+  switch (form.type) {
+    case "free": {
+      payload = {
+        type: "free" as const,
+        userId,
+      };
+      break;
+    }
+    case "paid": {
+      if (form.planCode === undefined) {
+        throw redirectWithErrorMessage(form.callerPath, request, "Not a valid plan");
+      }
+      payload = {
+        type: "paid" as const,
+        planCode: form.planCode,
+        userId,
+      };
+      break;
+    }
+  }
+
+  const billingService = new BillingService(isManagedCloud);
+  return billingService.setPlan(organization, request, form.callerPath, payload);
+}
 
 type PricingPlansProps = {
   plans: Plans;
+  subscription?: SubscriptionResult;
+  organizationSlug: string;
 };
 
 const pricingDefinitions = {
@@ -45,13 +125,17 @@ const pricingDefinitions = {
   },
 };
 
-export function PricingPlans({ plans }: PricingPlansProps) {
+export function PricingPlans({ plans, subscription, organizationSlug }: PricingPlansProps) {
   return (
     <div className="flex w-full flex-col">
       <div className="flex flex-col lg:flex-row">
-        <TierFree plan={plans.free} />
-        <TierHobby plan={plans.hobby} />
-        <TierPro plan={plans.pro} />
+        <TierFree
+          plan={plans.free}
+          status={subscription?.freeTierStatus ?? "requires_connect"}
+          organizationSlug={organizationSlug}
+        />
+        <TierHobby plan={plans.hobby} organizationSlug={organizationSlug} />
+        <TierPro plan={plans.pro} organizationSlug={organizationSlug} />
       </div>
       <div className="mt-4">
         <TierEnterprise />
@@ -60,42 +144,88 @@ export function PricingPlans({ plans }: PricingPlansProps) {
   );
 }
 
-export function TierFree({ plan }: { plan: FreePlanDefinition | PaidPlanDefinition }) {
+export function TierFree({
+  plan,
+  status,
+  organizationSlug,
+}: {
+  plan: FreePlanDefinition;
+  status: FreeTierStatus;
+  organizationSlug: string;
+}) {
+  const location = useLocation();
+  const navigation = useNavigation();
+  const formAction = `/resources/orgs/${organizationSlug}/select-plan`;
+  const isLoading = navigation.formAction === formAction;
+
   return (
     <TierContainer>
       <PricingHeader title={plan.title} cost={0} />
-      <TierLimit href="https://trigger.dev/pricing#computePricing">
-        ${plan.limits.includedUsage} free usage
-      </TierLimit>
-      <input type="hidden" name="type" value="free" />
-      <div className="py-6">
-        <Button variant="tertiary/large" fullWidth className="text-md font-medium">
-          Unlock free plan
-        </Button>
-      </div>
-      <ul className="flex flex-col gap-2.5">
-        <ConcurrentRuns limits={plan.limits} />
-        <FeatureItem checked>
-          Unlimited{" "}
-          <DefinitionTip
-            title={pricingDefinitions.tasks.title}
-            content={pricingDefinitions.tasks.content}
-          >
-            tasks
-          </DefinitionTip>
-        </FeatureItem>
-        <TeamMembers limits={plan.limits} />
-        <Environments limits={plan.limits} />
-        <Schedules limits={plan.limits} />
-        <LogRetention limits={plan.limits} />
-        <SupportLevel limits={plan.limits} />
-        <Alerts limits={plan.limits} />
-      </ul>
+      {status === "rejected" ? (
+        <div>
+          <hr className="my-6 border-grid-bright" />
+          <div className="flex flex-col gap-2 rounded-sm border border-warning p-4">
+            <ExclamationTriangleIcon className="h-6 w-6 text-warning" />
+            <Paragraph variant="small/bright">
+              Your Trigger.dev account failed to be verified for the free plan because your GitHub
+              account is too new. We require verification to prevent scammers and malicious use of
+              our platform.
+            </Paragraph>
+            <Paragraph variant="small/bright">
+              You can still select a paid plan to continue or if you think this is a mistake, get in
+              touch.
+            </Paragraph>
+          </div>
+        </div>
+      ) : (
+        <Form action={formAction} method="post">
+          <input type="hidden" name="type" value="free" />
+          <input type="hidden" name="callerPath" value={location.pathname} />
+          <TierLimit href="https://trigger.dev/pricing#computePricing">
+            ${plan.limits.includedUsage} free usage
+          </TierLimit>
+          <div className="py-6">
+            <Button
+              variant="tertiary/large"
+              fullWidth
+              className="text-md font-medium"
+              disabled={isLoading}
+              LeadingIcon={isLoading ? Spinner : undefined}
+            >
+              {status === "requires_connect" ? "Unlock free plan" : "Select plan"}
+            </Button>
+          </div>
+          <ul className="flex flex-col gap-2.5">
+            <ConcurrentRuns limits={plan.limits} />
+            <FeatureItem checked>
+              Unlimited{" "}
+              <DefinitionTip
+                title={pricingDefinitions.tasks.title}
+                content={pricingDefinitions.tasks.content}
+              >
+                tasks
+              </DefinitionTip>
+            </FeatureItem>
+            <TeamMembers limits={plan.limits} />
+            <Environments limits={plan.limits} />
+            <Schedules limits={plan.limits} />
+            <LogRetention limits={plan.limits} />
+            <SupportLevel limits={plan.limits} />
+            <Alerts limits={plan.limits} />
+          </ul>
+        </Form>
+      )}
     </TierContainer>
   );
 }
 
-export function TierHobby({ plan }: { plan: PaidPlanDefinition }) {
+export function TierHobby({
+  plan,
+  organizationSlug,
+}: {
+  plan: PaidPlanDefinition;
+  organizationSlug: string;
+}) {
   return (
     <TierContainer isHighlighted>
       <PricingHeader title={plan.title} isHighlighted cost={plan.tierPrice} />
@@ -128,7 +258,13 @@ export function TierHobby({ plan }: { plan: PaidPlanDefinition }) {
   );
 }
 
-export function TierPro({ plan }: { plan: PaidPlanDefinition }) {
+export function TierPro({
+  plan,
+  organizationSlug,
+}: {
+  plan: PaidPlanDefinition;
+  organizationSlug: string;
+}) {
   return (
     <TierContainer>
       <PricingHeader title={plan.title} isHighlighted cost={plan.tierPrice} />

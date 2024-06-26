@@ -16,12 +16,10 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
+import { featuresForRequest } from "~/features.server";
 import { useFeatures } from "~/hooks/useFeatures";
-import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { createProject } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
@@ -31,8 +29,6 @@ import {
   projectPath,
   selectPlanPath,
 } from "~/utils/pathBuilder";
-import { RequestV3Access } from "../resources.orgs.$organizationSlug.v3-access";
-import { featuresForRequest } from "~/features.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -69,6 +65,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   const url = new URL(request.url);
+
+  const message = url.searchParams.get("message");
+
   return typedjson({
     organization: {
       id: organization.id,
@@ -80,6 +79,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       hasRequestedV3: organization.hasRequestedV3,
     },
     defaultVersion: url.searchParams.get("version") ?? "v2",
+    message: message ? decodeURIComponent(message) : undefined,
   });
 }
 
@@ -119,7 +119,7 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
-  const { organization } = useTypedLoaderData<typeof loader>();
+  const { organization, message } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const { v3Enabled, isManagedCloud } = useFeatures();
 
@@ -144,9 +144,9 @@ export default function Page() {
           description={`This will create a new project in your "${organization.title}" organization.`}
         />
         <Form method="post" {...form.props}>
-          {organization.projectsCount === 0 && (
-            <Callout variant="info" className="mb-4">
-              Organizations require at least one project, please create one to continue.
+          {message && (
+            <Callout variant="success" className="mb-4">
+              {message}
             </Callout>
           )}
           <Fieldset>
@@ -184,15 +184,9 @@ export default function Page() {
                 <FormError id={projectVersion.errorId}>{projectVersion.error}</FormError>
               </InputGroup>
             ) : canCreateV3Projects ? (
-              <>
-                <Callout variant="info">This will be a v3 project</Callout>
-                <input {...conform.input(projectVersion, { type: "hidden" })} value={"v3"} />
-              </>
+              <input {...conform.input(projectVersion, { type: "hidden" })} value={"v3"} />
             ) : (
-              <>
-                <Callout variant="info">This will be a v2 project</Callout>
-                <input {...conform.input(projectVersion, { type: "hidden" })} value={"v2"} />
-              </>
+              <input {...conform.input(projectVersion, { type: "hidden" })} value={"v2"} />
             )}
             <FormButtons
               confirmButton={

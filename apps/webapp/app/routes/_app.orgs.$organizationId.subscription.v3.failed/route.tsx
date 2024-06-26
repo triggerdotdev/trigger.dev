@@ -30,5 +30,5 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   let errorMessage = reason ? decodeURIComponent(reason) : "Subscribing failed to complete";
 
-  return redirectWithErrorMessage(`${v3PlansPath({ slug: org.slug })}`, request, errorMessage);
+  return redirectWithErrorMessage(v3PlansPath({ slug: org.slug }), request, errorMessage);
 };
