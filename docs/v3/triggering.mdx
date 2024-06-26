@@ -539,7 +539,7 @@ export async function create() {
 
 ## Large Payloads
 
-We recommend keeping your task payloads as small as possible. We currently have a hard limit on task payloads above 3MB.
+We recommend keeping your task payloads as small as possible. We currently have a hard limit on task payloads above 10MB.
 
 If your payload size is larger than 512KB, instead of saving the payload to the database, we will upload it to an S3-compatible object store and store the URL in the database.
 
@@ -560,7 +560,7 @@ if (run.payloadPresignedUrl) {
 
 <Note>
   We also use this same system for dealing with large task outputs, and subsequently will return a
-  corresponding `outputPresignedUrl`. Task outputs are limited to 10MB.
+  corresponding `outputPresignedUrl`. Task outputs are limited to 100MB.
 </Note>
 
 If you need to pass larger payloads, you'll need to upload the payload to your own storage and pass a URL to the file in the payload instead. For example, uploading to S3 and then sending a presigned URL that expires in URL:
@@ -618,4 +618,4 @@ export const myTask = task({
 
 ### Batch Triggering
 
-When using `batchTrigger` or `batchTriggerAndWait`, the total size of all payloads cannot exceed 3MB. This means if you are doing a batch of 100 runs, each payload should be less than 30KB.
+When using `batchTrigger` or `batchTriggerAndWait`, the total size of all payloads cannot exceed 10MB. This means if you are doing a batch of 100 runs, each payload should be less than 100KB.
