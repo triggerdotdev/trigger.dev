@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
+import { env } from "~/env.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { parseRequestJsonAsync } from "~/utils/parseRequestJson.server";
@@ -36,7 +37,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const contentLength = request.headers.get("content-length");
 
-  if (!contentLength || parseInt(contentLength) > 10 * 1000 * 1000) {
+  if (!contentLength || parseInt(contentLength) > env.TASK_PAYLOAD_MAXIMUM_SIZE) {
     return json({ error: "Request body too large" }, { status: 413 });
   }
 
