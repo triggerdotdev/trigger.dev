@@ -12,6 +12,7 @@ import {
 import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { generatePresignedUrl } from "~/v3/r2.server";
 import { BasePresenter } from "./basePresenter.server";
 
 export class ApiRetrieveRunPresenter extends BasePresenter {
@@ -44,7 +45,9 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       }
 
       let $payload: any;
+      let $payloadPresignedUrl: string | undefined;
       let $output: any;
+      let $outputPresignedUrl: string | undefined;
 
       if (showSecretDetails) {
         const payloadPacket = await conditionallyImportPacket({
@@ -52,7 +55,19 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
           dataType: taskRun.payloadType,
         });
 
-        $payload = await parsePacket(payloadPacket);
+        if (
+          payloadPacket.dataType === "application/store" &&
+          typeof payloadPacket.data === "string"
+        ) {
+          $payloadPresignedUrl = await generatePresignedUrl(
+            env.project.externalRef,
+            env.slug,
+            payloadPacket.data,
+            "GET"
+          );
+        } else {
+          $payload = await parsePacket(payloadPacket);
+        }
 
         if (taskRun.status === "COMPLETED_SUCCESSFULLY") {
           const completedAttempt = taskRun.attempts.find(
@@ -65,7 +80,19 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
               dataType: completedAttempt.outputType,
             });
 
-            $output = await parsePacket(outputPacket);
+            if (
+              outputPacket.dataType === "application/store" &&
+              typeof outputPacket.data === "string"
+            ) {
+              $outputPresignedUrl = await generatePresignedUrl(
+                env.project.externalRef,
+                env.slug,
+                outputPacket.data,
+                "GET"
+              );
+            } else {
+              $output = await parsePacket(outputPacket);
+            }
           }
         }
       }
@@ -85,7 +112,9 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
           ? taskRun.updatedAt
           : undefined,
         payload: $payload,
+        payloadPresignedUrl: $payloadPresignedUrl,
         output: $output,
+        outputPresignedUrl: $outputPresignedUrl,
         isTest: taskRun.isTest,
         schedule: taskRun.schedule
           ? {

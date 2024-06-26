@@ -1,11 +1,9 @@
-import { z } from "zod";
 import {
   Direction,
   FilterableEnvironment,
   FilterableStatus,
   filterableStatuses,
 } from "~/components/runs/RunStatuses";
-import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 import { BasePresenter } from "./v3/basePresenter.server";
 
@@ -29,8 +27,6 @@ const DEFAULT_PAGE_SIZE = 20;
 export type RunList = Awaited<ReturnType<RunListPresenter["call"]>>;
 
 export class RunListPresenter extends BasePresenter {
-  
-
   public async call({
     userId,
     eventId,
