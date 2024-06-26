@@ -92,7 +92,15 @@ This will test your fixture project, and generate outputs in the `packages/cli-v
 
     This is necessary to allow to use `yarn` without having a warning on the current project being a `pnpm` project.
 
-5. Install the fixture dependencies and generate lockfiles.
+5. Add the following `.yarnrc.yaml` in your fixture folder.
+
+    This will avoid having `.pnp.cjs` and `.pnp.loader.mjs` and keep versioned files to a minimum.
+
+    ```yaml .yarnrc.yml
+    nodeLinker: node-modules
+    ```
+
+6. Install the fixture dependencies and generate lockfiles.
 
     Like you would in any project.
     E.g. if your fixture contains a trigger task that uses the `jsdom` library:
@@ -105,7 +113,7 @@ This will test your fixture project, and generate outputs in the `packages/cli-v
 
     > This will update the `package.json` and generate the `pnpm-lock.yaml` file.
 
-6. To run the test suite against multiple package manager, we need to generate the other lockfiles.
+7. To run the test suite against multiple package manager, we need to generate the other lockfiles.
 
     ```sh
     cd packages/cli-v3/e2e/fixtures/<fixture-name>
@@ -117,7 +125,7 @@ This will test your fixture project, and generate outputs in the `packages/cli-v
 
     > Do it in this order, otherwise `npm install` will update the existing `yarn.lock` file with legacy version 1.
 
-7. Create a new `packages/cli-v3/e2e/fixtures/trigger` folder, and create a trigger task in it.
+8. Create a new `packages/cli-v3/e2e/fixtures/trigger` folder, and create a trigger task in it.
 
     Here is an example:
 
@@ -132,7 +140,7 @@ This will test your fixture project, and generate outputs in the `packages/cli-v
     });
     ```
 
-8. Add a trigger configuration file.
+9.  Add a trigger configuration file.
 
     The configuration file is mandatory here, the E2E suite does not execute `trigger.dev` commands.
 
@@ -145,9 +153,9 @@ This will test your fixture project, and generate outputs in the `packages/cli-v
 
     > The project reference can be anything here, as the suite runs locally without connecting to the platform.
 
-9.  Commit your changes.
+10. Commit your changes.
 
-10. Add your fixture test configuration in `fixtures.config.js`.
+11. Add your fixture test configuration in `fixtures.config.js`.
 
     ```javascript fixtures.config.js
     export const fixturesConfig = [
