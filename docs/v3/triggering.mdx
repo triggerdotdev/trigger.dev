@@ -541,7 +541,7 @@ export async function create() {
 
 We recommend keeping your task payloads as small as possible. We currently have a hard limit on task payloads above 10MB.
 
-If your payload size is larger than 1MB, instead of saving the payload to the database, we will upload it to an S3-compatible object store and store the URL in the database.
+If your payload size is larger than 512KB, instead of saving the payload to the database, we will upload it to an S3-compatible object store and store the URL in the database.
 
 When your task runs, we automatically download the payload from the object store and pass it to your task function. We also will return to you a `payloadPresignedUrl` from the `runs.retrieve` SDK function so you can download the payload if needed:
 

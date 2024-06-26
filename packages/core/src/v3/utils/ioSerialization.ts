@@ -131,8 +131,6 @@ async function exportPacket(packet: IOPacket, pathPrefix: string): Promise<IOPac
     data: filename,
     dataType: "application/store",
   };
-
-  return packet;
 }
 
 export async function conditionallyImportPacket(
