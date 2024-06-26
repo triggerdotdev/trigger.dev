@@ -274,14 +274,18 @@ export function TierFree({
                 variant="tertiary/large"
                 fullWidth
                 className="text-md font-medium"
-                disabled={isLoading}
+                disabled={
+                  isLoading ||
+                  subscription?.plan?.type === plan.type ||
+                  subscription?.canceledAt !== undefined
+                }
                 LeadingIcon={
                   isLoading && navigation.formData?.get("planCode") === null ? Spinner : undefined
                 }
               >
                 {subscription?.plan === undefined
                   ? "Select plan"
-                  : subscription.plan.type === "free"
+                  : subscription.plan.type === "free" || subscription.canceledAt !== undefined
                   ? "Current plan"
                   : `Downgrade to ${plan.title}`}
               </Button>
@@ -340,14 +344,17 @@ export function TierHobby({
             variant="primary/large"
             fullWidth
             className="text-md font-medium"
-            disabled={isLoading || subscription?.plan?.code === plan.code}
+            disabled={
+              isLoading ||
+              (subscription?.plan?.code === plan.code && subscription.canceledAt === undefined)
+            }
             LeadingIcon={
               isLoading && navigation.formData?.get("planCode") === plan.code ? Spinner : undefined
             }
           >
             {subscription?.plan === undefined
               ? "Select plan"
-              : subscription.plan.type === "free"
+              : subscription.plan.type === "free" || subscription.canceledAt !== undefined
               ? `Upgrade to ${plan.title}`
               : subscription.plan.code === plan.code
               ? "Current plan"
@@ -405,14 +412,17 @@ export function TierPro({
             variant="tertiary/large"
             fullWidth
             className="text-md font-medium"
-            disabled={isLoading || subscription?.plan?.code === plan.code}
+            disabled={
+              isLoading ||
+              (subscription?.plan?.code === plan.code && subscription.canceledAt === undefined)
+            }
             LeadingIcon={
               isLoading && navigation.formData?.get("planCode") === plan.code ? Spinner : undefined
             }
           >
             {subscription?.plan === undefined
               ? "Select plan"
-              : subscription.plan.type === "free"
+              : subscription.plan.type === "free" || subscription.canceledAt !== undefined
               ? `Upgrade to ${plan.title}`
               : subscription.plan.code === plan.code
               ? "Current plan"
@@ -448,7 +458,7 @@ export function TierEnterprise() {
       <h2 className="text-xl font-medium text-text-dimmed">Enterprise</h2>
       <hr className="mb-5 mt-2 border-grid-dimmed" />
       <div className="flex flex-col-reverse items-center justify-between gap-4 lg:flex-row">
-        <div className="flex w-full flex-wrap gap-2 lg:flex-nowrap">
+        <div className="flex w-full flex-1 flex-wrap gap-2 lg:flex-nowrap">
           <h3 className="mb-3 w-full lg:mb-0 lg:text-balance">
             A custom plan tailored to your requirements
           </h3>
@@ -480,8 +490,7 @@ export function TierEnterprise() {
         <LinkButton
           to="https://trigger.dev/contact"
           variant="tertiary/large"
-          className="lg:max-w-[12rem]"
-          fullWidth
+          className="px-8 lg:max-w-[12rem]"
         >
           Contact us
         </LinkButton>

@@ -13,6 +13,9 @@ import {
   v3StripePortalPath,
 } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
+import { PlanDefinition } from "@trigger.dev/billing/v3";
+import { CalendarDaysIcon, StarIcon } from "@heroicons/react/20/solid";
+import { DateTime } from "~/components/primitives/DateTime";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   await requireUserId(request);
@@ -39,11 +42,33 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const currentPlan = await billingPresenter.currentPlan(organization.id);
 
-  return typedjson({ ...plans, ...currentPlan, organizationSlug });
+  //periods
+  const periodStart = new Date();
+  periodStart.setHours(0, 0, 0, 0);
+  periodStart.setDate(1);
+
+  const periodEnd = new Date();
+  periodEnd.setMonth(periodEnd.getMonth() + 1);
+  periodEnd.setDate(0);
+  periodEnd.setHours(0, 0, 0, 0);
+
+  const daysRemaining = Math.ceil(
+    (periodEnd.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  return typedjson({
+    ...plans,
+    ...currentPlan,
+    organizationSlug,
+    periodStart,
+    periodEnd,
+    daysRemaining,
+  });
 }
 
 export default function ChoosePlanPage() {
-  const { plans, v3Subscription, organizationSlug } = useTypedLoaderData<typeof loader>();
+  const { plans, v3Subscription, organizationSlug, periodStart, periodEnd, daysRemaining } =
+    useTypedLoaderData<typeof loader>();
   return (
     <PageContainer>
       <NavBar>
@@ -67,13 +92,50 @@ export default function ChoosePlanPage() {
           )}
         </PageAccessories>
       </NavBar>
-      <PageBody scrollable={false}>
-        <PricingPlans
-          plans={plans}
-          subscription={v3Subscription}
-          organizationSlug={organizationSlug}
-        />
+      <PageBody scrollable={true}>
+        <div className="flex flex-col gap-3 px-3 py-2">
+          <div className="flex items-center  divide-x divide-grid-dimmed rounded-sm border border-grid-dimmed py-2 text-text-bright">
+            <div className="flex items-center gap-1 px-3">
+              <StarIcon className="size-5 " />
+              {planLabel(v3Subscription?.plan, v3Subscription?.canceledAt !== undefined, periodEnd)}
+            </div>
+            <div className="flex items-center gap-1 px-3">
+              <CalendarDaysIcon className="size-5" />
+              Billing period: <DateTime date={periodStart} includeTime={false} /> to{" "}
+              <DateTime date={periodEnd} includeTime={false} /> ({daysRemaining} days remaining)
+            </div>
+          </div>
+          <div>
+            <PricingPlans
+              plans={plans}
+              subscription={v3Subscription}
+              organizationSlug={organizationSlug}
+            />
+          </div>
+        </div>
       </PageBody>
     </PageContainer>
   );
+}
+
+function planLabel(plan: PlanDefinition | undefined, canceled: boolean, periodEnd: Date) {
+  if (!plan || plan.type === "free") {
+    return "You're on the Free plan";
+  }
+
+  if (plan.type === "enterprise") {
+    return `You're on the Enterprise plan`;
+  }
+
+  const text = `You're on the $${plan.tierPrice}/mo ${plan.title} plan`;
+
+  if (canceled) {
+    return (
+      <>
+        {text}. From <DateTime includeTime={false} date={periodEnd} /> you're on the Free plan.
+      </>
+    );
+  }
+
+  return text;
 }
