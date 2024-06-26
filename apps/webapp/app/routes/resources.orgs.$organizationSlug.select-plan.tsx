@@ -1,4 +1,9 @@
-import { CheckIcon, ExclamationTriangleIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import {
+  CheckIcon,
+  ExclamationTriangleIcon,
+  ShieldCheckIcon,
+  XMarkIcon,
+} from "@heroicons/react/20/solid";
 import { Form, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import {
@@ -10,12 +15,22 @@ import {
   SetPlanBody,
   SubscriptionResult,
 } from "@trigger.dev/billing/v3";
+import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import { redirect } from "remix-typedjson";
 import { z } from "zod";
 import { DefinitionTip } from "~/components/DefinitionTooltip";
+import { DeleteJobDialog } from "~/components/jobs/DeleteJobModalContent";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
@@ -160,7 +175,31 @@ export function TierFree({
 
   return (
     <TierContainer>
-      <PricingHeader title={plan.title} cost={0} />
+      <div className="relative">
+        <PricingHeader title={plan.title} cost={0} />
+        {status === "approved" && (
+          <SimpleTooltip
+            button={
+              <div className="absolute right-1 top-1 flex items-center gap-1 rounded-sm bg-green-900 px-2 py-1 text-xs text-green-300">
+                <ShieldCheckIcon className="size-4" />
+                <span>GitHub verified</span>
+              </div>
+            }
+            content={
+              <>
+                <Paragraph variant="small" spacing>
+                  You have connected a verified GitHub account.
+                </Paragraph>
+                <Paragraph variant="small">
+                  This is required for the free plan to prevent scammers and malicious use of our
+                  platform.
+                </Paragraph>
+              </>
+            }
+            variant="dark"
+          />
+        )}
+      </div>
       {status === "rejected" ? (
         <div>
           <hr className="my-6 border-grid-bright" />
@@ -178,22 +217,64 @@ export function TierFree({
           </div>
         </div>
       ) : (
-        <Form action={formAction} method="post">
+        <Form action={formAction} method="post" id="subscribe">
           <input type="hidden" name="type" value="free" />
           <input type="hidden" name="callerPath" value={location.pathname} />
           <TierLimit href="https://trigger.dev/pricing#computePricing">
             ${plan.limits.includedUsage} free usage
           </TierLimit>
           <div className="py-6">
-            <Button
-              variant="tertiary/large"
-              fullWidth
-              className="text-md font-medium"
-              disabled={isLoading}
-              LeadingIcon={isLoading ? Spinner : undefined}
-            >
-              {status === "requires_connect" ? "Unlock free plan" : "Select plan"}
-            </Button>
+            {status === "requires_connect" ? (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="tertiary/large"
+                    fullWidth
+                    className="text-md font-medium"
+                    disabled={isLoading}
+                    LeadingIcon={isLoading ? Spinner : undefined}
+                  >
+                    Unlock free plan
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-96">
+                  <DialogHeader>Unlock the Free plan</DialogHeader>
+                  <div className="flex flex-col items-center gap-3 pt-3">
+                    <GitHubLightIcon className="size-12" />
+                    <Paragraph variant="small/bright" className="text-center">
+                      To unlock the Free plan, we need to verify that you have an active GitHub
+                      account.
+                    </Paragraph>
+                    <Paragraph variant="small" className="text-center">
+                      This prevents scammers and malicious use of our platform. We only ask for the
+                      minimum permissions to verify your account.
+                    </Paragraph>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="primary/medium"
+                      fullWidth
+                      disabled={isLoading}
+                      LeadingIcon={isLoading ? Spinner : undefined}
+                      form="subscribe"
+                    >
+                      Connect to GitHub
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            ) : (
+              <Button
+                variant="tertiary/large"
+                fullWidth
+                className="text-md font-medium"
+                disabled={isLoading}
+                LeadingIcon={isLoading ? Spinner : undefined}
+              >
+                Select plan
+              </Button>
+            )}
           </div>
           <ul className="flex flex-col gap-2.5">
             <ConcurrentRuns limits={plan.limits} />
