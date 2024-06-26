@@ -13,8 +13,10 @@ import {
 } from "@trigger.dev/core/v3";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
-import { HttpReply, getTextBody, SimpleLogger, testDockerCheckpoint } from "@trigger.dev/core-apps";
+import { testDockerCheckpoint } from "@trigger.dev/core-apps/checkpoints";
 import { ExponentialBackoff } from "@trigger.dev/core-apps/backoff";
+import { HttpReply, getTextBody } from "@trigger.dev/core-apps/http";
+import { SimpleLogger } from "@trigger.dev/core-apps/logger";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
 collectDefaultMetrics();

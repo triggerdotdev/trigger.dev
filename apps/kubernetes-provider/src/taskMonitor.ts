@@ -1,5 +1,5 @@
 import * as k8s from "@kubernetes/client-node";
-import { SimpleLogger } from "@trigger.dev/core-apps";
+import { SimpleLogger } from "@trigger.dev/core-apps/logger";
 import { setTimeout } from "timers/promises";
 import PQueue from "p-queue";
 

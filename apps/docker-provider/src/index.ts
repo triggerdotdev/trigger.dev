@@ -1,14 +1,13 @@
 import { $, type ExecaChildProcess, execa } from "execa";
 import {
-  SimpleLogger,
-  TaskOperations,
   ProviderShell,
-  TaskOperationsRestoreOptions,
+  TaskOperations,
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
-  isExecaChildProcess,
-  testDockerCheckpoint,
-} from "@trigger.dev/core-apps";
+  TaskOperationsRestoreOptions,
+} from "@trigger.dev/core-apps/provider";
+import { SimpleLogger } from "@trigger.dev/core-apps/logger";
+import { isExecaChildProcess, testDockerCheckpoint } from "@trigger.dev/core-apps/checkpoints";
 import { setTimeout } from "node:timers/promises";
 import { PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
 
