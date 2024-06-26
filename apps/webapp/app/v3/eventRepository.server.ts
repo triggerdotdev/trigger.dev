@@ -730,14 +730,11 @@ export class EventRepository {
       let finalEvent: TaskEvent | undefined;
 
       for (const event of events) {
-        if (event.isPartial) {
+        if (event.isPartial && finalEvent) {
           continue;
         }
 
-        if (event.spanId === spanId) {
-          finalEvent = event;
-          break;
-        }
+        finalEvent = event;
       }
 
       return finalEvent;
