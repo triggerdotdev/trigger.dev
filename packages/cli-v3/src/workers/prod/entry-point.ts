@@ -195,7 +195,19 @@ class ProdWorker {
     });
 
     backgroundWorker.attemptCreatedNotification.attach((message) => {
-      logger.log("attemptCreatedNotification", { message });
+      logger.log("attemptCreatedNotification", {
+        success: message.success,
+        ...(message.success
+          ? {
+              attempt: message.execution.attempt,
+              queue: message.execution.queue,
+              worker: message.execution.worker,
+              machine: message.execution.machine,
+            }
+          : {
+              reason: message.reason,
+            }),
+      });
 
       if (!message.success) {
         return;
