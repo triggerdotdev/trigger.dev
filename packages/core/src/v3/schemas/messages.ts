@@ -756,7 +756,7 @@ export const ProdWorkerToCoordinatorMessages = {
   },
   WAIT_FOR_TASK: {
     message: z.object({
-      version: z.literal("v1").default("v1"),
+      version: z.enum(["v1", "v2"]).default("v1"),
       friendlyId: z.string(),
       // This is the attempt that is waiting
       attemptFriendlyId: z.string(),
@@ -767,7 +767,7 @@ export const ProdWorkerToCoordinatorMessages = {
   },
   WAIT_FOR_BATCH: {
     message: z.object({
-      version: z.literal("v1").default("v1"),
+      version: z.enum(["v1", "v2"]).default("v1"),
       batchFriendlyId: z.string(),
       runFriendlyIds: z.string().array(),
       // This is the attempt that is waiting

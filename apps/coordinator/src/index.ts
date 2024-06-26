@@ -9,6 +9,7 @@ import {
   PlatformToCoordinatorMessages,
   ProdWorkerSocketData,
   ProdWorkerToCoordinatorMessages,
+  WaitReason,
 } from "@trigger.dev/core/v3";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
@@ -868,27 +869,31 @@ class TaskCoordinator {
           return this.#checkpointableTasks.has(socket.data.runId);
         };
 
-        const readyToCheckpoint = async (): Promise<
+        const readyToCheckpoint = async (
+          reason: WaitReason | "RETRY"
+        ): Promise<
           | {
               success: true;
             }
           | {
               success: false;
               reason?: string;
-              crashRun: boolean;
             }
         > => {
+          logger.log("readyToCheckpoint", { runId: socket.data.runId, reason });
+
           if (checkpointInProgress()) {
             return {
               success: false,
               reason: "checkpoint in progress",
-              crashRun: false,
             };
           }
 
+          let timeout: NodeJS.Timeout | undefined = undefined;
+
           const isCheckpointable = new Promise((resolve, reject) => {
             // We set a reasonable timeout to prevent waiting forever
-            setTimeout(() => reject("timeout"), 20_000);
+            timeout = setTimeout(() => reject("timeout"), 20_000);
 
             this.#checkpointableTasks.set(socket.data.runId, { resolve, reject });
           });
@@ -903,11 +908,17 @@ class TaskCoordinator {
           } catch (error) {
             logger.error("Error while waiting for checkpointable state", { error });
 
+            await crashRun({
+              name: "ReadyForCheckpointError",
+              message: `Failed to become checkpointable for ${reason}`,
+            });
+
             return {
               success: false,
               reason: typeof error === "string" ? error : "unknown",
-              crashRun: true,
             };
+          } finally {
+            clearTimeout(timeout);
           }
         };
 
@@ -1080,20 +1091,13 @@ class TaskCoordinator {
           // The worker will then put itself in a checkpointable state
           callback({ willCheckpointAndRestore: true, shouldExit: false });
 
-          const ready = await readyToCheckpoint();
+          const ready = await readyToCheckpoint("RETRY");
 
           if (!ready.success) {
             logger.error("Failed to become checkpointable", {
               runId: socket.data.runId,
               reason: ready.reason,
             });
-
-            if (ready.crashRun) {
-              await crashRun({
-                name: "ReadyForCheckpointError",
-                message: "Failed to become checkpointable",
-              });
-            }
 
             return;
           }
@@ -1184,7 +1188,7 @@ class TaskCoordinator {
             return;
           }
 
-          const ready = await readyToCheckpoint();
+          const ready = await readyToCheckpoint("WAIT_FOR_DURATION");
 
           if (!ready.success) {
             logger.error("Failed to become checkpointable", {
@@ -1233,6 +1237,12 @@ class TaskCoordinator {
         socket.on("WAIT_FOR_TASK", async (message, callback) => {
           logger.log("[WAIT_FOR_TASK]", message);
 
+          if (checkpointInProgress()) {
+            logger.error("Checkpoint already in progress", { runId: socket.data.runId });
+            callback({ willCheckpointAndRestore: false });
+            return;
+          }
+
           const { canCheckpoint, willSimulate } = await this.#checkpointer.init();
 
           const willCheckpointAndRestore = canCheckpoint || willSimulate;
@@ -1241,6 +1251,19 @@ class TaskCoordinator {
 
           if (!willCheckpointAndRestore) {
             return;
+          }
+
+          // Workers with v1 schemas don't signal when they're ready to checkpoint for dependency waits
+          if (message.version === "v2") {
+            const ready = await readyToCheckpoint("WAIT_FOR_TASK");
+
+            if (!ready.success) {
+              logger.error("Failed to become checkpointable", {
+                runId: socket.data.runId,
+                reason: ready.reason,
+              });
+              return;
+            }
           }
 
           const checkpoint = await this.#checkpointer.checkpointAndPush({
@@ -1280,6 +1303,12 @@ class TaskCoordinator {
         socket.on("WAIT_FOR_BATCH", async (message, callback) => {
           logger.log("[WAIT_FOR_BATCH]", message);
 
+          if (checkpointInProgress()) {
+            logger.error("Checkpoint already in progress", { runId: socket.data.runId });
+            callback({ willCheckpointAndRestore: false });
+            return;
+          }
+
           const { canCheckpoint, willSimulate } = await this.#checkpointer.init();
 
           const willCheckpointAndRestore = canCheckpoint || willSimulate;
@@ -1288,6 +1317,19 @@ class TaskCoordinator {
 
           if (!willCheckpointAndRestore) {
             return;
+          }
+
+          // Workers with v1 schemas don't signal when they're ready to checkpoint for dependency waits
+          if (message.version === "v2") {
+            const ready = await readyToCheckpoint("WAIT_FOR_BATCH");
+
+            if (!ready.success) {
+              logger.error("Failed to become checkpointable", {
+                runId: socket.data.runId,
+                reason: ready.reason,
+              });
+              return;
+            }
           }
 
           const checkpoint = await this.#checkpointer.checkpointAndPush({

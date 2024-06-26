@@ -291,7 +291,8 @@ class ProdWorker {
       const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
         "WAIT_FOR_TASK",
         {
-          ...message,
+          version: "v2",
+          friendlyId: message.friendlyId,
           attemptFriendlyId: this.attemptFriendlyId,
         }
       );
@@ -311,7 +312,9 @@ class ProdWorker {
       const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
         "WAIT_FOR_BATCH",
         {
-          ...message,
+          version: "v2",
+          batchFriendlyId: message.batchFriendlyId,
+          runFriendlyIds: message.runFriendlyIds,
           attemptFriendlyId: this.attemptFriendlyId,
         }
       );
@@ -525,6 +528,7 @@ class ProdWorker {
           this.attemptFriendlyId = executionPayload.execution.attempt.id;
           const completion = await this.#backgroundWorker.executeTaskRun(executionPayload);
 
+          // TODO: Add retry from this point down
           logger.log("completed", completion);
 
           this.completed.add(executionPayload.execution.attempt.id);
