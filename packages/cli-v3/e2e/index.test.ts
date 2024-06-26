@@ -83,7 +83,8 @@ if (testCases.length > 0) {
     for (let testCase of testCases) {
       test.extend<E2EFixtureTest>({
         ...testCase,
-        dir: async ({ id }, use) => await use(resolve(join(process.cwd(), "e2e/fixtures", id))),
+        dir: async ({ id, rootDir = "" }, use) =>
+          await use(resolve(join(process.cwd(), "e2e/fixtures", id, rootDir))),
         packageManager: async ({ dir }, use) => await use(await parsePackageManager(options, dir)),
         tempDir: async ({ dir }, use) => {
           const existingTempDir = resolve(join(dir, ".trigger"));
@@ -110,12 +111,12 @@ if (testCases.length > 0) {
           wantInstallationError,
           wantWorkerError,
         }) => {
-          if (
-            options.packageManager &&
-            !existsSync(resolve(dir, LOCKFILES[options.packageManager]))
-          ) {
-            skip();
-          }
+          // if (
+          //   options.packageManager &&
+          //   !existsSync(resolve(dir, LOCKFILES[options.packageManager]))
+          // ) {
+          //   skip();
+          // }
 
           let resolvedConfig: ReadConfigResult;
           const configExpect = expect(
