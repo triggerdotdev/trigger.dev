@@ -16,6 +16,6 @@
     "experimentalDecorators": true,
     "allowJs": true,
     "moduleResolution": "Bundler",
-    "module": "ES2015"
+    "module": "ES2020"
   }
 }
