@@ -923,8 +923,12 @@ class ProdWorker {
 
     const taskResources: Array<TaskResource> = [];
 
-    if (!this.#backgroundWorker.tasks) {
-      throw new Error(`Background Worker started without tasks`);
+    if (!this.#backgroundWorker.tasks || this.#backgroundWorker.tasks.length === 0) {
+      throw new Error(
+        `Background Worker started without tasks. Searched in: ${__PROJECT_CONFIG__.triggerDirectories?.join(
+          ", "
+        )}`
+      );
     }
 
     for (const task of this.#backgroundWorker.tasks) {
