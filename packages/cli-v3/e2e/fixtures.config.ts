@@ -1,6 +1,7 @@
 export interface TestCase {
   resolveEnv?: { [key: string]: string };
   id: string;
+  rootDir?: string;
   skipTypecheck?: boolean;
   wantConfigNotFoundError?: boolean;
   wantConfigInvalidError?: boolean;
@@ -11,6 +12,13 @@ export interface TestCase {
 }
 
 export const fixturesConfig: TestCase[] = [
+  {
+    id: "compile-monorepo-packages",
+    skipTypecheck: true,
+    rootDir: "packages/trigger",
+    // TODO remove
+    wantInstallationError: true,
+  },
   {
     id: "config-infisical-sdk",
     skipTypecheck: true,
