@@ -32,6 +32,10 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
   }
 
+  if (organization.v3Enabled) {
+    return redirect(organizationPath({ slug: organizationSlug }));
+  }
+
   const currentPlan = await billingPresenter.currentPlan(organization.id);
 
   return typedjson({ ...plans, ...currentPlan, organizationSlug });
