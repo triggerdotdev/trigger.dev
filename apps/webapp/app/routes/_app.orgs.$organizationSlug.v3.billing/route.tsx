@@ -99,11 +99,13 @@ export default function ChoosePlanPage() {
               <StarIcon className="size-5 " />
               {planLabel(v3Subscription?.plan, v3Subscription?.canceledAt !== undefined, periodEnd)}
             </div>
-            <div className="flex items-center gap-1 px-3">
-              <CalendarDaysIcon className="size-5" />
-              Billing period: <DateTime date={periodStart} includeTime={false} /> to{" "}
-              <DateTime date={periodEnd} includeTime={false} /> ({daysRemaining} days remaining)
-            </div>
+            {v3Subscription?.isPaying ? (
+              <div className="flex items-center gap-1 px-3">
+                <CalendarDaysIcon className="size-5" />
+                Billing period: <DateTime date={periodStart} includeTime={false} /> to{" "}
+                <DateTime date={periodEnd} includeTime={false} /> ({daysRemaining} days remaining)
+              </div>
+            ) : null}
           </div>
           <div>
             <PricingPlans
