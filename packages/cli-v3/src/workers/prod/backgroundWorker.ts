@@ -37,6 +37,19 @@ type BackgroundWorkerParams = {
   debugOtel?: boolean;
 };
 
+export type OnWaitForDurationMessage = InferSocketMessageSchema<
+  typeof ProdChildToWorkerMessages,
+  "WAIT_FOR_DURATION"
+>;
+export type OnWaitForTaskMessage = InferSocketMessageSchema<
+  typeof ProdChildToWorkerMessages,
+  "WAIT_FOR_TASK"
+>;
+export type OnWaitForBatchMessage = InferSocketMessageSchema<
+  typeof ProdChildToWorkerMessages,
+  "WAIT_FOR_BATCH"
+>;
+
 export class ProdBackgroundWorker {
   private _initialized: boolean = false;
 
@@ -46,15 +59,9 @@ export class ProdBackgroundWorker {
   public onTaskHeartbeat: Evt<string> = new Evt();
   public onTaskRunHeartbeat: Evt<string> = new Evt();
 
-  public onWaitForBatch: Evt<
-    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_BATCH">
-  > = new Evt();
-  public onWaitForDuration: Evt<
-    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_DURATION">
-  > = new Evt();
-  public onWaitForTask: Evt<
-    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_TASK">
-  > = new Evt();
+  public onWaitForDuration: Evt<OnWaitForDurationMessage> = new Evt();
+  public onWaitForTask: Evt<OnWaitForTaskMessage> = new Evt();
+  public onWaitForBatch: Evt<OnWaitForBatchMessage> = new Evt();
 
   public onCreateTaskRunAttempt = Evt.create<{ version?: "v1"; runId: string }>();
   public attemptCreatedNotification = Evt.create<
@@ -579,15 +586,9 @@ class TaskRunProcess {
     new Evt();
   public onIsBeingKilled: Evt<TaskRunProcess> = new Evt();
 
-  public onWaitForBatch: Evt<
-    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_BATCH">
-  > = new Evt();
-  public onWaitForDuration: Evt<
-    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_DURATION">
-  > = new Evt();
-  public onWaitForTask: Evt<
-    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_TASK">
-  > = new Evt();
+  public onWaitForDuration: Evt<OnWaitForDurationMessage> = new Evt();
+  public onWaitForTask: Evt<OnWaitForTaskMessage> = new Evt();
+  public onWaitForBatch: Evt<OnWaitForBatchMessage> = new Evt();
 
   public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
 

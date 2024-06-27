@@ -1,3 +1,5 @@
+import { setTimeout as timeout } from "node:timers/promises";
+
 type ExponentialBackoffType = "NoJitter" | "FullJitter" | "EqualJitter";
 
 type ExponentialBackoffOptions = {
@@ -159,6 +161,7 @@ export class ExponentialBackoff {
     yield* this.retryAsync();
   }
 
+  /** Returns the delay for the current retry in seconds. */
   delay(retries: number = this.#retries, jitter: boolean = true) {
     if (retries > this.#maxRetries) {
       console.error(
@@ -203,6 +206,12 @@ export class ExponentialBackoff {
     delay = Math.round(delay);
 
     return delay;
+  }
+
+  /** Waits with the appropriate delay for the current retry. */
+  async wait(retries: number = this.#retries, jitter: boolean = true) {
+    const delay = this.delay(retries, jitter);
+    return await timeout(delay * 1000);
   }
 
   elapsed(retries: number = this.#retries, jitter: boolean = true) {

@@ -12,12 +12,17 @@ import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
 import { HttpReply, getRandomPortNumber } from "@trigger.dev/core-apps/http";
 import { SimpleLogger } from "@trigger.dev/core-apps/logger";
 import { ExponentialBackoff } from "@trigger.dev/core-apps/backoff";
+import {
+  OnWaitForBatchMessage,
+  OnWaitForTaskMessage,
+  ProdBackgroundWorker,
+} from "./backgroundWorker";
+import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors";
+import { checkpointSafeTimeout, unboundedTimeout } from "@trigger.dev/core/v3/utils/timers";
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { ProdBackgroundWorker } from "./backgroundWorker";
-import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors";
 import { setTimeout as timeout } from "node:timers/promises";
-import { checkpointSafeTimeout, unboundedTimeout } from "@trigger.dev/core/v3/utils/timers";
 
 declare const __PROJECT_CONFIG__: Config;
 
@@ -52,6 +57,21 @@ class ProdWorker {
 
   private nextResumeAfter?: WaitReason;
   private waitForPostStart = false;
+
+  private waitForTaskReplay:
+    | {
+        idempotencyKey: string;
+        message: OnWaitForTaskMessage;
+        attempt: number;
+      }
+    | undefined;
+  private waitForBatchReplay:
+    | {
+        idempotencyKey: string;
+        message: OnWaitForBatchMessage;
+        attempt: number;
+      }
+    | undefined;
 
   #httpPort: number;
   #backgroundWorker: ProdBackgroundWorker;
@@ -146,6 +166,93 @@ class ProdWorker {
       });
     } finally {
       this.#coordinatorSocket = this.#createCoordinatorSocket(coordinatorHost);
+    }
+  }
+
+  async #waitForTaskHandler(message: OnWaitForTaskMessage) {
+    const waitForTask = await defaultBackoff.execute(async () => {
+      if (!this.attemptFriendlyId) {
+        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+
+        throw new ExponentialBackoff.StopRetrying("No attempt ID");
+      }
+
+      return await this.#coordinatorSocket.socket.timeout(20_000).emitWithAck("WAIT_FOR_TASK", {
+        version: "v2",
+        friendlyId: message.friendlyId,
+        attemptFriendlyId: this.attemptFriendlyId,
+      });
+    });
+
+    if (!waitForTask.success) {
+      logger.error("Failed to wait for task with backoff", {
+        cause: waitForTask.cause,
+        error: waitForTask.error,
+      });
+
+      this.#emitUnrecoverableError(
+        "WaitForTaskFailed",
+        `${waitForTask.cause}: ${waitForTask.error}`
+      );
+
+      return;
+    }
+
+    const { willCheckpointAndRestore } = waitForTask.result;
+
+    await this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
+
+    if (willCheckpointAndRestore) {
+      // We need to replay this on next connection if we don't receive RESUME_AFTER_DEPENDENCY within a reasonable time
+      this.waitForTaskReplay = {
+        message,
+        attempt: (this.waitForTaskReplay?.attempt ?? 0) + 1,
+        idempotencyKey: randomUUID(),
+      };
+    }
+  }
+
+  async #waitForBatchHandler(message: OnWaitForBatchMessage) {
+    const waitForBatch = await defaultBackoff.execute(async () => {
+      if (!this.attemptFriendlyId) {
+        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+
+        throw new ExponentialBackoff.StopRetrying("No attempt ID");
+      }
+
+      return await this.#coordinatorSocket.socket.timeout(20_000).emitWithAck("WAIT_FOR_BATCH", {
+        version: "v2",
+        batchFriendlyId: message.batchFriendlyId,
+        runFriendlyIds: message.runFriendlyIds,
+        attemptFriendlyId: this.attemptFriendlyId,
+      });
+    });
+
+    if (!waitForBatch.success) {
+      logger.error("Failed to wait for batch with backoff", {
+        cause: waitForBatch.cause,
+        error: waitForBatch.error,
+      });
+
+      this.#emitUnrecoverableError(
+        "WaitForBatchFailed",
+        `${waitForBatch.cause}: ${waitForBatch.error}`
+      );
+
+      return;
+    }
+
+    const { willCheckpointAndRestore } = waitForBatch.result;
+
+    await this.#prepareForWait("WAIT_FOR_BATCH", willCheckpointAndRestore);
+
+    if (willCheckpointAndRestore) {
+      // We need to replay this on next connection if we don't receive RESUME_AFTER_DEPENDENCY within a reasonable time
+      this.waitForBatchReplay = {
+        message,
+        attempt: (this.waitForBatchReplay?.attempt ?? 0) + 1,
+        idempotencyKey: randomUUID(),
+      };
     }
   }
 
@@ -317,82 +424,8 @@ class ProdWorker {
       this.#resumeAfterDuration();
     });
 
-    backgroundWorker.onWaitForTask.attach(async (message) => {
-      const waitForTask = await defaultBackoff.execute(async () => {
-        if (!this.attemptFriendlyId) {
-          logger.error("Failed to send wait message, attempt friendly ID not set", { message });
-
-          throw new ExponentialBackoff.StopRetrying("No attempt ID");
-        }
-
-        return await this.#coordinatorSocket.socket.timeout(20_000).emitWithAck("WAIT_FOR_TASK", {
-          version: "v2",
-          friendlyId: message.friendlyId,
-          attemptFriendlyId: this.attemptFriendlyId,
-        });
-      });
-
-      if (!waitForTask.success) {
-        logger.error("Failed to wait for task with backoff", {
-          cause: waitForTask.cause,
-          error: waitForTask.error,
-        });
-
-        this.#emitUnrecoverableError(
-          "WaitForTaskFailed",
-          `${waitForTask.cause}: ${waitForTask.error}`
-        );
-
-        return;
-      }
-
-      const { willCheckpointAndRestore } = waitForTask.result;
-
-      await this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
-
-      if (willCheckpointAndRestore) {
-        // TODO: Listen for RESUME_AFTER_DEPENDENCY, retry if we don't receive it
-      }
-    });
-
-    backgroundWorker.onWaitForBatch.attach(async (message) => {
-      const waitForBatch = await defaultBackoff.execute(async () => {
-        if (!this.attemptFriendlyId) {
-          logger.error("Failed to send wait message, attempt friendly ID not set", { message });
-
-          throw new ExponentialBackoff.StopRetrying("No attempt ID");
-        }
-
-        return await this.#coordinatorSocket.socket.timeout(20_000).emitWithAck("WAIT_FOR_BATCH", {
-          version: "v2",
-          batchFriendlyId: message.batchFriendlyId,
-          runFriendlyIds: message.runFriendlyIds,
-          attemptFriendlyId: this.attemptFriendlyId,
-        });
-      });
-
-      if (!waitForBatch.success) {
-        logger.error("Failed to wait for batch with backoff", {
-          cause: waitForBatch.cause,
-          error: waitForBatch.error,
-        });
-
-        this.#emitUnrecoverableError(
-          "WaitForBatchFailed",
-          `${waitForBatch.cause}: ${waitForBatch.error}`
-        );
-
-        return;
-      }
-
-      const { willCheckpointAndRestore } = waitForBatch.result;
-
-      await this.#prepareForWait("WAIT_FOR_BATCH", willCheckpointAndRestore);
-
-      if (willCheckpointAndRestore) {
-        // TODO: Listen for RESUME_AFTER_DEPENDENCY, retry if we don't receive it
-      }
-    });
+    backgroundWorker.onWaitForTask.attach(this.#waitForTaskHandler.bind(this));
+    backgroundWorker.onWaitForBatch.attach(this.#waitForBatchHandler.bind(this));
 
     return backgroundWorker;
   }
@@ -553,6 +586,17 @@ class ProdWorker {
               }
             );
             return;
+          }
+
+          switch (this.nextResumeAfter) {
+            case "WAIT_FOR_TASK": {
+              this.waitForTaskReplay = undefined;
+              break;
+            }
+            case "WAIT_FOR_BATCH": {
+              this.waitForBatchReplay = undefined;
+              break;
+            }
           }
 
           this.paused = false;
@@ -746,149 +790,231 @@ class ProdWorker {
       onConnection: async (socket, handler, sender, logger) => {
         logger.log("connected to coordinator", { status: this.#status });
 
-        if (this.waitForPostStart) {
-          logger.log("skip connection handler, waiting for post start hook");
-          return;
-        }
-
-        if (this.paused) {
-          if (!this.nextResumeAfter) {
-            logger.error("Missing next resume reason", { status: this.#status });
-
-            this.#emitUnrecoverableError(
-              "NoNextResume",
-              "Next resume reason not set while resuming from paused state"
-            );
-
+        try {
+          if (this.waitForPostStart) {
+            logger.log("skip connection handler, waiting for post start hook");
             return;
           }
 
-          if (!this.attemptFriendlyId) {
-            logger.error("Missing friendly ID", { status: this.#status });
+          if (this.paused) {
+            if (!this.nextResumeAfter) {
+              logger.error("Missing next resume reason", { status: this.#status });
 
-            this.#emitUnrecoverableError(
-              "NoAttemptId",
-              "Attempt ID not set while resuming from paused state"
-            );
+              this.#emitUnrecoverableError(
+                "NoNextResume",
+                "Next resume reason not set while resuming from paused state"
+              );
 
-            return;
-          }
+              return;
+            }
 
-          socket.emit("READY_FOR_RESUME", {
-            version: "v1",
-            attemptFriendlyId: this.attemptFriendlyId,
-            type: this.nextResumeAfter,
-          });
+            if (!this.attemptFriendlyId) {
+              logger.error("Missing friendly ID", { status: this.#status });
 
-          return;
-        }
+              this.#emitUnrecoverableError(
+                "NoAttemptId",
+                "Attempt ID not set while resuming from paused state"
+              );
 
-        if (process.env.INDEX_TASKS === "true") {
-          try {
-            const taskResources = await this.#initializeWorker();
+              return;
+            }
 
-            const indexTasks = await defaultBackoff.maxRetries(3).execute(async () => {
-              return await socket.timeout(20_000).emitWithAck("INDEX_TASKS", {
-                version: "v2",
-                deploymentId: this.deploymentId,
-                ...taskResources,
-                supportsLazyAttempts: true,
-              });
+            socket.emit("READY_FOR_RESUME", {
+              version: "v1",
+              attemptFriendlyId: this.attemptFriendlyId,
+              type: this.nextResumeAfter,
             });
 
-            if (!indexTasks.success || !indexTasks.result.success) {
-              logger.error("indexing failure, shutting down..", { indexTasks });
-              process.exit(1);
-            } else {
-              logger.info("indexing done, shutting down..");
-              process.exit(0);
+            return;
+          }
+
+          if (process.env.INDEX_TASKS === "true") {
+            try {
+              const taskResources = await this.#initializeWorker();
+
+              const indexTasks = await defaultBackoff.maxRetries(3).execute(async () => {
+                return await socket.timeout(20_000).emitWithAck("INDEX_TASKS", {
+                  version: "v2",
+                  deploymentId: this.deploymentId,
+                  ...taskResources,
+                  supportsLazyAttempts: true,
+                });
+              });
+
+              if (!indexTasks.success || !indexTasks.result.success) {
+                logger.error("indexing failure, shutting down..", { indexTasks });
+                process.exit(1);
+              } else {
+                logger.info("indexing done, shutting down..");
+                process.exit(0);
+              }
+            } catch (e) {
+              const stderr = this.#backgroundWorker.stderr.join("\n");
+
+              if (e instanceof TaskMetadataParseError) {
+                logger.error("tasks metadata parse error", {
+                  zodIssues: e.zodIssues,
+                  tasks: e.tasks,
+                });
+
+                socket.emit("INDEXING_FAILED", {
+                  version: "v1",
+                  deploymentId: this.deploymentId,
+                  error: {
+                    name: "TaskMetadataParseError",
+                    message: "There was an error parsing the task metadata",
+                    stack: JSON.stringify({ zodIssues: e.zodIssues, tasks: e.tasks }),
+                    stderr,
+                  },
+                });
+              } else if (e instanceof UncaughtExceptionError) {
+                const error = {
+                  name: e.originalError.name,
+                  message: e.originalError.message,
+                  stack: e.originalError.stack,
+                  stderr,
+                };
+
+                logger.error("uncaught exception", { originalError: error });
+
+                socket.emit("INDEXING_FAILED", {
+                  version: "v1",
+                  deploymentId: this.deploymentId,
+                  error,
+                });
+              } else if (e instanceof Error) {
+                const error = {
+                  name: e.name,
+                  message: e.message,
+                  stack: e.stack,
+                  stderr,
+                };
+
+                logger.error("error", { error });
+
+                socket.emit("INDEXING_FAILED", {
+                  version: "v1",
+                  deploymentId: this.deploymentId,
+                  error,
+                });
+              } else if (typeof e === "string") {
+                logger.error("string error", { error: { message: e } });
+
+                socket.emit("INDEXING_FAILED", {
+                  version: "v1",
+                  deploymentId: this.deploymentId,
+                  error: {
+                    name: "Error",
+                    message: e,
+                    stderr,
+                  },
+                });
+              } else {
+                logger.error("unknown error", { error: e });
+
+                socket.emit("INDEXING_FAILED", {
+                  version: "v1",
+                  deploymentId: this.deploymentId,
+                  error: {
+                    name: "Error",
+                    message: "Unknown error",
+                    stderr,
+                  },
+                });
+              }
+
+              await timeout(200);
+              // Use exit code 111 so we can ignore those failures in the task monitor
+              process.exit(111);
             }
-          } catch (e) {
-            const stderr = this.#backgroundWorker.stderr.join("\n");
+          }
 
-            if (e instanceof TaskMetadataParseError) {
-              logger.error("tasks metadata parse error", {
-                zodIssues: e.zodIssues,
-                tasks: e.tasks,
+          if (this.executing) {
+            return;
+          }
+
+          this.#readyForLazyAttempt();
+        } catch (error) {
+          logger.error("connection handler error", { error });
+        } finally {
+          const backoff = new ExponentialBackoff().type("FullJitter").maxRetries(3);
+          const cancellationDelay = 20_000;
+
+          if (this.waitForTaskReplay) {
+            logger.log("replaying wait for task", { ...this.waitForTaskReplay });
+
+            const { idempotencyKey, message, attempt } = this.waitForTaskReplay;
+
+            // Give the platform some time to send RESUME_AFTER_DEPENDENCY
+            await timeout(cancellationDelay);
+
+            if (!this.waitForTaskReplay) {
+              logger.error("replay wait for task cancelled, skipping retry", {
+                originalMessage: { idempotencyKey, message, attempt },
               });
 
-              socket.emit("INDEXING_FAILED", {
-                version: "v1",
-                deploymentId: this.deploymentId,
-                error: {
-                  name: "TaskMetadataParseError",
-                  message: "There was an error parsing the task metadata",
-                  stack: JSON.stringify({ zodIssues: e.zodIssues, tasks: e.tasks }),
-                  stderr,
-                },
-              });
-            } else if (e instanceof UncaughtExceptionError) {
-              const error = {
-                name: e.originalError.name,
-                message: e.originalError.message,
-                stack: e.originalError.stack,
-                stderr,
-              };
-
-              logger.error("uncaught exception", { originalError: error });
-
-              socket.emit("INDEXING_FAILED", {
-                version: "v1",
-                deploymentId: this.deploymentId,
-                error,
-              });
-            } else if (e instanceof Error) {
-              const error = {
-                name: e.name,
-                message: e.message,
-                stack: e.stack,
-                stderr,
-              };
-
-              logger.error("error", { error });
-
-              socket.emit("INDEXING_FAILED", {
-                version: "v1",
-                deploymentId: this.deploymentId,
-                error,
-              });
-            } else if (typeof e === "string") {
-              logger.error("string error", { error: { message: e } });
-
-              socket.emit("INDEXING_FAILED", {
-                version: "v1",
-                deploymentId: this.deploymentId,
-                error: {
-                  name: "Error",
-                  message: e,
-                  stderr,
-                },
-              });
-            } else {
-              logger.error("unknown error", { error: e });
-
-              socket.emit("INDEXING_FAILED", {
-                version: "v1",
-                deploymentId: this.deploymentId,
-                error: {
-                  name: "Error",
-                  message: "Unknown error",
-                  stderr,
-                },
-              });
+              return;
             }
 
-            await timeout(200);
-            // Use exit code 111 so we can ignore those failures in the task monitor
-            process.exit(111);
+            if (idempotencyKey !== this.waitForTaskReplay.idempotencyKey) {
+              logger.error("replay wait for task idempotency key mismatch, skipping retry", {
+                originalMessage: { idempotencyKey, message, attempt },
+                newMessage: this.waitForTaskReplay,
+              });
+
+              return;
+            }
+
+            await backoff.wait(attempt + 1);
+
+            try {
+              await this.#waitForTaskHandler(message);
+            } catch (error) {
+              logger.error("replay wait for task error", { error });
+            }
+
+            return;
+          }
+
+          if (this.waitForBatchReplay) {
+            logger.log("replaying wait for batch", {
+              ...this.waitForBatchReplay,
+              cancellationDelay,
+            });
+
+            const { idempotencyKey, message, attempt } = this.waitForBatchReplay;
+
+            // Give the platform some time to send RESUME_AFTER_DEPENDENCY
+            await timeout(cancellationDelay);
+
+            if (!this.waitForBatchReplay) {
+              logger.error("replay wait for batch cancelled, skipping retry", {
+                originalMessage: { idempotencyKey, message, attempt },
+              });
+
+              return;
+            }
+
+            if (idempotencyKey !== this.waitForBatchReplay.idempotencyKey) {
+              logger.error("replay wait for batch idempotency key mismatch, skipping retry", {
+                originalMessage: { idempotencyKey, message, attempt },
+                newMessage: this.waitForBatchReplay,
+              });
+
+              return;
+            }
+
+            await backoff.wait(attempt + 1);
+
+            try {
+              await this.#waitForBatchHandler(message);
+            } catch (error) {
+              logger.error("replay wait for batch error", { error });
+            }
+
+            return;
           }
         }
-
-        if (this.executing) {
-          return;
-        }
-
-        this.#readyForLazyAttempt();
       },
       onError: async (socket, err, logger) => {
         logger.error("onError", {
@@ -1090,6 +1216,8 @@ class ProdWorker {
       nextResumeAfter: this.nextResumeAfter,
       waitForPostStart: this.waitForPostStart,
       attemptFriendlyId: this.attemptFriendlyId,
+      waitForTaskReplay: this.waitForTaskReplay,
+      waitForBatchReplay: this.waitForBatchReplay,
     };
   }
 
