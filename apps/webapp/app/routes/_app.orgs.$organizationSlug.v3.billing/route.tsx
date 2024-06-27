@@ -5,7 +5,6 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
-import { BillingService } from "~/services/billing.v3.server";
 import { requireUserId } from "~/services/session.server";
 import {
   OrganizationParamsSchema,
@@ -16,6 +15,7 @@ import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
 import { PlanDefinition } from "@trigger.dev/billing/v3";
 import { CalendarDaysIcon, StarIcon } from "@heroicons/react/20/solid";
 import { DateTime } from "~/components/primitives/DateTime";
+import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   await requireUserId(request);
@@ -26,8 +26,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return redirect(organizationPath({ slug: organizationSlug }));
   }
 
-  const billingPresenter = new BillingService(isManagedCloud);
-  const plans = await billingPresenter.getPlans();
+  const plans = await getPlans();
   if (!plans) {
     throw new Response(null, { status: 404, statusText: "Plans not found" });
   }
@@ -40,7 +39,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
   }
 
-  const currentPlan = await billingPresenter.currentPlan(organization.id);
+  const currentPlan = await getCurrentPlan(organization.id);
 
   //periods
   const periodStart = new Date();

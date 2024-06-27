@@ -10,8 +10,8 @@ import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
-import { BillingService } from "~/services/billing.v3.server";
 import { getImpersonationId } from "~/services/impersonation.server";
+import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
@@ -46,16 +46,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   telemetry.organization.identify({ organization });
   telemetry.project.identify({ project });
 
-  const { isManagedCloud } = featuresForRequest(request);
-  const billingPresenter = new BillingService(isManagedCloud);
-  const currentPlan = await billingPresenter.currentPlan(organization.id);
+  const plan = await getCurrentPlan(organization.id);
 
   return typedjson({
     organizations,
     organization,
     project,
     isImpersonating: !!impersonationId,
-    currentPlan,
+    currentPlan: plan,
   });
 };
 

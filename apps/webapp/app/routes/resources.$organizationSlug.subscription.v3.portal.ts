@@ -2,7 +2,7 @@ import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { BillingService } from "~/services/billing.v3.server";
+import { customerPortalUrl } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { OrganizationParamsSchema, usagePath } from "~/utils/pathBuilder";
 
@@ -32,9 +32,7 @@ export async function loader({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  const billingPresenter = new BillingService(true);
-  const result = await billingPresenter.customerPortalUrl(org.id, organizationSlug);
-
+  const result = await customerPortalUrl(org.id, organizationSlug);
   if (!result || !result.success || !result.customerPortalUrl) {
     return redirectWithErrorMessage(
       usagePath({ slug: organizationSlug }),

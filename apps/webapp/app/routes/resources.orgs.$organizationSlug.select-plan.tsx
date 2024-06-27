@@ -32,7 +32,7 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { BillingService } from "~/services/billing.v3.server";
+import { setPlan } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 
@@ -57,8 +57,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const formData = Object.fromEntries(await request.formData());
   const form = schema.parse(formData);
-
-  const { isManagedCloud } = featuresForRequest(request);
 
   const organization = await prisma.organization.findUnique({
     where: { slug: organizationSlug },
@@ -91,8 +89,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
   }
 
-  const billingService = new BillingService(isManagedCloud);
-  return billingService.setPlan(organization, request, form.callerPath, payload);
+  return setPlan(organization, request, form.callerPath, payload);
 }
 
 const pricingDefinitions = {

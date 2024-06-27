@@ -153,7 +153,7 @@ export default function Page() {
 
             {!hasStaging && (
               <UpgradeCallout title="Add a Staging environment">
-                Upgrade to a paid plan to add a Staging environment.
+                Upgrade your plan to add a Staging environment.
               </UpgradeCallout>
             )}
           </div>

@@ -1,13 +1,12 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
-
 import { Header1 } from "~/components/primitives/Headers";
+import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
-import { BillingService } from "~/services/billing.v3.server";
+import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
-import { prisma } from "~/db.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   await requireUserId(request);
@@ -18,8 +17,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return redirect(organizationPath({ slug: organizationSlug }));
   }
 
-  const billingPresenter = new BillingService(isManagedCloud);
-  const plans = await billingPresenter.getPlans();
+  const plans = await getPlans();
   if (!plans) {
     throw new Response(null, { status: 404, statusText: "Plans not found" });
   }
@@ -36,7 +34,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return redirect(organizationPath({ slug: organizationSlug }));
   }
 
-  const currentPlan = await billingPresenter.currentPlan(organization.id);
+  const currentPlan = await getCurrentPlan(organization.id);
 
   return typedjson({ ...plans, ...currentPlan, organizationSlug });
 }

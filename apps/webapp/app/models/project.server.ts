@@ -4,7 +4,7 @@ import { prisma } from "~/db.server";
 import type { Project } from "@trigger.dev/database";
 import { Organization, createEnvironment } from "./organization.server";
 import { env } from "~/env.server";
-import { BillingService } from "~/services/billing.v3.server";
+import { projectCreated } from "~/services/platform.v3.server";
 export type { Project } from "@trigger.dev/database";
 
 const externalRefGenerator = customAlphabet("abcdefghijklmnopqrstuvwxyz", 20);
@@ -92,20 +92,11 @@ export async function createProject(
   // Create the dev and prod environments
   await createEnvironment(organization, project, "PRODUCTION");
 
-  if (version === "v2") {
-    await createEnvironment(organization, project, "STAGING");
-  } else {
-    //staging is only available on certain plans
-    const billingService = new BillingService(isManagedCloud);
-    const plan = await billingService.currentPlan(organization.id);
-    if (plan?.v3Subscription.plan?.limits.hasStagingEnvironment) {
-      await createEnvironment(organization, project, "STAGING");
-    }
-  }
-
   for (const member of project.organization.members) {
     await createEnvironment(organization, project, "DEVELOPMENT", member);
   }
+
+  await projectCreated(organization, project);
 
   return project;
 }
