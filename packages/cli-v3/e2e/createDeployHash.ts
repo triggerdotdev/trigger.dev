@@ -8,7 +8,7 @@ type CreateDeployHashOptions = {
 };
 
 export async function createDeployHash(options: CreateDeployHashOptions) {
-  const { entryPointOutputFile, workerOutputFile } = options;
+  const { dependencies, entryPointOutputFile, workerOutputFile } = options;
 
   // COPIED FROM compileProject()
   const contentHasher = createHash("sha256");

@@ -1,5 +1,20 @@
 # trigger.dev
 
+## 3.0.0-beta.44
+
+### Patch Changes
+
+- Updated dependencies [39885a427]
+  - @trigger.dev/core@3.0.0-beta.44
+
+## 3.0.0-beta.43
+
+### Patch Changes
+
+- 77ad4127c: Improved ESM module require error detection logic
+- Updated dependencies [34ca7667d]
+  - @trigger.dev/core@3.0.0-beta.43
+
 ## 3.0.0-beta.42
 
 ### Patch Changes

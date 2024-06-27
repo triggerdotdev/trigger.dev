@@ -227,9 +227,11 @@ export async function readConfig(
 export async function resolveConfig(path: string, config: Config): Promise<ResolvedConfig> {
   if (!config.triggerDirectories) {
     config.triggerDirectories = await findTriggerDirectories(path);
+    // TODO trigger-dir-missing: throw error if no trigger directory is found
   }
 
   config.triggerDirectories = resolveTriggerDirectories(path, config.triggerDirectories);
+  // TODO trigger-dir-not-found: throw error if trigger directories do not exist
 
   logger.debug("Resolved trigger directories", { triggerDirectories: config.triggerDirectories });
 

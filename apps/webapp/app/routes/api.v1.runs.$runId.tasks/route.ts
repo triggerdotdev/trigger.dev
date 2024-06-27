@@ -6,6 +6,8 @@ import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { RunTaskService } from "~/services/tasks/runTask.server";
 import { ChangeRequestLazyLoadedCachedTasks } from "./ChangeRequestLazyLoadedCachedTasks.server";
+import { startActiveSpan } from "~/v3/tracer.server";
+import { parseRequestJsonAsync } from "~/utils/parseRequestJson.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -16,6 +18,8 @@ const HeadersSchema = z.object({
   "trigger-version": z.string().optional().nullable(),
   "x-cached-tasks-cursor": z.string().optional().nullable(),
 });
+
+const BodySchema = RunTaskBodyOutputSchema.omit({ params: true });
 
 export async function action({ request, params }: ActionFunctionArgs) {
   // Ensure this is a POST request
@@ -44,18 +48,26 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { runId } = ParamsSchema.parse(params);
 
+  const contentLength = request.headers.get("content-length");
+
+  if (!contentLength || parseInt(contentLength) > 3 * 1024 * 1024) {
+    return json({ error: "Request body too large" }, { status: 413 });
+  }
+
   // Now parse the request body
-  const anyBody = await request.json();
+  const anyBody = await parseRequestJsonAsync(request, { runId });
 
-  logger.debug("RunTaskService.call() request body", {
-    body: anyBody,
-    runId,
-    idempotencyKey,
-    triggerVersion,
-    cachedTasksCursor,
-  });
-
-  const body = RunTaskBodyOutputSchema.safeParse(anyBody);
+  const body = await startActiveSpan(
+    "BodySchema.safeParse",
+    async () => {
+      return BodySchema.safeParse(anyBody);
+    },
+    {
+      attributes: {
+        runId,
+      },
+    }
+  );
 
   if (!body.success) {
     return json({ error: "Invalid request body" }, { status: 400 });
@@ -64,12 +76,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const service = new RunTaskService();
 
   try {
-    const task = await service.call(runId, idempotencyKey, body.data);
-
-    logger.debug("RunTaskService.call() response body", {
-      runId,
-      idempotencyKey,
-      task,
+    const task = await service.call(runId, idempotencyKey, {
+      ...body.data,
+      params: (anyBody as any).params,
     });
 
     if (!task) {
@@ -84,7 +93,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
       logger.debug(
         "RunTaskService.call() response migrating with ChangeRequestLazyLoadedCachedTasks",
         {
-          responseBody,
           cachedTasksCursor,
         }
       );

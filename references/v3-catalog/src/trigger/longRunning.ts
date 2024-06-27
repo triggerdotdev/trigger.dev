@@ -60,3 +60,22 @@ export const longRunningWithLotsOfLogs = task({
     };
   },
 });
+
+export const longRunningWith100kLogs = task({
+  id: "100k-logs",
+  run: async (payload: { message: string }) => {
+    // Log 100000 times over 60 seconds
+    for (let i = 0; i < 100000; i++) {
+      console.log("Log number " + i);
+
+      if (i % 512 === 0) {
+        // wait every 512 logs
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+
+    return {
+      finished: new Date().toISOString(),
+    };
+  },
+});
