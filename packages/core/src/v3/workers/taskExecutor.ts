@@ -229,7 +229,7 @@ export class TaskExecutor {
     }
 
     if (!middlewareFn) {
-      return runFn(payload, { ctx });
+      return runFn(payload, { ctx, init });
     }
 
     return middlewareFn(payload, { ctx, next: async () => runFn(payload, { ctx, init }) });
