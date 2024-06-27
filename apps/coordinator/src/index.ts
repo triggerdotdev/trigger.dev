@@ -393,7 +393,7 @@ class Checkpointer {
       return { success: false, reason: "NO_SUPPORT" };
     }
 
-    if (this.#abortControllers.has(runId)) {
+    if (this.isCheckpointing(runId)) {
       logger.error("Checkpoint procedure already in progress", { options });
       return { success: false, reason: "IN_PROGRESS" };
     }
