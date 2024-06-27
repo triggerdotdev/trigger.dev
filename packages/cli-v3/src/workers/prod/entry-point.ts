@@ -797,7 +797,7 @@ class ProdWorker {
             });
 
             if (!indexTasks.success || !indexTasks.result.success) {
-              logger.error("indexing failure, shutting down..");
+              logger.error("indexing failure, shutting down..", { indexTasks });
               process.exit(1);
             } else {
               logger.info("indexing done, shutting down..");
