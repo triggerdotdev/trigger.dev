@@ -11,6 +11,7 @@ import {
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
 import { HttpReply, getRandomPortNumber } from "@trigger.dev/core-apps/http";
 import { SimpleLogger } from "@trigger.dev/core-apps/logger";
+import { ExponentialBackoff } from "@trigger.dev/core-apps/backoff";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { ProdBackgroundWorker } from "./backgroundWorker";
@@ -28,6 +29,10 @@ const POD_NAME = process.env.POD_NAME || "some-pod";
 const SHORT_HASH = process.env.TRIGGER_CONTENT_HASH!.slice(0, 9);
 
 const logger = new SimpleLogger(`[${MACHINE_NAME}][${SHORT_HASH}]`);
+
+const defaultBackoff = new ExponentialBackoff("FullJitter", {
+  maxRetries: 5,
+});
 
 class ProdWorker {
   private apiUrl = process.env.TRIGGER_API_URL!;
@@ -172,25 +177,34 @@ class ProdWorker {
     backgroundWorker.onCreateTaskRunAttempt.attach(async (message) => {
       logger.log("onCreateTaskRunAttempt()", { message });
 
-      const createAttempt = await this.#coordinatorSocket.socket.emitWithAck(
-        "CREATE_TASK_RUN_ATTEMPT",
-        {
-          version: "v1",
-          runId: message.runId,
-        }
-      );
+      const createAttempt = await defaultBackoff.execute(async () => {
+        return await this.#coordinatorSocket.socket
+          .timeout(20_000)
+          .emitWithAck("CREATE_TASK_RUN_ATTEMPT", {
+            version: "v1",
+            runId: message.runId,
+          });
+      });
 
       if (!createAttempt.success) {
         backgroundWorker.attemptCreatedNotification.post({
           success: false,
-          reason: createAttempt.reason,
+          reason: `Failed to create attempt with backoff, cause: ${createAttempt.cause}\n${createAttempt.error}`,
+        });
+        return;
+      }
+
+      if (!createAttempt.result.success) {
+        backgroundWorker.attemptCreatedNotification.post({
+          success: false,
+          reason: createAttempt.result.reason,
         });
         return;
       }
 
       backgroundWorker.attemptCreatedNotification.post({
         success: true,
-        execution: createAttempt.executionPayload.execution,
+        execution: createAttempt.result.executionPayload.execution,
       });
     });
 
@@ -220,17 +234,6 @@ class ProdWorker {
     backgroundWorker.onWaitForDuration.attach(async (message) => {
       logger.log("onWaitForDuration", { ...message, drift: Date.now() - message.now });
 
-      if (!this.attemptFriendlyId) {
-        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
-
-        this.#emitUnrecoverableError(
-          "NoAttemptId",
-          "Attempt ID not set before waiting for duration"
-        );
-
-        return;
-      }
-
       noResume: {
         const { ms, waitThresholdInMs } = message;
 
@@ -242,13 +245,36 @@ class ProdWorker {
           break noResume;
         }
 
-        const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
-          "WAIT_FOR_DURATION",
-          {
-            ...message,
-            attemptFriendlyId: this.attemptFriendlyId,
+        const waitForDuration = await defaultBackoff.execute(async () => {
+          if (!this.attemptFriendlyId) {
+            logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+
+            throw new ExponentialBackoff.StopRetrying("No attempt ID");
           }
-        );
+
+          return await this.#coordinatorSocket.socket
+            .timeout(20_000)
+            .emitWithAck("WAIT_FOR_DURATION", {
+              ...message,
+              attemptFriendlyId: this.attemptFriendlyId,
+            });
+        });
+
+        if (!waitForDuration.success) {
+          logger.error("Failed to wait for duration with backoff", {
+            cause: waitForDuration.cause,
+            error: waitForDuration.error,
+          });
+
+          this.#emitUnrecoverableError(
+            "WaitForDurationFailed",
+            `${waitForDuration.cause}: ${waitForDuration.error}`
+          );
+
+          return;
+        }
+
+        const { willCheckpointAndRestore } = waitForDuration.result;
 
         if (!willCheckpointAndRestore) {
           await internalTimeout;
@@ -292,46 +318,80 @@ class ProdWorker {
     });
 
     backgroundWorker.onWaitForTask.attach(async (message) => {
-      if (!this.attemptFriendlyId) {
-        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+      const waitForTask = await defaultBackoff.execute(async () => {
+        if (!this.attemptFriendlyId) {
+          logger.error("Failed to send wait message, attempt friendly ID not set", { message });
 
-        this.#emitUnrecoverableError("NoAttemptId", "Attempt ID not set before waiting for task");
+          throw new ExponentialBackoff.StopRetrying("No attempt ID");
+        }
 
-        return;
-      }
-
-      const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
-        "WAIT_FOR_TASK",
-        {
+        return await this.#coordinatorSocket.socket.timeout(20_000).emitWithAck("WAIT_FOR_TASK", {
           version: "v2",
           friendlyId: message.friendlyId,
           attemptFriendlyId: this.attemptFriendlyId,
-        }
-      );
+        });
+      });
 
-      await this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
-    });
+      if (!waitForTask.success) {
+        logger.error("Failed to wait for task with backoff", {
+          cause: waitForTask.cause,
+          error: waitForTask.error,
+        });
 
-    backgroundWorker.onWaitForBatch.attach(async (message) => {
-      if (!this.attemptFriendlyId) {
-        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
-
-        this.#emitUnrecoverableError("NoAttemptId", "Attempt ID not set before waiting for batch");
+        this.#emitUnrecoverableError(
+          "WaitForTaskFailed",
+          `${waitForTask.cause}: ${waitForTask.error}`
+        );
 
         return;
       }
 
-      const { willCheckpointAndRestore } = await this.#coordinatorSocket.socket.emitWithAck(
-        "WAIT_FOR_BATCH",
-        {
+      const { willCheckpointAndRestore } = waitForTask.result;
+
+      await this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
+
+      if (willCheckpointAndRestore) {
+        // TODO: Listen for RESUME_AFTER_DEPENDENCY, retry if we don't receive it
+      }
+    });
+
+    backgroundWorker.onWaitForBatch.attach(async (message) => {
+      const waitForBatch = await defaultBackoff.execute(async () => {
+        if (!this.attemptFriendlyId) {
+          logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+
+          throw new ExponentialBackoff.StopRetrying("No attempt ID");
+        }
+
+        return await this.#coordinatorSocket.socket.timeout(20_000).emitWithAck("WAIT_FOR_BATCH", {
           version: "v2",
           batchFriendlyId: message.batchFriendlyId,
           runFriendlyIds: message.runFriendlyIds,
           attemptFriendlyId: this.attemptFriendlyId,
-        }
-      );
+        });
+      });
+
+      if (!waitForBatch.success) {
+        logger.error("Failed to wait for batch with backoff", {
+          cause: waitForBatch.cause,
+          error: waitForBatch.error,
+        });
+
+        this.#emitUnrecoverableError(
+          "WaitForBatchFailed",
+          `${waitForBatch.cause}: ${waitForBatch.error}`
+        );
+
+        return;
+      }
+
+      const { willCheckpointAndRestore } = waitForBatch.result;
 
       await this.#prepareForWait("WAIT_FOR_BATCH", willCheckpointAndRestore);
+
+      if (willCheckpointAndRestore) {
+        // TODO: Listen for RESUME_AFTER_DEPENDENCY, retry if we don't receive it
+      }
     });
 
     return backgroundWorker;
@@ -572,17 +632,64 @@ class ProdWorker {
 
             this.completed.add(execution.attempt.id);
 
-            const { willCheckpointAndRestore, shouldExit } =
-              await this.#coordinatorSocket.socket.emitWithAck("TASK_RUN_COMPLETED", {
+            const taskRunCompleted = await defaultBackoff.execute(async () => {
+              return await this.#coordinatorSocket.socket
+                .timeout(20_000)
+                .emitWithAck("TASK_RUN_COMPLETED", {
+                  version: "v1",
+                  execution,
+                  completion,
+                });
+            });
+
+            if (!taskRunCompleted.success) {
+              logger.error("Failed to complete lazy attempt with backoff", {
+                cause: taskRunCompleted.cause,
+                error: taskRunCompleted.error,
+              });
+
+              const completion: TaskRunFailedExecutionResult = {
+                ok: false,
+                id: message.lazyPayload.runId,
+                retry: undefined,
+                error:
+                  taskRunCompleted.error instanceof Error
+                    ? {
+                        type: "BUILT_IN_ERROR",
+                        name: taskRunCompleted.error.name,
+                        message: taskRunCompleted.error.message,
+                        stackTrace: taskRunCompleted.error.stack ?? "",
+                      }
+                    : {
+                        type: "BUILT_IN_ERROR",
+                        name: "UnknownError",
+                        message: String(taskRunCompleted.error),
+                        stackTrace: "",
+                      },
+              };
+
+              this.#coordinatorSocket.socket.emit("TASK_RUN_FAILED_TO_RUN", {
                 version: "v1",
-                execution,
                 completion,
               });
+
+              return;
+            }
+
+            const { willCheckpointAndRestore, shouldExit } = taskRunCompleted.result;
 
             logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
 
             await this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
+
+            if (willCheckpointAndRestore) {
+              // TODO: Listen for READY_FOR_RETRY, retry if we don't receive it
+            }
           } catch (error) {
+            logger.error("Failed to complete lazy attempt", {
+              error,
+            });
+
             const completion: TaskRunFailedExecutionResult = {
               ok: false,
               id: message.lazyPayload.runId,
@@ -681,19 +788,21 @@ class ProdWorker {
           try {
             const taskResources = await this.#initializeWorker();
 
-            const { success } = await socket.emitWithAck("INDEX_TASKS", {
-              version: "v2",
-              deploymentId: this.deploymentId,
-              ...taskResources,
-              supportsLazyAttempts: true,
+            const indexTasks = await defaultBackoff.maxRetries(3).execute(async () => {
+              return await socket.timeout(20_000).emitWithAck("INDEX_TASKS", {
+                version: "v2",
+                deploymentId: this.deploymentId,
+                ...taskResources,
+                supportsLazyAttempts: true,
+              });
             });
 
-            if (success) {
+            if (!indexTasks.success || !indexTasks.result.success) {
+              logger.error("indexing failure, shutting down..");
+              process.exit(1);
+            } else {
               logger.info("indexing done, shutting down..");
               process.exit(0);
-            } else {
-              logger.info("indexing failure, shutting down..");
-              process.exit(1);
             }
           } catch (e) {
             const stderr = this.#backgroundWorker.stderr.join("\n");
@@ -830,7 +939,7 @@ class ProdWorker {
           }
 
           case "/test": {
-            await this.#coordinatorSocket.socket.emitWithAck("TEST", {
+            await this.#coordinatorSocket.socket.timeout(10_000).emitWithAck("TEST", {
               version: "v1",
             });
 

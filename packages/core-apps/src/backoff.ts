@@ -263,7 +263,7 @@ export class ExponentialBackoff {
         elapsedMs: number;
       }
     ) => Promise<T>,
-    { attemptTimeoutMs = 0 }: { attemptTimeoutMs?: number }
+    { attemptTimeoutMs = 0 }: { attemptTimeoutMs?: number } = {}
   ): Promise<
     | { success: true; result: T }
     | { success: false; error?: unknown; cause: "StopRetrying" | "Timeout" | "MaxRetries" }
@@ -278,7 +278,7 @@ export class ExponentialBackoff {
 
       try {
         const result = await new Promise<T>(async (resolve) => {
-          if (attemptTimeoutMs) {
+          if (attemptTimeoutMs > 0) {
             attemptTimeout = setTimeout(() => {
               throw new AttemptTimeout();
             }, attemptTimeoutMs);
@@ -300,6 +300,7 @@ export class ExponentialBackoff {
           return {
             success: false,
             cause: "StopRetrying",
+            error: error.message,
           };
         }
 
