@@ -22,9 +22,13 @@
     "anchors": {
       "from": "#fff",
       "to": "#eee"
+    },
+    "background": {
+      "light": "#fff",
+      "dark": "#121317"
     }
   },
-  "theme": "venus",
+  "theme": "quill",
 
   "modeToggle": {
     "default": "dark",
@@ -45,36 +49,7 @@
       "url": "https://discord.gg/kA47vcd8P6"
     }
   ],
-  "primaryTab": {
-    "name": "Home"
-  },
-  "tabs": [
-    {
-      "name": "Integrations",
-      "url": "integrations",
-      "version": "v2"
-    },
-    {
-      "name": "Reference",
-      "url": "sdk",
-      "version": "v2"
-    },
-    {
-      "name": "Examples",
-      "url": "https://trigger.dev/apis",
-      "version": "v2"
-    },
-    {
-      "name": "v3 Developer Preview",
-      "url": "https://trigger.dev/docs/v3",
-      "version": "v2"
-    },
-    {
-      "name": "v2",
-      "url": "https://trigger.dev/docs/documentation",
-      "version": "v3"
-    }
-  ],
+
   "redirects": [
     {
       "source": "/documentation/quickstart",
