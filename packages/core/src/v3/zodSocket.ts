@@ -317,10 +317,20 @@ export class ZodSocketMessageSender<TMessageCatalog extends ZodSocketMessageCata
 export type ZodSocket<
   TListenEvents extends ZodSocketMessageCatalogSchema,
   TEmitEvents extends ZodSocketMessageCatalogSchema,
-> = Socket<
-  ZodMessageCatalogToSocketIoEvents<TListenEvents>,
-  ZodMessageCatalogToSocketIoEvents<TEmitEvents>
->;
+> = Omit<
+  Socket<
+    ZodMessageCatalogToSocketIoEvents<TListenEvents>,
+    ZodMessageCatalogToSocketIoEvents<TEmitEvents>
+  >,
+  "timeout"
+> & {
+  timeout: (
+    timeout: number
+  ) => Socket<
+    ZodMessageCatalogToSocketIoEvents<TListenEvents>,
+    ZodMessageCatalogToSocketIoEvents<TEmitEvents>
+  >;
+};
 
 interface ZodSocketConnectionOptions<
   TClientMessages extends ZodSocketMessageCatalogSchema,
