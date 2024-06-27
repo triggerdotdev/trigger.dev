@@ -106,6 +106,13 @@ export function workerSetupImportConfigPlugin(configPath?: string): Plugin {
 
 export function bundleDependenciesPlugin(
   buildIdentifier: string,
+  dependencies: Record<
+    string,
+    {
+      version: string;
+      external: boolean;
+    }
+  >,
   dependenciesToBundle?: Array<string | RegExp>,
   tsconfigPath?: string
 ): Plugin {
@@ -147,6 +154,10 @@ export function bundleDependenciesPlugin(
           if (typeof pattern === "string" ? args.path === pattern : pattern.test(args.path)) {
             return undefined; // let esbuild bundle it
           }
+        }
+
+        if (dependencies[args.path] && !dependencies[args.path]!.external) {
+          return undefined; // let esbuild bundle it
         }
 
         logger.debug(`[${buildIdentifier}] Externalizing ${args.path}`, {

@@ -19,7 +19,7 @@ import { handleDependencies } from "./handleDependencies";
 import { E2EOptions, E2EOptionsSchema } from "./schemas";
 import { fixturesConfig, TestCase } from "./fixtures.config";
 import { Metafile, OutputFile } from "esbuild";
-import { findUp, findUpMultiple } from "find-up";
+import { findUpMultiple } from "find-up";
 
 interface E2EFixtureTest extends TestCase {
   fixtureDir: string;
@@ -173,6 +173,7 @@ if (testCases.length > 0) {
           const compileExpect = expect(
             (async () => {
               const compilationResult = await compile({
+                packageManager,
                 resolvedConfig: resolvedConfig!,
                 tempDir,
               });

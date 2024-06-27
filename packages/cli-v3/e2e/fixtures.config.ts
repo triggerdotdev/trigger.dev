@@ -16,8 +16,6 @@ export const fixturesConfig: TestCase[] = [
     id: "compile-monorepo-packages",
     skipTypecheck: true,
     workspaceRelativeDir: "packages/trigger",
-    // TODO remove
-    wantInstallationError: true,
   },
   {
     id: "config-infisical-sdk",
