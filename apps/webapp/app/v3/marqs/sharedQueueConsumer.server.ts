@@ -478,7 +478,7 @@ export class SharedQueueConsumer {
           ? lockedTaskRun.attempts[0].number + 1
           : 1;
 
-        const isRetry = lockedTaskRun.status === "RETRYING_AFTER_FAILURE" && nextAttemptNumber > 1;
+        const isRetry = lockedTaskRun.status === "WAITING_TO_RESUME" && nextAttemptNumber > 1;
 
         try {
           if (messageBody.data.checkpointEventId) {
@@ -493,6 +493,8 @@ export class SharedQueueConsumer {
               logger.error("Failed to restore checkpoint", {
                 queueMessage: message.data,
                 messageId: message.messageId,
+                runStatus: lockedTaskRun.status,
+                isRetry,
               });
 
               await this.#ackAndDoMoreWork(message.messageId);
