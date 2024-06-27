@@ -16,6 +16,19 @@ class StopRetrying extends Error {
   }
 }
 
+class AttemptTimeout extends Error {
+  constructor(message?: string) {
+    super(message);
+    this.name = "StopRetrying";
+  }
+}
+
+type YieldType<T> = T extends AsyncGenerator<infer Y, any, any> ? Y : never;
+
+/**
+ * Exponential backoff helper class
+ * - All time units in seconds unless otherwise specified
+ */
 export class ExponentialBackoff {
   #retries: number = 0;
 
@@ -94,6 +107,7 @@ export class ExponentialBackoff {
     return this.#clone();
   }
 
+  // TODO: With .execute(), should this also include the time it takes to execute the callback?
   maxElapsed(maxElapsed?: number) {
     if (typeof maxElapsed !== "undefined") {
       this.#maxElapsed = maxElapsed;
@@ -241,6 +255,75 @@ export class ExponentialBackoff {
 
   stop() {
     throw new StopRetrying();
+  }
+
+  async execute<T>(
+    callback: (
+      iteratorReturn: YieldType<ReturnType<ExponentialBackoff["retryAsync"]>> & {
+        elapsedMs: number;
+      }
+    ) => Promise<T>,
+    { attemptTimeoutMs = 0 }: { attemptTimeoutMs?: number }
+  ): Promise<
+    | { success: true; result: T }
+    | { success: false; error?: unknown; cause: "StopRetrying" | "Timeout" | "MaxRetries" }
+  > {
+    let elapsedMs = 0;
+    let finalError: unknown = undefined;
+
+    for await (const { delay, retry } of this) {
+      const start = Date.now();
+
+      let attemptTimeout: NodeJS.Timeout | undefined = undefined;
+
+      try {
+        const result = await new Promise<T>(async (resolve) => {
+          if (attemptTimeoutMs) {
+            attemptTimeout = setTimeout(() => {
+              throw new AttemptTimeout();
+            }, attemptTimeoutMs);
+          }
+
+          const callbackResult = await callback({ delay, retry, elapsedMs });
+
+          resolve(callbackResult);
+        });
+
+        return {
+          success: true,
+          result,
+        };
+      } catch (error) {
+        finalError = error;
+
+        if (error instanceof StopRetrying) {
+          return {
+            success: false,
+            cause: "StopRetrying",
+          };
+        }
+
+        if (error instanceof AttemptTimeout) {
+          continue;
+        }
+      } finally {
+        elapsedMs += Date.now() - start;
+        clearTimeout(attemptTimeout);
+      }
+    }
+
+    if (finalError instanceof AttemptTimeout) {
+      return {
+        success: false,
+        cause: "Timeout",
+      };
+    } else {
+      return {
+        success: false,
+        cause: "MaxRetries",
+        error: finalError,
+      };
+    }
   }
 
   static StopRetrying = StopRetrying;
