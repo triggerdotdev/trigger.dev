@@ -463,7 +463,6 @@ class ProdWorker {
       );
     }
 
-    // TODO: Prevent automatic checkpointing on the coordinator side for ALL wait reasons
     this.#readyForCheckpoint();
   }
 
