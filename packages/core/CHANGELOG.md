@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.0.0-beta.44
+
+### Patch Changes
+
+- 39885a427: v3: fix missing init output in task run function when no middleware is defined
+
 ## 3.0.0-beta.43
 
 ### Patch Changes
