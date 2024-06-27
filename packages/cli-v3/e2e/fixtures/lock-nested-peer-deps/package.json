@@ -1,0 +1,14 @@
+{
+  "name": "lock-nested-peer-deps",
+  "description": "nested peer dep resolved (installed), but legacy-peer-dep true when creating container lockfile. https://github.com/triggerdotdev/trigger.dev/commit/c092c0f9db70039e2f1bc495547a723c1f1a21cf",
+  "private": true,
+  "packageManager": "pnpm@8.15.5+sha256.4b4efa12490e5055d59b9b9fc9438b7d581a6b7af3b5675eb5c5f447cee1a589",
+  "engines": {
+    "pnpm": "8.15.5",
+    "yarn": "4.2.2"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "3.0.0-beta.40",
+    "react-dom": "18.3.1"
+  }
+}
