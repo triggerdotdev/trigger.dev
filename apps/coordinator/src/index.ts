@@ -935,6 +935,7 @@ class TaskCoordinator {
           callback();
         });
 
+        // Deprecated: Only workers without support for lazy attempts use this
         socket.on("READY_FOR_EXECUTION", async (message) => {
           logger.log("[READY_FOR_EXECUTION]", message);
 
@@ -1126,7 +1127,7 @@ class TaskCoordinator {
         });
 
         socket.on("TASK_RUN_FAILED_TO_RUN", async ({ completion }) => {
-          logger.log("completed task", { completionId: completion.id });
+          logger.log("task failed to run", { completionId: completion.id });
 
           this.#platformSocket?.send("TASK_RUN_FAILED_TO_RUN", {
             version: "v1",

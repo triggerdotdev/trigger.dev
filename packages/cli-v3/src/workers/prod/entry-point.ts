@@ -525,6 +525,7 @@ class ProdWorker {
 
           this.#resumeAfterDuration();
         },
+        // Deprecated: This will never get called as this worker supports lazy attempts. It's only here for a quick view of the flow old workers use.
         EXECUTE_TASK_RUN: async ({ executionPayload }) => {
           if (this.executing) {
             logger.error("dropping execute request, already executing");
@@ -540,7 +541,6 @@ class ProdWorker {
           this.attemptFriendlyId = executionPayload.execution.attempt.id;
           const completion = await this.#backgroundWorker.executeTaskRun(executionPayload);
 
-          // TODO: Add retry from this point down
           logger.log("completed", completion);
 
           this.completed.add(executionPayload.execution.attempt.id);

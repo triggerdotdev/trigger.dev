@@ -423,6 +423,7 @@ export const CoordinatorToPlatformMessages = {
       }),
     ]),
   },
+  // Deprecated: Only workers without lazy attempt support will use this
   READY_FOR_EXECUTION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -669,6 +670,7 @@ export const ProdWorkerToCoordinatorMessages = {
       }),
     ]),
   },
+  // Deprecated: Only workers without lazy attempt support will use this
   READY_FOR_EXECUTION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -832,6 +834,7 @@ export const CoordinatorToProdWorkerMessages = {
       attemptId: z.string(),
     }),
   },
+  // Deprecated: Only workers without lazy attempt support will use this
   EXECUTE_TASK_RUN: {
     message: z.object({
       version: z.literal("v1").default("v1"),
