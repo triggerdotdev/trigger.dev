@@ -15,9 +15,12 @@ import { writeJSONFile } from "../src/utilities/fileSystem.js";
 import { logger } from "../src/utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../src/utilities/taskFiles.js";
 import { escapeImportPath } from "../src/utilities/windows.js";
+import { E2EJavascriptProject } from "./javascriptProject.js";
+import { PackageManager } from "../src/utilities/getUserPackageManager.js";
 
 type CompileOptions = {
   outputMetafile?: string;
+  packageManager: PackageManager;
   resolvedConfig: ReadConfigResult;
   tempDir: string;
 };
@@ -28,6 +31,7 @@ export async function compile(options: CompileOptions) {
   }
 
   const {
+    packageManager,
     tempDir,
     resolvedConfig: { config },
   } = options;
@@ -61,6 +65,10 @@ export async function compile(options: CompileOptions) {
     );
   }
 
+  const e2eJsProject = new E2EJavascriptProject(config.projectDir, packageManager);
+  const directDependencies = await e2eJsProject.resolveDirectDependencies();
+  console.log("DIRECT DEPS", directDependencies);
+
   const result = await build({
     stdin: {
       contents: workerContents,
@@ -86,7 +94,12 @@ export async function compile(options: CompileOptions) {
     },
     plugins: [
       mockServerOnlyPlugin(),
-      bundleDependenciesPlugin("workerFacade", config.dependenciesToBundle, config.tsconfigPath),
+      bundleDependenciesPlugin(
+        "workerFacade",
+        directDependencies,
+        config.dependenciesToBundle,
+        config.tsconfigPath
+      ),
       workerSetupImportConfigPlugin(configPath),
       esbuildDecorators({
         tsconfig: config.tsconfigPath,
@@ -127,7 +140,12 @@ export async function compile(options: CompileOptions) {
       __PROJECT_CONFIG__: JSON.stringify(config),
     },
     plugins: [
-      bundleDependenciesPlugin("entryPoint.ts", config.dependenciesToBundle, config.tsconfigPath),
+      bundleDependenciesPlugin(
+        "entryPoint.ts",
+        directDependencies,
+        config.dependenciesToBundle,
+        config.tsconfigPath
+      ),
     ],
   });
 
