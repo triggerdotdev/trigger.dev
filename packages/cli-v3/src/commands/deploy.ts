@@ -1323,6 +1323,7 @@ async function compileProject(
         dependencies,
         scripts: {
           ...javascriptProject.scripts,
+          ...(typeof config.postInstall === "string" ? { postinstall: config.postInstall } : {}),
         },
       };
 
@@ -1363,15 +1364,6 @@ async function compileProject(
       const containerFilePath = join(cliRootPath(), "Containerfile.prod");
 
       let containerFileContents = readFileSync(containerFilePath, "utf-8");
-
-      if (config.postInstall) {
-        containerFileContents = containerFileContents.replace(
-          "__POST_INSTALL__",
-          `RUN ${config.postInstall}`
-        );
-      } else {
-        containerFileContents = containerFileContents.replace("__POST_INSTALL__", "");
-      }
 
       await writeFile(join(tempDir, "Containerfile"), containerFileContents);
 

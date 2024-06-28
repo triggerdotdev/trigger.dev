@@ -8,7 +8,8 @@
     "queues": "ts-node -r tsconfig-paths/register ./src/queues.ts",
     "build:client": "tsup-node ./src/clientUsage.ts --format esm,cjs",
     "client": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/clientUsage.ts",
-    "triggerWithLargePayload": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/triggerWithLargePayload.ts"
+    "triggerWithLargePayload": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/triggerWithLargePayload.ts",
+    "postinstall": "echo 'package.json postinstall'"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",

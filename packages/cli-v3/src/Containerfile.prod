@@ -34,8 +34,6 @@ COPY --chown=node:node . .
 USER node
 RUN npm ci --no-fund --no-audit && npm cache clean --force
 
-__POST_INSTALL__
-
 # Development or production stage builds upon the base stage
 FROM base AS final
 
