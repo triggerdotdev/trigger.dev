@@ -1,26 +1,19 @@
+import { ArrowRightIcon } from "@heroicons/react/24/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Label,
-  Legend,
-  Rectangle,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, BarChart, Rectangle, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { UsageBar } from "~/components/billing/v3/UsageBar";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Header3 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
-import { getUsageSeries } from "~/services/platform.v3.server";
+import { getUsage, getUsageSeries } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { createTimeSeriesData } from "~/utils/graphs";
+import { formatCurrency } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   await requireUserId(request);
@@ -40,31 +33,43 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   //periods
-  const periodStart = new Date();
-  periodStart.setDate(periodStart.getDate() - 30);
-  periodStart.setHours(0, 0, 0, 0);
-  const periodEnd = new Date();
-  periodEnd.setDate(periodEnd.getDate() + 1);
-  periodEnd.setHours(23, 59, 59, 999);
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  thirtyDaysAgo.setHours(0, 0, 0, 0);
+  const endOfToday = new Date();
+  endOfToday.setDate(endOfToday.getDate() + 1);
+  endOfToday.setHours(23, 59, 59, 999);
 
-  const creditUsage = await getUsageSeries(organization.id, {
-    from: periodStart,
-    to: periodEnd,
+  const past30Days = await getUsageSeries(organization.id, {
+    from: thirtyDaysAgo,
+    to: endOfToday,
     window: "DAY",
   });
 
-  console.log(JSON.stringify(creditUsage, null, 2));
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const now = new Date();
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+  const usageData = await getUsage(organization.id, { from: startOfMonth, to: endOfMonth });
+
+  const current = (usageData?.cents ?? 0) / 100;
+  const percentageThroughMonth = new Date().getDate() / endOfMonth.getDate();
+  const usage = {
+    current: current,
+    projected: current / percentageThroughMonth,
+  };
 
   return typedjson({
-    periodStart,
-    periodEnd,
-    creditUsage: creditUsage
+    past30Days: past30Days
       ? createTimeSeriesData({
-          startDate: periodStart,
-          endDate: periodEnd,
+          startDate: thirtyDaysAgo,
+          endDate: endOfToday,
           window: "DAY",
           data:
-            creditUsage.data.map((period) => ({
+            past30Days.data.map((period) => ({
               date: new Date(period.windowStart),
               value: period.value,
             })) ?? [],
@@ -73,6 +78,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
           dollars: (period.value ?? 0) / 100,
         }))
       : [],
+    usage,
   });
 }
 
@@ -84,7 +90,7 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 const tooltipStyle = {
   display: "flex",
   alignItems: "center",
-  gap: "0.5rem",
+  gap: "0rem",
   borderRadius: "0.25rem",
   border: "1px solid #1A2434",
   backgroundColor: "#0B1018",
@@ -94,7 +100,8 @@ const tooltipStyle = {
 };
 
 export default function ChoosePlanPage() {
-  const { periodStart, periodEnd, creditUsage } = useTypedLoaderData<typeof loader>();
+  const { usage, past30Days } = useTypedLoaderData<typeof loader>();
+  const currentPlan = useCurrentPlan();
 
   return (
     <PageContainer>
@@ -102,15 +109,37 @@ export default function ChoosePlanPage() {
         <PageTitle title="Usage" />
       </NavBar>
       <PageBody scrollable={true}>
-        <div className="rounded-sm border border-grid-dimmed p-3">
-          <Header3>Usage (past 30 days)</Header3>
+        <Header2 spacing>This month</Header2>
+        <div className="flex w-full flex-col gap-2 rounded-sm border border-grid-dimmed p-4">
+          <div className="flex w-full items-center gap-6">
+            <div className="flex flex-col gap-2">
+              <Header3 className="">Month-to-date</Header3>
+              <p className="text-3xl font-medium text-text-bright">
+                {formatCurrency(usage.current, false)}
+              </p>
+            </div>
+            <ArrowRightIcon className="h-6 w-6 text-text-dimmed/50" />
+            <div className="flex flex-col gap-2 text-text-dimmed">
+              <Header3 className="text-text-dimmed">Projected</Header3>
+              <p className="text-3xl font-medium">{formatCurrency(usage.projected, false)}</p>
+            </div>
+          </div>
+          <UsageBar
+            current={usage.current}
+            projectedUsage={usage.projected}
+            tierLimit={(currentPlan?.v3Subscription?.plan?.limits.includedUsage ?? 0) / 100}
+          />
+        </div>
+        <Header2 spacing>Past 30 days</Header2>
+        <div className="rounded-sm border border-grid-dimmed p-4">
+          <Header3>Usage</Header3>
           <ResponsiveContainer width="100%" height="100%" className="min-h-96">
             <BarChart
-              data={creditUsage}
+              data={past30Days}
               margin={{
                 top: 20,
                 right: 0,
-                left: 0,
+                left: -10,
                 bottom: 10,
               }}
             >
@@ -148,6 +177,7 @@ export default function ChoosePlanPage() {
 
                   return dateFormatter.format(new Date(dateString));
                 }}
+                formatter={(value, data) => [`$${value.toLocaleString()}`, ""]}
               />
               <Bar dataKey="dollars" fill="#28BF5C" activeBar={<Rectangle fill="#5ADE87" />} />
             </BarChart>
