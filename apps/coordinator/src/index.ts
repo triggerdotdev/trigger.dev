@@ -1137,6 +1137,9 @@ class TaskCoordinator {
         socket.on("TASK_RUN_FAILED_TO_RUN", async ({ completion }) => {
           logger.log("task failed to run", { completionId: completion.id });
 
+          // Cancel all in-progress checkpoints (if any)
+          this.#cancelCheckpoint(socket.data.runId);
+
           this.#platformSocket?.send("TASK_RUN_FAILED_TO_RUN", {
             version: "v1",
             completion,
