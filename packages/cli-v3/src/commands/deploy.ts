@@ -16,7 +16,6 @@ import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, posix, relative, resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
-import terminalLink from "terminal-link";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
@@ -50,7 +49,7 @@ import {
   mockServerOnlyPlugin,
   workerSetupImportConfigPlugin,
 } from "../utilities/build";
-import { chalkError, chalkPurple, chalkWarning } from "../utilities/cliOutput";
+import { chalkError, chalkPurple, chalkWarning, cliLink } from "../utilities/cliOutput";
 import {
   logESMRequireError,
   logTaskMetadataParseError,
@@ -437,7 +436,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new SkipLoggingError(`Deployment failed to complete: ${finishedDeployment}`);
   }
 
-  const deploymentLink = terminalLink(
+  const deploymentLink = cliLink(
     "View deployment",
     `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.config.project}/deployments/${finishedDeployment.shortCode}`
   );
@@ -576,7 +575,7 @@ function checkLogsForWarnings(logs: string): WarningsCheckReturn {
   const warnings: LogParserOptions = [
     {
       regex: /prisma:warn We could not find your Prisma schema/,
-      message: `Prisma generate failed to find the default schema. Did you include it in config.additionalFiles? ${terminalLink(
+      message: `Prisma generate failed to find the default schema. Did you include it in config.additionalFiles? ${cliLink(
         "Config docs",
         docs.config.prisma
       )}\nCustom schema paths require a postinstall script like this: \`prisma generate --schema=./custom/path/to/schema.prisma\``,
@@ -626,17 +625,17 @@ function checkLogsForErrors(logs: string) {
   const errors: LogParserOptions = [
     {
       regex: /Error: Provided --schema at (?<schema>.*) doesn't exist/,
-      message: `Prisma generate failed to find the specified schema at "$schema".\nDid you include it in config.additionalFiles? ${terminalLink(
+      message: `Prisma generate failed to find the specified schema at "$schema".\nDid you include it in config.additionalFiles? ${cliLink(
         "Config docs",
         docs.config.prisma
       )}`,
     },
     {
       regex: /sh: 1: (?<packageOrBinary>.*): not found/,
-      message: `$packageOrBinary not found\n\nIf it's a package: Include it in ${terminalLink(
+      message: `$packageOrBinary not found\n\nIf it's a package: Include it in ${cliLink(
         "config.additionalPackages",
         docs.config.prisma
-      )}\nIf it's a binary:  Please ${terminalLink(
+      )}\nIf it's a binary:  Please ${cliLink(
         "get in touch",
         getInTouch
       )} and we'll see what we can do!`,
@@ -1341,7 +1340,7 @@ async function compileProject(
         log.warn(
           `No additionalFiles matches for:\n\n${copyResult.noMatches
             .map((glob) => `- "${glob}"`)
-            .join("\n")}\n\nIf this is unexpected you should check your ${terminalLink(
+            .join("\n")}\n\nIf this is unexpected you should check your ${cliLink(
             "glob patterns",
             "https://github.com/isaacs/node-glob?tab=readme-ov-file#glob-primer"
           )} are valid.`

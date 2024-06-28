@@ -84,7 +84,9 @@ export function createPkApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
   return `pk_${envSlug(envType)}_${apiKeyId(20)}`;
 }
 
-export function envSlug(environmentType: RuntimeEnvironment["type"]) {
+export type EnvSlug = "dev" | "stg" | "prod" | "prev";
+
+export function envSlug(environmentType: RuntimeEnvironment["type"]): EnvSlug {
   switch (environmentType) {
     case "DEVELOPMENT": {
       return "dev";
@@ -99,4 +101,8 @@ export function envSlug(environmentType: RuntimeEnvironment["type"]) {
       return "prev";
     }
   }
+}
+
+export function isEnvSlug(maybeSlug: string): maybeSlug is EnvSlug {
+  return ["dev", "stg", "prod", "prev"].includes(maybeSlug);
 }

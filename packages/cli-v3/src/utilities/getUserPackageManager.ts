@@ -8,6 +8,7 @@ export const LOCKFILES = {
   npmShrinkwrap: "npm-shrinkwrap.json",
   pnpm: "pnpm-lock.yaml",
   yarn: "yarn.lock",
+  bun: "bun.lockb",
 };
 
 export async function getUserPackageManager(path: string): Promise<PackageManager> {
@@ -53,11 +54,16 @@ export async function detectPackageManagerFromArtifacts(path: string): Promise<P
 
   switch (basename(foundPath)) {
     case LOCKFILES.yarn:
+      logger.debug("Found yarn artifact", { foundPath });
       return "yarn";
     case LOCKFILES.pnpm:
+      logger.debug("Found pnpm artifact", { foundPath });
       return "pnpm";
     case LOCKFILES.npm:
     case LOCKFILES.npmShrinkwrap:
+      logger.debug("Found npm artifact", { foundPath });
+    case LOCKFILES.bun:
+      logger.debug("Found bun artifact", { foundPath });
       return "npm";
     default:
       throw new Error(`Unhandled package manager detection path: ${foundPath}`);

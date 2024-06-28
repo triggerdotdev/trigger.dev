@@ -1,6 +1,6 @@
 // See: https://www.totaltypescript.com/tsconfig-cheat-sheet
 {
-  "include": ["./src/**/*.ts", "./src/**/*.tsx", "./e2e/**/*.ts"],
+  "include": ["./src/**/*.ts", "./src/**/*.tsx", "./e2e/**/*.ts", "./types.d.ts"],
   "compilerOptions": {
     "esModuleInterop": true,
     "skipLibCheck": true,

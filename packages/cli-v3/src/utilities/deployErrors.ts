@@ -1,11 +1,10 @@
 import chalk from "chalk";
 import { relative } from "node:path";
-import { chalkError, chalkPurple, chalkGrey, chalkGreen, chalkWarning } from "./cliOutput";
+import { chalkError, chalkPurple, chalkGrey, chalkGreen, chalkWarning, cliLink } from "./cliOutput";
 import { logger } from "./logger";
 import { ReadConfigResult } from "./configFiles";
 import { z } from "zod";
 import { groupTaskMetadataIssuesByTask } from "@trigger.dev/core/v3";
-import terminalLink from "terminal-link";
 import { docs } from "./links";
 
 export type ESMRequireError = {
@@ -114,7 +113,7 @@ export function logESMRequireError(parsedError: ESMRequireError, resolvedConfig:
   }
 
   logger.log(
-    `${chalkGrey("○")} For more info see the ${terminalLink("relevant docs", docs.config.esm)}.\n`
+    `${chalkGrey("○")} For more info see the ${cliLink("relevant docs", docs.config.esm)}.\n`
   );
 }
 
