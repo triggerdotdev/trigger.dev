@@ -1317,9 +1317,7 @@ async function compileProject(
       logger.debug("gatherRequiredDependencies()", { dependencies });
 
       const packageJsonContents = {
-        name: "trigger-worker",
-        version: "0.0.0",
-        description: "",
+        ...javascriptProject.allowedPackageJson,
         dependencies,
         scripts: {
           ...javascriptProject.scripts,

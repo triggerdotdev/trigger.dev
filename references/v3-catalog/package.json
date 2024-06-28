@@ -2,6 +2,9 @@
   "name": "@references/v3-catalog",
   "version": "0.1.0",
   "private": true,
+  "zenstack": {
+    "schema": "./prisma/schema.zmodel"
+  },
   "scripts": {
     "dev:trigger": "triggerdev dev",
     "management": "ts-node -r tsconfig-paths/register ./src/management.ts",
