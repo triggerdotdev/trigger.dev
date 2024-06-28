@@ -431,7 +431,9 @@ const CommonRunFields = {
 export const RetrieveRunResponse = z.object({
   ...CommonRunFields,
   payload: z.any().optional(),
+  payloadPresignedUrl: z.string().optional(),
   output: z.any().optional(),
+  outputPresignedUrl: z.string().optional(),
   schedule: RunScheduleDetails.optional(),
   attempts: z.array(
     z

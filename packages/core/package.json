@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "3.0.0-beta.42",
+  "version": "3.0.0-beta.44",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -84,6 +84,14 @@
       },
       "require": "./dist/v3/utils/structuredLogger.js",
       "types": "./dist/v3/utils/structuredLogger.d.ts"
+    },
+    "./v3/utils/durations": {
+      "import": {
+        "types": "./dist/v3/utils/durations.d.mts",
+        "default": "./dist/v3/utils/durations.mjs"
+      },
+      "require": "./dist/v3/utils/durations.js",
+      "types": "./dist/v3/utils/durations.d.ts"
     },
     "./v3/dev": {
       "import": {

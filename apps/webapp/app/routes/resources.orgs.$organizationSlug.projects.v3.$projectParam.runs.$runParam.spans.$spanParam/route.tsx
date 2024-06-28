@@ -33,7 +33,13 @@ import { redirectWithErrorMessage } from "~/models/message.server";
 import { Span, SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3RunPath, v3RunSpanPath, v3SpanParamsSchema, v3TraceSpanPath } from "~/utils/pathBuilder";
+import {
+  v3RunDownloadLogsPath,
+  v3RunPath,
+  v3RunSpanPath,
+  v3SpanParamsSchema,
+  v3TraceSpanPath,
+} from "~/utils/pathBuilder";
 import { SpanLink } from "~/v3/eventRepository.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -256,6 +262,15 @@ function RunActionButtons({ span }: { span: Span }) {
   if (span.isPartial) {
     return (
       <Dialog>
+        <LinkButton
+          to={v3RunDownloadLogsPath({ friendlyId: runParam })}
+          LeadingIcon={CloudArrowDownIcon}
+          variant="tertiary/medium"
+          target="_blank"
+          download
+        >
+          Download logs
+        </LinkButton>
         <DialogTrigger asChild>
           <Button variant="danger/medium" LeadingIcon={StopCircleIcon}>
             Cancel run
@@ -276,6 +291,15 @@ function RunActionButtons({ span }: { span: Span }) {
 
   return (
     <Dialog>
+      <LinkButton
+        to={v3RunDownloadLogsPath({ friendlyId: runParam })}
+        LeadingIcon={CloudArrowDownIcon}
+        variant="tertiary/medium"
+        target="_blank"
+        download
+      >
+        Download logs
+      </LinkButton>
       <DialogTrigger asChild>
         <Button variant="tertiary/medium" LeadingIcon={ArrowPathIcon}>
           Replay run

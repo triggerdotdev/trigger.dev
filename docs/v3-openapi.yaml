@@ -1722,10 +1722,18 @@ components:
           type: object
           description: The payload that was sent to the task. Will be omitted if the request was made with a Public API key
           example: { "foo": "bar" }
+        payloadPresignedUrl:
+          type: string
+          description: The presigned URL to download the payload. Will only be included if the payload is too large to be included in the response. Expires in 5 minutes.
+          example: "https://r2.cloudflarestorage.com/packets/yubjwjsfkxnylobaqvqz/dev/run_p4omhh45hgxxnq1re6ovy/payload.json?X-Amz-Expires=300&X-Amz-Date=20240625T154526Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=10b064e58a0680db5b5e077be2be3b2a%2F20240625%2Fauto%2Fs3%2Faws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=88604cb993ffc151b4d73f2439da431d9928488e4b3dcfa4a7c8f1819"
         output:
           type: object
           description: The output of the run. Will be omitted if the request was made with a Public API key
           example: { "foo": "bar" }
+        outputPresignedUrl:
+          type: string
+          description: The presigned URL to download the output. Will only be included if the output is too large to be included in the response. Expires in 5 minutes.
+          example: "https://r2.cloudflarestorage.com/packets/yubjwjsfkxnylobaqvqz/dev/run_p4omhh45hgxxnq1re6ovy/payload.json?X-Amz-Expires=300&X-Amz-Date=20240625T154526Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=10b064e58a0680db5b5e077be2be3b2a%2F20240625%2Fauto%2Fs3%2Faws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=88604cb993ffc151b4d73f2439da431d9928488e4b3dcfa4a7c8f1819"
         idempotencyKey:
           type: string
           description: The idempotency key used to prevent creating duplicate runs, if provided

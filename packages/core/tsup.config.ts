@@ -12,6 +12,7 @@ export default defineConfig({
     "./src/v3/zodSocket.ts",
     "./src/v3/zodIpc.ts",
     "./src/v3/utils/structuredLogger.ts",
+    "./src/v3/utils/durations.ts",
     "./src/v3/dev/index.ts",
     "./src/v3/prod/index.ts",
     "./src/v3/workers/index.ts",
