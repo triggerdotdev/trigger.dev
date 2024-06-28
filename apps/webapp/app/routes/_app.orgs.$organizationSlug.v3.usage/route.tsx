@@ -11,13 +11,23 @@ import { featuresForRequest } from "~/features.server";
 import { getUsage, getUsageSeries } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { createTimeSeriesData } from "~/utils/graphs";
-import { formatCurrency } from "~/utils/numberFormatter";
+import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { UsagePresenter } from "~/presenters/v3/UsagePresenter.server";
 import { Suspense } from "react";
 import { Await } from "@remix-run/react";
 import { Spinner } from "~/components/primitives/Spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
+import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { Paragraph } from "~/components/primitives/Paragraph";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   await requireUserId(request);
@@ -37,11 +47,12 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   const presenter = new UsagePresenter();
-  const { past30Days, usage } = await presenter.call({ organizationId: organization.id });
+  const { past30Days, usage, tasks } = await presenter.call({ organizationId: organization.id });
 
   return typeddefer({
     past30Days,
     usage,
+    tasks,
   });
 }
 
@@ -63,7 +74,7 @@ const tooltipStyle = {
 };
 
 export default function ChoosePlanPage() {
-  const { usage, past30Days } = useTypedLoaderData<typeof loader>();
+  const { usage, past30Days, tasks } = useTypedLoaderData<typeof loader>();
   const currentPlan = useCurrentPlan();
 
   return (
@@ -174,6 +185,63 @@ export default function ChoosePlanPage() {
                       </BarChart>
                     </ResponsiveContainer>
                   )}
+                </Await>
+              </Suspense>
+            </div>
+            <div className="p-4">
+              <Header3 spacing>Tasks</Header3>
+              <Suspense fallback={<Spinner />}>
+                <Await resolve={tasks}>
+                  {(tasks) => {
+                    return (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHeaderCell>Task</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Runs</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Average duration</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Average cost</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Total duration</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Total cost</TableHeaderCell>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {tasks.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={6}>
+                                <Paragraph variant="small">No runs to display yet.</Paragraph>
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            tasks.map((task) => (
+                              <TableRow key={task.taskIdentifier}>
+                                <TableCell>{task.taskIdentifier}</TableCell>
+                                <TableCell alignment="right">
+                                  {formatNumber(task.runCount)}
+                                </TableCell>
+                                <TableCell alignment="right">
+                                  {formatDurationMilliseconds(task.averageDuration, {
+                                    style: "short",
+                                  })}
+                                </TableCell>
+                                <TableCell alignment="right">
+                                  {formatCurrency(task.averageCost, false)}
+                                </TableCell>
+                                <TableCell alignment="right">
+                                  {formatDurationMilliseconds(task.totalDuration, {
+                                    style: "short",
+                                  })}
+                                </TableCell>
+                                <TableCell alignment="right">
+                                  {formatCurrency(task.totalCost, false)}
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    );
+                  }}
                 </Await>
               </Suspense>
             </div>

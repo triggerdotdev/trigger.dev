@@ -19,12 +19,6 @@ export function createTimeSeriesData<R>({ startDate, endDate, window = "DAY", da
     const foundData = data.find((d) => {
       const time = d.date.getTime();
       const inRange = time >= periodStart.getTime() && time < periodEnd.getTime();
-      console.log({
-        time,
-        periodStart: periodStart.getTime(),
-        periodEnd: periodEnd.getTime(),
-        inRange,
-      });
       return inRange;
     });
     if (!foundData) {
