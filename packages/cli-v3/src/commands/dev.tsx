@@ -760,15 +760,23 @@ function useDev({
     });
 
     return () => {
-      logger.debug(`Shutting down dev session for ${config.project}`);
+      const cleanup = async () => {
+        logger.debug(`Shutting down dev session for ${config.project}`);
 
-      taskFileWatcher.close();
+        const start = Date.now();
 
-      websocket?.close();
-      backgroundWorkerCoordinator.close();
-      ctx?.dispose().catch((error) => {
-        console.error(error);
-      });
+        await taskFileWatcher.close();
+
+        websocket?.close();
+        backgroundWorkerCoordinator.close();
+        ctx?.dispose().catch((error) => {
+          console.error(error);
+        });
+
+        logger.debug(`Shutdown completed in ${Date.now() - start}ms`);
+      };
+
+      cleanup();
     };
   }, [config, apiUrl, apiKey, environmentClient]);
 }
