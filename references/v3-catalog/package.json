@@ -7,7 +7,8 @@
     "management": "ts-node -r tsconfig-paths/register ./src/management.ts",
     "queues": "ts-node -r tsconfig-paths/register ./src/queues.ts",
     "build:client": "tsup-node ./src/clientUsage.ts --format esm,cjs",
-    "client": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/clientUsage.ts"
+    "client": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/clientUsage.ts",
+    "triggerWithLargePayload": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/triggerWithLargePayload.ts"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
@@ -17,6 +18,7 @@
     "@react-email/components": "^0.0.17",
     "@react-email/render": "^0.0.7",
     "@sindresorhus/slugify": "^2.2.1",
+    "@t3-oss/env-nextjs": "^0.10.1",
     "@traceloop/instrumentation-openai": "^0.3.9",
     "@trigger.dev/core": "workspace:^3.0.0-beta.0",
     "@trigger.dev/sdk": "workspace:^3.0.0-beta.0",
@@ -31,7 +33,8 @@
     "server-only": "^0.0.1",
     "stripe": "^12.14.0",
     "typeorm": "^0.3.20",
-    "yt-dlp-wrap": "^2.3.12"
+    "yt-dlp-wrap": "^2.3.12",
+    "zod": "3.22.3"
   },
   "devDependencies": {
     "@opentelemetry/api": "^1.8.0",
@@ -52,11 +55,11 @@
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "20.4.2",
     "@types/react": "^18.3.1",
+    "esbuild": "^0.19.11",
     "trigger.dev": "workspace:*",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.3.0",
-    "esbuild": "^0.19.11",
-    "tsup": "^8.0.1"
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.0"
   }
 }

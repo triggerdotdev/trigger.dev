@@ -1,5 +1,9 @@
 # @trigger.dev/yalt
 
+## 3.0.0-beta.44
+
+## 3.0.0-beta.43
+
 ## 3.0.0-beta.42
 
 ## 3.0.0-beta.41

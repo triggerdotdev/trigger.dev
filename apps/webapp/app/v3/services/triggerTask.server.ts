@@ -4,14 +4,15 @@ import {
   TriggerTaskRequestBody,
   packetRequiresOffloading,
 } from "@trigger.dev/core/v3";
-import { prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { uploadToObjectStore } from "../r2.server";
+import { startActiveSpan } from "../tracer.server";
 import { BaseService } from "./baseService.server";
+import { env } from "~/env.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -257,26 +258,31 @@ export class TriggerTaskService extends BaseService {
     pathPrefix: string,
     environment: AuthenticatedEnvironment
   ) {
-    const packet = this.#createPayloadPacket(payload, payloadType);
+    return await startActiveSpan("handlePayloadPacket()", async (span) => {
+      const packet = this.#createPayloadPacket(payload, payloadType);
 
-    if (!packet.data) {
-      return packet;
-    }
+      if (!packet.data) {
+        return packet;
+      }
 
-    const { needsOffloading, size } = packetRequiresOffloading(packet);
+      const { needsOffloading, size } = packetRequiresOffloading(
+        packet,
+        env.TASK_PAYLOAD_OFFLOAD_THRESHOLD
+      );
 
-    if (!needsOffloading) {
-      return packet;
-    }
+      if (!needsOffloading) {
+        return packet;
+      }
 
-    const filename = `${pathPrefix}/payload.json`;
+      const filename = `${pathPrefix}/payload.json`;
 
-    await uploadToObjectStore(filename, packet.data, packet.dataType, environment);
+      await uploadToObjectStore(filename, packet.data, packet.dataType, environment);
 
-    return {
-      data: filename,
-      dataType: "application/store",
-    };
+      return {
+        data: filename,
+        dataType: "application/store",
+      };
+    });
   }
 
   #createPayloadPacket(payload: any, payloadType: string): IOPacket {

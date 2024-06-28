@@ -3,6 +3,12 @@ import { basename } from "path";
 import { logger } from "./logger";
 
 export type PackageManager = "npm" | "pnpm" | "yarn";
+export const LOCKFILES = {
+  npm: "package-lock.json",
+  npmShrinkwrap: "npm-shrinkwrap.json",
+  pnpm: "pnpm-lock.yaml",
+  yarn: "yarn.lock",
+};
 
 export async function getUserPackageManager(path: string): Promise<PackageManager> {
   const packageManager = await detectPackageManager(path);
@@ -36,15 +42,8 @@ function detectPackageManagerFromCurrentCommand(): PackageManager {
   }
 }
 
-async function detectPackageManagerFromArtifacts(path: string): Promise<PackageManager> {
-  const artifacts = {
-    yarn: "yarn.lock",
-    pnpm: "pnpm-lock.yaml",
-    npm: "package-lock.json",
-    npmShrinkwrap: "npm-shrinkwrap.json",
-  };
-
-  const foundPath = await findUp(Object.values(artifacts), { cwd: path });
+export async function detectPackageManagerFromArtifacts(path: string): Promise<PackageManager> {
+  const foundPath = await findUp(Object.values(LOCKFILES), { cwd: path });
 
   if (!foundPath) {
     throw new Error("Could not detect package manager from artifacts");
@@ -53,12 +52,12 @@ async function detectPackageManagerFromArtifacts(path: string): Promise<PackageM
   logger.debug("Found path from package manager artifacts", { foundPath });
 
   switch (basename(foundPath)) {
-    case artifacts.yarn:
+    case LOCKFILES.yarn:
       return "yarn";
-    case artifacts.pnpm:
+    case LOCKFILES.pnpm:
       return "pnpm";
-    case artifacts.npm:
-    case artifacts.npmShrinkwrap:
+    case LOCKFILES.npm:
+    case LOCKFILES.npmShrinkwrap:
       return "npm";
     default:
       throw new Error(`Unhandled package manager detection path: ${foundPath}`);
