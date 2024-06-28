@@ -72,6 +72,11 @@ class ProdWorker {
         attempt: number;
       }
     | undefined;
+  private readyForLazyAttemptReplay:
+    | {
+        idempotencyKey: string;
+      }
+    | undefined;
   private durationResumeFallback:
     | {
         idempotencyKey: string;
@@ -530,16 +535,81 @@ class ProdWorker {
     this.#backgroundWorker.waitCompletedNotification();
   }
 
-  #readyForLazyAttempt() {
-    this.#coordinatorSocket.socket.emit("READY_FOR_LAZY_ATTEMPT", {
-      version: "v1",
-      runId: this.runId,
-      totalCompletions: this.completed.size,
-    });
+  async #readyForLazyAttempt() {
+    const idempotencyKey = randomUUID();
+
+    this.readyForLazyAttemptReplay = {
+      idempotencyKey,
+    };
+
+    // Retry if we don't receive EXECUTE_TASK_RUN_LAZY_ATTEMPT in a reasonable time
+    // ..but we also have to be fast to avoid failing the task due to missing heartbeat
+    for await (const { delay, retry } of defaultBackoff.min(10).maxRetries(3)) {
+      if (retry > 0) {
+        logger.log("retrying ready for lazy attempt", { retry });
+      }
+
+      this.#coordinatorSocket.socket.emit("READY_FOR_LAZY_ATTEMPT", {
+        version: "v1",
+        runId: this.runId,
+        totalCompletions: this.completed.size,
+      });
+
+      await timeout(delay.milliseconds);
+
+      if (!this.readyForLazyAttemptReplay) {
+        logger.error("replay ready for lazy attempt cancelled, skipping retry", {
+          idempotencyKey,
+        });
+
+        return;
+      }
+
+      if (idempotencyKey !== this.readyForLazyAttemptReplay.idempotencyKey) {
+        logger.error("replay ready for lazy attempt idempotency key mismatch, skipping retry", {
+          idempotencyKey,
+          newIdempotencyKey: this.readyForLazyAttemptReplay.idempotencyKey,
+        });
+
+        return;
+      }
+    }
+
+    // Fail the task with a more descriptive message as it likely failed with a generic missing heartbeat error
+    this.#failRun(this.runId, "Failed to receive execute request in a reasonable time");
   }
 
   #readyForCheckpoint() {
     this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
+  }
+
+  #failRun(runId: string, error: unknown) {
+    logger.error("Failing run", { runId, error });
+
+    const completion: TaskRunFailedExecutionResult = {
+      ok: false,
+      id: runId,
+      retry: undefined,
+      error:
+        error instanceof Error
+          ? {
+              type: "BUILT_IN_ERROR",
+              name: error.name,
+              message: error.message,
+              stackTrace: error.stack ?? "",
+            }
+          : {
+              type: "BUILT_IN_ERROR",
+              name: "UnknownError",
+              message: String(error),
+              stackTrace: "",
+            },
+    };
+
+    this.#coordinatorSocket.socket.emit("TASK_RUN_FAILED_TO_RUN", {
+      version: "v1",
+      completion,
+    });
   }
 
   #returnValidatedExtraHeaders(headers: Record<string, string>) {
@@ -694,6 +764,7 @@ class ProdWorker {
           }
 
           this.executing = true;
+          this.readyForLazyAttemptReplay = undefined;
 
           try {
             const { completion, execution } =
@@ -719,30 +790,7 @@ class ProdWorker {
                 error: taskRunCompleted.error,
               });
 
-              const completion: TaskRunFailedExecutionResult = {
-                ok: false,
-                id: message.lazyPayload.runId,
-                retry: undefined,
-                error:
-                  taskRunCompleted.error instanceof Error
-                    ? {
-                        type: "BUILT_IN_ERROR",
-                        name: taskRunCompleted.error.name,
-                        message: taskRunCompleted.error.message,
-                        stackTrace: taskRunCompleted.error.stack ?? "",
-                      }
-                    : {
-                        type: "BUILT_IN_ERROR",
-                        name: "UnknownError",
-                        message: String(taskRunCompleted.error),
-                        stackTrace: "",
-                      },
-              };
-
-              this.#coordinatorSocket.socket.emit("TASK_RUN_FAILED_TO_RUN", {
-                version: "v1",
-                completion,
-              });
+              this.#failRun(message.lazyPayload.runId, taskRunCompleted.error);
 
               return;
             }
@@ -761,30 +809,7 @@ class ProdWorker {
               error,
             });
 
-            const completion: TaskRunFailedExecutionResult = {
-              ok: false,
-              id: message.lazyPayload.runId,
-              retry: undefined,
-              error:
-                error instanceof Error
-                  ? {
-                      type: "BUILT_IN_ERROR",
-                      name: error.name,
-                      message: error.message,
-                      stackTrace: error.stack ?? "",
-                    }
-                  : {
-                      type: "BUILT_IN_ERROR",
-                      name: "UnknownError",
-                      message: String(error),
-                      stackTrace: "",
-                    },
-            };
-
-            this.#coordinatorSocket.socket.emit("TASK_RUN_FAILED_TO_RUN", {
-              version: "v1",
-              completion,
-            });
+            this.#failRun(message.lazyPayload.runId, error);
           }
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
@@ -812,7 +837,9 @@ class ProdWorker {
             return;
           }
 
-          this.#readyForLazyAttempt();
+          // TODO: if we never receive this message, we need to replay the EXECUTE_TASK_RUN_LAZY_ATTEMPT handler
+
+          await this.#readyForLazyAttempt();
         },
       },
       onConnection: async (socket, handler, sender, logger) => {
@@ -964,7 +991,7 @@ class ProdWorker {
             return;
           }
 
-          this.#readyForLazyAttempt();
+          await this.#readyForLazyAttempt();
         } catch (error) {
           logger.error("connection handler error", { error });
         } finally {
