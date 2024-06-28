@@ -704,14 +704,21 @@ class TaskRunProcess {
       realChildPid: this._child?.pid,
     });
 
-    await this._ipc?.sendWithAck(
-      "CLEANUP",
-      {
-        flush: true,
-        kill: killParentProcess,
-      },
-      30_000
-    );
+    try {
+      await this._ipc?.sendWithAck(
+        "CLEANUP",
+        {
+          flush: true,
+          kill: killParentProcess,
+        },
+        30_000
+      );
+    } catch (error) {
+      console.error("Error while cleaning up task run process", error);
+      if (killParentProcess) {
+        process.exit(0);
+      }
+    }
 
     if (killChildProcess) {
       this._gracefulExitTimeoutElapsed = true;
