@@ -1,4 +1,4 @@
-import { BillingClient, SetPlanBody } from "@trigger.dev/billing/v3";
+import { BillingClient, SetPlanBody, UsageSeriesParams } from "@trigger.dev/billing/v3";
 import { Organization, Project } from "@trigger.dev/database";
 import { redirect } from "remix-typedjson";
 import { $replica } from "~/db.server";
@@ -155,12 +155,28 @@ export async function getUsage(organizationId: string, { from, to }: { from: Dat
   try {
     const result = await client.usage(organizationId, { from, to });
     if (!result.success) {
-      logger.error("Error getting plans", { error: result.error });
+      logger.error("Error getting usage", { error: result.error });
       return undefined;
     }
     return result;
   } catch (e) {
-    logger.error("Error getting plans", { error: e });
+    logger.error("Error getting usage", { error: e });
+    return undefined;
+  }
+}
+
+export async function getUsageSeries(organizationId: string, params: UsageSeriesParams) {
+  const client = getClient();
+  if (!client) return undefined;
+  try {
+    const result = await client.usageSeries(organizationId, params);
+    if (!result.success) {
+      logger.error("Error getting usage series", { error: result.error });
+      return undefined;
+    }
+    return result;
+  } catch (e) {
+    logger.error("Error getting usage series", { error: e });
     return undefined;
   }
 }
