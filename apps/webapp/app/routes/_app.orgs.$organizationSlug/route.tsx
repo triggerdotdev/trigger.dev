@@ -27,16 +27,9 @@ export function useCurrentPlan(matches?: UIMatch[]) {
     matches,
   });
 
-  const result = data?.currentPlan
-    ? {
-        ...data.currentPlan,
-        v3Usage: data.usage,
-      }
-    : undefined;
+  console.log(data?.currentPlan);
 
-  console.log("useCurrentPlan", result);
-
-  return result;
+  return data?.currentPlan;
 }
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -66,18 +59,24 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const usage = await getUsage(organization.id, { from: firstDayOfMonth, to: tomorrow });
 
+  let hasExceededFreeTier = false;
+  let usagePercentage = 0;
+  if (plan?.v3Subscription && !plan.v3Subscription.isPaying && plan.v3Subscription.plan && usage) {
+    hasExceededFreeTier = usage.cents > plan.v3Subscription.plan.limits.includedUsage;
+    usagePercentage = usage.cents / plan.v3Subscription.plan.limits.includedUsage;
+  }
+
   return typedjson({
     organizations,
     organization,
     project,
     isImpersonating: !!impersonationId,
-    currentPlan: plan,
-    usage,
+    currentPlan: { ...plan, v3Usage: { ...usage, hasExceededFreeTier, usagePercentage } },
   });
 };
 
 export default function Organization() {
-  const { organization, project, organizations, isImpersonating, usage } =
+  const { organization, project, organizations, isImpersonating } =
     useTypedLoaderData<typeof loader>();
   const user = useUser();
 

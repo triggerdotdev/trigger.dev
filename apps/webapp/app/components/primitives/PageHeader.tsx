@@ -1,7 +1,6 @@
 import { ArrowUpRightIcon } from "@heroicons/react/20/solid";
 import { Link, useNavigation } from "@remix-run/react";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
-import { useOptionalProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { plansPath } from "~/utils/pathBuilder";
 import { UpgradePrompt, useShowUpgradePrompt } from "../billing/v2/UpgradePrompt";
@@ -23,7 +22,6 @@ export function NavBar({ children }: WithChildren) {
   const showUpgradePrompt = useShowUpgradePrompt(organization);
   const navigation = useNavigation();
   const isLoading = navigation.state === "loading" || navigation.state === "submitting";
-  const project = useOptionalProject();
 
   return (
     <div>
@@ -31,13 +29,7 @@ export function NavBar({ children }: WithChildren) {
         <div className="flex w-full items-center justify-between pl-3 pr-1">{children}</div>
         <LoadingBarDivider isLoading={isLoading} />
       </div>
-      {showUpgradePrompt.shouldShow && organization && (
-        <UpgradePrompt
-          runsEnabled={showUpgradePrompt.runsEnabled}
-          runCountCap={showUpgradePrompt.runCountCap}
-          planPath={plansPath(organization)}
-        />
-      )}
+      {showUpgradePrompt.shouldShow && organization && <UpgradePrompt />}
     </div>
   );
 }

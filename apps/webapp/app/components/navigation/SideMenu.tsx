@@ -104,7 +104,6 @@ type SideMenuProps = {
 export function SideMenu({ user, project, organization, organizations }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
-  const { isManagedCloud } = useFeatures();
   const currentPlan = useCurrentPlan();
 
   useEffect(() => {
@@ -308,17 +307,12 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               </Button>
             }
           />
-          {currentPlan &&
-            !currentPlan.v3Subscription?.isPaying &&
-            currentPlan.v3Subscription.plan &&
-            currentPlan.v3Usage && (
-              <FreePlanUsage
-                to={v3BillingPath(organization)}
-                percentage={
-                  currentPlan.v3Usage.cents / currentPlan.v3Subscription.plan.limits.includedUsage
-                }
-              />
-            )}
+          {currentPlan?.v3Subscription?.isPaying === false && (
+            <FreePlanUsage
+              to={v3BillingPath(organization)}
+              percentage={currentPlan.v3Usage.usagePercentage}
+            />
+          )}
         </div>
       </div>
     </div>
