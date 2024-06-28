@@ -986,6 +986,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"config-infisical-sdk@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "config-infisical-sdk@workspace:."
+  dependencies:
+    "@infisical/sdk": "npm:^2.2.3"
+    "@trigger.dev/sdk": "npm:3.0.0-beta.33"
+  languageName: unknown
+  linkType: soft
+
 "cookie@npm:^0.5.0":
   version: 0.5.0
   resolution: "cookie@npm:0.5.0"
@@ -1383,15 +1392,6 @@ __metadata:
   checksum: 10c0/97d3441e97ace8be4b1976433d1c32658f6afaff09f143e52c593bae7eef33de19e3e369c88bd985ce1042c6f441c80c6803078d1de2a9988080b66684cbb30c
   languageName: node
   linkType: hard
-
-"server-only@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "server-only@workspace:."
-  dependencies:
-    "@infisical/sdk": "npm:^2.2.3"
-    "@trigger.dev/sdk": "npm:3.0.0-beta.33"
-  languageName: unknown
-  linkType: soft
 
 "shimmer@npm:^1.2.1":
   version: 1.2.1
