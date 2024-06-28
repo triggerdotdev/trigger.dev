@@ -3,8 +3,10 @@ import {
   CoordinatorToProdWorkerMessages,
   PostStartCauses,
   PreStopCauses,
+  ProdTaskRunExecution,
   ProdWorkerToCoordinatorMessages,
   TaskResource,
+  TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   WaitReason,
 } from "@trigger.dev/core/v3";
@@ -75,6 +77,16 @@ class ProdWorker {
   private readyForLazyAttemptReplay:
     | {
         idempotencyKey: string;
+      }
+    | undefined;
+  private submitAttemptCompletionReplay:
+    | {
+        idempotencyKey: string;
+        message: {
+          execution: ProdTaskRunExecution;
+          completion: TaskRunExecutionResult;
+        };
+        attempt: number;
       }
     | undefined;
   private durationResumeFallback:
@@ -173,7 +185,7 @@ class ProdWorker {
     }
   }
 
-  async #waitForTaskHandler(message: OnWaitForTaskMessage) {
+  async #waitForTaskHandler(message: OnWaitForTaskMessage, replayIdempotencyKey?: string) {
     const waitForTask = await defaultBackoff.execute(async () => {
       if (!this.attemptFriendlyId) {
         logger.error("Failed to send wait message, attempt friendly ID not set", { message });
@@ -208,15 +220,29 @@ class ProdWorker {
 
     if (willCheckpointAndRestore) {
       // We need to replay this on next connection if we don't receive RESUME_AFTER_DEPENDENCY within a reasonable time
-      this.waitForTaskReplay = {
-        message,
-        attempt: (this.waitForTaskReplay?.attempt ?? 0) + 1,
-        idempotencyKey: randomUUID(),
-      };
+      if (!this.waitForTaskReplay) {
+        this.waitForTaskReplay = {
+          message,
+          attempt: 1,
+          idempotencyKey: randomUUID(),
+        };
+      } else {
+        if (
+          replayIdempotencyKey &&
+          replayIdempotencyKey !== this.waitForTaskReplay.idempotencyKey
+        ) {
+          logger.error(
+            "wait for task handler called with mismatched idempotency key, won't overwrite replay request"
+          );
+          return;
+        }
+
+        this.waitForTaskReplay.attempt++;
+      }
     }
   }
 
-  async #waitForBatchHandler(message: OnWaitForBatchMessage) {
+  async #waitForBatchHandler(message: OnWaitForBatchMessage, replayIdempotencyKey?: string) {
     const waitForBatch = await defaultBackoff.execute(async () => {
       if (!this.attemptFriendlyId) {
         logger.error("Failed to send wait message, attempt friendly ID not set", { message });
@@ -252,11 +278,25 @@ class ProdWorker {
 
     if (willCheckpointAndRestore) {
       // We need to replay this on next connection if we don't receive RESUME_AFTER_DEPENDENCY within a reasonable time
-      this.waitForBatchReplay = {
-        message,
-        attempt: (this.waitForBatchReplay?.attempt ?? 0) + 1,
-        idempotencyKey: randomUUID(),
-      };
+      if (!this.waitForBatchReplay) {
+        this.waitForBatchReplay = {
+          message,
+          attempt: 1,
+          idempotencyKey: randomUUID(),
+        };
+      } else {
+        if (
+          replayIdempotencyKey &&
+          replayIdempotencyKey !== this.waitForBatchReplay.idempotencyKey
+        ) {
+          logger.error(
+            "wait for task handler called with mismatched idempotency key, won't overwrite replay request"
+          );
+          return;
+        }
+
+        this.waitForBatchReplay.attempt++;
+      }
     }
   }
 
@@ -558,7 +598,7 @@ class ProdWorker {
       await timeout(delay.milliseconds);
 
       if (!this.readyForLazyAttemptReplay) {
-        logger.error("replay ready for lazy attempt cancelled, skipping retry", {
+        logger.error("replay ready for lazy attempt cancelled, discarding", {
           idempotencyKey,
         });
 
@@ -566,7 +606,7 @@ class ProdWorker {
       }
 
       if (idempotencyKey !== this.readyForLazyAttemptReplay.idempotencyKey) {
-        logger.error("replay ready for lazy attempt idempotency key mismatch, skipping retry", {
+        logger.error("replay ready for lazy attempt idempotency key mismatch, discarding", {
           idempotencyKey,
           newIdempotencyKey: this.readyForLazyAttemptReplay.idempotencyKey,
         });
@@ -583,12 +623,12 @@ class ProdWorker {
     this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
   }
 
-  #failRun(runId: string, error: unknown) {
-    logger.error("Failing run", { runId, error });
+  #failRun(friendlyRunId: string, error: unknown) {
+    logger.error("Failing run", { friendlyRunId, error });
 
     const completion: TaskRunFailedExecutionResult = {
       ok: false,
-      id: runId,
+      id: friendlyRunId,
       retry: undefined,
       error:
         error instanceof Error
@@ -610,6 +650,65 @@ class ProdWorker {
       version: "v1",
       completion,
     });
+  }
+
+  async #submitAttemptCompletion(
+    execution: ProdTaskRunExecution,
+    completion: TaskRunExecutionResult,
+    replayIdempotencyKey?: string
+  ) {
+    const taskRunCompleted = await defaultBackoff.execute(async () => {
+      return await this.#coordinatorSocket.socket
+        .timeout(20_000)
+        .emitWithAck("TASK_RUN_COMPLETED", {
+          version: "v1",
+          execution,
+          completion,
+        });
+    });
+
+    if (!taskRunCompleted.success) {
+      logger.error("Failed to complete lazy attempt with backoff", {
+        cause: taskRunCompleted.cause,
+        error: taskRunCompleted.error,
+      });
+
+      this.#failRun(execution.run.id, taskRunCompleted.error);
+
+      return;
+    }
+
+    const { willCheckpointAndRestore, shouldExit } = taskRunCompleted.result;
+
+    logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
+
+    await this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
+
+    if (willCheckpointAndRestore) {
+      // We need to replay this on next connection if we don't receive READY_FOR_RETRY within a reasonable time
+      if (!this.submitAttemptCompletionReplay) {
+        this.submitAttemptCompletionReplay = {
+          message: {
+            execution,
+            completion,
+          },
+          attempt: 1,
+          idempotencyKey: randomUUID(),
+        };
+      } else {
+        if (
+          replayIdempotencyKey &&
+          replayIdempotencyKey !== this.submitAttemptCompletionReplay.idempotencyKey
+        ) {
+          logger.error(
+            "attempt completion handler called with mismatched idempotency key, won't overwrite replay request"
+          );
+          return;
+        }
+
+        this.submitAttemptCompletionReplay.attempt++;
+      }
+    }
   }
 
   #returnValidatedExtraHeaders(headers: Record<string, string>) {
@@ -774,36 +873,7 @@ class ProdWorker {
 
             this.completed.add(execution.attempt.id);
 
-            const taskRunCompleted = await defaultBackoff.execute(async () => {
-              return await this.#coordinatorSocket.socket
-                .timeout(20_000)
-                .emitWithAck("TASK_RUN_COMPLETED", {
-                  version: "v1",
-                  execution,
-                  completion,
-                });
-            });
-
-            if (!taskRunCompleted.success) {
-              logger.error("Failed to complete lazy attempt with backoff", {
-                cause: taskRunCompleted.cause,
-                error: taskRunCompleted.error,
-              });
-
-              this.#failRun(message.lazyPayload.runId, taskRunCompleted.error);
-
-              return;
-            }
-
-            const { willCheckpointAndRestore, shouldExit } = taskRunCompleted.result;
-
-            logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
-
-            await this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
-
-            if (willCheckpointAndRestore) {
-              // TODO: Listen for READY_FOR_RETRY, retry if we don't receive it
-            }
+            await this.#submitAttemptCompletion(execution, completion);
           } catch (error) {
             logger.error("Failed to complete lazy attempt", {
               error,
@@ -837,7 +907,7 @@ class ProdWorker {
             return;
           }
 
-          // TODO: if we never receive this message, we need to replay the EXECUTE_TASK_RUN_LAZY_ATTEMPT handler
+          this.submitAttemptCompletionReplay = undefined;
 
           await this.#readyForLazyAttempt();
         },
@@ -1007,7 +1077,7 @@ class ProdWorker {
             await timeout(cancellationDelay);
 
             if (!this.waitForTaskReplay) {
-              logger.error("replay wait for task cancelled, skipping retry", {
+              logger.error("wait for task replay cancelled, discarding", {
                 originalMessage: { idempotencyKey, message, attempt },
               });
 
@@ -1015,7 +1085,7 @@ class ProdWorker {
             }
 
             if (idempotencyKey !== this.waitForTaskReplay.idempotencyKey) {
-              logger.error("replay wait for task idempotency key mismatch, skipping retry", {
+              logger.error("wait for task replay idempotency key mismatch, discarding", {
                 originalMessage: { idempotencyKey, message, attempt },
                 newMessage: this.waitForTaskReplay,
               });
@@ -1023,12 +1093,16 @@ class ProdWorker {
               return;
             }
 
-            await backoff.wait(attempt + 1);
-
             try {
+              await backoff.wait(attempt + 1);
+
               await this.#waitForTaskHandler(message);
             } catch (error) {
-              logger.error("replay wait for task error", { error });
+              if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
+                logger.error("wait for task replay retry limit exceeded", { error });
+              } else {
+                logger.error("wait for task replay error", { error });
+              }
             }
 
             return;
@@ -1046,7 +1120,7 @@ class ProdWorker {
             await timeout(cancellationDelay);
 
             if (!this.waitForBatchReplay) {
-              logger.error("replay wait for batch cancelled, skipping retry", {
+              logger.error("wait for batch replay cancelled, discarding", {
                 originalMessage: { idempotencyKey, message, attempt },
               });
 
@@ -1054,7 +1128,7 @@ class ProdWorker {
             }
 
             if (idempotencyKey !== this.waitForBatchReplay.idempotencyKey) {
-              logger.error("replay wait for batch idempotency key mismatch, skipping retry", {
+              logger.error("wait for batch replay idempotency key mismatch, discarding", {
                 originalMessage: { idempotencyKey, message, attempt },
                 newMessage: this.waitForBatchReplay,
               });
@@ -1062,12 +1136,63 @@ class ProdWorker {
               return;
             }
 
-            await backoff.wait(attempt + 1);
-
             try {
+              await backoff.wait(attempt + 1);
+
               await this.#waitForBatchHandler(message);
             } catch (error) {
-              logger.error("replay wait for batch error", { error });
+              if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
+                logger.error("wait for batch replay retry limit exceeded", { error });
+              } else {
+                logger.error("wait for batch replay error", { error });
+              }
+            }
+
+            return;
+          }
+
+          if (this.submitAttemptCompletionReplay) {
+            logger.log("replaying attempt completion", {
+              ...this.submitAttemptCompletionReplay,
+              cancellationDelay,
+            });
+
+            const { idempotencyKey, message, attempt } = this.submitAttemptCompletionReplay;
+
+            // Give the platform some time to send READY_FOR_RETRY
+            await timeout(cancellationDelay);
+
+            if (!this.submitAttemptCompletionReplay) {
+              logger.error("attempt completion replay cancelled, discarding", {
+                originalMessage: { idempotencyKey, message, attempt },
+              });
+
+              return;
+            }
+
+            if (idempotencyKey !== this.submitAttemptCompletionReplay.idempotencyKey) {
+              logger.error("attempt completion replay idempotency key mismatch, discarding", {
+                originalMessage: { idempotencyKey, message, attempt },
+                newMessage: this.submitAttemptCompletionReplay,
+              });
+
+              return;
+            }
+
+            try {
+              await backoff.wait(attempt + 1);
+
+              await this.#submitAttemptCompletion(
+                message.execution,
+                message.completion,
+                idempotencyKey
+              );
+            } catch (error) {
+              if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
+                logger.error("attempt completion replay retry limit exceeded", { error });
+              } else {
+                logger.error("attempt completion replay error", { error });
+              }
             }
 
             return;

@@ -21,7 +21,14 @@ class StopRetrying extends Error {
 class AttemptTimeout extends Error {
   constructor(message?: string) {
     super(message);
-    this.name = "StopRetrying";
+    this.name = "AttemptTimeout";
+  }
+}
+
+class RetryLimitExceeded extends Error {
+  constructor(message?: string) {
+    super(message);
+    this.name = "RetryLimitExceeded";
   }
 }
 
@@ -215,7 +222,13 @@ export class ExponentialBackoff {
 
   /** Waits with the appropriate delay for the current retry. */
   async wait(retries: number = this.#retries, jitter: boolean = true) {
+    if (retries > this.#maxRetries) {
+      console.error(`Retry limit exceeded: ${retries} > ${this.#maxRetries}`);
+      throw new RetryLimitExceeded();
+    }
+
     const delay = this.delay(retries, jitter);
+
     return await timeout(delay * 1000);
   }
 
@@ -341,5 +354,6 @@ export class ExponentialBackoff {
     }
   }
 
+  static RetryLimitExceeded = RetryLimitExceeded;
   static StopRetrying = StopRetrying;
 }
