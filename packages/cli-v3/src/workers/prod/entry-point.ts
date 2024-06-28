@@ -344,7 +344,7 @@ class ProdWorker {
         const internalTimeout = unboundedTimeout(ms, "internal" as const);
         const checkpointSafeInternalTimeout = checkpointSafeTimeout(ms);
 
-        if (ms <= waitThresholdInMs) {
+        if (ms < waitThresholdInMs) {
           await internalTimeout;
           break noResume;
         }
