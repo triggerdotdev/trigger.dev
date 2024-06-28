@@ -374,7 +374,7 @@ export class BackgroundWorker {
         resolved = true;
         child.kill();
         reject(new Error("Worker timed out"));
-      }, 5000);
+      }, 20_000);
 
       child.on("message", async (msg: any) => {
         const message = this._handler.parseMessage(msg);
