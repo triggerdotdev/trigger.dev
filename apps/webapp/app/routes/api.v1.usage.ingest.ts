@@ -49,7 +49,7 @@ export async function action({ request }: ActionFunctionArgs) {
   if (json.data.durationMs > 0) {
     const costInCents = json.data.durationMs * preset.centsPerMs;
 
-    await prisma.taskRun.update({
+    const taskRun = await prisma.taskRun.update({
       where: {
         id: jwtResult.payload.run_id,
       },
@@ -71,6 +71,7 @@ export async function action({ request }: ActionFunctionArgs) {
         data: {
           durationMs: json.data.durationMs,
           costInCents: String(costInCents),
+          taskIdentifier: taskRun.taskIdentifier,
         },
       });
     } catch (e) {
@@ -83,6 +84,7 @@ export async function action({ request }: ActionFunctionArgs) {
         },
         additionalData: {
           durationMs: json.data.durationMs,
+          taskIdentifier: taskRun.taskIdentifier,
         },
       });
     }
