@@ -105,6 +105,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
   const currentPlan = useCurrentPlan();
+  const { isManagedCloud } = useFeatures();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -179,20 +180,24 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               iconColor="text-sky-500"
               data-action="team"
             />
-            <SideMenuItem
-              name="Usage"
-              icon={ChartBarIcon}
-              to={v3UsagePath(organization)}
-              iconColor="text-green-600"
-              data-action="usage"
-            />
-            <SideMenuItem
-              name="Billing"
-              icon={CurrencyDollarIcon}
-              to={v3BillingPath(organization)}
-              iconColor="text-sun-600"
-              data-action="billing"
-            />
+            {isManagedCloud && (
+              <>
+                <SideMenuItem
+                  name="Usage"
+                  icon={ChartBarIcon}
+                  to={v3UsagePath(organization)}
+                  iconColor="text-green-600"
+                  data-action="usage"
+                />
+                <SideMenuItem
+                  name="Billing"
+                  icon={CurrencyDollarIcon}
+                  to={v3BillingPath(organization)}
+                  iconColor="text-sun-600"
+                  data-action="billing"
+                />
+              </>
+            )}
             {organization.projects.some((proj) => proj.version === "V2") && (
               <SideMenuItem
                 name="Usage (v2)"

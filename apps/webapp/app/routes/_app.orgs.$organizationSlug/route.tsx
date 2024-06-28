@@ -27,8 +27,6 @@ export function useCurrentPlan(matches?: UIMatch[]) {
     matches,
   });
 
-  console.log(data?.currentPlan);
-
   return data?.currentPlan;
 }
 

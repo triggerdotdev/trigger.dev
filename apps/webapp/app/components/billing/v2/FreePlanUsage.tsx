@@ -28,7 +28,7 @@ export function FreePlanUsage({ to, percentage }: { to: string; percentage: numb
           <Paragraph className="text-2sm text-text-bright">Free Plan</Paragraph>
         </div>
         <Link to={to} className="text-2sm text-text-link">
-          Learn more
+          Upgrade
         </Link>
       </div>
       <div className="relative mt-3 h-1 rounded-full bg-background-dimmed">

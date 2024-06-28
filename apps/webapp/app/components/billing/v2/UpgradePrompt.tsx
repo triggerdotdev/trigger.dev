@@ -6,6 +6,7 @@ import { v3BillingPath } from "~/utils/pathBuilder";
 import { LinkButton } from "../../primitives/Buttons";
 import { Icon } from "../../primitives/Icon";
 import { Paragraph } from "../../primitives/Paragraph";
+import { DateTime } from "~/components/primitives/DateTime";
 
 export function UpgradePrompt() {
   const organization = useOrganization();
@@ -14,6 +15,11 @@ export function UpgradePrompt() {
   if (!plan || !plan.v3Usage.hasExceededFreeTier) {
     return null;
   }
+
+  const nextMonth = new Date();
+  nextMonth.setMonth(nextMonth.getMonth() + 1);
+  nextMonth.setDate(1);
+  nextMonth.setHours(0, 0, 0, 0);
 
   return (
     <div
@@ -24,7 +30,9 @@ export function UpgradePrompt() {
         <Icon icon={ExclamationCircleIcon} className="h-5 w-5 text-error" />
         <Paragraph variant="small" className="text-error">
           You have exceeded the monthly $
-          {(plan.v3Subscription?.plan?.limits.includedUsage ?? 500) / 100} free credits.
+          {(plan.v3Subscription?.plan?.limits.includedUsage ?? 500) / 100} free credits. No runs
+          will execute in Prod until <DateTime date={nextMonth} includeTime={false} />, or you
+          upgrade.
         </Paragraph>
       </div>
       <LinkButton
