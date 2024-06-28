@@ -12,6 +12,10 @@ export interface TestCase {
 
 export const fixturesConfig: TestCase[] = [
   {
+    id: "config-infisical-sdk",
+    skipTypecheck: true,
+  },
+  {
     id: "config-invalid",
     wantConfigInvalidError: true,
   },
@@ -22,12 +26,6 @@ export const fixturesConfig: TestCase[] = [
   {
     id: "dep-to-add-scope-parsing",
     skipTypecheck: true,
-  },
-  {
-    id: "infisical-sdk",
-    skipTypecheck: true,
-    // Should not fail
-    wantCompilationError: true,
   },
   {
     id: "lock-nested-peer-deps",

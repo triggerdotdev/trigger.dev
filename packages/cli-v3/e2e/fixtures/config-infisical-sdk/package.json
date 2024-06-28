@@ -1,5 +1,5 @@
 {
-  "name": "server-only",
+  "name": "config-infisical-sdk",
   "private": true,
   "dependencies": {
     "@infisical/sdk": "^2.2.3",
