@@ -11,7 +11,7 @@ import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
-import { getCurrentPlan } from "~/services/platform.v3.server";
+import { getCurrentPlan, getUsage } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
@@ -26,7 +26,17 @@ export function useCurrentPlan(matches?: UIMatch[]) {
     id: "routes/_app.orgs.$organizationSlug",
     matches,
   });
-  return data?.currentPlan;
+
+  const result = data?.currentPlan
+    ? {
+        ...data.currentPlan,
+        v3Usage: data.usage,
+      }
+    : undefined;
+
+  console.log("useCurrentPlan", result);
+
+  return result;
 }
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -48,17 +58,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const plan = await getCurrentPlan(organization.id);
 
+  //1st day of the month
+  const firstDayOfMonth = new Date();
+  firstDayOfMonth.setDate(1);
+  firstDayOfMonth.setHours(0, 0, 0, 0);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const usage = await getUsage(organization.id, { from: firstDayOfMonth, to: tomorrow });
+
   return typedjson({
     organizations,
     organization,
     project,
     isImpersonating: !!impersonationId,
     currentPlan: plan,
+    usage,
   });
 };
 
 export default function Organization() {
-  const { organization, project, organizations, isImpersonating } =
+  const { organization, project, organizations, isImpersonating, usage } =
     useTypedLoaderData<typeof loader>();
   const user = useUser();
 

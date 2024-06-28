@@ -223,7 +223,7 @@ export function TierFree({
           <input type="hidden" name="type" value="free" />
           <input type="hidden" name="callerPath" value={location.pathname} />
           <TierLimit href="https://trigger.dev/pricing#computePricing">
-            ${plan.limits.includedUsage} free usage
+            ${plan.limits.includedUsage / 100} free usage
           </TierLimit>
           <div className="py-6">
             {status === "requires_connect" ? (
@@ -330,7 +330,7 @@ export function TierHobby({
     <TierContainer isHighlighted>
       <PricingHeader title={plan.title} isHighlighted cost={plan.tierPrice} />
       <TierLimit href="https://trigger.dev/pricing#computePricing">
-        ${plan.limits.includedUsage} usage included
+        ${plan.limits.includedUsage / 100} usage included
       </TierLimit>
       <Form action={formAction} method="post" id="subscribe">
         <div className="py-6">
@@ -398,7 +398,7 @@ export function TierPro({
     <TierContainer>
       <PricingHeader title={plan.title} cost={plan.tierPrice} />
       <TierLimit href="https://trigger.dev/pricing#computePricing">
-        ${plan.limits.includedUsage} usage included
+        ${plan.limits.includedUsage / 100} usage included
       </TierLimit>
       <Form action={formAction} method="post" id="subscribe">
         <div className="py-6">

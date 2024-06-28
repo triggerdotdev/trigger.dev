@@ -149,6 +149,22 @@ export async function setPlan(
   }
 }
 
+export async function getUsage(organizationId: string, { from, to }: { from: Date; to: Date }) {
+  const client = getClient();
+  if (!client) return undefined;
+  try {
+    const result = await client.usage(organizationId, { from, to });
+    if (!result.success) {
+      logger.error("Error getting plans", { error: result.error });
+      return undefined;
+    }
+    return result;
+  } catch (e) {
+    logger.error("Error getting plans", { error: e });
+    return undefined;
+  }
+}
+
 export async function projectCreated(organization: Organization, project: Project) {
   if (project.version === "V2" || !isCloud()) {
     await createEnvironment(organization, project, "STAGING");
