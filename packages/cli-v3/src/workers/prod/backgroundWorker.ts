@@ -520,9 +520,7 @@ export class ProdBackgroundWorker {
       const attemptCreated = await this.attemptCreatedNotification.waitFor(30_000);
 
       if (!attemptCreated.success) {
-        throw new Error(
-          `Failed to create attempt${attemptCreated.reason ? `: ${attemptCreated.reason}` : ""}`
-        );
+        throw new Error(`${attemptCreated.reason ?? "Unknown error"}`);
       }
 
       console.log("Attempt created", {
@@ -533,7 +531,7 @@ export class ProdBackgroundWorker {
       execution = attemptCreated.execution;
     } catch (error) {
       console.error("Error while creating attempt", error);
-      throw new Error(`Failed to create task run attempt: ${error}`);
+      throw new Error(`Failed to create attempt: ${error}`);
     }
 
     const completion = await this.executeTaskRun(

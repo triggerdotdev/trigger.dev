@@ -1418,7 +1418,7 @@ class TaskCoordinator {
 
           if (!createAttempt?.success) {
             logger.debug("no ack while creating attempt", message);
-            callback({ success: false });
+            callback({ success: false, reason: createAttempt?.reason });
             return;
           }
 
