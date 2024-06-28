@@ -1,10 +1,8 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { env } from "~/env.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
-import { logger } from "~/services/logger.server";
-import { r2 } from "~/v3/r2.server";
+import { generatePresignedUrl } from "~/v3/r2.server";
 
 const ParamsSchema = z.object({
   "*": z.string(),
@@ -26,34 +24,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const parsedParams = ParamsSchema.parse(params);
   const filename = parsedParams["*"];
 
-  if (!env.OBJECT_STORE_BASE_URL) {
-    return json({ error: "Object store base URL is not set" }, { status: 500 });
-  }
-
-  if (!r2) {
-    return json({ error: "Object store credentials are not set" }, { status: 500 });
-  }
-
-  const url = new URL(env.OBJECT_STORE_BASE_URL);
-  url.pathname = `/packets/${authenticationResult.environment.project.externalRef}/${authenticationResult.environment.slug}/${filename}`;
-  url.searchParams.set("X-Amz-Expires", "300"); // 5 minutes
-
-  const signed = await r2.sign(
-    new Request(url, {
-      method: "PUT",
-    }),
-    {
-      aws: { signQuery: true },
-    }
+  const presignedUrl = await generatePresignedUrl(
+    authenticationResult.environment.project.externalRef,
+    authenticationResult.environment.slug,
+    filename,
+    "PUT"
   );
 
-  logger.debug("Generated presigned URL", {
-    url: signed.url,
-    headers: Object.fromEntries(signed.headers),
-  });
+  if (!presignedUrl) {
+    return json({ error: "Failed to generate presigned URL" }, { status: 500 });
+  }
 
   // Caller can now use this URL to upload to that object.
-  return json({ presignedUrl: signed.url });
+  return json({ presignedUrl });
 }
 
 export async function loader({ request, params }: ActionFunctionArgs) {
@@ -67,35 +50,17 @@ export async function loader({ request, params }: ActionFunctionArgs) {
   const parsedParams = ParamsSchema.parse(params);
   const filename = parsedParams["*"];
 
-  if (!env.OBJECT_STORE_BASE_URL) {
-    return json({ error: "Object store base URL is not set" }, { status: 500 });
-  }
-
-  if (!r2) {
-    return json({ error: "Object store credentials are not set" }, { status: 500 });
-  }
-
-  const url = new URL(env.OBJECT_STORE_BASE_URL);
-  url.pathname = `/packets/${authenticationResult.environment.project.externalRef}/${authenticationResult.environment.slug}/${filename}`;
-  url.searchParams.set("X-Amz-Expires", "300"); // 5 minutes
-
-  const signed = await r2.sign(
-    new Request(url, {
-      method: request.method,
-    }),
-    {
-      aws: { signQuery: true },
-    }
+  const presignedUrl = await generatePresignedUrl(
+    authenticationResult.environment.project.externalRef,
+    authenticationResult.environment.slug,
+    filename,
+    "GET"
   );
 
-  logger.debug("Generated presigned URL", {
-    url: signed.url,
-    headers: Object.fromEntries(signed.headers),
-  });
+  if (!presignedUrl) {
+    return json({ error: "Failed to generate presigned URL" }, { status: 500 });
+  }
 
-  const getUrl = new URL(url.href);
-  getUrl.searchParams.delete("X-Amz-Expires");
-
-  // Caller can now use this URL to upload to that object.
-  return json({ presignedUrl: signed.url });
+  // Caller can now use this URL to fetch that object.
+  return json({ presignedUrl });
 }

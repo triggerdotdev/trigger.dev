@@ -172,7 +172,11 @@ export class ZodMessageSender<TMessageCatalog extends ZodMessageCatalogSchema> {
       throw new ZodSchemaParsedError(parsedPayload.error, payload);
     }
 
-    await this.#sender({ type, payload, version: "v1" });
+    try {
+      await this.#sender({ type, payload, version: "v1" });
+    } catch (error) {
+      console.error("[ZodMessageSender] Failed to send message", error);
+    }
   }
 
   public async forwardMessage(message: unknown) {
@@ -194,11 +198,15 @@ export class ZodMessageSender<TMessageCatalog extends ZodMessageCatalogSchema> {
       throw new Error(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
     }
 
-    await this.#sender({
-      type: parsedMessage.data.type,
-      payload: parsedPayload.data,
-      version: "v1",
-    });
+    try {
+      await this.#sender({
+        type: parsedMessage.data.type,
+        payload: parsedPayload.data,
+        version: "v1",
+      });
+    } catch (error) {
+      console.error("[ZodMessageSender] Failed to forward message", error);
+    }
   }
 }
 

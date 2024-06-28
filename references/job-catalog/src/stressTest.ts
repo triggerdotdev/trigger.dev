@@ -1,12 +1,13 @@
 import { createExpressServer } from "@trigger.dev/express";
 import { TriggerClient, eventTrigger } from "@trigger.dev/sdk";
+import { readFile } from "node:fs/promises";
 
 export const client = new TriggerClient({
   id: "job-catalog",
   apiKey: process.env["TRIGGER_API_KEY"],
   apiUrl: process.env["TRIGGER_API_URL"],
   verbose: true,
-  ioLogLocalEnabled: true,
+  ioLogLocalEnabled: false,
 });
 
 client.defineJob({
@@ -138,6 +139,40 @@ client.defineJob({
     );
 
     return response;
+  },
+});
+
+client.defineJob({
+  id: "stress-test-event-loop-lag",
+  name: "Stress Test Event Loop Lag",
+  version: "1.0.0",
+  trigger: eventTrigger({
+    name: "stress.test.event.loop.lag",
+  }),
+  run: async (payload, io, ctx) => {
+    const photos = await io.runTask(
+      `task-1`,
+      async (task) => {
+        const file = await readFile("./fixtures/large.json");
+
+        return JSON.parse(file.toString());
+      },
+      { name: `Task 1` }
+    );
+
+    await io.runTask(`task-2`, async (task) => {}, { name: `Task 2`, params: { photos } });
+
+    const morePhotos = await io.runTask(
+      `task-3`,
+      async (task) => {
+        const file = await readFile("./fixtures/toolarge.json");
+
+        return JSON.parse(file.toString());
+      },
+      { name: `Task 3` }
+    );
+
+    await io.runTask(`task-4`, async (task) => {}, { name: `Task 4`, params: { morePhotos } });
   },
 });
 

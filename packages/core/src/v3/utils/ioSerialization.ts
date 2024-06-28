@@ -85,7 +85,10 @@ export async function conditionallyExportPacket(
   return packet;
 }
 
-export function packetRequiresOffloading(packet: IOPacket): {
+export function packetRequiresOffloading(
+  packet: IOPacket,
+  lengthLimit?: number
+): {
   needsOffloading: boolean;
   size: number;
 } {
@@ -99,7 +102,7 @@ export function packetRequiresOffloading(packet: IOPacket): {
   const byteSize = Buffer.byteLength(packet.data, "utf8");
 
   return {
-    needsOffloading: byteSize >= OFFLOAD_IO_PACKET_LENGTH_LIMIT,
+    needsOffloading: byteSize >= (lengthLimit ?? OFFLOAD_IO_PACKET_LENGTH_LIMIT),
     size: byteSize,
   };
 }
@@ -128,8 +131,6 @@ async function exportPacket(packet: IOPacket, pathPrefix: string): Promise<IOPac
     data: filename,
     dataType: "application/store",
   };
-
-  return packet;
 }
 
 export async function conditionallyImportPacket(
@@ -186,8 +187,6 @@ async function importPacket(packet: IOPacket, span?: Span): Promise<IOPacket> {
     data,
     dataType: response.headers.get("content-type") ?? "application/json",
   };
-
-  return packet;
 }
 
 export async function createPacketAttributes(
