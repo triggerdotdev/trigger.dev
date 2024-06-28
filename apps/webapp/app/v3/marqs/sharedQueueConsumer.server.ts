@@ -1139,6 +1139,11 @@ class SharedQueueTasks {
       },
       include: {
         lockedBy: true,
+        _count: {
+          select: {
+            attempts: true,
+          },
+        },
       },
     });
 
@@ -1160,6 +1165,7 @@ class SharedQueueTasks {
       runId: run.friendlyId,
       messageId: run.id,
       isTest: run.isTest,
+      attemptCount: run._count.attempts,
     } satisfies TaskRunExecutionLazyAttemptPayload;
   }
 

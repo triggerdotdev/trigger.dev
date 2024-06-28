@@ -623,12 +623,12 @@ class ProdWorker {
     this.#coordinatorSocket.socket.emit("READY_FOR_CHECKPOINT", { version: "v1" });
   }
 
-  #failRun(friendlyRunId: string, error: unknown) {
-    logger.error("Failing run", { friendlyRunId, error });
+  #failRun(anyRunId: string, error: unknown) {
+    logger.error("Failing run", { anyRunId, error });
 
     const completion: TaskRunFailedExecutionResult = {
       ok: false,
-      id: friendlyRunId,
+      id: anyRunId,
       retry: undefined,
       error:
         error instanceof Error
@@ -857,13 +857,23 @@ class ProdWorker {
           await this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
         },
         EXECUTE_TASK_RUN_LAZY_ATTEMPT: async (message) => {
+          this.readyForLazyAttemptReplay = undefined;
+
           if (this.executing) {
             logger.error("dropping execute request, already executing");
             return;
           }
 
+          const attemptCount = message.lazyPayload.attemptCount ?? 0;
+
+          logger.log("execute attempt counts", { attemptCount, completed: this.completed.size });
+
+          if (this.completed.size > 0 && this.completed.size >= attemptCount + 1) {
+            logger.error("dropping execute request, already completed");
+            return;
+          }
+
           this.executing = true;
-          this.readyForLazyAttemptReplay = undefined;
 
           try {
             const { completion, execution } =
