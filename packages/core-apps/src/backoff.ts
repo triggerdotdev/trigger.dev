@@ -211,7 +211,8 @@ export class ExponentialBackoff {
     // If min/max override the delay, jitter with 20% while respecting min/max
     if (delay < this.#min) {
       delay = this.#min + Math.random() * (this.#min * 0.2);
-    } else if (delay > this.#max) {
+    }
+    if (delay > this.#max) {
       delay = this.#max - Math.random() * (this.#max * 0.2);
     }
 
