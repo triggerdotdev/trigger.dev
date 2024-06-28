@@ -72,6 +72,11 @@ class ProdWorker {
         attempt: number;
       }
     | undefined;
+  private durationResumeFallback:
+    | {
+        idempotencyKey: string;
+      }
+    | undefined;
 
   #httpPort: number;
   #backgroundWorker: ProdBackgroundWorker;
@@ -349,7 +354,9 @@ class ProdWorker {
           break noResume;
         }
 
-        const waitForDuration = await defaultBackoff.execute(async () => {
+        const waitForDuration = await defaultBackoff.execute(async ({ retry }) => {
+          logger.log("Wait for duration with backoff", { retry });
+
           if (!this.attemptFriendlyId) {
             logger.error("Failed to send wait message, attempt friendly ID not set", { message });
 
@@ -404,11 +411,30 @@ class ProdWorker {
           logger.log("onCancelCheckpoint coordinator response", { checkpointCanceled });
 
           if (checkpointCanceled) {
+            // If the checkpoint was canceled, we will never be resumed externally with RESUME_AFTER_DURATION, so it's safe to immediately resume
             break noResume;
           }
 
-          // Otherwise, do nothing and only resume after receiving RESUME_AFTER_DURATION
-          // TODO: Think of something better to do here. Maybe let the platform we don't need to be restored.
+          logger.log("Waiting for external duration resume as we may have been restored");
+
+          const idempotencyKey = randomUUID();
+          this.durationResumeFallback = { idempotencyKey };
+
+          setTimeout(() => {
+            if (!this.durationResumeFallback) {
+              logger.error("Already resumed after duration, skipping fallback");
+              return;
+            }
+
+            if (this.durationResumeFallback.idempotencyKey !== idempotencyKey) {
+              logger.error("Duration resume idempotency key mismatch, skipping fallback");
+              return;
+            }
+
+            logger.log("Resuming after duration with fallback");
+
+            this.#resumeAfterDuration();
+          }, 15_000);
         } catch (error) {
           // If the cancellation times out, we will proceed as if the checkpoint was canceled
           logger.debug("Checkpoint cancellation timed out", { error });
@@ -625,6 +651,8 @@ class ProdWorker {
             });
             return;
           }
+
+          this.durationResumeFallback = undefined;
 
           this.#resumeAfterDuration();
         },
