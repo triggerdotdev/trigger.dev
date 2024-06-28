@@ -132,16 +132,10 @@ class ProdWorker {
     }
   }
 
-  async #reconnect(isPostStart = false, reconnectImmediately = false) {
-    if (isPostStart) {
-      this.waitForPostStart = false;
-    }
+  async #reconnectAfterPostStart() {
+    this.waitForPostStart = false;
 
     this.#coordinatorSocket.close();
-
-    if (!reconnectImmediately) {
-      await timeout(1000);
-    }
 
     let coordinatorHost = COORDINATOR_HOST;
 
@@ -272,13 +266,16 @@ class ProdWorker {
     backgroundWorker.onTaskHeartbeat.attach((attemptFriendlyId) => {
       logger.log("onTaskHeartbeat", { attemptFriendlyId });
 
-      this.#coordinatorSocket.socket.emit("TASK_HEARTBEAT", { version: "v1", attemptFriendlyId });
+      this.#coordinatorSocket.socket.volatile.emit("TASK_HEARTBEAT", {
+        version: "v1",
+        attemptFriendlyId,
+      });
     });
 
     backgroundWorker.onTaskRunHeartbeat.attach((runId) => {
       logger.log("onTaskRunHeartbeat", { runId });
 
-      this.#coordinatorSocket.socket.emit("TASK_RUN_HEARTBEAT", { version: "v1", runId });
+      this.#coordinatorSocket.socket.volatile.emit("TASK_RUN_HEARTBEAT", { version: "v1", runId });
     });
 
     backgroundWorker.onCreateTaskRunAttempt.attach(async (message) => {
@@ -529,7 +526,6 @@ class ProdWorker {
     return headers;
   }
 
-  // FIXME: If the the worker can't connect for a while, this runs MANY times - it should only run once
   #createCoordinatorSocket(host: string) {
     const extraHeaders = this.#returnValidatedExtraHeaders({
       "x-machine-name": MACHINE_NAME,
@@ -556,6 +552,10 @@ class ProdWorker {
       clientMessages: ProdWorkerToCoordinatorMessages,
       serverMessages: CoordinatorToProdWorkerMessages,
       extraHeaders,
+      ioOptions: {
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 3000,
+      },
       handlers: {
         RESUME_AFTER_DEPENDENCY: async ({ completions }) => {
           if (!this.paused) {
@@ -790,6 +790,9 @@ class ProdWorker {
       onConnection: async (socket, handler, sender, logger) => {
         logger.log("connected to coordinator", { status: this.#status });
 
+        // We need to send our current state to the coordinator
+        socket.emit("SET_STATE", { version: "v1", attemptFriendlyId: this.attemptFriendlyId });
+
         try {
           if (this.waitForPostStart) {
             logger.log("skip connection handler, waiting for post start hook");
@@ -1023,11 +1026,6 @@ class ProdWorker {
             message: err.message,
           },
         });
-
-        await this.#reconnect();
-      },
-      onDisconnect: async (socket, reason, description, logger) => {
-        // this.#reconnect();
       },
     });
 
@@ -1108,7 +1106,7 @@ class ProdWorker {
                 break;
               }
               case "restore": {
-                await this.#reconnect(true, true);
+                await this.#reconnectAfterPostStart();
                 break;
               }
               default: {

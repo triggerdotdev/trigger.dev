@@ -816,6 +816,12 @@ export const ProdWorkerToCoordinatorMessages = {
       }),
     }),
   },
+  SET_STATE: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      attemptFriendlyId: z.string().optional(),
+    }),
+  },
 };
 
 // TODO: The coordinator can only safely use v1 worker messages, higher versions will need a new flag, e.g. SUPPORTS_VERSIONED_MESSAGES

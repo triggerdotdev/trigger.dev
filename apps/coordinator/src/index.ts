@@ -924,6 +924,10 @@ class TaskCoordinator {
           }
         };
 
+        const updateAttemptFriendlyId = (attemptFriendlyId: string) => {
+          socket.data.attemptFriendlyId = attemptFriendlyId;
+        };
+
         this.#platformSocket?.send("LOG", {
           metadata: socket.data,
           text: "connected",
@@ -972,7 +976,7 @@ class TaskCoordinator {
               executionPayload: executionAck.payload,
             });
 
-            socket.data.attemptFriendlyId = executionAck.payload.execution.attempt.id;
+            updateAttemptFriendlyId(executionAck.payload.execution.attempt.id);
           } catch (error) {
             logger.error("Error", { error });
 
@@ -1037,12 +1041,16 @@ class TaskCoordinator {
         socket.on("READY_FOR_RESUME", async (message) => {
           logger.log("[READY_FOR_RESUME]", message);
 
-          socket.data.attemptFriendlyId = message.attemptFriendlyId;
+          updateAttemptFriendlyId(message.attemptFriendlyId);
+
           this.#platformSocket?.send("READY_FOR_RESUME", message);
         });
 
         socket.on("TASK_RUN_COMPLETED", async ({ completion, execution }, callback) => {
           logger.log("completed task", { completionId: completion.id });
+
+          // Cancel all in-progress checkpoints (if any)
+          this.#cancelCheckpoint(socket.data.runId);
 
           const completeWithoutCheckpoint = (shouldExit: boolean) => {
             this.#platformSocket?.send("TASK_RUN_COMPLETED", {
@@ -1411,7 +1419,7 @@ class TaskCoordinator {
             return;
           }
 
-          socket.data.attemptFriendlyId = createAttempt.executionPayload.execution.attempt.id;
+          updateAttemptFriendlyId(createAttempt.executionPayload.execution.attempt.id);
 
           callback({
             success: true,
@@ -1423,6 +1431,14 @@ class TaskCoordinator {
           logger.log("[UNRECOVERABLE_ERROR]", message);
 
           await crashRun(message.error);
+        });
+
+        socket.on("SET_STATE", async (message) => {
+          logger.log("[SET_STATE]", message);
+
+          if (message.attemptFriendlyId) {
+            updateAttemptFriendlyId(message.attemptFriendlyId);
+          }
         });
       },
       onDisconnect: async (socket, handler, sender, logger) => {

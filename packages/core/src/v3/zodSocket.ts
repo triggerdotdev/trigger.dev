@@ -1,4 +1,4 @@
-import type { Socket } from "socket.io-client";
+import type { ManagerOptions, Socket, SocketOptions } from "socket.io-client";
 import { io } from "socket.io-client";
 import { ZodError, z } from "zod";
 import { EventEmitterLike, ZodMessageValueSchema } from "./zodMessageHandler";
@@ -347,6 +347,7 @@ interface ZodSocketConnectionOptions<
   };
   handlers?: ZodSocketMessageHandlers<TServerMessages>;
   authToken?: string;
+  ioOptions?: Partial<ManagerOptions & SocketOptions>;
   onConnection?: (
     socket: ZodSocket<TServerMessages, TClientMessages>,
     handler: ZodSocketMessageHandler<TServerMessages>,
@@ -392,6 +393,7 @@ export class ZodSocketConnection<
       extraHeaders: opts.extraHeaders,
       reconnectionDelay: 500,
       reconnectionDelayMax: 1000,
+      ...opts.ioOptions,
     });
 
     this.#logger = logger.child({

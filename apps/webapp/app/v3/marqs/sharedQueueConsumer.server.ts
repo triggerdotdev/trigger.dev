@@ -740,6 +740,11 @@ export class SharedQueueConsumer {
         }
 
         try {
+          logger.debug("Broadcasting RESUME_AFTER_DEPENDENCY", {
+            runId: resumableAttempt.taskRunId,
+            attemptId: resumableAttempt.id,
+          });
+
           // The attempt should still be running so we can broadcast to all coordinators to resume immediately
           socketIo.coordinatorNamespace.emit("RESUME_AFTER_DEPENDENCY", {
             version: "v1",
