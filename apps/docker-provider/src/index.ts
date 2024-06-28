@@ -109,22 +109,27 @@ class DockerTaskOperations implements TaskOperations {
 
     const containerName = this.#getRunContainerName(opts.runId);
 
+    const runArgs = [
+      "run",
+      "--network=host",
+      "--detach",
+      `--env=TRIGGER_ENV_ID=${opts.envId}`,
+      `--env=TRIGGER_RUN_ID=${opts.runId}`,
+      `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}`,
+      `--env=POD_NAME=${containerName}`,
+      `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
+      `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
+      `--name=${containerName}`,
+    ];
+
+    if (process.env.ENFORCE_MACHINE_PRESETS) {
+      runArgs.push(`--cpus=${opts.machine.cpu}`, `--memory=${opts.machine.memory}G`);
+    }
+
+    runArgs.push(`${opts.image}`);
+
     try {
-      logger.debug(
-        await execa("docker", [
-          "run",
-          "--network=host",
-          "--detach",
-          `--env=TRIGGER_ENV_ID=${opts.envId}`,
-          `--env=TRIGGER_RUN_ID=${opts.runId}`,
-          `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}`,
-          `--env=POD_NAME=${containerName}`,
-          `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
-          `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
-          `--name=${containerName}`,
-          `${opts.image}`,
-        ])
-      );
+      logger.debug(await execa("docker", runArgs));
     } catch (error) {
       if (!isExecaChildProcess(error)) {
         throw error;

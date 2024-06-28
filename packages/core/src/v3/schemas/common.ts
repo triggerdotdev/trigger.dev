@@ -109,6 +109,7 @@ export const TaskRunInternalError = z.object({
     "TASK_RUN_HEARTBEAT_TIMEOUT",
   ]),
   message: z.string().optional(),
+  stackTrace: z.string().optional(),
 });
 
 export type TaskRunInternalError = z.infer<typeof TaskRunInternalError>;

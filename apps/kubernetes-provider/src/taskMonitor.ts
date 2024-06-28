@@ -181,7 +181,8 @@ export class TaskMonitor {
         }
         break;
       case "OOMKilled":
-        reason = "Out of memory! Try increasing the memory on this task.";
+        reason =
+          "Process ran out of memory! Try choosing a machine preset with more memory for this task.";
         break;
       default:
         break;
