@@ -18,7 +18,8 @@ export class DeploymentIndexFailed extends BaseService {
       message: string;
       stack?: string;
       stderr?: string;
-    }
+    },
+    overrideCompletion = false
   ) {
     const isFriendlyId = maybeFriendlyId.startsWith("deployment_");
 
@@ -38,6 +39,15 @@ export class DeploymentIndexFailed extends BaseService {
     }
 
     if (FINAL_DEPLOYMENT_STATUSES.includes(deployment.status)) {
+      if (overrideCompletion) {
+        logger.error("No support for overriding final deployment statuses just yet", {
+          id: deployment.id,
+          status: deployment.status,
+          previousError: deployment.errorData,
+          incomingError: error,
+        });
+      }
+
       logger.error("Worker deployment already in final state", {
         id: deployment.id,
         status: deployment.status,
