@@ -3,6 +3,7 @@ import {
   BoltSlashIcon,
   BugAntIcon,
   CheckCircleIcon,
+  ClockIcon,
   FireIcon,
   NoSymbolIcon,
   PauseCircleIcon,
@@ -16,6 +17,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
 export const allTaskRunStatuses = [
+  "DELAYED",
   "WAITING_FOR_DEPLOY",
   "PENDING",
   "EXECUTING",
@@ -32,6 +34,7 @@ export const allTaskRunStatuses = [
 
 export const filterableTaskRunStatuses = [
   "WAITING_FOR_DEPLOY",
+  "DELAYED",
   "PENDING",
   "EXECUTING",
   "RETRYING_AFTER_FAILURE",
@@ -45,6 +48,7 @@ export const filterableTaskRunStatuses = [
 ] as const satisfies Readonly<Array<TaskRunStatus>>;
 
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
+  DELAYED: "Task has been delayed and is waiting to be executed",
   PENDING: "Task is waiting to be executed",
   WAITING_FOR_DEPLOY: "Task needs to be deployed first to start executing",
   EXECUTING: "Task is currently being executed",
@@ -59,7 +63,7 @@ const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   CRASHED: "Task has crashed and won't be retried",
 };
 
-export const QUEUED_STATUSES: TaskRunStatus[] = ["PENDING", "WAITING_FOR_DEPLOY"];
+export const QUEUED_STATUSES: TaskRunStatus[] = ["PENDING", "WAITING_FOR_DEPLOY", "DELAYED"];
 
 export const RUNNING_STATUSES: TaskRunStatus[] = [
   "EXECUTING",
@@ -109,6 +113,8 @@ export function TaskRunStatusIcon({
   className: string;
 }) {
   switch (status) {
+    case "DELAYED":
+      return <ClockIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PENDING":
       return <RectangleStackIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "WAITING_FOR_DEPLOY":
@@ -143,6 +149,7 @@ export function TaskRunStatusIcon({
 export function runStatusClassNameColor(status: TaskRunStatus): string {
   switch (status) {
     case "PENDING":
+    case "DELAYED":
       return "text-charcoal-500";
     case "WAITING_FOR_DEPLOY":
       return "text-amber-500";
@@ -173,6 +180,8 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
 
 export function runStatusTitle(status: TaskRunStatus): string {
   switch (status) {
+    case "DELAYED":
+      return "Delayed";
     case "PENDING":
       return "Queued";
     case "WAITING_FOR_DEPLOY":

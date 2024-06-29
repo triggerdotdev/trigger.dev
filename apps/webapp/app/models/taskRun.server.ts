@@ -125,6 +125,7 @@ export function batchTaskRunItemStatusForRunStatus(
     case TaskRunStatus.RETRYING_AFTER_FAILURE:
     case TaskRunStatus.EXECUTING:
     case TaskRunStatus.PAUSED:
+    case TaskRunStatus.DELAYED:
       return BatchTaskRunItemStatus.PENDING;
     default:
       assertNever(status);

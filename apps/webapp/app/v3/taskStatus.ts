@@ -1,6 +1,7 @@
 import type { TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 
 export const CANCELLABLE_RUN_STATUSES: TaskRunStatus[] = [
+  "DELAYED",
   "PENDING",
   "WAITING_FOR_DEPLOY",
   "EXECUTING",

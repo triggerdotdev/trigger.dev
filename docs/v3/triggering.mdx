@@ -619,3 +619,52 @@ export const myTask = task({
 ### Batch Triggering
 
 When using `batchTrigger` or `batchTriggerAndWait`, the total size of all payloads cannot exceed 10MB. This means if you are doing a batch of 100 runs, each payload should be less than 100KB.
+
+## Delayed Triggering
+
+When you want to trigger a task now, but have it run at a later time, you can use the `delay` option:
+
+```ts
+// Delay the task run by 1 hour
+await myTask.trigger({ some: "data" }, { delay: "1h" });
+// Delay the task run by 88 seconds
+await myTask.trigger({ some: "data" }, { delay: "88s" });
+// Delay the task run by 1 hour and 52 minutes and 18 seconds
+await myTask.trigger({ some: "data" }, { delay: "1h52m18s" });
+// Delay until a specific time
+await myTask.trigger({ some: "data" }, { delay: "2024-12-01T00:00:00" });
+// Delay using a Date object
+await myTask.trigger({ some: "data" }, { delay: new Date(Date.now() + 1000 * 60 * 60) });
+```
+
+Runs that are delayed and have not been enqueued yet will display in the dashboard with a "Delayed" status:
+
+![Delayed run in the dashboard](/images/v3/delayed-runs.png)
+
+<Note>
+  Delayed runs will be enqueued at the time specified, and will run as soon as possible after that
+  time, just as a normally triggered run would.
+</Note>
+
+You can cancel a delayed run using the `runs.cancel` SDK function:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+
+await runs.cancel("run_1234");
+```
+
+You can also reschedule a delayed run using the `runs.reschedule` SDK function:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+
+// The delay option here takes the same format as the trigger delay option
+await runs.reschedule("run_1234", { delay: "1h" });
+```
+
+The `delay` option is also available when using `batchTrigger`:
+
+```ts
+await myTask.batchTrigger([{ payload: { some: "data" }, options: { delay: "1h" } }]);
+```

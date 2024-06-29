@@ -158,6 +158,7 @@ export class RunListPresenter extends BasePresenter {
         createdAt: Date;
         startedAt: Date | null;
         lockedAt: Date | null;
+        delayUntil: Date | null;
         updatedAt: Date;
         isTest: boolean;
         spanId: string;
@@ -174,6 +175,7 @@ export class RunListPresenter extends BasePresenter {
     tr.status AS status,
     tr."createdAt" AS "createdAt",
     tr."startedAt" AS "startedAt",
+    tr."delayUntil" AS "delayUntil",
     tr."lockedAt" AS "lockedAt",
     tr."updatedAt" AS "updatedAt",
     tr."isTest" AS "isTest",
@@ -283,6 +285,7 @@ export class RunListPresenter extends BasePresenter {
           createdAt: run.createdAt.toISOString(),
           updatedAt: run.updatedAt.toISOString(),
           startedAt: startedAt ? startedAt.toISOString() : undefined,
+          delayUntil: run.delayUntil ? run.delayUntil.toISOString() : undefined,
           hasFinished,
           finishedAt: hasFinished ? run.updatedAt.toISOString() : undefined,
           isTest: run.isTest,

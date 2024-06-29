@@ -4,15 +4,17 @@ import {
   TriggerTaskRequestBody,
   packetRequiresOffloading,
 } from "@trigger.dev/core/v3";
+import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
+import { workerQueue } from "~/services/worker.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { uploadToObjectStore } from "../r2.server";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService } from "./baseService.server";
-import { env } from "~/env.server";
+import { $transaction } from "~/db.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -35,6 +37,7 @@ export class TriggerTaskService extends BaseService {
       span.setAttribute("taskId", taskId);
 
       const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey;
+      const delayUntil = await parseDelay(body.options?.delay);
 
       const existingRun = idempotencyKey
         ? await this._prisma.taskRun.findUnique({
@@ -49,8 +52,18 @@ export class TriggerTaskService extends BaseService {
 
       if (existingRun && existingRun.taskIdentifier === taskId) {
         span.setAttribute("runId", existingRun.friendlyId);
+
         return existingRun;
       }
+
+      const runFriendlyId = generateFriendlyId("run");
+
+      const payloadPacket = await this.#handlePayloadPacket(
+        body.payload,
+        body.options?.payloadType ?? "application/json",
+        runFriendlyId,
+        environment
+      );
 
       return await eventRepository.traceEvent(
         taskId,
@@ -76,15 +89,6 @@ export class TriggerTaskService extends BaseService {
           immediate: true,
         },
         async (event, traceContext) => {
-          const runFriendlyId = generateFriendlyId("run");
-
-          const payloadPacket = await this.#handlePayloadPacket(
-            body.payload,
-            body.options?.payloadType ?? "application/json",
-            runFriendlyId,
-            environment
-          );
-
           const run = await autoIncrementCounter.incrementInTransaction(
             `v3-run:${environment.id}:${taskId}`,
             async (num, tx) => {
@@ -112,7 +116,7 @@ export class TriggerTaskService extends BaseService {
 
               const taskRun = await tx.taskRun.create({
                 data: {
-                  status: "PENDING",
+                  status: delayUntil ? "DELAYED" : "PENDING",
                   number: num,
                   friendlyId: runFriendlyId,
                   runtimeEnvironmentId: environment.id,
@@ -129,6 +133,8 @@ export class TriggerTaskService extends BaseService {
                   concurrencyKey: body.options?.concurrencyKey,
                   queue: queueName,
                   isTest: body.options?.test ?? false,
+                  delayUntil,
+                  queuedAt: delayUntil ? undefined : new Date(),
                 },
               });
 
@@ -215,6 +221,14 @@ export class TriggerTaskService extends BaseService {
                 }
               }
 
+              if (taskRun.delayUntil) {
+                await workerQueue.enqueue(
+                  "v3.enqueueDelayedRun",
+                  { runId: taskRun.id },
+                  { tx, runAt: delayUntil, jobKey: `v3.enqueueDelayedRun.${taskRun.id}` }
+                );
+              }
+
               return taskRun;
             },
             async (_, tx) => {
@@ -238,13 +252,15 @@ export class TriggerTaskService extends BaseService {
           }
 
           // We need to enqueue the task run into the appropriate queue. This is done after the tx completes to prevent a race condition where the task run hasn't been created yet by the time we dequeue.
-          await marqs?.enqueueMessage(
-            environment,
-            run.queue,
-            run.id,
-            { type: "EXECUTE", taskIdentifier: taskId },
-            body.options?.concurrencyKey
-          );
+          if (run.status === "PENDING") {
+            await marqs?.enqueueMessage(
+              environment,
+              run.queue,
+              run.id,
+              { type: "EXECUTE", taskIdentifier: taskId },
+              body.options?.concurrencyKey
+            );
+          }
 
           return run;
         }
@@ -296,4 +312,83 @@ export class TriggerTaskService extends BaseService {
 
     return { dataType: payloadType };
   }
+}
+
+export async function parseDelay(value?: string | Date): Promise<Date | undefined> {
+  if (!value) {
+    return;
+  }
+
+  if (value instanceof Date) {
+    return value;
+  }
+
+  try {
+    const date = new Date(value);
+
+    // Check if the date is valid
+    if (isNaN(date.getTime())) {
+      return parseNaturalLanguageDuration(value);
+    }
+
+    if (date.getTime() <= Date.now()) {
+      return;
+    }
+
+    return date;
+  } catch (error) {
+    return parseNaturalLanguageDuration(value);
+  }
+}
+
+function parseNaturalLanguageDuration(duration: string): Date | undefined {
+  const regexPattern = /^(\d+w)?(\d+d)?(\d+h)?(\d+m)?(\d+s)?$/;
+
+  const result: Date = new Date();
+  let hasMatch = false;
+
+  const elements = duration.match(regexPattern);
+  if (elements) {
+    if (elements[1]) {
+      const weeks = Number(elements[1].slice(0, -1));
+      if (weeks >= 0) {
+        result.setDate(result.getDate() + 7 * weeks);
+        hasMatch = true;
+      }
+    }
+    if (elements[2]) {
+      const days = Number(elements[2].slice(0, -1));
+      if (days >= 0) {
+        result.setDate(result.getDate() + days);
+        hasMatch = true;
+      }
+    }
+    if (elements[3]) {
+      const hours = Number(elements[3].slice(0, -1));
+      if (hours >= 0) {
+        result.setHours(result.getHours() + hours);
+        hasMatch = true;
+      }
+    }
+    if (elements[4]) {
+      const minutes = Number(elements[4].slice(0, -1));
+      if (minutes >= 0) {
+        result.setMinutes(result.getMinutes() + minutes);
+        hasMatch = true;
+      }
+    }
+    if (elements[5]) {
+      const seconds = Number(elements[5].slice(0, -1));
+      if (seconds >= 0) {
+        result.setSeconds(result.getSeconds() + seconds);
+        hasMatch = true;
+      }
+    }
+  }
+
+  if (hasMatch) {
+    return result;
+  }
+
+  return undefined;
 }

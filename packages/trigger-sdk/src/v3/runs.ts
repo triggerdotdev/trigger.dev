@@ -1,4 +1,8 @@
-import type { ListProjectRunsQueryParams, ListRunsQueryParams } from "@trigger.dev/core/v3";
+import type {
+  ListProjectRunsQueryParams,
+  ListRunsQueryParams,
+  RescheduleRunRequestBody,
+} from "@trigger.dev/core/v3";
 import {
   ApiPromise,
   CanceledRunResponse,
@@ -21,6 +25,7 @@ export const runs = {
   cancel: cancelRun,
   retrieve: retrieveRun,
   list: listRuns,
+  reschedule: rescheduleRun,
   poll,
 };
 
@@ -82,6 +87,19 @@ function cancelRun(runId: string): ApiPromise<CanceledRunResponse> {
   }
 
   return apiClient.cancelRun(runId);
+}
+
+function rescheduleRun(
+  runId: string,
+  body: RescheduleRunRequestBody
+): ApiPromise<RetrieveRunResponse> {
+  const apiClient = apiClientManager.client;
+
+  if (!apiClient) {
+    throw apiClientMissingError();
+  }
+
+  return apiClient.rescheduleRun(runId, body);
 }
 
 export type PollOptions = { pollIntervalMs?: number };

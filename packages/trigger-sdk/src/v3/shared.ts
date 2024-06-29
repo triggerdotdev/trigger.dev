@@ -363,10 +363,20 @@ export type TaskIdentifier<TTask extends AnyTask> = TTask extends Task<infer TId
 export type TaskRunOptions = {
   idempotencyKey?: string;
   maxAttempts?: number;
-  startAt?: Date;
-  startAfter?: number;
   queue?: TaskRunConcurrencyOptions;
   concurrencyKey?: string;
+  /**
+   * The delay before the task is executed. This can be a string like "1h" or a Date object.
+   *
+   * @example
+   * "1h" - 1 hour
+   * "30d" - 30 days
+   * "15m" - 15 minutes
+   * "2w" - 2 weeks
+   * "60s" - 60 seconds
+   * new Date("2025-01-01T00:00:00Z")
+   */
+  delay?: string | Date;
 };
 
 type TaskRunConcurrencyOptions = Queue;
@@ -413,6 +423,7 @@ export function createTask<
                 test: taskContext.ctx?.run.isTest,
                 payloadType: payloadPacket.dataType,
                 idempotencyKey: options?.idempotencyKey,
+                delay: options?.delay,
               },
             },
             { spanParentAsLink: true }
@@ -474,6 +485,7 @@ export function createTask<
                       test: taskContext.ctx?.run.isTest,
                       payloadType: payloadPacket.dataType,
                       idempotencyKey: item.options?.idempotencyKey,
+                      delay: item.options?.delay,
                     },
                   };
                 })
@@ -547,6 +559,7 @@ export function createTask<
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
               idempotencyKey: options?.idempotencyKey,
+              delay: options?.delay,
             },
           });
 
@@ -631,6 +644,7 @@ export function createTask<
                     test: taskContext.ctx?.run.isTest,
                     payloadType: payloadPacket.dataType,
                     idempotencyKey: item.options?.idempotencyKey,
+                    delay: item.options?.delay,
                   },
                 };
               })
@@ -792,6 +806,7 @@ export async function trigger<TTask extends AnyTask>(
       test: taskContext.ctx?.run.isTest,
       payloadType: payloadPacket.dataType,
       idempotencyKey: options?.idempotencyKey,
+      delay: options?.delay,
     },
   });
 

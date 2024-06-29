@@ -1660,6 +1660,9 @@ model TaskRun {
 
   concurrencyKey String?
 
+  delayUntil DateTime?
+  queuedAt   DateTime?
+
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
@@ -1684,6 +1687,8 @@ model TaskRun {
 }
 
 enum TaskRunStatus {
+  /// Task has been scheduled to run in the future
+  DELAYED
   /// Task is waiting to be executed by a worker
   PENDING
 

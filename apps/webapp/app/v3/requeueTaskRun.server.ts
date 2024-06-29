@@ -48,6 +48,7 @@ export class RequeueTaskRunService extends BaseService {
 
         break;
       }
+      case "DELAYED":
       case "WAITING_FOR_DEPLOY": {
         logger.debug("[RequeueTaskRunService] Removing task run from queue", { taskRun });
 

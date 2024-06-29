@@ -47,6 +47,7 @@ import { ResumeTaskService } from "./tasks/resumeTask.server";
 import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
 import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
 import { reportUsageEvent } from "~/v3/openMeter.server";
+import { EnqueueDelayedRunService } from "~/v3/services/enqueueDelayedRun.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -176,6 +177,9 @@ const workerCatalog = {
       costInCents: z.string(),
     }),
     additionalData: z.record(z.any()).optional(),
+  }),
+  "v3.enqueueDelayedRun": z.object({
+    runId: z.string(),
   }),
 };
 
@@ -670,6 +674,15 @@ function getWorkerQueue() {
               ...payload.additionalData,
             },
           });
+        },
+      },
+      "v3.enqueueDelayedRun": {
+        priority: 0,
+        maxAttempts: 8,
+        handler: async (payload, job) => {
+          const service = new EnqueueDelayedRunService();
+
+          return await service.call(payload.runId);
         },
       },
     },
