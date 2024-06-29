@@ -69,7 +69,8 @@ export class GracefulExitTimeoutError extends Error {
 export function getFriendlyErrorMessage(
   code: number,
   signal: NodeJS.Signals | null,
-  stderr: string | undefined
+  stderr: string | undefined,
+  dockerMode = true
 ) {
   const message = (text: string) => {
     if (signal) {
@@ -79,7 +80,20 @@ export function getFriendlyErrorMessage(
     }
   };
 
-  if (code === 137 || stderr?.includes("OOMErrorHandler")) {
+  if (code === 137) {
+    if (dockerMode) {
+      return message(
+        "Process ran out of memory! Try choosing a machine preset with more memory for this task."
+      );
+    } else {
+      // Note: containerState reason and message should be checked to clarify the error
+      return message(
+        "Process most likely ran out of memory, but we can't be certain. Try choosing a machine preset with more memory for this task."
+      );
+    }
+  }
+
+  if (stderr?.includes("OOMErrorHandler")) {
     return message(
       "Process ran out of memory! Try choosing a machine preset with more memory for this task."
     );

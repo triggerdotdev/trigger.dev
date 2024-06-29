@@ -13,6 +13,7 @@ export type CrashTaskRunServiceOptions = {
   logs?: string;
   crashAttempts?: boolean;
   crashedAt?: Date;
+  overrideCompletion?: boolean;
 };
 
 export class CrashTaskRunService extends BaseService {
@@ -36,7 +37,7 @@ export class CrashTaskRunService extends BaseService {
     }
 
     // Make sure the task run is in a crashable state
-    if (!isCrashableRunStatus(taskRun.status)) {
+    if (!opts.overrideCompletion && !isCrashableRunStatus(taskRun.status)) {
       logger.error("Task run is not in a crashable state", { runId, status: taskRun.status });
       return;
     }

@@ -441,6 +441,13 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.config.project}/deployments/${finishedDeployment.shortCode}`
   );
 
+  const testLink = cliLink(
+    "Test tasks",
+    `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.config.project}/test?environment=${
+      options.env === "prod" ? "prod" : "stg"
+    }`
+  );
+
   switch (finishedDeployment.status) {
     case "DEPLOYED": {
       if (warnings.warnings.length > 0) {
@@ -461,7 +468,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         outro(
           `Version ${version} deployed with ${taskCount} detected task${
             taskCount === 1 ? "" : "s"
-          } ${deploymentLink}`
+          } | ${deploymentLink} | ${testLink}`
         );
       }
 

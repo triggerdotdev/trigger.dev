@@ -62,6 +62,7 @@ export async function detectPackageManagerFromArtifacts(path: string): Promise<P
     case LOCKFILES.npm:
     case LOCKFILES.npmShrinkwrap:
       logger.debug("Found npm artifact", { foundPath });
+      return "npm";
     case LOCKFILES.bun:
       logger.debug("Found bun artifact", { foundPath });
       return "npm";
