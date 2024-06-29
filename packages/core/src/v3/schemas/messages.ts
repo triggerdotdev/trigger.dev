@@ -347,7 +347,7 @@ export const ProviderToPlatformMessages = {
         stack: z.string().optional(),
         stderr: z.string().optional(),
       }),
-      overrideCompletion: z.string().optional(),
+      overrideCompletion: z.boolean().optional(),
     }),
   },
 };

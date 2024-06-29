@@ -540,6 +540,7 @@ const taskMonitor = new TaskMonitor({
           message: details.reason,
           stack: details.logs,
         },
+        overrideCompletion: details.overrideCompletion,
       });
     } catch (error) {
       logger.error(error);
