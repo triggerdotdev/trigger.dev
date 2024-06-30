@@ -83,15 +83,17 @@ type JsonArray = Json[];
 type JsonRecord<T> = { [Property in keyof T]: Json };
 export type Json<T = any> = JsonPrimitive | JsonArray | JsonRecord<T>;
 
-export type RunTaskErrorCallback = (
-  error: unknown,
-  task: IOTask,
-  io: IO
-) =>
+type RunTaskErrorCallbackReturn =
   | { retryAt?: Date; error?: Error; jitter?: number; skipRetrying?: boolean }
   | Error
   | undefined
   | void;
+
+export type RunTaskErrorCallback = (
+  error: unknown,
+  task: IOTask,
+  io: IO
+) => RunTaskErrorCallbackReturn | Promise<RunTaskErrorCallbackReturn>;
 
 export type IOStats = {
   initialCachedTasks: number;
@@ -1307,7 +1309,7 @@ export class IO {
 
         if (onError) {
           try {
-            const onErrorResult = onError(error, task, this);
+            const onErrorResult = await onError(error, task, this);
 
             if (onErrorResult) {
               if (onErrorResult instanceof Error) {
