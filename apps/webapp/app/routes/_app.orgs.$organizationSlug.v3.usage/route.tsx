@@ -88,7 +88,14 @@ export default function ChoosePlanPage() {
             <Header2 spacing>This month</Header2>
             <div className="flex w-full flex-col gap-2 rounded-sm border border-grid-dimmed p-4">
               <Suspense fallback={<Spinner />}>
-                <Await resolve={usage}>
+                <Await
+                  resolve={usage}
+                  errorElement={
+                    <div className="flex min-h-40 items-center justify-center">
+                      <Paragraph variant="small">Failed to load graph.</Paragraph>
+                    </div>
+                  }
+                >
                   {(usage) => (
                     <>
                       <div className="flex w-full items-center gap-6">
@@ -123,8 +130,21 @@ export default function ChoosePlanPage() {
             <Header2 spacing>Past 30 days</Header2>
             <div className="rounded-sm border border-grid-dimmed p-4">
               <Header3>Usage</Header3>
-              <Suspense fallback={<Spinner />}>
-                <Await resolve={past30Days}>
+              <Suspense
+                fallback={
+                  <div className="flex min-h-40 items-center justify-center">
+                    <Spinner />
+                  </div>
+                }
+              >
+                <Await
+                  resolve={past30Days}
+                  errorElement={
+                    <div className="flex min-h-40 items-center justify-center">
+                      <Paragraph variant="small">Failed to load graph.</Paragraph>
+                    </div>
+                  }
+                >
                   {(past30Days) => (
                     <ResponsiveContainer width="100%" height="100%" className="min-h-96">
                       <BarChart
@@ -191,7 +211,14 @@ export default function ChoosePlanPage() {
             <div className="p-4">
               <Header3 spacing>Tasks</Header3>
               <Suspense fallback={<Spinner />}>
-                <Await resolve={tasks}>
+                <Await
+                  resolve={tasks}
+                  errorElement={
+                    <div className="flex min-h-40 items-center justify-center">
+                      <Paragraph variant="small">Failed to load.</Paragraph>
+                    </div>
+                  }
+                >
                   {(tasks) => {
                     return (
                       <Table>
