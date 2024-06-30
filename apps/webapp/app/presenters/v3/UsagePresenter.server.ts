@@ -33,16 +33,16 @@ export class UsagePresenter extends BasePresenter {
       to: endOfToday,
       window: "DAY",
     }).then((data) => {
-      if (!data) return [];
       return createTimeSeriesData({
         startDate: thirtyDaysAgo,
         endDate: endOfToday,
         window: "DAY",
-        data:
-          data.data.map((period) => ({
-            date: new Date(period.windowStart),
-            value: period.value,
-          })) ?? [],
+        data: data
+          ? data.data.map((period) => ({
+              date: new Date(period.windowStart),
+              value: period.value,
+            }))
+          : [],
       }).map((period) => ({
         date: period.date.toISOString(),
         dollars: (period.value ?? 0) / 100,
