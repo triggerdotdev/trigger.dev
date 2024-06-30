@@ -16,7 +16,8 @@ export function UsageBar({ current, billingLimit, tierLimit, projectedUsage }: U
     current,
     tierLimit ?? -Infinity,
     projectedUsage,
-    billingLimit ?? -Infinity
+    billingLimit ?? -Infinity,
+    5
   );
   //creates a maximum range for the progress bar, add 10% to the largest number so the bar doesn't reach the end
   const maxRange = Math.round(getLargestNumber * 1.1);
