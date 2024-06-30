@@ -119,11 +119,11 @@
     },
     "./v3/schemas": {
       "import": {
-        "types": "./dist/v3/schemas.d.mts",
-        "default": "./dist/v3/schemas.mjs"
+        "types": "./dist/v3/schemas/index.d.mts",
+        "default": "./dist/v3/schemas/index.mjs"
       },
-      "require": "./dist/v3/schemas.js",
-      "types": "./dist/v3/schemas.d.ts"
+      "require": "./dist/v3/schemas/index.js",
+      "types": "./dist/v3/schemas/index.d.ts"
     },
     "./package.json": "./package.json"
   },
