@@ -69,6 +69,7 @@ export class RequeueTaskRunService extends BaseService {
       case "CRASHED":
       case "COMPLETED_WITH_ERRORS":
       case "COMPLETED_SUCCESSFULLY":
+      case "EXPIRED":
       case "CANCELED": {
         logger.debug("[RequeueTaskRunService] Task run is completed", { taskRun });
 

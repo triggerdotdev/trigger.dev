@@ -1,6 +1,9 @@
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
+import { parseNaturalLanguageDuration } from "./triggerTask.server";
+import { workerQueue } from "~/services/worker.server";
+import { $transaction } from "~/db.server";
 
 export class EnqueueDelayedRunService extends BaseService {
   public async call(runId: string) {
@@ -34,14 +37,28 @@ export class EnqueueDelayedRunService extends BaseService {
       return;
     }
 
-    await this._prisma.taskRun.update({
-      where: {
-        id: run.id,
-      },
-      data: {
-        status: "PENDING",
-        queuedAt: new Date(),
-      },
+    await $transaction(this._prisma, async (tx) => {
+      await tx.taskRun.update({
+        where: {
+          id: run.id,
+        },
+        data: {
+          status: "PENDING",
+          queuedAt: new Date(),
+        },
+      });
+
+      if (run.ttl) {
+        const expireAt = parseNaturalLanguageDuration(run.ttl);
+
+        if (expireAt) {
+          await workerQueue.enqueue(
+            "v3.expireRun",
+            { runId: run.id },
+            { tx, runAt: expireAt, jobKey: `v3.expireRun.${run.id}` }
+          );
+        }
+      }
     });
 
     await marqs?.enqueueMessage(

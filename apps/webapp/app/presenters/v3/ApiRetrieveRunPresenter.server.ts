@@ -117,6 +117,8 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         output: $output,
         outputPresignedUrl: $outputPresignedUrl,
         isTest: taskRun.isTest,
+        ttl: taskRun.ttl ?? undefined,
+        expiredAt: taskRun.expiredAt ?? undefined,
         schedule: taskRun.schedule
           ? {
               id: taskRun.schedule.friendlyId,
@@ -208,6 +210,9 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       }
       case "COMPLETED_WITH_ERRORS": {
         return "FAILED";
+      }
+      case "EXPIRED": {
+        return "EXPIRED";
       }
       default: {
         assertNever(status);

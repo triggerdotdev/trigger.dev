@@ -1662,6 +1662,8 @@ model TaskRun {
 
   delayUntil DateTime?
   queuedAt   DateTime?
+  ttl        String?
+  expiredAt  DateTime?
 
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
@@ -1724,6 +1726,9 @@ enum TaskRunStatus {
 
   /// Task has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage
   CRASHED
+
+  // Task reached the ttl without being executed
+  EXPIRED
 }
 
 model TaskRunDependency {

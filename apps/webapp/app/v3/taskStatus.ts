@@ -39,6 +39,7 @@ export const FINAL_RUN_STATUSES: TaskRunStatus[] = [
   "COMPLETED_WITH_ERRORS",
   "INTERRUPTED",
   "SYSTEM_FAILURE",
+  "EXPIRED",
 ];
 export const FINAL_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["CANCELED", "COMPLETED", "FAILED"];
 

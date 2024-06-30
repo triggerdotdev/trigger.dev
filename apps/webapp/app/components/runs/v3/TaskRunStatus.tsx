@@ -8,6 +8,7 @@ import {
   NoSymbolIcon,
   PauseCircleIcon,
   RectangleStackIcon,
+  TrashIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import { TaskRunStatus } from "@trigger.dev/database";
@@ -30,6 +31,7 @@ export const allTaskRunStatuses = [
   "PAUSED",
   "INTERRUPTED",
   "SYSTEM_FAILURE",
+  "EXPIRED",
 ] as const satisfies Readonly<Array<TaskRunStatus>>;
 
 export const filterableTaskRunStatuses = [
@@ -45,6 +47,7 @@ export const filterableTaskRunStatuses = [
   "CRASHED",
   "INTERRUPTED",
   "SYSTEM_FAILURE",
+  "EXPIRED",
 ] as const satisfies Readonly<Array<TaskRunStatus>>;
 
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
@@ -61,6 +64,7 @@ const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   SYSTEM_FAILURE: "Task has failed due to a system failure",
   PAUSED: "Task has been paused by the user",
   CRASHED: "Task has crashed and won't be retried",
+  EXPIRED: "Task has surpassed its ttl and won't be executed",
 };
 
 export const QUEUED_STATUSES: TaskRunStatus[] = ["PENDING", "WAITING_FOR_DEPLOY", "DELAYED"];
@@ -78,6 +82,7 @@ export const FINISHED_STATUSES: TaskRunStatus[] = [
   "INTERRUPTED",
   "SYSTEM_FAILURE",
   "CRASHED",
+  "EXPIRED",
 ];
 
 export function descriptionForTaskRunStatus(status: TaskRunStatus): string {
@@ -139,6 +144,8 @@ export function TaskRunStatusIcon({
       return <BugAntIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "CRASHED":
       return <FireIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "EXPIRED":
+      return <TrashIcon className={cn(runStatusClassNameColor(status), className)} />;
 
     default: {
       assertNever(status);
@@ -161,6 +168,7 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
     case "PAUSED":
       return "text-amber-300";
     case "CANCELED":
+    case "EXPIRED":
       return "text-charcoal-500";
     case "INTERRUPTED":
       return "text-error";
@@ -206,6 +214,8 @@ export function runStatusTitle(status: TaskRunStatus): string {
       return "System failure";
     case "CRASHED":
       return "Crashed";
+    case "EXPIRED":
+      return "Expired";
     default: {
       assertNever(status);
     }

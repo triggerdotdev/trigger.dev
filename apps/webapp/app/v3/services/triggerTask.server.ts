@@ -14,7 +14,6 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { uploadToObjectStore } from "../r2.server";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService } from "./baseService.server";
-import { $transaction } from "~/db.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -38,6 +37,11 @@ export class TriggerTaskService extends BaseService {
 
       const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey;
       const delayUntil = await parseDelay(body.options?.delay);
+
+      const ttl =
+        typeof body.options?.ttl === "number"
+          ? stringifyDuration(body.options?.ttl)
+          : body.options?.ttl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
 
       const existingRun = idempotencyKey
         ? await this._prisma.taskRun.findUnique({
@@ -135,6 +139,7 @@ export class TriggerTaskService extends BaseService {
                   isTest: body.options?.test ?? false,
                   delayUntil,
                   queuedAt: delayUntil ? undefined : new Date(),
+                  ttl,
                 },
               });
 
@@ -227,6 +232,18 @@ export class TriggerTaskService extends BaseService {
                   { runId: taskRun.id },
                   { tx, runAt: delayUntil, jobKey: `v3.enqueueDelayedRun.${taskRun.id}` }
                 );
+              }
+
+              if (!taskRun.delayUntil && taskRun.ttl) {
+                const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
+
+                if (expireAt) {
+                  await workerQueue.enqueue(
+                    "v3.expireRun",
+                    { runId: taskRun.id },
+                    { tx, runAt: expireAt, jobKey: `v3.expireRun.${taskRun.id}` }
+                  );
+                }
               }
 
               return taskRun;
@@ -341,7 +358,7 @@ export async function parseDelay(value?: string | Date): Promise<Date | undefine
   }
 }
 
-function parseNaturalLanguageDuration(duration: string): Date | undefined {
+export function parseNaturalLanguageDuration(duration: string): Date | undefined {
   const regexPattern = /^(\d+w)?(\d+d)?(\d+h)?(\d+m)?(\d+s)?$/;
 
   const result: Date = new Date();
@@ -391,4 +408,26 @@ function parseNaturalLanguageDuration(duration: string): Date | undefined {
   }
 
   return undefined;
+}
+
+function stringifyDuration(seconds: number): string | undefined {
+  if (seconds <= 0) {
+    return;
+  }
+
+  const units = {
+    w: Math.floor(seconds / 604800),
+    d: Math.floor((seconds % 604800) / 86400),
+    h: Math.floor((seconds % 86400) / 3600),
+    m: Math.floor((seconds % 3600) / 60),
+    s: Math.floor(seconds % 60),
+  };
+
+  // Filter the units having non-zero values and join them
+  const result: string = Object.entries(units)
+    .filter(([unit, val]) => val != 0)
+    .map(([unit, val]) => `${val}${unit}`)
+    .join("");
+
+  return result;
 }

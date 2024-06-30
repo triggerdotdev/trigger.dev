@@ -17,25 +17,22 @@ async function main() {
       },
     },
     {
-      delay: "1h",
+      delay: "1m",
+      ttl: "1m",
     }
   );
 
   const anyRun = await runs.retrieve(anyHandle);
 
+  console.log(`Run ${anyHandle.id} status: ${anyRun.status}, ttl: ${anyRun.ttl}`);
+
+  await new Promise((resolve) => setTimeout(resolve, 121000)); // wait for 2 minutes
+
+  const expiredRun = await runs.retrieve(anyRun.id);
+
   console.log(
-    `Run ${anyHandle.id} status: ${anyRun.status}, delayed until: ${anyRun.delayedUntil}`
+    `Run ${anyHandle.id} status: ${expiredRun.status}, expired at: ${expiredRun.expiredAt}`
   );
-
-  const rescheduledRun = await runs.reschedule(anyHandle.id, { delay: "5s" });
-
-  console.log(`Run ${rescheduledRun.id} rescheduled to ${rescheduledRun.delayedUntil}`);
-
-  await new Promise((resolve) => setTimeout(resolve, 6000));
-
-  const enqueuedRun = await runs.retrieve(rescheduledRun.id);
-
-  console.log(`Run ${enqueuedRun.id} status: ${enqueuedRun.status}`);
 
   // const handle = await tasks.trigger<typeof createJsonHeroDoc>("create-jsonhero-doc", {
   //   title: "Hello World",

@@ -69,6 +69,7 @@ export const TriggerTaskRequestBody = z.object({
       test: z.boolean().optional(),
       payloadType: z.string().optional(),
       delay: z.string().or(z.coerce.date()).optional(),
+      ttl: z.string().or(z.number().nonnegative().int()).optional(),
     })
     .optional(),
 });
@@ -386,6 +387,8 @@ export const RunStatus = z.enum([
   "SYSTEM_FAILURE",
   /// Task has been scheduled to run at a specific time
   "DELAYED",
+  /// Task has expired and won't be executed
+  "EXPIRED",
 ]);
 
 export type RunStatus = z.infer<typeof RunStatus>;
@@ -436,6 +439,8 @@ const CommonRunFields = {
   startedAt: z.coerce.date().optional(),
   finishedAt: z.coerce.date().optional(),
   delayedUntil: z.coerce.date().optional(),
+  ttl: z.string().optional(),
+  expiredAt: z.coerce.date().optional(),
 };
 
 export const RetrieveRunResponse = z.object({
