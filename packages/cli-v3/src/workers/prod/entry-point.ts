@@ -1067,7 +1067,7 @@ class ProdWorker {
                 });
               }
 
-              await setTimeout(200);
+              await timeout(1000);
 
               process.exit(EXIT_CODE_ALREADY_HANDLED);
             }
