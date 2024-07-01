@@ -111,11 +111,14 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         finishedAt: ApiRetrieveRunPresenter.isStatusFinished(apiStatus)
           ? taskRun.updatedAt
           : undefined,
+        delayedUntil: taskRun.delayUntil ?? undefined,
         payload: $payload,
         payloadPresignedUrl: $payloadPresignedUrl,
         output: $output,
         outputPresignedUrl: $outputPresignedUrl,
         isTest: taskRun.isTest,
+        ttl: taskRun.ttl ?? undefined,
+        expiredAt: taskRun.expiredAt ?? undefined,
         schedule: taskRun.schedule
           ? {
               id: taskRun.schedule.friendlyId,
@@ -171,6 +174,9 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
 
   static apiStatusFromRunStatus(status: TaskRunStatus): RunStatus {
     switch (status) {
+      case "DELAYED": {
+        return "DELAYED";
+      }
       case "WAITING_FOR_DEPLOY": {
         return "WAITING_FOR_DEPLOY";
       }
@@ -205,6 +211,9 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       case "COMPLETED_WITH_ERRORS": {
         return "FAILED";
       }
+      case "EXPIRED": {
+        return "EXPIRED";
+      }
       default: {
         assertNever(status);
       }
@@ -212,7 +221,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
   }
 
   static apiBooleanHelpersFromRunStatus(status: RunStatus) {
-    const isQueued = status === "QUEUED" || status === "WAITING_FOR_DEPLOY";
+    const isQueued = status === "QUEUED" || status === "WAITING_FOR_DEPLOY" || status === "DELAYED";
     const isExecuting = status === "EXECUTING" || status === "REATTEMPTING" || status === "FROZEN";
     const isCompleted =
       status === "COMPLETED" ||

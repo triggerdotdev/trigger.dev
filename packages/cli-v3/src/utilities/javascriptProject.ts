@@ -26,10 +26,58 @@ export class JavascriptProject {
     return this._packageJson;
   }
 
+  public get allowedPackageJson(): Record<string, unknown> {
+    const disallowedKeys = [
+      "scripts",
+      "devDependencies",
+      "dependencies",
+      "peerDependencies",
+      "author",
+      "contributors",
+      "funding",
+      "bugs",
+      "files",
+      "keywords",
+      "main",
+      "module",
+      "type",
+      "bin",
+      "browser",
+      "man",
+      "directories",
+      "repository",
+      "peerDependenciesMeta",
+      "optionalDependencies",
+      "engines",
+      "os",
+      "cpu",
+      "private",
+      "publishConfig",
+      "workspaces",
+    ];
+
+    return Object.keys(this.packageJson).reduce(
+      (acc, key) => {
+        if (!disallowedKeys.includes(key)) {
+          acc[key] = this.packageJson[key];
+        }
+
+        return acc;
+      },
+      {} as Record<string, unknown>
+    );
+  }
+
   public get scripts(): Record<string, string> {
-    return {
-      postinstall: this.packageJson.scripts?.postinstall ?? "",
-    };
+    return this.#filterScripts();
+  }
+
+  #filterScripts(): Record<string, string> {
+    if (!this.packageJson.scripts || typeof this.packageJson.scripts !== "object") {
+      return {};
+    }
+
+    return this.packageJson.scripts as Record<string, string>;
   }
 
   async install(): Promise<void> {
