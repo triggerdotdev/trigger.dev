@@ -344,7 +344,7 @@ export class EventRepository {
     });
   }
 
-  async queryIncompleteEvents(queryOptions: QueryOptions) {
+  async queryIncompleteEvents(queryOptions: QueryOptions, allowCompleteDuplicate = false) {
     // First we will find all the events that match the query options (selecting minimal data).
     const taskEvents = await this.readReplica.taskEvent.findMany({
       where: queryOptions,
@@ -361,6 +361,10 @@ export class EventRepository {
 
       // If the event is cancelled, it is not incomplete
       if (event.isCancelled) return false;
+
+      if (allowCompleteDuplicate) {
+        return true;
+      }
 
       // There must not be another complete event with the same spanId
       const hasCompleteDuplicate = taskEvents.some(

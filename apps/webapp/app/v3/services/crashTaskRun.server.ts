@@ -75,9 +75,12 @@ export class CrashTaskRunService extends BaseService {
       },
     });
 
-    const inProgressEvents = await eventRepository.queryIncompleteEvents({
-      runId: taskRun.friendlyId,
-    });
+    const inProgressEvents = await eventRepository.queryIncompleteEvents(
+      {
+        runId: taskRun.friendlyId,
+      },
+      options?.overrideCompletion
+    );
 
     logger.debug("Crashing in-progress events", {
       inProgressEvents: inProgressEvents.map((event) => event.id),
