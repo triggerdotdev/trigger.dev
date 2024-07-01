@@ -184,12 +184,14 @@ export default function Page() {
       <PageBody>
         <div className={cn("flex h-full flex-col gap-3")}>
           <div className="flex items-center justify-end gap-2">
-            <Switch
-              variant="small"
-              label="Reveal values"
-              checked={revealAll}
-              onCheckedChange={(e) => setRevealAll(e.valueOf())}
-            />
+            {environmentVariables.length > 0 && (
+              <Switch
+                variant="small"
+                label="Reveal values"
+                checked={revealAll}
+                onCheckedChange={(e) => setRevealAll(e.valueOf())}
+              />
+            )}
             <LinkButton
               to={v3NewEnvironmentVariablesPath(organization, project)}
               variant="primary/small"
