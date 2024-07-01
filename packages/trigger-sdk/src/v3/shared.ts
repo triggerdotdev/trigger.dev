@@ -154,6 +154,7 @@ export type TaskOptions<
       | "large-1x"
       | "large-2x";
   };
+
   /** This gets called when a task is triggered. It's where you put the code you want to execute.
    *
    * @param payload - The payload that is passed to your task when it's triggered. This must be JSON serializable.
@@ -363,10 +364,36 @@ export type TaskIdentifier<TTask extends AnyTask> = TTask extends Task<infer TId
 export type TaskRunOptions = {
   idempotencyKey?: string;
   maxAttempts?: number;
-  startAt?: Date;
-  startAfter?: number;
   queue?: TaskRunConcurrencyOptions;
   concurrencyKey?: string;
+  /**
+   * The delay before the task is executed. This can be a string like "1h" or a Date object.
+   *
+   * @example
+   * "1h" - 1 hour
+   * "30d" - 30 days
+   * "15m" - 15 minutes
+   * "2w" - 2 weeks
+   * "60s" - 60 seconds
+   * new Date("2025-01-01T00:00:00Z")
+   */
+  delay?: string | Date;
+
+  /**
+   * Set a time-to-live for this run. If the run is not executed within this time, it will be removed from the queue and never execute.
+   *
+   * @example
+   *
+   * ```ts
+   * await myTask.trigger({ foo: "bar" }, { ttl: "1h" });
+   * await myTask.trigger({ foo: "bar" }, { ttl: 60 * 60 }); // 1 hour
+   * ```
+   *
+   * The minimum value is 1 second. Setting the `ttl` to `0` will disable the TTL and the run will never expire.
+   *
+   * **Note:** Runs in development have a default `ttl` of 10 minutes. You can override this by setting the `ttl` option.
+   */
+  ttl?: string | number;
 };
 
 type TaskRunConcurrencyOptions = Queue;
@@ -413,6 +440,8 @@ export function createTask<
                 test: taskContext.ctx?.run.isTest,
                 payloadType: payloadPacket.dataType,
                 idempotencyKey: options?.idempotencyKey,
+                delay: options?.delay,
+                ttl: options?.ttl,
               },
             },
             { spanParentAsLink: true }
@@ -474,6 +503,8 @@ export function createTask<
                       test: taskContext.ctx?.run.isTest,
                       payloadType: payloadPacket.dataType,
                       idempotencyKey: item.options?.idempotencyKey,
+                      delay: item.options?.delay,
+                      ttl: item.options?.ttl,
                     },
                   };
                 })
@@ -547,6 +578,8 @@ export function createTask<
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
               idempotencyKey: options?.idempotencyKey,
+              delay: options?.delay,
+              ttl: options?.ttl,
             },
           });
 
@@ -631,6 +664,8 @@ export function createTask<
                     test: taskContext.ctx?.run.isTest,
                     payloadType: payloadPacket.dataType,
                     idempotencyKey: item.options?.idempotencyKey,
+                    delay: item.options?.delay,
+                    ttl: item.options?.ttl,
                   },
                 };
               })
@@ -792,6 +827,8 @@ export async function trigger<TTask extends AnyTask>(
       test: taskContext.ctx?.run.isTest,
       payloadType: payloadPacket.dataType,
       idempotencyKey: options?.idempotencyKey,
+      delay: options?.delay,
+      ttl: options?.ttl,
     },
   });
 
@@ -846,6 +883,8 @@ export async function batchTrigger<TTask extends AnyTask>(
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
             idempotencyKey: item.options?.idempotencyKey,
+            delay: item.options?.delay,
+            ttl: item.options?.ttl,
           },
         };
       })

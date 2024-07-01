@@ -308,7 +308,7 @@ function createProviderNamespace(io: Server) {
         try {
           const service = new DeploymentIndexFailed();
 
-          await service.call(message.deploymentId, message.error);
+          await service.call(message.deploymentId, message.error, message.overrideCompletion);
         } catch (e) {
           logger.error("Error while indexing", { error: e });
         }

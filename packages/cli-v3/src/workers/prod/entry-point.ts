@@ -6,13 +6,15 @@ import {
   ProdTaskRunExecution,
   ProdWorkerToCoordinatorMessages,
   TaskResource,
+  TaskRunErrorCodes,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   WaitReason,
 } from "@trigger.dev/core/v3";
-import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
+import { InferSocketMessageSchema, ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
 import { HttpReply, getRandomPortNumber } from "@trigger.dev/core-apps/http";
 import { SimpleLogger } from "@trigger.dev/core-apps/logger";
+import { EXIT_CODE_ALREADY_HANDLED, EXIT_CODE_CHILD_NONZERO } from "@trigger.dev/core-apps/process";
 import { ExponentialBackoff } from "@trigger.dev/core-apps/backoff";
 import {
   OnWaitForBatchMessage,
@@ -145,12 +147,12 @@ class ProdWorker {
     logger.log("Unhandled signal", { signal });
   }
 
-  async #exitGracefully(gracefulExitTimeoutElapsed = false) {
+  async #exitGracefully(gracefulExitTimeoutElapsed = false, exitCode = 0) {
     await this.#backgroundWorker.close(gracefulExitTimeoutElapsed);
 
     if (!gracefulExitTimeoutElapsed) {
       // TODO: Maybe add a sensible timeout instead of a conditional to avoid zombies
-      process.exit(0);
+      process.exit(exitCode);
     }
   }
 
@@ -512,7 +514,11 @@ class ProdWorker {
     await this.#prepareForCheckpoint();
   }
 
-  async #prepareForRetry(willCheckpointAndRestore: boolean, shouldExit: boolean) {
+  async #prepareForRetry(
+    willCheckpointAndRestore: boolean,
+    shouldExit: boolean,
+    exitCode?: number
+  ) {
     logger.log("prepare for retry", { willCheckpointAndRestore, shouldExit });
 
     // Graceful shutdown on final attempt
@@ -521,7 +527,7 @@ class ProdWorker {
         logger.error("WARNING: Will checkpoint but also requested exit. This won't end well.");
       }
 
-      await this.#exitGracefully();
+      await this.#exitGracefully(false, exitCode);
       return;
     }
 
@@ -682,7 +688,14 @@ class ProdWorker {
 
     logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
 
-    await this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
+    const exitCode =
+      !completion.ok &&
+      completion.error.type === "INTERNAL_ERROR" &&
+      completion.error.code === TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE
+        ? EXIT_CODE_CHILD_NONZERO
+        : 0;
+
+    await this.#prepareForRetry(willCheckpointAndRestore, shouldExit, exitCode);
 
     if (willCheckpointAndRestore) {
       // We need to replay this on next connection if we don't receive READY_FOR_RETRY within a reasonable time
@@ -967,6 +980,19 @@ class ProdWorker {
           }
 
           if (process.env.INDEX_TASKS === "true") {
+            const failIndex = (
+              error: InferSocketMessageSchema<
+                typeof ProdWorkerToCoordinatorMessages,
+                "INDEXING_FAILED"
+              >["error"]
+            ) => {
+              socket.emit("INDEXING_FAILED", {
+                version: "v1",
+                deploymentId: this.deploymentId,
+                error,
+              });
+            };
+
             try {
               const taskResources = await this.#initializeWorker();
 
@@ -995,15 +1021,11 @@ class ProdWorker {
                   tasks: e.tasks,
                 });
 
-                socket.emit("INDEXING_FAILED", {
-                  version: "v1",
-                  deploymentId: this.deploymentId,
-                  error: {
-                    name: "TaskMetadataParseError",
-                    message: "There was an error parsing the task metadata",
-                    stack: JSON.stringify({ zodIssues: e.zodIssues, tasks: e.tasks }),
-                    stderr,
-                  },
+                failIndex({
+                  name: "TaskMetadataParseError",
+                  message: "There was an error parsing the task metadata",
+                  stack: JSON.stringify({ zodIssues: e.zodIssues, tasks: e.tasks }),
+                  stderr,
                 });
               } else if (e instanceof UncaughtExceptionError) {
                 const error = {
@@ -1015,11 +1037,7 @@ class ProdWorker {
 
                 logger.error("uncaught exception", { originalError: error });
 
-                socket.emit("INDEXING_FAILED", {
-                  version: "v1",
-                  deploymentId: this.deploymentId,
-                  error,
-                });
+                failIndex(error);
               } else if (e instanceof Error) {
                 const error = {
                   name: e.name,
@@ -1030,40 +1048,28 @@ class ProdWorker {
 
                 logger.error("error", { error });
 
-                socket.emit("INDEXING_FAILED", {
-                  version: "v1",
-                  deploymentId: this.deploymentId,
-                  error,
-                });
+                failIndex(error);
               } else if (typeof e === "string") {
                 logger.error("string error", { error: { message: e } });
 
-                socket.emit("INDEXING_FAILED", {
-                  version: "v1",
-                  deploymentId: this.deploymentId,
-                  error: {
-                    name: "Error",
-                    message: e,
-                    stderr,
-                  },
+                failIndex({
+                  name: "Error",
+                  message: e,
+                  stderr,
                 });
               } else {
                 logger.error("unknown error", { error: e });
 
-                socket.emit("INDEXING_FAILED", {
-                  version: "v1",
-                  deploymentId: this.deploymentId,
-                  error: {
-                    name: "Error",
-                    message: "Unknown error",
-                    stderr,
-                  },
+                failIndex({
+                  name: "Error",
+                  message: "Unknown error",
+                  stderr,
                 });
               }
 
-              await timeout(200);
-              // Use exit code 111 so we can ignore those failures in the task monitor
-              process.exit(111);
+              await setTimeout(200);
+
+              process.exit(EXIT_CODE_ALREADY_HANDLED);
             }
           }
 

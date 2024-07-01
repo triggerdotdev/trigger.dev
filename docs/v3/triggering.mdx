@@ -536,3 +536,177 @@ export async function create() {
 ```
 
 </CodeGroup>
+
+## Large Payloads
+
+We recommend keeping your task payloads as small as possible. We currently have a hard limit on task payloads above 10MB.
+
+If your payload size is larger than 512KB, instead of saving the payload to the database, we will upload it to an S3-compatible object store and store the URL in the database.
+
+When your task runs, we automatically download the payload from the object store and pass it to your task function. We also will return to you a `payloadPresignedUrl` from the `runs.retrieve` SDK function so you can download the payload if needed:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+
+const run = await runs.retrieve(handle);
+
+if (run.payloadPresignedUrl) {
+  const response = await fetch(run.payloadPresignedUrl);
+  const payload = await response.json();
+
+  console.log("Payload", payload);
+}
+```
+
+<Note>
+  We also use this same system for dealing with large task outputs, and subsequently will return a
+  corresponding `outputPresignedUrl`. Task outputs are limited to 100MB.
+</Note>
+
+If you need to pass larger payloads, you'll need to upload the payload to your own storage and pass a URL to the file in the payload instead. For example, uploading to S3 and then sending a presigned URL that expires in URL:
+
+<CodeGroup>
+
+```ts /yourServer.ts
+import { myTask } from "./trigger/myTasks";
+import { s3Client, getSignedUrl, PutObjectCommand, GetObjectCommand } from "./s3";
+import { createReadStream } from "node:fs";
+
+// Upload file to S3
+await s3Client.send(
+  new PutObjectCommand({
+    Bucket: "my-bucket",
+    Key: "myfile.json",
+    Body: createReadStream("large-payload.json"),
+  })
+);
+
+// Create presigned URL
+const presignedUrl = await getSignedUrl(
+  s3Client,
+  new GetObjectCommand({
+    Bucket: "my-bucket",
+    Key: "my-file.json",
+  }),
+  {
+    expiresIn: 3600, // expires in 1 hour
+  }
+);
+
+// Now send the URL to the task
+const handle = await myTask.trigger({
+  url: presignedUrl,
+});
+```
+
+```ts /trigger/myTasks.ts
+import { task } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { url: string }) => {
+    // Download the file from the URL
+    const response = await fetch(payload.url);
+    const data = await response.json();
+
+    // Do something with the data
+  },
+});
+```
+
+</CodeGroup>
+
+### Batch Triggering
+
+When using `batchTrigger` or `batchTriggerAndWait`, the total size of all payloads cannot exceed 10MB. This means if you are doing a batch of 100 runs, each payload should be less than 100KB.
+
+## Delayed runs
+
+When you want to trigger a task now, but have it run at a later time, you can use the `delay` option:
+
+```ts
+// Delay the task run by 1 hour
+await myTask.trigger({ some: "data" }, { delay: "1h" });
+// Delay the task run by 88 seconds
+await myTask.trigger({ some: "data" }, { delay: "88s" });
+// Delay the task run by 1 hour and 52 minutes and 18 seconds
+await myTask.trigger({ some: "data" }, { delay: "1h52m18s" });
+// Delay until a specific time
+await myTask.trigger({ some: "data" }, { delay: "2024-12-01T00:00:00" });
+// Delay using a Date object
+await myTask.trigger({ some: "data" }, { delay: new Date(Date.now() + 1000 * 60 * 60) });
+```
+
+Runs that are delayed and have not been enqueued yet will display in the dashboard with a "Delayed" status:
+
+![Delayed run in the dashboard](/images/v3/delayed-runs.png)
+
+<Note>
+  Delayed runs will be enqueued at the time specified, and will run as soon as possible after that
+  time, just as a normally triggered run would.
+</Note>
+
+You can cancel a delayed run using the `runs.cancel` SDK function:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+
+await runs.cancel("run_1234");
+```
+
+You can also reschedule a delayed run using the `runs.reschedule` SDK function:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+
+// The delay option here takes the same format as the trigger delay option
+await runs.reschedule("run_1234", { delay: "1h" });
+```
+
+The `delay` option is also available when using `batchTrigger`:
+
+```ts
+await myTask.batchTrigger([{ payload: { some: "data" }, options: { delay: "1h" } }]);
+```
+
+## TTL
+
+You can set a TTL (time to live) when triggering a task, which will automatically expire the run if it hasn't started within the specified time. This is useful for ensuring that a run doesn't get stuck in the queue for too long.
+
+<Note>
+  All runs in development have a default `ttl` of 10 minutes. You can disable this by setting the
+  `ttl` option.
+</Note>
+
+```ts
+import { myTask } from "./trigger/myTasks";
+
+// Expire the run if it hasn't started within 1 hour
+await myTask.trigger({ some: "data" }, { ttl: "1h" });
+
+// If you specify a number, it will be treated as seconds
+await myTask.trigger({ some: "data" }, { ttl: 3600 }); // 1 hour
+```
+
+When a run is expired, it will be marked as "Expired" in the dashboard:
+
+![Expired runs in the dashboard](/images/v3/expired-runs.png)
+
+### Delayed runs and TTL
+
+When you use both `delay` and `ttl`, the TTL will start counting down from the time the run is enqueued, not from the time the run is triggered.
+
+So for example, when using the following code:
+
+```ts
+await myTask.trigger({ some: "data" }, { delay: "10m", ttl: "1h" });
+```
+
+The timeline would look like this:
+
+1. The run is created at 12:00:00
+2. The run is enqueued at 12:10:00
+3. The TTL starts counting down from 12:10:00
+4. If the run hasn't started by 13:10:00, it will be expired
+
+For this reason, the `ttl` option only accepts durations and not absolute timestamps.

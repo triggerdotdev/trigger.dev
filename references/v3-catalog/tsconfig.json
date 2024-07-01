@@ -14,8 +14,6 @@
     },
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "allowJs": true,
-    "moduleResolution": "Bundler",
-    "module": "ES2020"
+    "allowJs": true
   }
 }

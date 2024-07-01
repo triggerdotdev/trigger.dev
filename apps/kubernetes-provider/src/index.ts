@@ -529,27 +529,28 @@ provider.listen();
 
 const taskMonitor = new TaskMonitor({
   runtimeEnv: RUNTIME_ENV,
-  onIndexFailure: async (deploymentId, failureInfo) => {
-    logger.log("Indexing failed", { deploymentId, failureInfo });
+  onIndexFailure: async (deploymentId, details) => {
+    logger.log("Indexing failed", { deploymentId, details });
 
     try {
       provider.platformSocket.send("INDEXING_FAILED", {
         deploymentId,
         error: {
-          name: `Crashed with exit code ${failureInfo.exitCode}`,
-          message: failureInfo.reason,
-          stack: failureInfo.logs,
+          name: `Crashed with exit code ${details.exitCode}`,
+          message: details.reason,
+          stack: details.logs,
         },
+        overrideCompletion: details.overrideCompletion,
       });
     } catch (error) {
       logger.error(error);
     }
   },
-  onRunFailure: async (runId, failureInfo) => {
-    logger.log("Run failed:", { runId, failureInfo });
+  onRunFailure: async (runId, details) => {
+    logger.log("Run failed:", { runId, details });
 
     try {
-      provider.platformSocket.send("WORKER_CRASHED", { runId, ...failureInfo });
+      provider.platformSocket.send("WORKER_CRASHED", { runId, ...details });
     } catch (error) {
       logger.error(error);
     }

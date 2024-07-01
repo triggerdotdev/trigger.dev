@@ -302,6 +302,7 @@ export const ProviderToPlatformMessages = {
       exitCode: z.number().optional(),
       message: z.string().optional(),
       logs: z.string().optional(),
+      overrideCompletion: z.boolean().optional(),
     }),
   },
   INDEXING_FAILED: {
@@ -314,6 +315,7 @@ export const ProviderToPlatformMessages = {
         stack: z.string().optional(),
         stderr: z.string().optional(),
       }),
+      overrideCompletion: z.boolean().optional(),
     }),
   },
 };

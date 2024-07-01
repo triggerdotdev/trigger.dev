@@ -857,10 +857,10 @@ importers:
   integrations/airtable:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/trigger-sdk
       airtable:
         specifier: ^0.12.1
@@ -900,10 +900,10 @@ importers:
         specifier: ^12.0.10
         version: 12.0.10
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/trigger-sdk
       octokit:
         specifier: ^3.1.2
@@ -943,10 +943,10 @@ importers:
         specifier: ^8.0.0
         version: 8.0.0
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/trigger-sdk
       zod:
         specifier: 3.22.3
@@ -974,10 +974,10 @@ importers:
   integrations/openai:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/trigger-sdk
       openai:
         specifier: ^4.16.1
@@ -1017,10 +1017,10 @@ importers:
         specifier: ^2.7.0
         version: 2.7.0
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/trigger-sdk
     devDependencies:
       '@trigger.dev/tsconfig':
@@ -1045,10 +1045,10 @@ importers:
   integrations/replicate:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/trigger-sdk
       replicate:
         specifier: ^0.18.1
@@ -1079,10 +1079,10 @@ importers:
   integrations/resend:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/trigger-sdk
       resend:
         specifier: ^2.1.0
@@ -1113,10 +1113,10 @@ importers:
         specifier: ^7.7.0
         version: 7.7.0
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/trigger-sdk
     devDependencies:
       '@trigger.dev/tsconfig':
@@ -1144,10 +1144,10 @@ importers:
         specifier: ^8.0.2
         version: 8.0.2
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/trigger-sdk
       zod:
         specifier: 3.22.3
@@ -1178,7 +1178,7 @@ importers:
         specifier: ^6.8.1
         version: 6.8.1
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/trigger-sdk
       zod:
         specifier: 3.22.3
@@ -1206,10 +1206,10 @@ importers:
   integrations/stripe:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/trigger-sdk
       stripe:
         specifier: ^12.14.0
@@ -1243,10 +1243,10 @@ importers:
         specifier: ^2.26.0
         version: 2.31.0
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/trigger-sdk
       supabase-management-js:
         specifier: ^1.0.0
@@ -1277,10 +1277,10 @@ importers:
   integrations/typeform:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../../packages/trigger-sdk
       '@typeform/api-client':
         specifier: ^1.8.0
@@ -1308,7 +1308,7 @@ importers:
   packages/astro:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../trigger-sdk
       debug:
         specifier: ^4.3.4
@@ -1526,7 +1526,7 @@ importers:
         specifier: ^1.22.0
         version: 1.22.0
       '@trigger.dev/core':
-        specifier: workspace:3.0.0-beta.42
+        specifier: workspace:3.0.0-beta.44
         version: link:../core
       '@types/degit':
         specifier: ^2.8.3
@@ -1689,8 +1689,8 @@ importers:
         specifier: ^6.1.0
         version: 6.1.0
       rimraf:
-        specifier: ^3.0.2
-        version: 3.0.2
+        specifier: ^5.0.7
+        version: 5.0.7
       tsup:
         specifier: ^8.0.1
         version: 8.0.1(patch_hash=a5ztaafw5l4qfghy2hjjuynb34)(postcss@8.4.27)(typescript@5.4.5)
@@ -1939,7 +1939,7 @@ importers:
         version: 4.18.2
     devDependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../trigger-sdk
       '@trigger.dev/tsconfig':
         specifier: workspace:*
@@ -2034,7 +2034,7 @@ importers:
         version: 4.3.4(supports-color@8.1.1)
     devDependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../trigger-sdk
       '@trigger.dev/tsconfig':
         specifier: workspace:*
@@ -2067,7 +2067,7 @@ importers:
   packages/nextjs:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../trigger-sdk
       debug:
         specifier: ^4.3.4
@@ -2153,7 +2153,7 @@ importers:
         specifier: 5.0.0-beta.2
         version: 5.0.0-beta.2(react@18.2.0)
       '@trigger.dev/core':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../core
       debug:
         specifier: ^4.3.4
@@ -2196,7 +2196,7 @@ importers:
   packages/remix:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../trigger-sdk
       debug:
         specifier: ^4.3.4
@@ -2233,7 +2233,7 @@ importers:
   packages/sveltekit:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.42
+        specifier: workspace:^3.0.0-beta.44
         version: link:../trigger-sdk
       debug:
         specifier: ^4.3.4
@@ -2307,10 +2307,10 @@ importers:
         specifier: ^1.22.0
         version: 1.22.0
       '@trigger.dev/core':
-        specifier: workspace:3.0.0-beta.42
+        specifier: workspace:3.0.0-beta.44
         version: link:../core
       '@trigger.dev/core-backend':
-        specifier: workspace:3.0.0-beta.42
+        specifier: workspace:3.0.0-beta.44
         version: link:../core-backend
       chalk:
         specifier: ^5.2.0
@@ -23423,6 +23423,7 @@ packages:
 
   /glob@7.1.7:
     resolution: {integrity: sha512-OvD9ENzPLbegENnYP5UUfJIirTg4+XwMWGaQfQTY0JenxNvvIKP3U3/tAQSPIu/lHxXYSZmpXlUHeqAIdKzBLQ==}
+    deprecated: Glob versions prior to v9 are no longer supported
     dependencies:
       fs.realpath: 1.0.0
       inflight: 1.0.6
@@ -31540,6 +31541,7 @@ packages:
 
   /rimraf@2.7.1:
     resolution: {integrity: sha512-uWjbaKIK3T1OSVptzX7Nl6PvQ3qAGtKEtVRjRuazjfL3Bx5eI409VZSqgND+4UNnmzLVdPj9FqFJNPqBZFve4w==}
+    deprecated: Rimraf versions prior to v4 are no longer supported
     hasBin: true
     dependencies:
       glob: 7.2.3
@@ -31565,6 +31567,14 @@ packages:
     dependencies:
       glob: 10.3.10
     dev: false
+
+  /rimraf@5.0.7:
+    resolution: {integrity: sha512-nV6YcJo5wbLW77m+8KjH8aB/7/rxQy9SZ0HY5shnwULfS+9nmTtVXAJET5NdZmCzA4fPI/Hm1wo/Po/4mopOdg==}
+    engines: {node: '>=14.18'}
+    hasBin: true
+    dependencies:
+      glob: 10.3.10
+    dev: true
 
   /rollup-plugin-inject@3.0.2:
     resolution: {integrity: sha512-ptg9PQwzs3orn4jkgXJ74bfs5vYz1NCZlSQMBUA0wKcGp5i5pA1AO3fOUEte8enhGUC+iapTCzEWw2jEFFUO/w==}

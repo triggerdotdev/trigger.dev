@@ -82,3 +82,28 @@ export const unfriendlyIdTask = task({
     console.log("Hello world");
   },
 });
+
+export const oomTask = task({
+  id: "oom-task",
+  machine: {
+    preset: "micro",
+  },
+  run: async () => {
+    logger.info("running out of memory below this line");
+
+    let a = "a";
+
+    try {
+      while (true) {
+        a += a;
+      }
+    } catch (error) {
+      logger.error(error instanceof Error ? error.message : "Unknown error", { error });
+
+      let b = [];
+      while (true) {
+        b.push(a.replace(/a/g, "b"));
+      }
+    }
+  },
+});

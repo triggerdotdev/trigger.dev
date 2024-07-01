@@ -2,12 +2,17 @@
   "name": "@references/v3-catalog",
   "version": "0.1.0",
   "private": true,
+  "zenstack": {
+    "schema": "./prisma/schema.zmodel"
+  },
   "scripts": {
     "dev:trigger": "triggerdev dev",
     "management": "ts-node -r tsconfig-paths/register ./src/management.ts",
     "queues": "ts-node -r tsconfig-paths/register ./src/queues.ts",
     "build:client": "tsup-node ./src/clientUsage.ts --format esm,cjs",
-    "client": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/clientUsage.ts"
+    "client": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/clientUsage.ts",
+    "triggerWithLargePayload": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/triggerWithLargePayload.ts",
+    "postinstall": "echo 'package.json postinstall'"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",

@@ -3,10 +3,12 @@ import {
   BoltSlashIcon,
   BugAntIcon,
   CheckCircleIcon,
+  ClockIcon,
   FireIcon,
   NoSymbolIcon,
   PauseCircleIcon,
   RectangleStackIcon,
+  TrashIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import { TaskRunStatus } from "@trigger.dev/database";
@@ -16,6 +18,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
 export const allTaskRunStatuses = [
+  "DELAYED",
   "WAITING_FOR_DEPLOY",
   "PENDING",
   "EXECUTING",
@@ -28,10 +31,12 @@ export const allTaskRunStatuses = [
   "PAUSED",
   "INTERRUPTED",
   "SYSTEM_FAILURE",
+  "EXPIRED",
 ] as const satisfies Readonly<Array<TaskRunStatus>>;
 
 export const filterableTaskRunStatuses = [
   "WAITING_FOR_DEPLOY",
+  "DELAYED",
   "PENDING",
   "EXECUTING",
   "RETRYING_AFTER_FAILURE",
@@ -42,9 +47,11 @@ export const filterableTaskRunStatuses = [
   "CRASHED",
   "INTERRUPTED",
   "SYSTEM_FAILURE",
+  "EXPIRED",
 ] as const satisfies Readonly<Array<TaskRunStatus>>;
 
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
+  DELAYED: "Task has been delayed and is waiting to be executed",
   PENDING: "Task is waiting to be executed",
   WAITING_FOR_DEPLOY: "Task needs to be deployed first to start executing",
   EXECUTING: "Task is currently being executed",
@@ -57,9 +64,10 @@ const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   SYSTEM_FAILURE: "Task has failed due to a system failure",
   PAUSED: "Task has been paused by the user",
   CRASHED: "Task has crashed and won't be retried",
+  EXPIRED: "Task has surpassed its ttl and won't be executed",
 };
 
-export const QUEUED_STATUSES: TaskRunStatus[] = ["PENDING", "WAITING_FOR_DEPLOY"];
+export const QUEUED_STATUSES: TaskRunStatus[] = ["PENDING", "WAITING_FOR_DEPLOY", "DELAYED"];
 
 export const RUNNING_STATUSES: TaskRunStatus[] = [
   "EXECUTING",
@@ -74,6 +82,7 @@ export const FINISHED_STATUSES: TaskRunStatus[] = [
   "INTERRUPTED",
   "SYSTEM_FAILURE",
   "CRASHED",
+  "EXPIRED",
 ];
 
 export function descriptionForTaskRunStatus(status: TaskRunStatus): string {
@@ -109,6 +118,8 @@ export function TaskRunStatusIcon({
   className: string;
 }) {
   switch (status) {
+    case "DELAYED":
+      return <ClockIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PENDING":
       return <RectangleStackIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "WAITING_FOR_DEPLOY":
@@ -133,6 +144,8 @@ export function TaskRunStatusIcon({
       return <BugAntIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "CRASHED":
       return <FireIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "EXPIRED":
+      return <TrashIcon className={cn(runStatusClassNameColor(status), className)} />;
 
     default: {
       assertNever(status);
@@ -143,6 +156,7 @@ export function TaskRunStatusIcon({
 export function runStatusClassNameColor(status: TaskRunStatus): string {
   switch (status) {
     case "PENDING":
+    case "DELAYED":
       return "text-charcoal-500";
     case "WAITING_FOR_DEPLOY":
       return "text-amber-500";
@@ -154,6 +168,7 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
     case "PAUSED":
       return "text-amber-300";
     case "CANCELED":
+    case "EXPIRED":
       return "text-charcoal-500";
     case "INTERRUPTED":
       return "text-error";
@@ -173,6 +188,8 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
 
 export function runStatusTitle(status: TaskRunStatus): string {
   switch (status) {
+    case "DELAYED":
+      return "Delayed";
     case "PENDING":
       return "Queued";
     case "WAITING_FOR_DEPLOY":
@@ -197,6 +214,8 @@ export function runStatusTitle(status: TaskRunStatus): string {
       return "System failure";
     case "CRASHED":
       return "Crashed";
+    case "EXPIRED":
+      return "Expired";
     default: {
       assertNever(status);
     }
