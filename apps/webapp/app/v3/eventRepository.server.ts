@@ -1411,7 +1411,9 @@ function filteredAttributes(attributes: Attributes, prefix: string): Attributes 
 }
 
 function calculateDurationFromStart(startTime: bigint, endTime: Date = new Date()) {
-  return Number(BigInt(endTime.getTime() * 1_000_000) - startTime);
+  const $endtime = typeof endTime === "string" ? new Date(endTime) : endTime;
+
+  return Number(BigInt($endtime.getTime() * 1_000_000) - startTime);
 }
 
 function getNowInNanoseconds(): bigint {
