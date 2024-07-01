@@ -118,6 +118,8 @@ export function TaskRunsTable({
           <TableHeaderCell>Duration</TableHeaderCell>
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
+          <TableHeaderCell>Delayed until</TableHeaderCell>
+          <TableHeaderCell>TTL</TableHeaderCell>
           <TableHeaderCell>
             <span className="sr-only">Go to page</span>
           </TableHeaderCell>
@@ -187,6 +189,10 @@ export function TaskRunsTable({
                 <TableCell to={path}>
                   {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
                 </TableCell>
+                <TableCell to={path}>
+                  {run.delayUntil ? <DateTime date={run.delayUntil} /> : "–"}
+                </TableCell>
+                <TableCell to={path}>{run.ttl ?? "–"}</TableCell>
                 <RunActionsCell run={run} path={path} />
               </TableRow>
             );

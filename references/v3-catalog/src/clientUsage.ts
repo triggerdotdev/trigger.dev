@@ -8,59 +8,74 @@ type createJsonHeroDocIdentifier = TaskIdentifier<typeof createJsonHeroDoc>; // 
 type createJsonHeroDocHandle = TaskOutputHandle<typeof createJsonHeroDoc>; // retrieves the handle of the task
 
 async function main() {
-  const anyHandle = await tasks.trigger("create-jsonhero-doc", {
-    title: "Hello World",
-    content: {
-      message: "Hello, World!",
+  const anyHandle = await tasks.trigger(
+    "create-jsonhero-doc",
+    {
+      title: "Hello World",
+      content: {
+        message: "Hello, World!",
+      },
     },
-  });
+    {
+      delay: "1m",
+      ttl: "1m",
+    }
+  );
 
   const anyRun = await runs.retrieve(anyHandle);
 
-  console.log(`Run ${anyHandle.id} completed with output:`, anyRun.output);
+  console.log(`Run ${anyHandle.id} status: ${anyRun.status}, ttl: ${anyRun.ttl}`);
 
-  const handle = await tasks.trigger<typeof createJsonHeroDoc>("create-jsonhero-doc", {
-    title: "Hello World",
-    content: {
-      message: "Hello, World!",
-    },
-  });
+  await new Promise((resolve) => setTimeout(resolve, 121000)); // wait for 2 minutes
 
-  console.log(handle);
+  const expiredRun = await runs.retrieve(anyRun.id);
 
-  const completedRun = await runs.poll(handle, { pollIntervalMs: 100 });
+  console.log(
+    `Run ${anyHandle.id} status: ${expiredRun.status}, expired at: ${expiredRun.expiredAt}`
+  );
 
-  console.log(`Run ${handle.id} completed with output:`, completedRun.output);
+  // const handle = await tasks.trigger<typeof createJsonHeroDoc>("create-jsonhero-doc", {
+  //   title: "Hello World",
+  //   content: {
+  //     message: "Hello, World!",
+  //   },
+  // });
 
-  const run = await tasks.triggerAndPoll<typeof createJsonHeroDoc>("create-jsonhero-doc", {
-    title: "Hello World",
-    content: {
-      message: "Hello, World!",
-    },
-  });
+  // console.log(handle);
 
-  console.log(`Run ${run.id} completed with output: `, run.output);
+  // const completedRun = await runs.poll(handle, { pollIntervalMs: 100 });
 
-  const batchHandle = await tasks.batchTrigger<typeof createJsonHeroDoc>("create-jsonhero-doc", [
-    {
-      payload: {
-        title: "Hello World",
-        content: {
-          message: "Hello, World!",
-        },
-      },
-    },
-    {
-      payload: {
-        title: "Hello World 2",
-        content: {
-          message: "Hello, World 2!",
-        },
-      },
-    },
-  ]);
+  // console.log(`Run ${handle.id} completed with output:`, completedRun.output);
 
-  const run2 = await runs.retrieve(batchHandle.runs[0]);
+  // const run = await tasks.triggerAndPoll<typeof createJsonHeroDoc>("create-jsonhero-doc", {
+  //   title: "Hello World",
+  //   content: {
+  //     message: "Hello, World!",
+  //   },
+  // });
+
+  // console.log(`Run ${run.id} completed with output: `, run.output);
+
+  // const batchHandle = await tasks.batchTrigger<typeof createJsonHeroDoc>("create-jsonhero-doc", [
+  //   {
+  //     payload: {
+  //       title: "Hello World",
+  //       content: {
+  //         message: "Hello, World!",
+  //       },
+  //     },
+  //   },
+  //   {
+  //     payload: {
+  //       title: "Hello World 2",
+  //       content: {
+  //         message: "Hello, World 2!",
+  //       },
+  //     },
+  //   },
+  // ]);
+
+  // const run2 = await runs.retrieve(batchHandle.runs[0]);
 }
 
 main().catch(console.error);

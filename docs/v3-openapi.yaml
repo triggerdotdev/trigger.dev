@@ -269,6 +269,7 @@ paths:
 
   "/api/v1/timezones":
     get:
+      security: []
       operationId: get_timezones_v1
       summary: Get all supported timezones
       description: Get all supported timezones that schedule tasks support.
@@ -423,6 +424,71 @@ paths:
             import { runs } from "@trigger.dev/sdk/v3";
 
             await runs.cancel("run_1234");
+
+  "/api/v1/runs/{runId}/reschedule":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    post:
+      operationId: reschedule_run_v1
+      summary: Rescheduled a delayed run
+      description: Updates a delayed run with a new delay. Only valid when the run is in the DELAYED state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/RescheduleRunRequestBody"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RetrieveRunResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or missing run ID
+                      - Failed to create new run
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API key
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run not found
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { runs } from "@trigger.dev/sdk/v3";
+
+            const handle = await runs.reschedule("run_1234", { delay: new Date("2024-06-29T20:45:56.340Z") });
 
   "/api/v3/runs/{runId}":
     parameters:
@@ -1681,6 +1747,18 @@ components:
           type: string
           example: slack_123456
       required: ["name", "value"]
+    RescheduleRunRequestBody:
+      type: object
+      properties:
+        delay:
+          oneOf:
+            - type: string
+              description: The duration to delay the run by. The duration should be in the format of `1d`, `6h`, `10m`, `11s`, etc.
+              example: 1hr
+            - type: string
+              format: date-time
+              description: The Date to delay the run until, e.g. `new Date()` or `"2024-06-25T15:45:26Z"`
+              example: 2024-06-25T15:45:26Z
     RetrieveRunResponse:
       type: object
       required:
@@ -1699,6 +1777,7 @@ components:
           type: string
           description: The status of the run
           enum:
+            - DELAYED
             - WAITING_FOR_DEPLOY
             - QUEUED
             - EXECUTING
@@ -1756,6 +1835,10 @@ components:
           type: string
           format: date-time
           description: The time the run finished
+        delayedUntil:
+          type: string
+          format: date-time
+          description: If the run was triggered with a delay, this will be the time the run will be enqueued to execute
         schedule:
           type: object
           description: The schedule that triggered the run. Will be omitted if the run was not triggered by a schedule

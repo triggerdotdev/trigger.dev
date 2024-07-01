@@ -15,6 +15,7 @@ import {
   ListRunResponseItem,
   ListScheduleOptions,
   ReplayRunResponse,
+  RescheduleRunRequestBody,
   RetrieveRunResponse,
   ScheduleObject,
   TaskRunExecutionResult,
@@ -242,6 +243,19 @@ export class ApiClient {
       {
         method: "POST",
         headers: this.#getHeaders(false),
+      },
+      zodFetchOptions
+    );
+  }
+
+  rescheduleRun(runId: string, body: RescheduleRunRequestBody) {
+    return zodfetch(
+      RetrieveRunResponse,
+      `${this.baseUrl}/api/v1/runs/${runId}/reschedule`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
       },
       zodFetchOptions
     );

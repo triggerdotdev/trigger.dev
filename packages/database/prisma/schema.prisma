@@ -1660,6 +1660,11 @@ model TaskRun {
 
   concurrencyKey String?
 
+  delayUntil DateTime?
+  queuedAt   DateTime?
+  ttl        String?
+  expiredAt  DateTime?
+
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
@@ -1684,6 +1689,8 @@ model TaskRun {
 }
 
 enum TaskRunStatus {
+  /// Task has been scheduled to run in the future
+  DELAYED
   /// Task is waiting to be executed by a worker
   PENDING
 
@@ -1719,6 +1726,9 @@ enum TaskRunStatus {
 
   /// Task has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage
   CRASHED
+
+  // Task reached the ttl without being executed
+  EXPIRED
 }
 
 model TaskRunDependency {
