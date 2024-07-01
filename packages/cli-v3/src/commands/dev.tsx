@@ -29,7 +29,15 @@ import {
   mockServerOnlyPlugin,
   workerSetupImportConfigPlugin,
 } from "../utilities/build";
-import { chalkError, chalkGrey, chalkPurple, chalkTask, chalkWorker } from "../utilities/cliOutput";
+import {
+  chalkError,
+  chalkGrey,
+  chalkLink,
+  chalkPurple,
+  chalkTask,
+  chalkWorker,
+  cliLink,
+} from "../utilities/cliOutput";
 import { readConfig } from "../utilities/configFiles";
 import { readJSONFile } from "../utilities/fileSystem";
 import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
@@ -624,13 +632,23 @@ function useDev({
                   }
 
                   backgroundWorker.metadata = backgroundWorkerRecord.data;
+                  backgroundWorker;
+
+                  const testUrl = `${dashboardUrl}/projects/v3/${config.project}/test?environment=dev`;
+                  const runsUrl = `${dashboardUrl}/projects/v3/${config.project}/runs?envSlug=dev`;
+
+                  const pipe = chalkGrey("|");
+                  const bullet = chalkGrey("○");
+                  const arrow = chalkGrey("->");
+
+                  const testLink = chalkLink(cliLink("Test tasks", testUrl));
+                  const runsLink = chalkLink(cliLink("View runs", runsUrl));
+
+                  const workerStarted = chalkGrey("Background worker started");
+                  const workerVersion = chalkWorker(backgroundWorkerRecord.data.version);
 
                   logger.log(
-                    `${chalkGrey(
-                      `○ Background worker started -> ${chalkWorker(
-                        backgroundWorkerRecord.data.version
-                      )}`
-                    )}`
+                    `${bullet} ${workerStarted} ${arrow} ${workerVersion} ${pipe} ${testLink} ${pipe} ${runsLink}`
                   );
 
                   firstBuild = false;
@@ -742,15 +760,23 @@ function useDev({
     });
 
     return () => {
-      logger.debug(`Shutting down dev session for ${config.project}`);
+      const cleanup = async () => {
+        logger.debug(`Shutting down dev session for ${config.project}`);
 
-      taskFileWatcher.close();
+        const start = Date.now();
 
-      websocket?.close();
-      backgroundWorkerCoordinator.close();
-      ctx?.dispose().catch((error) => {
-        console.error(error);
-      });
+        await taskFileWatcher.close();
+
+        websocket?.close();
+        backgroundWorkerCoordinator.close();
+        ctx?.dispose().catch((error) => {
+          console.error(error);
+        });
+
+        logger.debug(`Shutdown completed in ${Date.now() - start}ms`);
+      };
+
+      cleanup();
     };
   }, [config, apiUrl, apiKey, environmentClient]);
 }

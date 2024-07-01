@@ -29,6 +29,7 @@ import {
   TaskMetadataParseError,
   UncaughtExceptionError,
   UnexpectedExitError,
+  getFriendlyErrorMessage,
 } from "../common/errors";
 
 type BackgroundWorkerParams = {
@@ -462,6 +463,8 @@ export class ProdBackgroundWorker {
           error: {
             type: "INTERNAL_ERROR",
             code: TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE,
+            message: getFriendlyErrorMessage(e.code, e.signal, e.stderr),
+            stackTrace: e.stderr,
           },
         };
       }
@@ -576,6 +579,7 @@ class TaskRunProcess {
   private _isBeingKilled: boolean = false;
   private _isBeingCancelled: boolean = false;
   private _gracefulExitTimeoutElapsed: boolean = false;
+  private _stderr: Array<string> = [];
 
   /**
    * @deprecated use onTaskRunHeartbeat instead
@@ -854,7 +858,13 @@ class TaskRunProcess {
         } else if (this._isBeingKilled) {
           rejecter(new CleanupProcessError());
         } else {
-          rejecter(new UnexpectedExitError(code ?? -1));
+          rejecter(
+            new UnexpectedExitError(
+              code ?? -1,
+              signal,
+              this._stderr.length ? this._stderr.join("\n") : undefined
+            )
+          );
         }
       }
     }
@@ -867,7 +877,13 @@ class TaskRunProcess {
   }
 
   #handleStdErr(data: Buffer) {
-    console.error(data.toString());
+    const text = data.toString();
+    console.error(text);
+
+    if (this._stderr.length > 100) {
+      this._stderr.shift();
+    }
+    this._stderr.push(text);
   }
 
   async kill(signal?: number | NodeJS.Signals, timeoutInMs?: number) {

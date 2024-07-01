@@ -3,6 +3,7 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
+import { startActiveSpan } from "./tracer.server";
 
 export const r2 = singleton("r2", initializeR2);
 
@@ -23,30 +24,87 @@ export async function uploadToObjectStore(
   contentType: string,
   environment: AuthenticatedEnvironment
 ): Promise<string> {
-  if (!r2) {
-    throw new Error("Object store credentials are not set");
+  return await startActiveSpan("uploadToObjectStore()", async (span) => {
+    if (!r2) {
+      throw new Error("Object store credentials are not set");
+    }
+
+    if (!env.OBJECT_STORE_BASE_URL) {
+      throw new Error("Object store base URL is not set");
+    }
+
+    span.setAttributes({
+      projectRef: environment.project.externalRef,
+      environmentSlug: environment.slug,
+      filename: filename,
+    });
+
+    const url = new URL(env.OBJECT_STORE_BASE_URL);
+    url.pathname = `/packets/${environment.project.externalRef}/${environment.slug}/${filename}`;
+
+    logger.debug("Uploading to object store", { url: url.href });
+
+    const response = await r2.fetch(url.toString(), {
+      method: "PUT",
+      headers: {
+        "Content-Type": contentType,
+      },
+      body: data,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to upload output to ${url}: ${response.statusText}`);
+    }
+
+    return url.href;
+  });
+}
+
+export async function generatePresignedRequest(
+  projectRef: string,
+  envSlug: string,
+  filename: string,
+  method: "PUT" | "GET" = "PUT"
+) {
+  if (!env.OBJECT_STORE_BASE_URL) {
+    return;
   }
 
-  if (!env.OBJECT_STORE_BASE_URL) {
-    throw new Error("Object store base URL is not set");
+  if (!r2) {
+    return;
   }
 
   const url = new URL(env.OBJECT_STORE_BASE_URL);
-  url.pathname = `/packets/${environment.project.externalRef}/${environment.slug}/${filename}`;
+  url.pathname = `/packets/${projectRef}/${envSlug}/${filename}`;
+  url.searchParams.set("X-Amz-Expires", "300"); // 5 minutes
 
-  logger.debug("Uploading to object store", { url: url.href });
+  const signed = await r2.sign(
+    new Request(url, {
+      method,
+    }),
+    {
+      aws: { signQuery: true },
+    }
+  );
 
-  const response = await r2.fetch(url.toString(), {
-    method: "PUT",
-    headers: {
-      "Content-Type": contentType,
-    },
-    body: data,
+  logger.debug("Generated presigned URL", {
+    url: signed.url,
+    headers: Object.fromEntries(signed.headers),
+    projectRef,
+    envSlug,
+    filename,
   });
 
-  if (!response.ok) {
-    throw new Error(`Failed to upload output to ${url}: ${response.statusText}`);
-  }
+  return signed;
+}
 
-  return url.href;
+export async function generatePresignedUrl(
+  projectRef: string,
+  envSlug: string,
+  filename: string,
+  method: "PUT" | "GET" = "PUT"
+) {
+  const signed = await generatePresignedRequest(projectRef, envSlug, filename, method);
+
+  return signed?.url;
 }

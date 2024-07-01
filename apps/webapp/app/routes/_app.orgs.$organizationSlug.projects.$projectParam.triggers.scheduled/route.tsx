@@ -2,6 +2,8 @@ import { NoSymbolIcon } from "@heroicons/react/20/solid";
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
+import { ListPagination } from "~/components/ListPagination";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { DateTime } from "~/components/primitives/DateTime";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";
@@ -17,30 +19,38 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
+import { DirectionSchema } from "~/components/runs/RunStatuses";
 import { ScheduledTriggersPresenter } from "~/presenters/ScheduledTriggersPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema, docsPath } from "~/utils/pathBuilder";
 
+const SearchSchema = z.object({
+  cursor: z.string().optional(),
+  direction: DirectionSchema.optional(),
+});
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+
+  const url = new URL(request.url);
+  const s = Object.fromEntries(url.searchParams.entries());
+  const searchParams = SearchSchema.parse(s);
 
   const presenter = new ScheduledTriggersPresenter();
   const data = await presenter.call({
     userId,
     organizationSlug,
     projectSlug: projectParam,
+    direction: searchParams.direction,
+    cursor: searchParams.cursor,
   });
 
   return typedjson(data);
 };
 
-export default function Integrations() {
-  const { scheduled } = useTypedLoaderData<typeof loader>();
-  const organization = useOrganization();
-  const project = useProject();
+export default function Route() {
+  const { scheduled, pagination } = useTypedLoaderData<typeof loader>();
 
   return (
     <>
@@ -48,6 +58,10 @@ export default function Integrations() {
         A Scheduled Trigger runs a Job on a repeated schedule. The schedule can use a CRON
         expression or an interval.
       </Paragraph>
+
+      {scheduled.length > 0 && (
+        <ListPagination list={{ pagination }} className="mt-2 justify-end" />
+      )}
 
       <Table containerClassName="mt-4">
         <TableHeader>

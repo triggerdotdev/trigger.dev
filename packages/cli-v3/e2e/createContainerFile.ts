@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { cliRootPath } from "../src/utilities/resolveInternalFilePath";
 import { ReadConfigResult } from "../src/utilities/configFiles";
 
 type CreateContainerFileOptions = {
@@ -24,15 +23,6 @@ export async function createContainerFile(options: CreateContainerFileOptions) {
   const containerFilePath = resolve("./src/Containerfile.prod");
 
   let containerFileContents = readFileSync(containerFilePath, "utf-8");
-
-  if (config.postInstall) {
-    containerFileContents = containerFileContents.replace(
-      "__POST_INSTALL__",
-      `RUN ${config.postInstall}`
-    );
-  } else {
-    containerFileContents = containerFileContents.replace("__POST_INSTALL__", "");
-  }
 
   await writeFile(join(tempDir, "Containerfile"), containerFileContents);
 }

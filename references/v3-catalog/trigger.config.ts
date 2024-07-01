@@ -51,6 +51,7 @@ export const config: TriggerConfig = {
   dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp", /@t3-oss/],
   instrumentations: [new OpenAIInstrumentation()],
   logLevel: "info",
+  postInstall: "echo '========== config.postInstall'",
   onStart: async (payload, { ctx }) => {
     if (ctx.organization.id === "clsylhs0v0002dyx75xx4pod1") {
       console.log("Initializing the app data source");
