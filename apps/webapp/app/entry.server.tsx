@@ -16,7 +16,6 @@ import {
 } from "./components/primitives/OperatingSystemProvider";
 import { getSharedSqsEventConsumer } from "./services/events/sqsEventConsumer";
 import { singleton } from "./utils/singleton";
-import { logger } from "./services/logger.server";
 
 const ABORT_DELAY = 30000;
 

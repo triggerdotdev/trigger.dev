@@ -8,6 +8,7 @@ import { devPubSub } from "../marqs/devPubSub.server";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
 import { CANCELLABLE_ATTEMPT_STATUSES, isCancellableRunStatus } from "../taskStatus";
+import { CancelTaskAttemptDependenciesService } from "./cancelTaskAttemptDependencies.server";
 
 type ExtendedTaskRun = Prisma.TaskRunGetPayload<{
   include: {
@@ -66,6 +67,16 @@ export class CancelTaskRunService extends BaseService {
           },
           include: {
             backgroundWorker: true,
+            dependencies: {
+              include: {
+                taskRun: true,
+              },
+            },
+            batchTaskRunItems: {
+              include: {
+                taskRun: true,
+              },
+            },
           },
         },
         runtimeEnvironment: true,
@@ -93,6 +104,18 @@ export class CancelTaskRunService extends BaseService {
       await this.#cancelRemainingRunWorkers(cancelledTaskRun);
     }
 
+    const cancelService = new CancelTaskRunService();
+
+    // Cancel any dependent task runs
+    for (const attempt of cancelledTaskRun.attempts) {
+      for (const dependency of attempt.dependencies) {
+        await cancelService.call(dependency.taskRun, {
+          ...opts,
+          reason: `Parent task run was cancelled`,
+        });
+      }
+    }
+
     return {
       id: cancelledTaskRun.id,
     };
@@ -103,6 +126,8 @@ export class CancelTaskRunService extends BaseService {
     attempts: ExtendedTaskRunAttempt[]
   ) {
     for (const attempt of attempts) {
+      await CancelTaskAttemptDependenciesService.enqueue(attempt.id, this._prisma);
+
       if (run.runtimeEnvironment.type === "DEVELOPMENT") {
         // Signal the task run attempt to stop
         await devPubSub.publish(
