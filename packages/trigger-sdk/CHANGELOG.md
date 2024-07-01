@@ -1,5 +1,16 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.45
+
+### Patch Changes
+
+- 0e77e7ef7: v3: Trigger delayed runs and reschedule them
+- Updated dependencies [0e77e7ef7]
+- Updated dependencies [568da0178]
+- Updated dependencies [5ae3da6b4]
+  - @trigger.dev/core@3.0.0-beta.45
+  - @trigger.dev/core-backend@3.0.0-beta.45
+
 ## 3.0.0-beta.44
 
 ### Patch Changes

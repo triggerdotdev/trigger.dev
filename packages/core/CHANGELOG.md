@@ -1,5 +1,18 @@
 # internal-platform
 
+## 3.0.0-beta.45
+
+### Patch Changes
+
+- 0e77e7ef7: v3: Trigger delayed runs and reschedule them
+- 568da0178: - Improve non-zero exit code error messages
+  - Detect OOM conditions within worker child processes
+  - Internal errors can have optional stack traces
+  - Docker provider can be set to enforce machine presets
+- 5ae3da6b4: - Fix artifact detection logs
+  - Fix OOM detection and error messages
+  - Add test link to cli deployment completion
+
 ## 3.0.0-beta.44
 
 ### Patch Changes
