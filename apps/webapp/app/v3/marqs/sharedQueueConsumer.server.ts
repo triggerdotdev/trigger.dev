@@ -268,6 +268,7 @@ export class SharedQueueConsumer {
     // TODO: For every ACK, decide what should be done with the existing run and attempts. Make sure to check the current statuses first.
 
     switch (messageBody.data.type) {
+      // MARK: EXECUTE
       case "EXECUTE": {
         const existingTaskRun = await prisma.taskRun.findUnique({
           where: {
@@ -580,6 +581,7 @@ export class SharedQueueConsumer {
 
         break;
       }
+      // MARK: DEP RESUME
       // Resume after dependency completed with no remaining retries
       case "RESUME": {
         if (messageBody.data.checkpointEventId) {
@@ -769,6 +771,7 @@ export class SharedQueueConsumer {
 
         break;
       }
+      // MARK: DURATION RESUME
       // Resume after duration-based wait
       case "RESUME_AFTER_DURATION": {
         try {
@@ -802,6 +805,7 @@ export class SharedQueueConsumer {
 
         break;
       }
+      // MARK: FAIL
       // Fail for whatever reason, usually runs that have been resumed but stopped heartbeating
       case "FAIL": {
         const existingTaskRun = await prisma.taskRun.findUnique({
