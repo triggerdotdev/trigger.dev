@@ -519,7 +519,7 @@ class ProdWorker {
     shouldExit: boolean,
     exitCode?: number
   ) {
-    logger.log("prepare for retry", { willCheckpointAndRestore, shouldExit });
+    logger.log("prepare for retry", { willCheckpointAndRestore, shouldExit, exitCode });
 
     // Graceful shutdown on final attempt
     if (shouldExit) {
