@@ -1,5 +1,13 @@
 # @trigger.dev/core-apps
 
+## 3.0.0-beta.45
+
+### Patch Changes
+
+- 5ae3da6b4: - Fix artifact detection logs
+  - Fix OOM detection and error messages
+  - Add test link to cli deployment completion
+
 ## 3.0.0-beta.44
 
 ## 3.0.0-beta.43
