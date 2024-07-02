@@ -26,7 +26,10 @@ const OTEL_EXPORTER_OTLP_ENDPOINT =
 const POD_CLEANER_INTERVAL_SECONDS = Number(process.env.POD_CLEANER_INTERVAL_SECONDS || "300");
 
 const UPTIME_HEARTBEAT_URL = process.env.UPTIME_HEARTBEAT_URL;
-const UPTIME_INTERVAL_SECONDS = Number(process.env.UPTIME_INTERVAL_SECONDS || "30");
+const UPTIME_INTERVAL_SECONDS = Number(process.env.UPTIME_INTERVAL_SECONDS || "60");
+const UPTIME_MAX_PENDING_RUNS = Number(process.env.UPTIME_MAX_PENDING_RUNS || "25");
+const UPTIME_MAX_PENDING_INDECES = Number(process.env.UPTIME_MAX_PENDING_INDECES || "10");
+const UPTIME_MAX_PENDING_ERRORS = Number(process.env.UPTIME_MAX_PENDING_ERRORS || "10");
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 logger.log(`running in ${RUNTIME_ENV} mode`);
@@ -578,6 +581,9 @@ if (UPTIME_HEARTBEAT_URL) {
     namespace: "default",
     intervalInSeconds: UPTIME_INTERVAL_SECONDS,
     pingUrl: UPTIME_HEARTBEAT_URL,
+    maxPendingRuns: UPTIME_MAX_PENDING_RUNS,
+    maxPendingIndeces: UPTIME_MAX_PENDING_INDECES,
+    maxPendingErrors: UPTIME_MAX_PENDING_ERRORS,
   });
 
   uptimeHeartbeat.start();

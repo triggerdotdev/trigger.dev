@@ -7,14 +7,20 @@ type UptimeHeartbeatOptions = {
   namespace?: string;
   intervalInSeconds?: number;
   maxPendingRuns?: number;
+  maxPendingIndeces?: number;
+  maxPendingErrors?: number;
   leadingEdge?: boolean;
 };
 
 export class UptimeHeartbeat {
   private enabled = false;
-  private namespace = "default";
-  private intervalInSeconds = 30;
-  private maxPendingRuns = 25;
+  private namespace: string;
+
+  private intervalInSeconds: number;
+  private maxPendingRuns: number;
+  private maxPendingIndeces: number;
+  private maxPendingErrors: number;
+
   private leadingEdge = true;
 
   private logger = new SimpleLogger("[UptimeHeartbeat]");
@@ -24,17 +30,12 @@ export class UptimeHeartbeat {
   };
 
   constructor(private opts: UptimeHeartbeatOptions) {
-    if (opts.namespace) {
-      this.namespace = opts.namespace;
-    }
+    this.namespace = opts.namespace ?? "default";
 
-    if (opts.intervalInSeconds) {
-      this.intervalInSeconds = opts.intervalInSeconds;
-    }
-
-    if (opts.maxPendingRuns) {
-      this.maxPendingRuns = opts.maxPendingRuns;
-    }
+    this.intervalInSeconds = opts.intervalInSeconds ?? 60;
+    this.maxPendingRuns = opts.maxPendingRuns ?? 25;
+    this.maxPendingIndeces = opts.maxPendingIndeces ?? 10;
+    this.maxPendingErrors = opts.maxPendingErrors ?? 10;
 
     this.k8sClient = this.#createK8sClient();
   }
@@ -88,11 +89,11 @@ export class UptimeHeartbeat {
     this.#logK8sError({ body: err.body });
   }
 
-  async #getTotalPods(opts: {
+  async #getPods(opts: {
     namespace: string;
     fieldSelector?: string;
     labelSelector?: string;
-  }): Promise<number> {
+  }): Promise<Array<k8s.V1Pod> | undefined> {
     const listReturn = await this.k8sClient.core
       .listNamespacedPod(
         opts.namespace,
@@ -110,19 +111,36 @@ export class UptimeHeartbeat {
       )
       .catch(this.#handleK8sError.bind(this));
 
-    if (!listReturn) {
-      this.logger.error("Failed to get pods", { opts });
-      return 0;
-    }
-
-    return listReturn.body.items.length;
+    return listReturn?.body.items;
   }
 
-  async #getTotalPendingTasks(): Promise<number> {
-    return await this.#getTotalPods({
+  async #getPendingIndeces(): Promise<Array<k8s.V1Pod> | undefined> {
+    return await this.#getPods({
+      namespace: this.namespace,
+      fieldSelector: "status.phase=Pending",
+      labelSelector: "app=task-index",
+    });
+  }
+
+  async #getPendingTasks(): Promise<Array<k8s.V1Pod> | undefined> {
+    return await this.#getPods({
       namespace: this.namespace,
       fieldSelector: "status.phase=Pending",
       labelSelector: "app=task-run",
+    });
+  }
+
+  #countPods(pods: Array<k8s.V1Pod>): number {
+    return pods.length;
+  }
+
+  #filterPendingPods(
+    pods: Array<k8s.V1Pod>,
+    waitingReason: "CreateContainerError" | "RunContainerError"
+  ): Array<k8s.V1Pod> {
+    return pods.filter((pod) => {
+      const containerStatus = pod.status?.containerStatuses?.[0];
+      return containerStatus?.state?.waiting?.reason === waitingReason;
     });
   }
 
@@ -169,7 +187,23 @@ export class UptimeHeartbeat {
 
     const start = Date.now();
 
-    const totalPendingTasks = await this.#getTotalPendingTasks();
+    const pendingTasks = await this.#getPendingTasks();
+
+    if (!pendingTasks) {
+      this.logger.error("Failed to get pending tasks");
+      return;
+    }
+
+    const totalPendingTasks = this.#countPods(pendingTasks);
+
+    const pendingIndeces = await this.#getPendingIndeces();
+
+    if (!pendingIndeces) {
+      this.logger.error("Failed to get pending indeces");
+      return;
+    }
+
+    const totalPendingIndeces = this.#countPods(pendingIndeces);
 
     const elapsedMs = Date.now() - start;
 
@@ -177,6 +211,26 @@ export class UptimeHeartbeat {
 
     if (totalPendingTasks > this.maxPendingRuns) {
       this.logger.log("Too many pending tasks, skipping heartbeat", { totalPendingTasks });
+      return;
+    }
+
+    if (totalPendingIndeces > this.maxPendingIndeces) {
+      this.logger.log("Too many pending indeces, skipping heartbeat", { totalPendingIndeces });
+      return;
+    }
+
+    const totalCreateContainerErrors = this.#countPods(
+      this.#filterPendingPods(pendingTasks, "CreateContainerError")
+    );
+    const totalRunContainerErrors = this.#countPods(
+      this.#filterPendingPods(pendingTasks, "RunContainerError")
+    );
+
+    if (totalCreateContainerErrors + totalRunContainerErrors > this.maxPendingErrors) {
+      this.logger.log("Too many pending tasks with errors, skipping heartbeat", {
+        totalRunContainerErrors,
+        totalCreateContainerErrors,
+      });
       return;
     }
 
