@@ -1,4 +1,5 @@
 {
   "deno.enablePaths": ["references/deno-reference", "runtime_tests/tests/deno"],
-  "debug.toolBarLocation": "commandCenter"
+  "debug.toolBarLocation": "commandCenter",
+  "eslint.workingDirectories": ["apps/webapp"]
 }
