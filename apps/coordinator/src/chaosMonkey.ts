@@ -29,8 +29,8 @@ export class ChaosMonkey {
 
   async call({
     $,
-    throwErrors,
-    addDelays,
+    throwErrors = true,
+    addDelays = true,
   }: {
     $?: Execa$<string>;
     throwErrors?: boolean;
