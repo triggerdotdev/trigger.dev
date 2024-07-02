@@ -40,6 +40,7 @@ import { ProjectParamSchema, v3ProjectPath, v3RunsPath, v3TestPath } from "~/uti
 import { ListPagination } from "../../components/ListPagination";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 import { findProjectBySlug } from "~/models/project.server";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -341,22 +342,21 @@ function CreateFirstTaskInstructions() {
   const organization = useOrganization();
   const project = useProject();
   return (
-    <MainCenteredContainer className="max-w-prose">
-      <BlankstateInstructions title="Create your first task">
-        <Paragraph spacing>
+    <MainCenteredContainer className="max-w-md">
+      <InfoPanel
+        icon={TaskIcon}
+        iconClassName="text-blue-500"
+        panelClassName="max-full"
+        title="Create your first task"
+        to={v3ProjectPath(organization, project)}
+        buttonLabel="Create a task"
+      >
+        <Paragraph variant="small">
           Before running a task, you must first create one. Follow the instructions on the{" "}
           <TextLink to={v3ProjectPath(organization, project)}>Tasks</TextLink> page to create a
           task, then return here to run it.
         </Paragraph>
-        <LinkButton
-          to={v3ProjectPath(organization, project)}
-          variant="primary/medium"
-          LeadingIcon={TaskIcon}
-          className="inline-flex"
-        >
-          Create your first task
-        </LinkButton>
-      </BlankstateInstructions>
+      </InfoPanel>
     </MainCenteredContainer>
   );
 }
