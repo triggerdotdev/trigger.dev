@@ -1,7 +1,6 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import {
-  ArrowUpRightIcon,
   BellAlertIcon,
   BellSlashIcon,
   BookOpenIcon,
@@ -24,6 +23,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DetailCell } from "~/components/primitives/DetailCell";
 import { Header2 } from "~/components/primitives/Headers";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -257,22 +257,17 @@ export default function Page() {
               )}
             </TableBody>
           </Table>
-          <div className="mt-4">
-            <Header2 className="mb-1">Platform alerts</Header2>
-            <Paragraph variant="small" className="mb-4">
+          <InfoPanel
+            title="Platform alerts"
+            icon={BellAlertIcon}
+            to="https://status.trigger.dev/"
+            buttonLabel="Subscribe"
+          >
+            <Paragraph variant="small">
               Subscribe to get email notifications when Trigger.dev creates, updates or resolves a
               platform incident.
             </Paragraph>
-            <LinkButton
-              variant="tertiary/medium"
-              TrailingIcon={ArrowUpRightIcon}
-              to="https://status.trigger.dev/"
-              target="_blank"
-              className="inline-flex"
-            >
-              Subscribe
-            </LinkButton>
-          </div>
+          </InfoPanel>
         </div>
         <Outlet />
       </PageBody>
