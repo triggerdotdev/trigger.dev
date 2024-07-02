@@ -1,7 +1,4 @@
 import { createServer } from "node:http";
-import fs from "node:fs/promises";
-import { $, type ExecaChildProcess } from "execa";
-import { nanoid } from "nanoid";
 import { Server } from "socket.io";
 import {
   CoordinatorToPlatformMessages,
@@ -13,43 +10,37 @@ import {
 } from "@trigger.dev/core/v3";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
-import { testDockerCheckpoint } from "@trigger.dev/core-apps/checkpoints";
-import { ExponentialBackoff } from "@trigger.dev/core-apps/backoff";
 import { HttpReply, getTextBody } from "@trigger.dev/core-apps/http";
 import { SimpleLogger } from "@trigger.dev/core-apps/logger";
+import { ChaosMonkey } from "./chaosMonkey";
+import { Checkpointer } from "./checkpointer";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
-import { ChaosMonkey } from "./chaosMonkey";
 collectDefaultMetrics();
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8020);
 const NODE_NAME = process.env.NODE_NAME || "coordinator";
 const DEFAULT_RETRY_DELAY_THRESHOLD_IN_MS = 30_000;
-const CHAOS_MONKEY_ENABLED = !!process.env.CHAOS_MONKEY_ENABLED;
 
-const FORCE_CHECKPOINT_SIMULATION = ["1", "true"].includes(
-  process.env.FORCE_CHECKPOINT_SIMULATION ?? "true"
-);
-const DISABLE_CHECKPOINT_SUPPORT = ["1", "true"].includes(
-  process.env.DISABLE_CHECKPOINT_SUPPORT ?? "false"
-);
-const SIMULATE_PUSH_FAILURE = ["1", "true"].includes(process.env.SIMULATE_PUSH_FAILURE ?? "false");
-const SIMULATE_PUSH_FAILURE_SECONDS = parseInt(
-  process.env.SIMULATE_PUSH_FAILURE_SECONDS ?? "300",
-  10
-);
-const SIMULATE_CHECKPOINT_FAILURE = ["1", "true"].includes(
-  process.env.SIMULATE_CHECKPOINT_FAILURE ?? "false"
-);
-const SIMULATE_CHECKPOINT_FAILURE_SECONDS = parseInt(
-  process.env.SIMULATE_CHECKPOINT_FAILURE_SECONDS ?? "300",
-  10
-);
+const boolFromEnv = (env: string, defaultValue: boolean): boolean => {
+  const value = process.env[env];
 
-const REGISTRY_HOST = process.env.REGISTRY_HOST || "localhost:5000";
-const REGISTRY_NAMESPACE = process.env.REGISTRY_NAMESPACE || "trigger";
-const CHECKPOINT_PATH = process.env.CHECKPOINT_PATH || "/checkpoints";
-const REGISTRY_TLS_VERIFY = process.env.REGISTRY_TLS_VERIFY === "false" ? "false" : "true";
+  if (!value) {
+    return defaultValue;
+  }
+
+  return ["1", "true"].includes(value);
+};
+
+const numFromEnv = (env: string, defaultValue: number): number => {
+  const value = process.env[env];
+
+  if (!value) {
+    return defaultValue;
+  }
+
+  return parseInt(value, 10);
+};
 
 const PLATFORM_ENABLED = ["1", "true"].includes(process.env.PLATFORM_ENABLED ?? "true");
 const PLATFORM_HOST = process.env.PLATFORM_HOST || "127.0.0.1";
@@ -58,554 +49,24 @@ const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
 const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?? "false");
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
-const chaosMonkey = new ChaosMonkey(CHAOS_MONKEY_ENABLED);
-
-type CheckpointerInitializeReturn = {
-  canCheckpoint: boolean;
-  willSimulate: boolean;
-};
-
-type CheckpointAndPushOptions = {
-  runId: string;
-  leaveRunning?: boolean;
-  projectRef: string;
-  deploymentVersion: string;
-  shouldHeartbeat?: boolean;
-};
-
-type CheckpointAndPushResult =
-  | { success: true; checkpoint: CheckpointData }
-  | {
-      success: false;
-      reason?: "CANCELED" | "DISABLED" | "ERROR" | "IN_PROGRESS" | "NO_SUPPORT" | "SKIP_RETRYING";
-    };
-
-type CheckpointData = {
-  location: string;
-  docker: boolean;
-};
-
-type CheckpointerOptions = {
-  forceSimulate: boolean;
-  heartbeat: (runId: string) => void;
-};
-
-function isExecaChildProcess(maybeExeca: unknown): maybeExeca is Awaited<ExecaChildProcess> {
-  return typeof maybeExeca === "object" && maybeExeca !== null && "escapedCommand" in maybeExeca;
-}
-
-async function getFileSize(filePath: string): Promise<number> {
-  try {
-    const stats = await fs.stat(filePath);
-    return stats.size;
-  } catch (error) {
-    console.error("Error getting file size:", error);
-    return -1;
-  }
-}
-
-async function getParsedFileSize(filePath: string) {
-  const sizeInBytes = await getFileSize(filePath);
-
-  let message = `Size in bytes: ${sizeInBytes}`;
-
-  if (sizeInBytes > 1024 * 1024) {
-    const sizeInMB = (sizeInBytes / 1024 / 1024).toFixed(2);
-    message = `Size in MB (rounded): ${sizeInMB}`;
-  } else if (sizeInBytes > 1024) {
-    const sizeInKB = (sizeInBytes / 1024).toFixed(2);
-    message = `Size in KB (rounded): ${sizeInKB}`;
-  }
-
-  return {
-    path: filePath,
-    sizeInBytes,
-    message,
-  };
-}
-
-class Checkpointer {
-  #initialized = false;
-  #canCheckpoint = false;
-  #dockerMode = !process.env.KUBERNETES_PORT;
-
-  #logger = new SimpleLogger("[checkptr]");
-  #abortControllers = new Map<string, AbortController>();
-  #failedCheckpoints = new Map<string, unknown>();
-  #waitingForRetry = new Set<string>();
-
-  constructor(private opts: CheckpointerOptions) {}
-
-  async init(): Promise<CheckpointerInitializeReturn> {
-    if (this.#initialized) {
-      return this.#getInitReturn(this.#canCheckpoint);
-    }
-
-    this.#logger.log(`${this.#dockerMode ? "Docker" : "Kubernetes"} mode`);
-
-    if (this.#dockerMode) {
-      const testCheckpoint = await testDockerCheckpoint();
-
-      if (testCheckpoint.ok) {
-        return this.#getInitReturn(true);
-      }
-
-      this.#logger.error(testCheckpoint.message, testCheckpoint.error ?? "");
-      return this.#getInitReturn(false);
-    } else {
-      try {
-        await $`buildah login --get-login ${REGISTRY_HOST}`;
-      } catch (error) {
-        this.#logger.error(`No checkpoint support: Not logged in to registry ${REGISTRY_HOST}`);
-        return this.#getInitReturn(false);
-      }
-    }
-
-    return this.#getInitReturn(true);
-  }
-
-  #getInitReturn(canCheckpoint: boolean): CheckpointerInitializeReturn {
-    this.#canCheckpoint = canCheckpoint;
-
-    if (canCheckpoint) {
-      if (!this.#initialized) {
-        this.#logger.log("Full checkpoint support!");
-      }
-    }
-
-    this.#initialized = true;
-
-    const willSimulate = this.#dockerMode && (!this.#canCheckpoint || this.opts.forceSimulate);
-
-    if (willSimulate) {
-      this.#logger.log("Simulation mode enabled. Containers will be paused, not checkpointed.", {
-        forceSimulate: this.opts.forceSimulate,
-      });
-    }
-
-    return {
-      canCheckpoint,
-      willSimulate,
-    };
-  }
-
-  #getImageRef(projectRef: string, deploymentVersion: string, shortCode: string) {
-    return `${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/${projectRef}:${deploymentVersion}.prod-${shortCode}`;
-  }
-
-  #getExportLocation(projectRef: string, deploymentVersion: string, shortCode: string) {
-    const basename = `${projectRef}-${deploymentVersion}-${shortCode}`;
-
-    if (this.#dockerMode) {
-      return basename;
-    } else {
-      return `${CHECKPOINT_PATH}/${basename}.tar`;
-    }
-  }
-
-  async checkpointAndPush(opts: CheckpointAndPushOptions): Promise<CheckpointData | undefined> {
-    const start = performance.now();
-    logger.log(`checkpointAndPush() start`, { start, opts });
-
-    let interval: NodeJS.Timer | undefined;
-
-    if (opts.shouldHeartbeat) {
-      interval = setInterval(() => {
-        logger.log("Sending heartbeat", { runId: opts.runId });
-        this.opts.heartbeat(opts.runId);
-      }, 20_000);
-    }
-
-    try {
-      const result = await this.#checkpointAndPushWithBackoff(opts);
-
-      const end = performance.now();
-      logger.log(`checkpointAndPush() end`, {
-        start,
-        end,
-        diff: end - start,
-        opts,
-        success: result.success,
-      });
-
-      if (!result.success) {
-        return;
-      }
-
-      return result.checkpoint;
-    } finally {
-      if (opts.shouldHeartbeat) {
-        clearInterval(interval);
-      }
-    }
-  }
-
-  isCheckpointing(runId: string) {
-    return this.#abortControllers.has(runId) || this.#waitingForRetry.has(runId);
-  }
-
-  cancelCheckpoint(runId: string): boolean {
-    // If the last checkpoint failed, pretend we canceled it
-    // This ensures tasks don't wait for external resume messages to continue
-    if (this.#hasFailedCheckpoint(runId)) {
-      this.#clearFailedCheckpoint(runId);
-      return true;
-    }
-
-    if (this.#waitingForRetry.has(runId)) {
-      this.#waitingForRetry.delete(runId);
-      return true;
-    }
-
-    const controller = this.#abortControllers.get(runId);
-
-    if (!controller) {
-      logger.debug("Nothing to cancel", { runId });
-      return false;
-    }
-
-    controller.abort("cancelCheckpointing()");
-    this.#abortControllers.delete(runId);
-
-    return true;
-  }
-
-  async #checkpointAndPushWithBackoff({
-    runId,
-    leaveRunning = true, // This mirrors kubernetes behaviour more accurately
-    projectRef,
-    deploymentVersion,
-  }: CheckpointAndPushOptions): Promise<CheckpointAndPushResult> {
-    this.#logger.log("Checkpointing with backoff", {
-      runId,
-      leaveRunning,
-      projectRef,
-      deploymentVersion,
-    });
-
-    const backoff = new ExponentialBackoff()
-      .type("EqualJitter")
-      .base(3)
-      .max(3 * 3600)
-      .maxElapsed(48 * 3600);
-
-    for await (const { delay, retry } of backoff) {
-      try {
-        if (retry > 0) {
-          this.#logger.error("Retrying checkpoint", {
-            runId,
-            retry,
-            delay,
-          });
-
-          this.#waitingForRetry.add(runId);
-          await new Promise((resolve) => setTimeout(resolve, delay.milliseconds));
-
-          if (!this.#waitingForRetry.has(runId)) {
-            this.#logger.log("Checkpoint canceled while waiting for retry", { runId });
-            return { success: false, reason: "CANCELED" };
-          } else {
-            this.#waitingForRetry.delete(runId);
-          }
-        }
-
-        const result = await this.#checkpointAndPush({
-          runId,
-          leaveRunning,
-          projectRef,
-          deploymentVersion,
-        });
-
-        if (result.success) {
-          return result;
-        }
-
-        if (result.reason === "CANCELED") {
-          this.#logger.log("Checkpoint canceled, won't retry", { runId });
-          // Don't fail the checkpoint, as it was canceled
-          return result;
-        }
-
-        if (result.reason === "IN_PROGRESS") {
-          this.#logger.log("Checkpoint already in progress, won't retry", { runId });
-          this.#failCheckpoint(runId, result.reason);
-          return result;
-        }
-
-        if (result.reason === "NO_SUPPORT") {
-          this.#logger.log("No checkpoint support, won't retry", { runId });
-          this.#failCheckpoint(runId, result.reason);
-          return result;
-        }
-
-        if (result.reason === "DISABLED") {
-          this.#logger.log("Checkpoint support disabled, won't retry", { runId });
-          this.#failCheckpoint(runId, result.reason);
-          return result;
-        }
-
-        if (result.reason === "SKIP_RETRYING") {
-          this.#logger.log("Skipping retrying", { runId });
-          return result;
-        }
-
-        continue;
-      } catch (error) {
-        this.#logger.error("Checkpoint error", {
-          retry,
-          runId,
-          delay,
-          error: error instanceof Error ? error.message : error,
-        });
-      }
-    }
-
-    this.#logger.error(`Checkpoint failed after exponential backoff`, {
-      runId,
-      leaveRunning,
-      projectRef,
-      deploymentVersion,
-    });
-    this.#failCheckpoint(runId, "ERROR");
-
-    return { success: false, reason: "ERROR" };
-  }
-
-  async #checkpointAndPush({
-    runId,
-    leaveRunning = true, // This mirrors kubernetes behaviour more accurately
-    projectRef,
-    deploymentVersion,
-  }: CheckpointAndPushOptions): Promise<CheckpointAndPushResult> {
-    await this.init();
-
-    const options = {
-      runId,
-      leaveRunning,
-      projectRef,
-      deploymentVersion,
-    };
-
-    if (!this.#dockerMode && !this.#canCheckpoint) {
-      this.#logger.error("No checkpoint support. Simulation requires docker.");
-      return { success: false, reason: "NO_SUPPORT" };
-    }
-
-    if (this.isCheckpointing(runId)) {
-      logger.error("Checkpoint procedure already in progress", { options });
-      return { success: false, reason: "IN_PROGRESS" };
-    }
-
-    // This is a new checkpoint, clear any last failure for this run
-    this.#clearFailedCheckpoint(runId);
-
-    if (DISABLE_CHECKPOINT_SUPPORT) {
-      this.#logger.error("Checkpoint support disabled", { options });
-      return { success: false, reason: "DISABLED" };
-    }
-
-    const controller = new AbortController();
-    this.#abortControllers.set(runId, controller);
-
-    const $$ = $({ signal: controller.signal });
-
-    const shortCode = nanoid(8);
-    const imageRef = this.#getImageRef(projectRef, deploymentVersion, shortCode);
-    const exportLocation = this.#getExportLocation(projectRef, deploymentVersion, shortCode);
-
-    const cleanup = async () => {
-      if (this.#dockerMode) {
-        return;
-      }
-
-      try {
-        await $`rm ${exportLocation}`;
-        this.#logger.log("Deleted checkpoint archive", { exportLocation });
-
-        await $`buildah rmi ${imageRef}`;
-        this.#logger.log("Deleted checkpoint image", { imageRef });
-      } catch (error) {
-        this.#logger.error("Failure during checkpoint cleanup", { exportLocation, error });
-      }
-    };
-
-    try {
-      await chaosMonkey.call({ $: $$ });
-
-      this.#logger.log("Checkpointing:", { options });
-
-      const containterName = this.#getRunContainerName(runId);
-
-      // Create checkpoint (docker)
-      if (this.#dockerMode) {
-        try {
-          if (this.opts.forceSimulate || !this.#canCheckpoint) {
-            this.#logger.log("Simulating checkpoint");
-            this.#logger.debug(await $$`docker pause ${containterName}`);
-          } else {
-            if (SIMULATE_CHECKPOINT_FAILURE) {
-              if (performance.now() < SIMULATE_CHECKPOINT_FAILURE_SECONDS * 1000) {
-                this.#logger.error("Simulating checkpoint failure", { options });
-                throw new Error("SIMULATE_CHECKPOINT_FAILURE");
-              }
-            }
-
-            if (leaveRunning) {
-              this.#logger.debug(
-                await $$`docker checkpoint create --leave-running ${containterName} ${exportLocation}`
-              );
-            } else {
-              this.#logger.debug(
-                await $$`docker checkpoint create ${containterName} ${exportLocation}`
-              );
-            }
-          }
-        } catch (error) {
-          this.#logger.error("Failed while creating docker checkpoint", { exportLocation });
-          throw error;
-        }
-
-        this.#logger.log("checkpoint created:", {
-          runId,
-          location: exportLocation,
-        });
-
-        return {
-          success: true,
-          checkpoint: {
-            location: exportLocation,
-            docker: true,
-          },
-        };
-      }
-
-      // Create checkpoint (CRI)
-      if (!this.#canCheckpoint) {
-        this.#logger.error("No checkpoint support in kubernetes mode.");
-        return { success: false, reason: "SKIP_RETRYING" };
-      }
-
-      const containerId = this.#logger.debug(
-        // @ts-expect-error
-        await $$`crictl ps`
-          .pipeStdout($$({ stdin: "pipe" })`grep ${containterName}`)
-          .pipeStdout($$({ stdin: "pipe" })`cut -f1 ${"-d "}`)
-      );
-
-      if (!containerId.stdout) {
-        this.#logger.error("could not find container id", { options, containterName });
-        return { success: false, reason: "SKIP_RETRYING" };
-      }
-
-      const start = performance.now();
-
-      if (SIMULATE_CHECKPOINT_FAILURE) {
-        if (performance.now() < SIMULATE_CHECKPOINT_FAILURE_SECONDS * 1000) {
-          this.#logger.error("Simulating checkpoint failure", { options });
-          throw new Error("SIMULATE_CHECKPOINT_FAILURE");
-        }
-      }
-
-      // Create checkpoint
-      this.#logger.debug(await $$`crictl checkpoint --export=${exportLocation} ${containerId}`);
-      const postCheckpoint = performance.now();
-
-      // Print checkpoint size
-      const size = await getParsedFileSize(exportLocation);
-      this.#logger.log("checkpoint archive created", { size, options });
-
-      // Create image from checkpoint
-      const container = this.#logger.debug(await $$`buildah from scratch`);
-      const postFrom = performance.now();
-
-      this.#logger.debug(await $$`buildah add ${container} ${exportLocation} /`);
-      const postAdd = performance.now();
-
-      this.#logger.debug(
-        await $$`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
-      );
-      const postConfig = performance.now();
-
-      this.#logger.debug(await $$`buildah commit ${container} ${imageRef}`);
-      const postCommit = performance.now();
-
-      this.#logger.debug(await $$`buildah rm ${container}`);
-      const postRm = performance.now();
-
-      if (SIMULATE_PUSH_FAILURE) {
-        if (performance.now() < SIMULATE_PUSH_FAILURE_SECONDS * 1000) {
-          this.#logger.error("Simulating push failure", { options });
-          throw new Error("SIMULATE_PUSH_FAILURE");
-        }
-      }
-
-      // Push checkpoint image
-      this.#logger.debug(await $$`buildah push --tls-verify=${REGISTRY_TLS_VERIFY} ${imageRef}`);
-      const postPush = performance.now();
-
-      const perf = {
-        "crictl checkpoint": postCheckpoint - start,
-        "buildah from": postFrom - postCheckpoint,
-        "buildah add": postAdd - postFrom,
-        "buildah config": postConfig - postAdd,
-        "buildah commit": postCommit - postConfig,
-        "buildah rm": postRm - postCommit,
-        "buildah push": postPush - postRm,
-      };
-
-      this.#logger.log("Checkpointed and pushed image to:", { location: imageRef, perf });
-
-      return {
-        success: true,
-        checkpoint: {
-          location: imageRef,
-          docker: false,
-        },
-      };
-    } catch (error) {
-      if (isExecaChildProcess(error)) {
-        if (error.isCanceled) {
-          this.#logger.error("Checkpoint canceled", { options, error });
-
-          return { success: false, reason: "CANCELED" };
-        }
-
-        this.#logger.error("Checkpoint command error", { options, error });
-
-        return { success: false, reason: "ERROR" };
-      }
-
-      this.#logger.error("Unhandled checkpoint error", { options, error });
-
-      return { success: false, reason: "ERROR" };
-    } finally {
-      this.#abortControllers.delete(runId);
-      await cleanup();
-    }
-  }
-
-  #failCheckpoint(runId: string, error: unknown) {
-    this.#failedCheckpoints.set(runId, error);
-  }
-
-  #clearFailedCheckpoint(runId: string) {
-    this.#failedCheckpoints.delete(runId);
-  }
-
-  #hasFailedCheckpoint(runId: string) {
-    return this.#failedCheckpoints.has(runId);
-  }
-
-  #getRunContainerName(suffix: string) {
-    return `task-run-${suffix}`;
-  }
-}
+const chaosMonkey = new ChaosMonkey(!!process.env.CHAOS_MONKEY_ENABLED);
 
 class TaskCoordinator {
   #httpServer: ReturnType<typeof createServer>;
   #checkpointer = new Checkpointer({
-    forceSimulate: FORCE_CHECKPOINT_SIMULATION,
+    dockerMode: !process.env.KUBERNETES_PORT,
+    forceSimulate: boolFromEnv("FORCE_CHECKPOINT_SIMULATION", false),
     heartbeat: this.#sendRunHeartbeat.bind(this),
+    registryHost: process.env.REGISTRY_HOST,
+    registryNamespace: process.env.REGISTRY_NAMESPACE,
+    checkpointPath: process.env.CHECKPOINT_PATH,
+    registryTlsVerify: boolFromEnv("REGISTRY_TLS_VERIFY", true),
+    disableCheckpointSupport: boolFromEnv("DISABLE_CHECKPOINT_SUPPORT", false),
+    simulatePushFailure: boolFromEnv("SIMULATE_PUSH_FAILURE", false),
+    simulatePushFailureSeconds: numFromEnv("SIMULATE_PUSH_FAILURE_SECONDS", 300),
+    simulateCheckpointFailure: boolFromEnv("SIMULATE_CHECKPOINT_FAILURE", false),
+    simulateCheckpointFailureSeconds: numFromEnv("SIMULATE_CHECKPOINT_FAILURE_SECONDS", 300),
+    chaosMonkey,
   });
 
   #prodWorkerNamespace?: ZodNamespace<
@@ -653,7 +114,7 @@ class TaskCoordinator {
     return headers;
   }
 
-  // MARK: PLATFORM
+  // MARK: SOCKET: PLATFORM
   #createPlatformSocket() {
     if (!PLATFORM_ENABLED) {
       console.log("INFO: platform connection disabled");
@@ -796,7 +257,7 @@ class TaskCoordinator {
     }
   }
 
-  // MARK: TASKS
+  // MARK: SOCKET: WORKERS
   #createProdWorkerNamespace(io: Server) {
     const provider = new ZodNamespace({
       io,
