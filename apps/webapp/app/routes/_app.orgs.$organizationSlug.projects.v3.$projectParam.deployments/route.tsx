@@ -1,4 +1,10 @@
-import { ArrowPathIcon, CommandLineIcon, ServerIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowPathIcon,
+  BookOpenIcon,
+  CommandLineIcon,
+  ServerIcon,
+  ServerStackIcon,
+} from "@heroicons/react/20/solid";
 import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -11,6 +17,7 @@ import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -209,9 +216,14 @@ function CreateDeploymentInstructions() {
   const project = useProject();
 
   return (
-    <MainCenteredContainer className="max-w-prose">
-      <BlankstateInstructions title="Deploy for the first time">
-        <Paragraph spacing>
+    <MainCenteredContainer className="max-w-md">
+      <InfoPanel
+        icon={ServerStackIcon}
+        iconClassName="text-blue-400"
+        title="Deploy for the first time"
+        panelClassName="max-w-full"
+      >
+        <Paragraph spacing variant="small">
           There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
           (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
           you{" "}
@@ -223,22 +235,22 @@ function CreateDeploymentInstructions() {
         <div className="flex gap-3">
           <LinkButton
             to={docsPath("v3/cli-deploy")}
-            variant="tertiary/medium"
-            LeadingIcon={CommandLineIcon}
+            variant="tertiary/small"
+            LeadingIcon={BookOpenIcon}
             className="inline-flex"
           >
             Deploy with the CLI
           </LinkButton>
           <LinkButton
             to={docsPath("v3/github-actions")}
-            variant="tertiary/medium"
-            LeadingIcon={ServerIcon}
+            variant="tertiary/small"
+            LeadingIcon={BookOpenIcon}
             className="inline-flex"
           >
             Deploy with GitHub actions
           </LinkButton>
         </div>
-      </BlankstateInstructions>
+      </InfoPanel>
     </MainCenteredContainer>
   );
 }
