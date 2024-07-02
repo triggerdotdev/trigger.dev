@@ -18,6 +18,15 @@ export const simplestTask = task({
   },
 });
 
+export const anyPayloadTask = task({
+  id: "any-payload-task",
+  run: async (payload: any) => {
+    return {
+      payload,
+    };
+  },
+});
+
 export const taskWithSpecialCharacters = task({
   id: "admin:special-characters",
   run: async (payload: { url: string }) => {
@@ -28,18 +37,6 @@ export const taskWithSpecialCharacters = task({
     return {
       message: "This task has special characters in its ID",
     };
-  },
-});
-
-export const updateEnvVars = task({
-  id: "update-env-vars",
-  run: async () => {
-    return await envvars.upload({
-      variables: await fetch(
-        "https://gist.githubusercontent.com/ericallam/7a1001c6b03986a74d0f8aad4fd890aa/raw/fe2bc4da82f3b17178d47f58ec1458af47af5035/.env"
-      ),
-      override: true,
-    });
   },
 });
 
@@ -66,7 +63,7 @@ export const createJsonHeroDoc = task({
 
     const json: any = await response.json();
 
-    return json;
+    return json as { id: string; title: string; location: string };
   },
 });
 

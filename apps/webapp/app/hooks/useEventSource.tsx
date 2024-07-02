@@ -26,7 +26,7 @@ export function useEventSource(
     const eventSource = new EventSource(url, init);
     eventSource.addEventListener(event ?? "message", handler);
 
-    // rest data if dependencies change
+    // reset data if dependencies change
     setData(null);
 
     function handler(event: MessageEvent) {

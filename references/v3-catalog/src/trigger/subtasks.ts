@@ -1,4 +1,4 @@
-import { logger, task, wait } from "@trigger.dev/sdk/v3";
+import { logger, task, wait, tasks } from "@trigger.dev/sdk/v3";
 import { taskWithRetries } from "./retries";
 
 export const simpleParentTask = task({
@@ -114,7 +114,7 @@ export const triggerAndWaitLoops = task({
       ]);
     }
 
-    await taskWithNoPayload.trigger();
+    const handle = await taskWithNoPayload.trigger();
     await taskWithNoPayload.triggerAndWait();
     await taskWithNoPayload.batchTrigger([{}]);
     await taskWithNoPayload.batchTriggerAndWait([{}]);
@@ -134,5 +134,47 @@ export const taskWithNoPayload = task({
     logger.log("Task with no payload");
 
     return { hello: "world" };
+  },
+});
+
+export const deeplyNestedTaskParent = task({
+  id: "deeply-nested-task-parent",
+  run: async ({ message = "test" }: { message?: string }) => {
+    await deeplyNestedTaskChild.triggerAndWait({ message: `${message} - 1` });
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
+export const deeplyNestedTaskChild = task({
+  id: "deeply-nested-task-child",
+  run: async ({ message = "test" }: { message?: string }) => {
+    await deeplyNestedTaskGrandchild.triggerAndWait({ message: `${message} - 2` });
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
+export const deeplyNestedTaskGrandchild = task({
+  id: "deeply-nested-task-grandchild",
+  run: async ({ message = "test" }: { message?: string }) => {
+    await deeplyNestedTaskGreatGrandchild.triggerAndWait({ message: `${message} - 3` });
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
+export const deeplyNestedTaskGreatGrandchild = task({
+  id: "deeply-nested-task-great-grandchild",
+  run: async ({ message = "test" }: { message?: string }) => {
+    return {
+      hello: "world",
+    };
   },
 });

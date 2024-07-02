@@ -1,25 +1,20 @@
 import * as k8s from "@kubernetes/client-node";
 import { SimpleLogger } from "@trigger.dev/core-apps";
+import { EXIT_CODE_ALREADY_HANDLED, EXIT_CODE_CHILD_NONZERO } from "@trigger.dev/core-apps/process";
 import { setTimeout } from "timers/promises";
 import PQueue from "p-queue";
+import type { Prettify } from "@trigger.dev/core/v3";
 
-type IndexFailureHandler = (
-  deploymentId: string,
-  failureInfo: {
-    exitCode: number;
-    reason: string;
-    logs: string;
-  }
-) => Promise<any>;
+type FailureDetails = Prettify<{
+  exitCode: number;
+  reason: string;
+  logs: string;
+  overrideCompletion: boolean;
+}>;
 
-type RunFailureHandler = (
-  runId: string,
-  failureInfo: {
-    exitCode: number;
-    reason: string;
-    logs: string;
-  }
-) => Promise<any>;
+type IndexFailureHandler = (deploymentId: string, details: FailureDetails) => Promise<any>;
+
+type RunFailureHandler = (runId: string, details: FailureDetails) => Promise<any>;
 
 type TaskMonitorOptions = {
   runtimeEnv: "local" | "kubernetes";
@@ -144,8 +139,7 @@ export class TaskMonitor {
     const containerState = this.#getContainerStateSummary(containerStatus.state);
     const exitCode = containerState.exitCode ?? -1;
 
-    // We use this special exit code to signal any errors were already handled elsewhere
-    if (exitCode === 111) {
+    if (exitCode === EXIT_CODE_ALREADY_HANDLED) {
       return;
     }
 
@@ -162,6 +156,7 @@ export class TaskMonitor {
 
     let reason = rawReason || "Unknown error";
     let logs = rawLogs || "";
+    let overrideCompletion = false;
 
     switch (rawReason) {
       case "Error":
@@ -181,7 +176,10 @@ export class TaskMonitor {
         }
         break;
       case "OOMKilled":
-        reason = "Out of memory! Try increasing the memory on this task.";
+        overrideCompletion = true;
+        reason = `${
+          exitCode === EXIT_CODE_CHILD_NONZERO ? "Child process" : "Parent process"
+        } ran out of memory! Try choosing a machine preset with more memory for this task.`;
         break;
       default:
         break;
@@ -191,7 +189,8 @@ export class TaskMonitor {
       exitCode,
       reason,
       logs,
-    };
+      overrideCompletion,
+    } satisfies FailureDetails;
 
     const app = pod.metadata?.labels?.app;
 

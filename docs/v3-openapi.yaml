@@ -269,6 +269,7 @@ paths:
 
   "/api/v1/timezones":
     get:
+      security: []
       operationId: get_timezones_v1
       summary: Get all supported timezones
       description: Get all supported timezones that schedule tasks support.
@@ -423,6 +424,71 @@ paths:
             import { runs } from "@trigger.dev/sdk/v3";
 
             await runs.cancel("run_1234");
+
+  "/api/v1/runs/{runId}/reschedule":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    post:
+      operationId: reschedule_run_v1
+      summary: Rescheduled a delayed run
+      description: Updates a delayed run with a new delay. Only valid when the run is in the DELAYED state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/RescheduleRunRequestBody"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RetrieveRunResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or missing run ID
+                      - Failed to create new run
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API key
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run not found
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { runs } from "@trigger.dev/sdk/v3";
+
+            const handle = await runs.reschedule("run_1234", { delay: new Date("2024-06-29T20:45:56.340Z") });
 
   "/api/v3/runs/{runId}":
     parameters:
@@ -811,17 +877,7 @@ paths:
                   description: Whether to override existing variables or not
                   default: false
               required: ["variables"]
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                variables:
-                  type: string
-                  format: binary
-                override:
-                  type: boolean
-              required:
-                - variables
+
       responses:
         "200":
           description: Environment variables imported successfully
@@ -864,57 +920,11 @@ paths:
           source: |-
             import { envvars } from "@trigger.dev/sdk/v3";
 
-            // Import variables from an array
             await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
-              variables: [
-                {
-                  name: "SLACK_API_KEY",
-                  value: "slack_123456"
-                }
-              ],
+              variables: { SLACK_API_KEY: "slack_key_1234" },
               override: false
             });
-        - lang: typescript
-          label: Import variables from a read stream
-          source: |-
-            import { envvars } from "@trigger.dev/sdk/v3";
-            import { createReadStream } from "node:fs";
 
-            // Import variables in dotenv format from a file
-            await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
-              variables: createReadStream(".env"),
-              override: false
-            });
-        - lang: typescript
-          label: Import variables from a response
-          source: |-
-            import { envvars } from "@trigger.dev/sdk/v3";
-
-            // Import variables in dotenv format from a response
-            await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
-              variables: await fetch("https://example.com/.env"),
-              override: false
-            });
-        - lang: typescript
-          label: Import variables from a Buffer
-          source: |-
-            import { envvars } from "@trigger.dev/sdk/v3";
-
-            // Import variables in dotenv format from a buffer
-            await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
-              variables: Buffer.from("SLACK_API_KEY=slack_1234"),
-              override: false
-            });
-        - lang: typescript
-          label: Import variables from a File
-          source: |-
-            import { envvars } from "@trigger.dev/sdk/v3";
-
-            // Import variables in dotenv format from a file
-            await envvars.upload("proj_yubjwjsfkxnylobaqvqz", "dev", {
-              variables: new File(["SLACK_API_KEY=slack_1234"], ".env"),
-              override: false
-            });
 
   "/api/v1/projects/{projectRef}/envvars/{env}/{name}":
     parameters:
@@ -1095,9 +1105,229 @@ paths:
                 });
               }
             })
+  "/api/v1/tasks/{taskIdentifier}/trigger":
+    parameters:
+      - $ref: "#/components/parameters/taskIdentifier"
+    post:
+      operationId: trigger_task_v1
+      summary: Trigger a task
+      description: Trigger a task by its identifier.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/TriggerTaskRequestBody"
+      responses:
+        "200":
+          description: Task triggered successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/TriggerTaskResponse"
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+      tags:
+        - tasks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { task } from "@trigger.dev/sdk/v3";
+
+            export const myTask = await task({
+              id: "my-task",
+              run: async (payload: { message: string }) => {
+                console.log("Hello, world!");
+              }
+            });
+
+            // Somewhere else in your code
+            await myTask.trigger({ message: "Hello, world!" }, {
+              idempotencyKey: "unique-key-123",
+              concurrencyKey: "user123-task",
+              queue: {
+                name: "my-task-queue",
+                concurrencyLimit: 5
+              },
+            });
+        - lang: curl
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/tasks/my-task/trigger" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer tr_dev_1234" \
+              -d '{
+                    "payload": {
+                      "message": "Hello, world!"
+                    },
+                    "context": {
+                      "user": "user123"
+                    },
+                    "options": {
+                      "queue": {
+                        "name": "default",
+                        "concurrencyLimit": 5
+                      },
+                      "concurrencyKey": "user123-task",
+                      "idempotencyKey": "unique-key-123"
+                    }
+                  }'
+        - lang: python
+          source: |-
+            import requests
+
+            url = "https://api.trigger.dev/api/v1/tasks/my-task/trigger"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer tr_dev_1234"
+            }
+            data = {
+                "payload": {
+                    "message": "Hello, world!"
+                },
+                "context": {
+                    "user": "user123"
+                },
+                "options": {
+                    "queue": {
+                        "name": "default",
+                        "concurrencyLimit": 5
+                    },
+                    "concurrencyKey": "user123-task",
+                    "idempotencyKey": "unique-key-123"
+                }
+            }
+
+            response = requests.post(url, headers=headers, json=data)
+            print(response.json())
+
+  "/api/v1/tasks/{taskIdentifier}/batch":
+    parameters:
+      - $ref: "#/components/parameters/taskIdentifier"
+    post:
+      operationId: batch_trigger_task_v1
+      summary: Batch trigger a task
+      description: Batch trigger a task with up to 100 payloads.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/BatchTriggerRequestBody"
+      responses:
+        "200":
+          description: Task batch triggered successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/BatchTriggerTaskResponse"
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+      tags:
+        - tasks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { task } from "@trigger.dev/sdk/v3";
+
+            export const myTask = await task({
+              id: "my-task",
+              run: async (payload: { message: string }) => {
+                console.log("Hello, world!");
+              }
+            });
+
+            // Somewhere else in your code
+            await myTask.batchTrigger({
+              items: [
+                {
+                  payload: { message: "Hello, world!" },
+                  options: {
+                    idempotencyKey: "unique-key-123",
+                    concurrencyKey: "user-123-task",
+                    queue: {
+                      name: "my-task-queue",
+                      concurrencyLimit: 5
+                    }
+                  }
+                }
+              ]
+            });
+        - lang: curl
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/tasks/my-task/batch" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer tr_dev_1234" \
+              -d '{
+                    "items": [
+                      {
+                        "payload": {
+                          "message": "Hello, world!"
+                        },
+                        "context": {
+                          "user": "user123"
+                        },
+                        "options": {
+                          "queue": {
+                            "name": "default",
+                            "concurrencyLimit": 5
+                          },
+                          "concurrencyKey": "user123-task",
+                          "idempotencyKey": "unique-key-123"
+                        }
+                      }
+                    ]
+                  }'
+
+
+
+
 
 components:
   parameters:
+    taskIdentifier:
+      in: path
+      name: taskIdentifier
+      required: true
+      schema:
+        type: string
+      description: The id of a task
+      example: my-task
     runsFilterWithEnv:
       in: query
       name: filter
@@ -1215,6 +1445,65 @@ components:
         configure({ secretKey: "tr_pat_1234" });
         ```
   schemas:
+    TriggerTaskResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The ID of the run that was triggered.
+          example: run_1234
+    QueueOptions:
+      type: object
+      properties:
+        name:
+          type: string
+          description: You can define a shared queue and then pass the name in to your task.
+        concurrencyLimit:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          description: An optional property that specifies the maximum number of concurrent run executions. If this property is omitted, the task can potentially use up the full concurrency of an environment.
+    BatchTriggerRequestBody:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            "$ref": "#/components/schemas/TriggerTaskRequestBody"
+          description: An array of payloads to trigger the task with
+      required: ["items"]
+    BatchTriggerTaskResponse:
+      type: object
+      required: ["batchId", "runs"]
+      properties:
+        batchId:
+          type: string
+          description: The ID of the batch that was triggered
+          example: batch_1234
+        runs:
+          type: array
+          items:
+            type: string
+          description: An array of run IDs that were triggered
+    TriggerTaskRequestBody:
+      type: object
+      properties:
+        payload:
+          description: The payload can include any valid JSON
+        context:
+          description: The context can include any valid JSON
+        options:
+          type: object
+          properties:
+            queue:
+              $ref: '#/components/schemas/QueueOptions'
+            concurrencyKey:
+              type: string
+              description: Scope the concurrency limit to a specific key.
+            idempotencyKey:
+              type: string
+              description: An optional property that specifies the idempotency key used to prevent creating duplicate runs. If you provide an existing idempotency key, we will return the existing run ID.
+      
     EnvFilter:
       type: object
       properties:
@@ -1406,6 +1695,7 @@ components:
       properties:
         error:
           type: string
+          example: Something went wrong
       required: ["error"]
     ErrorWithDetailsResponse:
       type: object
@@ -1457,6 +1747,18 @@ components:
           type: string
           example: slack_123456
       required: ["name", "value"]
+    RescheduleRunRequestBody:
+      type: object
+      properties:
+        delay:
+          oneOf:
+            - type: string
+              description: The duration to delay the run by. The duration should be in the format of `1d`, `6h`, `10m`, `11s`, etc.
+              example: 1hr
+            - type: string
+              format: date-time
+              description: The Date to delay the run until, e.g. `new Date()` or `"2024-06-25T15:45:26Z"`
+              example: 2024-06-25T15:45:26Z
     RetrieveRunResponse:
       type: object
       required:
@@ -1475,6 +1777,7 @@ components:
           type: string
           description: The status of the run
           enum:
+            - DELAYED
             - WAITING_FOR_DEPLOY
             - QUEUED
             - EXECUTING
@@ -1498,10 +1801,18 @@ components:
           type: object
           description: The payload that was sent to the task. Will be omitted if the request was made with a Public API key
           example: { "foo": "bar" }
+        payloadPresignedUrl:
+          type: string
+          description: The presigned URL to download the payload. Will only be included if the payload is too large to be included in the response. Expires in 5 minutes.
+          example: "https://r2.cloudflarestorage.com/packets/yubjwjsfkxnylobaqvqz/dev/run_p4omhh45hgxxnq1re6ovy/payload.json?X-Amz-Expires=300&X-Amz-Date=20240625T154526Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=10b064e58a0680db5b5e077be2be3b2a%2F20240625%2Fauto%2Fs3%2Faws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=88604cb993ffc151b4d73f2439da431d9928488e4b3dcfa4a7c8f1819"
         output:
           type: object
           description: The output of the run. Will be omitted if the request was made with a Public API key
           example: { "foo": "bar" }
+        outputPresignedUrl:
+          type: string
+          description: The presigned URL to download the output. Will only be included if the output is too large to be included in the response. Expires in 5 minutes.
+          example: "https://r2.cloudflarestorage.com/packets/yubjwjsfkxnylobaqvqz/dev/run_p4omhh45hgxxnq1re6ovy/payload.json?X-Amz-Expires=300&X-Amz-Date=20240625T154526Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=10b064e58a0680db5b5e077be2be3b2a%2F20240625%2Fauto%2Fs3%2Faws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=88604cb993ffc151b4d73f2439da431d9928488e4b3dcfa4a7c8f1819"
         idempotencyKey:
           type: string
           description: The idempotency key used to prevent creating duplicate runs, if provided
@@ -1524,6 +1835,10 @@ components:
           type: string
           format: date-time
           description: The time the run finished
+        delayedUntil:
+          type: string
+          format: date-time
+          description: If the run was triggered with a delay, this will be the time the run will be enqueued to execute
         schedule:
           type: object
           description: The schedule that triggered the run. Will be omitted if the run was not triggered by a schedule

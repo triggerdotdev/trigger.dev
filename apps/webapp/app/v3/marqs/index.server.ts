@@ -1625,7 +1625,7 @@ function getMarQSClient() {
         defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
         defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
         visibilityTimeoutInMs: 120 * 1000, // 2 minutes,
-        enableRebalancing: !env.MARQS_DISABLE_REBALANCING,
+        enableRebalancing: false,
       });
     } else {
       console.warn(

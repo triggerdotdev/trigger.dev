@@ -866,10 +866,10 @@ importers:
   integrations/airtable:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/trigger-sdk
       airtable:
         specifier: ^0.12.1
@@ -909,10 +909,10 @@ importers:
         specifier: ^12.0.10
         version: 12.0.10
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/trigger-sdk
       octokit:
         specifier: ^3.1.2
@@ -952,10 +952,10 @@ importers:
         specifier: ^8.0.0
         version: 8.0.0
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/trigger-sdk
       zod:
         specifier: 3.22.3
@@ -983,10 +983,10 @@ importers:
   integrations/openai:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/trigger-sdk
       openai:
         specifier: ^4.16.1
@@ -1026,10 +1026,10 @@ importers:
         specifier: ^2.7.0
         version: 2.7.0
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/trigger-sdk
     devDependencies:
       '@trigger.dev/tsconfig':
@@ -1054,10 +1054,10 @@ importers:
   integrations/replicate:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/trigger-sdk
       replicate:
         specifier: ^0.18.1
@@ -1088,10 +1088,10 @@ importers:
   integrations/resend:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/trigger-sdk
       resend:
         specifier: ^2.1.0
@@ -1122,10 +1122,10 @@ importers:
         specifier: ^7.7.0
         version: 7.7.0
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/trigger-sdk
     devDependencies:
       '@trigger.dev/tsconfig':
@@ -1153,10 +1153,10 @@ importers:
         specifier: ^8.0.2
         version: 8.0.2
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/trigger-sdk
       zod:
         specifier: 3.22.3
@@ -1187,7 +1187,7 @@ importers:
         specifier: ^6.8.1
         version: 6.8.1
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/trigger-sdk
       zod:
         specifier: 3.22.3
@@ -1215,10 +1215,10 @@ importers:
   integrations/stripe:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/trigger-sdk
       stripe:
         specifier: ^12.14.0
@@ -1252,10 +1252,10 @@ importers:
         specifier: ^2.26.0
         version: 2.31.0
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/trigger-sdk
       supabase-management-js:
         specifier: ^1.0.0
@@ -1286,10 +1286,10 @@ importers:
   integrations/typeform:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../../packages/trigger-sdk
       '@typeform/api-client':
         specifier: ^1.8.0
@@ -1317,7 +1317,7 @@ importers:
   packages/astro:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../trigger-sdk
       debug:
         specifier: ^4.3.4
@@ -1535,7 +1535,7 @@ importers:
         specifier: ^1.22.0
         version: 1.22.0
       '@trigger.dev/core':
-        specifier: workspace:3.0.0-beta.39
+        specifier: workspace:3.0.0-beta.45
         version: link:../core
       '@types/degit':
         specifier: ^2.8.3
@@ -1583,7 +1583,7 @@ importers:
         specifier: ^4.4.1
         version: 4.4.1(@types/react@18.2.48)(react@18.2.0)
       jsonc-parser:
-        specifier: ^3.2.1
+        specifier: 3.2.1
         version: 3.2.1
       liquidjs:
         specifier: ^10.9.2
@@ -1701,8 +1701,8 @@ importers:
         specifier: ^6.1.0
         version: 6.1.0
       rimraf:
-        specifier: ^3.0.2
-        version: 3.0.2
+        specifier: ^5.0.7
+        version: 5.0.7
       tsup:
         specifier: ^8.0.1
         version: 8.0.1(patch_hash=a5ztaafw5l4qfghy2hjjuynb34)(postcss@8.4.27)(typescript@5.4.5)
@@ -1754,9 +1754,6 @@ importers:
       '@opentelemetry/semantic-conventions':
         specifier: ^1.22.0
         version: 1.22.0
-      form-data-encoder:
-        specifier: ^4.0.2
-        version: 4.0.2
       humanize-duration:
         specifier: ^3.27.3
         version: 3.27.3
@@ -1794,6 +1791,9 @@ importers:
       '@types/node':
         specifier: 20.12.7
         version: 20.12.7
+      '@types/readable-stream':
+        specifier: ^4.0.14
+        version: 4.0.14
       jest:
         specifier: ^29.6.2
         version: 29.6.2(@types/node@20.12.7)
@@ -1954,7 +1954,7 @@ importers:
         version: 4.18.2
     devDependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../trigger-sdk
       '@trigger.dev/tsconfig':
         specifier: workspace:*
@@ -2049,7 +2049,7 @@ importers:
         version: 4.3.4(supports-color@8.1.1)
     devDependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../trigger-sdk
       '@trigger.dev/tsconfig':
         specifier: workspace:*
@@ -2082,7 +2082,7 @@ importers:
   packages/nextjs:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../trigger-sdk
       debug:
         specifier: ^4.3.4
@@ -2157,7 +2157,7 @@ importers:
         version: 1.167.3
       tsup:
         specifier: ^8.0.1
-        version: 8.0.1(patch_hash=a5ztaafw5l4qfghy2hjjuynb34)(postcss@8.4.27)(typescript@5.3.3)
+        version: 8.0.1(patch_hash=a5ztaafw5l4qfghy2hjjuynb34)(postcss@8.4.27)(ts-node@10.9.2)(typescript@5.3.3)
       typescript:
         specifier: ^5.3.0
         version: 5.3.3
@@ -2168,7 +2168,7 @@ importers:
         specifier: 5.0.0-beta.2
         version: 5.0.0-beta.2(react@18.2.0)
       '@trigger.dev/core':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../core
       debug:
         specifier: ^4.3.4
@@ -2211,7 +2211,7 @@ importers:
   packages/remix:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../trigger-sdk
       debug:
         specifier: ^4.3.4
@@ -2248,7 +2248,7 @@ importers:
   packages/sveltekit:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.39
+        specifier: workspace:^3.0.0-beta.45
         version: link:../trigger-sdk
       debug:
         specifier: ^4.3.4
@@ -2322,10 +2322,10 @@ importers:
         specifier: ^1.22.0
         version: 1.22.0
       '@trigger.dev/core':
-        specifier: workspace:3.0.0-beta.39
+        specifier: workspace:3.0.0-beta.45
         version: link:../core
       '@trigger.dev/core-backend':
-        specifier: workspace:3.0.0-beta.39
+        specifier: workspace:3.0.0-beta.45
         version: link:../core-backend
       chalk:
         specifier: ^5.2.0
@@ -3093,6 +3093,9 @@ importers:
       '@sindresorhus/slugify':
         specifier: ^2.2.1
         version: 2.2.1
+      '@t3-oss/env-nextjs':
+        specifier: ^0.10.1
+        version: 0.10.1(typescript@5.3.3)(zod@3.22.3)
       '@traceloop/instrumentation-openai':
         specifier: ^0.3.9
         version: 0.3.9(@opentelemetry/api@1.4.1)
@@ -3138,6 +3141,9 @@ importers:
       yt-dlp-wrap:
         specifier: ^2.3.12
         version: 2.3.12
+      zod:
+        specifier: 3.22.3
+        version: 3.22.3
     devDependencies:
       '@opentelemetry/core':
         specifier: ^1.22.0
@@ -3190,6 +3196,9 @@ importers:
       '@types/react':
         specifier: ^18.3.1
         version: 18.3.1
+      esbuild:
+        specifier: ^0.19.11
+        version: 0.19.11
       trigger.dev:
         specifier: workspace:*
         version: link:../../packages/cli-v3
@@ -3199,6 +3208,9 @@ importers:
       tsconfig-paths:
         specifier: ^4.2.0
         version: 4.2.0
+      tsup:
+        specifier: ^8.0.1
+        version: 8.0.1(patch_hash=a5ztaafw5l4qfghy2hjjuynb34)(postcss@8.4.27)(ts-node@10.9.2)(typescript@5.3.3)
       typescript:
         specifier: ^5.3.0
         version: 5.3.3
@@ -14141,7 +14153,6 @@ packages:
     cpu: [arm]
     os: [android]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-android-arm-eabi@4.6.1:
@@ -14149,6 +14160,7 @@ packages:
     cpu: [arm]
     os: [android]
     requiresBuild: true
+    dev: true
     optional: true
 
   /@rollup/rollup-android-arm64@4.13.2:
@@ -14156,7 +14168,6 @@ packages:
     cpu: [arm64]
     os: [android]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-android-arm64@4.6.1:
@@ -14164,6 +14175,7 @@ packages:
     cpu: [arm64]
     os: [android]
     requiresBuild: true
+    dev: true
     optional: true
 
   /@rollup/rollup-darwin-arm64@4.13.2:
@@ -14171,7 +14183,6 @@ packages:
     cpu: [arm64]
     os: [darwin]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-darwin-arm64@4.6.1:
@@ -14179,6 +14190,7 @@ packages:
     cpu: [arm64]
     os: [darwin]
     requiresBuild: true
+    dev: true
     optional: true
 
   /@rollup/rollup-darwin-x64@4.13.2:
@@ -14186,7 +14198,6 @@ packages:
     cpu: [x64]
     os: [darwin]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-darwin-x64@4.6.1:
@@ -14194,6 +14205,7 @@ packages:
     cpu: [x64]
     os: [darwin]
     requiresBuild: true
+    dev: true
     optional: true
 
   /@rollup/rollup-linux-arm-gnueabihf@4.13.2:
@@ -14201,7 +14213,6 @@ packages:
     cpu: [arm]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-linux-arm-gnueabihf@4.6.1:
@@ -14209,6 +14220,7 @@ packages:
     cpu: [arm]
     os: [linux]
     requiresBuild: true
+    dev: true
     optional: true
 
   /@rollup/rollup-linux-arm64-gnu@4.13.2:
@@ -14216,7 +14228,6 @@ packages:
     cpu: [arm64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-linux-arm64-gnu@4.6.1:
@@ -14224,6 +14235,7 @@ packages:
     cpu: [arm64]
     os: [linux]
     requiresBuild: true
+    dev: true
     optional: true
 
   /@rollup/rollup-linux-arm64-musl@4.13.2:
@@ -14231,7 +14243,6 @@ packages:
     cpu: [arm64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-linux-arm64-musl@4.6.1:
@@ -14239,6 +14250,7 @@ packages:
     cpu: [arm64]
     os: [linux]
     requiresBuild: true
+    dev: true
     optional: true
 
   /@rollup/rollup-linux-powerpc64le-gnu@4.13.2:
@@ -14246,7 +14258,6 @@ packages:
     cpu: [ppc64le]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-linux-riscv64-gnu@4.13.2:
@@ -14254,7 +14265,6 @@ packages:
     cpu: [riscv64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-linux-s390x-gnu@4.13.2:
@@ -14262,7 +14272,6 @@ packages:
     cpu: [s390x]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-linux-x64-gnu@4.13.2:
@@ -14270,7 +14279,6 @@ packages:
     cpu: [x64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-linux-x64-gnu@4.6.1:
@@ -14278,6 +14286,7 @@ packages:
     cpu: [x64]
     os: [linux]
     requiresBuild: true
+    dev: true
     optional: true
 
   /@rollup/rollup-linux-x64-musl@4.13.2:
@@ -14285,7 +14294,6 @@ packages:
     cpu: [x64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-linux-x64-musl@4.6.1:
@@ -14293,6 +14301,7 @@ packages:
     cpu: [x64]
     os: [linux]
     requiresBuild: true
+    dev: true
     optional: true
 
   /@rollup/rollup-win32-arm64-msvc@4.13.2:
@@ -14300,7 +14309,6 @@ packages:
     cpu: [arm64]
     os: [win32]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-win32-arm64-msvc@4.6.1:
@@ -14308,6 +14316,7 @@ packages:
     cpu: [arm64]
     os: [win32]
     requiresBuild: true
+    dev: true
     optional: true
 
   /@rollup/rollup-win32-ia32-msvc@4.13.2:
@@ -14315,7 +14324,6 @@ packages:
     cpu: [ia32]
     os: [win32]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-win32-ia32-msvc@4.6.1:
@@ -14323,6 +14331,7 @@ packages:
     cpu: [ia32]
     os: [win32]
     requiresBuild: true
+    dev: true
     optional: true
 
   /@rollup/rollup-win32-x64-msvc@4.13.2:
@@ -14330,7 +14339,6 @@ packages:
     cpu: [x64]
     os: [win32]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@rollup/rollup-win32-x64-msvc@4.6.1:
@@ -14338,6 +14346,7 @@ packages:
     cpu: [x64]
     os: [win32]
     requiresBuild: true
+    dev: true
     optional: true
 
   /@rushstack/eslint-patch@1.2.0:
@@ -15294,6 +15303,33 @@ packages:
       defer-to-connect: 2.0.1
     dev: false
 
+  /@t3-oss/env-core@0.10.1(typescript@5.3.3)(zod@3.22.3):
+    resolution: {integrity: sha512-GcKZiCfWks5CTxhezn9k5zWX3sMDIYf6Kaxy2Gx9YEQftFcz8hDRN56hcbylyAO3t4jQnQ5ifLawINsNgCDpOg==}
+    peerDependencies:
+      typescript: '>=5.0.0'
+      zod: ^3.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      typescript: 5.3.3
+      zod: 3.22.3
+    dev: false
+
+  /@t3-oss/env-nextjs@0.10.1(typescript@5.3.3)(zod@3.22.3):
+    resolution: {integrity: sha512-iy2qqJLnFh1RjEWno2ZeyTu0ufomkXruUsOZludzDIroUabVvHsrSjtkHqwHp1/pgPUzN3yBRHMILW162X7x2Q==}
+    peerDependencies:
+      typescript: '>=5.0.0'
+      zod: ^3.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      '@t3-oss/env-core': 0.10.1(typescript@5.3.3)(zod@3.22.3)
+      typescript: 5.3.3
+      zod: 3.22.3
+    dev: false
+
   /@tabler/icons-react@2.40.0(react@18.2.0):
     resolution: {integrity: sha512-C+dDOZowFbwI3LGQP0fdua+hOPkGkW7XeMcRXTSdEKc5fD75W6zRO5nXnWivIMRKsi/Y26EDmnQo15N8JX378w==}
     peerDependencies:
@@ -15539,7 +15575,7 @@ packages:
   /@types/acorn@4.0.6:
     resolution: {integrity: sha512-veQTnWP+1D/xbxVrPC3zHnCZRjSrKfhbMUlEA43iMZLu7EsnTtkJklIuwrCPbOi8YkvDQAiW05VQQFvvz9oieQ==}
     dependencies:
-      '@types/estree': 1.0.2
+      '@types/estree': 1.0.5
     dev: true
 
   /@types/aria-query@5.0.1:
@@ -15718,20 +15754,17 @@ packages:
   /@types/estree-jsx@0.0.1:
     resolution: {integrity: sha512-gcLAYiMfQklDCPjQegGn0TBAn9it05ISEsEhlKQUddIk7o2XDokOcTN7HBO8tznM0D9dGezvHEfRZBfZf6me0A==}
     dependencies:
-      '@types/estree': 1.0.2
+      '@types/estree': 1.0.5
     dev: true
 
   /@types/estree-jsx@1.0.0:
     resolution: {integrity: sha512-3qvGd0z8F2ENTGr/GG1yViqfiKmRfrXVx5sJyHGFu3z7m5g5utCQtGp/g29JnjflhtQJBv1WDQukHiT58xPcYQ==}
     dependencies:
-      '@types/estree': 1.0.2
+      '@types/estree': 1.0.5
     dev: true
 
   /@types/estree@1.0.0:
     resolution: {integrity: sha512-WulqXMDUTYAXCjZnk6JtIHPigp55cVtDgDrO2gHRwhyJto21+1zbVCtOYB2L1F9w4qCQ0rOGWBnBe0FNTiEJIQ==}
-
-  /@types/estree@1.0.2:
-    resolution: {integrity: sha512-VeiPZ9MMwXjO32/Xu7+OwflfmeoRwkE/qzndw42gGtgJwZopBnzy2gD//NN1+go1mADzkDcqf/KnFRSjTJ8xJA==}
 
   /@types/estree@1.0.5:
     resolution: {integrity: sha512-/kYRxGDLWzHOB7q+wtSUQlFrtcdUccpfy+X+9iMBpHK8QLLhx2wIPYuS5DYtR9Wa/YlZAbIovy7qVdB1Aq6Lyw==}
@@ -16124,6 +16157,13 @@ packages:
     dependencies:
       '@types/prop-types': 15.7.5
       csstype: 3.1.1
+
+  /@types/readable-stream@4.0.14:
+    resolution: {integrity: sha512-xZn/AuUbCMShGsqH/ehZtGDwQtbx00M9rZ2ENLe4tOjFZ/JFeWMhEZkk2fEe1jAUqqEAURIkFJ7Az/go8mM1/w==}
+    dependencies:
+      '@types/node': 18.19.20
+      safe-buffer: 5.1.2
+    dev: true
 
   /@types/request@2.48.12:
     resolution: {integrity: sha512-G3sY+NpsA9jnwm0ixhAFQSJ3Q9JkpLZpJbI3GMv0mIAT0y3mRabYeINzal5WOChIiaTEGQYlHOKgkaM9EisWHw==}
@@ -19114,7 +19154,7 @@ packages:
     resolution: {integrity: sha512-7qJWqItLA8/VPVlKJlFXU+NBlo/qyfs39aJcuMT/2ere32ZqvF5OSxgdM5xOfJJ7O429gg2HM47y8v9P+9wrNw==}
     dependencies:
       '@jridgewell/sourcemap-codec': 1.4.15
-      '@types/estree': 1.0.2
+      '@types/estree': 1.0.5
       acorn: 8.10.0
       estree-walker: 3.0.3
       periscopic: 3.1.0
@@ -22245,7 +22285,7 @@ packages:
   /estree-util-attach-comments@2.1.0:
     resolution: {integrity: sha512-rJz6I4L0GaXYtHpoMScgDIwM0/Vwbu5shbMeER596rB2D1EWF6+Gj0e0UKzJPZrpoOc87+Q2kgVFHfjAymIqmw==}
     dependencies:
-      '@types/estree': 1.0.2
+      '@types/estree': 1.0.5
     dev: true
 
   /estree-util-build-jsx@2.2.2:
@@ -22965,11 +23005,6 @@ packages:
     engines: {node: '>= 14.17'}
     dev: false
 
-  /form-data-encoder@4.0.2:
-    resolution: {integrity: sha512-KQVhvhK8ZkWzxKxOr56CPulAhH3dobtuQ4+hNQ+HekH/Wp5gSOafqRAeTphQUJAIk0GBvHZgJ2ZGRWd5kphMuw==}
-    engines: {node: '>= 18'}
-    dev: false
-
   /form-data@2.3.3:
     resolution: {integrity: sha512-1lLKB2Mu3aGP1Q/2eCOx0fNbRMe7XdwktwOruhfqqd0rIJWwN4Dh+E3hrPSlDCXnSR7UtZ1N38rVXm+6+MEhJQ==}
     engines: {node: '>= 0.12'}
@@ -23402,6 +23437,7 @@ packages:
 
   /glob@7.1.7:
     resolution: {integrity: sha512-OvD9ENzPLbegENnYP5UUfJIirTg4+XwMWGaQfQTY0JenxNvvIKP3U3/tAQSPIu/lHxXYSZmpXlUHeqAIdKzBLQ==}
+    deprecated: Glob versions prior to v9 are no longer supported
     dependencies:
       fs.realpath: 1.0.0
       inflight: 1.0.6
@@ -23823,7 +23859,7 @@ packages:
   /hast-util-to-estree@2.1.0:
     resolution: {integrity: sha512-Vwch1etMRmm89xGgz+voWXvVHba2iiMdGMKmaMfYt35rbVtFDq8JNwwAIvi8zHMkO6Gvqo9oTMwJTmzVRfXh4g==}
     dependencies:
-      '@types/estree': 1.0.2
+      '@types/estree': 1.0.5
       '@types/estree-jsx': 1.0.0
       '@types/hast': 2.3.4
       '@types/unist': 2.0.6
@@ -24761,7 +24797,7 @@ packages:
   /is-reference@3.0.1:
     resolution: {integrity: sha512-baJJdQLiYaJdvFbJqXrcGv3WU3QCzBlUcI5QhbesIm6/xPsvmO+2CDoi/GMOFBQEQm+PXkwOPrp9KK5ozZsp2w==}
     dependencies:
-      '@types/estree': 1.0.0
+      '@types/estree': 1.0.5
     dev: true
 
   /is-regex@1.1.4:
@@ -25821,6 +25857,7 @@ packages:
 
   /jsonc-parser@3.2.0:
     resolution: {integrity: sha512-gfFQZrcTc8CnKXp6Y4/CBT3fTc0OVuDofpre4aEeEpSBPV5X5v4+Vmx+8snU7RLPrNHPKSgLxGo9YuQzz20o+w==}
+    dev: true
 
   /jsonc-parser@3.2.1:
     resolution: {integrity: sha512-AilxAyFOAcK5wA1+LeaySVBrHsGQvUFCDWXKpZjzaL0PqW+xfBOttn8GNtWKFWqneyMZj41MWF9Kl6iPWLwgOA==}
@@ -26951,7 +26988,7 @@ packages:
     resolution: {integrity: sha512-WWp3bf7xT9MppNuw3yPjpnOxa8cj5ACivEzXJKu0WwnjBYfzaBvIAT9KfeyI0Qkll+bfQtfftSwdgTH6QhTOKw==}
     dependencies:
       '@types/acorn': 4.0.6
-      '@types/estree': 1.0.2
+      '@types/estree': 1.0.5
       estree-util-visit: 1.2.0
       micromark-util-types: 1.0.2
       uvu: 0.5.6
@@ -29046,7 +29083,7 @@ packages:
   /periscopic@3.1.0:
     resolution: {integrity: sha512-vKiQ8RRtkl9P+r/+oefh25C3fhybptkHKCZSPlcXiJux2tJF55GnEj3BVn4A5gKfq9NWWXXrxkHBwVPUfH0opw==}
     dependencies:
-      '@types/estree': 1.0.2
+      '@types/estree': 1.0.5
       estree-walker: 3.0.3
       is-reference: 3.0.1
     dev: true
@@ -29373,7 +29410,7 @@ packages:
       yaml: 1.10.2
     dev: true
 
-  /postcss-load-config@4.0.1(postcss@8.4.27):
+  /postcss-load-config@4.0.1(postcss@8.4.27)(ts-node@10.9.2):
     resolution: {integrity: sha512-vEJIc8RdiBRu3oRAI0ymerOn+7rPuMvRXslTvZUKZonDHFIczxztIyJ1urxM1x9JXEikvpWWTUUqal5j/8QgvA==}
     engines: {node: '>= 14'}
     peerDependencies:
@@ -29387,6 +29424,7 @@ packages:
     dependencies:
       lilconfig: 2.1.0
       postcss: 8.4.27
+      ts-node: 10.9.2(@types/node@20.4.2)(typescript@5.3.3)
       yaml: 2.3.1
 
   /postcss-load-config@4.0.1(postcss@8.4.29)(ts-node@10.9.1):
@@ -31517,6 +31555,7 @@ packages:
 
   /rimraf@2.7.1:
     resolution: {integrity: sha512-uWjbaKIK3T1OSVptzX7Nl6PvQ3qAGtKEtVRjRuazjfL3Bx5eI409VZSqgND+4UNnmzLVdPj9FqFJNPqBZFve4w==}
+    deprecated: Rimraf versions prior to v4 are no longer supported
     hasBin: true
     dependencies:
       glob: 7.2.3
@@ -31542,6 +31581,14 @@ packages:
     dependencies:
       glob: 10.3.10
     dev: false
+
+  /rimraf@5.0.7:
+    resolution: {integrity: sha512-nV6YcJo5wbLW77m+8KjH8aB/7/rxQy9SZ0HY5shnwULfS+9nmTtVXAJET5NdZmCzA4fPI/Hm1wo/Po/4mopOdg==}
+    engines: {node: '>=14.18'}
+    hasBin: true
+    dependencies:
+      glob: 10.3.10
+    dev: true
 
   /rollup-plugin-inject@3.0.2:
     resolution: {integrity: sha512-ptg9PQwzs3orn4jkgXJ74bfs5vYz1NCZlSQMBUA0wKcGp5i5pA1AO3fOUEte8enhGUC+iapTCzEWw2jEFFUO/w==}
@@ -31602,7 +31649,6 @@ packages:
       '@rollup/rollup-win32-ia32-msvc': 4.13.2
       '@rollup/rollup-win32-x64-msvc': 4.13.2
       fsevents: 2.3.3
-    dev: true
 
   /rollup@4.6.1:
     resolution: {integrity: sha512-jZHaZotEHQaHLgKr8JnQiDT1rmatjgKlMekyksz+yk9jt/8z9quNjnKNRoaM0wd9DC2QKXjmWWuDYtM3jfF8pQ==}
@@ -31622,6 +31668,7 @@ packages:
       '@rollup/rollup-win32-ia32-msvc': 4.6.1
       '@rollup/rollup-win32-x64-msvc': 4.6.1
       fsevents: 2.3.3
+    dev: true
 
   /rtl-css-js@1.16.1:
     resolution: {integrity: sha512-lRQgou1mu19e+Ya0LsTvKrVJ5TYUbqCVPAiImX3UfLTenarvPUl1QFdvu5Z3PYmHT9RCcwIfbjRQBntExyj3Zg==}
@@ -31973,7 +32020,7 @@ packages:
     resolution: {integrity: sha512-IXCRip2IQzKwxArNNq1S+On4KPML3Yyn8Zzs/xRgcgOWIr8ntIK3IKzjFPfjy/7kt9ZMjc+FItfqHRBg8b6tNQ==}
     dependencies:
       ansi-sequence-parser: 1.1.1
-      jsonc-parser: 3.2.0
+      jsonc-parser: 3.2.1
       vscode-oniguruma: 1.7.0
       vscode-textmate: 8.0.0
 
@@ -33181,7 +33228,7 @@ packages:
       postcss: 8.4.27
       postcss-import: 15.1.0(postcss@8.4.27)
       postcss-js: 4.0.1(postcss@8.4.27)
-      postcss-load-config: 4.0.1(postcss@8.4.27)
+      postcss-load-config: 4.0.1(postcss@8.4.27)(ts-node@10.9.2)
       postcss-nested: 6.0.1(postcss@8.4.27)
       postcss-selector-parser: 6.0.11
       resolve: 1.22.4
@@ -34001,7 +34048,7 @@ packages:
       globby: 11.1.0
       joycon: 3.1.1
       postcss: 8.4.27
-      postcss-load-config: 4.0.1(postcss@8.4.27)
+      postcss-load-config: 4.0.1(postcss@8.4.27)(ts-node@10.9.2)
       resolve-from: 5.0.0
       rollup: 3.29.1
       source-map: 0.8.0-beta.0
@@ -34012,6 +34059,47 @@ packages:
       - supports-color
       - ts-node
     dev: true
+
+  /tsup@8.0.1(patch_hash=a5ztaafw5l4qfghy2hjjuynb34)(postcss@8.4.27)(ts-node@10.9.2)(typescript@5.3.3):
+    resolution: {integrity: sha512-hvW7gUSG96j53ZTSlT4j/KL0q1Q2l6TqGBFc6/mu/L46IoNWqLLUzLRLP1R8Q7xrJTmkDxxDoojV5uCVs1sVOg==}
+    engines: {node: '>=18'}
+    hasBin: true
+    peerDependencies:
+      '@microsoft/api-extractor': ^7.36.0
+      '@swc/core': ^1
+      postcss: ^8.4.12
+      typescript: '>=4.5.0'
+    peerDependenciesMeta:
+      '@microsoft/api-extractor':
+        optional: true
+      '@swc/core':
+        optional: true
+      postcss:
+        optional: true
+      typescript:
+        optional: true
+    dependencies:
+      bundle-require: 4.0.1(esbuild@0.19.11)
+      cac: 6.7.14
+      chokidar: 3.5.3
+      debug: 4.3.4(supports-color@8.1.1)
+      esbuild: 0.19.11
+      execa: 5.1.1
+      globby: 11.1.0
+      joycon: 3.1.1
+      postcss: 8.4.27
+      postcss-load-config: 4.0.1(postcss@8.4.27)(ts-node@10.9.2)
+      resolve-from: 5.0.0
+      rollup: 4.13.2
+      source-map: 0.8.0-beta.0
+      sucrase: 3.32.0
+      tree-kill: 1.2.2
+      typescript: 5.3.3
+    transitivePeerDependencies:
+      - supports-color
+      - ts-node
+    dev: true
+    patched: true
 
   /tsup@8.0.1(patch_hash=a5ztaafw5l4qfghy2hjjuynb34)(postcss@8.4.27)(typescript@5.3.2):
     resolution: {integrity: sha512-hvW7gUSG96j53ZTSlT4j/KL0q1Q2l6TqGBFc6/mu/L46IoNWqLLUzLRLP1R8Q7xrJTmkDxxDoojV5uCVs1sVOg==}
@@ -34041,9 +34129,9 @@ packages:
       globby: 11.1.0
       joycon: 3.1.1
       postcss: 8.4.27
-      postcss-load-config: 4.0.1(postcss@8.4.27)
+      postcss-load-config: 4.0.1(postcss@8.4.27)(ts-node@10.9.2)
       resolve-from: 5.0.0
-      rollup: 4.6.1
+      rollup: 4.13.2
       source-map: 0.8.0-beta.0
       sucrase: 3.32.0
       tree-kill: 1.2.2
@@ -34051,47 +34139,6 @@ packages:
     transitivePeerDependencies:
       - supports-color
       - ts-node
-    patched: true
-
-  /tsup@8.0.1(patch_hash=a5ztaafw5l4qfghy2hjjuynb34)(postcss@8.4.27)(typescript@5.3.3):
-    resolution: {integrity: sha512-hvW7gUSG96j53ZTSlT4j/KL0q1Q2l6TqGBFc6/mu/L46IoNWqLLUzLRLP1R8Q7xrJTmkDxxDoojV5uCVs1sVOg==}
-    engines: {node: '>=18'}
-    hasBin: true
-    peerDependencies:
-      '@microsoft/api-extractor': ^7.36.0
-      '@swc/core': ^1
-      postcss: ^8.4.12
-      typescript: '>=4.5.0'
-    peerDependenciesMeta:
-      '@microsoft/api-extractor':
-        optional: true
-      '@swc/core':
-        optional: true
-      postcss:
-        optional: true
-      typescript:
-        optional: true
-    dependencies:
-      bundle-require: 4.0.1(esbuild@0.19.11)
-      cac: 6.7.14
-      chokidar: 3.5.3
-      debug: 4.3.4(supports-color@8.1.1)
-      esbuild: 0.19.11
-      execa: 5.1.1
-      globby: 11.1.0
-      joycon: 3.1.1
-      postcss: 8.4.27
-      postcss-load-config: 4.0.1(postcss@8.4.27)
-      resolve-from: 5.0.0
-      rollup: 4.6.1
-      source-map: 0.8.0-beta.0
-      sucrase: 3.32.0
-      tree-kill: 1.2.2
-      typescript: 5.3.3
-    transitivePeerDependencies:
-      - supports-color
-      - ts-node
-    dev: true
     patched: true
 
   /tsup@8.0.1(patch_hash=a5ztaafw5l4qfghy2hjjuynb34)(postcss@8.4.27)(typescript@5.4.5):
@@ -34122,9 +34169,9 @@ packages:
       globby: 11.1.0
       joycon: 3.1.1
       postcss: 8.4.27
-      postcss-load-config: 4.0.1(postcss@8.4.27)
+      postcss-load-config: 4.0.1(postcss@8.4.27)(ts-node@10.9.2)
       resolve-from: 5.0.0
-      rollup: 4.6.1
+      rollup: 4.13.2
       source-map: 0.8.0-beta.0
       sucrase: 3.32.0
       tree-kill: 1.2.2
@@ -34163,7 +34210,7 @@ packages:
       globby: 11.1.0
       joycon: 3.1.1
       postcss: 8.4.27
-      postcss-load-config: 4.0.1(postcss@8.4.27)
+      postcss-load-config: 4.0.1(postcss@8.4.27)(ts-node@10.9.2)
       resolve-from: 5.0.0
       rollup: 4.6.1
       source-map: 0.8.0-beta.0
@@ -35881,7 +35928,7 @@ packages:
         optional: true
     dependencies:
       '@types/eslint-scope': 3.7.4
-      '@types/estree': 1.0.2
+      '@types/estree': 1.0.5
       '@webassemblyjs/ast': 1.11.5
       '@webassemblyjs/wasm-edit': 1.11.5
       '@webassemblyjs/wasm-parser': 1.11.5
@@ -35920,7 +35967,7 @@ packages:
         optional: true
     dependencies:
       '@types/eslint-scope': 3.7.4
-      '@types/estree': 1.0.2
+      '@types/estree': 1.0.5
       '@webassemblyjs/ast': 1.11.5
       '@webassemblyjs/wasm-edit': 1.11.5
       '@webassemblyjs/wasm-parser': 1.11.5

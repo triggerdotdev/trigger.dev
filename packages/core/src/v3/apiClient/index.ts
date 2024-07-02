@@ -14,8 +14,8 @@ import {
   EnvironmentVariables,
   ListRunResponseItem,
   ListScheduleOptions,
-  ListSchedulesResult,
   ReplayRunResponse,
+  RescheduleRunRequestBody,
   RetrieveRunResponse,
   ScheduleObject,
   TaskRunExecutionResult,
@@ -28,11 +28,9 @@ import { taskContext } from "../task-context-api";
 import {
   CursorPagePromise,
   ZodFetchOptions,
-  isRecordLike,
   zodfetch,
   zodfetchCursorPage,
   zodfetchOffsetLimitPage,
-  zodupload,
 } from "./core";
 import { ApiError } from "./errors";
 import {
@@ -250,6 +248,19 @@ export class ApiClient {
     );
   }
 
+  rescheduleRun(runId: string, body: RescheduleRunRequestBody) {
+    return zodfetch(
+      RetrieveRunResponse,
+      `${this.baseUrl}/api/v1/runs/${runId}/reschedule`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      zodFetchOptions
+    );
+  }
+
   createSchedule(options: CreateScheduleOptions) {
     return zodfetch(ScheduleObject, `${this.baseUrl}/api/v1/schedules`, {
       method: "POST",
@@ -331,27 +342,15 @@ export class ApiClient {
   }
 
   importEnvVars(projectRef: string, slug: string, body: ImportEnvironmentVariablesParams) {
-    if (isRecordLike(body.variables)) {
-      return zodfetch(
-        EnvironmentVariableResponseBody,
-        `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/import`,
-        {
-          method: "POST",
-          headers: this.#getHeaders(false),
-          body: JSON.stringify(body),
-        }
-      );
-    } else {
-      return zodupload(
-        EnvironmentVariableResponseBody,
-        `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/import`,
-        body,
-        {
-          method: "POST",
-          headers: this.#getHeaders(false),
-        }
-      );
-    }
+    return zodfetch(
+      EnvironmentVariableResponseBody,
+      `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/import`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      }
+    );
   }
 
   retrieveEnvVar(projectRef: string, slug: string, key: string) {

@@ -14,6 +14,7 @@ import { getRandomPortNumber, HttpReply, getTextBody } from "./http";
 import { SimpleLogger } from "./logger";
 import { isExecaChildProcess } from "./checkpoints";
 import { setTimeout } from "node:timers/promises";
+import { EXIT_CODE_ALREADY_HANDLED } from "./process";
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
@@ -198,7 +199,7 @@ export class ProviderShell implements Provider {
                 stderr: error.stderr,
               });
 
-              if (error.exitCode === 111) {
+              if (error.exitCode === EXIT_CODE_ALREADY_HANDLED) {
                 logger.error("Index failure already reported by the worker", {
                   socketMessage: message,
                 });

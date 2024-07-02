@@ -1,5 +1,74 @@
 # trigger.dev
 
+## 3.0.0-beta.45
+
+### Patch Changes
+
+- 374b6b9c0: Increase dev worker timeout
+- c75e29a9a: Add sox and audiowaveform binaries to worker images
+- 568da0178: - Improve non-zero exit code error messages
+  - Detect OOM conditions within worker child processes
+  - Internal errors can have optional stack traces
+  - Docker provider can be set to enforce machine presets
+- 52b6f48a9: Add e2e fixtures corresponding to past issues
+  Implement e2e suite parallelism
+  Enhance log level for specific e2e suite messages
+- 5ae3da6b4: Await file watcher cleanup in dev
+- f56582995: v3: Copy over more of the project's package.json keys into the deployed package.json (support for custom config like zenstack)
+- d0d3a64bd: - Prevent downgrades during update check and advise to upgrade CLI
+  - Detect bun and use npm instead
+  - During init, fail early and advise if not a TypeScript project
+  - During init, allow specifying custom package manager args
+  - Add links to dev worker started message
+  - Fix links in unsupported terminals
+- 5ae3da6b4: - Fix artifact detection logs
+  - Fix OOM detection and error messages
+  - Add test link to cli deployment completion
+- 75ec4ac6a: v3: postInstall config option now replaces the postinstall script found in package.json
+- Updated dependencies [0e77e7ef7]
+- Updated dependencies [568da0178]
+- Updated dependencies [5ae3da6b4]
+  - @trigger.dev/core@3.0.0-beta.45
+
+## 3.0.0-beta.44
+
+### Patch Changes
+
+- Updated dependencies [39885a427]
+  - @trigger.dev/core@3.0.0-beta.44
+
+## 3.0.0-beta.43
+
+### Patch Changes
+
+- 77ad4127c: Improved ESM module require error detection logic
+- Updated dependencies [34ca7667d]
+  - @trigger.dev/core@3.0.0-beta.43
+
+## 3.0.0-beta.42
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.42
+
+## 3.0.0-beta.41
+
+### Patch Changes
+
+- c7a55804d: Fix jsonc-parser import
+  - @trigger.dev/core@3.0.0-beta.41
+
+## 3.0.0-beta.40
+
+### Patch Changes
+
+- 098932ea9: v3: vercel edge runtime support
+- 9835f4ec5: v3: fix otel flushing causing CLEANUP ack timeout errors by always setting a forceFlushTimeoutMillis value
+- Updated dependencies [55d1f8c67]
+- Updated dependencies [098932ea9]
+- Updated dependencies [9835f4ec5]
+  - @trigger.dev/core@3.0.0-beta.40
+
 ## 3.0.0-beta.39
 
 ### Patch Changes

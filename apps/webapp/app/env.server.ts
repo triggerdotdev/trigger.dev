@@ -204,6 +204,11 @@ const EnvironmentSchema = z.object({
 
   USAGE_OPEN_METER_API_KEY: z.string().optional(),
   USAGE_OPEN_METER_BASE_URL: z.string().optional(),
+  EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
+  MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
+  MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
+  TASK_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().default(524_288), // 512KB
+  TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

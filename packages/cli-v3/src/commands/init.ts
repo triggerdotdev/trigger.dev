@@ -4,11 +4,10 @@ import { GetProjectResponseBody, flattenAttributes } from "@trigger.dev/core/v3"
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import chalk from "chalk";
 import { Command } from "commander";
-import { execa } from "execa";
+import { ExecaError, Options as ExecaOptions, ResultPromise as ExecaResult, execa } from "execa";
 import { applyEdits, modify, findNodeAtLocation, parseTree, getNodeValue } from "jsonc-parser";
 import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
-import terminalLink from "terminal-link";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient";
 import {
@@ -24,7 +23,7 @@ import {
 import { readConfig } from "../utilities/configFiles.js";
 import { createFileFromTemplate } from "../utilities/createFileFromTemplate";
 import { createFile, pathExists, readFile } from "../utilities/fileSystem";
-import { getUserPackageManager } from "../utilities/getUserPackageManager";
+import { PackageManager, getUserPackageManager } from "../utilities/getUserPackageManager";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger";
 import { cliRootPath } from "../utilities/resolveInternalFilePath";
@@ -32,12 +31,14 @@ import { login } from "./login";
 import { spinner } from "../utilities/windows";
 import { CLOUD_API_URL } from "../consts";
 import * as packageJson from "../../package.json";
+import { cliLink, prettyError } from "../utilities/cliOutput";
 
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   overrideConfig: z.boolean().default(false),
   tag: z.string().default("beta"),
   skipPackageInstall: z.boolean().default(false),
+  pkgArgs: z.string().optional(),
 });
 
 type InitCommandOptions = z.infer<typeof InitCommandOptions>;
@@ -59,6 +60,10 @@ export function configureInitCommand(program: Command) {
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")
       .option("--override-config", "Override the existing config file if it exists")
+      .option(
+        "--pkg-args <args>",
+        "Additional arguments to pass to the package manager, accepts CSV for multiple args"
+      )
   ).action(async (path, options) => {
     await handleTelemetry(async () => {
       await printStandloneInitialBanner(true);
@@ -77,6 +82,9 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   const span = trace.getSpan(context.active());
 
   intro("Initializing project");
+
+  // Detect tsconfig.json and exit if not found
+  await detectTsConfig(dir, options);
 
   const authorization = await login({
     embedded: true,
@@ -153,7 +161,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   // Ignore .trigger dir
   await gitIgnoreDotTriggerDir(dir, options);
 
-  const projectDashboard = terminalLink(
+  const projectDashboard = cliLink(
     "project dashboard",
     `${authorization.dashboardUrl}/projects/v3/${selectedProject.externalRef}`
   );
@@ -169,13 +177,10 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   );
   log.info(`   2. Visit your ${projectDashboard} to view your newly created tasks.`);
   log.info(
-    `   3. Head over to our ${terminalLink(
-      "v3 docs",
-      "https://trigger.dev/docs/v3"
-    )} to learn more.`
+    `   3. Head over to our ${cliLink("v3 docs", "https://trigger.dev/docs/v3")} to learn more.`
   );
   log.info(
-    `   4. Need help? Join our ${terminalLink(
+    `   4. Need help? Join our ${cliLink(
       "Discord community",
       "https://trigger.dev/discord"
     )} or email us at ${chalk.cyan("help@trigger.dev")}`
@@ -321,8 +326,46 @@ async function gitIgnoreDotTriggerDir(dir: string, options: InitCommandOptions) 
   });
 }
 
+async function detectTsConfig(dir: string, options: InitCommandOptions) {
+  return await tracer.startActiveSpan("detectTsConfig", async (span) => {
+    try {
+      const projectDir = resolve(process.cwd(), dir);
+      const tsconfigPath = join(projectDir, "tsconfig.json");
+
+      span.setAttributes({
+        "cli.projectDir": projectDir,
+        "cli.tsconfigPath": tsconfigPath,
+      });
+
+      const tsconfigExists = await pathExists(tsconfigPath);
+
+      if (!tsconfigExists) {
+        prettyError(
+          "No tsconfig.json found",
+          `The init command needs to be run in a TypeScript project. You can create one like this:`,
+          `npm install typescript --save-dev\nnpx tsc --init\n`
+        );
+
+        throw new Error("TypeScript required");
+      }
+
+      logger.debug("tsconfig.json exists", { tsconfigPath });
+
+      span.end();
+    } catch (e) {
+      if (!(e instanceof SkipCommandError)) {
+        recordSpanException(span, e);
+      }
+
+      span.end();
+
+      throw e;
+    }
+  });
+}
+
 async function addConfigFileToTsConfig(dir: string, options: InitCommandOptions) {
-  return await tracer.startActiveSpan("createTriggerDir", async (span) => {
+  return await tracer.startActiveSpan("addConfigFileToTsConfig", async (span) => {
     try {
       const projectDir = resolve(process.cwd(), dir);
       const tsconfigPath = join(projectDir, "tsconfig.json");
@@ -391,9 +434,12 @@ async function installPackages(dir: string, options: InitCommandOptions) {
   return await tracer.startActiveSpan("installPackages", async (span) => {
     const installSpinner = spinner();
 
+    let pkgManager: PackageManager | undefined;
+
     try {
       const projectDir = resolve(process.cwd(), dir);
-      const pkgManager = await getUserPackageManager(projectDir);
+
+      pkgManager = await getUserPackageManager(projectDir);
 
       span.setAttributes({
         "cli.projectDir": projectDir,
@@ -401,52 +447,61 @@ async function installPackages(dir: string, options: InitCommandOptions) {
         "cli.tag": options.tag,
       });
 
+      const userArgs = options.pkgArgs?.split(",") ?? [];
+      const execaOptions = { cwd: projectDir } satisfies ExecaOptions;
+
+      let installProcess: ExecaResult<typeof execaOptions>;
+      let args: string[];
+
       switch (pkgManager) {
         case "npm": {
-          installSpinner.start(`Running npm install @trigger.dev/sdk@${options.tag}`);
-
           // --save-exact: pin version, e.g. 3.0.0-beta.20 instead of ^3.0.0-beta.20
-          await execa("npm", ["install", "--save-exact", `@trigger.dev/sdk@${options.tag}`], {
-            cwd: projectDir,
-            stdio: options.logLevel === "debug" ? "inherit" : "ignore",
-          });
+          args = ["install", "--save-exact", ...userArgs, `@trigger.dev/sdk@${options.tag}`];
 
           break;
         }
-        case "pnpm": {
-          installSpinner.start(`Running pnpm add @trigger.dev/sdk@${options.tag}`);
-
-          // pins version by default
-          await execa("pnpm", ["add", `@trigger.dev/sdk@${options.tag}`], {
-            cwd: projectDir,
-            stdio: options.logLevel === "debug" ? "inherit" : "ignore",
-          });
-
-          break;
-        }
+        case "pnpm":
         case "yarn": {
-          installSpinner.start(`Running yarn add @trigger.dev/sdk@${options.tag}`);
-
           // pins version by default
-          await execa("yarn", ["add", `@trigger.dev/sdk@${options.tag}`], {
-            cwd: projectDir,
-            stdio: options.logLevel === "debug" ? "inherit" : "ignore",
-          });
+          args = ["add", ...userArgs, `@trigger.dev/sdk@${options.tag}`];
 
           break;
         }
       }
 
+      installSpinner.start(`Running ${pkgManager} ${args.join(" ")}`);
+
+      installProcess = execa(pkgManager, args, execaOptions);
+
+      const handleProcessOutput = (data: Buffer) => {
+        logger.debug(data.toString());
+      };
+
+      installProcess.stderr?.on("data", handleProcessOutput);
+      installProcess.stdout?.on("data", handleProcessOutput);
+
+      await installProcess;
+
       installSpinner.stop(`@trigger.dev/sdk@${options.tag} installed`);
 
       span.end();
     } catch (e) {
-      installSpinner.stop(
-        `Failed to install @trigger.dev/sdk@${options.tag}. Rerun command with --log-level debug for more details.`
-      );
+      if (options.logLevel === "debug") {
+        installSpinner.stop(`Failed to install @trigger.dev/sdk@${options.tag}.`);
+      } else {
+        installSpinner.stop(
+          `Failed to install @trigger.dev/sdk@${options.tag}. Rerun command with --log-level debug for more details.`
+        );
+      }
 
       if (!(e instanceof SkipCommandError)) {
         recordSpanException(span, e);
+      }
+
+      if (e instanceof ExecaError) {
+        if (pkgManager) {
+          e.message += ` \n\nNote: You can pass additional args to ${pkgManager} by using --pkg-args. For example: trigger.dev init --pkg-args="--workspace-root"`;
+        }
       }
 
       span.end();
@@ -546,7 +601,7 @@ async function selectProject(apiClient: CliApiClient, dashboardUrl: string, proj
       }
 
       if (projectsResponse.data.length === 0) {
-        const newProjectLink = terminalLink(
+        const newProjectLink = cliLink(
           "Create new project",
           `${dashboardUrl}/projects/new?version=v3`
         );

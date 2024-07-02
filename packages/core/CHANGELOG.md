@@ -1,5 +1,42 @@
 # internal-platform
 
+## 3.0.0-beta.45
+
+### Patch Changes
+
+- 0e77e7ef7: v3: Trigger delayed runs and reschedule them
+- 568da0178: - Improve non-zero exit code error messages
+  - Detect OOM conditions within worker child processes
+  - Internal errors can have optional stack traces
+  - Docker provider can be set to enforce machine presets
+- 5ae3da6b4: - Fix artifact detection logs
+  - Fix OOM detection and error messages
+  - Add test link to cli deployment completion
+
+## 3.0.0-beta.44
+
+### Patch Changes
+
+- 39885a427: v3: fix missing init output in task run function when no middleware is defined
+
+## 3.0.0-beta.43
+
+### Patch Changes
+
+- 34ca7667d: v3: Include presigned urls for downloading large payloads and outputs when using runs.retrieve
+
+## 3.0.0-beta.42
+
+## 3.0.0-beta.41
+
+## 3.0.0-beta.40
+
+### Patch Changes
+
+- 55d1f8c67: Add callback to checkpoint created message
+- 098932ea9: v3: vercel edge runtime support
+- 9835f4ec5: v3: fix otel flushing causing CLEANUP ack timeout errors by always setting a forceFlushTimeoutMillis value
+
 ## 3.0.0-beta.39
 
 ## 3.0.0-beta.38
