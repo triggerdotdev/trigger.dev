@@ -1,9 +1,8 @@
-import { PlusIcon, PlusSmallIcon } from "@heroicons/react/20/solid";
+import { ClockIcon, LockOpenIcon, PlusIcon, RectangleGroupIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 import { Feedback } from "~/components/Feedback";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -19,6 +18,8 @@ import {
   DialogHeader,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
+import { Header3 } from "~/components/primitives/Headers";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -52,9 +53,11 @@ import { requireUserId } from "~/services/session.server";
 import {
   ProjectParamSchema,
   docsPath,
+  v3BillingPath,
   v3NewSchedulePath,
   v3SchedulePath,
 } from "~/utils/pathBuilder";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -95,6 +98,14 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const pathName = usePathName();
+
+  const plan = useCurrentPlan();
+  const requiresUpgrade =
+    plan?.v3Subscription?.plan &&
+    limits.used > plan.v3Subscription.plan.limits.schedules.number &&
+    !plan.v3Subscription.plan.limits.schedules.canExceed;
+  const canUpgrade =
+    plan?.v3Subscription?.plan && !plan.v3Subscription.plan.limits.schedules.canExceed;
 
   const { scheduleParam } = useParams();
   const isShowingNewPane = pathName.endsWith("/new");
@@ -180,22 +191,54 @@ export default function Page() {
                 </div>
 
                 <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
-                <div className="mt-2 justify-between">
-                  <Paragraph variant="extra-small" className="mt-3">
-                    <span className={limits.used >= limits.limit ? "text-warning" : ""}>
-                      You've used {limits.used}/{limits.limit} of your schedules.
-                    </span>{" "}
-                    <Feedback
-                      button={
-                        <button className=" text-secondary transition hover:text-indigo-400">
-                          Request more
-                        </button>
-                      }
-                      defaultValue="help"
-                    />
-                    .
-                  </Paragraph>
-                  <PaginationControls currentPage={currentPage} totalPages={totalPages} />
+                <div className="mt-3 flex w-full items-start justify-between">
+                  {requiresUpgrade ? (
+                    <InfoPanel
+                      variant="upgrade"
+                      icon={LockOpenIcon}
+                      iconClassName="text-indigo-500"
+                      title="Unlock more schedules"
+                      to={v3BillingPath(organization)}
+                      buttonLabel="Upgrade"
+                    >
+                      <Paragraph variant="small">
+                        You've used all {limits.limit} of your available schedules. Upgrade your
+                        plan to enable more.
+                      </Paragraph>
+                    </InfoPanel>
+                  ) : (
+                    <div className="flex h-fit flex-col items-start gap-4 rounded-md border border-grid-bright bg-background-bright p-4">
+                      <div className="flex items-center justify-between gap-6">
+                        {requiresUpgrade ? (
+                          <Header3>
+                            You've used {limits.used}/{limits.limit} of your schedules.
+                          </Header3>
+                        ) : (
+                          <Header3>
+                            You've used all {limits.limit} of your available schedules.
+                          </Header3>
+                        )}
+
+                        {canUpgrade ? (
+                          <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
+                            Upgrade
+                          </LinkButton>
+                        ) : (
+                          <Feedback
+                            button={<Button variant="secondary/small">Request more</Button>}
+                            defaultValue="help"
+                          />
+                        )}
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full border border-grid-bright">
+                        <div
+                          className="h-full bg-grid-bright"
+                          style={{ width: `${(limits.used / limits.limit) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <PaginationControls currentPage={currentPage} totalPages={3} />
                 </div>
               </div>
             )}
@@ -216,21 +259,20 @@ export default function Page() {
 
 function CreateScheduledTaskInstructions() {
   return (
-    <MainCenteredContainer className="max-w-prose">
-      <BlankstateInstructions title="Create your first scheduled task">
-        <Paragraph spacing>
-          You have no scheduled tasks in your project. Before you can schedule a task you need to a{" "}
-          <InlineCode>schedules.task</InlineCode>.
+    <MainCenteredContainer>
+      <InfoPanel
+        title="Create your first scheduled task"
+        icon={ClockIcon}
+        iconClassName="text-sun-500"
+        panelClassName="max-w-xl"
+        to={docsPath("v3/tasks-scheduled")}
+        buttonLabel="Scheduled task docs"
+      >
+        <Paragraph variant="small">
+          You have no scheduled tasks in your project. Before you can schedule a task you need to
+          create a <InlineCode>schedules.task</InlineCode>.
         </Paragraph>
-        <LinkButton
-          to={docsPath("v3/tasks-scheduled")}
-          variant="primary/medium"
-          LeadingIcon={BookOpenIcon}
-          className="inline-flex"
-        >
-          Create scheduled task docs
-        </LinkButton>
-      </BlankstateInstructions>
+      </InfoPanel>
     </MainCenteredContainer>
   );
 }
@@ -241,9 +283,14 @@ function AttachYourFirstScheduleInstructions() {
   const location = useLocation();
 
   return (
-    <MainCenteredContainer className="max-w-prose">
-      <BlankstateInstructions title="Attach your first schedule">
-        <Paragraph spacing>
+    <MainCenteredContainer>
+      <InfoPanel
+        title="Attach your first schedule"
+        icon={ClockIcon}
+        iconClassName="text-sun-500"
+        panelClassName="max-w-3xl"
+      >
+        <Paragraph spacing variant="small">
           Scheduled tasks will only run automatically if you connect a schedule to them, you can do
           this in the dashboard or using the SDK.
         </Paragraph>
@@ -251,10 +298,10 @@ function AttachYourFirstScheduleInstructions() {
           <LinkButton
             to={`${v3NewSchedulePath(organization, project)}${location.search}`}
             variant="primary/small"
-            LeadingIcon={PlusSmallIcon}
+            LeadingIcon={RectangleGroupIcon}
             className="inline-flex"
           >
-            Create in the dashboard
+            Use the dashboard
           </LinkButton>
           <LinkButton
             to={docsPath("v3/tasks-scheduled")}
@@ -265,7 +312,7 @@ function AttachYourFirstScheduleInstructions() {
             Use the SDK
           </LinkButton>
         </div>
-      </BlankstateInstructions>
+      </InfoPanel>
     </MainCenteredContainer>
   );
 }
