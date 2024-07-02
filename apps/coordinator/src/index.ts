@@ -19,6 +19,7 @@ import { HttpReply, getTextBody } from "@trigger.dev/core-apps/http";
 import { SimpleLogger } from "@trigger.dev/core-apps/logger";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
+import { ChaosMonkey } from "./chaosMonkey";
 collectDefaultMetrics();
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8020);
@@ -57,10 +58,7 @@ const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
 const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?? "false");
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
-
-if (CHAOS_MONKEY_ENABLED) {
-  logger.log("🍌 Chaos monkey enabled");
-}
+const chaosMonkey = new ChaosMonkey(CHAOS_MONKEY_ENABLED);
 
 type CheckpointerInitializeReturn = {
   canCheckpoint: boolean;
@@ -432,21 +430,7 @@ class Checkpointer {
     };
 
     try {
-      if (CHAOS_MONKEY_ENABLED) {
-        console.log("🍌 Chaos monkey wreaking havoc");
-
-        const random = Math.random();
-
-        if (random < 0.33) {
-          // Fake long checkpoint duration
-          await $$`sleep 300`;
-        } else if (random < 0.66) {
-          // Fake checkpoint error
-          await $$`false`;
-        } else {
-          // no-op
-        }
-      }
+      await chaosMonkey.call({ $: $$ });
 
       this.#logger.log("Checkpointing:", { options });
 
@@ -669,6 +653,7 @@ class TaskCoordinator {
     return headers;
   }
 
+  // MARK: PLATFORM
   #createPlatformSocket() {
     if (!PLATFORM_ENABLED) {
       console.log("INFO: platform connection disabled");
@@ -705,6 +690,8 @@ class TaskCoordinator {
             return;
           }
 
+          await chaosMonkey.call();
+
           // In case the task resumed faster than we could checkpoint
           this.#cancelCheckpoint(message.runId);
 
@@ -719,6 +706,8 @@ class TaskCoordinator {
             });
             return;
           }
+
+          await chaosMonkey.call();
 
           taskSocket.emit("RESUME_AFTER_DURATION", message);
         },
@@ -768,6 +757,8 @@ class TaskCoordinator {
             return;
           }
 
+          await chaosMonkey.call();
+
           taskSocket.emit("READY_FOR_RETRY", message);
         },
         DYNAMIC_CONFIG: async (message) => {
@@ -805,6 +796,7 @@ class TaskCoordinator {
     }
   }
 
+  // MARK: TASKS
   #createProdWorkerNamespace(io: Server) {
     const provider = new ZodNamespace({
       io,
@@ -990,6 +982,7 @@ class TaskCoordinator {
           }
         });
 
+        // MARK: LAZY ATTEMPT
         socket.on("READY_FOR_LAZY_ATTEMPT", async (message) => {
           logger.log("[READY_FOR_LAZY_ATTEMPT]", message);
 
@@ -1021,11 +1014,18 @@ class TaskCoordinator {
               return;
             }
 
+            await chaosMonkey.call();
+
             socket.emit("EXECUTE_TASK_RUN_LAZY_ATTEMPT", {
               version: "v1",
               lazyPayload: lazyAttempt.lazyPayload,
             });
           } catch (error) {
+            if (error instanceof ChaosMonkey.Error) {
+              logger.error("ChaosMonkey error, won't crash run", { runId: socket.data.runId });
+              return;
+            }
+
             logger.error("Error", { error });
 
             await crashRun({
@@ -1038,6 +1038,7 @@ class TaskCoordinator {
           }
         });
 
+        // MARK: RESUME READY
         socket.on("READY_FOR_RESUME", async (message) => {
           logger.log("[READY_FOR_RESUME]", message);
 
@@ -1046,11 +1047,14 @@ class TaskCoordinator {
           this.#platformSocket?.send("READY_FOR_RESUME", message);
         });
 
+        // MARK: RUN COMPLETED
         socket.on("TASK_RUN_COMPLETED", async ({ completion, execution }, callback) => {
           logger.log("completed task", { completionId: completion.id });
 
           // Cancel all in-progress checkpoints (if any)
           this.#cancelCheckpoint(socket.data.runId);
+
+          await chaosMonkey.call({ throwErrors: false });
 
           const completeWithoutCheckpoint = (shouldExit: boolean) => {
             this.#platformSocket?.send("TASK_RUN_COMPLETED", {
@@ -1134,6 +1138,7 @@ class TaskCoordinator {
           }
         });
 
+        // MARK: TASK FAILED
         socket.on("TASK_RUN_FAILED_TO_RUN", async ({ completion }) => {
           logger.log("task failed to run", { completionId: completion.id });
 
@@ -1150,6 +1155,7 @@ class TaskCoordinator {
           });
         });
 
+        // MARK: CHECKPOINT
         socket.on("READY_FOR_CHECKPOINT", async (message) => {
           logger.log("[READY_FOR_CHECKPOINT]", message);
 
@@ -1163,6 +1169,7 @@ class TaskCoordinator {
           checkpointable.resolve();
         });
 
+        // MARK: CXX CHECKPOINT
         socket.on("CANCEL_CHECKPOINT", async (message, callback) => {
           logger.log("[CANCEL_CHECKPOINT]", message);
 
@@ -1177,8 +1184,11 @@ class TaskCoordinator {
           callback({ version: "v2", checkpointCanceled });
         });
 
+        // MARK: DURATION WAIT
         socket.on("WAIT_FOR_DURATION", async (message, callback) => {
           logger.log("[WAIT_FOR_DURATION]", message);
+
+          await chaosMonkey.call({ throwErrors: false });
 
           if (checkpointInProgress()) {
             logger.error("Checkpoint already in progress", { runId: socket.data.runId });
@@ -1242,8 +1252,11 @@ class TaskCoordinator {
           }
         });
 
+        // MARK: TASK WAIT
         socket.on("WAIT_FOR_TASK", async (message, callback) => {
           logger.log("[WAIT_FOR_TASK]", message);
+
+          await chaosMonkey.call({ throwErrors: false });
 
           if (checkpointInProgress()) {
             logger.error("Checkpoint already in progress", { runId: socket.data.runId });
@@ -1308,8 +1321,11 @@ class TaskCoordinator {
           }
         });
 
+        // MARK: BATCH WAIT
         socket.on("WAIT_FOR_BATCH", async (message, callback) => {
           logger.log("[WAIT_FOR_BATCH]", message);
+
+          await chaosMonkey.call({ throwErrors: false });
 
           if (checkpointInProgress()) {
             logger.error("Checkpoint already in progress", { runId: socket.data.runId });
@@ -1375,6 +1391,7 @@ class TaskCoordinator {
           }
         });
 
+        // MARK: INDEX
         socket.on("INDEX_TASKS", async (message, callback) => {
           logger.log("[INDEX_TASKS]", message);
 
@@ -1398,6 +1415,7 @@ class TaskCoordinator {
           callback({ success: !!workerAck?.success });
         });
 
+        // MARK: INDEX FAILED
         socket.on("INDEXING_FAILED", async (message) => {
           logger.log("[INDEXING_FAILED]", message);
 
@@ -1408,8 +1426,11 @@ class TaskCoordinator {
           });
         });
 
+        // MARK: CREATE ATTEMPT
         socket.on("CREATE_TASK_RUN_ATTEMPT", async (message, callback) => {
           logger.log("[CREATE_TASK_RUN_ATTEMPT]", message);
+
+          await chaosMonkey.call({ throwErrors: false });
 
           const createAttempt = await this.#platformSocket?.sendWithAck("CREATE_TASK_RUN_ATTEMPT", {
             runId: message.runId,
@@ -1486,6 +1507,7 @@ class TaskCoordinator {
     return checkpointCanceled;
   }
 
+  // MARK: HTTP SERVER
   #createHttpServer() {
     const httpServer = createServer(async (req, res) => {
       logger.log(`[${req.method}]`, req.url);
