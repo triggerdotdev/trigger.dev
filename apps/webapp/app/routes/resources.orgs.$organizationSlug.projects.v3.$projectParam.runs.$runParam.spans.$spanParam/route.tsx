@@ -261,7 +261,7 @@ function RunActionButtons({ span }: { span: Span }) {
 
   if (span.isPartial) {
     return (
-      <Dialog>
+      <Dialog key="in-progress">
         <LinkButton
           to={v3RunDownloadLogsPath({ friendlyId: runParam })}
           LeadingIcon={CloudArrowDownIcon}
@@ -290,7 +290,7 @@ function RunActionButtons({ span }: { span: Span }) {
   }
 
   return (
-    <Dialog>
+    <Dialog key="complete">
       <LinkButton
         to={v3RunDownloadLogsPath({ friendlyId: runParam })}
         LeadingIcon={CloudArrowDownIcon}

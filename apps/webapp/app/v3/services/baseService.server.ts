@@ -18,6 +18,10 @@ export abstract class BaseService {
         try {
           return await fn(span);
         } catch (e) {
+          if (e instanceof ServiceValidationError) {
+            throw e;
+          }
+
           if (e instanceof Error) {
             span.recordException(e);
           } else {

@@ -9,6 +9,8 @@ import type { Server as IoServer } from "socket.io";
 import type { Server as EngineServer } from "engine.io";
 import { RegistryProxy } from "~/v3/registryProxy.server";
 import { RateLimitMiddleware, apiRateLimiter } from "~/services/apiRateLimit.server";
+import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
+import { nanoid } from "nanoid";
 
 const app = express();
 
@@ -41,6 +43,7 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
   const wss: WebSocketServer | undefined = build.entry.module.wss;
   const registryProxy: RegistryProxy | undefined = build.entry.module.registryProxy;
   const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
+  const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
 
   if (registryProxy && process.env.ENABLE_REGISTRY_PROXY === "true") {
     console.log(`🐳 Enabling container registry proxy to ${registryProxy.origin}`);
@@ -68,6 +71,13 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
       return;
     }
     next();
+  });
+
+  app.use((req, res, next) => {
+    // Generate a unique request ID for each request
+    const requestId = nanoid();
+
+    runWithHttpContext({ requestId, path: req.url, host: req.hostname }, next);
   });
 
   if (process.env.DASHBOARD_AND_API_DISABLED !== "true") {

@@ -1,9 +1,10 @@
-import { BatchTriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import { BatchTriggerTaskRequestBody, logger } from "@trigger.dev/core/v3";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { BaseService } from "./baseService.server";
+import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TriggerTaskService } from "./triggerTask.server";
 import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
+import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 
 export type BatchTriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -51,8 +52,31 @@ export class BatchTriggerTaskService extends BaseService {
       const dependentAttempt = body?.dependentAttempt
         ? await this._prisma.taskRunAttempt.findUnique({
             where: { friendlyId: body.dependentAttempt },
+            include: {
+              taskRun: true,
+            },
           })
         : undefined;
+
+      if (
+        dependentAttempt &&
+        (isFinalAttemptStatus(dependentAttempt.status) ||
+          isFinalRunStatus(dependentAttempt.taskRun.status))
+      ) {
+        logger.debug("Dependent attempt or run is in a terminal state", {
+          dependentAttempt: dependentAttempt,
+        });
+
+        if (isFinalAttemptStatus(dependentAttempt.status)) {
+          throw new ServiceValidationError(
+            `Cannot batch trigger ${taskId} as the parent attempt has a status of ${dependentAttempt.status}`
+          );
+        } else {
+          throw new ServiceValidationError(
+            `Cannot batch trigger ${taskId} as the parent run has a status of ${dependentAttempt.taskRun.status}`
+          );
+        }
+      }
 
       const batch = await this._prisma.batchTaskRun.create({
         data: {
@@ -70,37 +94,44 @@ export class BatchTriggerTaskService extends BaseService {
       let index = 0;
 
       for (const item of body.items) {
-        const run = await triggerTaskService.call(
-          taskId,
-          environment,
-          {
-            ...item,
-            options: {
-              ...item.options,
-              dependentBatch: dependentAttempt?.id ? batch.friendlyId : undefined, // Only set dependentBatch if dependentAttempt is set which means batchTriggerAndWait was called
+        try {
+          const run = await triggerTaskService.call(
+            taskId,
+            environment,
+            {
+              ...item,
+              options: {
+                ...item.options,
+                dependentBatch: dependentAttempt?.id ? batch.friendlyId : undefined, // Only set dependentBatch if dependentAttempt is set which means batchTriggerAndWait was called
+              },
             },
-          },
-          {
-            triggerVersion: options.triggerVersion,
-            traceContext: options.traceContext,
-            spanParentAsLink: options.spanParentAsLink,
-            batchId: batch.friendlyId,
+            {
+              triggerVersion: options.triggerVersion,
+              traceContext: options.traceContext,
+              spanParentAsLink: options.spanParentAsLink,
+              batchId: batch.friendlyId,
+            }
+          );
+
+          if (run) {
+            await this._prisma.batchTaskRunItem.create({
+              data: {
+                batchTaskRunId: batch.id,
+                taskRunId: run.id,
+                status: batchTaskRunItemStatusForRunStatus(run.status),
+              },
+            });
+
+            runs.push(run.friendlyId);
           }
-        );
 
-        if (run) {
-          await this._prisma.batchTaskRunItem.create({
-            data: {
-              batchTaskRunId: batch.id,
-              taskRunId: run.id,
-              status: batchTaskRunItemStatusForRunStatus(run.status),
-            },
+          index++;
+        } catch (error) {
+          logger.error("[BatchTriggerTaskService] Error triggering task", {
+            taskId,
+            error,
           });
-
-          runs.push(run.friendlyId);
         }
-
-        index++;
       }
 
       span.setAttribute("batchId", batch.friendlyId);
