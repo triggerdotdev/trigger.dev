@@ -259,12 +259,12 @@ export default function Page() {
 
 function CreateScheduledTaskInstructions() {
   return (
-    <MainCenteredContainer>
+    <MainCenteredContainer className="max-w-md">
       <InfoPanel
         title="Create your first scheduled task"
         icon={ClockIcon}
         iconClassName="text-sun-500"
-        panelClassName="max-w-xl"
+        panelClassName="max-w-full"
         to={docsPath("v3/tasks-scheduled")}
         buttonLabel="Scheduled task docs"
       >
@@ -283,12 +283,12 @@ function AttachYourFirstScheduleInstructions() {
   const location = useLocation();
 
   return (
-    <MainCenteredContainer>
+    <MainCenteredContainer className="max-w-md">
       <InfoPanel
         title="Attach your first schedule"
         icon={ClockIcon}
         iconClassName="text-sun-500"
-        panelClassName="max-w-3xl"
+        panelClassName="max-w-full"
       >
         <Paragraph spacing variant="small">
           Scheduled tasks will only run automatically if you connect a schedule to them, you can do
