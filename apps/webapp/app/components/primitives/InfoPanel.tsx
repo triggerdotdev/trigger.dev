@@ -43,7 +43,7 @@ export function InfoPanel({
       className={cn(
         variantStyle.panelStyle,
         title ? "flex-col" : "",
-        "flex h-fit max-w-sm items-start gap-3 rounded-md border p-4",
+        "flex h-fit items-start gap-3 rounded-md border p-4",
         panelClassName
       )}
     >
