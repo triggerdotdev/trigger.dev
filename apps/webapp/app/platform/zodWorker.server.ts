@@ -16,7 +16,7 @@ import {
   parseCronItems,
   Logger as GraphileLogger,
 } from "graphile-worker";
-import { SpanKind, trace } from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode, context, propagation, trace } from "@opentelemetry/api";
 
 import omit from "lodash.omit";
 import { z } from "zod";
@@ -25,12 +25,19 @@ import { PgListenService } from "~/services/db/pgListen.server";
 import { workerLogger as logger } from "~/services/logger.server";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
+import { getHttpContext } from "~/services/httpAsyncStorage.server";
 
 const tracer = trace.getTracer("zodWorker", "3.0.0.dp.1");
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 }
+
+const ZodWorkerMessageSchema = z.object({
+  version: z.literal("1"),
+  payload: z.unknown(),
+  context: z.record(z.string().optional()).optional(),
+});
 
 const RawCronPayloadSchema = z.object({
   _cron: z.object({
@@ -338,11 +345,45 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       }
     }
 
-    const { job, durationInMs } = await this.#addJob(
-      identifier as string,
-      payload,
-      spec,
-      options?.tx ?? this.#prisma
+    const { job, durationInMs } = await tracer.startActiveSpan(
+      `Enqueue ${identifier as string}`,
+      {
+        kind: SpanKind.PRODUCER,
+        attributes: {
+          "job.task_identifier": identifier as string,
+          "job.payload": payload,
+          "job.priority": spec.priority,
+          "job.run_at": spec.runAt?.toISOString(),
+          "job.jobKey": spec.jobKey,
+          "job.flags": spec.flags,
+          "job.max_attempts": spec.maxAttempts,
+          "worker.name": this.#name,
+        },
+      },
+      async (span) => {
+        try {
+          const results = await this.#addJob(
+            identifier as string,
+            payload,
+            spec,
+            options?.tx ?? this.#prisma
+          );
+
+          return results;
+        } catch (error) {
+          if (error instanceof Error) {
+            span.recordException(error);
+          } else {
+            span.recordException(new Error(String(error)));
+          }
+
+          span.setStatus({ code: SpanStatusCode.ERROR });
+
+          throw error;
+        } finally {
+          span.end();
+        }
+      }
     );
 
     logger.debug("Enqueued worker task", {
@@ -375,6 +416,18 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   ) {
     const now = performance.now();
 
+    let $payload = payload;
+
+    if (!getHttpContext()) {
+      const $context = {};
+      propagation.inject(context.active(), $context);
+      $payload = {
+        version: "1",
+        payload,
+        context: $context,
+      };
+    }
+
     const results = await tx.$queryRawUnsafe(
       `SELECT * FROM ${this.graphileWorkerSchema}.add_job(
           identifier => $1::text,
@@ -387,7 +440,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
           job_key_mode => $8::text
         )`,
       identifier,
-      JSON.stringify(payload),
+      JSON.stringify($payload),
       spec.runAt || null,
       spec.maxAttempts || null,
       spec.jobKey || null,
@@ -401,6 +454,12 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const rows = AddJobResultsSchema.safeParse(results);
 
     if (!rows.success) {
+      logger.debug("results returned from add_job could not be parsed", {
+        identifier,
+        $payload,
+        spec,
+      });
+
       throw new Error(
         `Failed to add job to queue, zod parsing error: ${JSON.stringify(rows.error)}`
       );
@@ -543,7 +602,11 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       throw new Error(`Unknown message type: ${String(typeName)}`);
     }
 
-    const payload = messageSchema.parse(rawPayload);
+    const messagePayload = ZodWorkerMessageSchema.safeParse(rawPayload);
+
+    const payload = messageSchema.parse(
+      messagePayload.success ? messagePayload.data.payload : rawPayload
+    );
     const job = helpers.job;
 
     logger.debug("Received worker task, calling handler", {
@@ -557,6 +620,10 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     if (!task) {
       throw new Error(`No task for message type: ${String(typeName)}`);
     }
+
+    const activeContext = messagePayload.success
+      ? propagation.extract(context.active(), messagePayload.data.context ?? {})
+      : undefined;
 
     await tracer.startActiveSpan(
       `Run ${typeName as string}`,
@@ -581,6 +648,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
           "worker.name": this.#name,
         },
       },
+      activeContext ?? context.active(),
       async (span) => {
         try {
           await task.handler(payload, job, helpers);

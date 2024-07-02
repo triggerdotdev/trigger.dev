@@ -1,9 +1,8 @@
+import { stringifyIO } from "@trigger.dev/core/v3";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { TestTaskData } from "../testTask";
 import { BaseService } from "./baseService.server";
 import { TriggerTaskService } from "./triggerTask.server";
-import { TestTaskData } from "../testTask";
-import { nextScheduledTimestamps } from "../utils/calculateNextSchedule.server";
-import { stringifyIO } from "@trigger.dev/core/v3";
 
 export class TestTaskService extends BaseService {
   public async call(userId: string, data: TestTaskData) {

@@ -23,8 +23,7 @@ export function CancelRunDialog({ runFriendlyId, redirectPath }: CancelRunDialog
     <DialogContent key="cancel">
       <DialogHeader>Cancel this run?</DialogHeader>
       <DialogDescription>
-        Canceling a run will stop execution. If you want to run this later you will have to replay
-        the entire run with the original payload.
+        Canceling a run will stop execution, along with any executing subtasks.
       </DialogDescription>
       <DialogFooter>
         <Form action={`/resources/taskruns/${runFriendlyId}/cancel`} method="post">

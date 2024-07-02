@@ -21,6 +21,7 @@ import { CreateCheckpointService } from "./createCheckpoint.server";
 import { TaskRun } from "@trigger.dev/database";
 import { PerformTaskAttemptAlertsService } from "./alerts/performTaskAttemptAlerts.server";
 import { RetryAttemptService } from "./retryAttempt.server";
+import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -59,6 +60,18 @@ export class CompleteAttemptService extends BaseService {
       });
 
       // No attempt, so there's no message to ACK
+      return "COMPLETED";
+    }
+
+    if (
+      isFinalAttemptStatus(taskRunAttempt.status) ||
+      isFinalRunStatus(taskRunAttempt.taskRun.status)
+    ) {
+      // We don't want to retry a task run that has already been marked as failed, cancelled, or completed
+      logger.debug("[CompleteAttemptService] Attempt or run is already in a final state", {
+        taskRunAttempt,
+        completion,
+      });
 
       return "COMPLETED";
     }
@@ -393,7 +406,12 @@ async function findAttempt(prismaClient: PrismaClientOrTransaction, friendlyId: 
     include: {
       taskRun: true,
       backgroundWorkerTask: true,
-      backgroundWorker: true,
+      backgroundWorker: {
+        select: {
+          id: true,
+          supportsLazyAttempts: true,
+        },
+      },
     },
   });
 }
