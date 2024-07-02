@@ -1,5 +1,4 @@
-import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { InformationCircleIcon } from "@heroicons/react/24/outline";
+import { BookOpenIcon, InformationCircleIcon, LockOpenIcon } from "@heroicons/react/20/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -9,7 +8,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header3 } from "~/components/primitives/Headers";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
@@ -23,10 +22,10 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
-import { UpgradeCallout } from "~/components/primitives/UpgradeCallout";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { ProjectParamSchema, docsPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, docsPath, v3BillingPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -54,6 +53,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   const { environments, hasStaging } = useTypedLoaderData<typeof loader>();
+  const organization = useOrganization();
 
   return (
     <PageContainer>
@@ -124,25 +124,26 @@ export default function Page() {
             </TableBody>
           </Table>
 
-          <div className="flex items-start gap-3">
-            <div className="flex max-w-sm flex-col items-start justify-between gap-3 rounded-md border border-grid-bright p-4">
-              <div className="flex w-full items-center justify-between gap-2">
-                <InformationCircleIcon className="size-6 text-text-dimmed" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Header3 className="text-text-bright">Secret keys</Header3>
-                <Paragraph variant={"small"} className="text-text-dimmed">
-                  Secret keys should be used on your server. They give full API access and allow you
-                  to <TextLink to={docsPath("v3/triggering")}>trigger tasks</TextLink> from your
-                  backend.
-                </Paragraph>
-              </div>
-            </div>
+          <div className="flex gap-3">
+            <InfoPanel icon={InformationCircleIcon} title="Secret keys">
+              <Paragraph variant="small">
+                Secret keys should be used on your server. They give full API access and allow you
+                to <TextLink to={docsPath("v3/triggering")}>trigger tasks</TextLink> from your
+                backend.
+              </Paragraph>
+            </InfoPanel>
 
             {!hasStaging && (
-              <UpgradeCallout title="Unlock a Staging environment">
+              <InfoPanel
+                icon={LockOpenIcon}
+                variant="upgrade"
+                title="Unlock a Staging environment"
+                to={v3BillingPath(organization)}
+                buttonLabel="Upgrade"
+                iconClassName="text-indigo-500"
+              >
                 Upgrade your plan to add a Staging environment.
-              </UpgradeCallout>
+              </InfoPanel>
             )}
           </div>
         </div>

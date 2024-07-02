@@ -1,6 +1,12 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { BookOpenIcon, PencilSquareIcon, PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
+import {
+  BookOpenIcon,
+  InformationCircleIcon,
+  PencilSquareIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@heroicons/react/20/solid";
 import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import {
   ActionFunctionArgs,
@@ -22,6 +28,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
@@ -256,10 +263,10 @@ export default function Page() {
             </TableBody>
           </Table>
 
-          <Callout variant="info" className="mb-4">
+          <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-md">
             Dev environment variables specified here will be overridden by ones in your .env file
             when running locally.
-          </Callout>
+          </InfoPanel>
         </div>
         <Outlet />
       </PageBody>
