@@ -9,6 +9,8 @@ class ChaosMonkeyError extends Error {
 }
 
 export class ChaosMonkey {
+  private chaosEventRate = 0.2;
+
   constructor(private enabled = false) {
     if (this.enabled) {
       console.log("🍌 Chaos monkey enabled");
@@ -42,32 +44,51 @@ export class ChaosMonkey {
 
     const random = Math.random();
 
-    if (random < 0.33) {
-      if (!addDelays) {
-        return;
-      }
-
-      console.log("🍌 Chaos monkey: Add delay");
-
-      if ($) {
-        await $`sleep 300`;
-      } else {
-        await timeout(300_000);
-      }
-    } else if (random < 0.66) {
-      if (!throwErrors) {
-        return;
-      }
-
-      console.log("🍌 Chaos monkey: Throw error");
-
-      if ($) {
-        await $`false`;
-      } else {
-        throw new ChaosMonkey.Error("🍌 Chaos monkey: Throw error");
-      }
-    } else {
-      // no-op
+    if (random > this.chaosEventRate) {
+      // Don't interfere with normal operation
+      return;
     }
+
+    const chaosEvents: Array<() => Promise<any>> = [];
+
+    if (addDelays) {
+      chaosEvents.push(async () => {
+        console.log("🍌 Chaos monkey: Add delay");
+
+        if ($) {
+          await $`sleep 300`;
+        } else {
+          await timeout(300_000);
+        }
+      });
+    }
+
+    if (throwErrors) {
+      chaosEvents.push(async () => {
+        console.log("🍌 Chaos monkey: Throw error");
+
+        if ($) {
+          await $`false`;
+        } else {
+          throw new ChaosMonkey.Error("🍌 Chaos monkey: Throw error");
+        }
+      });
+    }
+
+    if (chaosEvents.length === 0) {
+      console.error("🍌 Chaos monkey: No events selected");
+      return;
+    }
+
+    const randomIndex = Math.floor(Math.random() * chaosEvents.length);
+
+    const chaosEvent = chaosEvents[randomIndex];
+
+    if (!chaosEvent) {
+      console.error("🍌 Chaos monkey: No event found");
+      return;
+    }
+
+    await chaosEvent();
   }
 }
