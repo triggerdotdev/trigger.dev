@@ -93,6 +93,14 @@
       "require": "./dist/v3/utils/durations.js",
       "types": "./dist/v3/utils/durations.d.ts"
     },
+    "./v3/utils/timers": {
+      "import": {
+        "types": "./dist/v3/utils/timers.d.mts",
+        "default": "./dist/v3/utils/timers.mjs"
+      },
+      "require": "./dist/v3/utils/timers.js",
+      "types": "./dist/v3/utils/timers.d.ts"
+    },
     "./v3/dev": {
       "import": {
         "types": "./dist/v3/dev/index.d.mts",
