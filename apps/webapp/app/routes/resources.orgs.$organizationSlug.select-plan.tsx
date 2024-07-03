@@ -8,7 +8,6 @@ import { Form, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import {
   FreePlanDefinition,
-  FreeTierStatus,
   Limits,
   PaidPlanDefinition,
   Plans,
@@ -18,6 +17,7 @@ import {
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import { z } from "zod";
 import { DefinitionTip } from "~/components/DefinitionTooltip";
+import { Feedback } from "~/components/Feedback";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import {
   Dialog,
@@ -30,7 +30,6 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
-import { featuresForRequest } from "~/features.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { setPlan } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
@@ -218,15 +217,22 @@ export function TierFree({
         <div>
           <hr className="my-6 border-grid-bright" />
           <div className="flex flex-col gap-2 rounded-sm border border-warning p-4">
-            <ExclamationTriangleIcon className="h-6 w-6 text-warning" />
+            <ExclamationTriangleIcon className="size-6 text-warning" />
             <Paragraph variant="small/bright">
-              Your Trigger.dev account failed to be verified for the free plan because your GitHub
-              account is too new. We require verification to prevent scammers and malicious use of
-              our platform.
+              Your Trigger.dev account failed to be verified for the Free plan because your GitHub
+              account is too new. We require verification to prevent malicious use of our platform.
             </Paragraph>
             <Paragraph variant="small/bright">
-              You can still select a paid plan to continue or if you think this is a mistake, get in
-              touch.
+              You can still select a paid plan to continue or if you think this is a mistake,{" "}
+              <Feedback
+                defaultValue="help"
+                button={
+                  <span className="cursor-pointer underline decoration-charcoal-400 underline-offset-4 transition hover:decoration-charcoal-200">
+                    get in touch
+                  </span>
+                }
+              />
+              .
             </Paragraph>
           </div>
         </div>
@@ -252,22 +258,22 @@ export function TierFree({
                     Unlock free plan
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-96">
+                <DialogContent className="sm:max-w-md">
                   <DialogHeader>Unlock the Free plan</DialogHeader>
-                  <div className="flex flex-col items-center gap-3 pt-3">
-                    <GitHubLightIcon className="size-12" />
-                    <Paragraph variant="small/bright" className="text-center">
+                  <div className="mb-3 mt-4 flex flex-col items-center gap-4 px-6">
+                    <GitHubLightIcon className="size-16" />
+                    <Paragraph variant="base/bright" className="text-center">
                       To unlock the Free plan, we need to verify that you have an active GitHub
                       account.
                     </Paragraph>
-                    <Paragraph variant="small" className="text-center">
-                      This prevents scammers and malicious use of our platform. We only ask for the
+                    <Paragraph className="text-center">
+                      We do this to prevent malicious use of our platform. We only ask for the
                       minimum permissions to verify your account.
                     </Paragraph>
                   </div>
                   <DialogFooter>
                     <Button
-                      variant="primary/medium"
+                      variant="primary/large"
                       fullWidth
                       disabled={isLoading}
                       LeadingIcon={isLoading ? Spinner : undefined}
