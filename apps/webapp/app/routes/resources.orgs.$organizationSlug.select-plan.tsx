@@ -182,7 +182,7 @@ export function TierFree({
           <SimpleTooltip
             buttonClassName="absolute right-1 top-1"
             button={
-              <div className="flex items-center gap-1 rounded-sm bg-green-900 px-2 py-1 text-xs text-green-300">
+              <div className="flex items-center gap-1 rounded-sm bg-green-900 py-1 pl-1.5 pr-2.5 text-xs text-green-300">
                 <ShieldCheckIcon className="size-4" />
                 <span>GitHub verified</span>
               </div>
