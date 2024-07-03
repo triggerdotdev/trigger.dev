@@ -12,6 +12,7 @@ import { socketIo } from "../handleSocketIo.server";
 import { SharedQueueMessageBody, sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
 import { BaseService } from "./baseService.server";
 import { TaskRunAttempt } from "@trigger.dev/database";
+import { isFinalRunStatus } from "../taskStatus";
 
 export class ResumeAttemptService extends BaseService {
   public async call(
@@ -80,10 +81,11 @@ export class ResumeAttemptService extends BaseService {
         return;
       }
 
-      if (attempt.taskRun.status !== "WAITING_TO_RESUME") {
+      if (isFinalRunStatus(attempt.taskRun.status)) {
         logger.error("Run is not resumable", {
           attemptId: attempt.id,
           runId: attempt.taskRunId,
+          status: attempt.taskRun.status,
         });
         return;
       }
