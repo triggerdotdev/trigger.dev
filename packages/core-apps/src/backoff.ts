@@ -63,65 +63,44 @@ export class ExponentialBackoff {
     this.#maxElapsed = opts.maxElapsed ?? Infinity;
   }
 
-  #clone() {
-    return new ExponentialBackoff(this.#type, {
-      base: this.#base,
-      factor: this.#factor,
-      min: this.#min,
-      max: this.#max,
-      maxRetries: this.#maxRetries,
-      maxElapsed: this.#maxElapsed,
+  #clone(type?: ExponentialBackoffType, opts: Partial<ExponentialBackoffOptions> = {}) {
+    return new ExponentialBackoff(type ?? this.#type, {
+      base: opts.base ?? this.#base,
+      factor: opts.factor ?? this.#factor,
+      min: opts.min ?? this.#min,
+      max: opts.max ?? this.#max,
+      maxRetries: opts.maxRetries ?? this.#maxRetries,
+      maxElapsed: opts.maxElapsed ?? this.#maxElapsed,
     });
   }
 
   type(type?: ExponentialBackoffType) {
-    if (typeof type !== "undefined") {
-      this.#type = type;
-    }
-    return this.#clone();
+    return this.#clone(type);
   }
 
   base(base?: number) {
-    if (typeof base !== "undefined") {
-      this.#base = base;
-    }
-    return this.#clone();
+    return this.#clone(undefined, { base });
   }
 
   factor(factor?: number) {
-    if (typeof factor !== "undefined") {
-      this.#factor = factor;
-    }
-    return this.#clone();
+    return this.#clone(undefined, { factor });
   }
 
   min(min?: number) {
-    if (typeof min !== "undefined") {
-      this.#min = min;
-    }
-    return this.#clone();
+    return this.#clone(undefined, { min });
   }
 
   max(max?: number) {
-    if (typeof max !== "undefined") {
-      this.#max = max;
-    }
-    return this.#clone();
+    return this.#clone(undefined, { max });
   }
 
   maxRetries(maxRetries?: number) {
-    if (typeof maxRetries !== "undefined") {
-      this.#maxRetries = maxRetries;
-    }
-    return this.#clone();
+    return this.#clone(undefined, { maxRetries });
   }
 
   // TODO: With .execute(), should this also include the time it takes to execute the callback?
   maxElapsed(maxElapsed?: number) {
-    if (typeof maxElapsed !== "undefined") {
-      this.#maxElapsed = maxElapsed;
-    }
-    return this.#clone();
+    return this.#clone(undefined, { maxElapsed });
   }
 
   retries(retries?: number) {
@@ -285,6 +264,19 @@ export class ExponentialBackoff {
     throw new StopRetrying();
   }
 
+  get state() {
+    return {
+      retries: this.#retries,
+      type: this.#type,
+      base: this.#base,
+      factor: this.#factor,
+      min: this.#min,
+      max: this.#max,
+      maxRetries: this.#maxRetries,
+      maxElapsed: this.#maxElapsed,
+    };
+  }
+
   async execute<T>(
     callback: (
       iteratorReturn: YieldType<ReturnType<ExponentialBackoff["retryAsync"]>> & {
@@ -302,19 +294,28 @@ export class ExponentialBackoff {
     for await (const { delay, retry } of this) {
       const start = Date.now();
 
+      if (retry > 0) {
+        console.log(`Retrying in ${delay.milliseconds}ms`);
+        await timeout(delay.milliseconds);
+      }
+
       let attemptTimeout: NodeJS.Timeout | undefined = undefined;
 
       try {
-        const result = await new Promise<T>(async (resolve) => {
+        const result = await new Promise<T>(async (resolve, reject) => {
           if (attemptTimeoutMs > 0) {
             attemptTimeout = setTimeout(() => {
-              throw new AttemptTimeout();
+              reject(new AttemptTimeout());
             }, attemptTimeoutMs);
           }
 
-          const callbackResult = await callback({ delay, retry, elapsedMs });
+          try {
+            const callbackResult = await callback({ delay, retry, elapsedMs });
 
-          resolve(callbackResult);
+            resolve(callbackResult);
+          } catch (error) {
+            reject(error);
+          }
         });
 
         return {

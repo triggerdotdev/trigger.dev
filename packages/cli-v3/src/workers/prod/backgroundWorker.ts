@@ -520,7 +520,7 @@ export class ProdBackgroundWorker {
       const start = performance.now();
 
       // ..and wait for response
-      const attemptCreated = await this.attemptCreatedNotification.waitFor(30_000);
+      const attemptCreated = await this.attemptCreatedNotification.waitFor(120_000);
 
       if (!attemptCreated.success) {
         throw new Error(`${attemptCreated.reason ?? "Unknown error"}`);

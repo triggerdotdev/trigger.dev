@@ -188,7 +188,9 @@ class ProdWorker {
   }
 
   async #waitForTaskHandler(message: OnWaitForTaskMessage, replayIdempotencyKey?: string) {
-    const waitForTask = await defaultBackoff.execute(async () => {
+    const waitForTask = await defaultBackoff.execute(async ({ retry }) => {
+      logger.log("Wait for task with backoff", { retry });
+
       if (!this.attemptFriendlyId) {
         logger.error("Failed to send wait message, attempt friendly ID not set", { message });
 
@@ -245,7 +247,9 @@ class ProdWorker {
   }
 
   async #waitForBatchHandler(message: OnWaitForBatchMessage, replayIdempotencyKey?: string) {
-    const waitForBatch = await defaultBackoff.execute(async () => {
+    const waitForBatch = await defaultBackoff.execute(async ({ retry }) => {
+      logger.log("Wait for batch with backoff", { retry });
+
       if (!this.attemptFriendlyId) {
         logger.error("Failed to send wait message, attempt friendly ID not set", { message });
 
@@ -333,9 +337,11 @@ class ProdWorker {
     backgroundWorker.onCreateTaskRunAttempt.attach(async (message) => {
       logger.log("onCreateTaskRunAttempt()", { message });
 
-      const createAttempt = await defaultBackoff.execute(async () => {
+      const createAttempt = await defaultBackoff.execute(async ({ retry }) => {
+        logger.log("Create task run attempt with backoff", { retry });
+
         return await this.#coordinatorSocket.socket
-          .timeout(20_000)
+          .timeout(15_000)
           .emitWithAck("CREATE_TASK_RUN_ATTEMPT", {
             version: "v1",
             runId: message.runId,
@@ -345,7 +351,7 @@ class ProdWorker {
       if (!createAttempt.success) {
         backgroundWorker.attemptCreatedNotification.post({
           success: false,
-          reason: `Failed to create attempt with backoff, cause: ${createAttempt.cause}\n${createAttempt.error}`,
+          reason: `Failed to create attempt with backoff due to ${createAttempt.cause}. ${createAttempt.error}`,
         });
         return;
       }
@@ -663,7 +669,9 @@ class ProdWorker {
     completion: TaskRunExecutionResult,
     replayIdempotencyKey?: string
   ) {
-    const taskRunCompleted = await defaultBackoff.execute(async () => {
+    const taskRunCompleted = await defaultBackoff.execute(async ({ retry }) => {
+      logger.log("Submit attempt completion with backoff", { retry });
+
       return await this.#coordinatorSocket.socket
         .timeout(20_000)
         .emitWithAck("TASK_RUN_COMPLETED", {
