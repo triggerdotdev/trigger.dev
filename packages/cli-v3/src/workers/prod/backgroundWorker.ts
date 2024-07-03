@@ -14,7 +14,6 @@ import {
   TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
-  WaitReason,
   correctErrorStackTrace,
 } from "@trigger.dev/core/v3";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
@@ -39,6 +38,19 @@ type BackgroundWorkerParams = {
   debugOtel?: boolean;
 };
 
+export type OnWaitForDurationMessage = InferSocketMessageSchema<
+  typeof ProdChildToWorkerMessages,
+  "WAIT_FOR_DURATION"
+>;
+export type OnWaitForTaskMessage = InferSocketMessageSchema<
+  typeof ProdChildToWorkerMessages,
+  "WAIT_FOR_TASK"
+>;
+export type OnWaitForBatchMessage = InferSocketMessageSchema<
+  typeof ProdChildToWorkerMessages,
+  "WAIT_FOR_BATCH"
+>;
+
 export class ProdBackgroundWorker {
   private _initialized: boolean = false;
 
@@ -48,21 +60,9 @@ export class ProdBackgroundWorker {
   public onTaskHeartbeat: Evt<string> = new Evt();
   public onTaskRunHeartbeat: Evt<string> = new Evt();
 
-  public onWaitForBatch: Evt<
-    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_BATCH">
-  > = new Evt();
-  public onWaitForDuration: Evt<
-    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_DURATION">
-  > = new Evt();
-  public onWaitForTask: Evt<
-    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_TASK">
-  > = new Evt();
-
-  public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
-  public checkpointCanceledNotification = Evt.create<{ checkpointCanceled: boolean }>();
-
-  public onReadyForCheckpoint = Evt.create<{ version?: "v1" }>();
-  public onCancelCheckpoint = Evt.create<{ version?: "v1" | "v2"; reason?: WaitReason }>();
+  public onWaitForDuration: Evt<OnWaitForDurationMessage> = new Evt();
+  public onWaitForTask: Evt<OnWaitForTaskMessage> = new Evt();
+  public onWaitForBatch: Evt<OnWaitForBatchMessage> = new Evt();
 
   public onCreateTaskRunAttempt = Evt.create<{ version?: "v1"; runId: string }>();
   public attemptCreatedNotification = Evt.create<
@@ -133,7 +133,12 @@ export class ProdBackgroundWorker {
   }
 
   async flushTelemetry() {
+    console.log("Flushing telemetry");
+    const start = performance.now();
+
     await this._taskRunProcess?.cleanup(false);
+
+    console.log("Flushed telemetry", { duration: performance.now() - start });
   }
 
   async initialize(options?: { env?: Record<string, string> }) {
@@ -302,22 +307,6 @@ export class ProdBackgroundWorker {
       this.onWaitForTask.post(message);
     });
 
-    taskRunProcess.onReadyForCheckpoint.attach((message) => {
-      this.onReadyForCheckpoint.post(message);
-    });
-
-    taskRunProcess.onCancelCheckpoint.attach((message) => {
-      this.onCancelCheckpoint.post(message);
-    });
-
-    // Notify down the chain
-    this.preCheckpointNotification.attach((message) => {
-      taskRunProcess.preCheckpointNotification.post(message);
-    });
-    this.checkpointCanceledNotification.attach((message) => {
-      taskRunProcess.checkpointCanceledNotification.post(message);
-    });
-
     await taskRunProcess.initialize();
 
     this._taskRunProcess = taskRunProcess;
@@ -373,6 +362,8 @@ export class ProdBackgroundWorker {
     kill = false,
     initialSignal: number | NodeJS.Signals = "SIGTERM"
   ) {
+    console.log("Trying graceful exit", { kill, initialSignal });
+
     try {
       const initialExit = taskRunProcess.onExit.waitFor(5_000);
 
@@ -389,6 +380,8 @@ export class ProdBackgroundWorker {
   }
 
   async #tryForcefulExit(taskRunProcess: TaskRunProcess) {
+    console.log("Trying forceful exit");
+
     try {
       const forcedKill = taskRunProcess.onExit.waitFor(5_000);
       taskRunProcess.kill("SIGKILL");
@@ -524,19 +517,24 @@ export class ProdBackgroundWorker {
     let execution: ProdTaskRunExecution;
 
     try {
+      const start = performance.now();
+
       // ..and wait for response
-      const attemptCreated = await this.attemptCreatedNotification.waitFor(30_000);
+      const attemptCreated = await this.attemptCreatedNotification.waitFor(120_000);
 
       if (!attemptCreated.success) {
-        throw new Error(
-          `Failed to create attempt${attemptCreated.reason ? `: ${attemptCreated.reason}` : ""}`
-        );
+        throw new Error(`${attemptCreated.reason ?? "Unknown error"}`);
       }
+
+      console.log("Attempt created", {
+        number: attemptCreated.execution.attempt.number,
+        duration: performance.now() - start,
+      });
 
       execution = attemptCreated.execution;
     } catch (error) {
       console.error("Error while creating attempt", error);
-      throw new Error(`Failed to create task run attempt: ${error}`);
+      throw new Error(`Failed to create attempt: ${error}`);
     }
 
     const completion = await this.executeTaskRun(
@@ -590,21 +588,11 @@ class TaskRunProcess {
     new Evt();
   public onIsBeingKilled: Evt<TaskRunProcess> = new Evt();
 
-  public onWaitForBatch: Evt<
-    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_BATCH">
-  > = new Evt();
-  public onWaitForDuration: Evt<
-    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_DURATION">
-  > = new Evt();
-  public onWaitForTask: Evt<
-    InferSocketMessageSchema<typeof ProdChildToWorkerMessages, "WAIT_FOR_TASK">
-  > = new Evt();
+  public onWaitForDuration: Evt<OnWaitForDurationMessage> = new Evt();
+  public onWaitForTask: Evt<OnWaitForTaskMessage> = new Evt();
+  public onWaitForBatch: Evt<OnWaitForBatchMessage> = new Evt();
 
   public preCheckpointNotification = Evt.create<{ willCheckpointAndRestore: boolean }>();
-  public checkpointCanceledNotification = Evt.create<{ checkpointCanceled: boolean }>();
-
-  public onReadyForCheckpoint = Evt.create<{ version?: "v1" }>();
-  public onCancelCheckpoint = Evt.create<{ version?: "v1" | "v2"; reason?: WaitReason }>();
 
   constructor(
     private runId: string,
@@ -664,6 +652,10 @@ class TaskRunProcess {
           if (this.messageId) {
             this.onTaskRunHeartbeat.post(this.messageId);
           } else {
+            console.error(
+              "No message id for task heartbeat, falling back to (deprecated) attempt heartbeat",
+              { id: message.id }
+            );
             this.onTaskHeartbeat.post(message.id);
           }
         },
@@ -675,55 +667,7 @@ class TaskRunProcess {
           this.onWaitForBatch.post(message);
         },
         WAIT_FOR_DURATION: async (message) => {
-          // Post to coordinator
           this.onWaitForDuration.post(message);
-
-          try {
-            // ..and wait for response
-            const { willCheckpointAndRestore } = await this.preCheckpointNotification.waitFor(
-              30_000
-            );
-
-            return {
-              willCheckpointAndRestore,
-            };
-          } catch (error) {
-            console.error("Error while waiting for pre-checkpoint notification", error);
-
-            // Assume we won't get checkpointed
-            return {
-              willCheckpointAndRestore: false,
-            };
-          }
-        },
-        READY_FOR_CHECKPOINT: async (message) => {
-          this.onReadyForCheckpoint.post(message);
-        },
-        CANCEL_CHECKPOINT: async (message) => {
-          const version = "v2";
-
-          // Post to coordinator
-          this.onCancelCheckpoint.post(message);
-
-          try {
-            // ..and wait for response
-            const { checkpointCanceled } = await this.checkpointCanceledNotification.waitFor(
-              30_000
-            );
-
-            return {
-              version,
-              checkpointCanceled,
-            };
-          } catch (error) {
-            console.error("Error while waiting for checkpoint cancellation", error);
-
-            // Assume it's been canceled
-            return {
-              version,
-              checkpointCanceled: true,
-            };
-          }
         },
       },
     });
@@ -764,14 +708,21 @@ class TaskRunProcess {
       realChildPid: this._child?.pid,
     });
 
-    await this._ipc?.sendWithAck(
-      "CLEANUP",
-      {
-        flush: true,
-        kill: killParentProcess,
-      },
-      30_000
-    );
+    try {
+      await this._ipc?.sendWithAck(
+        "CLEANUP",
+        {
+          flush: true,
+          kill: killParentProcess,
+        },
+        30_000
+      );
+    } catch (error) {
+      console.error("Error while cleaning up task run process", error);
+      if (killParentProcess) {
+        process.exit(0);
+      }
+    }
 
     if (killChildProcess) {
       this._gracefulExitTimeoutElapsed = true;
@@ -815,21 +766,34 @@ class TaskRunProcess {
 
   taskRunCompletedNotification(completion: TaskRunExecutionResult) {
     if (!completion.ok && typeof completion.retry !== "undefined") {
+      console.error(
+        "Task run completed with error and wants to retry, won't send task run completed notification"
+      );
       return;
     }
 
-    if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
-      this._ipc?.send("TASK_RUN_COMPLETED_NOTIFICATION", {
-        version: "v2",
-        completion,
-      });
+    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
+      console.error(
+        "Child process not connected or being killed, can't send task run completed notification"
+      );
+      return;
     }
+
+    this._ipc?.send("TASK_RUN_COMPLETED_NOTIFICATION", {
+      version: "v2",
+      completion,
+    });
   }
 
   waitCompletedNotification() {
-    if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
-      this._ipc?.send("WAIT_COMPLETED_NOTIFICATION", {});
+    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
+      console.error(
+        "Child process not connected or being killed, can't send wait completed notification"
+      );
+      return;
     }
+
+    this._ipc?.send("WAIT_COMPLETED_NOTIFICATION", {});
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {

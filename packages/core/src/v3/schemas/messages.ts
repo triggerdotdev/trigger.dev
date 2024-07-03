@@ -212,47 +212,15 @@ export const ProdChildToWorkerMessages = {
       id: z.string(),
     }),
   },
-  TASK_RUN_HEARTBEAT: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      id: z.string(),
-    }),
-  },
   READY_TO_DISPOSE: {
     message: z.undefined(),
-  },
-  READY_FOR_CHECKPOINT: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-    }),
-  },
-  CANCEL_CHECKPOINT: {
-    message: z
-      .discriminatedUnion("version", [
-        z.object({
-          version: z.literal("v1"),
-        }),
-        z.object({
-          version: z.literal("v2"),
-          reason: WaitReason.optional(),
-        }),
-      ])
-      .default({ version: "v1" }),
-    callback: z.object({
-      // TODO: Figure out how best to handle callback schema parsing in zod IPC
-      version: z.literal("v2") /* .default("v2") */,
-      checkpointCanceled: z.boolean(),
-      reason: WaitReason.optional(),
-    }),
   },
   WAIT_FOR_DURATION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       ms: z.number(),
       now: z.number(),
-    }),
-    callback: z.object({
-      willCheckpointAndRestore: z.boolean(),
+      waitThresholdInMs: z.number(),
     }),
   },
   WAIT_FOR_TASK: {
@@ -457,6 +425,7 @@ export const CoordinatorToPlatformMessages = {
       }),
     ]),
   },
+  // Deprecated: Only workers without lazy attempt support will use this
   READY_FOR_EXECUTION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -624,6 +593,12 @@ export const PlatformToCoordinatorMessages = {
       runId: z.string(),
     }),
   },
+  DYNAMIC_CONFIG: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      checkpointThresholdInMs: z.number(),
+    }),
+  },
 };
 
 export const ClientToSharedQueueMessages = {
@@ -672,10 +647,9 @@ const IndexTasksMessage = z.object({
 });
 
 export const ProdWorkerToCoordinatorMessages = {
-  LOG: {
+  TEST: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      text: z.string(),
     }),
     callback: z.void(),
   },
@@ -698,6 +672,7 @@ export const ProdWorkerToCoordinatorMessages = {
       }),
     ]),
   },
+  // Deprecated: Only workers without lazy attempt support will use this
   READY_FOR_EXECUTION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -784,7 +759,7 @@ export const ProdWorkerToCoordinatorMessages = {
   },
   WAIT_FOR_TASK: {
     message: z.object({
-      version: z.literal("v1").default("v1"),
+      version: z.enum(["v1", "v2"]).default("v1"),
       friendlyId: z.string(),
       // This is the attempt that is waiting
       attemptFriendlyId: z.string(),
@@ -795,7 +770,7 @@ export const ProdWorkerToCoordinatorMessages = {
   },
   WAIT_FOR_BATCH: {
     message: z.object({
-      version: z.literal("v1").default("v1"),
+      version: z.enum(["v1", "v2"]).default("v1"),
       batchFriendlyId: z.string(),
       runFriendlyIds: z.string().array(),
       // This is the attempt that is waiting
@@ -843,6 +818,12 @@ export const ProdWorkerToCoordinatorMessages = {
       }),
     }),
   },
+  SET_STATE: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      attemptFriendlyId: z.string().optional(),
+    }),
+  },
 };
 
 // TODO: The coordinator can only safely use v1 worker messages, higher versions will need a new flag, e.g. SUPPORTS_VERSIONED_MESSAGES
@@ -861,6 +842,7 @@ export const CoordinatorToProdWorkerMessages = {
       attemptId: z.string(),
     }),
   },
+  // Deprecated: Only workers without lazy attempt support will use this
   EXECUTE_TASK_RUN: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -907,4 +889,8 @@ export const ProdWorkerSocketData = z.object({
   podName: z.string(),
   deploymentId: z.string(),
   deploymentVersion: z.string(),
+});
+
+export const CoordinatorSocketData = z.object({
+  supportsDynamicConfig: z.string().optional(),
 });

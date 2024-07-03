@@ -1,5 +1,5 @@
 import * as k8s from "@kubernetes/client-node";
-import { SimpleLogger } from "@trigger.dev/core-apps";
+import { SimpleLogger } from "@trigger.dev/core-apps/logger";
 import { EXIT_CODE_ALREADY_HANDLED, EXIT_CODE_CHILD_NONZERO } from "@trigger.dev/core-apps/process";
 import { setTimeout } from "timers/promises";
 import PQueue from "p-queue";
@@ -140,6 +140,9 @@ export class TaskMonitor {
     const exitCode = containerState.exitCode ?? -1;
 
     if (exitCode === EXIT_CODE_ALREADY_HANDLED) {
+      this.#logger.debug("Ignoring pod failure, already handled by worker", {
+        podName,
+      });
       return;
     }
 

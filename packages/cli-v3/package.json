@@ -117,7 +117,6 @@
     "react-error-boundary": "^4.0.12",
     "semver": "^7.5.0",
     "simple-git": "^3.19.0",
-    "socket.io-client": "^4.7.4",
     "source-map-support": "^0.5.21",
     "terminal-link": "^3.0.0",
     "tiny-invariant": "^1.2.0",

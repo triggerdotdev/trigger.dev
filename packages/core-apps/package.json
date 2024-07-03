@@ -28,7 +28,6 @@
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/tsconfig": "workspace:*",
     "@types/node": "18",
-    "socket.io-client": "^4.7.4",
     "typescript": "^5.3.0"
   },
   "engines": {

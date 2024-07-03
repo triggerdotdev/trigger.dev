@@ -1,12 +1,12 @@
 import * as k8s from "@kubernetes/client-node";
 import {
   ProviderShell,
-  SimpleLogger,
   TaskOperations,
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
   TaskOperationsRestoreOptions,
-} from "@trigger.dev/core-apps";
+} from "@trigger.dev/core-apps/provider";
+import { SimpleLogger } from "@trigger.dev/core-apps/logger";
 import {
   MachinePreset,
   PostStartCauses,
