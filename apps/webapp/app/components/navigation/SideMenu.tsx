@@ -12,6 +12,7 @@ import {
   KeyIcon,
   ServerStackIcon,
   ShieldCheckIcon,
+  TagIcon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
@@ -177,7 +178,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               name="Team"
               icon={UserGroupIcon}
               to={organizationTeamPath(organization)}
-              iconColor="text-sky-500"
+              iconColor="text-amber-500"
               data-action="team"
             />
             {isManagedCloud && (
@@ -191,9 +192,9 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                 />
                 <SideMenuItem
                   name="Billing"
-                  icon={CurrencyDollarIcon}
+                  icon={TagIcon}
                   to={v3BillingPath(organization)}
-                  iconColor="text-sun-600"
+                  iconColor="text-blue-600"
                   data-action="billing"
                 />
               </>
