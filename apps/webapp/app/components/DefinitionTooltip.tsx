@@ -15,7 +15,7 @@ export function DefinitionTip({
     <TooltipProvider>
       <Tooltip disableHoverableContent>
         <TooltipTrigger>
-          <span className="underline decoration-charcoal-500 decoration-dashed underline-offset-4 transition hover:decoration-charcoal-400">
+          <span className="cursor-default underline decoration-charcoal-500 decoration-dashed underline-offset-4 transition hover:decoration-charcoal-400">
             {children}
           </span>
         </TooltipTrigger>
