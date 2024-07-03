@@ -214,6 +214,27 @@ export async function reportComputeUsage(request: Request) {
     body: await request.text(),
   });
 }
+
+export async function getEntitlement(organizationId: string) {
+  const client = getClient();
+  if (!client) return undefined;
+  try {
+    const result = await client.getEntitlement(organizationId);
+    if (!result.success) {
+      logger.error("Error getting entitlement", { error: result.error });
+      return {
+        hasAccess: true as const,
+      };
+    }
+    return result;
+  } catch (e) {
+    logger.error("Error getting entitlement", { error: e });
+    return {
+      hasAccess: true as const,
+    };
+  }
+}
+
 export async function projectCreated(organization: Organization, project: Project) {
   if (project.version === "V2" || !isCloud()) {
     await createEnvironment(organization, project, "STAGING");

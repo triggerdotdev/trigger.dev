@@ -12,6 +12,7 @@ import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { uploadToObjectStore } from "../r2.server";
 import { BaseService } from "./baseService.server";
+import { getEntitlement } from "~/services/platform.v3.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -22,6 +23,12 @@ export type TriggerTaskServiceOptions = {
   batchId?: string;
   customIcon?: string;
 };
+
+export class OutOfEntitlementError extends Error {
+  constructor() {
+    super("You can't trigger a task because you have run out of credits.");
+  }
+}
 
 export class TriggerTaskService extends BaseService {
   public async call(
@@ -49,6 +56,13 @@ export class TriggerTaskService extends BaseService {
       if (existingRun && existingRun.taskIdentifier === taskId) {
         span.setAttribute("runId", existingRun.friendlyId);
         return existingRun;
+      }
+
+      if (environment.type !== "DEVELOPMENT") {
+        const result = await getEntitlement(environment.organizationId);
+        if (result && result.hasAccess === false) {
+          throw new OutOfEntitlementError();
+        }
       }
 
       return await eventRepository.traceEvent(
