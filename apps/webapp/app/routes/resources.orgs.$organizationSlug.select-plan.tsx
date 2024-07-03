@@ -133,9 +133,15 @@ type PricingPlansProps = {
   plans: Plans;
   subscription?: SubscriptionResult;
   organizationSlug: string;
+  hasPromotedPlan: boolean;
 };
 
-export function PricingPlans({ plans, subscription, organizationSlug }: PricingPlansProps) {
+export function PricingPlans({
+  plans,
+  subscription,
+  organizationSlug,
+  hasPromotedPlan,
+}: PricingPlansProps) {
   return (
     <div className="flex w-full flex-col">
       <div className="flex flex-col gap-3 lg:flex-row">
@@ -148,6 +154,7 @@ export function PricingPlans({ plans, subscription, organizationSlug }: PricingP
           plan={plans.hobby}
           organizationSlug={organizationSlug}
           subscription={subscription}
+          isHighlighted={hasPromotedPlan}
         />
         <TierPro plan={plans.pro} organizationSlug={organizationSlug} subscription={subscription} />
       </div>
@@ -321,10 +328,12 @@ export function TierHobby({
   plan,
   organizationSlug,
   subscription,
+  isHighlighted,
 }: {
   plan: PaidPlanDefinition;
   organizationSlug: string;
   subscription?: SubscriptionResult;
+  isHighlighted: boolean;
 }) {
   const location = useLocation();
   const navigation = useNavigation();
@@ -332,8 +341,8 @@ export function TierHobby({
   const isLoading = navigation.formAction === formAction;
 
   return (
-    <TierContainer isHighlighted>
-      <PricingHeader title={plan.title} isHighlighted cost={plan.tierPrice} />
+    <TierContainer isHighlighted={isHighlighted}>
+      <PricingHeader title={plan.title} isHighlighted={isHighlighted} cost={plan.tierPrice} />
       <TierLimit href="https://trigger.dev/pricing#computePricing">
         ${plan.limits.includedUsage / 100} usage included
       </TierLimit>
@@ -343,7 +352,7 @@ export function TierHobby({
           <input type="hidden" name="planCode" value={plan.code} />
           <input type="hidden" name="callerPath" value={location.pathname} />
           <Button
-            variant="primary/large"
+            variant={isHighlighted ? "primary/large" : "tertiary/large"}
             fullWidth
             className="text-md font-medium"
             disabled={
@@ -603,12 +612,12 @@ function FeatureItem({
       {checked ? (
         <CheckIcon
           className={cn(
-            "h-4 w-4 min-w-4",
+            "size-4 min-w-4",
             checkedColor === "primary" ? "text-primary" : "text-text-bright"
           )}
         />
       ) : (
-        <XMarkIcon className="h-4 w-4 text-charcoal-500" />
+        <XMarkIcon className="size-4 min-w-4 text-charcoal-500" />
       )}
       <div
         className={cn(

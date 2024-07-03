@@ -111,6 +111,7 @@ export default function ChoosePlanPage() {
               plans={plans}
               subscription={v3Subscription}
               organizationSlug={organizationSlug}
+              hasPromotedPlan={false}
             />
           </div>
         </div>
