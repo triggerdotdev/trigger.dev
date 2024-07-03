@@ -138,7 +138,7 @@ type PricingPlansProps = {
 export function PricingPlans({ plans, subscription, organizationSlug }: PricingPlansProps) {
   return (
     <div className="flex w-full flex-col">
-      <div className="flex flex-col lg:flex-row">
+      <div className="flex flex-col gap-3 lg:flex-row">
         <TierFree
           plan={plans.free}
           subscription={subscription}
@@ -151,7 +151,7 @@ export function PricingPlans({ plans, subscription, organizationSlug }: PricingP
         />
         <TierPro plan={plans.pro} organizationSlug={organizationSlug} subscription={subscription} />
       </div>
-      <div className="mt-4">
+      <div className="mt-3">
         <TierEnterprise />
       </div>
     </div>
@@ -182,23 +182,28 @@ export function TierFree({
           <SimpleTooltip
             buttonClassName="absolute right-1 top-1"
             button={
-              <div className="flex items-center gap-1 rounded-sm bg-green-900 py-1 pl-1.5 pr-2.5 text-xs text-green-300">
+              <div className="flex cursor-default items-center gap-1 rounded-sm bg-green-900 py-1 pl-1.5 pr-2.5 text-xs text-green-300">
                 <ShieldCheckIcon className="size-4" />
                 <span>GitHub verified</span>
               </div>
             }
             content={
-              <>
-                <Paragraph variant="small" spacing>
-                  You have connected a verified GitHub account.
-                </Paragraph>
+              <div className="flex max-w-[21rem] items-center gap-4">
+                <div className="flex flex-col items-center gap-1.5">
+                  <ShieldCheckIcon className="size-9 min-w-9 text-green-600" />
+                  <Paragraph
+                    variant="extra-extra-small"
+                    className="uppercase tracking-wider text-green-600"
+                  >
+                    verified
+                  </Paragraph>
+                </div>
                 <Paragraph variant="small">
-                  This is required for the free plan to prevent scammers and malicious use of our
-                  platform.
+                  You have connected a verified GitHub account. This is required for the Free plan
+                  to prevent malicious use of our platform.
                 </Paragraph>
-              </>
+              </div>
             }
-            variant="dark"
           />
         )}
       </div>
@@ -452,13 +457,15 @@ export function TierPro({
 export function TierEnterprise() {
   return (
     <TierContainer>
-      <h2 className="text-xl font-medium text-text-dimmed">Enterprise</h2>
-      <hr className="mb-5 mt-2 border-grid-dimmed" />
-      <div className="flex flex-col-reverse items-center justify-between gap-4 lg:flex-row">
-        <div className="flex w-full flex-1 flex-wrap gap-2 lg:flex-nowrap">
-          <h3 className="mb-3 w-full lg:mb-0 lg:text-balance">
-            A custom plan tailored to your requirements
-          </h3>
+      <div className="flex w-full flex-col items-center justify-between gap-4 lg:flex-row">
+        <div className="flex w-full flex-wrap items-center justify-between gap-2 lg:flex-nowrap">
+          <div className="-mt-1 mb-2 flex w-full flex-col gap-2 lg:mb-0 lg:gap-0.5">
+            <h2 className="text-xl font-medium text-text-dimmed">Enterprise</h2>
+            <hr className="my-2 block border-grid-dimmed lg:hidden" />
+            <p className="whitespace-nowrap font-sans text-lg font-normal text-text-bright lg:text-sm">
+              Tailor a custom plan
+            </p>
+          </div>
           <ul className="flex w-full flex-col gap-y-3 lg:gap-y-1">
             <FeatureItem checked checkedColor="bright">
               All Pro plan features +
@@ -484,13 +491,16 @@ export function TierEnterprise() {
             </FeatureItem>
           </ul>
         </div>
-        <LinkButton
-          to="https://trigger.dev/contact"
-          variant="tertiary/large"
-          className="px-8 lg:max-w-[12rem]"
-        >
-          Contact us
-        </LinkButton>
+        <div className="w-full lg:max-w-[16rem]">
+          <LinkButton
+            to="https://trigger.dev/contact"
+            variant="tertiary/large"
+            className="px-8"
+            fullWidth
+          >
+            Contact us
+          </LinkButton>
+        </div>
       </div>
     </TierContainer>
   );
