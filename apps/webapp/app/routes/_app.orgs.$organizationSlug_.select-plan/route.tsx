@@ -1,5 +1,6 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Header1 } from "~/components/primitives/Headers";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
@@ -43,14 +44,14 @@ export default function ChoosePlanPage() {
   const { plans, v3Subscription, organizationSlug } = useTypedLoaderData<typeof loader>();
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-[80rem] flex-col items-center justify-center gap-12 overflow-y-auto px-12">
-      <Header1>Subscribe for full access</Header1>
+    <MainCenteredContainer className="flex max-w-[80rem] flex-col items-center gap-8 p-3">
+      <Header1 className="text-center">Subscribe for full access</Header1>
       <PricingPlans
         plans={plans}
         subscription={v3Subscription}
         organizationSlug={organizationSlug}
         hasPromotedPlan
       />
-    </div>
+    </MainCenteredContainer>
   );
 }
