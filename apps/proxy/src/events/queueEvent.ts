@@ -24,7 +24,6 @@ export async function queueEvent(request: Request, env: Env): Promise<Response> 
     const anyBody = await request.json();
     const body = SendEventBodySchema.safeParse(anyBody);
     if (!body.success) {
-      fromZodError(body.error);
       return json(
         { error: generateErrorMessage(body.error.issues) },
         {
