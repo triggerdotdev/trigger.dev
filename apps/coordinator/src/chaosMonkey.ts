@@ -10,6 +10,7 @@ class ChaosMonkeyError extends Error {
 
 export class ChaosMonkey {
   private chaosEventRate = 0.2;
+  private delayInSeconds = 45;
 
   constructor(private enabled = false) {
     if (this.enabled) {
@@ -56,9 +57,9 @@ export class ChaosMonkey {
         console.log("🍌 Chaos monkey: Add delay");
 
         if ($) {
-          await $`sleep 300`;
+          await $`sleep ${this.delayInSeconds}`;
         } else {
-          await timeout(300_000);
+          await timeout(this.delayInSeconds * 1000);
         }
       });
     }

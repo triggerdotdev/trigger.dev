@@ -61,6 +61,7 @@ class ProdWorker {
 
   private nextResumeAfter?: WaitReason;
   private waitForPostStart = false;
+  private connectionCount = 0;
 
   private waitForTaskReplay:
     | {
@@ -160,6 +161,7 @@ class ProdWorker {
     this.waitForPostStart = false;
 
     this.#coordinatorSocket.close();
+    this.connectionCount = 0;
 
     let coordinatorHost = COORDINATOR_HOST;
 
@@ -187,6 +189,7 @@ class ProdWorker {
     }
   }
 
+  // MARK: TASK WAIT
   async #waitForTaskHandler(message: OnWaitForTaskMessage, replayIdempotencyKey?: string) {
     const waitForTask = await defaultBackoff.execute(async ({ retry }) => {
       logger.log("Wait for task with backoff", { retry });
@@ -223,6 +226,7 @@ class ProdWorker {
     await this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
 
     if (willCheckpointAndRestore) {
+      // TODO: where's the timeout?
       // We need to replay this on next connection if we don't receive RESUME_AFTER_DEPENDENCY within a reasonable time
       if (!this.waitForTaskReplay) {
         this.waitForTaskReplay = {
@@ -246,6 +250,7 @@ class ProdWorker {
     }
   }
 
+  // MARK: BATCH WAIT
   async #waitForBatchHandler(message: OnWaitForBatchMessage, replayIdempotencyKey?: string) {
     const waitForBatch = await defaultBackoff.execute(async ({ retry }) => {
       logger.log("Wait for batch with backoff", { retry });
@@ -306,6 +311,7 @@ class ProdWorker {
     }
   }
 
+  // MARK: WORKER CREATION
   #createBackgroundWorker() {
     const backgroundWorker = new ProdBackgroundWorker("worker.js", {
       projectConfig: __PROJECT_CONFIG__,
@@ -520,6 +526,7 @@ class ProdWorker {
     await this.#prepareForCheckpoint();
   }
 
+  // MARK: RETRY PREP
   async #prepareForRetry(
     willCheckpointAndRestore: boolean,
     shouldExit: boolean,
@@ -553,6 +560,7 @@ class ProdWorker {
     await this.#prepareForCheckpoint(false);
   }
 
+  // MARK: CHECKPOINT PREP
   async #prepareForCheckpoint(flush = true) {
     if (flush) {
       // Flush before checkpointing so we don't flush the same spans again after restore
@@ -664,6 +672,7 @@ class ProdWorker {
     });
   }
 
+  // MARK: ATTEMPT COMPLETION
   async #submitAttemptCompletion(
     execution: ProdTaskRunExecution,
     completion: TaskRunExecutionResult,
@@ -742,6 +751,7 @@ class ProdWorker {
     return headers;
   }
 
+  // MARK: COORDINATOR SOCKET
   #createCoordinatorSocket(host: string) {
     const extraHeaders = this.#returnValidatedExtraHeaders({
       "x-machine-name": MACHINE_NAME,
@@ -943,8 +953,12 @@ class ProdWorker {
           await this.#readyForLazyAttempt();
         },
       },
+      // MARK: ON CONNECTION
       onConnection: async (socket, handler, sender, logger) => {
-        logger.log("connected to coordinator", { status: this.#status });
+        logger.log("connected to coordinator", {
+          status: this.#status,
+          connectionCount: ++this.connectionCount,
+        });
 
         // We need to send our current state to the coordinator
         socket.emit("SET_STATE", { version: "v1", attemptFriendlyId: this.attemptFriendlyId });
@@ -1101,138 +1115,13 @@ class ProdWorker {
         } catch (error) {
           logger.error("connection handler error", { error });
         } finally {
-          const backoff = new ExponentialBackoff().type("FullJitter").maxRetries(3);
-          const cancellationDelay = 20_000;
-
-          if (this.waitForTaskReplay) {
-            logger.log("replaying wait for task", { ...this.waitForTaskReplay });
-
-            const { idempotencyKey, message, attempt } = this.waitForTaskReplay;
-
-            // Give the platform some time to send RESUME_AFTER_DEPENDENCY
-            await timeout(cancellationDelay);
-
-            if (!this.waitForTaskReplay) {
-              logger.error("wait for task replay cancelled, discarding", {
-                originalMessage: { idempotencyKey, message, attempt },
-              });
-
-              return;
-            }
-
-            if (idempotencyKey !== this.waitForTaskReplay.idempotencyKey) {
-              logger.error("wait for task replay idempotency key mismatch, discarding", {
-                originalMessage: { idempotencyKey, message, attempt },
-                newMessage: this.waitForTaskReplay,
-              });
-
-              return;
-            }
-
-            try {
-              await backoff.wait(attempt + 1);
-
-              await this.#waitForTaskHandler(message);
-            } catch (error) {
-              if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
-                logger.error("wait for task replay retry limit exceeded", { error });
-              } else {
-                logger.error("wait for task replay error", { error });
-              }
-            }
-
+          if (this.connectionCount === 1) {
+            // Skip replays if this is the first connection, including post start
             return;
           }
 
-          if (this.waitForBatchReplay) {
-            logger.log("replaying wait for batch", {
-              ...this.waitForBatchReplay,
-              cancellationDelay,
-            });
-
-            const { idempotencyKey, message, attempt } = this.waitForBatchReplay;
-
-            // Give the platform some time to send RESUME_AFTER_DEPENDENCY
-            await timeout(cancellationDelay);
-
-            if (!this.waitForBatchReplay) {
-              logger.error("wait for batch replay cancelled, discarding", {
-                originalMessage: { idempotencyKey, message, attempt },
-              });
-
-              return;
-            }
-
-            if (idempotencyKey !== this.waitForBatchReplay.idempotencyKey) {
-              logger.error("wait for batch replay idempotency key mismatch, discarding", {
-                originalMessage: { idempotencyKey, message, attempt },
-                newMessage: this.waitForBatchReplay,
-              });
-
-              return;
-            }
-
-            try {
-              await backoff.wait(attempt + 1);
-
-              await this.#waitForBatchHandler(message);
-            } catch (error) {
-              if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
-                logger.error("wait for batch replay retry limit exceeded", { error });
-              } else {
-                logger.error("wait for batch replay error", { error });
-              }
-            }
-
-            return;
-          }
-
-          if (this.submitAttemptCompletionReplay) {
-            logger.log("replaying attempt completion", {
-              ...this.submitAttemptCompletionReplay,
-              cancellationDelay,
-            });
-
-            const { idempotencyKey, message, attempt } = this.submitAttemptCompletionReplay;
-
-            // Give the platform some time to send READY_FOR_RETRY
-            await timeout(cancellationDelay);
-
-            if (!this.submitAttemptCompletionReplay) {
-              logger.error("attempt completion replay cancelled, discarding", {
-                originalMessage: { idempotencyKey, message, attempt },
-              });
-
-              return;
-            }
-
-            if (idempotencyKey !== this.submitAttemptCompletionReplay.idempotencyKey) {
-              logger.error("attempt completion replay idempotency key mismatch, discarding", {
-                originalMessage: { idempotencyKey, message, attempt },
-                newMessage: this.submitAttemptCompletionReplay,
-              });
-
-              return;
-            }
-
-            try {
-              await backoff.wait(attempt + 1);
-
-              await this.#submitAttemptCompletion(
-                message.execution,
-                message.completion,
-                idempotencyKey
-              );
-            } catch (error) {
-              if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
-                logger.error("attempt completion replay retry limit exceeded", { error });
-              } else {
-                logger.error("attempt completion replay error", { error });
-              }
-            }
-
-            return;
-          }
+          // This is a reconnect, so handle replays
+          this.#handleReplays();
         }
       },
       onError: async (socket, err, logger) => {
@@ -1248,6 +1137,139 @@ class ProdWorker {
     return coordinatorConnection;
   }
 
+  // MARK: REPLAYS
+  async #handleReplays() {
+    const backoff = new ExponentialBackoff().type("FullJitter").maxRetries(3);
+    const replayCancellationDelay = 20_000;
+
+    if (this.waitForTaskReplay) {
+      logger.log("replaying wait for task", { ...this.waitForTaskReplay });
+
+      const { idempotencyKey, message, attempt } = this.waitForTaskReplay;
+
+      // Give the platform some time to send RESUME_AFTER_DEPENDENCY
+      await timeout(replayCancellationDelay);
+
+      if (!this.waitForTaskReplay) {
+        logger.error("wait for task replay cancelled, discarding", {
+          originalMessage: { idempotencyKey, message, attempt },
+        });
+
+        return;
+      }
+
+      if (idempotencyKey !== this.waitForTaskReplay.idempotencyKey) {
+        logger.error("wait for task replay idempotency key mismatch, discarding", {
+          originalMessage: { idempotencyKey, message, attempt },
+          newMessage: this.waitForTaskReplay,
+        });
+
+        return;
+      }
+
+      try {
+        await backoff.wait(attempt + 1);
+
+        await this.#waitForTaskHandler(message);
+      } catch (error) {
+        if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
+          logger.error("wait for task replay retry limit exceeded", { error });
+        } else {
+          logger.error("wait for task replay error", { error });
+        }
+      }
+
+      return;
+    }
+
+    if (this.waitForBatchReplay) {
+      logger.log("replaying wait for batch", {
+        ...this.waitForBatchReplay,
+        cancellationDelay: replayCancellationDelay,
+      });
+
+      const { idempotencyKey, message, attempt } = this.waitForBatchReplay;
+
+      // Give the platform some time to send RESUME_AFTER_DEPENDENCY
+      await timeout(replayCancellationDelay);
+
+      if (!this.waitForBatchReplay) {
+        logger.error("wait for batch replay cancelled, discarding", {
+          originalMessage: { idempotencyKey, message, attempt },
+        });
+
+        return;
+      }
+
+      if (idempotencyKey !== this.waitForBatchReplay.idempotencyKey) {
+        logger.error("wait for batch replay idempotency key mismatch, discarding", {
+          originalMessage: { idempotencyKey, message, attempt },
+          newMessage: this.waitForBatchReplay,
+        });
+
+        return;
+      }
+
+      try {
+        await backoff.wait(attempt + 1);
+
+        await this.#waitForBatchHandler(message);
+      } catch (error) {
+        if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
+          logger.error("wait for batch replay retry limit exceeded", { error });
+        } else {
+          logger.error("wait for batch replay error", { error });
+        }
+      }
+
+      return;
+    }
+
+    if (this.submitAttemptCompletionReplay) {
+      logger.log("replaying attempt completion", {
+        ...this.submitAttemptCompletionReplay,
+        cancellationDelay: replayCancellationDelay,
+      });
+
+      const { idempotencyKey, message, attempt } = this.submitAttemptCompletionReplay;
+
+      // Give the platform some time to send READY_FOR_RETRY
+      await timeout(replayCancellationDelay);
+
+      if (!this.submitAttemptCompletionReplay) {
+        logger.error("attempt completion replay cancelled, discarding", {
+          originalMessage: { idempotencyKey, message, attempt },
+        });
+
+        return;
+      }
+
+      if (idempotencyKey !== this.submitAttemptCompletionReplay.idempotencyKey) {
+        logger.error("attempt completion replay idempotency key mismatch, discarding", {
+          originalMessage: { idempotencyKey, message, attempt },
+          newMessage: this.submitAttemptCompletionReplay,
+        });
+
+        return;
+      }
+
+      try {
+        await backoff.wait(attempt + 1);
+
+        await this.#submitAttemptCompletion(message.execution, message.completion, idempotencyKey);
+      } catch (error) {
+        if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
+          logger.error("attempt completion replay retry limit exceeded", { error });
+        } else {
+          logger.error("attempt completion replay error", { error });
+        }
+      }
+
+      return;
+    }
+  }
+
+  // MARK: HTTP SERVER
   #createHttpServer() {
     const httpServer = createServer(async (req, res) => {
       logger.log(`[${req.method}]`, req.url);
@@ -1273,6 +1295,7 @@ class ProdWorker {
 
           case "/close": {
             this.#coordinatorSocket.close();
+            this.connectionCount = 0;
 
             return reply.text("Disconnected from coordinator");
           }
