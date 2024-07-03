@@ -26,7 +26,7 @@ export function NavBar({ children }: WithChildren) {
   return (
     <div>
       <div className="grid h-10 w-full grid-rows-[auto_1px] bg-background-bright">
-        <div className="flex w-full items-center justify-between pl-3 pr-1">{children}</div>
+        <div className="flex w-full items-center justify-between pl-3 pr-2">{children}</div>
         <LoadingBarDivider isLoading={isLoading} />
       </div>
       {showUpgradePrompt.shouldShow && organization && <UpgradePrompt />}
@@ -62,7 +62,7 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
 }
 
 export function PageAccessories({ children }: WithChildren) {
-  return <div className="flex items-center gap-3">{children}</div>;
+  return <div className="flex items-center gap-2">{children}</div>;
 }
 
 export function PageInfoRow({ children, className }: WithChildren) {
