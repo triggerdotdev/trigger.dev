@@ -169,13 +169,9 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
         payload: messageWithVersion,
       });
 
-      // FIXME
       return {
         success: false,
-        reason: (parsedPayload.error instanceof ZodError
-          ? fromZodError(parsedPayload.error)
-          : parsedPayload.error
-        )?.toString(),
+        reason: fromZodError(parsedPayload.error).toString(),
       };
     }
 

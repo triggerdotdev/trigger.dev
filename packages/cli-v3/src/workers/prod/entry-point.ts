@@ -226,7 +226,6 @@ class ProdWorker {
     await this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
 
     if (willCheckpointAndRestore) {
-      // TODO: where's the timeout?
       // We need to replay this on next connection if we don't receive RESUME_AFTER_DEPENDENCY within a reasonable time
       if (!this.waitForTaskReplay) {
         this.waitForTaskReplay = {
@@ -398,7 +397,7 @@ class ProdWorker {
       // Workers with lazy attempt support set their friendly ID here
       this.attemptFriendlyId = message.execution.attempt.id;
     });
-    
+
     backgroundWorker.onWaitForDuration.attach(async (message) => {
       logger.log("onWaitForDuration", { ...message, drift: Date.now() - message.now });
 
