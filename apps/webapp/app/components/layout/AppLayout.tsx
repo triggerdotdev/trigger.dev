@@ -60,7 +60,9 @@ export function MainCenteredContainer({
 }) {
   return (
     <div className="h-full w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-      <div className={cn("mx-auto mt-[25vh] max-w-xs overflow-y-auto", className)}>{children}</div>
+      <div className={cn("mx-auto mt-6 max-w-xs overflow-y-auto p-1 md:mt-[22vh]", className)}>
+        {children}
+      </div>
     </div>
   );
 }
