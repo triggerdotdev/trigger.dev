@@ -10,7 +10,6 @@
 [Discord](https://trigger.dev/discord) | [Website](https://trigger.dev) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Docs](https://trigger.dev/docs)
 
 [![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev)
-[![GitHub Repo stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)](https://github.com/triggerdotdev/trigger.dev)
 
 </div>
 
@@ -56,7 +55,7 @@ export const helloWorld = task({
 
 ## Deployment
 
-Use our SDK to write tasks in your codebase. There's nothing extra to deploy and no CI to configure, your tasks just connect to our cloud. Or you can always self-host.
+Use our SDK to write tasks in your codebase. There's nothing extra to deploy and no CI to configure, your tasks just connect to our cloud. Or you can always [self-host](https://trigger.dev/docs/v3/open-source-self-hosting#overview).
 
 ## Environments
 
@@ -80,7 +79,7 @@ If you prefer to self-host, you can follow our [self-hosting guide](https://trig
 
 To setup and develop locally or contribute to the open source project, follow our [development guide](./CONTRIBUTING.md).
 
-## Meet the Amazing People Behind This Project 🚀
+## Meet the Amazing People Behind This Project:
 
 <a href="https://github.com/triggerdotdev/trigger.dev/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=triggerdotdev/trigger.dev" />
