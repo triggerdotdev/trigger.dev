@@ -1,22 +1,15 @@
 import { ArrowRightIcon } from "@heroicons/react/24/solid";
+import { Await } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { Suspense } from "react";
 import { Bar, BarChart, Rectangle, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { redirect, typeddefer, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { UsageBar } from "~/components/billing/v3/UsageBar";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { prisma } from "~/db.server";
-import { featuresForRequest } from "~/features.server";
-import { getUsage, getUsageSeries } from "~/services/platform.v3.server";
-import { requireUserId } from "~/services/session.server";
-import { createTimeSeriesData } from "~/utils/graphs";
-import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
-import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { UsagePresenter } from "~/presenters/v3/UsagePresenter.server";
-import { Suspense } from "react";
-import { Await } from "@remix-run/react";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -26,8 +19,13 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
-import { Paragraph } from "~/components/primitives/Paragraph";
+import { prisma } from "~/db.server";
+import { featuresForRequest } from "~/features.server";
+import { UsagePresenter } from "~/presenters/v3/UsagePresenter.server";
+import { requireUserId } from "~/services/session.server";
+import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
+import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   await requireUserId(request);
@@ -66,8 +64,8 @@ const tooltipStyle = {
   alignItems: "center",
   gap: "0rem",
   borderRadius: "0.25rem",
-  border: "1px solid #1A2434",
-  backgroundColor: "#0B1018",
+  border: "1px solid #272A2E",
+  backgroundColor: "#1A1B1F",
   padding: "0.3rem 0.5rem",
   fontSize: "0.75rem",
   color: "#E2E8F0",
@@ -129,7 +127,7 @@ export default function ChoosePlanPage() {
           <div>
             <Header2 spacing>Past 30 days</Header2>
             <div className="rounded-sm border border-grid-dimmed p-4">
-              <Header3>Usage</Header3>
+              <Header3 spacing>Usage</Header3>
               <Suspense
                 fallback={
                   <div className="flex min-h-40 items-center justify-center">
@@ -208,70 +206,68 @@ export default function ChoosePlanPage() {
                 </Await>
               </Suspense>
             </div>
-            <div className="p-4">
-              <Header3 spacing>Tasks</Header3>
-              <Suspense fallback={<Spinner />}>
-                <Await
-                  resolve={tasks}
-                  errorElement={
-                    <div className="flex min-h-40 items-center justify-center">
-                      <Paragraph variant="small">Failed to load.</Paragraph>
-                    </div>
-                  }
-                >
-                  {(tasks) => {
-                    return (
-                      <Table>
-                        <TableHeader>
+          </div>
+          <div>
+            <Header2 spacing>Tasks</Header2>
+            <Suspense fallback={<Spinner />}>
+              <Await
+                resolve={tasks}
+                errorElement={
+                  <div className="flex min-h-40 items-center justify-center">
+                    <Paragraph variant="small">Failed to load.</Paragraph>
+                  </div>
+                }
+              >
+                {(tasks) => {
+                  return (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHeaderCell>Task</TableHeaderCell>
+                          <TableHeaderCell alignment="right">Runs</TableHeaderCell>
+                          <TableHeaderCell alignment="right">Average duration</TableHeaderCell>
+                          <TableHeaderCell alignment="right">Average cost</TableHeaderCell>
+                          <TableHeaderCell alignment="right">Total duration</TableHeaderCell>
+                          <TableHeaderCell alignment="right">Total cost</TableHeaderCell>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {tasks.length === 0 ? (
                           <TableRow>
-                            <TableHeaderCell>Task</TableHeaderCell>
-                            <TableHeaderCell alignment="right">Runs</TableHeaderCell>
-                            <TableHeaderCell alignment="right">Average duration</TableHeaderCell>
-                            <TableHeaderCell alignment="right">Average cost</TableHeaderCell>
-                            <TableHeaderCell alignment="right">Total duration</TableHeaderCell>
-                            <TableHeaderCell alignment="right">Total cost</TableHeaderCell>
+                            <TableCell colSpan={6}>
+                              <Paragraph variant="small">No runs to display yet.</Paragraph>
+                            </TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {tasks.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={6}>
-                                <Paragraph variant="small">No runs to display yet.</Paragraph>
+                        ) : (
+                          tasks.map((task) => (
+                            <TableRow key={task.taskIdentifier}>
+                              <TableCell>{task.taskIdentifier}</TableCell>
+                              <TableCell alignment="right">{formatNumber(task.runCount)}</TableCell>
+                              <TableCell alignment="right">
+                                {formatDurationMilliseconds(task.averageDuration, {
+                                  style: "short",
+                                })}
+                              </TableCell>
+                              <TableCell alignment="right">
+                                {formatCurrency(task.averageCost, false)}
+                              </TableCell>
+                              <TableCell alignment="right">
+                                {formatDurationMilliseconds(task.totalDuration, {
+                                  style: "short",
+                                })}
+                              </TableCell>
+                              <TableCell alignment="right">
+                                {formatCurrency(task.totalCost, false)}
                               </TableCell>
                             </TableRow>
-                          ) : (
-                            tasks.map((task) => (
-                              <TableRow key={task.taskIdentifier}>
-                                <TableCell>{task.taskIdentifier}</TableCell>
-                                <TableCell alignment="right">
-                                  {formatNumber(task.runCount)}
-                                </TableCell>
-                                <TableCell alignment="right">
-                                  {formatDurationMilliseconds(task.averageDuration, {
-                                    style: "short",
-                                  })}
-                                </TableCell>
-                                <TableCell alignment="right">
-                                  {formatCurrency(task.averageCost, false)}
-                                </TableCell>
-                                <TableCell alignment="right">
-                                  {formatDurationMilliseconds(task.totalDuration, {
-                                    style: "short",
-                                  })}
-                                </TableCell>
-                                <TableCell alignment="right">
-                                  {formatCurrency(task.totalCost, false)}
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          )}
-                        </TableBody>
-                      </Table>
-                    );
-                  }}
-                </Await>
-              </Suspense>
-            </div>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  );
+                }}
+              </Await>
+            </Suspense>
           </div>
         </div>
       </PageBody>
