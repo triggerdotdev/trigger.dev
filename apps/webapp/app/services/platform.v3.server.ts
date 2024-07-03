@@ -181,6 +181,15 @@ export async function getUsageSeries(organizationId: string, params: UsageSeries
   }
 }
 
+export async function reportComputeUsage(request: Request) {
+  const client = getClient();
+  if (!client) return undefined;
+  return fetch(`${process.env.BILLING_API_URL}/api/v1/usage/ingest/compute`, {
+    method: "POST",
+    headers: request.headers,
+    body: await request.text(),
+  });
+}
 export async function projectCreated(organization: Organization, project: Project) {
   if (project.version === "V2" || !isCloud()) {
     await createEnvironment(organization, project, "STAGING");
