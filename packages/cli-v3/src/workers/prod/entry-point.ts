@@ -1001,6 +1001,12 @@ class ProdWorker {
               });
             };
 
+            process.removeAllListeners("uncaughtException");
+            process.on("uncaughtException", (error) => {
+              console.error("Uncaught exception while indexing", error);
+              failIndex(error);
+            });
+
             try {
               const taskResources = await this.#initializeWorker();
 
@@ -1084,6 +1090,12 @@ class ProdWorker {
           if (this.executing) {
             return;
           }
+
+          process.removeAllListeners("uncaughtException");
+          process.on("uncaughtException", (error) => {
+            console.error("Uncaught exception during run", error);
+            this.#failRun(this.runId, error);
+          });
 
           await this.#readyForLazyAttempt();
         } catch (error) {
