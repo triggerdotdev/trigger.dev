@@ -46,7 +46,7 @@ import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout.se
 import { ResumeTaskService } from "./tasks/resumeTask.server";
 import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
 import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
-import { reportUsageEvent } from "~/v3/openMeter.server";
+import { reportInvocationUsage } from "./platform.v3.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -661,15 +661,11 @@ function getWorkerQueue() {
         priority: 0,
         maxAttempts: 8,
         handler: async (payload, job) => {
-          await reportUsageEvent({
-            source: "webapp",
-            type: "usage",
-            subject: payload.orgId,
-            data: {
-              costInCents: payload.data.costInCents,
-              ...payload.additionalData,
-            },
-          });
+          await reportInvocationUsage(
+            payload.orgId,
+            Number(payload.data.costInCents),
+            payload.additionalData
+          );
         },
       },
     },

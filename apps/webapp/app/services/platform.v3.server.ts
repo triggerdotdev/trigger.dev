@@ -181,6 +181,30 @@ export async function getUsageSeries(organizationId: string, params: UsageSeries
   }
 }
 
+export async function reportInvocationUsage(
+  organizationId: string,
+  costInCents: number,
+  additionalData?: Record<string, any>
+) {
+  const client = getClient();
+  if (!client) return undefined;
+  try {
+    const result = await client.reportInvocationUsage({
+      organizationId,
+      costInCents,
+      additionalData,
+    });
+    if (!result.success) {
+      logger.error("Error reporting invocation", { error: result.error });
+      return undefined;
+    }
+    return result;
+  } catch (e) {
+    logger.error("Error reporting invocation", { error: e });
+    return undefined;
+  }
+}
+
 export async function reportComputeUsage(request: Request) {
   const client = getClient();
   if (!client) return undefined;
