@@ -92,15 +92,15 @@ export default function ChoosePlanPage() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={true}>
-        <div className="flex flex-col gap-3 px-3 py-2">
-          <div className="flex items-center  divide-x divide-grid-dimmed rounded-sm border border-grid-dimmed py-2 text-text-bright">
-            <div className="flex items-center gap-1 px-3">
-              <StarIcon className="size-5 " />
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-y-3 divide-grid-bright rounded-sm border border-grid-bright bg-background-bright py-2 pr-1 text-text-bright lg:w-fit lg:flex-row lg:items-center lg:divide-x">
+            <div className="flex gap-2 px-3 lg:items-center">
+              <StarIcon className="size-5 min-w-5 lg:-mt-0.5" />
               {planLabel(v3Subscription?.plan, v3Subscription?.canceledAt !== undefined, periodEnd)}
             </div>
             {v3Subscription?.isPaying ? (
-              <div className="flex items-center gap-1 px-3">
-                <CalendarDaysIcon className="size-5" />
+              <div className="flex gap-2 px-3 lg:items-center">
+                <CalendarDaysIcon className="size-5 min-w-5 lg:-mt-0.5" />
                 Billing period: <DateTime date={periodStart} includeTime={false} /> to{" "}
                 <DateTime date={periodEnd} includeTime={false} /> ({daysRemaining} days remaining)
               </div>
