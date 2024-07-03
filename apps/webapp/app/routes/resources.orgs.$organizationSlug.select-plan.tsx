@@ -507,14 +507,14 @@ export function TierEnterprise() {
           </ul>
         </div>
         <div className="w-full lg:max-w-[16rem]">
-          <LinkButton
-            to="https://trigger.dev/contact"
-            variant="tertiary/large"
-            className="px-8"
-            fullWidth
-          >
-            Contact us
-          </LinkButton>
+          <Feedback
+            defaultValue="enterprise"
+            button={
+              <div className="flex h-10 w-full cursor-pointer items-center justify-center rounded bg-tertiary px-8 text-base font-medium transition hover:bg-charcoal-600">
+                <span className="text-center text-text-bright">Contact us</span>
+              </div>
+            }
+          ></Feedback>
         </div>
       </div>
     </TierContainer>
