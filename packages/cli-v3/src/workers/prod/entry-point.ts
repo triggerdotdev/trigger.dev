@@ -398,7 +398,7 @@ class ProdWorker {
       // Workers with lazy attempt support set their friendly ID here
       this.attemptFriendlyId = message.execution.attempt.id;
     });
-
+    
     backgroundWorker.onWaitForDuration.attach(async (message) => {
       logger.log("onWaitForDuration", { ...message, drift: Date.now() - message.now });
 
