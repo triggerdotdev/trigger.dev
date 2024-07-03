@@ -23,7 +23,7 @@ jobs:
           fetch-depth: 0
 
       - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@v2.2.4
+        uses: pnpm/action-setup@v4
         with:
           version: 8.15.5
 
@@ -63,7 +63,7 @@ jobs:
           submodules: recursive
 
       - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@v2.2.4
+        uses: pnpm/action-setup@v4
         with:
           version: 8.15.5
 
