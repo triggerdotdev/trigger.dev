@@ -19,7 +19,7 @@ export function DefinitionTip({
             {children}
           </span>
         </TooltipTrigger>
-        <TooltipContent align="end" side="right" variant="dark" className="w-[16rem] min-w-[16rem]">
+        <TooltipContent align="end" side="right" className="w-[16rem] min-w-[16rem]">
           <Header3 className="mb-1">{title}</Header3>
           {typeof content === "string" ? (
             <Paragraph variant="small">{content}</Paragraph>
