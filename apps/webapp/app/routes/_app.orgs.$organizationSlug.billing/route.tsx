@@ -95,13 +95,13 @@ export default function Page() {
             {hasV2Project && (
               <PageInfoRow>
                 <PageInfoGroup>
-                  {currentPlan?.subscription && (
+                  {currentPlan?.subscription && currentPlan.usage && (
                     <PageInfoProperty
                       icon={<ReceiptRefundIcon className="h-4 w-4 text-green-600" />}
                       value={planLabel(currentPlan.subscription, currentPlan.usage.periodEnd)}
                     />
                   )}
-                  {currentPlan?.subscription?.isPaying && (
+                  {currentPlan?.subscription?.isPaying && currentPlan.usage && (
                     <PageInfoProperty
                       icon={<CalendarDaysIcon className="h-4 w-4 text-green-600" />}
                       label={"Billing period"}
