@@ -5,7 +5,7 @@ import { InformationCircleIcon } from "@heroicons/react/20/solid";
 
 const variantClasses = {
   basic:
-    "bg-background-dimmed border border-charcoal-700 rounded-md px-3 py-1.5 text-sm text-text-bright shadow-md fade-in-50",
+    "bg-background-bright border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50",
   dark: "bg-background-dimmed border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50",
 };
 
