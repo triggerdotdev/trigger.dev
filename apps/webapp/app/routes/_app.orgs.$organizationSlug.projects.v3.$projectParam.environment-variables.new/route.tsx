@@ -54,13 +54,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new EnvironmentVariablesPresenter();
-    const { environments } = await presenter.call({
+    const { environments, hasStaging } = await presenter.call({
       userId,
       projectSlug: projectParam,
     });
 
     return typedjson({
       environments,
+      hasStaging,
     });
   } catch (error) {
     throw new Response(undefined, {
@@ -164,7 +165,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 export default function Page() {
   const [isOpen, setIsOpen] = useState(false);
-  const { environments } = useTypedLoaderData<typeof loader>();
+  const { environments, hasStaging } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
   const navigate = useNavigate();
@@ -229,26 +230,27 @@ export default function Page() {
                     variant="button"
                   />
                 ))}
-
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <TextLink
-                        to={v3BillingPath(organization)}
-                        className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-3 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
-                      >
-                        <LockClosedIcon className="size-4 text-charcoal-500" />
-                        <Paragraph className="mt-0.5 text-xs uppercase tracking-wide text-staging">
-                          Staging
-                        </Paragraph>
-                      </TextLink>
-                    </TooltipTrigger>
-                    <TooltipContent className="flex items-center gap-2">
-                      <LockOpenIcon className="size-4 text-indigo-500" />
-                      Upgrade your plan to add a Staging environment.
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                {!hasStaging && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <TextLink
+                          to={v3BillingPath(organization)}
+                          className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-3 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
+                        >
+                          <LockClosedIcon className="size-4 text-charcoal-500" />
+                          <Paragraph className="mt-0.5 text-xs uppercase tracking-wide text-staging">
+                            Staging
+                          </Paragraph>
+                        </TextLink>
+                      </TooltipTrigger>
+                      <TooltipContent className="flex items-center gap-2">
+                        <LockOpenIcon className="size-4 text-indigo-500" />
+                        Upgrade your plan to add a Staging environment.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
               </div>
               <FormError id={environmentIds.errorId}>{environmentIds.error}</FormError>
               <Hint>
@@ -309,6 +311,7 @@ export default function Page() {
                   Cancel
                 </LinkButton>
               }
+              className="mt-2"
             />
           </Fieldset>
         </Form>
