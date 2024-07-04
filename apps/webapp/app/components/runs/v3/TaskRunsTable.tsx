@@ -181,7 +181,7 @@ export function TaskRunsTable({
                 <TableCell to={path}>
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}
                 </TableCell>
-                <TableCell to={path} actionClassName="pr-0">
+                <TableCell to={path} actionClassName="pr-0 tabular-nums">
                   <div className="flex items-center gap-1">
                     <RectangleStackIcon className="size-4 text-text-dimmed" />
                     {run.startedAt ? (
@@ -193,7 +193,7 @@ export function TaskRunsTable({
                     )}
                   </div>
                 </TableCell>
-                <TableCell to={path} actionClassName="px-1">
+                <TableCell to={path} actionClassName="px-1 tabular-nums">
                   <div className="flex items-center gap-1">
                     <ClockIcon className="size-4 text-blue-500" />
                     {run.startedAt && run.finishedAt ? (
@@ -207,7 +207,7 @@ export function TaskRunsTable({
                     )}
                   </div>
                 </TableCell>
-                <TableCell to={path} actionClassName="pl-0">
+                <TableCell to={path} actionClassName="pl-0 tabular-nums">
                   <div className="flex items-center gap-1">
                     <CpuChipIcon className="size-4 text-success" />
                     {run.usageDurationMs > 0
@@ -218,15 +218,15 @@ export function TaskRunsTable({
                   </div>
                 </TableCell>
                 {isManagedCloud && (
-                  <TableCell to={path}>
-                    {run.costInCents > 0 ? formatCurrencyAccurate(run.costInCents * 100) : "–"}
+                  <TableCell to={path} className="tabular-nums">
+                    {run.costInCents > 0 ? formatCurrencyAccurate(run.costInCents / 100) : "–"}
                   </TableCell>
                 )}
                 <TableCell to={path}>
                   {run.isTest ? (
                     <CheckIcon className="h-4 w-4 text-charcoal-400" />
                   ) : (
-                    <StopIcon className="h-4 w-4 text-charcoal-850" />
+                    <StopIcon className="h-4 w-4 text-charcoal-750" />
                   )}
                 </TableCell>
                 <TableCell to={path}>
