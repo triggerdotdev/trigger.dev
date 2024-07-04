@@ -5,6 +5,7 @@ import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getUsername } from "~/utils/username";
 import { calculateNextScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
 import { BasePresenter } from "./basePresenter.server";
+import { getCurrentPlan } from "~/services/platform.v3.server";
 
 type ScheduleListOptions = {
   projectId: string;
@@ -53,6 +54,7 @@ export class ScheduleListPresenter extends BasePresenter {
     const project = await this._replica.project.findFirstOrThrow({
       select: {
         id: true,
+        organizationId: true,
         environments: {
           select: {
             id: true,
@@ -69,11 +71,6 @@ export class ScheduleListPresenter extends BasePresenter {
                 },
               },
             },
-          },
-        },
-        organization: {
-          select: {
-            maximumSchedulesLimit: true,
           },
         },
       },
@@ -248,6 +245,12 @@ export class ScheduleListPresenter extends BasePresenter {
       };
     });
 
+    let limit = 500;
+    const plan = await getCurrentPlan(project.organizationId);
+    if (plan?.v3Subscription.plan) {
+      limit = plan.v3Subscription.plan.limits.schedules.number;
+    }
+
     return {
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
@@ -260,7 +263,7 @@ export class ScheduleListPresenter extends BasePresenter {
       hasFilters,
       limits: {
         used: schedulesCount,
-        limit: project.organization.maximumSchedulesLimit,
+        limit,
       },
       filters: {
         tasks,
