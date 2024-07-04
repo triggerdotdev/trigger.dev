@@ -37,6 +37,7 @@ export interface MarQSKeyProducer {
     queue: string,
     concurrencyKey?: string
   ): string;
+  disabledConcurrencyLimitKeyFromQueue(queue: string): string;
   orgConcurrencyLimitKeyFromQueue(queue: string): string;
   orgCurrentConcurrencyKeyFromQueue(queue: string): string;
   envConcurrencyLimitKeyFromQueue(queue: string): string;

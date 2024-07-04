@@ -231,7 +231,7 @@ export class MarQS {
         const messageQueue = await this.#getRandomQueueFromParentQueue(
           parentQueue,
           this.options.envQueuePriorityStrategy,
-          (queue) => this.#calculateMessageQueueCapacities(queue),
+          (queue) => this.#calculateMessageQueueCapacities(queue, { checkForDisabled: false }),
           env.id
         );
 
@@ -345,7 +345,7 @@ export class MarQS {
         const messageQueue = await this.#getRandomQueueFromParentQueue(
           parentQueue,
           this.options.queuePriorityStrategy,
-          (queue) => this.#calculateMessageQueueCapacities(queue),
+          (queue) => this.#calculateMessageQueueCapacities(queue, { checkForDisabled: true }),
           consumerId
         );
 
@@ -737,7 +737,7 @@ export class MarQS {
     return queueScores;
   }
 
-  async #calculateMessageQueueCapacities(queue: string) {
+  async #calculateMessageQueueCapacities(queue: string, options?: { checkForDisabled?: boolean }) {
     return await this.#callCalculateMessageCapacities({
       currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(queue),
       currentEnvConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(queue),
@@ -745,6 +745,9 @@ export class MarQS {
       concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(queue),
       envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(queue),
       orgConcurrencyLimitKey: this.keys.orgConcurrencyLimitKeyFromQueue(queue),
+      disabledConcurrencyLimitKey: options?.checkForDisabled
+        ? this.keys.disabledConcurrencyLimitKeyFromQueue(queue)
+        : undefined,
     });
   }
 
@@ -1102,6 +1105,7 @@ export class MarQS {
     concurrencyLimitKey,
     envConcurrencyLimitKey,
     orgConcurrencyLimitKey,
+    disabledConcurrencyLimitKey,
   }: {
     currentConcurrencyKey: string;
     currentEnvConcurrencyKey: string;
@@ -1109,17 +1113,30 @@ export class MarQS {
     concurrencyLimitKey: string;
     envConcurrencyLimitKey: string;
     orgConcurrencyLimitKey: string;
+    disabledConcurrencyLimitKey: string | undefined;
   }): Promise<QueueCapacities> {
-    const capacities = await this.redis.calculateMessageQueueCapacities(
-      currentConcurrencyKey,
-      currentEnvConcurrencyKey,
-      currentOrgConcurrencyKey,
-      concurrencyLimitKey,
-      envConcurrencyLimitKey,
-      orgConcurrencyLimitKey,
-      String(this.options.defaultEnvConcurrency),
-      String(this.options.defaultOrgConcurrency)
-    );
+    const capacities = disabledConcurrencyLimitKey
+      ? await this.redis.calculateMessageQueueCapacitiesWithDisabling(
+          currentConcurrencyKey,
+          currentEnvConcurrencyKey,
+          currentOrgConcurrencyKey,
+          concurrencyLimitKey,
+          envConcurrencyLimitKey,
+          orgConcurrencyLimitKey,
+          disabledConcurrencyLimitKey,
+          String(this.options.defaultEnvConcurrency),
+          String(this.options.defaultOrgConcurrency)
+        )
+      : await this.redis.calculateMessageQueueCapacities(
+          currentConcurrencyKey,
+          currentEnvConcurrencyKey,
+          currentOrgConcurrencyKey,
+          concurrencyLimitKey,
+          envConcurrencyLimitKey,
+          orgConcurrencyLimitKey,
+          String(this.options.defaultEnvConcurrency),
+          String(this.options.defaultOrgConcurrency)
+        );
 
     const queueCurrent = Number(capacities[0]);
     const envLimit = Number(capacities[3]);
@@ -1419,6 +1436,43 @@ redis.call('ZADD', visibilityQueue, newVisibilityTimeout, messageId)
       `,
     });
 
+    this.redis.defineCommand("calculateMessageQueueCapacitiesWithDisabling", {
+      numberOfKeys: 7,
+      lua: `
+-- Keys: currentConcurrencyKey, currentEnvConcurrencyKey, currentOrgConcurrencyKey, concurrencyLimitKey, envConcurrencyLimitKey, orgConcurrencyLimitKey, disabledConcurrencyLimitKey
+local currentConcurrencyKey = KEYS[1]
+local currentEnvConcurrencyKey = KEYS[2]
+local currentOrgConcurrencyKey = KEYS[3]
+local concurrencyLimitKey = KEYS[4]
+local envConcurrencyLimitKey = KEYS[5]
+local orgConcurrencyLimitKey = KEYS[6]
+local disabledConcurrencyLimitKey = KEYS[7]
+
+-- Args defaultEnvConcurrencyLimit, defaultOrgConcurrencyLimit
+local defaultEnvConcurrencyLimit = tonumber(ARGV[1])
+local defaultOrgConcurrencyLimit = tonumber(ARGV[2])
+
+local currentOrgConcurrency = tonumber(redis.call('SCARD', currentOrgConcurrencyKey) or '0')
+
+-- Check if disabledConcurrencyLimitKey exists
+local orgConcurrencyLimit
+if redis.call('EXISTS', disabledConcurrencyLimitKey) == 1 then
+  orgConcurrencyLimit = 0
+else
+  orgConcurrencyLimit = tonumber(redis.call('GET', orgConcurrencyLimitKey) or defaultOrgConcurrencyLimit)
+end
+
+local currentEnvConcurrency = tonumber(redis.call('SCARD', currentEnvConcurrencyKey) or '0')
+local envConcurrencyLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+
+local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) or '0')
+local concurrencyLimit = redis.call('GET', concurrencyLimitKey)
+
+-- Return current capacity and concurrency limits for the queue, env, org
+return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, currentOrgConcurrency, orgConcurrencyLimit } 
+      `,
+    });
+
     this.redis.defineCommand("calculateMessageQueueCapacities", {
       numberOfKeys: 6,
       lua: `
@@ -1575,6 +1629,19 @@ declare module "ioredis" {
       concurrencyLimitKey: string,
       envConcurrencyLimitKey: string,
       orgConcurrencyLimitKey: string,
+      defaultEnvConcurrencyLimit: string,
+      defaultOrgConcurrencyLimit: string,
+      callback?: Callback<number[]>
+    ): Result<number[], Context>;
+
+    calculateMessageQueueCapacitiesWithDisabling(
+      currentConcurrencyKey: string,
+      currentEnvConcurrencyKey: string,
+      currentOrgConcurrencyKey: string,
+      concurrencyLimitKey: string,
+      envConcurrencyLimitKey: string,
+      orgConcurrencyLimitKey: string,
+      disabledConcurrencyLimitKey: string,
       defaultEnvConcurrencyLimit: string,
       defaultOrgConcurrencyLimit: string,
       callback?: Callback<number[]>
