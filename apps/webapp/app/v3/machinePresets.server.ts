@@ -1,43 +1,65 @@
+import { machineDefinition } from "@trigger.dev/billing/v3";
 import { MachineConfig, MachinePreset, MachinePresetName } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 
-export const presets = {
-  micro: {
+const presets = {
+  micro: machineDefinition({
+    code: "micro",
+    title: "Micro",
     cpu: 0.25,
     memory: 0.25,
-    centsPerMs: env.CENTS_PER_HOUR_MICRO / 3_600_000,
-  },
-  "small-1x": {
+    centsPerVCpuSecond: env.CENTS_PER_VCPU_SECOND,
+    centsPerGbRamSecond: env.CENTS_PER_GB_RAM_SECOND,
+  }),
+  "small-1x": machineDefinition({
+    code: "small-1x",
+    title: "Small 1x",
     cpu: 0.5,
     memory: 0.5,
-    centsPerMs: env.CENTS_PER_HOUR_SMALL_1X / 3_600_000,
-  },
-  "small-2x": {
+    centsPerVCpuSecond: env.CENTS_PER_VCPU_SECOND,
+    centsPerGbRamSecond: env.CENTS_PER_GB_RAM_SECOND,
+  }),
+  "small-2x": machineDefinition({
+    code: "small-2x",
+    title: "Small 2x",
     cpu: 1,
     memory: 1,
-    centsPerMs: env.CENTS_PER_HOUR_SMALL_2X / 3_600_000,
-  },
-  "medium-1x": {
+    centsPerVCpuSecond: env.CENTS_PER_VCPU_SECOND,
+    centsPerGbRamSecond: env.CENTS_PER_GB_RAM_SECOND,
+  }),
+  "medium-1x": machineDefinition({
+    code: "medium-1x",
+    title: "Medium 1x",
     cpu: 1,
     memory: 2,
-    centsPerMs: env.CENTS_PER_HOUR_MEDIUM_1X / 3_600_000,
-  },
-  "medium-2x": {
+    centsPerVCpuSecond: env.CENTS_PER_VCPU_SECOND,
+    centsPerGbRamSecond: env.CENTS_PER_GB_RAM_SECOND,
+  }),
+  "medium-2x": machineDefinition({
+    code: "medium-2x",
+    title: "Medium 2x",
     cpu: 2,
     memory: 4,
-    centsPerMs: env.CENTS_PER_HOUR_MEDIUM_2X / 3_600_000,
-  },
-  "large-1x": {
+    centsPerVCpuSecond: env.CENTS_PER_VCPU_SECOND,
+    centsPerGbRamSecond: env.CENTS_PER_GB_RAM_SECOND,
+  }),
+  "large-1x": machineDefinition({
+    code: "large-1x",
+    title: "Large 1x",
     cpu: 4,
     memory: 8,
-    centsPerMs: env.CENTS_PER_HOUR_LARGE_1X / 3_600_000,
-  },
-  "large-2x": {
+    centsPerVCpuSecond: env.CENTS_PER_VCPU_SECOND,
+    centsPerGbRamSecond: env.CENTS_PER_GB_RAM_SECOND,
+  }),
+  "large-2x": machineDefinition({
+    code: "large-2x",
+    title: "Large 2x",
     cpu: 8,
     memory: 16,
-    centsPerMs: env.CENTS_PER_HOUR_LARGE_2X / 3_600_000,
-  },
+    centsPerVCpuSecond: env.CENTS_PER_VCPU_SECOND,
+    centsPerGbRamSecond: env.CENTS_PER_GB_RAM_SECOND,
+  }),
 };
 
 export function machinePresetFromConfig(config: unknown): MachinePreset {
@@ -62,7 +84,7 @@ export function machinePresetFromConfig(config: unknown): MachinePreset {
   return machinePresetFromName("small-1x");
 }
 
-export function machinePresetFromName(name: MachinePresetName): MachinePreset {
+function machinePresetFromName(name: MachinePresetName): MachinePreset {
   return {
     name,
     ...presets[name],
