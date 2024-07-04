@@ -58,6 +58,7 @@ export class CreateTaskRunAttemptService extends BaseService {
                   version: true,
                   sdkVersion: true,
                   cliVersion: true,
+                  supportsLazyAttempts: true,
                 },
               },
             },
@@ -125,10 +126,6 @@ export class CreateTaskRunAttemptService extends BaseService {
             status: setToExecuting ? "EXECUTING" : "PENDING",
             queueId: queue.id,
             runtimeEnvironmentId: environment.id,
-          },
-          include: {
-            backgroundWorker: true,
-            backgroundWorkerTask: true,
           },
         });
 
