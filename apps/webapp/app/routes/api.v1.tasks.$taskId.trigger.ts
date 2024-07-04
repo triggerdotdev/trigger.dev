@@ -2,9 +2,12 @@ import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
+import { env } from "~/env.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { parseRequestJsonAsync } from "~/utils/parseRequestJson.server";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
+import { startActiveSpan } from "~/v3/tracer.server";
 
 const ParamsSchema = z.object({
   taskId: z.string(),
@@ -32,6 +35,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
 
+  const contentLength = request.headers.get("content-length");
+
+  if (!contentLength || parseInt(contentLength) > env.TASK_PAYLOAD_MAXIMUM_SIZE) {
+    return json({ error: "Request body too large" }, { status: 413 });
+  }
+
   const rawHeaders = Object.fromEntries(request.headers);
 
   const headers = HeadersSchema.safeParse(rawHeaders);
@@ -52,9 +61,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const { taskId } = ParamsSchema.parse(params);
 
   // Now parse the request body
-  const anyBody = await request.json();
+  const anyBody = await parseRequestJsonAsync(request, { taskId });
 
-  const body = TriggerTaskRequestBody.safeParse(anyBody);
+  const body = await startActiveSpan("TriggerTaskRequestBody.safeParse()", async (span) => {
+    return TriggerTaskRequestBody.safeParse(anyBody);
+  });
 
   if (!body.success) {
     return json({ error: "Invalid request body" }, { status: 400 });
@@ -76,17 +87,23 @@ export async function action({ request, params }: ActionFunctionArgs) {
       idempotencyKey,
       triggerVersion,
       headers: Object.fromEntries(request.headers),
-      body: body.data,
+      options: body.data.options,
       isFromWorker,
       traceContext,
     });
 
-    const run = await service.call(taskId, authenticationResult.environment, body.data, {
-      idempotencyKey: idempotencyKey ?? undefined,
-      triggerVersion: triggerVersion ?? undefined,
-      traceContext,
-      spanParentAsLink: spanParentAsLink === 1,
-    });
+    const run = await service.call(
+      taskId,
+      authenticationResult.environment,
+      { ...body.data },
+      // { ...body.data, payload: (anyBody as any).payload },
+      {
+        idempotencyKey: idempotencyKey ?? undefined,
+        triggerVersion: triggerVersion ?? undefined,
+        traceContext,
+        spanParentAsLink: spanParentAsLink === 1,
+      }
+    );
 
     if (!run) {
       return json({ error: "Task not found" }, { status: 404 });

@@ -40,6 +40,8 @@ export const TaskRunStatus = {
   COMPLETED_WITH_ERRORS: "COMPLETED_WITH_ERRORS",
   SYSTEM_FAILURE: "SYSTEM_FAILURE",
   CRASHED: "CRASHED",
+  DELAYED: "DELAYED",
+  EXPIRED: "EXPIRED",
 } as const satisfies Record<TaskRunStatusType, TaskRunStatusType>;
 
 export const JobRunStatus = {

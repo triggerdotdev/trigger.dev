@@ -18,6 +18,15 @@ export const simplestTask = task({
   },
 });
 
+export const anyPayloadTask = task({
+  id: "any-payload-task",
+  run: async (payload: any) => {
+    return {
+      payload,
+    };
+  },
+});
+
 export const taskWithSpecialCharacters = task({
   id: "admin:special-characters",
   run: async (payload: { url: string }) => {
@@ -54,7 +63,7 @@ export const createJsonHeroDoc = task({
 
     const json: any = await response.json();
 
-    return json;
+    return json as { id: string; title: string; location: string };
   },
 });
 

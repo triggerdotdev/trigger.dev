@@ -1,5 +1,47 @@
 # @trigger.dev/integration-kit
 
+## 3.0.0-beta.46
+
+### Patch Changes
+
+- Updated dependencies [14c2bdf89]
+  - @trigger.dev/core@3.0.0-beta.46
+
+## 3.0.0-beta.45
+
+### Patch Changes
+
+- Updated dependencies [0e77e7ef7]
+- Updated dependencies [568da0178]
+- Updated dependencies [5ae3da6b4]
+  - @trigger.dev/core@3.0.0-beta.45
+
+## 3.0.0-beta.44
+
+### Patch Changes
+
+- Updated dependencies [39885a427]
+  - @trigger.dev/core@3.0.0-beta.44
+
+## 3.0.0-beta.43
+
+### Patch Changes
+
+- Updated dependencies [34ca7667d]
+  - @trigger.dev/core@3.0.0-beta.43
+
+## 3.0.0-beta.42
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.42
+
+## 3.0.0-beta.41
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.41
+
 ## 3.0.0-beta.40
 
 ### Patch Changes

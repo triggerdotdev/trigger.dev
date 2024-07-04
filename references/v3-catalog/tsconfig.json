@@ -13,6 +13,7 @@
       "@trigger.dev/sdk/v3/*": ["../../packages/trigger-sdk/src/v3/*"]
     },
     "emitDecoratorMetadata": true,
-    "experimentalDecorators": true
+    "experimentalDecorators": true,
+    "allowJs": true
   }
 }

@@ -1,14 +1,13 @@
 import { $, type ExecaChildProcess, execa } from "execa";
 import {
-  SimpleLogger,
-  TaskOperations,
   ProviderShell,
-  TaskOperationsRestoreOptions,
+  TaskOperations,
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
-  isExecaChildProcess,
-  testDockerCheckpoint,
-} from "@trigger.dev/core-apps";
+  TaskOperationsRestoreOptions,
+} from "@trigger.dev/core-apps/provider";
+import { SimpleLogger } from "@trigger.dev/core-apps/logger";
+import { isExecaChildProcess, testDockerCheckpoint } from "@trigger.dev/core-apps/checkpoints";
 import { setTimeout } from "node:timers/promises";
 import { PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
 
@@ -54,12 +53,15 @@ class DockerTaskOperations implements TaskOperations {
   }
 
   #getInitReturn(canCheckpoint: boolean): TaskOperationsInitReturn {
-    this.#initialized = true;
     this.#canCheckpoint = canCheckpoint;
 
     if (canCheckpoint) {
-      logger.log("Full checkpoint support!");
+      if (!this.#initialized) {
+        logger.log("Full checkpoint support!");
+      }
     }
+
+    this.#initialized = true;
 
     const willSimulate = !canCheckpoint || this.opts.forceSimulate;
 
@@ -109,22 +111,27 @@ class DockerTaskOperations implements TaskOperations {
 
     const containerName = this.#getRunContainerName(opts.runId);
 
+    const runArgs = [
+      "run",
+      "--network=host",
+      "--detach",
+      `--env=TRIGGER_ENV_ID=${opts.envId}`,
+      `--env=TRIGGER_RUN_ID=${opts.runId}`,
+      `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}`,
+      `--env=POD_NAME=${containerName}`,
+      `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
+      `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
+      `--name=${containerName}`,
+    ];
+
+    if (process.env.ENFORCE_MACHINE_PRESETS) {
+      runArgs.push(`--cpus=${opts.machine.cpu}`, `--memory=${opts.machine.memory}G`);
+    }
+
+    runArgs.push(`${opts.image}`);
+
     try {
-      logger.debug(
-        await execa("docker", [
-          "run",
-          "--network=host",
-          "--detach",
-          `--env=TRIGGER_ENV_ID=${opts.envId}`,
-          `--env=TRIGGER_RUN_ID=${opts.runId}`,
-          `--env=OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}`,
-          `--env=POD_NAME=${containerName}`,
-          `--env=COORDINATOR_HOST=${COORDINATOR_HOST}`,
-          `--env=COORDINATOR_PORT=${COORDINATOR_PORT}`,
-          `--name=${containerName}`,
-          `${opts.image}`,
-        ])
-      );
+      logger.debug(await execa("docker", runArgs));
     } catch (error) {
       if (!isExecaChildProcess(error)) {
         throw error;

@@ -1,5 +1,95 @@
 # trigger.dev
 
+## 3.0.0-beta.46
+
+### Patch Changes
+
+- 14c2bdf89: Tasks should now be much more robust and resilient to reconnects during crucial operations and other failure scenarios.
+
+  Task runs now have to signal checkpointable state prior to ALL checkpoints. This ensures flushing always happens.
+
+  All important socket.io RPCs will now be retried with backoff. Actions relying on checkpoints will be replayed if we haven't been checkpointed and restored as expected, e.g. after reconnect.
+
+  Other changes:
+
+  - Fix retry check in shared queue
+  - Fix env var sync spinner
+  - Heartbeat between retries
+  - Fix retry prep
+  - Fix prod worker no tasks detection
+  - Fail runs above `MAX_TASK_RUN_ATTEMPTS`
+  - Additional debug logs in all places
+  - Prevent crashes due to failed socket schema parsing
+  - Remove core-apps barrel
+  - Upgrade socket.io-client to fix an ACK memleak
+  - Additional index failure logs
+  - Prevent message loss during reconnect
+  - Prevent burst of heartbeats on reconnect
+  - Prevent crash on failed cleanup
+  - Handle at-least-once lazy execute message delivery
+  - Handle uncaught entry point exceptions
+
+- Updated dependencies [14c2bdf89]
+  - @trigger.dev/core@3.0.0-beta.46
+
+## 3.0.0-beta.45
+
+### Patch Changes
+
+- 374b6b9c0: Increase dev worker timeout
+- c75e29a9a: Add sox and audiowaveform binaries to worker images
+- 568da0178: - Improve non-zero exit code error messages
+  - Detect OOM conditions within worker child processes
+  - Internal errors can have optional stack traces
+  - Docker provider can be set to enforce machine presets
+- 52b6f48a9: Add e2e fixtures corresponding to past issues
+  Implement e2e suite parallelism
+  Enhance log level for specific e2e suite messages
+- 5ae3da6b4: Await file watcher cleanup in dev
+- f56582995: v3: Copy over more of the project's package.json keys into the deployed package.json (support for custom config like zenstack)
+- d0d3a64bd: - Prevent downgrades during update check and advise to upgrade CLI
+  - Detect bun and use npm instead
+  - During init, fail early and advise if not a TypeScript project
+  - During init, allow specifying custom package manager args
+  - Add links to dev worker started message
+  - Fix links in unsupported terminals
+- 5ae3da6b4: - Fix artifact detection logs
+  - Fix OOM detection and error messages
+  - Add test link to cli deployment completion
+- 75ec4ac6a: v3: postInstall config option now replaces the postinstall script found in package.json
+- Updated dependencies [0e77e7ef7]
+- Updated dependencies [568da0178]
+- Updated dependencies [5ae3da6b4]
+  - @trigger.dev/core@3.0.0-beta.45
+
+## 3.0.0-beta.44
+
+### Patch Changes
+
+- Updated dependencies [39885a427]
+  - @trigger.dev/core@3.0.0-beta.44
+
+## 3.0.0-beta.43
+
+### Patch Changes
+
+- 77ad4127c: Improved ESM module require error detection logic
+- Updated dependencies [34ca7667d]
+  - @trigger.dev/core@3.0.0-beta.43
+
+## 3.0.0-beta.42
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.42
+
+## 3.0.0-beta.41
+
+### Patch Changes
+
+- c7a55804d: Fix jsonc-parser import
+  - @trigger.dev/core@3.0.0-beta.41
+
 ## 3.0.0-beta.40
 
 ### Patch Changes

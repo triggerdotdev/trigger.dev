@@ -1,5 +1,6 @@
 import { log } from "@clack/prompts";
 import chalk from "chalk";
+import terminalLink, { Options as TerminalLinkOptions } from "terminal-link";
 
 export const green = "#4FFF54";
 export const purple = "#735BF3";
@@ -109,4 +110,11 @@ export function prettyWarning(header: string, body?: string, footer?: string) {
       prettyFooter ? `${spacing}${prettyFooter}` : ""
     }`
   );
+}
+
+export function cliLink(text: string, url: string, options?: TerminalLinkOptions) {
+  return terminalLink(text, url, {
+    fallback: (text, url) => `${text} ${url}`,
+    ...options,
+  });
 }

@@ -151,7 +151,7 @@ const EnvironmentSchema = z.object({
   PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
   PROD_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
 
-  RUNTIME_WAIT_THRESHOLD_IN_MS: z.coerce.number().int().default(30000),
+  CHECKPOINT_THRESHOLD_IN_MS: z.coerce.number().int().default(30000),
 
   // Internal OTEL environment variables
   INTERNAL_OTEL_TRACE_EXPORTER_URL: z.string().optional(),
@@ -201,6 +201,9 @@ const EnvironmentSchema = z.object({
   USAGE_OPEN_METER_BASE_URL: z.string().optional(),
   EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
   MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
+  MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
+  TASK_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().default(524_288), // 512KB
+  TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

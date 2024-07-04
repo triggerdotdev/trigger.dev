@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "3.0.0-beta.40",
+  "version": "3.0.0-beta.46",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -85,6 +85,22 @@
       "require": "./dist/v3/utils/structuredLogger.js",
       "types": "./dist/v3/utils/structuredLogger.d.ts"
     },
+    "./v3/utils/durations": {
+      "import": {
+        "types": "./dist/v3/utils/durations.d.mts",
+        "default": "./dist/v3/utils/durations.mjs"
+      },
+      "require": "./dist/v3/utils/durations.js",
+      "types": "./dist/v3/utils/durations.d.ts"
+    },
+    "./v3/utils/timers": {
+      "import": {
+        "types": "./dist/v3/utils/timers.d.mts",
+        "default": "./dist/v3/utils/timers.mjs"
+      },
+      "require": "./dist/v3/utils/timers.js",
+      "types": "./dist/v3/utils/timers.d.ts"
+    },
     "./v3/dev": {
       "import": {
         "types": "./dist/v3/dev/index.d.mts",
@@ -108,6 +124,14 @@
       },
       "require": "./dist/v3/workers/index.js",
       "types": "./dist/v3/workers/index.d.ts"
+    },
+    "./v3/schemas": {
+      "import": {
+        "types": "./dist/v3/schemas/index.d.mts",
+        "default": "./dist/v3/schemas/index.mjs"
+      },
+      "require": "./dist/v3/schemas/index.js",
+      "types": "./dist/v3/schemas/index.d.ts"
     },
     "./package.json": "./package.json"
   },
@@ -143,7 +167,7 @@
     "@opentelemetry/sdk-trace-node": "^1.22.0",
     "@opentelemetry/semantic-conventions": "^1.22.0",
     "humanize-duration": "^3.27.3",
-    "socket.io-client": "4.7.4",
+    "socket.io-client": "4.7.5",
     "superjson": "^2.2.1",
     "ulidx": "^2.2.1",
     "zod": "3.22.3",

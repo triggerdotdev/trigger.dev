@@ -209,7 +209,10 @@ export class ApiRunListPresenter extends BasePresenter {
           updatedAt: new Date(run.updatedAt),
           startedAt: run.startedAt ? new Date(run.startedAt) : undefined,
           finishedAt: run.finishedAt ? new Date(run.finishedAt) : undefined,
+          delayedUntil: run.delayUntil ? new Date(run.delayUntil) : undefined,
           isTest: run.isTest,
+          ttl: run.ttl ?? undefined,
+          expiredAt: run.expiredAt ? new Date(run.expiredAt) : undefined,
           env: {
             id: run.environment.id,
             name: run.environment.slug,
@@ -233,6 +236,8 @@ export class ApiRunListPresenter extends BasePresenter {
 
   static apiStatusToRunStatuses(status: RunStatus): TaskRunStatus[] | TaskRunStatus {
     switch (status) {
+      case "DELAYED":
+        return "DELAYED";
       case "WAITING_FOR_DEPLOY": {
         return "WAITING_FOR_DEPLOY";
       }
@@ -265,6 +270,9 @@ export class ApiRunListPresenter extends BasePresenter {
       }
       case "FAILED": {
         return "COMPLETED_WITH_ERRORS";
+      }
+      case "EXPIRED": {
+        return "EXPIRED";
       }
       default: {
         assertNever(status);

@@ -377,6 +377,10 @@ export function v3RunPath(organization: OrgForPath, project: ProjectForPath, run
   return `${v3RunsPath(organization, project)}/${run.friendlyId}`;
 }
 
+export function v3RunDownloadLogsPath(run: v3RunForPath) {
+  return `/resources/runs/${run.friendlyId}/logs/download`;
+}
+
 export function v3RunSpanPath(
   organization: OrgForPath,
   project: ProjectForPath,

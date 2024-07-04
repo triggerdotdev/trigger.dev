@@ -12,9 +12,9 @@ import { zodfetch } from "@trigger.dev/core/v3/zodfetch";
 import { Task, TaskOptions, apiClientMissingError, createTask } from "../shared";
 import * as SchedulesAPI from "./api";
 
-export function task<TOutput, TInitOutput extends InitOutput>(
-  params: TaskOptions<SchedulesAPI.ScheduledTaskPayload, TOutput, TInitOutput>
-): Task<SchedulesAPI.ScheduledTaskPayload, TOutput> {
+export function task<TIdentifier extends string, TOutput, TInitOutput extends InitOutput>(
+  params: TaskOptions<TIdentifier, SchedulesAPI.ScheduledTaskPayload, TOutput, TInitOutput>
+): Task<TIdentifier, SchedulesAPI.ScheduledTaskPayload, TOutput> {
   const task = createTask(params);
 
   taskCatalog.updateTaskMetadata(task.id, {

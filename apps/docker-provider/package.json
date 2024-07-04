@@ -18,8 +18,7 @@
   "dependencies": {
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/core-apps": "workspace:*",
-    "execa": "^8.0.1",
-    "socket.io-client": "^4.7.4"
+    "execa": "^8.0.1"
   },
   "devDependencies": {
     "@types/node": "^18.19.8",

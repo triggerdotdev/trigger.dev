@@ -47,6 +47,8 @@ import { ResumeTaskService } from "./tasks/resumeTask.server";
 import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
 import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
 import { reportInvocationUsage } from "./platform.v3.server";
+import { EnqueueDelayedRunService } from "~/v3/services/enqueueDelayedRun.server";
+import { ExpireEnqueuedRunService } from "~/v3/services/expireEnqueuedRun.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -176,6 +178,12 @@ const workerCatalog = {
       costInCents: z.string(),
     }),
     additionalData: z.record(z.any()).optional(),
+  }),
+  "v3.enqueueDelayedRun": z.object({
+    runId: z.string(),
+  }),
+  "v3.expireRun": z.object({
+    runId: z.string(),
   }),
 };
 
@@ -666,6 +674,24 @@ function getWorkerQueue() {
             Number(payload.data.costInCents),
             payload.additionalData
           );
+        },
+      },
+      "v3.enqueueDelayedRun": {
+        priority: 0,
+        maxAttempts: 8,
+        handler: async (payload, job) => {
+          const service = new EnqueueDelayedRunService();
+
+          return await service.call(payload.runId);
+        },
+      },
+      "v3.expireRun": {
+        priority: 0,
+        maxAttempts: 8,
+        handler: async (payload, job) => {
+          const service = new ExpireEnqueuedRunService();
+
+          return await service.call(payload.runId);
         },
       },
     },

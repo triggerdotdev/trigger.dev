@@ -1,5 +1,6 @@
 import {
   ClientToSharedQueueMessages,
+  CoordinatorSocketData,
   CoordinatorToPlatformMessages,
   PlatformToCoordinatorMessages,
   PlatformToProviderMessages,
@@ -78,6 +79,7 @@ function createCoordinatorNamespace(io: Server) {
     authToken: env.COORDINATOR_SECRET,
     clientMessages: CoordinatorToPlatformMessages,
     serverMessages: PlatformToCoordinatorMessages,
+    socketData: CoordinatorSocketData,
     handlers: {
       READY_FOR_EXECUTION: async (message) => {
         const payload = await sharedQueueTasks.getLatestExecutionPayloadFromRun(
@@ -238,6 +240,45 @@ function createCoordinatorNamespace(io: Server) {
         }
       },
     },
+    onConnection: async (socket, handler, sender, logger) => {
+      if (socket.data.supportsDynamicConfig) {
+        socket.emit("DYNAMIC_CONFIG", {
+          version: "v1",
+          checkpointThresholdInMs: env.CHECKPOINT_THRESHOLD_IN_MS,
+        });
+      }
+    },
+    postAuth: async (socket, next, logger) => {
+      function setSocketDataFromHeader(
+        dataKey: keyof typeof socket.data,
+        headerName: string,
+        required: boolean = true
+      ) {
+        const value = socket.handshake.headers[headerName];
+
+        if (value) {
+          socket.data[dataKey] = Array.isArray(value) ? value[0] : value;
+          return;
+        }
+
+        if (required) {
+          logger.error("missing required header", { headerName });
+          throw new Error("missing header");
+        }
+      }
+
+      try {
+        setSocketDataFromHeader("supportsDynamicConfig", "x-supports-dynamic-config", false);
+      } catch (error) {
+        logger.error("setSocketDataFromHeader error", { error });
+        socket.disconnect(true);
+        return;
+      }
+
+      logger.debug("success", socket.data);
+
+      next();
+    },
   });
 
   return coordinator.namespace;
@@ -267,7 +308,7 @@ function createProviderNamespace(io: Server) {
         try {
           const service = new DeploymentIndexFailed();
 
-          await service.call(message.deploymentId, message.error);
+          await service.call(message.deploymentId, message.error, message.overrideCompletion);
         } catch (e) {
           logger.error("Error while indexing", { error: e });
         }

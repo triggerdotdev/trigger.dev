@@ -344,6 +344,7 @@ export class CompleteAttemptService extends BaseService {
     supportsLazyAttempts?: boolean
   ) {
     if (checkpointEventId || !supportsLazyAttempts) {
+      // Workers without lazy attempt support always need to go through the queue, which is where the attempt is created
       // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
       return await marqs?.replaceMessage(
         run.id,
@@ -355,8 +356,9 @@ export class CompleteAttemptService extends BaseService {
         retryTimestamp
       );
     } else {
-      // There's no checkpoint so the worker is still running and waiting for a retry message
-      // It supports lazy attempts so we can bypass the queue and send the message directly to the worker
+      // There's no checkpoint and the worker supports lazy attempts
+      // This means the worker is still running and waiting for a retry message
+      // It supports lazy attempts so we can bypass the queue and send the message directly to it
       RetryAttemptService.enqueue(run.id, this._prisma, new Date(retryTimestamp));
     }
   }

@@ -7,6 +7,7 @@ import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { BatchTriggerTaskService } from "~/v3/services/batchTriggerTask.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
+import { env } from "~/env.server";
 
 const ParamsSchema = z.object({
   taskId: z.string(),
@@ -42,6 +43,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
   } = headers.data;
 
   const { taskId } = ParamsSchema.parse(params);
+
+  const contentLength = request.headers.get("content-length");
+
+  if (!contentLength || parseInt(contentLength) > env.TASK_PAYLOAD_MAXIMUM_SIZE) {
+    return json({ error: "Request body too large" }, { status: 413 });
+  }
 
   // Now parse the request body
   const anyBody = await request.json();

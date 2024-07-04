@@ -5,6 +5,7 @@ import {
   SEMATTRS_MESSAGING_SYSTEM,
 } from "@opentelemetry/semantic-conventions";
 import {
+  ApiPromise,
   BatchTaskRunExecutionResult,
   FailureFnParams,
   HandleErrorFnParams,
@@ -36,6 +37,7 @@ import {
 } from "@trigger.dev/core/v3";
 import * as packageJson from "../../package.json";
 import { tracer } from "./tracer";
+import { PollOptions, RetrieveRunResult, runs } from "./runs";
 
 export type Context = TaskRunContext;
 
@@ -52,12 +54,13 @@ export function queue(options: { name: string } & QueueOptions): Queue {
 }
 
 export type TaskOptions<
+  TIdentifier extends string,
   TPayload = void,
   TOutput = unknown,
   TInitOutput extends InitOutput = any,
 > = {
   /** An id for your task. This must be unique inside your project and not change between versions.  */
-  id: string;
+  id: TIdentifier;
   /** The retry settings when an uncaught error is thrown.
    *
    * If omitted it will use the values in your `trigger.config.ts` file.
@@ -151,6 +154,7 @@ export type TaskOptions<
       | "large-1x"
       | "large-2x";
   };
+
   /** This gets called when a task is triggered. It's where you put the code you want to execute.
    *
    * @param payload - The payload that is passed to your task when it's triggered. This must be JSON serializable.
@@ -220,14 +224,31 @@ export type TaskOptions<
   ) => Promise<void>;
 };
 
-type InvokeHandle = {
-  id: string;
-};
+declare const __output: unique symbol;
+type BrandOutput<B> = { [__output]: B };
+export type BrandedOutput<T, B> = T & BrandOutput<B>;
 
-type InvokeBatchHandle = {
-  batchId: string;
-  runs: string[];
-};
+export type RunHandle<TOutput> = BrandedOutput<
+  {
+    id: string;
+  },
+  TOutput
+>;
+
+/**
+ * A BatchRunHandle can be used to retrieve the runs of a batch trigger in a typesafe manner.
+ */
+export type BatchRunHandle<TOutput> = BrandedOutput<
+  {
+    batchId: string;
+    runs: Array<RunHandle<TOutput>>;
+  },
+  TOutput
+>;
+
+export type RunHandleOutput<TRunHandle> = TRunHandle extends RunHandle<infer TOutput>
+  ? TOutput
+  : never;
 
 export type TaskRunResult<TOutput = any> =
   | {
@@ -246,23 +267,23 @@ export type BatchResult<TOutput = any> = {
   runs: TaskRunResult<TOutput>[];
 };
 
-type BatchItem<TInput> = TInput extends void
+export type BatchItem<TInput> = TInput extends void
   ? { payload?: TInput; options?: TaskRunOptions }
   : { payload: TInput; options?: TaskRunOptions };
 
-export interface Task<TInput = void, TOutput = any> {
+export interface Task<TIdentifier extends string, TInput = void, TOutput = any> {
   /**
    * The id of the task.
    */
-  id: string;
+  id: TIdentifier;
   /**
    * Trigger a task with the given payload, and continue without waiting for the result. If you want to wait for the result, use `triggerAndWait`. Returns the id of the triggered task run.
    * @param payload
    * @param options
-   * @returns InvokeHandle
+   * @returns RunHandle
    * - `id` - The id of the triggered task run.
    */
-  trigger: (payload: TInput, options?: TaskRunOptions) => Promise<InvokeHandle>;
+  trigger: (payload: TInput, options?: TaskRunOptions) => Promise<RunHandle<TOutput>>;
 
   /**
    * Batch trigger multiple task runs with the given payloads, and continue without waiting for the results. If you want to wait for the results, use `batchTriggerAndWait`. Returns the id of the triggered batch.
@@ -271,7 +292,7 @@ export interface Task<TInput = void, TOutput = any> {
    * - `batchId` - The id of the triggered batch.
    * - `runs` - The ids of the triggered task runs.
    */
-  batchTrigger: (items: Array<BatchItem<TInput>>) => Promise<InvokeBatchHandle>;
+  batchTrigger: (items: Array<BatchItem<TInput>>) => Promise<BatchRunHandle<TOutput>>;
 
   /**
    * Trigger a task with the given payload, and wait for the result. Returns the result of the task run
@@ -314,21 +335,65 @@ export interface Task<TInput = void, TOutput = any> {
   batchTriggerAndWait: (items: Array<BatchItem<TInput>>) => Promise<BatchResult<TOutput>>;
 }
 
-export type TaskPayload<TTask extends Task> = TTask extends Task<infer TInput, any>
+type AnyTask = Task<string, any, any>;
+
+export type TaskPayload<TTask extends AnyTask> = TTask extends Task<string, infer TInput, any>
   ? TInput
   : never;
 
-export type TaskOutput<TTask extends Task> = TTask extends Task<any, infer TOutput>
+export type TaskOutput<TTask extends AnyTask> = TTask extends Task<string, any, infer TOutput>
   ? TOutput
   : never;
 
-type TaskRunOptions = {
+export type TaskOutputHandle<TTask extends AnyTask> = TTask extends Task<string, any, infer TOutput>
+  ? RunHandle<TOutput>
+  : never;
+
+export type TaskBatchOutputHandle<TTask extends AnyTask> = TTask extends Task<
+  string,
+  any,
+  infer TOutput
+>
+  ? BatchRunHandle<TOutput>
+  : never;
+
+export type TaskIdentifier<TTask extends AnyTask> = TTask extends Task<infer TIdentifier, any, any>
+  ? TIdentifier
+  : never;
+
+export type TaskRunOptions = {
   idempotencyKey?: string;
   maxAttempts?: number;
-  startAt?: Date;
-  startAfter?: number;
   queue?: TaskRunConcurrencyOptions;
   concurrencyKey?: string;
+  /**
+   * The delay before the task is executed. This can be a string like "1h" or a Date object.
+   *
+   * @example
+   * "1h" - 1 hour
+   * "30d" - 30 days
+   * "15m" - 15 minutes
+   * "2w" - 2 weeks
+   * "60s" - 60 seconds
+   * new Date("2025-01-01T00:00:00Z")
+   */
+  delay?: string | Date;
+
+  /**
+   * Set a time-to-live for this run. If the run is not executed within this time, it will be removed from the queue and never execute.
+   *
+   * @example
+   *
+   * ```ts
+   * await myTask.trigger({ foo: "bar" }, { ttl: "1h" });
+   * await myTask.trigger({ foo: "bar" }, { ttl: 60 * 60 }); // 1 hour
+   * ```
+   *
+   * The minimum value is 1 second. Setting the `ttl` to `0` will disable the TTL and the run will never expire.
+   *
+   * **Note:** Runs in development have a default `ttl` of 10 minutes. You can override this by setting the `ttl` option.
+   */
+  ttl?: string | number;
 };
 
 type TaskRunConcurrencyOptions = Queue;
@@ -341,10 +406,15 @@ export type DynamicBaseOptions = {
   id: string;
 };
 
-export function createTask<TInput = void, TOutput = unknown, TInitOutput extends InitOutput = any>(
-  params: TaskOptions<TInput, TOutput, TInitOutput>
-): Task<TInput, TOutput> {
-  const task: Task<TInput, TOutput> = {
+export function createTask<
+  TIdentifier extends string,
+  TInput = void,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+>(
+  params: TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>
+): Task<TIdentifier, TInput, TOutput> {
+  const task: Task<TIdentifier, TInput, TOutput> = {
     id: params.id,
     trigger: async (payload, options) => {
       const apiClient = apiClientManager.client;
@@ -370,6 +440,8 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
                 test: taskContext.ctx?.run.isTest,
                 payloadType: payloadPacket.dataType,
                 idempotencyKey: options?.idempotencyKey,
+                delay: options?.delay,
+                ttl: options?.ttl,
               },
             },
             { spanParentAsLink: true }
@@ -402,7 +474,7 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
         }
       );
 
-      return handle;
+      return handle as RunHandle<TOutput>;
     },
     batchTrigger: async (items) => {
       const apiClient = apiClientManager.client;
@@ -431,6 +503,8 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
                       test: taskContext.ctx?.run.isTest,
                       payloadType: payloadPacket.dataType,
                       idempotencyKey: item.options?.idempotencyKey,
+                      delay: item.options?.delay,
+                      ttl: item.options?.ttl,
                     },
                   };
                 })
@@ -441,7 +515,12 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
 
           span.setAttribute("messaging.message.id", response.batchId);
 
-          return response;
+          const handle = {
+            batchId: response.batchId,
+            runs: response.runs.map((id) => ({ id })),
+          };
+
+          return handle as BatchRunHandle<TOutput>;
         },
         {
           kind: SpanKind.PRODUCER,
@@ -499,6 +578,8 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
               idempotencyKey: options?.idempotencyKey,
+              delay: options?.delay,
+              ttl: options?.ttl,
             },
           });
 
@@ -583,6 +664,8 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
                     test: taskContext.ctx?.run.isTest,
                     payloadType: payloadPacket.dataType,
                     idempotencyKey: item.options?.idempotencyKey,
+                    delay: item.options?.delay,
+                    ttl: item.options?.ttl,
                   },
                 };
               })
@@ -705,6 +788,115 @@ export function createTask<TInput = void, TOutput = unknown, TInitOutput extends
   });
 
   return task;
+}
+
+/**
+ * Trigger a task by its identifier with the given payload. Returns a typesafe `RunHandle`.
+ *
+ * @example
+ *
+ * ```ts
+ * import { tasks, runs } from "@trigger.dev/sdk/v3";
+ * import type { myTask } from "./myTasks"; // Import just the type of the task
+ *
+ * const handle = await tasks.trigger<typeof myTask>("my-task", { foo: "bar" }); // The id and payload are fully typesafe
+ * const run = await runs.retrieve(handle);
+ * console.log(run.output) // The output is also fully typed
+ * ```
+ *
+ * @returns {RunHandle} An object with the `id` of the run. Can be used to retrieve the completed run output in a typesafe manner.
+ */
+export async function trigger<TTask extends AnyTask>(
+  id: TaskIdentifier<TTask>,
+  payload: TaskPayload<TTask>,
+  options?: TaskRunOptions
+): Promise<TaskOutputHandle<TTask>> {
+  const apiClient = apiClientManager.client;
+
+  if (!apiClient) {
+    throw apiClientMissingError();
+  }
+
+  const payloadPacket = await stringifyIO(payload);
+
+  const handle = await apiClient.triggerTask(id, {
+    payload: payloadPacket.data,
+    options: {
+      queue: options?.queue,
+      concurrencyKey: options?.concurrencyKey,
+      test: taskContext.ctx?.run.isTest,
+      payloadType: payloadPacket.dataType,
+      idempotencyKey: options?.idempotencyKey,
+      delay: options?.delay,
+      ttl: options?.ttl,
+    },
+  });
+
+  return handle as TaskOutputHandle<TTask>;
+}
+
+/**
+ * Trigger a task by its identifier with the given payload and poll until the run is completed.
+ *
+ * @example
+ *
+ * ```ts
+ * import { tasks, runs } from "@trigger.dev/sdk/v3";
+ * import type { myTask } from "./myTasks"; // Import just the type of the task
+ *
+ * const run = await tasks.triggerAndPoll<typeof myTask>("my-task", { foo: "bar" }); // The id and payload are fully typesafe
+ * console.log(run.output) // The output is also fully typed
+ * ```
+ *
+ * @returns {Run} The completed run, either successful or failed.
+ */
+export async function triggerAndPoll<TTask extends AnyTask>(
+  id: TaskIdentifier<TTask>,
+  payload: TaskPayload<TTask>,
+  options?: TaskRunOptions & PollOptions
+): Promise<RetrieveRunResult<TaskOutputHandle<TTask>>> {
+  const handle = await trigger(id, payload, options);
+
+  return runs.poll(handle);
+}
+
+export async function batchTrigger<TTask extends AnyTask>(
+  id: TaskIdentifier<TTask>,
+  items: Array<BatchItem<TaskPayload<TTask>>>
+): Promise<TaskBatchOutputHandle<TTask>> {
+  const apiClient = apiClientManager.client;
+
+  if (!apiClient) {
+    throw apiClientMissingError();
+  }
+
+  const response = await apiClient.batchTriggerTask(id, {
+    items: await Promise.all(
+      items.map(async (item) => {
+        const payloadPacket = await stringifyIO(item.payload);
+
+        return {
+          payload: payloadPacket.data,
+          options: {
+            queue: item.options?.queue,
+            concurrencyKey: item.options?.concurrencyKey,
+            test: taskContext.ctx?.run.isTest,
+            payloadType: payloadPacket.dataType,
+            idempotencyKey: item.options?.idempotencyKey,
+            delay: item.options?.delay,
+            ttl: item.options?.ttl,
+          },
+        };
+      })
+    ),
+  });
+
+  const handle = {
+    batchId: response.batchId,
+    runs: response.runs.map((id) => ({ id })),
+  };
+
+  return handle as TaskBatchOutputHandle<TTask>;
 }
 
 async function handleBatchTaskRunExecutionResult<TOutput>(

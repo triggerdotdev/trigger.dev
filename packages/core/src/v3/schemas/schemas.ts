@@ -220,6 +220,7 @@ export type WaitReason = z.infer<typeof WaitReason>;
 
 export const TaskRunExecutionLazyAttemptPayload = z.object({
   runId: z.string(),
+  attemptCount: z.number().optional(),
   messageId: z.string(),
   isTest: z.boolean(),
   traceContext: z.record(z.unknown()),

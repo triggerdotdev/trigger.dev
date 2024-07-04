@@ -19,8 +19,7 @@
     "@kubernetes/client-node": "^0.20.0",
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/core-apps": "workspace:*",
-    "p-queue": "^8.0.1",
-    "socket.io-client": "^4.7.4"
+    "p-queue": "^8.0.1"
   },
   "devDependencies": {
     "dotenv": "^16.4.2",

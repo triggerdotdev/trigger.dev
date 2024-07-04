@@ -117,7 +117,7 @@ function getTracer() {
   const samplingRate = 1.0 / Math.max(parseInt(env.INTERNAL_OTEL_TRACE_SAMPLING_RATE, 10), 1);
 
   const provider = new NodeTracerProvider({
-    forceFlushTimeoutMillis: 500,
+    forceFlushTimeoutMillis: 15_000,
     resource: new Resource({
       [SEMRESATTRS_SERVICE_NAME]: env.SERVICE_NAME,
     }),
@@ -129,7 +129,7 @@ function getTracer() {
   if (env.INTERNAL_OTEL_TRACE_EXPORTER_URL) {
     const exporter = new OTLPTraceExporter({
       url: env.INTERNAL_OTEL_TRACE_EXPORTER_URL,
-      timeoutMillis: 10_000,
+      timeoutMillis: 15_000,
       headers:
         env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_NAME &&
         env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_VALUE
