@@ -1,8 +1,14 @@
-import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowPathIcon,
+  ClockIcon,
+  CpuChipIcon,
+  RectangleStackIcon,
+  StopCircleIcon,
+} from "@heroicons/react/20/solid";
 import { StopIcon } from "@heroicons/react/24/outline";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
-import { formatDuration } from "@trigger.dev/core/v3";
+import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { useEnvironments } from "~/hooks/useEnvironments";
@@ -32,7 +38,8 @@ import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider"
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { useCallback, useRef } from "react";
 import { run } from "@remix-run/dev/dist/cli/run";
-import { formatNumber } from "~/utils/numberFormatter";
+import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
+import { useFeatures } from "~/hooks/useFeatures";
 
 type RunsTableProps = {
   total: number;
@@ -56,6 +63,7 @@ export function TaskRunsTable({
   const project = useProject();
   const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
   const { selectedItems, has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
+  const { isManagedCloud } = useFeatures();
 
   const navigateCheckboxes = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
@@ -110,12 +118,17 @@ export function TaskRunsTable({
             </TableHeaderCell>
           )}
           <TableHeaderCell alignment="right">Run #</TableHeaderCell>
+          <TableHeaderCell>Env</TableHeaderCell>
           <TableHeaderCell>Task ID</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
-          <TableHeaderCell>Env</TableHeaderCell>
           <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell>Started</TableHeaderCell>
-          <TableHeaderCell>Duration</TableHeaderCell>
+          <TableHeaderCell colSpan={3}>Duration</TableHeaderCell>
+          {isManagedCloud && (
+            <>
+              <TableHeaderCell>Compute</TableHeaderCell>
+            </>
+          )}
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
           <TableHeaderCell>Delayed until</TableHeaderCell>
@@ -154,31 +167,61 @@ export function TaskRunsTable({
                 <TableCell to={path} alignment="right">
                   {formatNumber(run.number)}
                 </TableCell>
-                <TableCell to={path}>{run.taskIdentifier}</TableCell>
-                <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>
                   <EnvironmentLabel
                     environment={run.environment}
                     userName={run.environment.userName}
                   />
                 </TableCell>
+                <TableCell to={path}>{run.taskIdentifier}</TableCell>
+                <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>
                   <TaskRunStatusCombo status={run.status} />
                 </TableCell>
                 <TableCell to={path}>
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}
                 </TableCell>
-                <TableCell to={path}>
-                  {run.startedAt && run.finishedAt ? (
-                    formatDuration(new Date(run.startedAt), new Date(run.finishedAt), {
-                      style: "short",
-                    })
-                  ) : run.startedAt ? (
-                    <LiveTimer startTime={new Date(run.startedAt)} />
-                  ) : (
-                    "–"
-                  )}
+                <TableCell to={path} actionClassName="pr-0">
+                  <div className="flex items-center gap-1">
+                    <RectangleStackIcon className="size-4 text-text-dimmed" />
+                    {run.startedAt ? (
+                      formatDuration(new Date(run.createdAt), new Date(run.startedAt), {
+                        style: "short",
+                      })
+                    ) : (
+                      <LiveTimer startTime={new Date(run.createdAt)} />
+                    )}
+                  </div>
                 </TableCell>
+                <TableCell to={path} actionClassName="px-1">
+                  <div className="flex items-center gap-1">
+                    <ClockIcon className="size-4 text-blue-500" />
+                    {run.startedAt && run.finishedAt ? (
+                      formatDuration(new Date(run.startedAt), new Date(run.finishedAt), {
+                        style: "short",
+                      })
+                    ) : run.startedAt ? (
+                      <LiveTimer startTime={new Date(run.startedAt)} />
+                    ) : (
+                      "–"
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell to={path} actionClassName="pl-0">
+                  <div className="flex items-center gap-1">
+                    <CpuChipIcon className="size-4 text-success" />
+                    {run.usageDurationMs > 0
+                      ? formatDurationMilliseconds(run.usageDurationMs, {
+                          style: "short",
+                        })
+                      : "–"}
+                  </div>
+                </TableCell>
+                {isManagedCloud && (
+                  <TableCell to={path}>
+                    {run.costInCents > 0 ? formatCurrencyAccurate(run.costInCents * 100) : "–"}
+                  </TableCell>
+                )}
                 <TableCell to={path}>
                   {run.isTest ? (
                     <CheckIcon className="h-4 w-4 text-charcoal-400" />
