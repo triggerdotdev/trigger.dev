@@ -531,31 +531,18 @@ export const myTask = task({
     maxAttempts: 4,
   },
   run: async (payload: any) => {
+    // By default, idempotency keys generated are unique to the run, to prevent retries from duplicating child tasks
     const idempotencyKey = await idempotencyKeys.create("my-task-key");
 
     // childTask will only be triggered once with the same idempotency key
     await childTask.triggerAndWait(payload, { idempotencyKey });
+
+    // Do something else, that may throw an error and cause the task to be retried
   },
 });
 ```
 
-You can use the `idempotencyKeys.create` SDK function to create an idempotency key before passing it to the `options` object.
-
-<Note>
-  We automatically inject the run ID when generating the idempotency key when running inside a task.
-</Note>
-
-If you are triggering a task from your backend code, you can use the `idempotencyKeys.create` SDK function to create an idempotency key.
-
-```typescript
-import { idempotencyKeys, tasks } from "@trigger.dev/sdk/v3";
-
-// You can also pass an array of strings to create a idempotency key
-const idempotencyKey = await idempotenceKeys.create([myUser.id, "my-task"]);
-await tasks.trigger("my-task", { some: "data" }, { idempotencyKey });
-```
-
-<Note>Make sure you provide sufficiently unique keys to avoid collisions.</Note>
+For more information, see our [Idempotency](/v3/idempotency) documentation.
 
 ### `queue`
 

@@ -48,15 +48,16 @@ export class TriggerTaskService extends BaseService {
       const existingRun = idempotencyKey
         ? await this._prisma.taskRun.findUnique({
             where: {
-              runtimeEnvironmentId_idempotencyKey: {
+              runtimeEnvironmentId_taskIdentifier_idempotencyKey: {
                 runtimeEnvironmentId: environment.id,
                 idempotencyKey,
+                taskIdentifier: taskId,
               },
             },
           })
         : undefined;
 
-      if (existingRun && existingRun.taskIdentifier === taskId) {
+      if (existingRun) {
         span.setAttribute("runId", existingRun.friendlyId);
 
         return existingRun;

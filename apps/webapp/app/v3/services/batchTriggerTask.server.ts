@@ -26,9 +26,10 @@ export class BatchTriggerTaskService extends BaseService {
       const existingBatch = options.idempotencyKey
         ? await this._prisma.batchTaskRun.findUnique({
             where: {
-              runtimeEnvironmentId_idempotencyKey: {
+              runtimeEnvironmentId_taskIdentifier_idempotencyKey: {
                 runtimeEnvironmentId: environment.id,
                 idempotencyKey: options.idempotencyKey,
+                taskIdentifier: taskId,
               },
             },
             include: {

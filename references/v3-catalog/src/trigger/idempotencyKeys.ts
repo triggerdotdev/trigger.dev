@@ -22,6 +22,16 @@ export const idempotencyKeyParent = task({
       logger.error("Child task error", { error: childTaskResponse.error });
     }
 
+    await idempotencyKeyChild2.triggerAndWait(
+      {
+        key: payload.key,
+        forceError: false,
+      },
+      {
+        idempotencyKey: await idempotencyKeys.create(payload.key),
+      }
+    );
+
     return {
       key: payload.key,
       childTaskResponse,
@@ -39,6 +49,17 @@ export const idempotencyKeyChild = task({
     if (payload.forceError) {
       throw new AbortTaskRunError("This is a forced error in idempotency-key-child");
     }
+
+    return payload;
+  },
+});
+
+export const idempotencyKeyChild2 = task({
+  id: "idempotency-key-child-2",
+  run: async (payload: { forceError: boolean; key: string }) => {
+    console.log("Hello from idempotency-key-child-2", payload.key);
+
+    await wait.for({ seconds: 2 });
 
     return payload;
   },
@@ -88,10 +109,10 @@ export const idempotencyKeyBatchChild = task({
 
 export const idempotencyKeyParentUsage = task({
   id: "idempotency-key-parent-usage",
-  run: async (payload: any, { ctx }) => {
+  run: async (payload: { key: string; scope: "run" | "attempt" | "global" }, { ctx }) => {
     console.log(`Hello from idempotency-key-parent-usage, attempt #${ctx.attempt.number}`);
 
-    const idempotencyKey = await idempotencyKeys.create("💚");
+    const idempotencyKey = await idempotencyKeys.create(payload.key, { scope: payload.scope });
 
     console.log(`Generated idempotency key: ${idempotencyKey}`);
 

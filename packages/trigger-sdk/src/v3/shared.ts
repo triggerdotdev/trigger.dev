@@ -366,7 +366,7 @@ export type TaskRunOptions = {
   /**
    * A unique key that can be used to ensure that a task is only triggered once per key.
    *
-   * You must use `idempotencyKeys.create` to create an idempotency key first, and then pass it to the task options.
+   * You can use `idempotencyKeys.create` to create an idempotency key first, and then pass it to the task options.
    *
    * @example
    *
@@ -376,10 +376,19 @@ export type TaskRunOptions = {
    * export const myTask = task({
    *  id: "my-task",
    *  run: async (payload: any) => {
+   *   // scoped to the task run by default
    *   const idempotencyKey = await idempotencyKeys.create("my-task-key");
    *
    *   // Use the idempotency key when triggering child tasks
    *   await childTask.triggerAndWait(payload, { idempotencyKey });
+   *
+   *   // scoped globally, does not include the task run ID
+   *   const globalIdempotencyKey = await idempotencyKeys.create("my-task-key", { scope: "global" });
+   *
+   *   await childTask.triggerAndWait(payload, { idempotencyKey: globalIdempotencyKey });
+   *
+   *   // You can also pass a string directly, which is the same as a global idempotency key
+   *   await childTask.triggerAndWait(payload, { idempotencyKey: "my-very-unique-key" });
    *  }
    * });
    * ```
@@ -399,7 +408,7 @@ export type TaskRunOptions = {
    * ```
    *
    */
-  idempotencyKey?: IdempotencyKey | string;
+  idempotencyKey?: IdempotencyKey | string | string[];
   maxAttempts?: number;
   queue?: TaskRunConcurrencyOptions;
   concurrencyKey?: string;
@@ -1042,7 +1051,7 @@ export function apiClientMissingError() {
 }
 
 async function makeKey(
-  idempotencyKey?: IdempotencyKey | string
+  idempotencyKey?: IdempotencyKey | string | string[]
 ): Promise<IdempotencyKey | undefined> {
   if (!idempotencyKey) {
     return;
@@ -1052,5 +1061,5 @@ async function makeKey(
     return idempotencyKey;
   }
 
-  return await idempotencyKeys.create(idempotencyKey);
+  return await idempotencyKeys.create(idempotencyKey, { scope: "global" });
 }
