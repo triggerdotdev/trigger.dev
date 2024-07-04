@@ -23,7 +23,7 @@ import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { UsagePresenter } from "~/presenters/v3/UsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
+import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
@@ -242,21 +242,23 @@ export default function ChoosePlanPage() {
                           tasks.map((task) => (
                             <TableRow key={task.taskIdentifier}>
                               <TableCell>{task.taskIdentifier}</TableCell>
-                              <TableCell alignment="right">{formatNumber(task.runCount)}</TableCell>
+                              <TableCell alignment="right" className="tabular-nums">
+                                {formatNumber(task.runCount)}
+                              </TableCell>
                               <TableCell alignment="right">
                                 {formatDurationMilliseconds(task.averageDuration, {
                                   style: "short",
                                 })}
                               </TableCell>
-                              <TableCell alignment="right">
-                                {formatCurrency(task.averageCost, false)}
+                              <TableCell alignment="right" className="tabular-nums">
+                                {formatCurrencyAccurate(task.averageCost)}
                               </TableCell>
-                              <TableCell alignment="right">
+                              <TableCell alignment="right" className="tabular-nums">
                                 {formatDurationMilliseconds(task.totalDuration, {
                                   style: "short",
                                 })}
                               </TableCell>
-                              <TableCell alignment="right">
+                              <TableCell alignment="right" className="tabular-nums">
                                 {formatCurrency(task.totalCost, false)}
                               </TableCell>
                             </TableRow>

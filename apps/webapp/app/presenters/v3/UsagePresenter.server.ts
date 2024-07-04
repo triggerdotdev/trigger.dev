@@ -65,7 +65,6 @@ export class UsagePresenter extends BasePresenter {
   WHERE
       tr."createdAt" > ${thirtyDaysAgo}
       AND tr."createdAt" < ${endOfToday}
-      
       AND org.id = ${organizationId}
   GROUP BY
       tr."taskIdentifier"
