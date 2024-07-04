@@ -5,6 +5,7 @@ export { queue } from "./shared";
 export * from "./tasks";
 export * from "./wait";
 export * from "./usage";
+export * from "./idempotencyKeys";
 export type { Context };
 
 import type { Context } from "./shared";

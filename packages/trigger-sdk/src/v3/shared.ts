@@ -5,7 +5,7 @@ import {
   SEMATTRS_MESSAGING_SYSTEM,
 } from "@opentelemetry/semantic-conventions";
 import {
-  ApiPromise,
+  ApiRequestOptions,
   BatchTaskRunExecutionResult,
   FailureFnParams,
   HandleErrorFnParams,
@@ -38,6 +38,7 @@ import {
 import * as packageJson from "../../package.json";
 import { tracer } from "./tracer";
 import { PollOptions, RetrieveRunResult, runs } from "./runs";
+import { IdempotencyKey, idempotencyKeys, isIdempotencyKey } from "./idempotencyKeys";
 
 export type Context = TaskRunContext;
 
@@ -362,7 +363,43 @@ export type TaskIdentifier<TTask extends AnyTask> = TTask extends Task<infer TId
   : never;
 
 export type TaskRunOptions = {
-  idempotencyKey?: string;
+  /**
+   * A unique key that can be used to ensure that a task is only triggered once per key.
+   *
+   * You must use `idempotencyKeys.create` to create an idempotency key first, and then pass it to the task options.
+   *
+   * @example
+   *
+   * ```typescript
+   * import { idempotencyKeys, task } from "@trigger.dev/sdk/v3";
+   *
+   * export const myTask = task({
+   *  id: "my-task",
+   *  run: async (payload: any) => {
+   *   const idempotencyKey = await idempotencyKeys.create("my-task-key");
+   *
+   *   // Use the idempotency key when triggering child tasks
+   *   await childTask.triggerAndWait(payload, { idempotencyKey });
+   *  }
+   * });
+   * ```
+   *
+   * When triggering a task inside another task, we automatically inject the run ID into the key material.
+   *
+   * If you are triggering a task from your backend, ensure you include some sufficiently unique key material to prevent collisions.
+   *
+   * @example
+   *
+   * ```typescript
+   * import { idempotencyKeys, tasks } from "@trigger.dev/sdk/v3";
+   *
+   * // Somewhere in your backend
+   * const idempotencyKey = await idempotenceKeys.create(["my-task-trigger", "user-123"]);
+   * await tasks.trigger("my-task", { foo: "bar" }, { idempotencyKey });
+   * ```
+   *
+   */
+  idempotencyKey?: IdempotencyKey | string;
   maxAttempts?: number;
   queue?: TaskRunConcurrencyOptions;
   concurrencyKey?: string;
@@ -427,49 +464,40 @@ export function createTask<
 
       const payloadPacket = await stringifyIO(payload);
 
-      const handle = await tracer.startActiveSpan(
-        taskMetadata ? "Trigger" : `${params.id} trigger()`,
-        async (span) => {
-          const response = await apiClient.triggerTask(
-            params.id,
-            {
-              payload: payloadPacket.data,
-              options: {
-                queue: options?.queue ?? params.queue,
-                concurrencyKey: options?.concurrencyKey,
-                test: taskContext.ctx?.run.isTest,
-                payloadType: payloadPacket.dataType,
-                idempotencyKey: options?.idempotencyKey,
-                delay: options?.delay,
-                ttl: options?.ttl,
-              },
-            },
-            { spanParentAsLink: true }
-          );
-
-          span.setAttribute("messaging.message.id", response.id);
-
-          return response;
-        },
+      const handle = await apiClient.triggerTask(
+        params.id,
         {
-          kind: SpanKind.PRODUCER,
+          payload: payloadPacket.data,
+          options: {
+            queue: options?.queue ?? params.queue,
+            concurrencyKey: options?.concurrencyKey,
+            test: taskContext.ctx?.run.isTest,
+            payloadType: payloadPacket.dataType,
+            idempotencyKey: await makeKey(options?.idempotencyKey),
+            delay: options?.delay,
+            ttl: options?.ttl,
+            maxAttempts: options?.maxAttempts,
+          },
+        },
+        { spanParentAsLink: true },
+        {
+          name: taskMetadata ? `${taskMetadata.exportName}.trigger()` : `trigger()`,
+          tracer,
+          icon: "trigger",
           attributes: {
             [SEMATTRS_MESSAGING_OPERATION]: "publish",
-            [SemanticInternalAttributes.STYLE_ICON]: "trigger",
             ["messaging.client_id"]: taskContext.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
-            ...(taskMetadata
-              ? accessoryAttributes({
-                  items: [
-                    {
-                      text: `${taskMetadata.exportName}.trigger()`,
-                      variant: "normal",
-                    },
-                  ],
-                  style: "codepath",
-                })
-              : {}),
+            ...accessoryAttributes({
+              items: [
+                {
+                  text: params.id,
+                  variant: "normal",
+                },
+              ],
+              style: "codepath",
+            }),
           },
         }
       );
@@ -485,68 +513,59 @@ export function createTask<
 
       const taskMetadata = taskCatalog.getTaskMetadata(params.id);
 
-      const response = await tracer.startActiveSpan(
-        taskMetadata ? "Batch trigger" : `${params.id} batchTrigger()`,
-        async (span) => {
-          const response = await apiClient.batchTriggerTask(
-            params.id,
-            {
-              items: await Promise.all(
-                items.map(async (item) => {
-                  const payloadPacket = await stringifyIO(item.payload);
-
-                  return {
-                    payload: payloadPacket.data,
-                    options: {
-                      queue: item.options?.queue ?? params.queue,
-                      concurrencyKey: item.options?.concurrencyKey,
-                      test: taskContext.ctx?.run.isTest,
-                      payloadType: payloadPacket.dataType,
-                      idempotencyKey: item.options?.idempotencyKey,
-                      delay: item.options?.delay,
-                      ttl: item.options?.ttl,
-                    },
-                  };
-                })
-              ),
-            },
-            { spanParentAsLink: true }
-          );
-
-          span.setAttribute("messaging.message.id", response.batchId);
-
-          const handle = {
-            batchId: response.batchId,
-            runs: response.runs.map((id) => ({ id })),
-          };
-
-          return handle as BatchRunHandle<TOutput>;
-        },
+      const response = await apiClient.batchTriggerTask(
+        params.id,
         {
-          kind: SpanKind.PRODUCER,
+          items: await Promise.all(
+            items.map(async (item) => {
+              const payloadPacket = await stringifyIO(item.payload);
+
+              return {
+                payload: payloadPacket.data,
+                options: {
+                  queue: item.options?.queue ?? params.queue,
+                  concurrencyKey: item.options?.concurrencyKey,
+                  test: taskContext.ctx?.run.isTest,
+                  payloadType: payloadPacket.dataType,
+                  idempotencyKey: await makeKey(item.options?.idempotencyKey),
+                  delay: item.options?.delay,
+                  ttl: item.options?.ttl,
+                  maxAttempts: item.options?.maxAttempts,
+                },
+              };
+            })
+          ),
+        },
+        { spanParentAsLink: true },
+        {
+          name: taskMetadata ? `${taskMetadata.exportName}.batchTrigger()` : `batchTrigger()`,
+          icon: "trigger",
+          tracer,
           attributes: {
             [SEMATTRS_MESSAGING_OPERATION]: "publish",
             ["messaging.batch.message_count"]: items.length,
             ["messaging.client_id"]: taskContext.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
-            [SemanticInternalAttributes.STYLE_ICON]: "trigger",
-            ...(taskMetadata
-              ? accessoryAttributes({
-                  items: [
-                    {
-                      text: `${taskMetadata.exportName}.batchTrigger()`,
-                      variant: "normal",
-                    },
-                  ],
-                  style: "codepath",
-                })
-              : {}),
+            ...accessoryAttributes({
+              items: [
+                {
+                  text: params.id,
+                  variant: "normal",
+                },
+              ],
+              style: "codepath",
+            }),
           },
         }
       );
 
-      return response;
+      const handle = {
+        batchId: response.batchId,
+        runs: response.runs.map((id) => ({ id })),
+      };
+
+      return handle as BatchRunHandle<TOutput>;
     },
     triggerAndWait: async (payload, options) => {
       const ctx = taskContext.ctx;
@@ -566,7 +585,7 @@ export function createTask<
       const payloadPacket = await stringifyIO(payload);
 
       return await tracer.startActiveSpan(
-        taskMetadata ? "Trigger" : `${params.id} triggerAndWait()`,
+        taskMetadata ? `${taskMetadata.exportName}.triggerAndWait()` : `triggerAndWait()`,
         async (span) => {
           const response = await apiClient.triggerTask(params.id, {
             payload: payloadPacket.data,
@@ -577,9 +596,10 @@ export function createTask<
               concurrencyKey: options?.concurrencyKey,
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
-              idempotencyKey: options?.idempotencyKey,
+              idempotencyKey: await makeKey(options?.idempotencyKey),
               delay: options?.delay,
               ttl: options?.ttl,
+              maxAttempts: options?.maxAttempts,
             },
           });
 
@@ -617,17 +637,15 @@ export function createTask<
             ["messaging.client_id"]: taskContext.worker?.id,
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
-            ...(taskMetadata
-              ? accessoryAttributes({
-                  items: [
-                    {
-                      text: `${taskMetadata.exportName}.triggerAndWait()`,
-                      variant: "normal",
-                    },
-                  ],
-                  style: "codepath",
-                })
-              : {}),
+            ...accessoryAttributes({
+              items: [
+                {
+                  text: params.id,
+                  variant: "normal",
+                },
+              ],
+              style: "codepath",
+            }),
           },
         }
       );
@@ -648,7 +666,7 @@ export function createTask<
       const taskMetadata = taskCatalog.getTaskMetadata(params.id);
 
       return await tracer.startActiveSpan(
-        taskMetadata ? "Batch trigger" : `${params.id} batchTriggerAndWait()`,
+        taskMetadata ? `${taskMetadata.exportName}.batchTriggerAndWait()` : `batchTriggerAndWait()`,
         async (span) => {
           const response = await apiClient.batchTriggerTask(params.id, {
             items: await Promise.all(
@@ -663,9 +681,10 @@ export function createTask<
                     concurrencyKey: item.options?.concurrencyKey,
                     test: taskContext.ctx?.run.isTest,
                     payloadType: payloadPacket.dataType,
-                    idempotencyKey: item.options?.idempotencyKey,
+                    idempotencyKey: await makeKey(item.options?.idempotencyKey),
                     delay: item.options?.delay,
                     ttl: item.options?.ttl,
+                    maxAttempts: item.options?.maxAttempts,
                   },
                 };
               })
@@ -752,17 +771,15 @@ export function createTask<
             [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
             [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
             [SemanticInternalAttributes.STYLE_ICON]: "trigger",
-            ...(taskMetadata
-              ? accessoryAttributes({
-                  items: [
-                    {
-                      text: `${taskMetadata.exportName}.batchTriggerAndWait()`,
-                      variant: "normal",
-                    },
-                  ],
-                  style: "codepath",
-                })
-              : {}),
+            ...accessoryAttributes({
+              items: [
+                {
+                  text: params.id,
+                  variant: "normal",
+                },
+              ],
+              style: "codepath",
+            }),
           },
         }
       );
@@ -809,7 +826,8 @@ export function createTask<
 export async function trigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   payload: TaskPayload<TTask>,
-  options?: TaskRunOptions
+  options?: TaskRunOptions,
+  requestOptions?: ApiRequestOptions
 ): Promise<TaskOutputHandle<TTask>> {
   const apiClient = apiClientManager.client;
 
@@ -819,18 +837,45 @@ export async function trigger<TTask extends AnyTask>(
 
   const payloadPacket = await stringifyIO(payload);
 
-  const handle = await apiClient.triggerTask(id, {
-    payload: payloadPacket.data,
-    options: {
-      queue: options?.queue,
-      concurrencyKey: options?.concurrencyKey,
-      test: taskContext.ctx?.run.isTest,
-      payloadType: payloadPacket.dataType,
-      idempotencyKey: options?.idempotencyKey,
-      delay: options?.delay,
-      ttl: options?.ttl,
+  const handle = await apiClient.triggerTask(
+    id,
+    {
+      payload: payloadPacket.data,
+      options: {
+        queue: options?.queue,
+        concurrencyKey: options?.concurrencyKey,
+        test: taskContext.ctx?.run.isTest,
+        payloadType: payloadPacket.dataType,
+        idempotencyKey: await makeKey(options?.idempotencyKey),
+        delay: options?.delay,
+        ttl: options?.ttl,
+        maxAttempts: options?.maxAttempts,
+      },
     },
-  });
+    {
+      spanParentAsLink: true,
+    },
+    {
+      name: `tasks.trigger()`,
+      tracer,
+      icon: "trigger",
+      attributes: {
+        [SEMATTRS_MESSAGING_OPERATION]: "publish",
+        ["messaging.client_id"]: taskContext.worker?.id,
+        [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
+        ...accessoryAttributes({
+          items: [
+            {
+              text: id,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+      ...requestOptions,
+    }
+  );
 
   return handle as TaskOutputHandle<TTask>;
 }
@@ -853,16 +898,18 @@ export async function trigger<TTask extends AnyTask>(
 export async function triggerAndPoll<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   payload: TaskPayload<TTask>,
-  options?: TaskRunOptions & PollOptions
+  options?: TaskRunOptions & PollOptions,
+  requestOptions?: ApiRequestOptions
 ): Promise<RetrieveRunResult<TaskOutputHandle<TTask>>> {
-  const handle = await trigger(id, payload, options);
+  const handle = await trigger(id, payload, options, requestOptions);
 
-  return runs.poll(handle);
+  return runs.poll(handle, options, requestOptions);
 }
 
 export async function batchTrigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
-  items: Array<BatchItem<TaskPayload<TTask>>>
+  items: Array<BatchItem<TaskPayload<TTask>>>,
+  requestOptions?: ApiRequestOptions
 ): Promise<TaskBatchOutputHandle<TTask>> {
   const apiClient = apiClientManager.client;
 
@@ -870,26 +917,51 @@ export async function batchTrigger<TTask extends AnyTask>(
     throw apiClientMissingError();
   }
 
-  const response = await apiClient.batchTriggerTask(id, {
-    items: await Promise.all(
-      items.map(async (item) => {
-        const payloadPacket = await stringifyIO(item.payload);
+  const response = await apiClient.batchTriggerTask(
+    id,
+    {
+      items: await Promise.all(
+        items.map(async (item) => {
+          const payloadPacket = await stringifyIO(item.payload);
 
-        return {
-          payload: payloadPacket.data,
-          options: {
-            queue: item.options?.queue,
-            concurrencyKey: item.options?.concurrencyKey,
-            test: taskContext.ctx?.run.isTest,
-            payloadType: payloadPacket.dataType,
-            idempotencyKey: item.options?.idempotencyKey,
-            delay: item.options?.delay,
-            ttl: item.options?.ttl,
-          },
-        };
-      })
-    ),
-  });
+          return {
+            payload: payloadPacket.data,
+            options: {
+              queue: item.options?.queue,
+              concurrencyKey: item.options?.concurrencyKey,
+              test: taskContext.ctx?.run.isTest,
+              payloadType: payloadPacket.dataType,
+              idempotencyKey: await makeKey(item.options?.idempotencyKey),
+              delay: item.options?.delay,
+              ttl: item.options?.ttl,
+              maxAttempts: item.options?.maxAttempts,
+            },
+          };
+        })
+      ),
+    },
+    { spanParentAsLink: true },
+    {
+      name: `tasks.batchTrigger()`,
+      tracer,
+      icon: "trigger",
+      attributes: {
+        [SEMATTRS_MESSAGING_OPERATION]: "publish",
+        ["messaging.client_id"]: taskContext.worker?.id,
+        [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
+        ...accessoryAttributes({
+          items: [
+            {
+              text: id,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+      ...requestOptions,
+    }
+  );
 
   const handle = {
     batchId: response.batchId,
@@ -967,4 +1039,18 @@ export function apiClientMissingError() {
   }
 
   return `Unknown error`;
+}
+
+async function makeKey(
+  idempotencyKey?: IdempotencyKey | string
+): Promise<IdempotencyKey | undefined> {
+  if (!idempotencyKey) {
+    return;
+  }
+
+  if (isIdempotencyKey(idempotencyKey)) {
+    return idempotencyKey;
+  }
+
+  return await idempotencyKeys.create(idempotencyKey);
 }

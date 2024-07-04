@@ -1660,10 +1660,11 @@ model TaskRun {
 
   concurrencyKey String?
 
-  delayUntil DateTime?
-  queuedAt   DateTime?
-  ttl        String?
-  expiredAt  DateTime?
+  delayUntil  DateTime?
+  queuedAt    DateTime?
+  ttl         String?
+  expiredAt   DateTime?
+  maxAttempts Int?
 
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?

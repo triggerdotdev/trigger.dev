@@ -206,6 +206,7 @@ export class TriggerTaskService extends BaseService {
                   isTest: body.options?.test ?? false,
                   delayUntil,
                   queuedAt: delayUntil ? undefined : new Date(),
+                  maxAttempts: body.options?.maxAttempts,
                   ttl,
                 },
               });

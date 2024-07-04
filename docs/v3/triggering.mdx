@@ -148,6 +148,11 @@ export const myTask = task({
 
 ### Task.triggerAndWait()
 
+<Warning>
+  This method should only be used inside a task. If you use it outside a task, it will throw an
+  error.
+</Warning>
+
 This is where it gets interesting. You can trigger a task and then wait for the result. This is useful when you need to call a different task and then use the result to continue with your task.
 
 <Accordion title="Don't use this in parallel, e.g. with `Promise.all()`">
@@ -205,6 +210,11 @@ export const parentTask = task({
 ```
 
 ### Task.batchTriggerAndWait()
+
+<Warning>
+  This method should only be used inside a task. If you use it outside a task, it will throw an
+  error.
+</Warning>
 
 You can batch trigger a task and wait for all the results. This is useful for the fan-out pattern, where you need to call a task multiple times and then wait for all the results to continue with your task.
 
@@ -408,134 +418,246 @@ export async function POST(request: Request) {
   this way as it will block the request until the task is complete.
 </Note>
 
-### runs.retrieve()
+## Options
 
-You can retrieve a run by its handle using the `runs.retrieve()` function.
+All of the above functions accept an options object:
 
-<CodeGroup>
+```ts
+await myTask.trigger({ some: "data" }, { delay: "1h", ttl: "1h" });
+await myTask.batchTrigger([{ payload: { some: "data" }, options: { delay: "1h" } }]);
+```
 
-```ts Next.js API route
-import { tasks, runs } from "@trigger.dev/sdk/v3";
-import type { emailSequence } from "~/trigger/emails";
-//     👆 **type-only** import
+The following options are available:
 
-//app/email/route.ts
+### `delay`
+
+When you want to trigger a task now, but have it run at a later time, you can use the `delay` option:
+
+```ts
+// Delay the task run by 1 hour
+await myTask.trigger({ some: "data" }, { delay: "1h" });
+// Delay the task run by 88 seconds
+await myTask.trigger({ some: "data" }, { delay: "88s" });
+// Delay the task run by 1 hour and 52 minutes and 18 seconds
+await myTask.trigger({ some: "data" }, { delay: "1h52m18s" });
+// Delay until a specific time
+await myTask.trigger({ some: "data" }, { delay: "2024-12-01T00:00:00" });
+// Delay using a Date object
+await myTask.trigger({ some: "data" }, { delay: new Date(Date.now() + 1000 * 60 * 60) });
+```
+
+Runs that are delayed and have not been enqueued yet will display in the dashboard with a "Delayed" status:
+
+![Delayed run in the dashboard](/images/v3/delayed-runs.png)
+
+<Note>
+  Delayed runs will be enqueued at the time specified, and will run as soon as possible after that
+  time, just as a normally triggered run would.
+</Note>
+
+You can cancel a delayed run using the `runs.cancel` SDK function:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+
+await runs.cancel("run_1234");
+```
+
+You can also reschedule a delayed run using the `runs.reschedule` SDK function:
+
+```ts
+import { runs } from "@trigger.dev/sdk/v3";
+
+// The delay option here takes the same format as the trigger delay option
+await runs.reschedule("run_1234", { delay: "1h" });
+```
+
+The `delay` option is also available when using `batchTrigger`:
+
+```ts
+await myTask.batchTrigger([{ payload: { some: "data" }, options: { delay: "1h" } }]);
+```
+
+### `ttl`
+
+You can set a TTL (time to live) when triggering a task, which will automatically expire the run if it hasn't started within the specified time. This is useful for ensuring that a run doesn't get stuck in the queue for too long.
+
+<Note>
+  All runs in development have a default `ttl` of 10 minutes. You can disable this by setting the
+  `ttl` option.
+</Note>
+
+```ts
+import { myTask } from "./trigger/myTasks";
+
+// Expire the run if it hasn't started within 1 hour
+await myTask.trigger({ some: "data" }, { ttl: "1h" });
+
+// If you specify a number, it will be treated as seconds
+await myTask.trigger({ some: "data" }, { ttl: 3600 }); // 1 hour
+```
+
+When a run is expired, it will be marked as "Expired" in the dashboard:
+
+![Expired runs in the dashboard](/images/v3/expired-runs.png)
+
+When you use both `delay` and `ttl`, the TTL will start counting down from the time the run is enqueued, not from the time the run is triggered.
+
+So for example, when using the following code:
+
+```ts
+await myTask.trigger({ some: "data" }, { delay: "10m", ttl: "1h" });
+```
+
+The timeline would look like this:
+
+1. The run is created at 12:00:00
+2. The run is enqueued at 12:10:00
+3. The TTL starts counting down from 12:10:00
+4. If the run hasn't started by 13:10:00, it will be expired
+
+For this reason, the `ttl` option only accepts durations and not absolute timestamps.
+
+### `idempotencyKey`
+
+You can provide an `idempotencyKey` to ensure that a task is only triggered once with the same key. This is useful if you are triggering a task within another task that might be retried:
+
+```typescript
+import { idempotencyKeys, task } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  retry: {
+    maxAttempts: 4,
+  },
+  run: async (payload: any) => {
+    const idempotencyKey = await idempotencyKeys.create("my-task-key");
+
+    // childTask will only be triggered once with the same idempotency key
+    await childTask.triggerAndWait(payload, { idempotencyKey });
+  },
+});
+```
+
+You can use the `idempotencyKeys.create` SDK function to create an idempotency key before passing it to the `options` object.
+
+<Note>
+  We automatically inject the run ID when generating the idempotency key when running inside a task.
+</Note>
+
+If you are triggering a task from your backend code, you can use the `idempotencyKeys.create` SDK function to create an idempotency key.
+
+```typescript
+import { idempotencyKeys, tasks } from "@trigger.dev/sdk/v3";
+
+// You can also pass an array of strings to create a idempotency key
+const idempotencyKey = await idempotenceKeys.create([myUser.id, "my-task"]);
+await tasks.trigger("my-task", { some: "data" }, { idempotencyKey });
+```
+
+<Note>Make sure you provide sufficiently unique keys to avoid collisions.</Note>
+
+### `queue`
+
+When you trigger a task you can override the concurrency limit. This is really useful if you sometimes have high priority runs.
+
+The task:
+
+```ts /trigger/override-concurrency.ts
+const generatePullRequest = task({
+  id: "generate-pull-request",
+  queue: {
+    //normally when triggering this task it will be limited to 1 run at a time
+    concurrencyLimit: 1,
+  },
+  run: async (payload) => {
+    //todo generate a PR using OpenAI
+  },
+});
+```
+
+Triggering from your backend and overriding the concurrency:
+
+```ts app/api/push/route.ts
+import { generatePullRequest } from "~/trigger/override-concurrency";
+
 export async function POST(request: Request) {
-  //get the JSON from the request
   const data = await request.json();
 
-  // Pass the task type to `trigger()` as a generic argument, giving you full type checking
-  const handle = await tasks.trigger<typeof emailSequence>("email-sequence", {
-    to: data.email,
-    name: data.name,
-  });
-
-  const run = await runs.retrieve(handle);
-
-  // run.output will be correctly typed as the return value of the task
-  return Response.json(run.output);
-}
-```
-
-</CodeGroup>
-
-### runs.poll()
-
-You can poll a run by its handle using the `runs.poll()` function.
-
-<CodeGroup>
-
-```ts Next.js API route
-import { tasks, runs } from "@trigger.dev/sdk/v3";
-import type { emailSequence } from "~/trigger/emails";
-//     👆 **type-only** import
-
-//app/email/route.ts
-export async function POST(request: Request) {
-  //get the JSON from the request
-  const data = await request.json();
-
-  // Pass the task type to `trigger()` as a generic argument, giving you full type checking
-  const handle = await tasks.trigger<typeof emailSequence>("email-sequence", {
-    to: data.email,
-    name: data.name,
-  });
-
-  // Poll the run until it's complete
-  const run = await runs.poll(handle, { pollIntervalMs: 5000 });
-
-  // run.output will be correctly typed as the return value of the task
-  return Response.json(run.output);
-}
-```
-
-</CodeGroup>
-
-## Next.js Server Actions
-
-Server Actions allow you to call your backend code without creating API routes. This is very useful for triggering tasks but you need to be careful you don't accidentally bundle the Trigger.dev SDK into your frontend code.
-
-If you see an error like this then you've bundled `@trigger.dev/sdk/v3` into your frontend code:
-
-```bash
-Module build failed: UnhandledSchemeError: Reading from "node:crypto" is not handled by plugins (Unhandled scheme).
-Module build failed: UnhandledSchemeError: Reading from "node:process" is not handled by plugins (Unhandled scheme).
-Webpack supports "data:" and "file:" URIs by default.
-You may need an additional plugin to handle "node:" URIs.
-```
-
-When you use server actions that use `@trigger.dev/sdk/v3`:
-
-- The file can't have any React components in it.
-- The file should have `"use server"` on the first line.
-
-Here's an example of how to do it with a component that calls the server action and the actions file:
-
-<CodeGroup>
-
-```tsx app/page.tsx
-"use client";
-
-import { create } from "@/app/actions";
-
-export default function Home() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <button
-        onClick={async () => {
-          const handle = await create();
-          console.log(handle);
-        }}
-      >
-        Create a thing
-      </button>
-    </main>
-  );
-}
-```
-
-```tsx app/actions.ts
-"use server";
-
-import { createAvatar } from "@/trigger/create-avatar";
-
-export async function create() {
-  try {
-    const handle = await createAvatar.trigger({
-      userImage: "http://...",
+  if (data.branch === "main") {
+    //trigger the task, with a different queue
+    const handle = await generatePullRequest.trigger(data, {
+      queue: {
+        //the "main-branch" queue will have a concurrency limit of 10
+        //this triggered run will use that queue
+        name: "main-branch",
+        concurrencyLimit: 10,
+      },
     });
 
-    return { handle };
-  } catch (error) {
-    console.error(error);
-    return {
-      error: "something went wrong",
-    };
+    return Response.json(handle);
+  } else {
+    //triggered with the default (concurrency of 1)
+    const handle = await generatePullRequest.trigger(data);
+    return Response.json(handle);
   }
 }
 ```
 
-</CodeGroup>
+### `concurrencyKey`
+
+If you're building an application where you want to run tasks for your users, you might want a separate queue for each of your users. (It doesn't have to be users, it can be any entity you want to separately limit the concurrency for.)
+
+You can do this by using `concurrencyKey`. It creates a separate queue for each value of the key.
+
+Your backend code:
+
+```ts app/api/pr/route.ts
+import { generatePullRequest } from "~/trigger/override-concurrency";
+
+export async function POST(request: Request) {
+  const data = await request.json();
+
+  if (data.isFreeUser) {
+    //free users can only have 1 PR generated at a time
+    const handle = await generatePullRequest.trigger(data, {
+      queue: {
+        //every free user gets a queue with a concurrency limit of 1
+        name: "free-users",
+        concurrencyLimit: 1,
+      },
+      concurrencyKey: data.userId,
+    });
+
+    //return a success response with the handle
+    return Response.json(handle);
+  } else {
+    //trigger the task, with a different queue
+    const handle = await generatePullRequest.trigger(data, {
+      queue: {
+        //every paid user gets a queue with a concurrency limit of 10
+        name: "paid-users",
+        concurrencyLimit: 10,
+      },
+      concurrencyKey: data.userId,
+    });
+
+    //return a success response with the handle
+    return Response.json(handle);
+  }
+}
+```
+
+### `maxAttempts`
+
+You can set the maximum number of attempts for a task run. If the run fails, it will be retried up to the number of attempts you specify.
+
+```ts
+await myTask.trigger({ some: "data" }, { maxAttempts: 3 });
+await myTask.trigger({ some: "data" }, { maxAttempts: 1 }); // no retries
+```
+
+This will override the `retry.maxAttempts` value set in the task definition.
 
 ## Large Payloads
 
@@ -620,93 +742,68 @@ export const myTask = task({
 
 When using `batchTrigger` or `batchTriggerAndWait`, the total size of all payloads cannot exceed 10MB. This means if you are doing a batch of 100 runs, each payload should be less than 100KB.
 
-## Delayed runs
+## Next.js Server Actions
 
-When you want to trigger a task now, but have it run at a later time, you can use the `delay` option:
+Server Actions allow you to call your backend code without creating API routes. This is very useful for triggering tasks but you need to be careful you don't accidentally bundle the Trigger.dev SDK into your frontend code.
 
-```ts
-// Delay the task run by 1 hour
-await myTask.trigger({ some: "data" }, { delay: "1h" });
-// Delay the task run by 88 seconds
-await myTask.trigger({ some: "data" }, { delay: "88s" });
-// Delay the task run by 1 hour and 52 minutes and 18 seconds
-await myTask.trigger({ some: "data" }, { delay: "1h52m18s" });
-// Delay until a specific time
-await myTask.trigger({ some: "data" }, { delay: "2024-12-01T00:00:00" });
-// Delay using a Date object
-await myTask.trigger({ some: "data" }, { delay: new Date(Date.now() + 1000 * 60 * 60) });
+If you see an error like this then you've bundled `@trigger.dev/sdk/v3` into your frontend code:
+
+```bash
+Module build failed: UnhandledSchemeError: Reading from "node:crypto" is not handled by plugins (Unhandled scheme).
+Module build failed: UnhandledSchemeError: Reading from "node:process" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs.
 ```
 
-Runs that are delayed and have not been enqueued yet will display in the dashboard with a "Delayed" status:
+When you use server actions that use `@trigger.dev/sdk/v3`:
 
-![Delayed run in the dashboard](/images/v3/delayed-runs.png)
+- The file can't have any React components in it.
+- The file should have `"use server"` on the first line.
 
-<Note>
-  Delayed runs will be enqueued at the time specified, and will run as soon as possible after that
-  time, just as a normally triggered run would.
-</Note>
+Here's an example of how to do it with a component that calls the server action and the actions file:
 
-You can cancel a delayed run using the `runs.cancel` SDK function:
+<CodeGroup>
 
-```ts
-import { runs } from "@trigger.dev/sdk/v3";
+```tsx app/page.tsx
+"use client";
 
-await runs.cancel("run_1234");
+import { create } from "@/app/actions";
+
+export default function Home() {
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-between p-24">
+      <button
+        onClick={async () => {
+          const handle = await create();
+          console.log(handle);
+        }}
+      >
+        Create a thing
+      </button>
+    </main>
+  );
+}
 ```
 
-You can also reschedule a delayed run using the `runs.reschedule` SDK function:
+```tsx app/actions.ts
+"use server";
 
-```ts
-import { runs } from "@trigger.dev/sdk/v3";
+import { createAvatar } from "@/trigger/create-avatar";
 
-// The delay option here takes the same format as the trigger delay option
-await runs.reschedule("run_1234", { delay: "1h" });
+export async function create() {
+  try {
+    const handle = await createAvatar.trigger({
+      userImage: "http://...",
+    });
+
+    return { handle };
+  } catch (error) {
+    console.error(error);
+    return {
+      error: "something went wrong",
+    };
+  }
+}
 ```
 
-The `delay` option is also available when using `batchTrigger`:
-
-```ts
-await myTask.batchTrigger([{ payload: { some: "data" }, options: { delay: "1h" } }]);
-```
-
-## TTL
-
-You can set a TTL (time to live) when triggering a task, which will automatically expire the run if it hasn't started within the specified time. This is useful for ensuring that a run doesn't get stuck in the queue for too long.
-
-<Note>
-  All runs in development have a default `ttl` of 10 minutes. You can disable this by setting the
-  `ttl` option.
-</Note>
-
-```ts
-import { myTask } from "./trigger/myTasks";
-
-// Expire the run if it hasn't started within 1 hour
-await myTask.trigger({ some: "data" }, { ttl: "1h" });
-
-// If you specify a number, it will be treated as seconds
-await myTask.trigger({ some: "data" }, { ttl: 3600 }); // 1 hour
-```
-
-When a run is expired, it will be marked as "Expired" in the dashboard:
-
-![Expired runs in the dashboard](/images/v3/expired-runs.png)
-
-### Delayed runs and TTL
-
-When you use both `delay` and `ttl`, the TTL will start counting down from the time the run is enqueued, not from the time the run is triggered.
-
-So for example, when using the following code:
-
-```ts
-await myTask.trigger({ some: "data" }, { delay: "10m", ttl: "1h" });
-```
-
-The timeline would look like this:
-
-1. The run is created at 12:00:00
-2. The run is enqueued at 12:10:00
-3. The TTL starts counting down from 12:10:00
-4. If the run hasn't started by 13:10:00, it will be expired
-
-For this reason, the `ttl` option only accepts durations and not absolute timestamps.
+</CodeGroup>
