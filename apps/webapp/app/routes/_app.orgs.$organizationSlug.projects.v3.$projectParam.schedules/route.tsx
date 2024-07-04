@@ -111,7 +111,6 @@ export default function Page() {
   const isShowingNewPane = pathName.endsWith("/new");
   const isShowingSchedule = !!scheduleParam;
 
-  console.log(totalPages);
   return (
     <PageContainer>
       <NavBar>
