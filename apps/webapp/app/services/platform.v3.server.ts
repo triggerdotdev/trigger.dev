@@ -1,4 +1,4 @@
-import { BillingClient, SetPlanBody, UsageSeriesParams } from "@trigger.dev/billing/v3";
+import { BillingClient, Limits, SetPlanBody, UsageSeriesParams } from "@trigger.dev/billing/v3";
 import { Organization, Project } from "@trigger.dev/database";
 import { redirect } from "remix-typedjson";
 import { $replica } from "~/db.server";
@@ -57,6 +57,34 @@ export async function getCurrentPlan(orgId: string) {
     logger.error("Error getting current plan", { orgId, error: e });
     return undefined;
   }
+}
+
+export async function getLimits(orgId: string) {
+  const client = getClient();
+  if (!client) return undefined;
+  try {
+    const result = await client.currentPlan(orgId);
+    if (!result.success) {
+      logger.error("Error getting limits", { orgId, error: result.error });
+      return undefined;
+    }
+
+    return result.v3Subscription?.plan?.limits;
+  } catch (e) {
+    logger.error("Error getting limits", { orgId, error: e });
+    return undefined;
+  }
+}
+
+export async function getLimit(orgId: string, limit: keyof Limits, fallback: number) {
+  const limits = await getLimits(orgId);
+  if (!limits) return fallback;
+  const result = limits[limit];
+
+  if (!result) return fallback;
+  if (typeof result === "number") return result;
+  if (typeof result === "object" && "number" in result) return result.number;
+  return fallback;
 }
 
 export async function customerPortalUrl(orgId: string, orgSlug: string) {

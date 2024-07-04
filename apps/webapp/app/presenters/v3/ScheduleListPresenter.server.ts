@@ -1,11 +1,10 @@
 import { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
-import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
+import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { getUsername } from "~/utils/username";
+import { getCurrentPlan, getLimit, getLimits } from "~/services/platform.v3.server";
 import { calculateNextScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
 import { BasePresenter } from "./basePresenter.server";
-import { getCurrentPlan } from "~/services/platform.v3.server";
 
 type ScheduleListOptions = {
   projectId: string;
@@ -245,11 +244,7 @@ export class ScheduleListPresenter extends BasePresenter {
       };
     });
 
-    let limit = 500;
-    const plan = await getCurrentPlan(project.organizationId);
-    if (plan?.v3Subscription.plan) {
-      limit = plan.v3Subscription.plan.limits.schedules.number;
-    }
+    const limit = await getLimit(project.organizationId, "schedules", 500);
 
     return {
       currentPage: page,
