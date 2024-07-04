@@ -788,7 +788,11 @@ export class MarQS {
     }
   }
 
-  queueConcurrencyScanStream(count: number = 100, onEndCallback?: () => void) {
+  queueConcurrencyScanStream(
+    count: number = 100,
+    onEndCallback?: () => void,
+    onErrorCallback?: (error: Error) => void
+  ) {
     const pattern = this.keys.queueCurrentConcurrencyScanPattern();
 
     logger.debug("Starting queue concurrency scan stream", {
@@ -809,6 +813,11 @@ export class MarQS {
 
     stream.on("end", () => {
       onEndCallback?.();
+      redis.quit();
+    });
+
+    stream.on("error", (error) => {
+      onErrorCallback?.(error);
       redis.quit();
     });
 
