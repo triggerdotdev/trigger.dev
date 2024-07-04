@@ -1,3 +1,4 @@
+import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 import type {
   CronItem,
   CronItemOptions,
@@ -11,33 +12,25 @@ import type {
   WorkerUtils,
 } from "graphile-worker";
 import {
+  Logger as GraphileLogger,
   run as graphileRun,
   makeWorkerUtils,
   parseCronItems,
-  Logger as GraphileLogger,
 } from "graphile-worker";
-import { SpanKind, SpanStatusCode, context, propagation, trace } from "@opentelemetry/api";
 
+import { flattenAttributes } from "@trigger.dev/core/v3";
 import omit from "lodash.omit";
 import { z } from "zod";
 import { $replica, PrismaClient, PrismaClientOrTransaction } from "~/db.server";
+import { env } from "~/env.server";
 import { PgListenService } from "~/services/db/pgListen.server";
 import { workerLogger as logger } from "~/services/logger.server";
-import { flattenAttributes } from "@trigger.dev/core/v3";
-import { env } from "~/env.server";
-import { getHttpContext } from "~/services/httpAsyncStorage.server";
 
 const tracer = trace.getTracer("zodWorker", "3.0.0.dp.1");
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 }
-
-const ZodWorkerMessageSchema = z.object({
-  version: z.literal("1"),
-  payload: z.unknown(),
-  context: z.record(z.string().optional()).optional(),
-});
 
 const RawCronPayloadSchema = z.object({
   _cron: z.object({
@@ -416,18 +409,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   ) {
     const now = performance.now();
 
-    let $payload = payload;
-
-    if (!getHttpContext()) {
-      const $context = {};
-      propagation.inject(context.active(), $context);
-      $payload = {
-        version: "1",
-        payload,
-        context: $context,
-      };
-    }
-
     const results = await tx.$queryRawUnsafe(
       `SELECT * FROM ${this.graphileWorkerSchema}.add_job(
           identifier => $1::text,
@@ -440,7 +421,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
           job_key_mode => $8::text
         )`,
       identifier,
-      JSON.stringify($payload),
+      JSON.stringify(payload),
       spec.runAt || null,
       spec.maxAttempts || null,
       spec.jobKey || null,
@@ -456,7 +437,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     if (!rows.success) {
       logger.debug("results returned from add_job could not be parsed", {
         identifier,
-        $payload,
+        payload,
         spec,
       });
 
@@ -481,9 +462,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       const job = AddJobResultsSchema.safeParse(result);
 
       if (!job.success) {
-        logger.debug("results returned from remove_job could not be parsed", {
-          error: job.error.flatten(),
-          result,
+        logger.debug("could not remove job, job_key did not exist", {
           jobKey,
         });
 
@@ -602,11 +581,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       throw new Error(`Unknown message type: ${String(typeName)}`);
     }
 
-    const messagePayload = ZodWorkerMessageSchema.safeParse(rawPayload);
-
-    const payload = messageSchema.parse(
-      messagePayload.success ? messagePayload.data.payload : rawPayload
-    );
+    const payload = messageSchema.parse(rawPayload);
     const job = helpers.job;
 
     logger.debug("Received worker task, calling handler", {
@@ -620,10 +595,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     if (!task) {
       throw new Error(`No task for message type: ${String(typeName)}`);
     }
-
-    const activeContext = messagePayload.success
-      ? propagation.extract(context.active(), messagePayload.data.context ?? {})
-      : undefined;
 
     await tracer.startActiveSpan(
       `Run ${typeName as string}`,
@@ -648,7 +619,6 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
           "worker.name": this.#name,
         },
       },
-      activeContext ?? context.active(),
       async (span) => {
         try {
           await task.handler(payload, job, helpers);
