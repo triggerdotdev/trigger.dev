@@ -111,6 +111,7 @@ model Organization {
 
   maximumExecutionTimePerRunInMs Int @default(900000) // 15 minutes
   maximumConcurrencyLimit        Int @default(10)
+  /// This is deprecated and will be removed in the future
   maximumSchedulesLimit          Int @default(5)
 
   createdAt DateTime  @default(now())
