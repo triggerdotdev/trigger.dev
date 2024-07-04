@@ -34,7 +34,11 @@ export class BatchTriggerTaskService extends BaseService {
             include: {
               items: {
                 include: {
-                  taskRun: true,
+                  taskRun: {
+                    select: {
+                      friendlyId: true,
+                    },
+                  },
                 },
               },
             },
@@ -53,7 +57,12 @@ export class BatchTriggerTaskService extends BaseService {
         ? await this._prisma.taskRunAttempt.findUnique({
             where: { friendlyId: body.dependentAttempt },
             include: {
-              taskRun: true,
+              taskRun: {
+                select: {
+                  id: true,
+                  status: true,
+                },
+              },
             },
           })
         : undefined;
