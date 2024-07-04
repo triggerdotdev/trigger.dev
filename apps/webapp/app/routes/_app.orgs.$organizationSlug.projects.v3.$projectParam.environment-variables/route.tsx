@@ -3,6 +3,7 @@ import { parse } from "@conform-to/zod";
 import {
   BookOpenIcon,
   InformationCircleIcon,
+  LockOpenIcon,
   PencilSquareIcon,
   PlusIcon,
   TrashIcon,
@@ -22,7 +23,6 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -32,7 +32,7 @@ import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { PageAccessories, NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Switch } from "~/components/primitives/Switch";
 import {
@@ -57,6 +57,7 @@ import { cn } from "~/utils/cn";
 import {
   ProjectParamSchema,
   docsPath,
+  v3BillingPath,
   v3EnvironmentVariablesPath,
   v3NewEnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
@@ -72,7 +73,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new EnvironmentVariablesPresenter();
-    const { environmentVariables, environments } = await presenter.call({
+    const { environmentVariables, environments, hasStaging } = await presenter.call({
       userId,
       projectSlug: projectParam,
     });
@@ -80,6 +81,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return typedjson({
       environmentVariables,
       environments,
+      hasStaging,
     });
   } catch (error) {
     console.error(error);
@@ -170,7 +172,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 export default function Page() {
   const [revealAll, setRevealAll] = useState(false);
-  const { environmentVariables, environments } = useTypedLoaderData<typeof loader>();
+  const { environmentVariables, environments, hasStaging } = useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
 
@@ -263,10 +265,24 @@ export default function Page() {
             </TableBody>
           </Table>
 
-          <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-md">
-            Dev environment variables specified here will be overridden by ones in your .env file
-            when running locally.
-          </InfoPanel>
+          <div className="flex gap-3">
+            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-sm">
+              Dev environment variables specified here will be overridden by ones in your .env file
+              when running locally.
+            </InfoPanel>
+            {!hasStaging && (
+              <InfoPanel
+                icon={LockOpenIcon}
+                variant="upgrade"
+                title="Unlock a Staging environment"
+                to={v3BillingPath(organization)}
+                buttonLabel="Upgrade"
+                iconClassName="text-indigo-500"
+              >
+                Upgrade your plan to add a Staging environment.
+              </InfoPanel>
+            )}
+          </div>
         </div>
         <Outlet />
       </PageBody>

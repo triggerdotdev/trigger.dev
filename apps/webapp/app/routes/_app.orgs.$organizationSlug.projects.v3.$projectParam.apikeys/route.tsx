@@ -125,7 +125,7 @@ export default function Page() {
           </Table>
 
           <div className="flex gap-3">
-            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-xl">
+            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-sm">
               <Paragraph variant="small">
                 Secret keys should be used on your server. They give full API access and allow you
                 to <TextLink to={docsPath("v3/triggering")}>trigger tasks</TextLink> from your

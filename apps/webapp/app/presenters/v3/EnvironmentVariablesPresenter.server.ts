@@ -123,6 +123,7 @@ export class EnvironmentVariablesPresenter {
         id: environment.id,
         type: environment.type,
       })),
+      hasStaging: environments.some((environment) => environment.type === "STAGING"),
     };
   }
 }
