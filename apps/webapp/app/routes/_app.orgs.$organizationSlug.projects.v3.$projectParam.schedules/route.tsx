@@ -215,15 +215,9 @@ export default function Page() {
                   ) : (
                     <div className="flex h-fit flex-col items-start gap-4 rounded-md border border-grid-bright bg-background-bright p-4">
                       <div className="flex items-center justify-between gap-6">
-                        {requiresUpgrade ? (
-                          <Header3>
-                            You've used all {limits.limit} of your available schedules.
-                          </Header3>
-                        ) : (
-                          <Header3>
-                            You've used {limits.used}/{limits.limit} of your schedules.
-                          </Header3>
-                        )}
+                        <Header3>
+                          You've used {limits.used}/{limits.limit} of your schedules.
+                        </Header3>
 
                         {canUpgrade ? (
                           <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
