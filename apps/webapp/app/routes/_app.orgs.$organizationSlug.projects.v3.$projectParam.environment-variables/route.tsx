@@ -266,7 +266,7 @@ export default function Page() {
           </Table>
 
           <div className="flex gap-3">
-            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-sm">
+            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-[22rem]">
               Dev environment variables specified here will be overridden by ones in your .env file
               when running locally.
             </InfoPanel>
@@ -338,9 +338,11 @@ function EditEnvironmentVariablePanel({
           <input type="hidden" name="key" value={variable.key} />
           <FormError id={id.errorId}>{id.error}</FormError>
           <Fieldset>
-            <InputGroup fullWidth className="mb-4 mt-2">
+            <InputGroup fullWidth className="mb-5 mt-2">
               <Label>Key</Label>
-              <InlineCode>{variable.key}</InlineCode>
+              <InlineCode variant="base" className="pl-1.5">
+                {variable.key}
+              </InlineCode>
             </InputGroup>
           </Fieldset>
           <Fieldset>
@@ -360,7 +362,7 @@ function EditEnvironmentVariablePanel({
                         className="flex items-center justify-end"
                         htmlFor={`values[${index}].value`}
                       >
-                        <EnvironmentLabel environment={environment} className="h-5 px-2" />
+                        <EnvironmentLabel environment={environment} size="large" className="px-2" />
                       </label>
                       <Input
                         name={`values[${index}].value`}
@@ -378,12 +380,12 @@ function EditEnvironmentVariablePanel({
 
             <FormButtons
               confirmButton={
-                <Button type="submit" variant="primary/small" disabled={isLoading}>
+                <Button type="submit" variant="primary/medium" disabled={isLoading}>
                   {isLoading ? "Saving…" : "Save"}
                 </Button>
               }
               cancelButton={
-                <Button onClick={() => setIsOpen(false)} variant="tertiary/small" type="button">
+                <Button onClick={() => setIsOpen(false)} variant="tertiary/medium" type="button">
                   Cancel
                 </Button>
               }
