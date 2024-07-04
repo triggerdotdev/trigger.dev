@@ -102,7 +102,7 @@ export default function Page() {
   const plan = useCurrentPlan();
   const requiresUpgrade =
     plan?.v3Subscription?.plan &&
-    limits.used > plan.v3Subscription.plan.limits.schedules.number &&
+    limits.used >= plan.v3Subscription.plan.limits.schedules.number &&
     !plan.v3Subscription.plan.limits.schedules.canExceed;
   const canUpgrade =
     plan?.v3Subscription?.plan && !plan.v3Subscription.plan.limits.schedules.canExceed;
@@ -111,6 +111,7 @@ export default function Page() {
   const isShowingNewPane = pathName.endsWith("/new");
   const isShowingSchedule = !!scheduleParam;
 
+  console.log(totalPages);
   return (
     <PageContainer>
       <NavBar>
@@ -143,14 +144,19 @@ export default function Page() {
               <DialogContent>
                 <DialogHeader>You've exceeded your limit</DialogHeader>
                 <DialogDescription>
-                  You've used {limits.used}/{limits.limit} of your schedules. You can request more
-                  schedules.
+                  You've used {limits.used}/{limits.limit} of your schedules.
                 </DialogDescription>
                 <DialogFooter>
-                  <Feedback
-                    button={<Button variant="primary/medium">Request more</Button>}
-                    defaultValue="help"
-                  />
+                  {canUpgrade ? (
+                    <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+                      Upgrade
+                    </LinkButton>
+                  ) : (
+                    <Feedback
+                      button={<Button variant="primary/small">Request more</Button>}
+                      defaultValue="help"
+                    />
+                  )}
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -211,11 +217,11 @@ export default function Page() {
                       <div className="flex items-center justify-between gap-6">
                         {requiresUpgrade ? (
                           <Header3>
-                            You've used {limits.used}/{limits.limit} of your schedules.
+                            You've used all {limits.limit} of your available schedules.
                           </Header3>
                         ) : (
                           <Header3>
-                            You've used all {limits.limit} of your available schedules.
+                            You've used {limits.used}/{limits.limit} of your schedules.
                           </Header3>
                         )}
 
@@ -238,7 +244,7 @@ export default function Page() {
                       </div>
                     </div>
                   )}
-                  <PaginationControls currentPage={currentPage} totalPages={3} />
+                  <PaginationControls currentPage={currentPage} totalPages={totalPages} />
                 </div>
               </div>
             )}
