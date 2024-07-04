@@ -1,18 +1,16 @@
 import {
   AcademicCapIcon,
-  ArrowRightIcon,
   ArrowRightOnRectangleIcon,
   BeakerIcon,
   BellAlertIcon,
   ChartBarIcon,
   ClockIcon,
-  CurrencyDollarIcon,
+  CreditCardIcon,
   CursorArrowRaysIcon,
   IdentificationIcon,
   KeyIcon,
   ServerStackIcon,
   ShieldCheckIcon,
-  TagIcon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
@@ -46,6 +44,7 @@ import {
   projectSetupPath,
   projectTriggersPath,
   v3ApiKeysPath,
+  v3BillingPath,
   v3DeploymentsPath,
   v3EnvironmentVariablesPath,
   v3ProjectAlertsPath,
@@ -54,7 +53,6 @@ import {
   v3RunsPath,
   v3SchedulesPath,
   v3TestPath,
-  v3BillingPath,
   v3UsagePath,
 } from "~/utils/pathBuilder";
 import { Feedback } from "../Feedback";
@@ -79,9 +77,9 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
+import { TextLink } from "../primitives/TextLink";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
-import { TextLink } from "../primitives/TextLink";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -192,7 +190,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                 />
                 <SideMenuItem
                   name="Billing"
-                  icon={TagIcon}
+                  icon={CreditCardIcon}
                   to={v3BillingPath(organization)}
                   iconColor="text-blue-600"
                   data-action="billing"
