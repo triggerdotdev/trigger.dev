@@ -75,7 +75,12 @@ export class TriggerTaskService extends BaseService {
         ? await this._prisma.taskRunAttempt.findUnique({
             where: { friendlyId: body.options.dependentAttempt },
             include: {
-              taskRun: true,
+              taskRun: {
+                select: {
+                  id: true,
+                  status: true,
+                },
+              },
             },
           })
         : undefined;
@@ -106,7 +111,12 @@ export class TriggerTaskService extends BaseService {
             include: {
               dependentTaskAttempt: {
                 include: {
-                  taskRun: true,
+                  taskRun: {
+                    select: {
+                      id: true,
+                      status: true,
+                    },
+                  },
                 },
               },
             },
