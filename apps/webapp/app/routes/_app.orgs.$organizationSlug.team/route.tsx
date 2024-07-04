@@ -149,7 +149,9 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody>
-        <Header2>Members</Header2>
+        <Header2>
+          Members ({limits.used}/{limits.limit})
+        </Header2>
         <ul className="divide-ui-border flex w-full max-w-md flex-col divide-y border-b border-grid-bright">
           {members.map((member) => (
             <li key={member.user.id} className="flex items-center gap-x-4 py-4">
