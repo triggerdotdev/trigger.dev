@@ -1660,10 +1660,11 @@ model TaskRun {
 
   concurrencyKey String?
 
-  delayUntil DateTime?
-  queuedAt   DateTime?
-  ttl        String?
-  expiredAt  DateTime?
+  delayUntil  DateTime?
+  queuedAt    DateTime?
+  ttl         String?
+  expiredAt   DateTime?
+  maxAttempts Int?
 
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
@@ -1678,7 +1679,7 @@ model TaskRun {
   sourceBulkActionItems      BulkActionItem[] @relation("SourceActionItemRun")
   destinationBulkActionItems BulkActionItem[] @relation("DestinationActionItemRun")
 
-  @@unique([runtimeEnvironmentId, idempotencyKey])
+  @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Task activity graph
   @@index([projectId, createdAt, taskIdentifier])
   //Runs list
@@ -2021,7 +2022,7 @@ model BatchTaskRun {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([runtimeEnvironmentId, idempotencyKey])
+  @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
 }
 
 enum BatchTaskRunStatus {

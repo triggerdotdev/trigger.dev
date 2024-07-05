@@ -52,7 +52,15 @@ export class CreateTaskRunAttemptService extends BaseService {
           },
           lockedBy: {
             include: {
-              worker: true,
+              worker: {
+                select: {
+                  id: true,
+                  version: true,
+                  sdkVersion: true,
+                  cliVersion: true,
+                  supportsLazyAttempts: true,
+                },
+              },
             },
           },
           batchItems: {
@@ -119,10 +127,6 @@ export class CreateTaskRunAttemptService extends BaseService {
             queueId: queue.id,
             runtimeEnvironmentId: environment.id,
           },
-          include: {
-            backgroundWorker: true,
-            backgroundWorkerTask: true,
-          },
         });
 
         if (setToExecuting) {
@@ -185,6 +189,7 @@ export class CreateTaskRunAttemptService extends BaseService {
           durationMs: taskRun.usageDurationMs,
           costInCents: taskRun.costInCents,
           baseCostInCents: taskRun.baseCostInCents,
+          maxAttempts: taskRun.maxAttempts ?? undefined,
         },
         queue: {
           id: queue.friendlyId,

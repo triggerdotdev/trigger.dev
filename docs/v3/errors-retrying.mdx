@@ -255,11 +255,39 @@ export const openaiTask = task({
 });
 ```
 
-## Using try/catch to prevent retries
+## Preventing retries
+
+### Using `AbortTaskRunError`
+
+You can prevent retries by throwing an `AbortTaskRunError`. This will fail the task attempt and disable retrying.
+
+```ts /trigger/myTasks.ts
+import { task, AbortTaskRunError } from "@trigger.dev/sdk/v3";
+
+export const openaiTask = task({
+  id: "openai-task",
+  run: async (payload: { prompt: string }) => {
+    //if this fails, it will throw an error and stop retrying
+    const chatCompletion = await openai.chat.completions.create({
+      messages: [{ role: "user", content: payload.prompt }],
+      model: "gpt-3.5-turbo",
+    });
+
+    if (chatCompletion.choices[0]?.message.content === undefined) {
+      // If OpenAI returns an empty response, abort retrying
+      throw new AbortTaskRunError("OpenAI call failed");
+    }
+
+    return chatCompletion.choices[0].message.content;
+  },
+});
+```
+
+### Using try/catch
 
 Sometimes you want to catch an error and don't want to retry the task. You can use try/catch as you normally would. In this example we fallback to using Replicate if OpenAI fails.
 
-```ts /trigger/
+```ts /trigger/myTasks.ts
 import { task } from "@trigger.dev/sdk/v3";
 
 export const openaiTask = task({

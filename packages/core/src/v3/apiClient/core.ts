@@ -1,9 +1,13 @@
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { ApiConnectionError, ApiError } from "./errors";
 import { RetryOptions } from "../schemas";
 import { calculateNextRetryDelay } from "../utils/retries";
+import { ApiConnectionError, ApiError } from "./errors";
 
+import { Attributes, Span } from "@opentelemetry/api";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes";
+import { TriggerTracer } from "../tracer";
+import { accessoryAttributes } from "../utils/styleAttributes";
 import {
   CursorPage,
   CursorPageParams,
@@ -23,6 +27,29 @@ export const defaultRetryOptions = {
 
 export type ZodFetchOptions = {
   retry?: RetryOptions;
+  tracer?: TriggerTracer;
+  name?: string;
+  attributes?: Attributes;
+  icon?: string;
+};
+
+export type ApiRequestOptions = Pick<ZodFetchOptions, "retry">;
+type KeysEnum<T> = { [P in keyof Required<T>]: true };
+
+// This is required so that we can determine if a given object matches the ApiRequestOptions
+// type at runtime. While this requires duplication, it is enforced by the TypeScript
+// compiler such that any missing / extraneous keys will cause an error.
+const requestOptionsKeys: KeysEnum<ApiRequestOptions> = {
+  retry: true,
+};
+
+export const isRequestOptions = (obj: unknown): obj is ApiRequestOptions => {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    !isEmptyObj(obj) &&
+    Object.keys(obj).every((k) => hasOwn(requestOptionsKeys, k))
+  );
 };
 
 interface FetchCursorPageParams extends CursorPageParams {
@@ -120,17 +147,58 @@ type ZodFetchResult<T> = {
 
 type PromiseOrValue<T> = T | Promise<T>;
 
+async function traceZodFetch<T>(
+  params: {
+    url: string;
+    requestInit?: RequestInit;
+    options?: ZodFetchOptions;
+  },
+  callback: (span?: Span) => Promise<T>
+): Promise<T> {
+  if (!params.options?.tracer) {
+    return callback();
+  }
+
+  const url = new URL(params.url);
+  const method = params.requestInit?.method ?? "GET";
+  const name = params.options.name ?? `${method} ${url.pathname}`;
+
+  return await params.options.tracer.startActiveSpan(
+    name,
+    async (span) => {
+      return await callback(span);
+    },
+    {
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: params.options?.icon ?? "api",
+        ...params.options.attributes,
+      },
+    }
+  );
+}
+
 async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
   schema: TResponseBodySchema,
   url: string,
   requestInit?: PromiseOrValue<RequestInit>,
+  options?: ZodFetchOptions
+): Promise<ZodFetchResult<z.output<TResponseBodySchema>>> {
+  const $requestInit = await requestInit;
+
+  return traceZodFetch({ url, requestInit: $requestInit, options }, async (span) => {
+    return await _doZodFetchWithRetries(schema, url, $requestInit, options);
+  });
+}
+
+async function _doZodFetchWithRetries<TResponseBodySchema extends z.ZodTypeAny>(
+  schema: TResponseBodySchema,
+  url: string,
+  requestInit?: RequestInit,
   options?: ZodFetchOptions,
   attempt = 1
 ): Promise<ZodFetchResult<z.output<TResponseBodySchema>>> {
   try {
-    const $requestInit = await requestInit;
-
-    const response = await fetch(url, requestInitWithCache($requestInit));
+    const response = await fetch(url, requestInitWithCache(requestInit));
 
     const responseHeaders = createResponseHeaders(response.headers);
 
@@ -138,9 +206,9 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
       const retryResult = shouldRetry(response, attempt, options?.retry);
 
       if (retryResult.retry) {
-        await new Promise((resolve) => setTimeout(resolve, retryResult.delay));
+        await waitForRetry(url, attempt + 1, retryResult.delay, options, requestInit, response);
 
-        return await _doZodFetch(schema, url, requestInit, options, attempt + 1);
+        return await _doZodFetchWithRetries(schema, url, requestInit, options, attempt + 1);
       } else {
         const errText = await response.text().catch((e) => castToError(e).message);
         const errJSON = safeJsonParse(errText);
@@ -169,9 +237,9 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
       const delay = calculateNextRetryDelay(retry, attempt);
 
       if (delay) {
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await waitForRetry(url, attempt + 1, delay, options, requestInit);
 
-        return await _doZodFetch(schema, url, requestInit, options, attempt + 1);
+        return await _doZodFetchWithRetries(schema, url, requestInit, options, attempt + 1);
       }
     }
 
@@ -224,7 +292,27 @@ function shouldRetry(
   if (response.status === 409) return shouldRetryForOptions();
 
   // Retry on rate limits.
-  if (response.status === 429) return shouldRetryForOptions();
+  if (response.status === 429) {
+    if (
+      attempt >= (typeof retryOptions?.maxAttempts === "number" ? retryOptions?.maxAttempts : 3)
+    ) {
+      return { retry: false };
+    }
+
+    // x-ratelimit-reset is the unix timestamp in milliseconds when the rate limit will reset.
+    const resetAtUnixEpochMs = response.headers.get("x-ratelimit-reset");
+
+    if (resetAtUnixEpochMs) {
+      const resetAtUnixEpoch = parseInt(resetAtUnixEpochMs, 10);
+      const delay = resetAtUnixEpoch - Date.now() + Math.floor(Math.random() * 1000);
+
+      if (delay > 0) {
+        return { retry: true, delay };
+      }
+    }
+
+    return shouldRetryForOptions();
+  }
 
   // Retry internal errors.
   if (response.status >= 500) return shouldRetryForOptions();
@@ -422,4 +510,52 @@ export class OffsetLimitPagePromise<TItemSchema extends z.ZodTypeAny>
       yield item;
     }
   }
+}
+
+async function waitForRetry(
+  url: string,
+  attempt: number,
+  delay: number,
+  options?: ZodFetchOptions,
+  requestInit?: RequestInit,
+  response?: Response
+): Promise<void> {
+  if (options?.tracer) {
+    const method = requestInit?.method ?? "GET";
+
+    return options.tracer.startActiveSpan(
+      response ? `wait after ${response.status}` : `wait after error`,
+      async (span) => {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "wait",
+          ...accessoryAttributes({
+            items: [
+              {
+                text: `retrying ${options?.name ?? method.toUpperCase()} in ${delay}ms`,
+                variant: "normal",
+              },
+            ],
+            style: "codepath",
+          }),
+        },
+      }
+    );
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, delay));
+}
+
+// https://stackoverflow.com/a/34491287
+export function isEmptyObj(obj: Object | null | undefined): boolean {
+  if (!obj) return true;
+  for (const _k in obj) return false;
+  return true;
+}
+
+// https://eslint.org/docs/latest/rules/no-prototype-builtins
+export function hasOwn(obj: Object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
 }

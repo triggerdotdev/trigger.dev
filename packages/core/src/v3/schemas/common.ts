@@ -133,6 +133,7 @@ export const TaskRun = z.object({
   createdAt: z.coerce.date(),
   startedAt: z.coerce.date().default(() => new Date()),
   idempotencyKey: z.string().optional(),
+  maxAttempts: z.number().optional(),
   durationMs: z.number().default(0),
   costInCents: z.number().default(0),
   baseCostInCents: z.number().default(0),

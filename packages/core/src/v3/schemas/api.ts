@@ -70,6 +70,7 @@ export const TriggerTaskRequestBody = z.object({
       payloadType: z.string().optional(),
       delay: z.string().or(z.coerce.date()).optional(),
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
+      maxAttempts: z.number().int().optional(),
     })
     .optional(),
 });
