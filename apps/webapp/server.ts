@@ -4,7 +4,7 @@ import compression from "compression";
 import morgan from "morgan";
 import { createRequestHandler } from "@remix-run/express";
 import { ServerBuild } from "@remix-run/server-runtime";
-import type { Server as EngineServer } from "engine.io";
+import { Server as EngineServer } from "engine.io";
 import { registryProxy } from "./app/v3/registryProxy.server";
 import { apiRateLimiter } from "./app/services/apiRateLimit.server";
 import { socketIo } from "./app/v3/handleSocketIo.server";
@@ -54,8 +54,6 @@ app.use(morgan("tiny"));
 process.title = "node webapp-server";
 
 const MODE = process.env.NODE_ENV;
-const BUILD_DIR = path.join(process.cwd(), "build");
-
 const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
 if (process.env.HTTP_SERVER_DISABLED !== "true") {
@@ -107,12 +105,6 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
 
   const server = app.listen(port, () => {
     console.log(`✅ server ready: http://localhost:${port} [NODE_ENV: ${MODE}]`);
-
-    // if (MODE === "development") {
-    //   broadcastDevReady(build)
-    //     .then(() => logDevReady(build))
-    //     .catch(console.error);
-    // }
   });
 
   server.keepAliveTimeout = 65 * 1000;
@@ -127,7 +119,7 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     });
   });
 
-  socketIo?.io.attach(server);
+  socketIo.io.attach(server);
   server.removeAllListeners("upgrade"); // prevent duplicate upgrades from listeners created by io.attach()
 
   server.on("upgrade", async (req, socket, head) => {
@@ -148,7 +140,7 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
       console.log(`Socket.io client connected, upgrading their connection...`);
 
       // https://github.com/socketio/socket.io/issues/4693
-      (socketIo?.io.engine as EngineServer).handleUpgrade(req, socket, head);
+      (socketIo.io.engine as EngineServer).handleUpgrade(req, socket, head);
       return;
     }
 
