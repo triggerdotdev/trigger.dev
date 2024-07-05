@@ -1,4 +1,4 @@
-import { BillingClient, Limits, SetPlanBody, UsageSeriesParams } from "@trigger.dev/billing/v3";
+import { BillingClient, Limits, SetPlanBody, UsageSeriesParams } from "@trigger.dev/platform/v3";
 import { Organization, Project } from "@trigger.dev/database";
 import { redirect } from "remix-typedjson";
 import { $replica } from "~/db.server";

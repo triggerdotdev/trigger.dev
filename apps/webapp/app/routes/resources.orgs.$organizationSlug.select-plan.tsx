@@ -13,7 +13,7 @@ import {
   Plans,
   SetPlanBody,
   SubscriptionResult,
-} from "@trigger.dev/billing/v3";
+} from "@trigger.dev/platform/v3";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import { z } from "zod";
 import { DefinitionTip } from "~/components/DefinitionTooltip";

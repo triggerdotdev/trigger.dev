@@ -1,6 +1,6 @@
 import { parse } from "@conform-to/zod";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { SetPlanBodySchema } from "@trigger.dev/billing/v2";
+import { SetPlanBodySchema } from "@trigger.dev/platform/v2";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";

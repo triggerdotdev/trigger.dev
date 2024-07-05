@@ -1,4 +1,4 @@
-import { BillingClient, SetPlanBody } from "@trigger.dev/billing/v2";
+import { BillingClient, SetPlanBody } from "@trigger.dev/platform/v2";
 import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";

@@ -1,4 +1,4 @@
-import { machineDefinition } from "@trigger.dev/billing/v3";
+import { machineDefinition } from "@trigger.dev/platform/v3";
 import { MachineConfig, MachinePreset, MachinePresetName } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";

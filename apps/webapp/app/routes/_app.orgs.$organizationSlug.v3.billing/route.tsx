@@ -12,7 +12,7 @@ import {
   v3StripePortalPath,
 } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
-import { PlanDefinition } from "@trigger.dev/billing/v3";
+import { PlanDefinition } from "@trigger.dev/platform/v3";
 import { CalendarDaysIcon, StarIcon } from "@heroicons/react/20/solid";
 import { DateTime } from "~/components/primitives/DateTime";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
