@@ -259,7 +259,7 @@ export default function ChoosePlanPage() {
                                 })}
                               </TableCell>
                               <TableCell alignment="right" className="tabular-nums">
-                                {formatCurrency(task.totalCost, false)}
+                                {formatCurrencyAccurate(task.totalCost)}
                               </TableCell>
                             </TableRow>
                           ))
