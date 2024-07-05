@@ -190,7 +190,7 @@ export default function ChoosePlanPage() {
                           }}
                           formatter={(value, data) => [
                             `$${
-                              typeof value === "number" ? value.toFixed(2) : value.toLocaleString()
+                              typeof value === "number" ? value.toFixed(8) : value.toLocaleString()
                             }`,
                             "",
                           ]}
