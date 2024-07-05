@@ -5,7 +5,8 @@ import {
   ScheduleMetadataSchema,
 } from "@trigger.dev/core";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { parseExpression } from "cron-parser";
+import pkg from "cron-parser";
+const { parseExpression } = pkg;
 import { logger } from "../logger.server";
 import { DeliverScheduledEventService } from "./deliverScheduledEvent.server";
 
