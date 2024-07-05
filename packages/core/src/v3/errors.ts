@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { TaskRunError } from "./schemas/common";
-import nodePath from "node:path";
+
+export class AbortTaskRunError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AbortTaskRunError";
+  }
+}
 
 export function parseError(error: unknown): TaskRunError {
   if (error instanceof Error) {

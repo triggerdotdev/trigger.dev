@@ -1,3 +1,4 @@
+import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 import type {
   CronItem,
   CronItemOptions,
@@ -11,20 +12,19 @@ import type {
   WorkerUtils,
 } from "graphile-worker";
 import {
+  Logger as GraphileLogger,
   run as graphileRun,
   makeWorkerUtils,
   parseCronItems,
-  Logger as GraphileLogger,
 } from "graphile-worker";
-import { SpanKind, trace } from "@opentelemetry/api";
 
+import { flattenAttributes } from "@trigger.dev/core/v3";
 import omit from "lodash.omit";
 import { z } from "zod";
 import { $replica, PrismaClient, PrismaClientOrTransaction } from "~/db.server";
+import { env } from "~/env.server";
 import { PgListenService } from "~/services/db/pgListen.server";
 import { workerLogger as logger } from "~/services/logger.server";
-import { flattenAttributes } from "@trigger.dev/core/v3";
-import { env } from "~/env.server";
 
 const tracer = trace.getTracer("zodWorker", "3.0.0.dp.1");
 
@@ -338,11 +338,45 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       }
     }
 
-    const { job, durationInMs } = await this.#addJob(
-      identifier as string,
-      payload,
-      spec,
-      options?.tx ?? this.#prisma
+    const { job, durationInMs } = await tracer.startActiveSpan(
+      `Enqueue ${identifier as string}`,
+      {
+        kind: SpanKind.PRODUCER,
+        attributes: {
+          "job.task_identifier": identifier as string,
+          "job.payload": payload,
+          "job.priority": spec.priority,
+          "job.run_at": spec.runAt?.toISOString(),
+          "job.jobKey": spec.jobKey,
+          "job.flags": spec.flags,
+          "job.max_attempts": spec.maxAttempts,
+          "worker.name": this.#name,
+        },
+      },
+      async (span) => {
+        try {
+          const results = await this.#addJob(
+            identifier as string,
+            payload,
+            spec,
+            options?.tx ?? this.#prisma
+          );
+
+          return results;
+        } catch (error) {
+          if (error instanceof Error) {
+            span.recordException(error);
+          } else {
+            span.recordException(new Error(String(error)));
+          }
+
+          span.setStatus({ code: SpanStatusCode.ERROR });
+
+          throw error;
+        } finally {
+          span.end();
+        }
+      }
     );
 
     logger.debug("Enqueued worker task", {
@@ -401,6 +435,12 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const rows = AddJobResultsSchema.safeParse(results);
 
     if (!rows.success) {
+      logger.debug("results returned from add_job could not be parsed", {
+        identifier,
+        payload,
+        spec,
+      });
+
       throw new Error(
         `Failed to add job to queue, zod parsing error: ${JSON.stringify(rows.error)}`
       );
@@ -422,9 +462,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       const job = AddJobResultsSchema.safeParse(result);
 
       if (!job.success) {
-        logger.debug("results returned from remove_job could not be parsed", {
-          error: job.error.flatten(),
-          result,
+        logger.debug("could not remove job, job_key did not exist", {
           jobKey,
         });
 

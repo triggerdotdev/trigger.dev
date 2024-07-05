@@ -19,7 +19,7 @@ export const simpleChildTask = task({
   run: async (payload: { message: string }, { ctx }) => {
     logger.log("Simple child task payload", { payload, ctx });
 
-    await wait.for({ seconds: 6 });
+    await wait.for({ seconds: 10 });
   },
 });
 
@@ -137,6 +137,19 @@ export const taskWithNoPayload = task({
   },
 });
 
+export const simpleTaskParentWithSubtasks = task({
+  id: "simple-task-parent-with-subtask",
+  run: async ({ message = "test" }: { message?: string }) => {
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
+    await simpleChildTask.triggerAndWait({ message: `${message} - 1` });
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
 export const deeplyNestedTaskParent = task({
   id: "deeply-nested-task-parent",
   run: async ({ message = "test" }: { message?: string }) => {
@@ -151,6 +164,8 @@ export const deeplyNestedTaskParent = task({
 export const deeplyNestedTaskChild = task({
   id: "deeply-nested-task-child",
   run: async ({ message = "test" }: { message?: string }) => {
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
     await deeplyNestedTaskGrandchild.triggerAndWait({ message: `${message} - 2` });
 
     return {
@@ -162,7 +177,9 @@ export const deeplyNestedTaskChild = task({
 export const deeplyNestedTaskGrandchild = task({
   id: "deeply-nested-task-grandchild",
   run: async ({ message = "test" }: { message?: string }) => {
-    await deeplyNestedTaskGreatGrandchild.triggerAndWait({ message: `${message} - 3` });
+    await deeplyNestedTaskGreatGrandchild.batchTriggerAndWait(
+      Array.from({ length: 100 }, (_, i) => ({ payload: { message: `${message} - ${i}` } }))
+    );
 
     return {
       hello: "world",
@@ -173,6 +190,78 @@ export const deeplyNestedTaskGrandchild = task({
 export const deeplyNestedTaskGreatGrandchild = task({
   id: "deeply-nested-task-great-grandchild",
   run: async ({ message = "test" }: { message?: string }) => {
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
+export const dependencyCancellationParent = task({
+  id: "dependency-cancellation-parent",
+  run: async ({ message = "test" }: { message?: string }) => {
+    const handle = await dependencyCancellationChild.triggerAndWait({ message: `${message} - 1` });
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
+export const dependencyCancellationChild = task({
+  id: "dependency-cancellation-child",
+  run: async ({ message = "test" }: { message?: string }) => {
+    await dependencyCancellationGrandchild.triggerAndWait({ message: `${message} - 2` });
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
+export const dependencyCancellationGrandchild = task({
+  id: "dependency-cancellation-grandchild",
+  run: async ({ message = "test" }: { message?: string }) => {
+    await wait.for({ seconds: 30 });
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
+export const batchDependencyCancellationParent = task({
+  id: "batch-dependency-cancellation-parent",
+  run: async ({ message = "test" }: { message?: string }) => {
+    const handle = await batchDependencyCancellationChild.batchTriggerAndWait(
+      Array.from({ length: 10 }, (_, i) => ({ payload: { message: `${message} - ${i}` } }))
+    );
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
+export const batchDependencyCancellationChild = task({
+  id: "batch-dependency-cancellation-child",
+  run: async ({ message = "test" }: { message?: string }) => {
+    const handle = await batchDependencyCancellationGrandChild.batchTriggerAndWait(
+      Array.from({ length: 10 }, (_, i) => ({ payload: { message: `${message} - ${i}` } }))
+    );
+
+    return {
+      hello: "world",
+    };
+  },
+});
+
+export const batchDependencyCancellationGrandChild = task({
+  id: "batch-dependency-cancellation-grandchild",
+  run: async ({ message = "test" }: { message?: string }) => {
+    await wait.for({ seconds: 30 });
+
     return {
       hello: "world",
     };

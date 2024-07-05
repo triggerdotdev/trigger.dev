@@ -97,8 +97,9 @@ const EnvironmentSchema = z.object({
    * @example "1000ms"
    * @example "1000s"
    */
-  API_RATE_LIMIT_WINDOW: z.string().default("60s"),
-  API_RATE_LIMIT_MAX: z.coerce.number().int().default(600),
+  API_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"), // refill 250 tokens every 10 seconds
+  API_RATE_LIMIT_MAX: z.coerce.number().int().default(750), // allow bursts of 750 requests
+  API_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(250), // refix 250 tokens every 10 seconds
   API_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
   API_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
 

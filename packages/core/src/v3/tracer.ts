@@ -72,20 +72,22 @@ export class TriggerTracer {
       },
       parentContext,
       async (span) => {
-        this.tracer
-          .startSpan(
-            name,
-            {
-              ...options,
-              attributes: {
-                ...attributes,
-                [SemanticInternalAttributes.SPAN_PARTIAL]: true,
-                [SemanticInternalAttributes.SPAN_ID]: span.spanContext().spanId,
+        if (taskContext.ctx) {
+          this.tracer
+            .startSpan(
+              name,
+              {
+                ...options,
+                attributes: {
+                  ...attributes,
+                  [SemanticInternalAttributes.SPAN_PARTIAL]: true,
+                  [SemanticInternalAttributes.SPAN_ID]: span.spanContext().spanId,
+                },
               },
-            },
-            parentContext
-          )
-          .end();
+              parentContext
+            )
+            .end();
+        }
 
         const usageMeasurement = usage.start();
 
@@ -100,15 +102,17 @@ export class TriggerTracer {
 
           throw e;
         } finally {
-          const usageSample = usage.stop(usageMeasurement);
-          const machine = taskContext.ctx?.machine;
+          if (taskContext.ctx) {
+            const usageSample = usage.stop(usageMeasurement);
+            const machine = taskContext.ctx.machine;
 
-          span.setAttributes({
-            [SemanticInternalAttributes.USAGE_DURATION_MS]: usageSample.cpuTime,
-            [SemanticInternalAttributes.USAGE_COST_IN_CENTS]: machine?.centsPerMs
-              ? usageSample.cpuTime * machine.centsPerMs
-              : 0,
-          });
+            span.setAttributes({
+              [SemanticInternalAttributes.USAGE_DURATION_MS]: usageSample.cpuTime,
+              [SemanticInternalAttributes.USAGE_COST_IN_CENTS]: machine?.centsPerMs
+                ? usageSample.cpuTime * machine.centsPerMs
+                : 0,
+            });
+          }
 
           span.end(clock.preciseNow());
         }

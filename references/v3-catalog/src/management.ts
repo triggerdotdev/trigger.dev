@@ -5,12 +5,27 @@ import { firstScheduledTask } from "./trigger/scheduled";
 import { simpleChildTask } from "./trigger/subtasks";
 import { taskThatErrors } from "./trigger/retries";
 import { unfriendlyIdTask } from "./trigger/other";
+import { spamRateLimiter } from "./trigger/retries";
 
 dotenv.config();
+
+async function doSpamRateLimiter() {
+  // Trigger 10 runs
+  await spamRateLimiter.batchTrigger(
+    Array.from({ length: 10 }, (_, i) => ({ payload: { runId: "run_pxxs52j3geik6cj6j8piq" } }))
+  );
+}
+
+// doSpamRateLimiter().catch(console.error);
 
 async function doEnvVars() {
   configure({
     secretKey: process.env.TRIGGER_ACCESS_TOKEN,
+    requestOptions: {
+      retry: {
+        maxAttempts: 1,
+      },
+    },
   });
 
   const response1 = await envvars.upload("yubjwjsfkxnylobaqvqz", "dev", {
@@ -80,11 +95,18 @@ async function doRuns() {
 async function doListRuns() {
   let pageCount = 0;
 
-  let page = await runs.list({
-    limit: 100,
-  });
+  let page = await runs.list(
+    {
+      limit: 100,
+    },
+    {
+      retry: {
+        maxAttempts: 1,
+      },
+    }
+  );
 
-  console.log(`run page #${++pageCount}`);
+  console.log(`run page #${++pageCount}, with ${page.data.length} runs`);
 
   // Convenience methods are provided for manually paginating:
   while (page.hasNextPage()) {
@@ -236,7 +258,7 @@ async function doTriggerUnfriendlyTaskId() {
 }
 
 // doRuns().catch(console.error);
-// doListRuns().catch(console.error);
+doListRuns().catch(console.error);
 // doScheduleLists().catch(console.error);
 // doSchedules().catch(console.error);
 // doEnvVars().catch(console.error);

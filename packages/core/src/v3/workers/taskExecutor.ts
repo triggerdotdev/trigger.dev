@@ -25,6 +25,7 @@ import {
 import { calculateNextRetryDelay } from "../utils/retries";
 import { accessoryAttributes } from "../utils/styleAttributes";
 import { UsageMeasurement } from "../usage/types";
+import { ApiError, RateLimitError } from "../apiClient/errors";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -455,7 +456,26 @@ export class TaskExecutor {
       return { status: "noop" };
     }
 
-    const delay = calculateNextRetryDelay(retry, execution.attempt.number);
+    if (error instanceof Error && error.name === "AbortTaskRunError") {
+      return { status: "skipped" };
+    }
+
+    if (execution.run.maxAttempts) {
+      retry.maxAttempts = Math.max(execution.run.maxAttempts, 1);
+    }
+
+    let delay = calculateNextRetryDelay(retry, execution.attempt.number);
+
+    if (
+      delay &&
+      error instanceof Error &&
+      error.name === "TriggerApiError" &&
+      (error as ApiError).status === 429
+    ) {
+      const rateLimitError = error as RateLimitError;
+
+      delay = rateLimitError.millisecondsUntilReset;
+    }
 
     if (
       execution.environment.type === "DEVELOPMENT" &&

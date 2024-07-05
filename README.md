@@ -5,12 +5,11 @@
   <img alt="Trigger.dev logo" src="https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/a45d1fa2-0ae8-4a39-4409-f4f934bfae00/public">
 </picture>
   
-### The open source background jobs platform
+### Open source background jobs with no timeouts
 
 [Discord](https://trigger.dev/discord) | [Website](https://trigger.dev) | [Issues](https://github.com/triggerdotdev/trigger.dev/issues) | [Docs](https://trigger.dev/docs)
 
 [![Twitter](https://img.shields.io/twitter/url/https/twitter.com/triggerdotdev.svg?style=social&label=Follow%20%40trigger.dev)](https://twitter.com/triggerdotdev)
-[![GitHub Repo stars](https://img.shields.io/github/stars/triggerdotdev/trigger.dev?style=social)](https://github.com/triggerdotdev/trigger.dev)
 
 </div>
 
@@ -18,11 +17,18 @@
 
 ## About Trigger.dev
 
-Create long-running jobs directly in your codebase with features like API integrations, webhooks, scheduling and delays.
+Trigger.dev is an open source platform and SDK which allows you to create long-running background jobs in your codebase. Write normal async code, deploy, and never hit a timeout.
 
-## Long running Jobs on serverless
+#### Features:
 
-Reliably run jobs and don’t worry about function timeouts, we handle those for you.
+- JavaScript and TypeScript SDK
+- Write reliable code by default
+- No infrastructure to manage
+- Works with your existing tech stack
+
+## Long-running tasks on serverless
+
+Reliably run tasks and don’t worry about function timeouts, we handle those for you.
 
 - Auto-resume after a function timeout
 - Auto-resume after a server outage
@@ -30,39 +36,50 @@ Reliably run jobs and don’t worry about function timeouts, we handle those for
 
 ## In your codebase
 
-Create Jobs where they belong: in your codebase. Version control, localhost, test, review, and deploy like you're already used to.
+Create tasks where they belong: in your codebase. Version control, localhost, test, review, and deploy like you're already used to.
 
-## Secure by design
+```ts
+import { task } from "@trigger.dev/sdk/v3";
 
-We only receive Triggers and the data you choose to send to us. You can even completely self-host the entire platform.
+//1. You need to export each task
+export const helloWorld = task({
+  //2. Use a unique id for each task
+  id: "hello-world",
+  //3. The run function is the main function of the task
+  run: async (payload: { message: string }) => {
+    //4. You can write code that runs for a long time here, there are no timeouts
+    console.log(payload.message);
+  },
+});
+```
 
-## Don't worry about deployment
+## Deployment
 
-Just use our SDK to write Jobs in your codebase. There's nothing extra to deploy and no CI to configure, your Jobs just connect to our cloud. Or you can always self-host.
+Use our SDK to write tasks in your codebase. There's nothing extra to deploy and no CI to configure, your tasks just connect to our cloud. Or you can always [self-host](https://trigger.dev/docs/v3/open-source-self-hosting#overview).
+
+## Environments
+
+We support `Development`, `Staging`, and `Production` environments, allowing you to test your tasks before deploying them to production.
 
 ## Full visibility of every job run
 
-View every Task in every Run so you can tell exactly what happened.
+View every task in every run so you can tell exactly what happened. We provide a full trace view of every task run so you can see what happened at every step.
 
-![image](https://www.trigger.dev/build/_assets/web-app-2QFKXFLW.png)
-
-## Built-in integrations
-
-Easily integrate with hundreds of third-party APIs – including your own. Use API keys (which never leave your server) or let us handle OAuth for you. Install our integration packages and easily subscribe to webhooks and perform common tasks, or you can easily use your existing favorite Node.JS SDKs and get resumability and idempotency through our `runTask` function.
+![Trace view image](https://imagedelivery.net/3TbraffuDZ4aEf8KWOmI_w/7c1b347f-004c-4482-38a7-3f6fa9c00d00/public)
 
 # Getting started
 
-Visit our docs [here](https://trigger.dev/docs).
+Visit our docs [here](https://trigger.dev/docs/v3/introduction) for a full guide on how to get started with Trigger.dev.
 
 ## Self-host
 
-We provide an official trigger.dev docker image you can use to easily self-host the platform. We're working on more extensive guides but we currently provide a [Fly.io example repository](https://github.com/triggerdotdev/fly.io) with instructions in the README for deploying and using a self-hosted instance of Trigger.dev on Fly.io.
+If you prefer to self-host, you can follow our [self-hosting guide](https://trigger.dev/docs/v3/open-source-self-hosting#overview).
 
 ## Development
 
 To setup and develop locally or contribute to the open source project, follow our [development guide](./CONTRIBUTING.md).
 
-## Meet the Amazing People Behind This Project 🚀
+## Meet the Amazing People Behind This Project:
 
 <a href="https://github.com/triggerdotdev/trigger.dev/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=triggerdotdev/trigger.dev" />
