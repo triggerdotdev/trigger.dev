@@ -249,7 +249,7 @@ export function TaskRunsTable({
                     )}
                   </div>
                 </TableCell>
-                <TableCell to={path} className="w-[1%]" actionClassName="pl-0 tabular-nums">
+                <TableCell to={path} actionClassName="pl-0 tabular-nums">
                   <div className="flex items-center gap-1">
                     <CpuChipIcon className="size-4 text-success" />
                     {run.usageDurationMs > 0
