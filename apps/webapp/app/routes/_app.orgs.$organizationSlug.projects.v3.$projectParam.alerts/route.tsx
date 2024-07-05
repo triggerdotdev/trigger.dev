@@ -295,17 +295,6 @@ export default function Page() {
                 </div>
               </div>
             )}
-            <InfoPanel
-              title="Platform alerts"
-              icon={BellAlertIcon}
-              to="https://status.trigger.dev/"
-              buttonLabel="Subscribe"
-            >
-              <Paragraph variant="small">
-                Subscribe to get email notifications when Trigger.dev creates, updates or resolves a
-                platform incident.
-              </Paragraph>
-            </InfoPanel>
           </div>
         </div>
         <Outlet />

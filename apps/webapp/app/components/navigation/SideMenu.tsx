@@ -11,6 +11,7 @@ import {
   KeyIcon,
   ServerStackIcon,
   ShieldCheckIcon,
+  SignalIcon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
@@ -295,6 +296,13 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             icon="star"
             to="https://trigger.dev/changelog"
             data-action="changelog"
+            target="_blank"
+          />
+          <SideMenuItem
+            name="Status"
+            icon={SignalIcon}
+            to="https://status.trigger.dev/"
+            data-action="status"
             target="_blank"
           />
           <Feedback
