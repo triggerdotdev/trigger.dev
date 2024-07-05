@@ -90,18 +90,20 @@ export function InfoIconTooltip({
   content,
   buttonClassName,
   contentClassName,
+  variant = "basic",
 }: {
   content: React.ReactNode;
   buttonClassName?: string;
   contentClassName?: string;
+  variant?: Variant;
 }) {
   return (
     <SimpleTooltip
       button={
-        <InformationCircleIcon className={cn("h-3.5 w-3.5 text-text-dimmed", buttonClassName)} />
+        <InformationCircleIcon className={cn("size-3.5 text-text-dimmed", buttonClassName)} />
       }
       content={content}
-      variant="dark"
+      variant={variant}
       className={contentClassName}
     />
   );
