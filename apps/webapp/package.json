@@ -4,9 +4,6 @@
   "version": "1.0.0",
   "sideEffects": false,
   "type": "module",
-  "imports": {
-    "#app/*": "./app/*"
-  },
   "scripts": {
     "build": "run-s build:**",
     "build:db:seed": "esbuild --platform=node --bundle --minify --format=cjs ./prisma/seed.ts --outdir=prisma",
