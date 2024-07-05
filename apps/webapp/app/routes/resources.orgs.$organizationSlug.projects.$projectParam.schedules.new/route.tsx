@@ -4,8 +4,8 @@ import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import pkg from 'cron-parser';
-const {parseExpression} = pkg;
+import cronParser from "cron-parser";
+const { parseExpression } = cronParser;
 import cronstrue from "cronstrue";
 import { useRef, useState } from "react";
 import {

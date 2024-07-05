@@ -1,5 +1,5 @@
-import pkg from "cron-parser";
-const { parseExpression } = pkg;
+import cronParser from "cron-parser";
+const { parseExpression } = cronParser;
 import { z } from "zod";
 
 export const CronPattern = z.string().refine(
