@@ -104,18 +104,6 @@ export class CancelTaskRunService extends BaseService {
       await this.#cancelRemainingRunWorkers(cancelledTaskRun);
     }
 
-    const cancelService = new CancelTaskRunService();
-
-    // Cancel any dependent task runs
-    for (const attempt of cancelledTaskRun.attempts) {
-      for (const dependency of attempt.dependencies) {
-        await cancelService.call(dependency.taskRun, {
-          ...opts,
-          reason: `Parent task run was cancelled`,
-        });
-      }
-    }
-
     return {
       id: cancelledTaskRun.id,
     };
