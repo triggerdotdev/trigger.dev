@@ -2,7 +2,9 @@ import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
 import { Form, useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { IconCircleX } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "framer-motion";
+import { ListChecks, ListX } from "lucide-react";
 import { Suspense, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
@@ -18,7 +20,7 @@ import {
   DialogHeader,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
-import { Header1 } from "~/components/primitives/Headers";
+import { Header1, Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -30,16 +32,16 @@ import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
 import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
+import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
+import { findProjectBySlug } from "~/models/project.server";
 import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3ProjectPath, v3RunsPath, v3TestPath } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
-import { BULK_ACTION_RUN_LIMIT } from "~/consts";
-import { findProjectBySlug } from "~/models/project.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -106,7 +108,7 @@ export default function Page() {
             <div
               className={cn(
                 "grid h-full max-h-full overflow-hidden",
-                selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_2.5rem]"
+                selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_3.5rem]"
               )}
             >
               <div className="overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
@@ -183,17 +185,20 @@ function BulkActionBar() {
           initial={{ translateY: "100%" }}
           animate={{ translateY: 0 }}
           exit={{ translateY: "100%" }}
-          className="flex items-center justify-between gap-2 border-t border-grid-bright bg-background-bright px-3"
+          className="flex items-center justify-between gap-3 border-t border-grid-bright bg-background-bright pl-4 pr-3"
         >
           <div className="flex items-center gap-1.5 text-sm text-text-bright">
-            <span className="font-medium">Bulk actions:</span>
+            <ListChecks className="mr-1 size-7 text-indigo-400" />
+            <Header2>Bulk actions:</Header2>
             {hasSelectedMaximum ? (
-              <span className="text-warning">Maximum of {selectedItems.size} runs selected</span>
+              <Paragraph className="text-warning">
+                Maximum of {selectedItems.size} runs selected
+              </Paragraph>
             ) : (
-              <span>{selectedItems.size} runs selected</span>
+              <Paragraph className="">{selectedItems.size} runs selected</Paragraph>
             )}
           </div>
-          <div className="flex items-center gap-1 divide-x divide-charcoal-700">
+          <div className="flex items-center gap-3">
             <CancelRuns
               onOpen={(o) => {
                 if (o) {
@@ -213,12 +218,14 @@ function BulkActionBar() {
               }}
             />
             <Button
-              variant="minimal/medium"
+              variant="tertiary/medium"
               shortcut={{ key: "esc", enabledOnInputElements: true }}
               onClick={() => {
                 if (barState !== "none") return;
                 deselectAll();
               }}
+              LeadingIcon={ListX}
+              leadingIconClassName="text-indigo-400 w-6 h-6"
             >
               Clear selection
             </Button>
@@ -246,18 +253,21 @@ function CancelRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
       <DialogTrigger asChild>
         <Button
           type="button"
-          variant="minimal/medium"
+          variant="tertiary/medium"
           shortcut={{ key: "c", enabledOnInputElements: true }}
-          LeadingIcon={StopCircleIcon}
+          LeadingIcon={IconCircleX}
+          leadingIconClassName="text-error w-[1.3rem] h-[1.3rem]"
         >
           Cancel runs
         </Button>
       </DialogTrigger>
       <DialogContent key="replay">
         <DialogHeader>Cancel {selectedItems.size} runs?</DialogHeader>
-        <DialogDescription>
-          Canceling these runs will stop them from running. Only runs that are not already finished
-          will be canceled, the others will remain in their existing state.
+        <DialogDescription className="pt-2">
+          <Paragraph>
+            Canceling these runs will stop them from running. Only runs that are not already
+            finished will be canceled, the others will remain in their existing state.
+          </Paragraph>
         </DialogDescription>
         <DialogFooter>
           <Form action={formAction} method="post" reloadDocument>
@@ -269,7 +279,7 @@ function CancelRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
             ))}
             <Button
               type="submit"
-              variant="danger/small"
+              variant="danger/medium"
               LeadingIcon={isLoading ? "spinner-white" : StopCircleIcon}
               disabled={isLoading}
               shortcut={{ modifiers: ["meta"], key: "enter" }}
@@ -300,18 +310,21 @@ function ReplayRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
       <DialogTrigger asChild>
         <Button
           type="button"
-          variant="minimal/medium"
+          variant="tertiary/medium"
           shortcut={{ key: "r", enabledOnInputElements: true }}
           LeadingIcon={ArrowPathIcon}
+          leadingIconClassName="text-blue-400 w-[1.3rem] h-[1.3rem]"
         >
-          Replay {selectedItems.size} runs
+          <span className="text-text-bright">Replay {selectedItems.size} runs</span>
         </Button>
       </DialogTrigger>
       <DialogContent key="replay">
         <DialogHeader>Replay runs?</DialogHeader>
-        <DialogDescription>
-          Replaying these runs will create a new run for each with the same payload and environment
-          as the original. It will use the latest version of the code for each task.
+        <DialogDescription className="pt-2">
+          <Paragraph>
+            Replaying these runs will create a new run for each with the same payload and
+            environment as the original. It will use the latest version of the code for each task.
+          </Paragraph>
         </DialogDescription>
         <DialogFooter>
           <Form action={formAction} method="post" reloadDocument>
@@ -323,7 +336,7 @@ function ReplayRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
             ))}
             <Button
               type="submit"
-              variant="primary/small"
+              variant="primary/medium"
               LeadingIcon={isLoading ? "spinner-white" : ArrowPathIcon}
               disabled={isLoading}
               shortcut={{ modifiers: ["meta"], key: "enter" }}
