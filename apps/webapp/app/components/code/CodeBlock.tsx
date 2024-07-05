@@ -59,7 +59,7 @@ const extraLinesWhenClipping = 0.35;
 const defaultTheme: PrismTheme = {
   plain: {
     color: "#9C9AF2",
-    backgroundColor: "#121317",
+    backgroundColor: "rgba(0, 0, 0, 0)",
   },
   styles: [
     {
