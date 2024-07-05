@@ -40,6 +40,7 @@ import { useCallback, useRef } from "react";
 import { run } from "@remix-run/dev/dist/cli/run";
 import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { useFeatures } from "~/hooks/useFeatures";
+import { useUser } from "~/hooks/useUser";
 
 type RunsTableProps = {
   total: number;
@@ -59,11 +60,14 @@ export function TaskRunsTable({
   isLoading = false,
   allowSelection = false,
 }: RunsTableProps) {
+  const user = useUser();
   const organization = useOrganization();
   const project = useProject();
   const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
   const { selectedItems, has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
   const { isManagedCloud } = useFeatures();
+
+  const showCompute = user.admin && isManagedCloud;
 
   const navigateCheckboxes = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
@@ -124,7 +128,7 @@ export function TaskRunsTable({
           <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell>Started</TableHeaderCell>
           <TableHeaderCell colSpan={3}>Duration</TableHeaderCell>
-          {isManagedCloud && (
+          {showCompute && (
             <>
               <TableHeaderCell>Compute</TableHeaderCell>
             </>
@@ -182,6 +186,7 @@ export function TaskRunsTable({
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}
                 </TableCell>
                 <TableCell to={path} actionClassName="pr-0 tabular-nums">
+                  {/* //todo add tooltip with explanation of the duration */}
                   <div className="flex items-center gap-1">
                     <RectangleStackIcon className="size-4 text-text-dimmed" />
                     {run.startedAt ? (
@@ -217,7 +222,7 @@ export function TaskRunsTable({
                       : "–"}
                   </div>
                 </TableCell>
-                {isManagedCloud && (
+                {showCompute && (
                   <TableCell to={path} className="tabular-nums">
                     {run.costInCents > 0 ? formatCurrencyAccurate(run.costInCents / 100) : "–"}
                   </TableCell>
