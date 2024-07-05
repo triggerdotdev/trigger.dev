@@ -17,6 +17,7 @@ const TooltipArrow = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Arrow>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Arrow>
 >(({ ...props }, ref) => <TooltipPrimitive.Arrow className="fill-popover z-50" {...props} />);
+TooltipArrow.displayName = TooltipPrimitive.Arrow.displayName;
 
 const Tooltip = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Root>,
@@ -24,6 +25,7 @@ const Tooltip = React.forwardRef<
 >(({ delayDuration = 0, ...props }, ref) => (
   <TooltipPrimitive.Root delayDuration={delayDuration} {...props} />
 ));
+Tooltip.displayName = TooltipPrimitive.Root.displayName;
 
 const TooltipTrigger = TooltipPrimitive.Trigger;
 
@@ -46,6 +48,7 @@ const TooltipContent = React.forwardRef<
     {...props}
   />
 ));
+TooltipContent.displayName = TooltipPrimitive.Content.displayName;
 
 function SimpleTooltip({
   button,

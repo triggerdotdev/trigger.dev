@@ -1,8 +1,7 @@
 "use client";
 
 import * as SheetPrimitive from "@radix-ui/react-dialog";
-import type { VariantProps } from "class-variance-authority";
-import { cva } from "class-variance-authority";
+import { VariantProps, cva } from "class-variance-authority";
 import * as React from "react";
 import { cn } from "~/utils/cn";
 import { NamedIcon } from "./NamedIcon";
@@ -33,6 +32,7 @@ const SheetPortal = ({ position, children, ...props }: SheetPortalProps) => (
     <div className={portalVariants({ position })}>{children}</div>
   </SheetPrimitive.Portal>
 );
+SheetPortal.displayName = SheetPrimitive.Portal.displayName;
 
 const SheetOverlay = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Overlay>,
@@ -47,6 +47,7 @@ const SheetOverlay = React.forwardRef<
     ref={ref}
   />
 ));
+SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
   "fixed z-50 scale-100 gap-4 shadow-lg bg-background-bright opacity-100 border-l border-grid-bright",
@@ -164,6 +165,7 @@ const SheetContent = React.forwardRef<
     </SheetPrimitive.Content>
   </SheetPortal>
 ));
+SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 export const SheetBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
