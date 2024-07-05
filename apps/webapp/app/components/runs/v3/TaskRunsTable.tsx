@@ -41,6 +41,8 @@ import { run } from "@remix-run/dev/dist/cli/run";
 import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useUser } from "~/hooks/useUser";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { Header3 } from "~/components/primitives/Headers";
 
 type RunsTableProps = {
   total: number;
@@ -127,7 +129,43 @@ export function TaskRunsTable({
           <TableHeaderCell>Version</TableHeaderCell>
           <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell>Started</TableHeaderCell>
-          <TableHeaderCell colSpan={3}>Duration</TableHeaderCell>
+          <TableHeaderCell
+            colSpan={3}
+            tooltip={
+              <div className="flex flex-col gap-3">
+                <div>
+                  <div className="mb-0.5 flex items-center gap-1.5">
+                    <RectangleStackIcon className="size-4 text-text-dimmed" />
+                    <Header3>Queued duration</Header3>
+                  </div>
+                  <Paragraph variant="small">
+                    The amount of time from when the run was created to it starting to run.
+                  </Paragraph>
+                </div>
+                <div>
+                  <div className="mb-0.5 flex items-center gap-1.5">
+                    <ClockIcon className="size-4 text-blue-500" /> <Header3>Run duration</Header3>
+                  </div>
+                  <Paragraph variant="small">
+                    The total amount of time from the run starting to it finishing. This includes
+                    all time spent waiting.
+                  </Paragraph>
+                </div>
+                <div>
+                  <div className="mb-0.5 flex items-center gap-1.5">
+                    <CpuChipIcon className="size-4 text-success" />
+                    <Header3>Compute duration</Header3>
+                  </div>
+                  <Paragraph variant="small">
+                    The amount of compute time used in the run. This does not include time spent
+                    waiting.
+                  </Paragraph>
+                </div>
+              </div>
+            }
+          >
+            Duration
+          </TableHeaderCell>
           {showCompute && (
             <>
               <TableHeaderCell>Compute</TableHeaderCell>
@@ -186,7 +224,6 @@ export function TaskRunsTable({
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}
                 </TableCell>
                 <TableCell to={path} actionClassName="pr-0 tabular-nums">
-                  {/* //todo add tooltip with explanation of the duration */}
                   <div className="flex items-center gap-1">
                     <RectangleStackIcon className="size-4 text-text-dimmed" />
                     {run.startedAt ? (
@@ -198,7 +235,7 @@ export function TaskRunsTable({
                     )}
                   </div>
                 </TableCell>
-                <TableCell to={path} actionClassName="px-1 tabular-nums">
+                <TableCell to={path} actionClassName="px-1.5 tabular-nums">
                   <div className="flex items-center gap-1">
                     <ClockIcon className="size-4 text-blue-500" />
                     {run.startedAt && run.finishedAt ? (
@@ -228,11 +265,7 @@ export function TaskRunsTable({
                   </TableCell>
                 )}
                 <TableCell to={path}>
-                  {run.isTest ? (
-                    <CheckIcon className="h-4 w-4 text-charcoal-400" />
-                  ) : (
-                    <StopIcon className="h-4 w-4 text-charcoal-750" />
-                  )}
+                  {run.isTest ? <CheckIcon className="h-4 w-4 text-charcoal-400" /> : "–"}
                 </TableCell>
                 <TableCell to={path}>
                   {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
