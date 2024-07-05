@@ -77,7 +77,7 @@ export class UsagePresenter extends BasePresenter {
           taskIdentifier: item.taskIdentifier,
           runCount: Number(item.runCount),
           averageDuration: Number(item.averageDuration),
-          averageCost: Number(item.averageCost) + env.CENTS_PER_RUN,
+          averageCost: Number(item.averageCost) + env.CENTS_PER_RUN / 100,
           totalDuration: Number(item.totalDuration),
           totalCost: Number(item.totalCost + item.totalBaseCost),
         }))
