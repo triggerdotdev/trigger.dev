@@ -223,7 +223,7 @@ export function TaskRunsTable({
                 <TableCell to={path}>
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}
                 </TableCell>
-                <TableCell to={path} actionClassName="pr-0 tabular-nums">
+                <TableCell to={path} className="w-[1%]" actionClassName="pr-0 tabular-nums">
                   <div className="flex items-center gap-1">
                     <RectangleStackIcon className="size-4 text-text-dimmed" />
                     {run.startedAt ? (
@@ -235,7 +235,7 @@ export function TaskRunsTable({
                     )}
                   </div>
                 </TableCell>
-                <TableCell to={path} actionClassName="px-1.5 tabular-nums">
+                <TableCell to={path} className="w-[1%]" actionClassName="px-4 tabular-nums">
                   <div className="flex items-center gap-1">
                     <ClockIcon className="size-4 text-blue-500" />
                     {run.startedAt && run.finishedAt ? (
@@ -249,7 +249,7 @@ export function TaskRunsTable({
                     )}
                   </div>
                 </TableCell>
-                <TableCell to={path} actionClassName="pl-0 tabular-nums">
+                <TableCell to={path} className="w-[1%]" actionClassName="pl-0 tabular-nums">
                   <div className="flex items-center gap-1">
                     <CpuChipIcon className="size-4 text-success" />
                     {run.usageDurationMs > 0
