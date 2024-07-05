@@ -3,6 +3,7 @@ import { sqlDatabaseSchema } from "~/db.server";
 import { BasePresenter } from "./basePresenter.server";
 import { getUsage, getUsageSeries } from "~/services/platform.v3.server";
 import { createTimeSeriesData } from "~/utils/graphs";
+import { env } from "~/env.server";
 
 type Options = {
   organizationId: string;
@@ -15,6 +16,7 @@ export type TaskUsageItem = {
   averageCost: number;
   totalDuration: number;
   totalCost: number;
+  totalBaseCost: number;
 };
 
 export class UsagePresenter extends BasePresenter {
@@ -57,7 +59,8 @@ export class UsagePresenter extends BasePresenter {
       AVG(tr."usageDurationMs") AS "averageDuration",
       SUM(tr."usageDurationMs") AS "totalDuration",
       AVG(tr."costInCents") / 100.0 AS "averageCost",
-      SUM(tr."costInCents") / 100.0 AS "totalCost"
+      SUM(tr."costInCents") / 100.0 AS "totalCost",
+      SUM(tr."baseCostInCents") / 100.0 AS "totalBaseCost"
   FROM
       ${sqlDatabaseSchema}."TaskRun" tr
       JOIN ${sqlDatabaseSchema}."Project" pr ON pr.id = tr."projectId"
@@ -67,18 +70,18 @@ export class UsagePresenter extends BasePresenter {
       AND tr."createdAt" < ${endOfToday}
       AND org.id = ${organizationId}
   GROUP BY
-      tr."taskIdentifier"
-  ORDER BY
-  "totalCost" DESC;
+      tr."taskIdentifier";
   `.then((data) => {
-      return data.map((item) => ({
-        taskIdentifier: item.taskIdentifier,
-        runCount: Number(item.runCount),
-        averageDuration: Number(item.averageDuration),
-        averageCost: Number(item.averageCost),
-        totalDuration: Number(item.totalDuration),
-        totalCost: Number(item.totalCost),
-      }));
+      return data
+        .map((item) => ({
+          taskIdentifier: item.taskIdentifier,
+          runCount: Number(item.runCount),
+          averageDuration: Number(item.averageDuration),
+          averageCost: Number(item.averageCost) + env.CENTS_PER_RUN,
+          totalDuration: Number(item.totalDuration),
+          totalCost: Number(item.totalCost + item.totalBaseCost),
+        }))
+        .sort((a, b) => b.totalCost - a.totalCost);
     });
 
     //month-to-date usage data with projection
