@@ -132,13 +132,13 @@ export function TaskRunsTable({
           <TableHeaderCell
             colSpan={3}
             tooltip={
-              <div className="flex flex-col gap-3">
+              <div className="flex max-w-xs flex-col gap-4 p-1">
                 <div>
                   <div className="mb-0.5 flex items-center gap-1.5">
                     <RectangleStackIcon className="size-4 text-text-dimmed" />
                     <Header3>Queued duration</Header3>
                   </div>
-                  <Paragraph variant="small">
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
                     The amount of time from when the run was created to it starting to run.
                   </Paragraph>
                 </div>
@@ -146,7 +146,7 @@ export function TaskRunsTable({
                   <div className="mb-0.5 flex items-center gap-1.5">
                     <ClockIcon className="size-4 text-blue-500" /> <Header3>Run duration</Header3>
                   </div>
-                  <Paragraph variant="small">
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
                     The total amount of time from the run starting to it finishing. This includes
                     all time spent waiting.
                   </Paragraph>
@@ -156,7 +156,7 @@ export function TaskRunsTable({
                     <CpuChipIcon className="size-4 text-success" />
                     <Header3>Compute duration</Header3>
                   </div>
-                  <Paragraph variant="small">
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
                     The amount of compute time used in the run. This does not include time spent
                     waiting.
                   </Paragraph>
