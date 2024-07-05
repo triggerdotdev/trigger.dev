@@ -55,7 +55,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={isManagedCloud ? "Usage & Billing" : "Usage"} />
+        <PageTitle title={isManagedCloud ? "Usage & Billing (v2)" : "Usage (v2)"} />
         <PageAccessories>
           {isManagedCloud && (
             <>
