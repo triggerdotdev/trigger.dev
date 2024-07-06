@@ -1,4 +1,5 @@
-import { parseExpression } from "cron-parser";
+import cronParser from "cron-parser";
+const { parseExpression } = cronParser;
 import { z } from "zod";
 
 export const CronPattern = z.string().refine(

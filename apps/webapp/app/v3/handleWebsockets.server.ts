@@ -1,4 +1,4 @@
-import { IncomingMessage } from "node:http";
+import { type IncomingMessage } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { authenticateApiKey } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -7,9 +7,8 @@ import { AuthenticatedSocketConnection } from "./authenticatedSocketConnection.s
 import { Gauge } from "prom-client";
 import { metricsRegister } from "~/metrics.server";
 
-export const wss = singleton("wss", initalizeWebSocketServer);
-
 let authenticatedConnections: Map<string, AuthenticatedSocketConnection>;
+export const wss = singleton("wss", initalizeWebSocketServer);
 
 function initalizeWebSocketServer() {
   const server = new WebSocketServer({ noServer: true });

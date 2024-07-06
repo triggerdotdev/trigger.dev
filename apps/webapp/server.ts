@@ -3,12 +3,37 @@ import express from "express";
 import compression from "compression";
 import morgan from "morgan";
 import { createRequestHandler } from "@remix-run/express";
-import { WebSocketServer } from "ws";
-import { broadcastDevReady, logDevReady } from "@remix-run/server-runtime";
-import type { Server as IoServer } from "socket.io";
-import type { Server as EngineServer } from "engine.io";
-import { RegistryProxy } from "~/v3/registryProxy.server";
-import { RateLimitMiddleware, apiRateLimiter } from "~/services/apiRateLimit.server";
+import { type ServerBuild } from "@remix-run/server-runtime";
+import { type Server as EngineServer } from "engine.io";
+import { registryProxy } from "./app/v3/registryProxy.server";
+import { apiRateLimiter } from "./app/services/apiRateLimit.server";
+import { socketIo } from "./app/v3/handleSocketIo.server";
+import { wss } from "./app/v3/handleWebsockets.server";
+
+const viteDevServer =
+  process.env.NODE_ENV === "production"
+    ? undefined
+    : await import("vite").then((vite) =>
+        vite.createServer({
+          server: { middlewareMode: true },
+        })
+      );
+
+async function getBuild() {
+  if (viteDevServer) {
+    return viteDevServer.ssrLoadModule("virtual:remix/server-build") as unknown as ServerBuild;
+  }
+
+  try {
+    // @ts-ignore If the server hasn't built, this will throw
+    const serverBuild = await import("./build/server/index.js");
+
+    return serverBuild as unknown as ServerBuild;
+  } catch (error) {
+    throw new Error("Server build not found at ./build/server/index.js. Did you run `pnpm build`?");
+  }
+
+}
 
 const app = express();
 
@@ -19,40 +44,36 @@ if (process.env.DISABLE_COMPRESSION !== "1") {
 // http://expressjs.com/en/advanced/best-practice-security.html#at-a-minimum-disable-x-powered-by-header
 app.disable("x-powered-by");
 
-// Remix fingerprints its assets so we can cache forever.
-app.use("/build", express.static("public/build", { immutable: true, maxAge: "1y" }));
+if (viteDevServer) {
+  app.use(viteDevServer.middlewares);
+} else {
+  // Remix fingerprints its assets so we can cache forever.
+  app.use("/assets", express.static("build/client/assets", { immutable: true, maxAge: "1y" }));
 
-// Everything else (like favicon.ico) is cached for an hour. You may want to be
-// more aggressive with this caching.
-app.use(express.static("public", { maxAge: "1h" }));
+  // Everything else (like favicon.ico) is cached for an hour. You may want to be
+  // more aggressive with this caching.
+  app.use(express.static("build/client", { maxAge: "1h" }));
+}
 
 app.use(morgan("tiny"));
 
 process.title = "node webapp-server";
 
 const MODE = process.env.NODE_ENV;
-const BUILD_DIR = path.join(process.cwd(), "build");
-const build = require(BUILD_DIR);
-
 const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
 if (process.env.HTTP_SERVER_DISABLED !== "true") {
-  const socketIo: { io: IoServer } | undefined = build.entry.module.socketIo;
-  const wss: WebSocketServer | undefined = build.entry.module.wss;
-  const registryProxy: RegistryProxy | undefined = build.entry.module.registryProxy;
-  const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
-
   if (registryProxy && process.env.ENABLE_REGISTRY_PROXY === "true") {
     console.log(`🐳 Enabling container registry proxy to ${registryProxy.origin}`);
 
     // Adjusted to match /v2 and any subpath under /v2
     app.all("/v2/*", async (req, res) => {
-      await registryProxy.call(req, res);
+      await registryProxy!.call(req, res);
     });
 
     // This might also be necessary if you need to explicitly match /v2 as well
     app.all("/v2", async (req, res) => {
-      await registryProxy.call(req, res);
+      await registryProxy!.call(req, res);
     });
   }
 
@@ -77,7 +98,7 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
       "*",
       // @ts-ignore
       createRequestHandler({
-        build,
+        build: await getBuild(),
         mode: MODE,
       })
     );
@@ -90,12 +111,6 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
 
   const server = app.listen(port, () => {
     console.log(`✅ server ready: http://localhost:${port} [NODE_ENV: ${MODE}]`);
-
-    if (MODE === "development") {
-      broadcastDevReady(build)
-        .then(() => logDevReady(build))
-        .catch(console.error);
-    }
   });
 
   server.keepAliveTimeout = 65 * 1000;
@@ -110,7 +125,7 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     });
   });
 
-  socketIo?.io.attach(server);
+  socketIo.io.attach(server);
   server.removeAllListeners("upgrade"); // prevent duplicate upgrades from listeners created by io.attach()
 
   server.on("upgrade", async (req, socket, head) => {
@@ -131,7 +146,7 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
       console.log(`Socket.io client connected, upgrading their connection...`);
 
       // https://github.com/socketio/socket.io/issues/4693
-      (socketIo?.io.engine as EngineServer).handleUpgrade(req, socket, head);
+      (socketIo.io.engine as EngineServer).handleUpgrade(req, socket, head);
       return;
     }
 
@@ -149,11 +164,10 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     console.log(`Client connected, upgrading their connection...`);
 
     // Handle the WebSocket connection
-    wss?.handleUpgrade(req, socket, head, (ws) => {
-      wss?.emit("connection", ws, req);
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
     });
   });
 } else {
-  require(BUILD_DIR);
   console.log(`✅ app ready (skipping http server)`);
 }

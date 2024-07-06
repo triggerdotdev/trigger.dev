@@ -27,12 +27,12 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { SEMRESATTRS_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
-import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { singleton } from "~/utils/singleton";
 import { LoggerSpanExporter } from "./telemetry/loggerExporter.server";
-
+import { createRequire } from "module";
+const require = createRequire(import.meta.url ?? __filename);
 export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
 
 class CustomWebappSampler implements Sampler {
@@ -170,6 +170,7 @@ function getTracer() {
   ];
 
   if (env.INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED === "1") {
+    const { PrismaInstrumentation } = require("@prisma/instrumentation");
     instrumentations.push(new PrismaInstrumentation());
   }
 
