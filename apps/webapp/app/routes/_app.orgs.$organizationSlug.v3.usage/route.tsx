@@ -21,11 +21,12 @@ import {
 } from "~/components/primitives/Table";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
-import { UsagePresenter } from "~/presenters/v3/UsagePresenter.server";
+import { UsagePresenter, UsageSeriesData } from "~/presenters/v3/UsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { ChartConfig } from "~/components/primitives/Chart";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   await requireUserId(request);
@@ -143,66 +144,7 @@ export default function ChoosePlanPage() {
                     </div>
                   }
                 >
-                  {(past30Days) => (
-                    <ResponsiveContainer width="100%" height="100%" className="min-h-96">
-                      <BarChart
-                        data={past30Days}
-                        margin={{
-                          top: 20,
-                          right: 0,
-                          left: -10,
-                          bottom: 10,
-                        }}
-                      >
-                        <XAxis
-                          stroke="#5F6570"
-                          fontSize={12}
-                          tickLine={false}
-                          axisLine={true}
-                          dataKey={(item: { date: string }) => {
-                            if (!item.date) return "";
-                            const date = new Date(item.date);
-                            if (date.getDate() === 1) {
-                              return dateFormatter.format(date);
-                            }
-                            return `${date.getDate()}`;
-                          }}
-                          className="text-xs"
-                        />
-                        <YAxis
-                          stroke="#5F6570"
-                          fontSize={12}
-                          tickLine={false}
-                          axisLine={true}
-                          allowDecimals={true}
-                          tickFormatter={(value) => `$${value.toFixed(2)}`}
-                        />
-                        <Tooltip
-                          cursor={{ fill: "rgba(255,255,255,0.05)" }}
-                          contentStyle={tooltipStyle}
-                          labelFormatter={(value, data) => {
-                            const dateString = data.at(0)?.payload.date;
-                            if (!dateString) {
-                              return "";
-                            }
-
-                            return dateFormatter.format(new Date(dateString));
-                          }}
-                          formatter={(value, data) => [
-                            `$${
-                              typeof value === "number" ? value.toFixed(8) : value.toLocaleString()
-                            }`,
-                            "",
-                          ]}
-                        />
-                        <Bar
-                          dataKey="dollars"
-                          fill="#28BF5C"
-                          activeBar={<Rectangle fill="#5ADE87" />}
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
+                  {(past30Days) => <UsageChart data={past30Days} />}
                 </Await>
               </Suspense>
             </div>
@@ -274,5 +216,69 @@ export default function ChoosePlanPage() {
         </div>
       </PageBody>
     </PageContainer>
+  );
+}
+
+const chartConfig = {
+  dollars: {
+    label: "Usage ($)",
+    color: "#2563eb",
+  },
+} satisfies ChartConfig;
+
+function UsageChart({ data }: { data: UsageSeriesData }) {
+  return (
+    <ResponsiveContainer width="100%" height="100%" className="min-h-96">
+      <BarChart
+        data={data}
+        margin={{
+          top: 20,
+          right: 0,
+          left: -10,
+          bottom: 10,
+        }}
+      >
+        <XAxis
+          stroke="#5F6570"
+          fontSize={12}
+          tickLine={false}
+          axisLine={true}
+          dataKey={(item: { date: string }) => {
+            if (!item.date) return "";
+            const date = new Date(item.date);
+            if (date.getDate() === 1) {
+              return dateFormatter.format(date);
+            }
+            return `${date.getDate()}`;
+          }}
+          className="text-xs"
+        />
+        <YAxis
+          stroke="#5F6570"
+          fontSize={12}
+          tickLine={false}
+          axisLine={true}
+          allowDecimals={true}
+          tickFormatter={(value) => `$${value.toFixed(2)}`}
+        />
+        <Tooltip
+          cursor={{ fill: "rgba(255,255,255,0.05)" }}
+          contentStyle={tooltipStyle}
+          labelFormatter={(value, data) => {
+            const dateString = data.at(0)?.payload.date;
+            if (!dateString) {
+              return "";
+            }
+
+            return dateFormatter.format(new Date(dateString));
+          }}
+          formatter={(value) => {
+            const numValue = Number(value);
+            return [` ${formatCurrencyAccurate(numValue)}`];
+          }}
+        />
+        <Bar dataKey="dollars" fill="#28BF5C" activeBar={<Rectangle fill="#5ADE87" />} />
+      </BarChart>
+    </ResponsiveContainer>
   );
 }

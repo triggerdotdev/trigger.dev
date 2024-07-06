@@ -19,6 +19,11 @@ export type TaskUsageItem = {
   totalBaseCost: number;
 };
 
+export type UsageSeriesData = {
+  date: string;
+  dollars: number;
+}[];
+
 export class UsagePresenter extends BasePresenter {
   public async call({ organizationId }: Options) {
     //periods
