@@ -3,8 +3,8 @@ import express from "express";
 import compression from "compression";
 import morgan from "morgan";
 import { createRequestHandler } from "@remix-run/express";
-import { ServerBuild } from "@remix-run/server-runtime";
-import { Server as EngineServer } from "engine.io";
+import { type ServerBuild } from "@remix-run/server-runtime";
+import { type Server as EngineServer } from "engine.io";
 import { registryProxy } from "./app/v3/registryProxy.server";
 import { apiRateLimiter } from "./app/services/apiRateLimit.server";
 import { socketIo } from "./app/v3/handleSocketIo.server";
@@ -20,13 +20,19 @@ const viteDevServer =
       );
 
 async function getBuild() {
-  const build = viteDevServer
-    ? viteDevServer.ssrLoadModule("virtual:remix/server-build")
-    : // @ts-ignore this should exist before running the server
-      // but it may not exist just yet.
-      await import("../build/server/index.js");
-  // not sure how to make this happy 🤷‍♂️
-  return build as unknown as ServerBuild;
+  if (viteDevServer) {
+    return viteDevServer.ssrLoadModule("virtual:remix/server-build") as unknown as ServerBuild;
+  }
+
+  try {
+    // @ts-ignore If the server hasn't built, this will throw
+    const serverBuild = await import("./build/server/index.js");
+
+    return serverBuild as unknown as ServerBuild;
+  } catch (error) {
+    throw new Error("Server build not found at ./build/server/index.js. Did you run `pnpm build`?");
+  }
+
 }
 
 const app = express();

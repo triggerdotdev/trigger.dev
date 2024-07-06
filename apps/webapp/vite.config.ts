@@ -16,9 +16,9 @@ const MODE = process.env.NODE_ENV;
 
 export default defineConfig({
   ssr: {
-    noExternal: ["react-use", "cookie"],
+    noExternal: ["react-use"],
   },
-
+  
   optimizeDeps: {
     // Include CJS deps or any with lots of internal modules
     include: [
@@ -36,8 +36,6 @@ export default defineConfig({
       "@react-stately/datepicker",
       "@trigger.dev/billing",
       "@trigger.dev/companyicons",
-      "@trigger.dev/core-backend",
-      "@trigger.dev/core",
       "@trigger.dev/otlp-importer",
       "@trigger.dev/sdk",
       "@trigger.dev/yalt",
@@ -129,15 +127,11 @@ export default defineConfig({
   },
   build: {
     minify: true,
-    sourcemap: true,
     cssCodeSplit: false,
     target: "esnext",
     cssMinify: MODE === "production",
     rollupOptions: {
-      output: {
-        sourcemap: true,
-      },
-      external: [/node:.*/, /.*\.node$/, "https", "stream", "crypto", "fsevents"],
+      external: ["https"],
     },
   },
 
@@ -146,9 +140,6 @@ export default defineConfig({
       port: 8002,
     },
     port: Number(process.env.PORT),
-    warmup: {
-      clientFiles: ["./app/entry.client.tsx", "./app/root.tsx"],
-    },
   },
 
   plugins: [
