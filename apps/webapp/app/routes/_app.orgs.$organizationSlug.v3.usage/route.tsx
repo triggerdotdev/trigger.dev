@@ -3,7 +3,16 @@ import { Await } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Suspense } from "react";
-import { Bar, BarChart, Rectangle, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Rectangle,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { redirect, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { UsageBar } from "~/components/billing/v3/UsageBar";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -26,7 +35,12 @@ import { requireUserId } from "~/services/session.server";
 import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { ChartConfig } from "~/components/primitives/Chart";
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "~/components/primitives/Chart";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   await requireUserId(request);
@@ -227,25 +241,31 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 function UsageChart({ data }: { data: UsageSeriesData }) {
+  const maxDollar = Math.max(...data.map((d) => d.dollars));
+  const decimalPlaces = maxDollar < 1 ? 4 : 2;
+
   return (
-    <ResponsiveContainer width="100%" height="100%" className="min-h-96">
+    <ChartContainer config={chartConfig} className="max-h-96 min-h-40 w-full">
       <BarChart
+        accessibilityLayer
         data={data}
-        margin={{
-          top: 20,
-          right: 0,
-          left: -10,
-          bottom: 10,
-        }}
+        // margin={{
+        //   top: 20,
+        //   right: 0,
+        //   left: -10,
+        //   bottom: 10,
+        // }}
       >
+        <CartesianGrid vertical={false} stroke="#212327" />
         <XAxis
-          stroke="#5F6570"
           fontSize={12}
           tickLine={false}
-          axisLine={true}
-          dataKey={(item: { date: string }) => {
-            if (!item.date) return "";
-            const date = new Date(item.date);
+          tickMargin={10}
+          axisLine={false}
+          dataKey="date"
+          tickFormatter={(value) => {
+            if (!value) return "";
+            const date = new Date(value);
             if (date.getDate() === 1) {
               return dateFormatter.format(date);
             }
@@ -254,14 +274,14 @@ function UsageChart({ data }: { data: UsageSeriesData }) {
           className="text-xs"
         />
         <YAxis
-          stroke="#5F6570"
           fontSize={12}
           tickLine={false}
-          axisLine={true}
+          tickMargin={10}
+          axisLine={false}
           allowDecimals={true}
-          tickFormatter={(value) => `$${value.toFixed(2)}`}
+          tickFormatter={(value) => `$${value.toFixed(decimalPlaces)}`}
         />
-        <Tooltip
+        {/* <Tooltip
           cursor={{ fill: "rgba(255,255,255,0.05)" }}
           contentStyle={tooltipStyle}
           labelFormatter={(value, data) => {
@@ -276,9 +296,24 @@ function UsageChart({ data }: { data: UsageSeriesData }) {
             const numValue = Number(value);
             return [` ${formatCurrencyAccurate(numValue)}`];
           }}
+        /> */}
+        <ChartTooltip
+          content={<ChartTooltipContent />}
+          labelFormatter={(value, data) => {
+            const dateString = data.at(0)?.payload.date;
+            if (!dateString) {
+              return "";
+            }
+
+            return dateFormatter.format(new Date(dateString));
+          }}
+          // formatter={(value) => {
+          //   const numValue = Number(value);
+          //   return [` ${formatCurrencyAccurate(numValue)}`];
+          // }}
         />
-        <Bar dataKey="dollars" fill="#28BF5C" activeBar={<Rectangle fill="#5ADE87" />} />
+        <Bar dataKey="dollars" fill="var(--color-dollars)" radius={[4, 4, 0, 0]} />
       </BarChart>
-    </ResponsiveContainer>
+    </ChartContainer>
   );
 }
