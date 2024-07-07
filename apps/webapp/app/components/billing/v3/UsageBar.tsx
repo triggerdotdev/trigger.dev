@@ -9,9 +9,16 @@ type UsageBarProps = {
   billingLimit?: number;
   tierLimit?: number;
   projectedUsage: number;
+  isPaying: boolean;
 };
 
-export function UsageBar({ current, billingLimit, tierLimit, projectedUsage }: UsageBarProps) {
+export function UsageBar({
+  current,
+  billingLimit,
+  tierLimit,
+  projectedUsage,
+  isPaying,
+}: UsageBarProps) {
   const getLargestNumber = Math.max(
     current,
     tierLimit ?? -Infinity,
@@ -59,11 +66,14 @@ export function UsageBar({ current, billingLimit, tierLimit, projectedUsage }: U
             className="absolute h-3 rounded-l-sm bg-green-900/50"
           >
             <Legend
-              text={`Tier limit:`}
+              text={isPaying ? `Included usage:` : `Tier limit:`}
               value={formatCurrency(tierLimit, false)}
               position="bottomRow1"
               percentage={tierRunLimitPercentage}
-              tooltipContent={`Tier limit: ${formatCurrency(tierLimit, false)}`}
+              tooltipContent={`${isPaying ? "Included usage" : "Tier limit"}: ${formatCurrency(
+                tierLimit,
+                false
+              )}`}
             />
           </motion.div>
         )}

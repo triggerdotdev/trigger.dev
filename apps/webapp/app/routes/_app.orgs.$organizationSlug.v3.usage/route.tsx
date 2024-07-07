@@ -117,6 +117,7 @@ export default function ChoosePlanPage() {
                       <UsageBar
                         current={usage.current}
                         projectedUsage={usage.projected}
+                        isPaying={currentPlan?.v3Subscription?.isPaying ?? false}
                         tierLimit={
                           (currentPlan?.v3Subscription?.plan?.limits.includedUsage ?? 0) / 100
                         }
