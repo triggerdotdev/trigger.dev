@@ -153,15 +153,39 @@ export class CompleteAttemptService extends BaseService {
       return "COMPLETED";
     }
 
-    await this._prisma.taskRunAttempt.update({
-      where: { id: taskRunAttempt.id },
-      data: {
-        status: "FAILED",
-        completedAt: new Date(),
-        error: completion.error,
-        usageDurationMs: completion.usage?.durationMs,
-      },
-    });
+    let attemptError = completion.error;
+
+    try {
+      await this._prisma.taskRunAttempt.update({
+        where: { id: taskRunAttempt.id },
+        data: {
+          status: "FAILED",
+          completedAt: new Date(),
+          error: attemptError,
+          usageDurationMs: completion.usage?.durationMs,
+        },
+      });
+    } catch (error) {
+      logger.error("Failed to update task run attempt after failure, trying again", {
+        error,
+        taskRunAttempt,
+      });
+
+      attemptError = {
+        type: "STRING_ERROR",
+        raw: JSON.stringify(completion.error),
+      };
+
+      await this._prisma.taskRunAttempt.update({
+        where: { id: taskRunAttempt.id },
+        data: {
+          status: "FAILED",
+          completedAt: new Date(),
+          error: attemptError,
+          usageDurationMs: completion.usage?.durationMs,
+        },
+      });
+    }
 
     const environment = env ?? (await this.#getEnvironment(execution.environment.id));
 
@@ -276,7 +300,7 @@ export class CompleteAttemptService extends BaseService {
             name: "exception",
             time: new Date(),
             properties: {
-              exception: createExceptionPropertiesFromError(completion.error),
+              exception: createExceptionPropertiesFromError(attemptError),
             },
           },
         ],
