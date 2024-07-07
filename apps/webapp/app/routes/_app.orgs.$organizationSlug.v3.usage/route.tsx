@@ -3,22 +3,21 @@ import { Await } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Suspense } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Rectangle,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { redirect, typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { URL } from "url";
 import { UsageBar } from "~/components/billing/v3/UsageBar";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "~/components/primitives/Chart";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -30,17 +29,12 @@ import {
 } from "~/components/primitives/Table";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { UsagePresenter, UsageSeriesData } from "~/presenters/v3/UsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import {
-  ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "~/components/primitives/Chart";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   await requireUserId(request);
@@ -59,24 +53,46 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
   }
 
+  //past 6 months, 1st day of the month
+  const months = Array.from({ length: 6 }, (_, i) => {
+    const date = new Date();
+    date.setDate(1);
+    date.setUTCMonth(date.getUTCMonth() - i);
+    date.setUTCHours(0, 0, 0, 0);
+    return date;
+  });
+
+  const search = new URL(request.url).searchParams;
+  const searchMonth = search.get("month");
+  const startDate = searchMonth ? new Date(searchMonth) : months[0];
+
   const presenter = new UsagePresenter();
-  const { past30Days, usage, tasks } = await presenter.call({ organizationId: organization.id });
+  const { usageOverTime, usage, tasks } = await presenter.call({
+    organizationId: organization.id,
+    startDate,
+  });
 
   return typeddefer({
-    past30Days,
+    usageOverTime,
     usage,
     tasks,
+    months,
+    isCurrentMonth: startDate.toISOString() === months[0].toISOString(),
   });
 }
 
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
+const monthDateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  year: "numeric",
 });
 
-export default function ChoosePlanPage() {
-  const { usage, past30Days, tasks } = useTypedLoaderData<typeof loader>();
+export default function Page() {
+  const { usage, usageOverTime, tasks, months, isCurrentMonth } =
+    useTypedLoaderData<typeof loader>();
   const currentPlan = useCurrentPlan();
+  const { value, replace } = useSearchParams();
+
+  const month = value("month") ?? months[0].toISOString();
 
   return (
     <PageContainer>
@@ -86,7 +102,30 @@ export default function ChoosePlanPage() {
       <PageBody scrollable={true}>
         <div className="flex flex-col gap-6">
           <div>
-            <Header2 spacing>This month</Header2>
+            <Select
+              name="month"
+              placeholder="Select a month"
+              className="mb-3"
+              defaultValue={month}
+              items={months.map((date) => ({
+                label: monthDateFormatter.format(date),
+                value: date.toISOString(),
+              }))}
+              text={(value) => monthDateFormatter.format(new Date(value))}
+              setValue={(value) => {
+                replace({ month: value });
+              }}
+              dropdownIcon
+              variant="tertiary/medium"
+            >
+              {(matches) =>
+                matches.map((month) => (
+                  <SelectItem key={month.value} value={month.value}>
+                    {month.label}
+                  </SelectItem>
+                ))
+              }
+            </Select>
             <div className="flex w-full flex-col gap-2 rounded-sm border border-grid-dimmed p-4">
               <Suspense fallback={<Spinner />}>
                 <Await
@@ -101,25 +140,33 @@ export default function ChoosePlanPage() {
                     <>
                       <div className="flex w-full items-center gap-6">
                         <div className="flex flex-col gap-2">
-                          <Header3 className="">Month-to-date</Header3>
+                          <Header3 className="">
+                            {isCurrentMonth ? "Month-to-date" : "Usage"}
+                          </Header3>
                           <p className="text-3xl font-medium text-text-bright">
                             {formatCurrency(usage.current, false)}
                           </p>
                         </div>
-                        <ArrowRightIcon className="h-6 w-6 text-text-dimmed/50" />
-                        <div className="flex flex-col gap-2 text-text-dimmed">
-                          <Header3 className="text-text-dimmed">Projected</Header3>
-                          <p className="text-3xl font-medium">
-                            {formatCurrency(usage.projected, false)}
-                          </p>
-                        </div>
+                        {isCurrentMonth ? (
+                          <>
+                            <ArrowRightIcon className="h-6 w-6 text-text-dimmed/50" />
+                            <div className="flex flex-col gap-2 text-text-dimmed">
+                              <Header3 className="text-text-dimmed">Projected</Header3>
+                              <p className="text-3xl font-medium">
+                                {formatCurrency(usage.projected, false)}
+                              </p>
+                            </div>
+                          </>
+                        ) : null}
                       </div>
                       <UsageBar
                         current={usage.current}
-                        projectedUsage={usage.projected}
+                        projectedUsage={isCurrentMonth ? usage.projected : undefined}
                         isPaying={currentPlan?.v3Subscription?.isPaying ?? false}
                         tierLimit={
-                          (currentPlan?.v3Subscription?.plan?.limits.includedUsage ?? 0) / 100
+                          isCurrentMonth
+                            ? (currentPlan?.v3Subscription?.plan?.limits.includedUsage ?? 0) / 100
+                            : undefined
                         }
                       />
                     </>
@@ -129,9 +176,8 @@ export default function ChoosePlanPage() {
             </div>
           </div>
           <div>
-            <Header2 spacing>Past 30 days</Header2>
+            <Header2 spacing>Usage by day</Header2>
             <div className="rounded-sm border border-grid-dimmed p-4">
-              <Header3 spacing>Usage</Header3>
               <Suspense
                 fallback={
                   <div className="flex min-h-40 items-center justify-center">
@@ -140,7 +186,7 @@ export default function ChoosePlanPage() {
                 }
               >
                 <Await
-                  resolve={past30Days}
+                  resolve={usageOverTime}
                   errorElement={
                     <div className="flex min-h-40 items-center justify-center">
                       <Paragraph variant="small">Failed to load graph.</Paragraph>
@@ -180,7 +226,7 @@ export default function ChoosePlanPage() {
                         {tasks.length === 0 ? (
                           <TableRow>
                             <TableCell colSpan={6}>
-                              <Paragraph variant="small">No runs to display yet.</Paragraph>
+                              <Paragraph variant="small">No runs.</Paragraph>
                             </TableCell>
                           </TableRow>
                         ) : (
@@ -229,6 +275,11 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
+const tooltipDateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
 function UsageChart({ data }: { data: UsageSeriesData }) {
   const maxDollar = Math.max(...data.map((d) => d.dollars));
   const decimalPlaces = maxDollar < 1 ? 4 : 2;
@@ -246,9 +297,6 @@ function UsageChart({ data }: { data: UsageSeriesData }) {
           tickFormatter={(value) => {
             if (!value) return "";
             const date = new Date(value);
-            if (date.getDate() === 1) {
-              return dateFormatter.format(date);
-            }
             return `${date.getDate()}`;
           }}
           className="text-xs"
@@ -269,7 +317,7 @@ function UsageChart({ data }: { data: UsageSeriesData }) {
               return "";
             }
 
-            return dateFormatter.format(new Date(dateString));
+            return tooltipDateFormatter.format(new Date(dateString));
           }}
         />
         <Bar dataKey="dollars" fill="var(--color-dollars)" radius={[4, 4, 0, 0]} />

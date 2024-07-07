@@ -1,12 +1,13 @@
-import { Prisma } from "@trigger.dev/database";
 import { sqlDatabaseSchema } from "~/db.server";
-import { BasePresenter } from "./basePresenter.server";
+import { env } from "~/env.server";
 import { getUsage, getUsageSeries } from "~/services/platform.v3.server";
 import { createTimeSeriesData } from "~/utils/graphs";
-import { env } from "~/env.server";
+import { BasePresenter } from "./basePresenter.server";
+import { start } from "@popperjs/core";
 
 type Options = {
   organizationId: string;
+  startDate: Date;
 };
 
 export type TaskUsageItem = {
@@ -25,24 +26,31 @@ export type UsageSeriesData = {
 }[];
 
 export class UsagePresenter extends BasePresenter {
-  public async call({ organizationId }: Options) {
-    //periods
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    thirtyDaysAgo.setHours(0, 0, 0, 0);
-    const endOfToday = new Date();
-    endOfToday.setDate(endOfToday.getDate() + 1);
-    endOfToday.setHours(23, 59, 59, 999);
+  public async call({ organizationId, startDate }: Options) {
+    //month period
+    const startOfMonth = new Date(startDate);
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const endOfMonth = new Date(
+      startOfMonth.getFullYear(),
+      startOfMonth.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+      999
+    );
 
     //usage data from the platform
     const past30Days = getUsageSeries(organizationId, {
-      from: thirtyDaysAgo,
-      to: endOfToday,
+      from: startOfMonth,
+      to: endOfMonth,
       window: "DAY",
     }).then((data) => {
       return createTimeSeriesData({
-        startDate: thirtyDaysAgo,
-        endDate: endOfToday,
+        startDate: startOfMonth,
+        endDate: endOfMonth,
         window: "DAY",
         data: data
           ? data.data.map((period) => ({
@@ -71,8 +79,8 @@ export class UsagePresenter extends BasePresenter {
       JOIN ${sqlDatabaseSchema}."Project" pr ON pr.id = tr."projectId"
       JOIN ${sqlDatabaseSchema}."Organization" org ON org.id = pr."organizationId"
   WHERE
-      tr."createdAt" > ${thirtyDaysAgo}
-      AND tr."createdAt" < ${endOfToday}
+      tr."createdAt" > ${startOfMonth}
+      AND tr."createdAt" < ${endOfMonth}
       AND org.id = ${organizationId}
   GROUP BY
       tr."taskIdentifier";
@@ -89,14 +97,6 @@ export class UsagePresenter extends BasePresenter {
         .sort((a, b) => b.totalCost - a.totalCost);
     });
 
-    //month-to-date usage data with projection
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-
-    const now = new Date();
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-
     const usage = getUsage(organizationId, { from: startOfMonth, to: endOfMonth }).then((data) => {
       const current = (data?.cents ?? 0) / 100;
       const percentageThroughMonth = new Date().getDate() / endOfMonth.getDate();
@@ -107,7 +107,7 @@ export class UsagePresenter extends BasePresenter {
     });
 
     return {
-      past30Days,
+      usageOverTime: past30Days,
       usage,
       tasks,
     };

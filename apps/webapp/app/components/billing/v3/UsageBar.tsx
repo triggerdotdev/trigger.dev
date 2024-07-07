@@ -8,9 +8,11 @@ type UsageBarProps = {
   current: number;
   billingLimit?: number;
   tierLimit?: number;
-  projectedUsage: number;
+  projectedUsage?: number;
   isPaying: boolean;
 };
+
+const startFactor = 4;
 
 export function UsageBar({
   current,
@@ -22,14 +24,16 @@ export function UsageBar({
   const getLargestNumber = Math.max(
     current,
     tierLimit ?? -Infinity,
-    projectedUsage,
+    projectedUsage ?? -Infinity,
     billingLimit ?? -Infinity,
     5
   );
   //creates a maximum range for the progress bar, add 10% to the largest number so the bar doesn't reach the end
   const maxRange = Math.round(getLargestNumber * 1.1);
   const tierRunLimitPercentage = tierLimit ? Math.round((tierLimit / maxRange) * 100) : 0;
-  const projectedRunsPercentage = Math.round((projectedUsage / maxRange) * 100);
+  const projectedRunsPercentage = projectedUsage
+    ? Math.round((projectedUsage / maxRange) * 100)
+    : 0;
   const billingLimitPercentage =
     billingLimit !== undefined ? Math.round((billingLimit / maxRange) * 100) : 0;
   const usagePercentage = Math.round((current / maxRange) * 100);
@@ -42,7 +46,7 @@ export function UsageBar({
       <div className="relative h-3 w-full rounded-sm bg-background-bright">
         {billingLimit && (
           <motion.div
-            initial={{ width: 0 }}
+            initial={{ width: billingLimitPercentage / startFactor + "%" }}
             animate={{ width: billingLimitPercentage + "%" }}
             transition={{ duration: 1.5, type: "spring" }}
             style={{ width: `${billingLimitPercentage}%` }}
@@ -59,7 +63,7 @@ export function UsageBar({
         )}
         {tierLimit && (
           <motion.div
-            initial={{ width: 0 }}
+            initial={{ width: tierRunLimitPercentage / startFactor + "%" }}
             animate={{ width: tierRunLimitPercentage + "%" }}
             transition={{ duration: 1.5, type: "spring" }}
             style={{ width: `${tierRunLimitPercentage}%` }}
@@ -77,9 +81,9 @@ export function UsageBar({
             />
           </motion.div>
         )}
-        {projectedUsage !== 0 && (
+        {projectedUsage && projectedUsage !== 0 && (
           <motion.div
-            initial={{ width: 0 }}
+            initial={{ width: projectedRunsPercentage / startFactor + "%" }}
             animate={{ width: projectedRunsPercentage + "%" }}
             transition={{ duration: 1.5, type: "spring" }}
             style={{ width: `${projectedRunsPercentage}%` }}
@@ -95,7 +99,7 @@ export function UsageBar({
           </motion.div>
         )}
         <motion.div
-          initial={{ width: 0 }}
+          initial={{ width: usagePercentage / startFactor + "%" }}
           animate={{ width: usagePercentage + "%" }}
           transition={{ duration: 1.5, type: "spring" }}
           style={{ width: `${usagePercentage}%` }}
@@ -105,15 +109,15 @@ export function UsageBar({
           )}
         >
           <Legend
-            text="Current:"
+            text="Used:"
             value={formatCurrency(current, false)}
             position="topRow1"
             percentage={usagePercentage}
-            tooltipContent={`Current usage: ${formatCurrency(current, false)}`}
+            tooltipContent={`Used: ${formatCurrency(current, false)}`}
           />
         </motion.div>
         <motion.div
-          initial={{ width: 0 }}
+          initial={{ width: usageCappedToLimitPercentage / startFactor + "%" }}
           animate={{ width: usageCappedToLimitPercentage + "%" }}
           transition={{ duration: 1.5, type: "spring" }}
           style={{ width: `${usageCappedToLimitPercentage}%` }}
