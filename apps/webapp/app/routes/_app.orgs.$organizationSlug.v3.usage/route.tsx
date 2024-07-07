@@ -236,7 +236,7 @@ export default function ChoosePlanPage() {
 const chartConfig = {
   dollars: {
     label: "Usage ($)",
-    color: "#2563eb",
+    color: "#7655fd",
   },
 } satisfies ChartConfig;
 
@@ -246,17 +246,8 @@ function UsageChart({ data }: { data: UsageSeriesData }) {
 
   return (
     <ChartContainer config={chartConfig} className="max-h-96 min-h-40 w-full">
-      <BarChart
-        accessibilityLayer
-        data={data}
-        // margin={{
-        //   top: 20,
-        //   right: 0,
-        //   left: -10,
-        //   bottom: 10,
-        // }}
-      >
-        <CartesianGrid vertical={false} stroke="#212327" />
+      <BarChart accessibilityLayer data={data}>
+        <CartesianGrid vertical={false} />
         <XAxis
           fontSize={12}
           tickLine={false}
@@ -281,22 +272,6 @@ function UsageChart({ data }: { data: UsageSeriesData }) {
           allowDecimals={true}
           tickFormatter={(value) => `$${value.toFixed(decimalPlaces)}`}
         />
-        {/* <Tooltip
-          cursor={{ fill: "rgba(255,255,255,0.05)" }}
-          contentStyle={tooltipStyle}
-          labelFormatter={(value, data) => {
-            const dateString = data.at(0)?.payload.date;
-            if (!dateString) {
-              return "";
-            }
-
-            return dateFormatter.format(new Date(dateString));
-          }}
-          formatter={(value) => {
-            const numValue = Number(value);
-            return [` ${formatCurrencyAccurate(numValue)}`];
-          }}
-        /> */}
         <ChartTooltip
           content={<ChartTooltipContent />}
           labelFormatter={(value, data) => {
@@ -307,10 +282,6 @@ function UsageChart({ data }: { data: UsageSeriesData }) {
 
             return dateFormatter.format(new Date(dateString));
           }}
-          // formatter={(value) => {
-          //   const numValue = Number(value);
-          //   return [` ${formatCurrencyAccurate(numValue)}`];
-          // }}
         />
         <Bar dataKey="dollars" fill="var(--color-dollars)" radius={[4, 4, 0, 0]} />
       </BarChart>
