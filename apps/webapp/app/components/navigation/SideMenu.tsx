@@ -180,7 +180,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               iconColor="text-amber-500"
               data-action="team"
             />
-            {isManagedCloud && (
+            {organization.projects.some((proj) => proj.version === "V3") && isManagedCloud && (
               <>
                 <SideMenuItem
                   name="Usage"
