@@ -101,13 +101,11 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   try {
-    const { isManagedCloud } = featuresForRequest(request);
     const project = await createProject({
       organizationSlug: organizationSlug,
       name: submission.value.projectName,
       userId,
       version: submission.value.projectVersion,
-      isManagedCloud,
     });
 
     return redirectWithSuccessMessage(

@@ -14,11 +14,10 @@ type Options = {
   name: string;
   userId: string;
   version: "v2" | "v3";
-  isManagedCloud: boolean;
 };
 
 export async function createProject(
-  { organizationSlug, name, userId, version, isManagedCloud }: Options,
+  { organizationSlug, name, userId, version }: Options,
   attemptCount = 0
 ): Promise<Project & { organization: Organization }> {
   //check the user has permissions to do this
@@ -62,7 +61,6 @@ export async function createProject(
         name,
         userId,
         version,
-        isManagedCloud,
       },
       attemptCount + 1
     );
