@@ -65,6 +65,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const search = new URL(request.url).searchParams;
   const searchMonth = search.get("month");
   const startDate = searchMonth ? new Date(searchMonth) : months[0];
+  startDate.setDate(1);
+  startDate.setUTCHours(0, 0, 0, 0);
 
   const presenter = new UsagePresenter();
   const { usageOverTime, usage, tasks } = await presenter.call({
