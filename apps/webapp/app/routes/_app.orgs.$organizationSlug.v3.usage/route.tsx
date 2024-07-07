@@ -74,18 +74,6 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
-const tooltipStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0rem",
-  borderRadius: "0.25rem",
-  border: "1px solid #272A2E",
-  backgroundColor: "#1A1B1F",
-  padding: "0.3rem 0.5rem",
-  fontSize: "0.75rem",
-  color: "#E2E8F0",
-};
-
 export default function ChoosePlanPage() {
   const { usage, past30Days, tasks } = useTypedLoaderData<typeof loader>();
   const currentPlan = useCurrentPlan();
