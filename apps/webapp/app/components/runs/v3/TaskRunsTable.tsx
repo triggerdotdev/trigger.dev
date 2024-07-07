@@ -182,7 +182,7 @@ export function TaskRunsTable({
       </TableHeader>
       <TableBody>
         {total === 0 && !hasFilters ? (
-          <TableBlankRow colSpan={10}>
+          <TableBlankRow colSpan={14}>
             {!isLoading && <NoRuns title="No runs found" />}
           </TableBlankRow>
         ) : runs.length === 0 ? (
@@ -281,7 +281,7 @@ export function TaskRunsTable({
         )}
         {isLoading && (
           <TableBlankRow
-            colSpan={8}
+            colSpan={14}
             className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
@@ -341,7 +341,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   const organization = useOrganization();
   const project = useProject();
   const envs = useEnvironments();
-  if (isLoading) return <TableBlankRow colSpan={9}></TableBlankRow>;
+  if (isLoading) return <TableBlankRow colSpan={14}></TableBlankRow>;
 
   const { environments, tasks, from, to, ...otherFilters } = filters;
 
@@ -354,7 +354,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   ) {
     const environment = envs?.find((env) => env.id === filters.environments[0]);
     return (
-      <TableBlankRow colSpan={10}>
+      <TableBlankRow colSpan={14}>
         <div className="py-14">
           <Paragraph className="w-auto" variant="base/bright" spacing>
             There are no runs for {filters.tasks[0]}
@@ -395,7 +395,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   }
 
   return (
-    <TableBlankRow colSpan={10}>
+    <TableBlankRow colSpan={14}>
       <div className="flex flex-col items-center justify-center gap-2">
         <Paragraph className="w-auto" variant="small">
           No runs currently match your filters. Try refreshing or modifying your filters.
