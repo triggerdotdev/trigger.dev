@@ -47,15 +47,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   telemetry.organization.identify({ organization });
   telemetry.project.identify({ project });
 
-  const plan = await getCurrentPlan(organization.id);
-
   //1st day of the month
   const firstDayOfMonth = new Date();
   firstDayOfMonth.setDate(1);
   firstDayOfMonth.setHours(0, 0, 0, 0);
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const usage = await getUsage(organization.id, { from: firstDayOfMonth, to: tomorrow });
+  const [plan, usage] = await Promise.all([
+    getCurrentPlan(organization.id),
+    getUsage(organization.id, { from: firstDayOfMonth, to: tomorrow }),
+  ]);
 
   let hasExceededFreeTier = false;
   let usagePercentage = 0;
