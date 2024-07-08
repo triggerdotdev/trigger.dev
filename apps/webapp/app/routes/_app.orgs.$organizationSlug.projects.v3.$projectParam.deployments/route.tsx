@@ -141,7 +141,10 @@ export default function Page() {
                             </TableCell>
                             <TableCell to={path}>{deployment.version}</TableCell>
                             <TableCell to={path}>
-                              <DeploymentStatus status={deployment.status} />
+                              <DeploymentStatus
+                                status={deployment.status}
+                                isBuilt={deployment.isBuilt}
+                              />
                             </TableCell>
                             <TableCell to={path}>
                               {deployment.tasksCount !== null ? deployment.tasksCount : "–"}
