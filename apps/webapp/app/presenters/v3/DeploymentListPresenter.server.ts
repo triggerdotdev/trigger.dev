@@ -88,6 +88,7 @@ export class DeploymentListPresenter {
         version: string;
         status: WorkerDeploymentStatus;
         environmentId: string;
+        builtAt: Date | null;
         deployedAt: Date | null;
         tasksCount: BigInt | null;
         userId: string | null;
@@ -107,6 +108,7 @@ export class DeploymentListPresenter {
   u."name" AS "userName", 
   u."displayName" AS "userDisplayName", 
   u."avatarUrl" AS "userAvatarUrl", 
+  wd."builtAt",
   wd."deployedAt"
 FROM 
   ${sqlDatabaseSchema}."WorkerDeployment" as wd
@@ -136,9 +138,11 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
           shortCode: deployment.shortCode,
           version: deployment.version,
           status: deployment.status,
+          builtAt: deployment.builtAt,
           deployedAt: deployment.deployedAt,
           tasksCount: deployment.tasksCount ? Number(deployment.tasksCount) : null,
           label: label?.label,
+          isBuilt: !!deployment.builtAt,
           isCurrent: label?.label === "current",
           isDeployed: deployment.status === "DEPLOYED",
           environment: {
