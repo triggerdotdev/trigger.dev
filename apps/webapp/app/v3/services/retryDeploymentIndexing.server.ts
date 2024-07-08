@@ -1,3 +1,4 @@
+import { deploymentIndexingIsRetryable } from "../deploymentStatus";
 import { BaseService } from "./baseService.server";
 import { IndexDeploymentService } from "./indexDeployment.server";
 
@@ -13,8 +14,8 @@ export class RetryDeploymentIndexingService extends BaseService {
       throw new Error("Deployment not found");
     }
 
-    if (deployment.status !== "FAILED" || !deployment.builtAt) {
-      throw new Error("Deployment indexing not failed");
+    if (!deploymentIndexingIsRetryable(deployment)) {
+      throw new Error("Deployment indexing not retryable");
     }
 
     await this._prisma.workerDeployment.update({

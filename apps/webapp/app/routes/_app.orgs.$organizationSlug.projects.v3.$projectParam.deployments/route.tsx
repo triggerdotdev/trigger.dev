@@ -54,6 +54,7 @@ import {
   v3EnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
+import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
 
 const SearchParams = z.object({
   page: z.coerce.number().optional(),
@@ -287,7 +288,7 @@ function DeploymentActionsCell({
     );
   }
 
-  if (deployment.status === "FAILED" && deployment.isBuilt) {
+  if (deploymentIndexingIsRetryable(deployment)) {
     menuItems.push(
       <Dialog>
         <DialogTrigger asChild>

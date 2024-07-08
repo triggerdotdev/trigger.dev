@@ -5,6 +5,7 @@ import { prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
+import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
 import { RetryDeploymentIndexingService } from "~/v3/services/retryDeploymentIndexing.server";
 
 export const rollbackSchema = z.object({
@@ -65,11 +66,11 @@ export const action: ActionFunction = async ({ request, params }) => {
       );
     }
 
-    if (deployment.status !== "FAILED" || !deployment.builtAt) {
+    if (!deploymentIndexingIsRetryable(deployment)) {
       return redirectWithErrorMessage(
         submission.value.redirectUrl,
         request,
-        "Deployment indexing not failed or built yet"
+        "Deployment indexing not in retryable state"
       );
     }
 
