@@ -288,7 +288,7 @@ function DeploymentActionsCell({
     );
   }
 
-  if (deploymentIndexingIsRetryable(deployment)) {
+  if (deployment.isLatest && deploymentIndexingIsRetryable(deployment)) {
     menuItems.push(
       <Dialog>
         <DialogTrigger asChild>

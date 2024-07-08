@@ -123,7 +123,7 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
     return {
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
-      deployments: deployments.map((deployment) => {
+      deployments: deployments.map((deployment, index) => {
         const environment = project.environments.find((env) => env.id === deployment.environmentId);
         if (!environment) {
           throw new Error(`Environment not found for deployment ${deployment.id}`);
@@ -145,6 +145,7 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
           isBuilt: !!deployment.builtAt,
           isCurrent: label?.label === "current",
           isDeployed: deployment.status === "DEPLOYED",
+          isLatest: page === 1 && index === 0,
           environment: {
             id: environment.id,
             type: environment.type,
