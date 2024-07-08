@@ -117,7 +117,12 @@ export default function Page() {
                           user.id !== deployment.environment.userId
                             ? deployment.environment.userName
                             : undefined;
-                        const path = v3DeploymentPath(organization, project, deployment);
+                        const path = v3DeploymentPath(
+                          organization,
+                          project,
+                          deployment,
+                          currentPage
+                        );
                         return (
                           <TableRow key={deployment.id} className="group">
                             <TableCell to={path}>

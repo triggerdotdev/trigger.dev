@@ -440,9 +440,11 @@ export function v3DeploymentsPath(organization: OrgForPath, project: ProjectForP
 export function v3DeploymentPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  deployment: DeploymentForPath
+  deployment: DeploymentForPath,
+  currentPage: number
 ) {
-  return `${v3DeploymentsPath(organization, project)}/${deployment.shortCode}`;
+  const query = currentPage ? `?page=${currentPage}` : "";
+  return `${v3DeploymentsPath(organization, project)}/${deployment.shortCode}${query}`;
 }
 
 // Integration
