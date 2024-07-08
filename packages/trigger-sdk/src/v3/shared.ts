@@ -508,6 +508,14 @@ export function createTask<
               style: "codepath",
             }),
           },
+          onResponseBody: (body, span) => {
+            body &&
+              typeof body === "object" &&
+              !Array.isArray(body) &&
+              "id" in body &&
+              typeof body.id === "string" &&
+              span.setAttribute("messaging.message.id", body.id);
+          },
         }
       );
 
@@ -881,6 +889,14 @@ export async function trigger<TTask extends AnyTask>(
           ],
           style: "codepath",
         }),
+      },
+      onResponseBody: (body, span) => {
+        body &&
+          typeof body === "object" &&
+          !Array.isArray(body) &&
+          "id" in body &&
+          typeof body.id === "string" &&
+          span.setAttribute("messaging.message.id", body.id);
       },
       ...requestOptions,
     }

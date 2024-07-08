@@ -4,6 +4,14 @@ import { taskWithRetries } from "./retries";
 export const simpleParentTask = task({
   id: "simple-parent-task",
   run: async (payload: { message: string }) => {
+    await simpleChildTask.trigger({
+      message: `${payload.message} - 2.b`,
+    });
+
+    await tasks.trigger<typeof simpleChildTask>("simple-child-task", {
+      message: `${payload.message} - 2.c`,
+    });
+
     await simpleChildTask.triggerAndWait({
       message: `${payload.message} - 2.b`,
     });
