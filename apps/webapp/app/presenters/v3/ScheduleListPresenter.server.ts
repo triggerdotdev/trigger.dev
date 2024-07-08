@@ -1,8 +1,8 @@
 import { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
-import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
+import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { getUsername } from "~/utils/username";
+import { getCurrentPlan, getLimit, getLimits } from "~/services/platform.v3.server";
 import { calculateNextScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
 import { BasePresenter } from "./basePresenter.server";
 
@@ -53,6 +53,7 @@ export class ScheduleListPresenter extends BasePresenter {
     const project = await this._replica.project.findFirstOrThrow({
       select: {
         id: true,
+        organizationId: true,
         environments: {
           select: {
             id: true,
@@ -69,11 +70,6 @@ export class ScheduleListPresenter extends BasePresenter {
                 },
               },
             },
-          },
-        },
-        organization: {
-          select: {
-            maximumSchedulesLimit: true,
           },
         },
       },
@@ -248,6 +244,8 @@ export class ScheduleListPresenter extends BasePresenter {
       };
     });
 
+    const limit = await getLimit(project.organizationId, "schedules", 500);
+
     return {
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
@@ -260,7 +258,7 @@ export class ScheduleListPresenter extends BasePresenter {
       hasFilters,
       limits: {
         used: schedulesCount,
-        limit: project.organization.maximumSchedulesLimit,
+        limit,
       },
       filters: {
         tasks,

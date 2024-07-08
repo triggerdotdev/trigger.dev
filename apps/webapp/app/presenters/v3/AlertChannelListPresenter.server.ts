@@ -8,6 +8,7 @@ import {
   ProjectAlertSlackProperties,
   ProjectAlertWebhookProperties,
 } from "~/models/projectAlert.server";
+import { getLimit } from "~/services/platform.v3.server";
 
 export type AlertChannelListPresenterData = Awaited<ReturnType<AlertChannelListPresenter["call"]>>;
 export type AlertChannelListPresenterRecord =
@@ -29,6 +30,21 @@ export class AlertChannelListPresenter extends BasePresenter {
       },
     });
 
+    const organization = await this._replica.project.findFirst({
+      where: {
+        id: projectId,
+      },
+      select: {
+        organizationId: true,
+      },
+    });
+
+    if (!organization) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+
+    const limit = await getLimit(organization.organizationId, "alerts", 25);
+
     return {
       alertChannels: await Promise.all(
         alertChannels.map(async (alertChannel) => ({
@@ -36,6 +52,10 @@ export class AlertChannelListPresenter extends BasePresenter {
           properties: await this.#presentProperties(alertChannel),
         }))
       ),
+      limits: {
+        used: alertChannels.length,
+        limit,
+      },
     };
   }
 

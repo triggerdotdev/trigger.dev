@@ -1,4 +1,4 @@
-import { BillingClient, SetPlanBody } from "@trigger.dev/billing";
+import { BillingClient, SetPlanBody } from "@trigger.dev/platform/v2";
 import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
@@ -9,7 +9,11 @@ export class BillingService {
   #prismaClient: PrismaClient;
   #replica: PrismaReplicaClient;
 
-  constructor(isManagedCloud: boolean, prismaClient: PrismaClient = prisma, replica: PrismaReplicaClient = $replica) {
+  constructor(
+    isManagedCloud: boolean,
+    prismaClient: PrismaClient = prisma,
+    replica: PrismaReplicaClient = $replica
+  ) {
     this.#prismaClient = prismaClient;
     this.#replica = replica;
     if (isManagedCloud && process.env.BILLING_API_URL && process.env.BILLING_API_KEY) {

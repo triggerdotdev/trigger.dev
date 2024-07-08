@@ -10,8 +10,8 @@ import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
-import { BillingService } from "~/services/billing.server";
 import { getImpersonationId } from "~/services/impersonation.server";
+import { getCurrentPlan, getUsage } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
@@ -26,6 +26,7 @@ export function useCurrentPlan(matches?: UIMatch[]) {
     id: "routes/_app.orgs.$organizationSlug",
     matches,
   });
+
   return data?.currentPlan;
 }
 
@@ -46,16 +47,30 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   telemetry.organization.identify({ organization });
   telemetry.project.identify({ project });
 
-  const { isManagedCloud } = featuresForRequest(request);
-  const billingPresenter = new BillingService(isManagedCloud);
-  const currentPlan = await billingPresenter.currentPlan(organization.id);
+  //1st day of the month
+  const firstDayOfMonth = new Date();
+  firstDayOfMonth.setDate(1);
+  firstDayOfMonth.setHours(0, 0, 0, 0);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const [plan, usage] = await Promise.all([
+    getCurrentPlan(organization.id),
+    getUsage(organization.id, { from: firstDayOfMonth, to: tomorrow }),
+  ]);
+
+  let hasExceededFreeTier = false;
+  let usagePercentage = 0;
+  if (plan?.v3Subscription && !plan.v3Subscription.isPaying && plan.v3Subscription.plan && usage) {
+    hasExceededFreeTier = usage.cents > plan.v3Subscription.plan.limits.includedUsage;
+    usagePercentage = usage.cents / plan.v3Subscription.plan.limits.includedUsage;
+  }
 
   return typedjson({
     organizations,
     organization,
     project,
     isImpersonating: !!impersonationId,
-    currentPlan,
+    currentPlan: { ...plan, v3Usage: { ...usage, hasExceededFreeTier, usagePercentage } },
   });
 };
 

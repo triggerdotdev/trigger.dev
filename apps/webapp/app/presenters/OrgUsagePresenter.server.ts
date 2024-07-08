@@ -1,7 +1,7 @@
-import { estimate } from "@trigger.dev/billing";
+import { estimate } from "@trigger.dev/platform/v2";
 import { sqlDatabaseSchema } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
-import { BillingService } from "~/services/billing.server";
+import { BillingService } from "~/services/billing.v2.server";
 import { BasePresenter } from "./v3/basePresenter.server";
 
 export class OrgUsagePresenter extends BasePresenter {

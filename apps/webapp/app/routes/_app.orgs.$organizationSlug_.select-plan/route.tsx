@@ -1,88 +1,57 @@
-import { ChartBarIcon } from "@heroicons/react/20/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
-import { PricingCalculator } from "~/components/billing/PricingCalculator";
-import { PricingTiers } from "~/components/billing/PricingTiers";
-import { RunsVolumeDiscountTable } from "~/components/billing/RunsVolumeDiscountTable";
-import { Button } from "~/components/primitives/Buttons";
+import { MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Header1 } from "~/components/primitives/Headers";
-import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetHeader,
-  SheetTrigger,
-} from "~/components/primitives/Sheet";
+import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
-import { useOptionalProject, useProject } from "~/hooks/useProject";
-import { OrgBillingPlanPresenter } from "~/presenters/OrgBillingPlanPresenter";
-import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
+import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
-import {
-  OrganizationParamsSchema,
-  organizationBillingPath,
-  organizationPath,
-  projectPath,
-} from "~/utils/pathBuilder";
+import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
+import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
-  const userId = await requireUserId(request);
+  await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
   const { isManagedCloud } = featuresForRequest(request);
   if (!isManagedCloud) {
-    return redirect(organizationBillingPath({ slug: organizationSlug }));
+    return redirect(organizationPath({ slug: organizationSlug }));
   }
 
-  const presenter = new OrgBillingPlanPresenter();
-  const result = await presenter.call({ slug: organizationSlug, isManagedCloud });
-  if (!result) {
-    throw new Response(null, { status: 404 });
+  const plans = await getPlans();
+  if (!plans) {
+    throw new Response(null, { status: 404, statusText: "Plans not found" });
   }
 
-  const orgsPresenter = new OrganizationsPresenter();
-  const { project } = await orgsPresenter.call({
-    userId,
-    request,
-    organizationSlug,
-    projectSlug: undefined,
+  const organization = await prisma.organization.findUnique({
+    where: { slug: organizationSlug },
   });
 
-  return typedjson({ plans: result.plans, organizationSlug, projectSlug: project.slug });
+  if (!organization) {
+    throw new Response(null, { status: 404, statusText: "Organization not found" });
+  }
+
+  if (organization.v3Enabled) {
+    return redirect(organizationPath({ slug: organizationSlug }));
+  }
+
+  const currentPlan = await getCurrentPlan(organization.id);
+
+  return typedjson({ ...plans, ...currentPlan, organizationSlug });
 }
 
 export default function ChoosePlanPage() {
-  const { plans, organizationSlug, projectSlug } = useTypedLoaderData<typeof loader>();
+  const { plans, v3Subscription, organizationSlug } = useTypedLoaderData<typeof loader>();
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-[80rem] flex-col items-center justify-center gap-12 overflow-y-auto px-12">
-      <Header1>Subscribe for full access</Header1>
-      <PricingTiers
-        organizationSlug={organizationSlug}
+    <MainCenteredContainer className="flex max-w-[80rem] flex-col items-center gap-8 p-3">
+      <Header1 className="text-center">Subscribe for full access</Header1>
+      <PricingPlans
         plans={plans}
-        showActionText={false}
-        freeButtonPath={projectPath({ slug: organizationSlug }, { slug: projectSlug })}
+        subscription={v3Subscription}
+        organizationSlug={organizationSlug}
+        hasPromotedPlan
       />
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button variant="tertiary/small" LeadingIcon={ChartBarIcon} leadingIconClassName="px-0">
-            Estimate usage
-          </Button>
-        </SheetTrigger>
-        <SheetContent size="lg">
-          <SheetHeader className="justify-between">
-            <div className="flex items-center gap-4">
-              <Header1>Estimate your usage</Header1>
-            </div>
-          </SheetHeader>
-          <SheetBody>
-            <PricingCalculator plans={plans} />
-            <div className="mt-8 rounded border border-grid-bright p-6">
-              <RunsVolumeDiscountTable brackets={plans.paid.runs?.pricing?.brackets ?? []} />
-            </div>
-          </SheetBody>
-        </SheetContent>
-      </Sheet>
-    </div>
+    </MainCenteredContainer>
   );
 }

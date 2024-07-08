@@ -3,7 +3,7 @@ import { parse } from "@conform-to/zod";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -16,17 +16,19 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
+import { featuresForRequest } from "~/features.server";
 import { useFeatures } from "~/hooks/useFeatures";
-import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { createProject } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
-import { OrganizationParamsSchema, organizationPath, projectPath } from "~/utils/pathBuilder";
-import { RequestV3Access } from "../resources.orgs.$organizationSlug.v3-access";
+import {
+  OrganizationParamsSchema,
+  organizationPath,
+  projectPath,
+  selectPlanPath,
+} from "~/utils/pathBuilder";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -56,7 +58,15 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
   }
 
+  //if you don't have v3 access, you must select a plan
+  const { isManagedCloud, v3Enabled } = featuresForRequest(request);
+  if (isManagedCloud && v3Enabled && !organization.v3Enabled) {
+    return redirect(selectPlanPath({ slug: organizationSlug }));
+  }
+
   const url = new URL(request.url);
+
+  const message = url.searchParams.get("message");
 
   return typedjson({
     organization: {
@@ -69,6 +79,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       hasRequestedV3: organization.hasRequestedV3,
     },
     defaultVersion: url.searchParams.get("version") ?? "v2",
+    message: message ? decodeURIComponent(message) : undefined,
   });
 }
 
@@ -107,24 +118,13 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 };
 
-export default function NewOrganizationPage() {
-  const { organization } = useTypedLoaderData<typeof loader>();
+export default function Page() {
+  const { organization, message } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const { v3Enabled, isManagedCloud } = useFeatures();
 
   const canCreateV3Projects = organization.v3Enabled && v3Enabled;
   const canCreateV2Projects = organization.v2Enabled || !isManagedCloud;
-  const canCreateProjects = canCreateV2Projects || canCreateV3Projects;
-
-  if (!canCreateProjects) {
-    return (
-      <RequestV3Access
-        hasRequestedV3={organization.hasRequestedV3}
-        organizationSlug={organization.slug}
-        projectsCount={organization.projectsCount}
-      />
-    );
-  }
 
   const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",
@@ -144,9 +144,9 @@ export default function NewOrganizationPage() {
           description={`This will create a new project in your "${organization.title}" organization.`}
         />
         <Form method="post" {...form.props}>
-          {organization.projectsCount === 0 && (
-            <Callout variant="info" className="mb-4">
-              Organizations require at least one project, please create one to continue.
+          {message && (
+            <Callout variant="success" className="mb-4">
+              {message}
             </Callout>
           )}
           <Fieldset>
@@ -184,15 +184,9 @@ export default function NewOrganizationPage() {
                 <FormError id={projectVersion.errorId}>{projectVersion.error}</FormError>
               </InputGroup>
             ) : canCreateV3Projects ? (
-              <>
-                <Callout variant="info">This will be a v3 project</Callout>
-                <input {...conform.input(projectVersion, { type: "hidden" })} value={"v3"} />
-              </>
+              <input {...conform.input(projectVersion, { type: "hidden" })} value={"v3"} />
             ) : (
-              <>
-                <Callout variant="info">This will be a v2 project</Callout>
-                <input {...conform.input(projectVersion, { type: "hidden" })} value={"v2"} />
-              </>
+              <input {...conform.input(projectVersion, { type: "hidden" })} value={"v2"} />
             )}
             <FormButtons
               confirmButton={

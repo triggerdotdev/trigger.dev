@@ -51,7 +51,14 @@ class LoopsClient {
       const response = await fetch("https://app.loops.so/api/v1/events/send", options);
 
       if (!response.ok) {
-        logger.error(`Loops sendEvent ${eventName} bad status`, { status: response.status });
+        logger.error(`Loops sendEvent ${eventName} bad status`, {
+          status: response.status,
+          email,
+          userId,
+          firstName,
+          eventProperties,
+          eventName,
+        });
         return false;
       }
 

@@ -2,7 +2,7 @@ import { cn } from "~/utils/cn";
 
 const headerVariants = {
   header1: {
-    text: "font-sans text-2xl leading-5 md:leading-6 lg:leading-7 font-semibold",
+    text: "font-sans text-2xl leading-5 md:leading-6 lg:leading-7 font-medium",
     spacing: "mb-2",
   },
   header2: {

@@ -1,8 +1,14 @@
-import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowPathIcon,
+  ClockIcon,
+  CpuChipIcon,
+  RectangleStackIcon,
+  StopCircleIcon,
+} from "@heroicons/react/20/solid";
 import { StopIcon } from "@heroicons/react/24/outline";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
-import { formatDuration } from "@trigger.dev/core/v3";
+import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { useEnvironments } from "~/hooks/useEnvironments";
@@ -32,7 +38,11 @@ import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider"
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { useCallback, useRef } from "react";
 import { run } from "@remix-run/dev/dist/cli/run";
-import { formatNumber } from "~/utils/numberFormatter";
+import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
+import { useFeatures } from "~/hooks/useFeatures";
+import { useUser } from "~/hooks/useUser";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { Header3 } from "~/components/primitives/Headers";
 
 type RunsTableProps = {
   total: number;
@@ -52,10 +62,14 @@ export function TaskRunsTable({
   isLoading = false,
   allowSelection = false,
 }: RunsTableProps) {
+  const user = useUser();
   const organization = useOrganization();
   const project = useProject();
   const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
   const { selectedItems, has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
+  const { isManagedCloud } = useFeatures();
+
+  const showCompute = user.admin && isManagedCloud;
 
   const navigateCheckboxes = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
@@ -110,12 +124,53 @@ export function TaskRunsTable({
             </TableHeaderCell>
           )}
           <TableHeaderCell alignment="right">Run #</TableHeaderCell>
+          <TableHeaderCell>Env</TableHeaderCell>
           <TableHeaderCell>Task ID</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
-          <TableHeaderCell>Env</TableHeaderCell>
           <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell>Started</TableHeaderCell>
-          <TableHeaderCell>Duration</TableHeaderCell>
+          <TableHeaderCell
+            colSpan={3}
+            tooltip={
+              <div className="flex max-w-xs flex-col gap-4 p-1">
+                <div>
+                  <div className="mb-0.5 flex items-center gap-1.5">
+                    <RectangleStackIcon className="size-4 text-text-dimmed" />
+                    <Header3>Queued duration</Header3>
+                  </div>
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                    The amount of time from when the run was created to it starting to run.
+                  </Paragraph>
+                </div>
+                <div>
+                  <div className="mb-0.5 flex items-center gap-1.5">
+                    <ClockIcon className="size-4 text-blue-500" /> <Header3>Run duration</Header3>
+                  </div>
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                    The total amount of time from the run starting to it finishing. This includes
+                    all time spent waiting.
+                  </Paragraph>
+                </div>
+                <div>
+                  <div className="mb-0.5 flex items-center gap-1.5">
+                    <CpuChipIcon className="size-4 text-success" />
+                    <Header3>Compute duration</Header3>
+                  </div>
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                    The amount of compute time used in the run. This does not include time spent
+                    waiting.
+                  </Paragraph>
+                </div>
+              </div>
+            }
+          >
+            Duration
+          </TableHeaderCell>
+          {showCompute && (
+            <>
+              <TableHeaderCell>Compute</TableHeaderCell>
+            </>
+          )}
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
           <TableHeaderCell>Delayed until</TableHeaderCell>
@@ -127,7 +182,7 @@ export function TaskRunsTable({
       </TableHeader>
       <TableBody>
         {total === 0 && !hasFilters ? (
-          <TableBlankRow colSpan={10}>
+          <TableBlankRow colSpan={14}>
             {!isLoading && <NoRuns title="No runs found" />}
           </TableBlankRow>
         ) : runs.length === 0 ? (
@@ -154,37 +209,63 @@ export function TaskRunsTable({
                 <TableCell to={path} alignment="right">
                   {formatNumber(run.number)}
                 </TableCell>
-                <TableCell to={path}>{run.taskIdentifier}</TableCell>
-                <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>
                   <EnvironmentLabel
                     environment={run.environment}
                     userName={run.environment.userName}
                   />
                 </TableCell>
+                <TableCell to={path}>{run.taskIdentifier}</TableCell>
+                <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>
                   <TaskRunStatusCombo status={run.status} />
                 </TableCell>
                 <TableCell to={path}>
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}
                 </TableCell>
-                <TableCell to={path}>
-                  {run.startedAt && run.finishedAt ? (
-                    formatDuration(new Date(run.startedAt), new Date(run.finishedAt), {
-                      style: "short",
-                    })
-                  ) : run.startedAt ? (
-                    <LiveTimer startTime={new Date(run.startedAt)} />
-                  ) : (
-                    "–"
-                  )}
+                <TableCell to={path} className="w-[1%]" actionClassName="pr-0 tabular-nums">
+                  <div className="flex items-center gap-1">
+                    <RectangleStackIcon className="size-4 text-text-dimmed" />
+                    {run.startedAt ? (
+                      formatDuration(new Date(run.createdAt), new Date(run.startedAt), {
+                        style: "short",
+                      })
+                    ) : (
+                      <LiveTimer startTime={new Date(run.createdAt)} />
+                    )}
+                  </div>
                 </TableCell>
+                <TableCell to={path} className="w-[1%]" actionClassName="px-4 tabular-nums">
+                  <div className="flex items-center gap-1">
+                    <ClockIcon className="size-4 text-blue-500" />
+                    {run.startedAt && run.finishedAt ? (
+                      formatDuration(new Date(run.startedAt), new Date(run.finishedAt), {
+                        style: "short",
+                      })
+                    ) : run.startedAt ? (
+                      <LiveTimer startTime={new Date(run.startedAt)} />
+                    ) : (
+                      "–"
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell to={path} actionClassName="pl-0 tabular-nums">
+                  <div className="flex items-center gap-1">
+                    <CpuChipIcon className="size-4 text-success" />
+                    {run.usageDurationMs > 0
+                      ? formatDurationMilliseconds(run.usageDurationMs, {
+                          style: "short",
+                        })
+                      : "–"}
+                  </div>
+                </TableCell>
+                {showCompute && (
+                  <TableCell to={path} className="tabular-nums">
+                    {run.costInCents > 0 ? formatCurrencyAccurate(run.costInCents / 100) : "–"}
+                  </TableCell>
+                )}
                 <TableCell to={path}>
-                  {run.isTest ? (
-                    <CheckIcon className="h-4 w-4 text-charcoal-400" />
-                  ) : (
-                    <StopIcon className="h-4 w-4 text-charcoal-850" />
-                  )}
+                  {run.isTest ? <CheckIcon className="h-4 w-4 text-charcoal-400" /> : "–"}
                 </TableCell>
                 <TableCell to={path}>
                   {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
@@ -200,7 +281,7 @@ export function TaskRunsTable({
         )}
         {isLoading && (
           <TableBlankRow
-            colSpan={8}
+            colSpan={14}
             className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
@@ -260,7 +341,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   const organization = useOrganization();
   const project = useProject();
   const envs = useEnvironments();
-  if (isLoading) return <TableBlankRow colSpan={9}></TableBlankRow>;
+  if (isLoading) return <TableBlankRow colSpan={14}></TableBlankRow>;
 
   const { environments, tasks, from, to, ...otherFilters } = filters;
 
@@ -273,7 +354,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   ) {
     const environment = envs?.find((env) => env.id === filters.environments[0]);
     return (
-      <TableBlankRow colSpan={10}>
+      <TableBlankRow colSpan={14}>
         <div className="py-14">
           <Paragraph className="w-auto" variant="base/bright" spacing>
             There are no runs for {filters.tasks[0]}
@@ -314,7 +395,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   }
 
   return (
-    <TableBlankRow colSpan={10}>
+    <TableBlankRow colSpan={14}>
       <div className="flex flex-col items-center justify-center gap-2">
         <Paragraph className="w-auto" variant="small">
           No runs currently match your filters. Try refreshing or modifying your filters.

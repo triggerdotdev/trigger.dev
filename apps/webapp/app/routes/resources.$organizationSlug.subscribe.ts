@@ -1,10 +1,10 @@
 import { parse } from "@conform-to/zod";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { SetPlanBodySchema } from "@trigger.dev/billing";
+import { SetPlanBodySchema } from "@trigger.dev/platform/v2";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { BillingService } from "~/services/billing.server";
+import { BillingService } from "~/services/billing.v2.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import {
