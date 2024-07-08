@@ -1,6 +1,12 @@
-import { ArrowPathIcon, CommandLineIcon, ServerIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowPathIcon,
+  ArrowUturnLeftIcon,
+  CommandLineIcon,
+  ServerIcon,
+} from "@heroicons/react/20/solid";
 import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Fragment } from "react/jsx-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
@@ -31,6 +37,7 @@ import {
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
 import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
+import { RetryDeploymentIndexingDialog } from "~/components/runs/v3/RetryDeploymentIndexingDialog";
 import { RollbackDeploymentDialog } from "~/components/runs/v3/RollbackDeploymentDialog";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -261,24 +268,51 @@ function DeploymentActionsCell({
   const location = useLocation();
   const project = useProject();
 
-  if (deployment.isCurrent || !deployment.isDeployed) return <TableCell to={path}>{""}</TableCell>;
+  const menuItems: JSX.Element[] = [];
+
+  if (!deployment.isCurrent && deployment.isDeployed) {
+    menuItems.push(
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="small-menu-item" LeadingIcon={ArrowUturnLeftIcon}>
+            Rollback
+          </Button>
+        </DialogTrigger>
+        <RollbackDeploymentDialog
+          projectId={project.id}
+          deploymentShortCode={deployment.shortCode}
+          redirectPath={`${location.pathname}${location.search}`}
+        />
+      </Dialog>
+    );
+  }
+
+  if (deployment.status === "FAILED" && deployment.isBuilt) {
+    menuItems.push(
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
+            Retry indexing
+          </Button>
+        </DialogTrigger>
+        <RetryDeploymentIndexingDialog
+          projectId={project.id}
+          deploymentShortCode={deployment.shortCode}
+          redirectPath={`${location.pathname}${location.search}`}
+        />
+      </Dialog>
+    );
+  }
+
+  if (menuItems.length === 0) {
+    return <TableCell to={path}>{""}</TableCell>;
+  }
 
   return (
     <TableCellMenu isSticky>
-      {!deployment.isCurrent && deployment.isDeployed && (
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
-              Rollback
-            </Button>
-          </DialogTrigger>
-          <RollbackDeploymentDialog
-            projectId={project.id}
-            deploymentShortCode={deployment.shortCode}
-            redirectPath={`${location.pathname}${location.search}`}
-          />
-        </Dialog>
-      )}
+      {menuItems.map((item, index) => (
+        <Fragment key={index}>{item}</Fragment>
+      ))}
     </TableCellMenu>
   );
 }
