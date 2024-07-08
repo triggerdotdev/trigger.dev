@@ -391,8 +391,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/otlp-importer
       '@trigger.dev/platform':
-        specifier: 1.0.11
-        version: 1.0.11
+        specifier: 1.0.12
+        version: 1.0.12
       '@trigger.dev/sdk':
         specifier: workspace:*
         version: link:../../packages/trigger-sdk
@@ -15490,8 +15490,8 @@ packages:
       - supports-color
     dev: false
 
-  /@trigger.dev/platform@1.0.11:
-    resolution: {integrity: sha512-V57MwJfAliCakYVcBeOSmfqv3baLS1eMmtGo9Wwl26HgojyqoLPYL+0bxzRypmo3TtIDNd97eE5tNXX4lw4aRA==}
+  /@trigger.dev/platform@1.0.12:
+    resolution: {integrity: sha512-pOB9S2XG+TmTdlYtF9xuQoFz1aRlRGWSVCXuv3Vj2ArzU6Zz3ukvK24qlTd0PJB1otX71Ho/NfViGKEzCyRb5Q==}
     dependencies:
       zod: 3.22.3
     dev: false
