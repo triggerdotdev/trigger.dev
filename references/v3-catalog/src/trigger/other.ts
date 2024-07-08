@@ -107,3 +107,18 @@ export const oomTask = task({
     }
   },
 });
+
+export const returnZeroCharacters = task({
+  id: "return-zero-characters",
+  run: async (payload: { forceError?: boolean }) => {
+    if (payload.forceError) {
+      throw new Error("All zeros: \u0000\x00\0");
+    }
+
+    return {
+      unicode: "\u0000",
+      hex: "\x00",
+      octal: "\0",
+    };
+  },
+});
