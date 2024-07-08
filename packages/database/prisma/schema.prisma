@@ -2178,6 +2178,7 @@ model WorkerDeployment {
   triggeredBy   User?   @relation(fields: [triggeredById], references: [id], onDelete: SetNull, onUpdate: Cascade)
   triggeredById String?
 
+  builtAt    DateTime?
   deployedAt DateTime?
 
   failedAt  DateTime?
