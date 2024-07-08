@@ -1,5 +1,5 @@
 import { InitOutput } from "@trigger.dev/core/v3";
-import { batchTrigger, createTask, trigger, triggerAndPoll } from "./shared";
+import { batchTrigger, createTask, trigger, triggerAndPoll, triggerAndWait } from "./shared";
 
 import type {
   TaskOptions,
@@ -64,4 +64,5 @@ export const tasks = {
   trigger,
   triggerAndPoll,
   batchTrigger,
+  triggerAndWait,
 };
