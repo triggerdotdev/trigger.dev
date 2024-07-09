@@ -19,11 +19,13 @@ import { handleDependencies } from "./handleDependencies";
 import { E2EOptions, E2EOptionsSchema } from "./schemas";
 import { fixturesConfig, TestCase } from "./fixtures.config";
 import { Metafile, OutputFile } from "esbuild";
+import { findUp, findUpMultiple } from "find-up";
 
 interface E2EFixtureTest extends TestCase {
-  dir: string;
+  fixtureDir: string;
   packageManager: PackageManager;
   tempDir: string;
+  workspaceDir: string;
 }
 
 const TIMEOUT = 120_000;
@@ -49,31 +51,40 @@ logger.loggerLevel = options.logLevel;
 
 if (testCases.length > 0) {
   describe.concurrent("bundling", async () => {
-    beforeEach<E2EFixtureTest>(async ({ dir, packageManager }) => {
-      await rimraf(join(dir, "**/node_modules"), {
+    beforeEach<E2EFixtureTest>(async ({ fixtureDir, packageManager, workspaceDir }) => {
+      await rimraf(join(workspaceDir, "**/node_modules"), {
         glob: true,
       });
-      await rimraf(join(dir, ".yarn"), { glob: true });
+      await rimraf(join(workspaceDir, ".yarn"), { glob: true });
       if (
         packageManager === "npm" &&
-        (existsSync(resolve(join(dir, "yarn.lock"))) ||
-          existsSync(resolve(join(dir, "yarn.lock.copy"))))
+        (existsSync(resolve(join(workspaceDir, "yarn.lock"))) ||
+          existsSync(resolve(join(workspaceDir, "yarn.lock.copy"))))
       ) {
         // `npm ci` & `npm install` will update an existing yarn.lock
         try {
-          await rename(resolve(join(dir, "yarn.lock")), resolve(join(dir, "yarn.lock.copy")));
+          await rename(
+            resolve(join(workspaceDir, "yarn.lock")),
+            resolve(join(workspaceDir, "yarn.lock.copy"))
+          );
         } catch (e) {
-          await rename(resolve(join(dir, "yarn.lock.copy")), resolve(join(dir, "yarn.lock")));
+          await rename(
+            resolve(join(workspaceDir, "yarn.lock.copy")),
+            resolve(join(workspaceDir, "yarn.lock"))
+          );
         }
       }
 
-      await installFixtureDeps(dir, packageManager);
+      await installFixtureDeps({ fixtureDir, packageManager, workspaceDir });
     }, TIMEOUT);
 
-    afterEach<E2EFixtureTest>(async ({ dir, packageManager }) => {
+    afterEach<E2EFixtureTest>(async ({ packageManager, workspaceDir }) => {
       if (packageManager === "npm") {
         try {
-          await rename(resolve(join(dir, "yarn.lock.copy")), resolve(join(dir, "yarn.lock")));
+          await rename(
+            resolve(join(workspaceDir, "yarn.lock.copy")),
+            resolve(join(workspaceDir, "yarn.lock"))
+          );
         } catch {}
       }
 
@@ -83,22 +94,25 @@ if (testCases.length > 0) {
     for (let testCase of testCases) {
       test.extend<E2EFixtureTest>({
         ...testCase,
-        dir: async ({ id, rootDir = "" }, use) =>
-          await use(resolve(join(process.cwd(), "e2e/fixtures", id, rootDir))),
-        packageManager: async ({ dir }, use) => await use(await parsePackageManager(options, dir)),
-        tempDir: async ({ dir }, use) => {
-          const existingTempDir = resolve(join(dir, ".trigger"));
+        fixtureDir: async ({ id }, use) =>
+          await use(resolve(join(process.cwd(), "e2e/fixtures", id))),
+        workspaceDir: async ({ fixtureDir, workspaceRelativeDir = "" }, use) =>
+          await use(resolve(join(fixtureDir, workspaceRelativeDir))),
+        packageManager: async ({ workspaceDir }, use) =>
+          await use(await parsePackageManager(options, workspaceDir)),
+        tempDir: async ({ workspaceDir }, use) => {
+          const existingTempDir = resolve(join(workspaceDir, ".trigger"));
 
           if (existsSync(existingTempDir)) {
             await rm(existingTempDir, { force: true, recursive: true });
           }
-          await use((await mkdir(join(dir, ".trigger"), { recursive: true })) as string);
+          await use((await mkdir(join(workspaceDir, ".trigger"), { recursive: true })) as string);
         },
       })(
         `fixture '${testCase.id}'`,
         { timeout: TIMEOUT },
         async ({
-          dir,
+          fixtureDir,
           packageManager,
           resolveEnv,
           skip,
@@ -110,18 +124,19 @@ if (testCases.length > 0) {
           wantDependenciesError,
           wantInstallationError,
           wantWorkerError,
+          workspaceDir,
         }) => {
-          // if (
-          //   options.packageManager &&
-          //   !existsSync(resolve(dir, LOCKFILES[options.packageManager]))
-          // ) {
-          //   skip();
-          // }
+          if (
+            options.packageManager &&
+            !existsSync(resolve(fixtureDir, LOCKFILES[options.packageManager]))
+          ) {
+            skip();
+          }
 
           let resolvedConfig: ReadConfigResult;
           const configExpect = expect(
             (async () => {
-              resolvedConfig = await readConfig(dir, { cwd: dir });
+              resolvedConfig = await readConfig(workspaceDir, { cwd: workspaceDir });
             })(),
             wantConfigNotFoundError || wantConfigInvalidError
               ? "does not resolve config"
@@ -289,25 +304,46 @@ function debug(message: string) {
   }
 }
 
-async function installFixtureDeps(dir: string, packageManager: PackageManager) {
+async function installFixtureDeps(options: {
+  fixtureDir: string;
+  packageManager: PackageManager;
+  workspaceDir: string;
+}) {
+  const { packageManager, workspaceDir } = options;
   if (["pnpm", "yarn"].includes(packageManager)) {
-    const buffer = readFileSync(resolve(join(dir, "package.json")), "utf8");
-    const pkgJSON = JSON.parse(buffer.toString());
-    const version = pkgJSON.engines[packageManager];
+    const version = await detectPackageManagerVersion(options);
     debug(`Detected ${packageManager}@${version} from package.json 'engines' field`);
     const { stdout, stderr } = await execa("corepack", ["use", `${packageManager}@${version}`], {
-      cwd: dir,
+      cwd: workspaceDir,
     });
     debug(stdout);
     if (stderr) console.error(stderr);
   } else {
     const { stdout, stderr } = await execa(packageManager, installArgs(packageManager), {
-      cwd: dir,
-      NODE_PATH: resolve(join(dir, "node_modules")),
+      cwd: workspaceDir,
+      NODE_PATH: resolve(join(workspaceDir, "node_modules")),
     });
     debug(stdout);
     if (stderr) console.error(stderr);
   }
+}
+
+async function detectPackageManagerVersion(options: {
+  fixtureDir: string;
+  packageManager: PackageManager;
+  workspaceDir: string;
+}): Promise<string> {
+  const { fixtureDir, packageManager, workspaceDir } = options;
+  const pkgPaths = await findUpMultiple("package.json", { cwd: workspaceDir, stopAt: fixtureDir });
+  for (let pkgPath of pkgPaths) {
+    const buffer = readFileSync(pkgPath, "utf8");
+    const pkgJSON = JSON.parse(buffer.toString());
+    if (!pkgJSON.engines) continue;
+    const version = pkgJSON.engines[packageManager];
+    if (version) return version;
+  }
+
+  throw new Error(`No version found for package manager ${packageManager}`);
 }
 
 function installArgs(packageManager: string) {
