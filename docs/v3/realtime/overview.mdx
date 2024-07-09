@@ -7,7 +7,7 @@ Realtime lets you subscribe to events happening in your Trigger.dev project as t
 
 - Receive updates about task run lifecycle events, such as was a task run started, completed, failed, re-attempted, or cancelled, and more.
 - Receive task outputs and errors as they happen.
-- Receive arbitrary data updates from your tasks using Realtime Notifications, including streaming data.
+- Receive arbitrary data updates from your tasks using custom notifications, including streaming data.
 
 Realtime lets you build experiences like this:
 
@@ -15,19 +15,17 @@ Realtime lets you build experiences like this:
 
 ## Getting started
 
-To use Realtime, you need to:
-
 <Steps>
   <Step title="Create an Entrypoint">
-    An entrypoint defines the task that will be triggered by the Realtime Key as well as any additional tasks and notifications. The type of the entrypoint can be used on the frontend to provide end-to-end typesafety.
+    An entrypoint defines the main task that will be triggered as well as any additional tasks and notifications. The type of the entrypoint will be used later on the frontend to provide end-to-end typesafety.
 
     ```ts trigger/entrypoints.ts
-    import { entrypoint } from 'trigger.dev';
+    import { entrypoints, stream } from 'trigger.dev';
     import { performSpreadsheetActions, performSpreadsheetColumn, evaluateSpreadsheetCell } from "./trigger/spreadsheets";
 
-    export const evaluateSpreadsheet = entrypoint({
-      id: "evalulate-spreadsheet",
-      trigger: performSpreadsheetActions,
+    export const evaluateSpreadsheet = entrypoints.define({
+      id: "evaluate-spreadsheet",
+      main: performSpreadsheetActions,
       subtasks: [
         performSpreadsheetColumn,
         evaluateSpreadsheetCell
@@ -37,7 +35,8 @@ To use Realtime, you need to:
           row: z.number(),
           column: z.number(),
           value: z.number().int().min(0).max(100),
-        })
+        }),
+        "cell.stream": stream.text()
       }
     })
     ```
@@ -57,12 +56,20 @@ To use Realtime, you need to:
       taskIds: ['perform-spreadsheet-actions', 'evalulate-spreadsheet-cell'],
       // Optional: filter events to a subset of runs with the following tags
       tags: ['user:12345', 'org:12345'],
+      // The default expiration is 15 minutes, but you can set a custom expiration
+      ttl: 60 * 60 * 2, // 2 hours
     });
     ```
 
+    The `realtimeKey` is "tied" to the `evalulateSpreadsheet` entrypoint, and can only be used to trigger that entrypoint.
+
+    <Note>
+      After the `realtimeKey` expires, you will no longer receive realtime notifications.
+    </Note>
+
   </Step>
   <Step title="Use the Realtime Key">
-    Trigger or Batch Trigger a task using `entrypoints.trigger` and pass in the `realtimeKey`:
+    Trigger a task using `entrypoints.trigger` and pass in the `realtimeKey`:
 
     ```ts
     // This is somewhere in your backend
@@ -75,8 +82,11 @@ To use Realtime, you need to:
     }
     ```
 
+    <Note>
+      The `realtimeKey` is considered a public key, which means you can also trigger the entrypoint from your frontend client.
+    </Note>
+
   </Step>
-  <Step title="Pass the Realtime Key">Send the `realtimeKey` to your frontend client</Step>
   <Step title="Subscribe to events">
     Use our `@trigger.dev/realtime` SDK in your frontend to subscribe to events, using the
     `realtimeKey`:
@@ -87,6 +97,7 @@ To use Realtime, you need to:
     import type { evaluateSpreadsheet } from "./trigger/entrypoints";
     //     👆 **type-only** import
 
+    // You'll need to pass the realtimeKey to your frontend
     const client = new RealtimeClient<typeof evaluateSpreadsheet>({ key: "your-realtime-key" });
 
     // Listen for a specific event on the perform-spreadsheet-actions task
@@ -126,7 +137,103 @@ To use Realtime, you need to:
     client.notifications.on('cell.progress', (notification) => {
       console.log('cell.progress notification = ', notification); // 👈 notification matches the type of the notification specified in the entrypoint
     });
+
+    // Handle stream notifications
+    client.notifications.on('cell.stream', (stream) => {
+      for await (const chunk of stream) {
+        console.log(chunk); // 👈 chunk is a string
+      }
+    });
+    ```
+
+  </Step>
+  <Step title="Send notifications from your tasks">
+    Send notifications from your tasks using `myEntrypoint.notifications.send()` or `entrypoints.notifications.send()`:
+
+    ```ts trigger/spreadsheets.ts
+    import { tasks, entrypoints } from 'trigger.dev';
+    import { evaluateSpreadsheet } from "./entrypoints";
+    import OpenAI from 'openai';
+
+    const openai = new OpenAI({
+      apiKey: process.env.OPEN_API_KEY,
+    });
+
+    export const evalulateSpreadsheetCell = tasks.define({
+      id: "evalulate-spreadsheet-cell",
+      run: async (payload: { row: number; column: number; input: string }) => {
+        let value = // do some AI magic with payload.input here ✨
+
+        // Send a notification
+        await evaluateSpreadsheet.send("cell.progress", {
+          row: payload.row,
+          column: payload.column,
+          value,
+        });
+
+        const response = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          stream: true,
+          messages: [{ role: 'user', content: 'Say this is a test.' }],
+        });
+
+        // Send a stream notification
+        response.pipeTo(evaluateSpreadsheet.notifications.write("cell.stream"));
+
+        value = // do some more AI magic here ✨
+
+        // Alternatively, you can use this form if you don't want to import the entrypoint
+        await entrypoints.notifications.send<typeof evaluateSpreadsheet>("cell.progress", {
+          row: payload.row,
+          column: payload.column,
+          value,
+        });
+      }
+    });
     ```
 
   </Step>
 </Steps>
+
+## Realtime React SDK
+
+The Realtime SDK is a universal library that can be used in both your backend and frontend code, but it was designed with the frontend in mind. It provides a low-level API to subscribe to raw events and notifications using Trigger.dev Realtime.
+
+If you are building a React application, we recommend using the `@trigger.dev/realtime/react` SDK, which provides a higher-level API to subscribe to events and notifications using react hooks:
+
+<CodeGroup>
+
+```tsx Page.tsx
+import { RealtimeProvider } from "@trigger.dev/realtime/react";
+
+export function Page() {
+  return (
+    <RealtimeProvider key="your-realtime-key">
+      <MyComponent />
+    </RealtimeProvider>
+  );
+}
+```
+
+```tsx MyComponent.tsx
+import { useRealtime } from "@trigger.dev/realtime/react";
+import type { evaluateSpreadsheet } from "./trigger/entrypoints";
+
+export function MyComponent() {
+  const { data, error, isLoading } = useRealtime<typeof evaluateSpreadsheet>(
+    "perform-spreadsheet-actions:success"
+  );
+
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+
+  if (error) {
+    return <div>Error: {error.message}</div>;
+  }
+
+  return <div>Output: {data.output}</div>;
+}
+```
+
+</CodeGroup>
