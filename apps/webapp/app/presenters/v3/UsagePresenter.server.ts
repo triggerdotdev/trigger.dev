@@ -29,8 +29,8 @@ export class UsagePresenter extends BasePresenter {
   public async call({ organizationId, startDate }: Options) {
     //month period
     const startOfMonth = new Date(startDate);
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
+    startOfMonth.setUTCDate(1);
+    startOfMonth.setUTCHours(0, 0, 0, 0);
 
     const endOfMonth = new Date(
       startOfMonth.getFullYear(),

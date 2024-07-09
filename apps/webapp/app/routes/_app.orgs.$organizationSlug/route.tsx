@@ -49,10 +49,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   //1st day of the month
   const firstDayOfMonth = new Date();
-  firstDayOfMonth.setDate(1);
-  firstDayOfMonth.setHours(0, 0, 0, 0);
+  firstDayOfMonth.setUTCDate(1);
+  firstDayOfMonth.setUTCHours(0, 0, 0, 0);
   const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setUTCDate(tomorrow.getDate() + 1);
   const [plan, usage] = await Promise.all([
     getCurrentPlan(organization.id),
     getUsage(organization.id, { from: firstDayOfMonth, to: tomorrow }),

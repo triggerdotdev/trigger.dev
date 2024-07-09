@@ -56,7 +56,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   //past 6 months, 1st day of the month
   const months = Array.from({ length: 6 }, (_, i) => {
     const date = new Date();
-    date.setDate(1);
+    date.setUTCDate(1);
     date.setUTCMonth(date.getUTCMonth() - i);
     date.setUTCHours(0, 0, 0, 0);
     return date;
@@ -65,7 +65,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const search = new URL(request.url).searchParams;
   const searchMonth = search.get("month");
   const startDate = searchMonth ? new Date(searchMonth) : months[0];
-  startDate.setDate(1);
+  startDate.setUTCDate(1);
   startDate.setUTCHours(0, 0, 0, 0);
 
   const presenter = new UsagePresenter();

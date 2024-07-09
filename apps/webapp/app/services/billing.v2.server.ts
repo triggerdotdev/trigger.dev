@@ -33,13 +33,13 @@ export class BillingService {
       const result = await this.#billingClient.currentPlan(orgId);
 
       const firstDayOfMonth = new Date();
-      firstDayOfMonth.setDate(1);
-      firstDayOfMonth.setHours(0, 0, 0, 0);
+      firstDayOfMonth.setUTCDate(1);
+      firstDayOfMonth.setUTCHours(0, 0, 0, 0);
 
       const firstDayOfNextMonth = new Date();
-      firstDayOfNextMonth.setDate(1);
-      firstDayOfNextMonth.setMonth(firstDayOfNextMonth.getMonth() + 1);
-      firstDayOfNextMonth.setHours(0, 0, 0, 0);
+      firstDayOfNextMonth.setUTCDate(1);
+      firstDayOfNextMonth.setUTCMonth(firstDayOfNextMonth.getUTCMonth() + 1);
+      firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
 
       const currentRunCount = await this.#replica.jobRun.count({
         where: {

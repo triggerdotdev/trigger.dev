@@ -17,9 +17,9 @@ export function UpgradePrompt() {
   }
 
   const nextMonth = new Date();
-  nextMonth.setMonth(nextMonth.getMonth() + 1);
-  nextMonth.setDate(1);
-  nextMonth.setHours(0, 0, 0, 0);
+  nextMonth.setUTCMonth(nextMonth.getMonth() + 1);
+  nextMonth.setUTCDate(1);
+  nextMonth.setUTCHours(0, 0, 0, 0);
 
   return (
     <div
@@ -31,8 +31,8 @@ export function UpgradePrompt() {
         <Paragraph variant="small" className="text-error">
           You have exceeded the monthly $
           {(plan.v3Subscription?.plan?.limits.includedUsage ?? 500) / 100} free credits. No runs
-          will execute in Prod until <DateTime date={nextMonth} includeTime={false} />, or you
-          upgrade.
+          will execute in Prod until{" "}
+          <DateTime date={nextMonth} includeTime={false} timeZone="utc" />, or you upgrade.
         </Paragraph>
       </div>
       <LinkButton

@@ -43,13 +43,13 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   //periods
   const periodStart = new Date();
-  periodStart.setHours(0, 0, 0, 0);
-  periodStart.setDate(1);
+  periodStart.setUTCHours(0, 0, 0, 0);
+  periodStart.setUTCDate(1);
 
   const periodEnd = new Date();
-  periodEnd.setMonth(periodEnd.getMonth() + 1);
-  periodEnd.setDate(0);
-  periodEnd.setHours(0, 0, 0, 0);
+  periodEnd.setUTCMonth(periodEnd.getMonth() + 1);
+  periodEnd.setUTCDate(0);
+  periodEnd.setUTCHours(0, 0, 0, 0);
 
   const daysRemaining = Math.ceil(
     (periodEnd.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
@@ -101,8 +101,13 @@ export default function ChoosePlanPage() {
             {v3Subscription?.isPaying ? (
               <div className="flex gap-2 px-3 lg:items-center">
                 <CalendarDaysIcon className="size-5 min-w-5 lg:-mt-0.5" />
-                Billing period: <DateTime date={periodStart} includeTime={false} /> to{" "}
-                <DateTime date={periodEnd} includeTime={false} /> ({daysRemaining} days remaining)
+                Billing period: <DateTime
+                  date={periodStart}
+                  includeTime={false}
+                  timeZone="UTC"
+                />{" "}
+                to <DateTime date={periodEnd} includeTime={false} timeZone="UTC" /> ({daysRemaining}{" "}
+                days remaining)
               </div>
             ) : null}
           </div>
