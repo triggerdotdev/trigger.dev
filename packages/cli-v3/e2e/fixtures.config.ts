@@ -1,7 +1,7 @@
 export interface TestCase {
   resolveEnv?: { [key: string]: string };
   id: string;
-  rootDir?: string;
+  workspaceRelativeDir?: string;
   skipTypecheck?: boolean;
   wantConfigNotFoundError?: boolean;
   wantConfigInvalidError?: boolean;
@@ -15,7 +15,7 @@ export const fixturesConfig: TestCase[] = [
   {
     id: "compile-monorepo-packages",
     skipTypecheck: true,
-    rootDir: "packages/trigger",
+    workspaceRelativeDir: "packages/trigger",
     // TODO remove
     wantInstallationError: true,
   },
