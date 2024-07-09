@@ -67,6 +67,10 @@ if (testCases.length > 0) {
         }
       }
 
+      if (options.packageManager && !existsSync(resolve(dir, LOCKFILES[options.packageManager]))) {
+        skip();
+      }
+
       await installFixtureDeps(dir, packageManager);
     }, TIMEOUT);
 
@@ -100,7 +104,6 @@ if (testCases.length > 0) {
           dir,
           packageManager,
           resolveEnv,
-          skip,
           skipTypecheck,
           tempDir,
           wantCompilationError,
@@ -110,13 +113,6 @@ if (testCases.length > 0) {
           wantInstallationError,
           wantWorkerError,
         }) => {
-          if (
-            options.packageManager &&
-            !existsSync(resolve(dir, LOCKFILES[options.packageManager]))
-          ) {
-            skip();
-          }
-
           let resolvedConfig: ReadConfigResult;
           const configExpect = expect(
             (async () => {
