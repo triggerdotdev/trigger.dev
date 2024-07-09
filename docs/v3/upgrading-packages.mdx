@@ -57,9 +57,24 @@ For example:
 ```json
 {
   "devDependencies": {
-    "trigger.dev": "^3.0.0-beta.48"
+    "trigger.dev": "3.0.0-beta.48"
   }
 }
 ```
 
 If you've done this make sure to update the version to match the `@trigger.dev/sdk` package.
+
+Once you have added the `trigger.dev` package to your `devDependencies`, you can use `npm exec trigger.dev`, `pnpm exec trigger.dev`, or `yarn exec trigger.dev` to run the CLI.
+
+But we recommend adding your dev and deploy commands to the `scripts` section of your `package.json` file:
+
+```json
+{
+  "scripts": {
+    "dev:trigger": "trigger.dev dev",
+    "deploy:trigger": "trigger.dev deploy"
+  }
+}
+```
+
+Then you can run `npm run dev:trigger` and `npm run deploy:trigger` to run the CLI.
