@@ -25,6 +25,7 @@ export {
   PermissionDeniedError,
   RateLimitError,
   UnprocessableEntityError,
+  AbortTaskRunError,
   logger,
   type LogLevel,
 } from "@trigger.dev/core/v3";
