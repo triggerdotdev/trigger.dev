@@ -51,9 +51,9 @@ jobs:
           ref_without_tag=ghcr.io/triggerdotdev/trigger.dev
           image_tags=$ref_without_tag:${{ steps.get_version.outputs.version }}
 
-          # if it's a versioned tag, also tag it as latest
+          # if it's a versioned tag, also tag it as v3
           if [[ "${{ github.ref_name }}" == v.docker.* ]]; then
-            image_tags=$image_tags,$ref_without_tag:latest
+            image_tags=$image_tags,$ref_without_tag:v3
           fi
           
           echo "IMAGE_TAGS=${image_tags}" >> "$GITHUB_OUTPUT"
