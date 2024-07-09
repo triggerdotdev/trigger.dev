@@ -49,8 +49,8 @@ logger.loggerLevel = options.logLevel;
 
 if (testCases.length > 0) {
   describe.concurrent("bundling", async () => {
-    beforeEach<E2EFixtureTest>(async ({ dir, packageManager }) => {
-      await rimraf(join(dir, "**/node_modules"), {
+    beforeEach<E2EFixtureTest>(async ({ dir, packageManager, skip }) => {
+      await rimraf(join(dir, "**/node_modules/**"), {
         glob: true,
       });
       await rimraf(join(dir, ".yarn"), { glob: true });
