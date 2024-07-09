@@ -1,0 +1,132 @@
+---
+title: "Overview"
+description: "Receive updates about your background tasks and events in real-time."
+---
+
+Realtime lets you subscribe to events happening in your Trigger.dev project as they happen, so you can build experiences for your users driven by real-time data in your tasks, with minimal latency and end-to-end typesafety.
+
+- Receive updates about task run lifecycle events, such as was a task run started, completed, failed, re-attempted, or cancelled, and more.
+- Receive task outputs and errors as they happen.
+- Receive arbitrary data updates from your tasks using Realtime Notifications, including streaming data.
+
+Realtime lets you build experiences like this:
+
+![realtime UI](/v3/realtime/realtime-ui.gif)
+
+## Getting started
+
+To use Realtime, you need to:
+
+<Steps>
+  <Step title="Create an Entrypoint">
+    An entrypoint defines the task that will be triggered by the Realtime Key as well as any additional tasks and notifications. The type of the entrypoint can be used on the frontend to provide end-to-end typesafety.
+
+    ```ts trigger/entrypoints.ts
+    import { entrypoint } from 'trigger.dev';
+    import { performSpreadsheetActions, performSpreadsheetColumn, evaluateSpreadsheetCell } from "./trigger/spreadsheets";
+
+    export const evaluateSpreadsheet = entrypoint({
+      id: "evalulate-spreadsheet",
+      trigger: performSpreadsheetActions,
+      subtasks: [
+        performSpreadsheetColumn,
+        evaluateSpreadsheetCell
+      ],
+      notifications: {
+        "cell.progress": z.object({
+          row: z.number(),
+          column: z.number(),
+          value: z.number().int().min(0).max(100),
+        })
+      }
+    })
+    ```
+
+  </Step>
+  <Step title="Create a Realtime Key">
+    Create a `realtimeKey` from your backend using `realtime.keys.create()`, passing in the entrypoint you created in the previous step. This is a one-time-use key that can only be used to trigger the entrypoint you specified.
+
+    ```ts
+    // This is somewhere in your backend
+    import { realtime } from 'trigger.dev';
+    import { evaluateSpreadsheet } from "./trigger/entrypoints";
+
+    const realtimeKey = await realtime.keys.create({
+      entryPoint: evaluateSpreadsheet,
+      // Optional: filter events to a subset of tasks, otherwise all tasks listed in the entrypoint will be included
+      taskIds: ['perform-spreadsheet-actions', 'evalulate-spreadsheet-cell'],
+      // Optional: filter events to a subset of runs with the following tags
+      tags: ['user:12345', 'org:12345'],
+    });
+    ```
+
+  </Step>
+  <Step title="Use the Realtime Key">
+    Trigger or Batch Trigger a task using `entrypoints.trigger` and pass in the `realtimeKey`:
+
+    ```ts
+    // This is somewhere in your backend
+    import { type RealtimeKey, type EntrypointPayload, entrypoints } from 'trigger.dev';
+    import type { evaluateSpreadsheet } from "./trigger/entrypoints";
+
+    async function triggerEvalulateSpreadsheet(key: RealtimeKey, payload: EntrypointPayload<typeof evaluateSpreadsheet>) {
+      // Payload is the type of the entrypoint task specified in the `trigger` option
+      return await entrypoints.trigger<typeof evaluateSpreadsheet>(payload, { realtimeKey: key })
+    }
+    ```
+
+  </Step>
+  <Step title="Pass the Realtime Key">Send the `realtimeKey` to your frontend client</Step>
+  <Step title="Subscribe to events">
+    Use our `@trigger.dev/realtime` SDK in your frontend to subscribe to events, using the
+    `realtimeKey`:
+
+    ```ts
+    // This is somewhere in your frontend
+    import { RealtimeClient } from '@trigger.dev/realtime';
+    import type { evaluateSpreadsheet } from "./trigger/entrypoints";
+    //     👆 **type-only** import
+
+    const client = new RealtimeClient<typeof evaluateSpreadsheet>({ key: "your-realtime-key" });
+
+    // Listen for a specific event on the perform-spreadsheet-actions task
+    client.tasks.on('perform-spreadsheet-actions:success', (run) => {
+      console.log('perform-spreadsheet-actions output = ', run.output); // 👈 run.output matches the output type of the perform-spreadsheet-actions task
+    });
+
+    // Listen for a specific event on all tasks
+    client.tasks.on('*:success', (run) => {
+      switch (run.taskIdentifier) {
+        case 'perform-spreadsheet-actions': {
+          console.log('perform-spreadsheet-actions output = ', run.output);// 👈 run.output matches the output type of the perform-spreadsheet-actions task
+          break;
+        }
+        case 'evaluate-spreadsheet-cell': {
+          console.log('evaluate-spreadsheet-cell output = ', run.output);// 👈 run.output matches the output type of the evaluate-spreadsheet-cell task
+          break;
+        }
+      }
+    });
+
+    // Listen for all events on a specific task
+    client.tasks.on("perform-spreadsheet-actions:*", (run) => {
+      switch (run.status) {
+        case 'COMPLETED_SUCCESSFULLY': {
+          console.log('perform-spreadsheet-actions output = ', run.output);// 👈 run.output matches the output type of the perform-spreadsheet-actions task
+          break;
+        }
+        case 'FAILED': {
+          console.log('perform-spreadsheet-actions error = ', run.error);
+          break;
+        }
+      }
+    });
+
+    // Listen to notifications
+    client.notifications.on('cell.progress', (notification) => {
+      console.log('cell.progress notification = ', notification); // 👈 notification matches the type of the notification specified in the entrypoint
+    });
+    ```
+
+  </Step>
+</Steps>

@@ -142,6 +142,13 @@
       ]
     },
     {
+      "group": "Realtime",
+      "version": "v3",
+      "pages": [
+        "v3/realtime/overview"
+      ]
+    },
+    {
       "group": "API reference",
       "version": "v3",
       "pages": [
