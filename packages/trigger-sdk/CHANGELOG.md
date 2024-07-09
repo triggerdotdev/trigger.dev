@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.48
+
+### Patch Changes
+
+- ecf1110ab: v3: Export AbortTaskRunError from @trigger.dev/sdk/v3
+  - @trigger.dev/core@3.0.0-beta.48
+  - @trigger.dev/core-backend@3.0.0-beta.48
+
 ## 3.0.0-beta.47
 
 ### Patch Changes
