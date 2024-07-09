@@ -47,3 +47,19 @@ You can deploy using [GitHub Actions](/v3/github-actions). We recommend that you
     sure to update this version to the latest version (e.g. `npx trigger.dev@3.0.0-beta.48 deploy`).
   </Step>
 </Steps>
+
+## package.json dev dependency
+
+Instead of using `npx`, `pnpm dlx` or `yarn dlx` you can add the Trigger.dev CLI as a dev dependency to your package.json file.
+
+For example:
+
+```json
+{
+  "devDependencies": {
+    "trigger": "^3.0.0-beta.48"
+  }
+}
+```
+
+If you've done this make sure to update the version to match the `@trigger.dev/sdk` package.
