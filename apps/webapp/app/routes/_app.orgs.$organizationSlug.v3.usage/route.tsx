@@ -35,6 +35,8 @@ import { requireUserId } from "~/services/session.server";
 import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
+import { InformationCircleIcon } from "@heroicons/react/20/solid";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   await requireUserId(request);
@@ -213,52 +215,60 @@ export default function Page() {
               >
                 {(tasks) => {
                   return (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHeaderCell>Task</TableHeaderCell>
-                          <TableHeaderCell alignment="right">Runs</TableHeaderCell>
-                          <TableHeaderCell alignment="right">Average duration</TableHeaderCell>
-                          <TableHeaderCell alignment="right">Average cost</TableHeaderCell>
-                          <TableHeaderCell alignment="right">Total duration</TableHeaderCell>
-                          <TableHeaderCell alignment="right">Total cost</TableHeaderCell>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {tasks.length === 0 ? (
+                    <>
+                      <Table>
+                        <TableHeader>
                           <TableRow>
-                            <TableCell colSpan={6}>
-                              <Paragraph variant="small">No runs.</Paragraph>
-                            </TableCell>
+                            <TableHeaderCell>Task</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Runs</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Average duration</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Average cost</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Total duration</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Total cost</TableHeaderCell>
                           </TableRow>
-                        ) : (
-                          tasks.map((task) => (
-                            <TableRow key={task.taskIdentifier}>
-                              <TableCell>{task.taskIdentifier}</TableCell>
-                              <TableCell alignment="right" className="tabular-nums">
-                                {formatNumber(task.runCount)}
-                              </TableCell>
-                              <TableCell alignment="right">
-                                {formatDurationMilliseconds(task.averageDuration, {
-                                  style: "short",
-                                })}
-                              </TableCell>
-                              <TableCell alignment="right" className="tabular-nums">
-                                {formatCurrencyAccurate(task.averageCost)}
-                              </TableCell>
-                              <TableCell alignment="right" className="tabular-nums">
-                                {formatDurationMilliseconds(task.totalDuration, {
-                                  style: "short",
-                                })}
-                              </TableCell>
-                              <TableCell alignment="right" className="tabular-nums">
-                                {formatCurrencyAccurate(task.totalCost)}
+                        </TableHeader>
+                        <TableBody>
+                          {tasks.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={6}>
+                                <div className="flex items-center justify-center">
+                                  <Paragraph variant="small">No runs for this period</Paragraph>
+                                </div>
                               </TableCell>
                             </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
+                          ) : (
+                            tasks.map((task) => (
+                              <TableRow key={task.taskIdentifier}>
+                                <TableCell>{task.taskIdentifier}</TableCell>
+                                <TableCell alignment="right" className="tabular-nums">
+                                  {formatNumber(task.runCount)}
+                                </TableCell>
+                                <TableCell alignment="right">
+                                  {formatDurationMilliseconds(task.averageDuration, {
+                                    style: "short",
+                                  })}
+                                </TableCell>
+                                <TableCell alignment="right" className="tabular-nums">
+                                  {formatCurrencyAccurate(task.averageCost)}
+                                </TableCell>
+                                <TableCell alignment="right" className="tabular-nums">
+                                  {formatDurationMilliseconds(task.totalDuration, {
+                                    style: "short",
+                                  })}
+                                </TableCell>
+                                <TableCell alignment="right" className="tabular-nums">
+                                  {formatCurrencyAccurate(task.totalCost)}
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                      <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-[22rem] mt-3">
+                        Dev environment runs are excluded from the usage data above, since they do
+                        not have an associated compute cost.
+                      </InfoPanel>
+                    </>
                   );
                 }}
               </Await>

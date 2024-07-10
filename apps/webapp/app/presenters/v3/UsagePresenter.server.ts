@@ -78,8 +78,10 @@ export class UsagePresenter extends BasePresenter {
       ${sqlDatabaseSchema}."TaskRun" tr
       JOIN ${sqlDatabaseSchema}."Project" pr ON pr.id = tr."projectId"
       JOIN ${sqlDatabaseSchema}."Organization" org ON org.id = pr."organizationId"
+      JOIN ${sqlDatabaseSchema}."RuntimeEnvironment" env ON env."projectId" = pr.id
   WHERE
-      tr."createdAt" > ${startOfMonth}
+      env.type <> 'DEVELOPMENT'
+      AND tr."createdAt" > ${startOfMonth}
       AND tr."createdAt" < ${endOfMonth}
       AND org.id = ${organizationId}
   GROUP BY
