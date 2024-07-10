@@ -925,7 +925,6 @@ paths:
               override: false
             });
 
-
   "/api/v1/projects/{projectRef}/envvars/{env}/{name}":
     parameters:
       - $ref: "#/components/parameters/projectRef"
@@ -1314,10 +1313,6 @@ paths:
                     ]
                   }'
 
-
-
-
-
 components:
   parameters:
     taskIdentifier:
@@ -1496,14 +1491,26 @@ components:
           type: object
           properties:
             queue:
-              $ref: '#/components/schemas/QueueOptions'
+              $ref: "#/components/schemas/QueueOptions"
             concurrencyKey:
               type: string
               description: Scope the concurrency limit to a specific key.
             idempotencyKey:
               type: string
               description: An optional property that specifies the idempotency key used to prevent creating duplicate runs. If you provide an existing idempotency key, we will return the existing run ID.
-      
+            ttl:
+              $ref: "#/components/schemas/TTL"
+    TTL:
+      oneOf:
+        - $ref: "#/components/schemas/TTLString"
+        - $ref: "#/components/schemas/TTLNumber"
+    TTLString:
+      type: string
+      description: "The time-to-live for this run. If the run is not executed within this time, it will be removed from the queue and never execute. You can use a string in this format: `1h`, `1m`, `1h42m` or a number of seconds."
+    TTLNumber:
+      type: number
+      description: "The time-to-live for this run. If the run is not executed within this time, it will be removed from the queue and never execute. You can use a number which is in seconds."
+
     EnvFilter:
       type: object
       properties:
