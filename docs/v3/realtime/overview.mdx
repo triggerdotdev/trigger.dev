@@ -13,20 +13,20 @@ Realtime lets you build experiences like this:
 
 ![realtime UI](/v3/realtime/realtime-ui.gif)
 
-## Getting started
+## Real world example
 
 <Steps>
-  <Step title="Create an Entrypoint">
-    An entrypoint defines the main task that will be triggered as well as any additional tasks and notifications. The type of the entrypoint will be used later on the frontend to provide end-to-end typesafety.
+  <Step title="Define a Channel">
+    A channel defines the tasks and notifications that you are interested in getting notified about. The type of the channel will be used later on the frontend to provide end-to-end typesafety.
 
-    ```ts trigger/entrypoints.ts
-    import { entrypoints, stream } from 'trigger.dev';
+    ```ts trigger/channels.ts
+    import { channels, stream } from 'trigger.dev';
     import { performSpreadsheetActions, performSpreadsheetColumn, evaluateSpreadsheetCell } from "./trigger/spreadsheets";
 
-    export const evaluateSpreadsheet = entrypoints.define({
+    export const evaluateSpreadsheet = channels.define({
       id: "evaluate-spreadsheet",
-      main: performSpreadsheetActions,
-      subtasks: [
+      tasks: [
+        performSpreadsheetActions,
         performSpreadsheetColumn,
         evaluateSpreadsheetCell
       ],
@@ -43,48 +43,29 @@ Realtime lets you build experiences like this:
 
   </Step>
   <Step title="Create a Realtime Key">
-    Create a `realtimeKey` from your backend using `realtime.keys.create()`, passing in the entrypoint you created in the previous step. This is a one-time-use key that can only be used to trigger the entrypoint you specified.
+    Create a `realtimeKey` from your backend using `channel.keys.create()`.
 
     ```ts
     // This is somewhere in your backend
     import { realtime } from 'trigger.dev';
-    import { evaluateSpreadsheet } from "./trigger/entrypoints";
+    import { evaluateSpreadsheet } from "./trigger/channels";
 
-    const realtimeKey = await realtime.keys.create({
-      entryPoint: evaluateSpreadsheet,
-      // Optional: filter events to a subset of tasks, otherwise all tasks listed in the entrypoint will be included
-      taskIds: ['perform-spreadsheet-actions', 'evalulate-spreadsheet-cell'],
-      // Optional: filter events to a subset of runs with the following tags
-      tags: ['user:12345', 'org:12345'],
-      // The default expiration is 15 minutes, but you can set a custom expiration
-      ttl: 60 * 60 * 2, // 2 hours
-    });
+    const realtimeKey = await evaluateSpreadsheet.keys.create();
     ```
 
-    The `realtimeKey` is "tied" to the `evalulateSpreadsheet` entrypoint, and can only be used to trigger that entrypoint.
-
-    <Note>
-      After the `realtimeKey` expires, you will no longer receive realtime notifications.
-    </Note>
+    The `realtimeKey` is "tied" to the `evalulateSpreadsheet` channel, and can only be used to listen to events and notifications for that channel.
 
   </Step>
   <Step title="Use the Realtime Key">
-    Trigger a task using `entrypoints.trigger` and pass in the `realtimeKey`:
+    Trigger a task and pass in the `realtimeKey`:
 
     ```ts
     // This is somewhere in your backend
-    import { type RealtimeKey, type EntrypointPayload, entrypoints } from 'trigger.dev';
-    import type { evaluateSpreadsheet } from "./trigger/entrypoints";
+    import { performSpreadsheetActions } from "./trigger/spreadsheets";
 
-    async function triggerEvalulateSpreadsheet(key: RealtimeKey, payload: EntrypointPayload<typeof evaluateSpreadsheet>) {
-      // Payload is the type of the entrypoint task specified in the `trigger` option
-      return await entrypoints.trigger<typeof evaluateSpreadsheet>(payload, { realtimeKey: key })
-    }
+    // Use the realtime key when triggering a task. Can also be used with batch trigger.
+    await performSpreadsheetActions.trigger({ /* ... */ }, { realtimeKey })
     ```
-
-    <Note>
-      The `realtimeKey` is considered a public key, which means you can also trigger the entrypoint from your frontend client.
-    </Note>
 
   </Step>
   <Step title="Subscribe to events">
@@ -94,7 +75,7 @@ Realtime lets you build experiences like this:
     ```ts
     // This is somewhere in your frontend
     import { RealtimeClient } from '@trigger.dev/realtime';
-    import type { evaluateSpreadsheet } from "./trigger/entrypoints";
+    import type { evaluateSpreadsheet } from "./trigger/channels";
     //     👆 **type-only** import
 
     // You'll need to pass the realtimeKey to your frontend
@@ -148,10 +129,10 @@ Realtime lets you build experiences like this:
 
   </Step>
   <Step title="Send notifications from your tasks">
-    Send notifications from your tasks using `myEntrypoint.notifications.send()` or `entrypoints.notifications.send()`:
+    Send notifications from your tasks using `myChannel.notifications.send()` or `channels.notifications.send()`:
 
     ```ts trigger/spreadsheets.ts
-    import { tasks, entrypoints } from 'trigger.dev';
+    import { tasks, channels } from 'trigger.dev';
     import { evaluateSpreadsheet } from "./entrypoints";
     import OpenAI from 'openai';
 
@@ -165,7 +146,7 @@ Realtime lets you build experiences like this:
         let value = // do some AI magic with payload.input here ✨
 
         // Send a notification
-        await evaluateSpreadsheet.send("cell.progress", {
+        await evaluateSpreadsheet.notifications.send("cell.progress", {
           row: payload.row,
           column: payload.column,
           value,
@@ -182,8 +163,8 @@ Realtime lets you build experiences like this:
 
         value = // do some more AI magic here ✨
 
-        // Alternatively, you can use this form if you don't want to import the entrypoint
-        await entrypoints.notifications.send<typeof evaluateSpreadsheet>("cell.progress", {
+        // Alternatively, you can use this form if you don't want to import the channel
+        await channels.notifications.send<typeof evaluateSpreadsheet>("cell.progress", {
           row: payload.row,
           column: payload.column,
           value,
@@ -192,7 +173,108 @@ Realtime lets you build experiences like this:
     });
     ```
 
+    <Note>
+      Notifications must be sent from inside a task, so it can be associated with the realtime key that was used to trigger the task.
+    </Note>
+
   </Step>
+</Steps>
+
+## Minimal Realtime example
+
+Here's an example of using Realtime to be notified of the status of a single task run:
+
+<Steps>
+  <Step title="Define a channel">
+    
+    ```ts trigger/channels.ts
+    import { channels } from 'trigger.dev';
+    import { myTask } from "./tasks";
+
+    export const myChannel = channels.define({
+      id: "my-channel",
+      tasks: [myTask]
+    });
+    ```
+
+  </Step>
+  <Step title="Trigger using a Realtime Key">
+    Create a `realtimeKey` from your backend using `channel.keys.create()`. Then use that realtime key to trigger a task. The following example uses a Remix action to create a Realtime Key:
+
+    ```ts remix/app/routes/realtime/route.tsx
+    // This is somewhere in your backend
+    import { myChannel } from "./trigger/channels";
+    import { myTask } from "./trigger/tasks";
+    import { type ActionFunctionArgs, redirect } from "@remix-run/server-runtime";
+
+    export async function action({ params, request }: ActionFunctionArgs) {
+      // Create the realtime key
+      const realtimeKey = await myChannel.keys.create();
+
+      // Trigger the task, passing in the realtime key
+      await myTask.trigger({ /* ... */  }, { realtimeKey });
+
+      // Ideally you would store the realtime key in the database, session, or other storage
+
+      return redirect(`/realtime/${realtimeKey}`);
+    }
+    ```
+
+  </Step>
+  <Step title="Listen for events using the Realtime Key">
+    Now that we've created a realtime key and triggered a task with it, we can pass that key to our frontend and use the `@trigger.dev/realtime/react` SDK to listen for events. The following example continues to use a Remix example:
+
+    ```ts remix/app/routes/realtime/$realtimeKey.tsx
+    import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+    import { useRealtime, RealtimeProvider } from "@trigger.dev/realtime/react";
+    import type { myChannel } from "./trigger/channels";
+    //     👆 **type-only** import
+
+    export async function loader({ params }: LoaderFunctionArgs) {
+      // Retrieve the realtimeKey from the params, but alternatively this could be retrived from a database, session, etc.
+      const realtimeKey = params["realtimeKey"] as string;
+
+      // Return the realtimeKey so we can access it in the component
+      return {
+        realtimeKey,
+      }
+    }
+
+    export default function RealtimeRoute() {
+      const { realtimeKey } = useLoaderData<typeof loader>();
+
+      return (
+        <RealtimeProvider key={realtimeKey}>
+          <MyComponent />
+        </RealtimeProvider>
+      )
+    }
+
+    function MyComponent() {
+      const { event } = useRealtime<typeof myChannel>(
+        "my-task"
+      );
+
+      if (!event) {
+        return <div>Loading...</div>;
+      }
+
+      if (event.run.isQueued) {
+        return <div>Queued</div>;
+      } else if (event.run.isExecuting) {
+        return <div>Running</div>;
+      } else if (event.run.isSuccess) {
+        return <pre>{JSON.stringify(event.run.output, null, 2)}</pre>;
+      } else if (event.run.isFailed) {
+        return <pre>{JSON.stringify(event.run.error, null, 2)}</pre>;
+      } else {
+        return <div>Unknown status: ${event.run.status}</div>;
+      }
+    }
+    ```
+
+  </Step>
+
 </Steps>
 
 ## Realtime React SDK
@@ -217,7 +299,7 @@ export function Page() {
 
 ```tsx MyComponent.tsx
 import { useRealtime } from "@trigger.dev/realtime/react";
-import type { evaluateSpreadsheet } from "./trigger/entrypoints";
+import type { evaluateSpreadsheet } from "./trigger/channels";
 
 export function MyComponent() {
   const { data, error, isLoading } = useRealtime<typeof evaluateSpreadsheet>(
@@ -237,3 +319,30 @@ export function MyComponent() {
 ```
 
 </CodeGroup>
+
+## Realtime React RSC
+
+You can stream RSC directly from your tasks to your frontend via the Realtime RSC support
+
+TBD
+
+## Realtime UI
+
+If you don't want to build your own UI, you can use the Realtime UI to visualize your tasks and events in real-time. The Realtime UI is a set of React components that you can use to build your own custom UI:
+
+```tsx
+import { RealtimeProvider } from "@trigger.dev/realtime/react";
+import { TaskRunTableView } from "@trigger.dev/realtime/react/ui";
+
+export function MyComponent() {
+  return (
+    <RealtimeProvider key="your-realtime-key">
+      <TaskRunTableView />
+    </RealtimeProvider>
+  );
+}
+```
+
+## Prisma Realtime
+
+TBD
