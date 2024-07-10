@@ -616,13 +616,18 @@ class YarnCommands implements PackageManagerCommands {
 
   async extractDirectDependenciesMeta(options: PackageManagerOptions) {
     const result = await this.#listDirectDependencies(options);
-    console.log("LIST DIRECT DEPS", JSON.stringify(result, undefined, 2));
 
+    const rawPackagesData = result.split("\n");
     logger.debug(`Extracting direct dependencies metadata using ${this.name}`);
 
     const results: Record<string, DependencyMeta> = {};
 
-    // TODO yarn
+    for (const rawPackageData of rawPackagesData) {
+      const packageData = JSON.parse(rawPackageData);
+
+      const [name, dependencyMeta] = this.#parseYarnValueIntoDependencyMeta(packageData.value);
+      results[name] = dependencyMeta;
+    }
 
     return results;
   }
@@ -671,6 +676,31 @@ class YarnCommands implements PackageManagerCommands {
 
     // If the value contains an "@" symbol, then the package name is the first part
     return parts[0] as string;
+  }
+
+  #parseYarnValueIntoDependencyMeta(value: string): [string, DependencyMeta] {
+    const parts = value.split("@");
+    let name: string, protocol: string, version: string;
+
+    if (parts.length === 3) {
+      // e.g. @<scope>/<package>@<protocol>:<version> -> ["", "<scope>/<package>"", "<protocol>:<version>""]
+      name = `@${parts[1]}`;
+      [protocol = "", version = ""] = parts[2]!.split(":");
+    } else if (parts.length === 2) {
+      // e.g. <package>@<protocol>:<version> -> ["<package>"", "<protocol>:<version>""]
+      name = parts[0]!.toString();
+      [protocol = "", version = ""] = parts[1]!.split(":");
+    } else {
+      throw new Error("Failed parsing ${value} into dependency meta");
+    }
+
+    return [
+      name,
+      {
+        version,
+        external: protocol !== "workspace" && protocol !== "file",
+      },
+    ];
   }
 }
 
