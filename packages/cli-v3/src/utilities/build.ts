@@ -5,6 +5,7 @@ import { extname, isAbsolute } from "node:path";
 import tsConfigPaths from "tsconfig-paths";
 import { logger } from "./logger";
 import { escapeImportPath } from "./windows";
+import { DependencyMeta } from "./javascriptProject";
 
 export function mockServerOnlyPlugin(): Plugin {
   return {
@@ -106,13 +107,7 @@ export function workerSetupImportConfigPlugin(configPath?: string): Plugin {
 
 export function bundleDependenciesPlugin(
   buildIdentifier: string,
-  dependencies: Record<
-    string,
-    {
-      version: string;
-      external: boolean;
-    }
-  >,
+  dependencies: Record<string, DependencyMeta>,
   dependenciesToBundle?: Array<string | RegExp>,
   tsconfigPath?: string
 ): Plugin {

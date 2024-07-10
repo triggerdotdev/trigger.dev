@@ -11,6 +11,7 @@ import { recordSpanException } from "@trigger.dev/core/v3/otel";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 
 export type ResolveOptions = { allowDev: boolean };
+export type DependencyMeta = { version: string; external: boolean };
 
 export class JavascriptProject {
   private _packageJson?: PackageJson;
@@ -94,31 +95,32 @@ export class JavascriptProject {
     }
   }
 
-  async resolveDirectDependencies(): Promise<
-    Record<string, { version: string; external: boolean }>
-  > {
-    return tracer.startActiveSpan("JavascriptProject.resolveInternal", async (span) => {
-      const command = await this.#getCommand();
+  async extractDirectDependenciesMeta(): Promise<Record<string, DependencyMeta>> {
+    return tracer.startActiveSpan(
+      "JavascriptProject.extractDirectDependenciesMeta",
+      async (span) => {
+        const command = await this.#getCommand();
 
-      span.setAttributes({
-        packageManager: command.name,
-      });
-
-      try {
-        return await command.resolveDirectDependencies({
-          cwd: this.projectPath,
-        });
-      } catch (error) {
-        recordSpanException(span, error);
-        span.end();
-
-        logger.debug(`Failed to resolve internal dependencies using ${command.name}`, {
-          error,
+        span.setAttributes({
+          packageManager: command.name,
         });
 
-        throw error;
+        try {
+          return await command.extractDirectDependenciesMeta({
+            cwd: this.projectPath,
+          });
+        } catch (error) {
+          recordSpanException(span, error);
+          span.end();
+
+          logger.debug(`Failed to resolve internal dependencies using ${command.name}`, {
+            error,
+          });
+
+          throw error;
+        }
       }
-    });
+    );
   }
 
   async resolveAll(
@@ -298,9 +300,9 @@ interface PackageManagerCommands {
 
   installDependencies(options: PackageManagerOptions): Promise<void>;
 
-  resolveDirectDependencies(
+  extractDirectDependenciesMeta(
     options: PackageManagerOptions
-  ): Promise<Record<string, { version: string; external: boolean }>>;
+  ): Promise<Record<string, DependencyMeta>>;
 
   resolveDependencyVersion(
     packageName: string,
@@ -368,12 +370,12 @@ class PNPMCommands implements PackageManagerCommands {
     return results;
   }
 
-  async resolveDirectDependencies(options: PackageManagerOptions) {
+  async extractDirectDependenciesMeta(options: PackageManagerOptions) {
     const result = await this.#listDirectDependencies(options);
 
-    logger.debug(`Resolving direct dependencies using ${this.name}`);
+    logger.debug(`Extracting direct dependencies metadata using ${this.name}`);
 
-    const results: Record<string, { version: string; external: boolean }> = {};
+    const results: Record<string, DependencyMeta> = {};
 
     for (const projectPkg of result) {
       results[projectPkg.name] = { version: projectPkg.version, external: false };
@@ -481,12 +483,12 @@ class NPMCommands implements PackageManagerCommands {
     return results;
   }
 
-  async resolveDirectDependencies(options: PackageManagerOptions) {
+  async extractDirectDependenciesMeta(options: PackageManagerOptions) {
     const result = await this.#listDirectDependencies(options);
 
-    logger.debug(`Resolving direct dependencies using ${this.name}`);
+    logger.debug(`Extracting direct dependencies metadata using ${this.name}`);
 
-    return this.#flattenDirectDependencies(result.dependencies);
+    return this.#flattenDependenciesMeta(result.dependencies);
   }
 
   async #listDirectDependencies(options: PackageManagerOptions) {
@@ -538,17 +540,17 @@ class NPMCommands implements PackageManagerCommands {
     }
   }
 
-  #flattenDirectDependencies(
+  #flattenDependenciesMeta(
     dependencies: Record<string, NpmDependency>
-  ): Record<string, { version: string; external: boolean }> {
-    let results: Record<string, { version: string; external: boolean }> = {};
+  ): Record<string, DependencyMeta> {
+    let results: Record<string, DependencyMeta> = {};
 
     for (const [name, dep] of Object.entries(dependencies)) {
       const { version, resolved, dependencies } = dep;
       results[name] = { version, external: !resolved.startsWith("file:") };
 
       if (dependencies) {
-        results = { ...results, ...this.#flattenDirectDependencies(dependencies) };
+        results = { ...results, ...this.#flattenDependenciesMeta(dependencies) };
       }
     }
 
@@ -612,13 +614,13 @@ class YarnCommands implements PackageManagerCommands {
     return results;
   }
 
-  async resolveDirectDependencies(options: PackageManagerOptions) {
+  async extractDirectDependenciesMeta(options: PackageManagerOptions) {
     const result = await this.#listDirectDependencies(options);
     console.log("LIST DIRECT DEPS", JSON.stringify(result, undefined, 2));
 
-    logger.debug(`Resolving direct dependencies using ${this.name}`);
+    logger.debug(`Extracting direct dependencies metadata using ${this.name}`);
 
-    const results: Record<string, { version: string; external: boolean }> = {};
+    const results: Record<string, DependencyMeta> = {};
 
     // TODO yarn
 

@@ -66,8 +66,8 @@ export async function compile(options: CompileOptions) {
   }
 
   const e2eJsProject = new E2EJavascriptProject(config.projectDir, packageManager);
-  const directDependencies = await e2eJsProject.resolveDirectDependencies();
-  console.log("DIRECT DEPS", directDependencies);
+  const directDependenciesMeta = await e2eJsProject.extractDirectDependenciesMeta();
+  console.log("DIRECT DEPS", directDependenciesMeta);
 
   const result = await build({
     stdin: {
@@ -96,7 +96,7 @@ export async function compile(options: CompileOptions) {
       mockServerOnlyPlugin(),
       bundleDependenciesPlugin(
         "workerFacade",
-        directDependencies,
+        directDependenciesMeta,
         config.dependenciesToBundle,
         config.tsconfigPath
       ),
@@ -142,7 +142,7 @@ export async function compile(options: CompileOptions) {
     plugins: [
       bundleDependenciesPlugin(
         "entryPoint.ts",
-        directDependencies,
+        directDependenciesMeta,
         config.dependenciesToBundle,
         config.tsconfigPath
       ),
