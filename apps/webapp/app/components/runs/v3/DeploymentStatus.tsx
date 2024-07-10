@@ -11,22 +11,32 @@ import { cn } from "~/utils/cn";
 
 export function DeploymentStatus({
   status,
+  isBuilt,
   className,
 }: {
   status: WorkerDeploymentStatus;
+  isBuilt: boolean;
   className?: string;
 }) {
   return (
     <span className={cn("flex items-center gap-1", className)}>
       <DeploymentStatusIcon status={status} className="h-4 w-4" />
-      <DeploymentStatusLabel status={status} />
+      <DeploymentStatusLabel status={status} isBuilt={isBuilt} />
     </span>
   );
 }
 
-export function DeploymentStatusLabel({ status }: { status: WorkerDeploymentStatus }) {
+export function DeploymentStatusLabel({
+  status,
+  isBuilt,
+}: {
+  status: WorkerDeploymentStatus;
+  isBuilt: boolean;
+}) {
   return (
-    <span className={deploymentStatusClassNameColor(status)}>{deploymentStatusTitle(status)}</span>
+    <span className={deploymentStatusClassNameColor(status)}>
+      {deploymentStatusTitle(status, isBuilt)}
+    </span>
   );
 }
 
@@ -79,7 +89,7 @@ export function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): 
   }
 }
 
-export function deploymentStatusTitle(status: WorkerDeploymentStatus): string {
+export function deploymentStatusTitle(status: WorkerDeploymentStatus, isBuilt: boolean): string {
   switch (status) {
     case "PENDING":
       return "Pending…";
@@ -92,9 +102,17 @@ export function deploymentStatusTitle(status: WorkerDeploymentStatus): string {
     case "CANCELED":
       return "Canceled";
     case "TIMED_OUT":
-      return "Timed out";
+      if (!isBuilt) {
+        return "Build timed out";
+      }
+
+      return "Indexing timed out";
     case "FAILED":
-      return "Failed";
+      if (!isBuilt) {
+        return "Build failed";
+      }
+
+      return "Indexing failed";
     default: {
       assertNever(status);
     }

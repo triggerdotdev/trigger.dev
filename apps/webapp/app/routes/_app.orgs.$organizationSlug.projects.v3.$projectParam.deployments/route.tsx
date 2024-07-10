@@ -1,5 +1,6 @@
 import {
   ArrowPathIcon,
+  ArrowUturnLeftIcon,
   BookOpenIcon,
   CommandLineIcon,
   ServerIcon,
@@ -7,6 +8,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Fragment } from "react/jsx-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
@@ -38,6 +40,7 @@ import {
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
 import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
+import { RetryDeploymentIndexingDialog } from "~/components/runs/v3/RetryDeploymentIndexingDialog";
 import { RollbackDeploymentDialog } from "~/components/runs/v3/RollbackDeploymentDialog";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -54,6 +57,7 @@ import {
   v3EnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
+import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
 
 const SearchParams = z.object({
   page: z.coerce.number().optional(),
@@ -124,7 +128,12 @@ export default function Page() {
                           user.id !== deployment.environment.userId
                             ? deployment.environment.userName
                             : undefined;
-                        const path = v3DeploymentPath(organization, project, deployment);
+                        const path = v3DeploymentPath(
+                          organization,
+                          project,
+                          deployment,
+                          currentPage
+                        );
                         return (
                           <TableRow key={deployment.id} className="group">
                             <TableCell to={path}>
@@ -143,7 +152,10 @@ export default function Page() {
                             </TableCell>
                             <TableCell to={path}>{deployment.version}</TableCell>
                             <TableCell to={path}>
-                              <DeploymentStatus status={deployment.status} />
+                              <DeploymentStatus
+                                status={deployment.status}
+                                isBuilt={deployment.isBuilt}
+                              />
                             </TableCell>
                             <TableCell to={path}>
                               {deployment.tasksCount !== null ? deployment.tasksCount : "–"}
@@ -265,18 +277,37 @@ function DeploymentActionsCell({
   const location = useLocation();
   const project = useProject();
 
-  if (deployment.isCurrent || !deployment.isDeployed) return <TableCell to={path}>{""}</TableCell>;
+  const canRollback = !deployment.isCurrent && deployment.isDeployed;
+  const canRetryIndexing = deployment.isLatest && deploymentIndexingIsRetryable(deployment);
+
+  if (!canRollback && !canRetryIndexing) {
+    return <TableCell to={path}>{""}</TableCell>;
+  }
 
   return (
     <TableCellMenu isSticky>
-      {!deployment.isCurrent && deployment.isDeployed && (
+      {canRollback && (
         <Dialog>
           <DialogTrigger asChild>
-            <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
+            <Button variant="small-menu-item" LeadingIcon={ArrowUturnLeftIcon}>
               Rollback
             </Button>
           </DialogTrigger>
           <RollbackDeploymentDialog
+            projectId={project.id}
+            deploymentShortCode={deployment.shortCode}
+            redirectPath={`${location.pathname}${location.search}`}
+          />
+        </Dialog>
+      )}
+      {canRetryIndexing && (
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
+              Retry indexing
+            </Button>
+          </DialogTrigger>
+          <RetryDeploymentIndexingDialog
             projectId={project.id}
             deploymentShortCode={deployment.shortCode}
             redirectPath={`${location.pathname}${location.search}`}
