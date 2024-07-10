@@ -133,6 +133,7 @@ type PricingPlansProps = {
   subscription?: SubscriptionResult;
   organizationSlug: string;
   hasPromotedPlan: boolean;
+  showGithubVerificationBadge?: boolean;
 };
 
 export function PricingPlans({
@@ -140,6 +141,7 @@ export function PricingPlans({
   subscription,
   organizationSlug,
   hasPromotedPlan,
+  showGithubVerificationBadge,
 }: PricingPlansProps) {
   return (
     <div className="flex w-full flex-col">
@@ -148,6 +150,7 @@ export function PricingPlans({
           plan={plans.free}
           subscription={subscription}
           organizationSlug={organizationSlug}
+          showGithubVerificationBadge={showGithubVerificationBadge}
         />
         <TierHobby
           plan={plans.hobby}
@@ -168,10 +171,12 @@ export function TierFree({
   plan,
   subscription,
   organizationSlug,
+  showGithubVerificationBadge,
 }: {
   plan: FreePlanDefinition;
   subscription?: SubscriptionResult;
   organizationSlug: string;
+  showGithubVerificationBadge?: boolean;
 }) {
   const location = useLocation();
   const navigation = useNavigation();
@@ -184,7 +189,7 @@ export function TierFree({
     <TierContainer>
       <div className="relative">
         <PricingHeader title={plan.title} cost={0} />
-        {status === "approved" && (
+        {showGithubVerificationBadge && status === "approved" && (
           <SimpleTooltip
             buttonClassName="absolute right-1 top-1"
             button={
