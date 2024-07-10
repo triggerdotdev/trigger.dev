@@ -269,51 +269,43 @@ function DeploymentActionsCell({
   const location = useLocation();
   const project = useProject();
 
-  const menuItems: JSX.Element[] = [];
+  const canRollback = !deployment.isCurrent && deployment.isDeployed;
+  const canRetryIndexing = deployment.isLatest && deploymentIndexingIsRetryable(deployment);
 
-  if (!deployment.isCurrent && deployment.isDeployed) {
-    menuItems.push(
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button variant="small-menu-item" LeadingIcon={ArrowUturnLeftIcon}>
-            Rollback
-          </Button>
-        </DialogTrigger>
-        <RollbackDeploymentDialog
-          projectId={project.id}
-          deploymentShortCode={deployment.shortCode}
-          redirectPath={`${location.pathname}${location.search}`}
-        />
-      </Dialog>
-    );
-  }
-
-  if (deployment.isLatest && deploymentIndexingIsRetryable(deployment)) {
-    menuItems.push(
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
-            Retry indexing
-          </Button>
-        </DialogTrigger>
-        <RetryDeploymentIndexingDialog
-          projectId={project.id}
-          deploymentShortCode={deployment.shortCode}
-          redirectPath={`${location.pathname}${location.search}`}
-        />
-      </Dialog>
-    );
-  }
-
-  if (menuItems.length === 0) {
+  if (!canRollback && !canRetryIndexing) {
     return <TableCell to={path}>{""}</TableCell>;
   }
 
   return (
     <TableCellMenu isSticky>
-      {menuItems.map((item, index) => (
-        <Fragment key={index}>{item}</Fragment>
-      ))}
+      {canRollback && (
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="small-menu-item" LeadingIcon={ArrowUturnLeftIcon}>
+              Rollback
+            </Button>
+          </DialogTrigger>
+          <RollbackDeploymentDialog
+            projectId={project.id}
+            deploymentShortCode={deployment.shortCode}
+            redirectPath={`${location.pathname}${location.search}`}
+          />
+        </Dialog>
+      )}
+      {canRetryIndexing && (
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
+              Retry indexing
+            </Button>
+          </DialogTrigger>
+          <RetryDeploymentIndexingDialog
+            projectId={project.id}
+            deploymentShortCode={deployment.shortCode}
+            redirectPath={`${location.pathname}${location.search}`}
+          />
+        </Dialog>
+      )}
     </TableCellMenu>
   );
 }
