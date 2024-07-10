@@ -14,7 +14,7 @@ module.exports = {
     "@trigger.dev/core",
     "@trigger.dev/core-backend",
     "@trigger.dev/sdk",
-    "@trigger.dev/billing",
+    "@trigger.dev/platform",
     "@trigger.dev/yalt",
     "emails",
     "highlight.run",

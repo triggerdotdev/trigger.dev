@@ -1,0 +1,80 @@
+---
+title: "How to upgrade the Trigger.dev packages"
+sidebarTitle: "Upgrading packages"
+description: "When we release fixes and new features we recommend you upgrade your Trigger.dev packages."
+---
+
+## Update command
+
+Run this command in your project:
+
+```sh
+npx trigger.dev@beta update
+```
+
+This will update all of the Trigger.dev packages in your project to the latest version.
+
+## Running the CLI locally
+
+When you run the CLI locally use the latest version for the `dev` and `deploy` commands:
+
+```sh
+npx trigger.dev@beta dev
+```
+
+```sh
+npx trigger.dev@beta deploy
+```
+
+These commands will also give you the option to upgrade if you are behind on versions.
+
+## Deploying with GitHub Actions
+
+You can deploy using [GitHub Actions](/v3/github-actions). We recommend that you lock your version in the workflow file so make sure to upgrade.
+
+<Warning>
+  The deploy step will fail if version mismatches are detected. It's important that you update the
+  version using the steps below.
+</Warning>
+
+<Steps>
+  <Step title="Find your workflow file">
+    In your `.githubs/workflows` folder you can find your workflow yml files. You may have a prod
+    and staging one.
+  </Step>
+  <Step title="Update the version for the run command">
+    In the steps you'll see a `run` command. It will run the trigger.dev deploy CLI command. Make
+    sure to update this version to the latest version (e.g. `npx trigger.dev@3.0.0-beta.48 deploy`).
+  </Step>
+</Steps>
+
+## package.json dev dependency
+
+Instead of using `npx`, `pnpm dlx` or `yarn dlx` you can add the Trigger.dev CLI as a dev dependency to your package.json file.
+
+For example:
+
+```json
+{
+  "devDependencies": {
+    "trigger.dev": "3.0.0-beta.48"
+  }
+}
+```
+
+If you've done this make sure to update the version to match the `@trigger.dev/sdk` package.
+
+Once you have added the `trigger.dev` package to your `devDependencies`, you can use `npm exec trigger.dev`, `pnpm exec trigger.dev`, or `yarn exec trigger.dev` to run the CLI.
+
+But we recommend adding your dev and deploy commands to the `scripts` section of your `package.json` file:
+
+```json
+{
+  "scripts": {
+    "dev:trigger": "trigger.dev dev",
+    "deploy:trigger": "trigger.dev deploy"
+  }
+}
+```
+
+Then you can run `npm run dev:trigger` and `npm run deploy:trigger` to run the CLI.

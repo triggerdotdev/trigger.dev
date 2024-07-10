@@ -1,10 +1,8 @@
 import { ArrowUpRightIcon } from "@heroicons/react/20/solid";
 import { Link, useNavigation } from "@remix-run/react";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
-import { useOptionalProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
-import { plansPath } from "~/utils/pathBuilder";
-import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
+import { UpgradePrompt, useShowUpgradePrompt } from "../billing/v3/UpgradePrompt";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { LinkButton } from "./Buttons";
 import { Header2 } from "./Headers";
@@ -23,21 +21,14 @@ export function NavBar({ children }: WithChildren) {
   const showUpgradePrompt = useShowUpgradePrompt(organization);
   const navigation = useNavigation();
   const isLoading = navigation.state === "loading" || navigation.state === "submitting";
-  const project = useOptionalProject();
 
   return (
     <div>
       <div className="grid h-10 w-full grid-rows-[auto_1px] bg-background-bright">
-        <div className="flex w-full items-center justify-between pl-3 pr-1">{children}</div>
+        <div className="flex w-full items-center justify-between pl-3 pr-2">{children}</div>
         <LoadingBarDivider isLoading={isLoading} />
       </div>
-      {showUpgradePrompt.shouldShow && organization && (
-        <UpgradePrompt
-          runsEnabled={showUpgradePrompt.runsEnabled}
-          runCountCap={showUpgradePrompt.runCountCap}
-          planPath={plansPath(organization)}
-        />
-      )}
+      {showUpgradePrompt.shouldShow && organization && <UpgradePrompt />}
     </div>
   );
 }
@@ -70,7 +61,7 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
 }
 
 export function PageAccessories({ children }: WithChildren) {
-  return <div className="flex items-center gap-3">{children}</div>;
+  return <div className="flex items-center gap-2">{children}</div>;
 }
 
 export function PageInfoRow({ children, className }: WithChildren) {

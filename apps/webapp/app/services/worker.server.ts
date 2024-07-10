@@ -7,7 +7,6 @@ import { ZodWorker } from "~/platform/zodWorker.server";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
 import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
-import { reportUsageEvent } from "~/v3/openMeter.server";
 import { RequeueTaskRunService } from "~/v3/requeueTaskRun.server";
 import { DeliverAlertService } from "~/v3/services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "~/v3/services/alerts/performDeploymentAlerts.server";
@@ -36,6 +35,7 @@ import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
+import { reportInvocationUsage } from "./platform.v3.server";
 import { executionRateLimiter } from "./runExecutionRateLimiter.server";
 import { DeliverRunSubscriptionService } from "./runs/deliverRunSubscription.server";
 import { DeliverRunSubscriptionsService } from "./runs/deliverRunSubscriptions.server";
@@ -673,15 +673,11 @@ function getWorkerQueue() {
         priority: 0,
         maxAttempts: 8,
         handler: async (payload, job) => {
-          await reportUsageEvent({
-            source: "webapp",
-            type: "usage",
-            subject: payload.orgId,
-            data: {
-              costInCents: payload.data.costInCents,
-              ...payload.additionalData,
-            },
-          });
+          await reportInvocationUsage(
+            payload.orgId,
+            Number(payload.data.costInCents),
+            payload.additionalData
+          );
         },
       },
       "v3.enqueueDelayedRun": {

@@ -37,9 +37,11 @@ import {
   TestTask,
   TestTaskPresenter,
 } from "~/presenters/v3/TestTaskPresenter.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, v3RunSpanPath, v3TaskParamsSchema } from "~/utils/pathBuilder";
 import { TestTaskService } from "~/v3/services/testTask.server";
+import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { TestTaskData } from "~/v3/testTask";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -68,25 +70,41 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   const testService = new TestTaskService();
-  const run = await testService.call(userId, submission.value);
+  try {
+    const run = await testService.call(userId, submission.value);
 
-  if (!run) {
+    if (!run) {
+      return redirectBackWithErrorMessage(
+        request,
+        "Unable to start a test run: Something went wrong"
+      );
+    }
+
+    return redirectWithSuccessMessage(
+      v3RunSpanPath(
+        { slug: organizationSlug },
+        { slug: projectParam },
+        { friendlyId: run.friendlyId },
+        { spanId: run.spanId }
+      ),
+      request,
+      "Test run created"
+    );
+  } catch (e) {
+    if (e instanceof OutOfEntitlementError) {
+      return redirectBackWithErrorMessage(
+        request,
+        "Unable to start a test run: You have exceeded your free credits"
+      );
+    }
+
+    logger.error("Failed to start a test run", { error: e });
+
     return redirectBackWithErrorMessage(
       request,
       "Unable to start a test run: Something went wrong"
     );
   }
-
-  return redirectWithSuccessMessage(
-    v3RunSpanPath(
-      { slug: organizationSlug },
-      { slug: projectParam },
-      { friendlyId: run.friendlyId },
-      { spanId: run.spanId }
-    ),
-    request,
-    "Test run created"
-  );
 };
 
 export default function Page() {

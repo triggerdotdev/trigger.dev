@@ -111,11 +111,11 @@ jobs:
           REPOSITORY: ${{ steps.prep.outputs.REPOSITORY }}
           IMAGE_TAG: ${{ steps.prep.outputs.IMAGE_TAG }}
 
-      - name: 🐙 Push 'latest' to GitHub Container Registry
+      - name: 🐙 Push 'v3' tag to GitHub Container Registry
         if: startsWith(github.ref_name, 'v.docker.')
         run: |
-          docker tag infra_image $REGISTRY/$REPOSITORY:latest
-          docker push $REGISTRY/$REPOSITORY:latest
+          docker tag infra_image $REGISTRY/$REPOSITORY:v3
+          docker push $REGISTRY/$REPOSITORY:v3
         env:
           REGISTRY: ghcr.io/triggerdotdev
           REPOSITORY: ${{ steps.prep.outputs.REPOSITORY }}

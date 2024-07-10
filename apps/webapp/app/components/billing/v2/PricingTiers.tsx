@@ -2,17 +2,17 @@ import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
-import { ActiveSubscription, Plan, Plans, SetPlanBodySchema } from "@trigger.dev/billing";
+import { ActiveSubscription, Plan, Plans, SetPlanBodySchema } from "@trigger.dev/platform/v2";
 import { useState } from "react";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { cn } from "~/utils/cn";
 import { formatNumberCompact } from "~/utils/numberFormatter";
-import { DefinitionTip } from "../DefinitionTooltip";
-import { Feedback } from "../Feedback";
-import { Button, LinkButton } from "../primitives/Buttons";
-import SegmentedControl from "../primitives/SegmentedControl";
+import { DefinitionTip } from "../../DefinitionTooltip";
+import { Feedback } from "../../Feedback";
+import { Button, LinkButton } from "../../primitives/Buttons";
+import SegmentedControl from "../../primitives/SegmentedControl";
 import { RunsVolumeDiscountTable } from "./RunsVolumeDiscountTable";
-import { Spinner } from "../primitives/Spinner";
+import { Spinner } from "../../primitives/Spinner";
 
 const pricingDefinitions = {
   concurrentRuns: {

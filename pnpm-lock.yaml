@@ -375,9 +375,6 @@ importers:
       '@team-plain/typescript-sdk':
         specifier: ^3.5.0
         version: 3.5.0
-      '@trigger.dev/billing':
-        specifier: ^1.0.10
-        version: 1.0.10
       '@trigger.dev/companyicons':
         specifier: ^1.5.35
         version: 1.5.35(react-dom@18.2.0)(react@18.2.0)
@@ -393,6 +390,9 @@ importers:
       '@trigger.dev/otlp-importer':
         specifier: workspace:*
         version: link:../../packages/otlp-importer
+      '@trigger.dev/platform':
+        specifier: 1.0.12
+        version: 1.0.12
       '@trigger.dev/sdk':
         specifier: workspace:*
         version: link:../../packages/trigger-sdk
@@ -857,10 +857,10 @@ importers:
   integrations/airtable:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/trigger-sdk
       airtable:
         specifier: ^0.12.1
@@ -900,10 +900,10 @@ importers:
         specifier: ^12.0.10
         version: 12.0.10
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/trigger-sdk
       octokit:
         specifier: ^3.1.2
@@ -943,10 +943,10 @@ importers:
         specifier: ^8.0.0
         version: 8.0.0
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/trigger-sdk
       zod:
         specifier: 3.22.3
@@ -974,10 +974,10 @@ importers:
   integrations/openai:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/trigger-sdk
       openai:
         specifier: ^4.16.1
@@ -1017,10 +1017,10 @@ importers:
         specifier: ^2.7.0
         version: 2.7.0
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/trigger-sdk
     devDependencies:
       '@trigger.dev/tsconfig':
@@ -1045,10 +1045,10 @@ importers:
   integrations/replicate:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/trigger-sdk
       replicate:
         specifier: ^0.18.1
@@ -1079,10 +1079,10 @@ importers:
   integrations/resend:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/trigger-sdk
       resend:
         specifier: ^2.1.0
@@ -1113,10 +1113,10 @@ importers:
         specifier: ^7.7.0
         version: 7.7.0
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/trigger-sdk
     devDependencies:
       '@trigger.dev/tsconfig':
@@ -1144,10 +1144,10 @@ importers:
         specifier: ^8.0.2
         version: 8.0.2
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/trigger-sdk
       zod:
         specifier: 3.22.3
@@ -1178,7 +1178,7 @@ importers:
         specifier: ^6.8.1
         version: 6.8.1
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/trigger-sdk
       zod:
         specifier: 3.22.3
@@ -1206,10 +1206,10 @@ importers:
   integrations/stripe:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/trigger-sdk
       stripe:
         specifier: ^12.14.0
@@ -1243,10 +1243,10 @@ importers:
         specifier: ^2.26.0
         version: 2.31.0
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/trigger-sdk
       supabase-management-js:
         specifier: ^1.0.0
@@ -1277,10 +1277,10 @@ importers:
   integrations/typeform:
     dependencies:
       '@trigger.dev/integration-kit':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/integration-kit
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../../packages/trigger-sdk
       '@typeform/api-client':
         specifier: ^1.8.0
@@ -1308,7 +1308,7 @@ importers:
   packages/astro:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../trigger-sdk
       debug:
         specifier: ^4.3.4
@@ -1487,8 +1487,8 @@ importers:
         specifier: ^0.7.0
         version: 0.7.0
       '@depot/cli':
-        specifier: 0.0.1-cli.2.55.0
-        version: 0.0.1-cli.2.55.0
+        specifier: 0.0.1-cli.2.71.0
+        version: 0.0.1-cli.2.71.0
       '@opentelemetry/api':
         specifier: ^1.8.0
         version: 1.8.0
@@ -1526,7 +1526,7 @@ importers:
         specifier: ^1.22.0
         version: 1.22.0
       '@trigger.dev/core':
-        specifier: workspace:3.0.0-beta.46
+        specifier: workspace:3.0.0-beta.48
         version: link:../core
       '@types/degit':
         specifier: ^2.8.3
@@ -1939,7 +1939,7 @@ importers:
         version: 4.18.2
     devDependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../trigger-sdk
       '@trigger.dev/tsconfig':
         specifier: workspace:*
@@ -2034,7 +2034,7 @@ importers:
         version: 4.3.4(supports-color@8.1.1)
     devDependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../trigger-sdk
       '@trigger.dev/tsconfig':
         specifier: workspace:*
@@ -2067,7 +2067,7 @@ importers:
   packages/nextjs:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../trigger-sdk
       debug:
         specifier: ^4.3.4
@@ -2153,7 +2153,7 @@ importers:
         specifier: 5.0.0-beta.2
         version: 5.0.0-beta.2(react@18.2.0)
       '@trigger.dev/core':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../core
       debug:
         specifier: ^4.3.4
@@ -2196,7 +2196,7 @@ importers:
   packages/remix:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../trigger-sdk
       debug:
         specifier: ^4.3.4
@@ -2233,7 +2233,7 @@ importers:
   packages/sveltekit:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: workspace:^3.0.0-beta.46
+        specifier: workspace:^3.0.0-beta.48
         version: link:../trigger-sdk
       debug:
         specifier: ^4.3.4
@@ -2307,10 +2307,10 @@ importers:
         specifier: ^1.22.0
         version: 1.22.0
       '@trigger.dev/core':
-        specifier: workspace:3.0.0-beta.46
+        specifier: workspace:3.0.0-beta.48
         version: link:../core
       '@trigger.dev/core-backend':
-        specifier: workspace:3.0.0-beta.46
+        specifier: workspace:3.0.0-beta.48
         version: link:../core-backend
       chalk:
         specifier: ^5.2.0
@@ -5874,8 +5874,8 @@ packages:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
 
-  /@depot/cli-darwin-arm64@0.0.1-cli.2.55.0:
-    resolution: {integrity: sha512-1uRGmCqd+kuHK2fub0oVt+SctP3mwNX15y17oMilIOpvvJtwMvjwBI73qt2aN0jbx0e3xrDiv5GD4GMzsqNGEw==}
+  /@depot/cli-darwin-arm64@0.0.1-cli.2.71.0:
+    resolution: {integrity: sha512-mPfke/8bc+nm+ESun5JYW7MakrIjxAgyd6qZfFt3ZQV9FYILKhSzaWQK1C/JafGBB0Sn6RNMG+EgM2M0UIW2Ew==}
     engines: {node: '>=14'}
     cpu: [arm64]
     os: [darwin]
@@ -5883,8 +5883,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-darwin-x64@0.0.1-cli.2.55.0:
-    resolution: {integrity: sha512-3Z3fczSJ1WsxhgS0Ui//9CIk6yJS2+JKlwmZ44EbQIPQ4ZyR+ZZDoJa8pmZdLDehRxVLjeXkUdsRPD2K6yrCqA==}
+  /@depot/cli-darwin-x64@0.0.1-cli.2.71.0:
+    resolution: {integrity: sha512-P9FX91q7hKSGfkDyY1rKZfHLuAj0No4DuE83B8rliTGlkILsyR9odlvsODk3wo6lVZ6KkqTx23zUlXVem2vvhg==}
     engines: {node: '>=14'}
     cpu: [x64]
     os: [darwin]
@@ -5892,8 +5892,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-linux-arm64@0.0.1-cli.2.55.0:
-    resolution: {integrity: sha512-GsnItZk9jawX4f6xNI7d0FveSLNIWNVo7udzmtYmPkGo0hsiNfOxzQixR8cusJKnTOo9wYiHx4pfYNB3Hjs7Ng==}
+  /@depot/cli-linux-arm64@0.0.1-cli.2.71.0:
+    resolution: {integrity: sha512-nW1k8AmaYXtX4Bbt3L5jLLPBmu63iZ/ARZfaaR2sfdubtpmyPbRAuxtzwqM42jnvzxjUOnKs1ex4det4qh8iig==}
     engines: {node: '>=14'}
     cpu: [arm64]
     os: [linux]
@@ -5901,8 +5901,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-linux-arm@0.0.1-cli.2.55.0:
-    resolution: {integrity: sha512-T89KJJjk9By50L6pCrDDAmJFgM3V8DzppMmM7cA1g3biLTjeJZLYgwTrBXu3CfpWMqqLWWOvZ/je8myx7PwBOA==}
+  /@depot/cli-linux-arm@0.0.1-cli.2.71.0:
+    resolution: {integrity: sha512-hv0T7P2GcmcEQrdJmOkBbEKNFcjFr3xcMUrwfOPKFIC75hFgchc1vB5uFTqpBkJ4drjlk6xiEcujzE3EQznzhw==}
     engines: {node: '>=14'}
     cpu: [arm]
     os: [linux]
@@ -5910,8 +5910,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-linux-ia32@0.0.1-cli.2.55.0:
-    resolution: {integrity: sha512-Eunct4bkpN1TVhMt8xu9XtURzipz9yEfXidQoX/vijMLZemsvwcMVnuCmUkfyq/m5DJ1ZN8APHvj+9NMrERfaQ==}
+  /@depot/cli-linux-ia32@0.0.1-cli.2.71.0:
+    resolution: {integrity: sha512-D5f+zbUyiOkiT6bGf9VjcWSBWNHQ9GVCpLpeHjjPFxkeX+0Xyktuyae2pIzVlYqiASDXAbxJa3WhvgNk6ElErw==}
     engines: {node: '>=14'}
     cpu: [ia32]
     os: [linux]
@@ -5919,8 +5919,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-linux-x64@0.0.1-cli.2.55.0:
-    resolution: {integrity: sha512-G93+XCpzGHYfH5LeT+3A0J3SF7GGQGnjMVoH8w7m5b6GtTu7SFGfat3a2/M07SOtGXa5tz3O56wrgR1jDPc1Fg==}
+  /@depot/cli-linux-x64@0.0.1-cli.2.71.0:
+    resolution: {integrity: sha512-vlo8R0o8+eiHkFN1Rcw55/9ASpONSNAfUclE2rxx2oJbRjVlacj9GJjPzOFAhIKyqgGpMrZJvBBIsHBv21STXw==}
     engines: {node: '>=14'}
     cpu: [x64]
     os: [linux]
@@ -5928,8 +5928,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-win32-arm64@0.0.1-cli.2.55.0:
-    resolution: {integrity: sha512-y7K48ngTqvSCyHItxW0kapVfYyqtWNYZVeEJ344tSuvq6H3bt8mLWfjH+WF9fT14OAmR1jOt0+ykpta45ehKrA==}
+  /@depot/cli-win32-arm64@0.0.1-cli.2.71.0:
+    resolution: {integrity: sha512-gXjitRRbSVkcDkkbPMalFqXn8I8I3GZAAgkwyWOkUHmZhwsEXpSeVi/B6sPdlAIFPLpspPtOYSKtrvnNU1Tflg==}
     engines: {node: '>=14'}
     cpu: [arm64]
     os: [win32]
@@ -5937,8 +5937,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-win32-ia32@0.0.1-cli.2.55.0:
-    resolution: {integrity: sha512-hsO3NKWZMeiFgtFAkEsj1vrHG49N0fLjkhEEJ7DrUV0OBMUifkScE66E+9+pWJoxWq3B3Bmc/9OPc0XVMfYekQ==}
+  /@depot/cli-win32-ia32@0.0.1-cli.2.71.0:
+    resolution: {integrity: sha512-G2I97FT2IY4NtMdskLe5KLEPUJpMrZkU4VpAQwokLR9VFQn9TJ+J4DhXpsXpCtMQ5vZ01jTtiS3/WBqx50c5oA==}
     engines: {node: '>=14'}
     cpu: [ia32]
     os: [win32]
@@ -5946,8 +5946,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-win32-x64@0.0.1-cli.2.55.0:
-    resolution: {integrity: sha512-QKhpSpa1QwWTf79iMNxUR17EFbe7hT/Bs9mhTcR6NiyOB0GeWBpX3ejULpQcfHpVjBBHIXTW/TJ/Unx4N80cIA==}
+  /@depot/cli-win32-x64@0.0.1-cli.2.71.0:
+    resolution: {integrity: sha512-L3h2zl24ItOlFYU7C6IyfrzNh9RhuxugASDczjry0aVbCv2EvjvUofpbwEsDY88CawXtn2cpwNbBesTWtDEZ2w==}
     engines: {node: '>=14'}
     cpu: [x64]
     os: [win32]
@@ -5955,21 +5955,21 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli@0.0.1-cli.2.55.0:
-    resolution: {integrity: sha512-Y5hlyMxJ8wKeXQKQaYOMCVVzLO42qFHaybcgmCjiZC4CSXkX0+nOL8daoH3Sy0M4U0RcbUijNMJ51oGFq2As9g==}
+  /@depot/cli@0.0.1-cli.2.71.0:
+    resolution: {integrity: sha512-InXTr/Ld30JwKgkRhdTWaB18iKi/5EnESnRhJkcW1XoxqWdZ0fbvMT6W0glEE9n68dZfuPEpI9aJBsfZg0K+yA==}
     engines: {node: '>=14'}
     hasBin: true
     requiresBuild: true
     optionalDependencies:
-      '@depot/cli-darwin-arm64': 0.0.1-cli.2.55.0
-      '@depot/cli-darwin-x64': 0.0.1-cli.2.55.0
-      '@depot/cli-linux-arm': 0.0.1-cli.2.55.0
-      '@depot/cli-linux-arm64': 0.0.1-cli.2.55.0
-      '@depot/cli-linux-ia32': 0.0.1-cli.2.55.0
-      '@depot/cli-linux-x64': 0.0.1-cli.2.55.0
-      '@depot/cli-win32-arm64': 0.0.1-cli.2.55.0
-      '@depot/cli-win32-ia32': 0.0.1-cli.2.55.0
-      '@depot/cli-win32-x64': 0.0.1-cli.2.55.0
+      '@depot/cli-darwin-arm64': 0.0.1-cli.2.71.0
+      '@depot/cli-darwin-x64': 0.0.1-cli.2.71.0
+      '@depot/cli-linux-arm': 0.0.1-cli.2.71.0
+      '@depot/cli-linux-arm64': 0.0.1-cli.2.71.0
+      '@depot/cli-linux-ia32': 0.0.1-cli.2.71.0
+      '@depot/cli-linux-x64': 0.0.1-cli.2.71.0
+      '@depot/cli-win32-arm64': 0.0.1-cli.2.71.0
+      '@depot/cli-win32-ia32': 0.0.1-cli.2.71.0
+      '@depot/cli-win32-x64': 0.0.1-cli.2.71.0
     dev: false
 
   /@depot/sdk-node@0.5.0:
@@ -15457,12 +15457,6 @@ packages:
       - supports-color
     dev: false
 
-  /@trigger.dev/billing@1.0.10:
-    resolution: {integrity: sha512-vkPd1UD0fRji4qFP+s2pP26oztYzyQezQqT4+12I/5+7pOKFbOr2j0tVZj/sf7BTWgRE1Ybsk4CKT0gc9yXfKA==}
-    dependencies:
-      zod: 3.22.3
-    dev: false
-
   /@trigger.dev/companyicons@1.5.35(react-dom@18.2.0)(react@18.2.0):
     resolution: {integrity: sha512-AhY7yshwh0onlgB6EGiyjyLSzl38Cuxo4tpUJVHxs5im8gDA+fuUq7o6Vz1WetFeNXwjMqh3f+bPW7bfqR4epg==}
     peerDependencies:
@@ -15494,6 +15488,12 @@ packages:
       next: 13.4.12(react-dom@18.2.0)(react@18.2.0)
     transitivePeerDependencies:
       - supports-color
+    dev: false
+
+  /@trigger.dev/platform@1.0.12:
+    resolution: {integrity: sha512-pOB9S2XG+TmTdlYtF9xuQoFz1aRlRGWSVCXuv3Vj2ArzU6Zz3ukvK24qlTd0PJB1otX71Ho/NfViGKEzCyRb5Q==}
+    dependencies:
+      zod: 3.22.3
     dev: false
 
   /@trigger.dev/sdk@2.0.7:

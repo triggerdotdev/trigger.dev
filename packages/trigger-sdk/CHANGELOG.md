@@ -1,5 +1,23 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.48
+
+### Patch Changes
+
+- ecf1110ab: v3: Export AbortTaskRunError from @trigger.dev/sdk/v3
+  - @trigger.dev/core@3.0.0-beta.48
+  - @trigger.dev/core-backend@3.0.0-beta.48
+
+## 3.0.0-beta.47
+
+### Patch Changes
+
+- 4f95c9de4: v3: recover from server rate limiting errors in a more reliable way
+- Updated dependencies [4f95c9de4]
+- Updated dependencies [e04d44866]
+  - @trigger.dev/core@3.0.0-beta.47
+  - @trigger.dev/core-backend@3.0.0-beta.47
+
 ## 3.0.0-beta.46
 
 ### Patch Changes

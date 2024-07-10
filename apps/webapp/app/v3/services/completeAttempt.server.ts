@@ -6,6 +6,7 @@ import {
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
   flattenAttributes,
+  sanitizeError,
 } from "@trigger.dev/core/v3";
 import { PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -166,12 +167,14 @@ export class CompleteAttemptService extends BaseService {
       return "COMPLETED";
     }
 
+    const sanitizedError = sanitizeError(completion.error);
+
     await this._prisma.taskRunAttempt.update({
       where: { id: taskRunAttempt.id },
       data: {
         status: "FAILED",
         completedAt: new Date(),
-        error: completion.error,
+        error: sanitizedError,
         usageDurationMs: completion.usage?.durationMs,
       },
     });
@@ -289,15 +292,15 @@ export class CompleteAttemptService extends BaseService {
             name: "exception",
             time: new Date(),
             properties: {
-              exception: createExceptionPropertiesFromError(completion.error),
+              exception: createExceptionPropertiesFromError(sanitizedError),
             },
           },
         ],
       });
 
       if (
-        completion.error.type === "INTERNAL_ERROR" &&
-        completion.error.code === "GRACEFUL_EXIT_TIMEOUT"
+        sanitizedError.type === "INTERNAL_ERROR" &&
+        sanitizedError.code === "GRACEFUL_EXIT_TIMEOUT"
       ) {
         // We need to fail all incomplete spans
         const inProgressEvents = await eventRepository.queryIncompleteEvents({
@@ -310,7 +313,7 @@ export class CompleteAttemptService extends BaseService {
 
         const exception = {
           type: "Graceful exit timeout",
-          message: completion.error.message,
+          message: sanitizedError.message,
         };
 
         await Promise.all(

@@ -1,4 +1,4 @@
-import { BillingService } from "../services/billing.server";
+import { BillingService } from "../services/billing.v2.server";
 import { BasePresenter } from "./v3/basePresenter.server";
 
 export class OrgBillingPlanPresenter extends BasePresenter {

@@ -13,6 +13,7 @@ import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { uploadToObjectStore } from "../r2.server";
 import { startActiveSpan } from "../tracer.server";
+import { getEntitlement } from "~/services/platform.v3.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
@@ -26,6 +27,12 @@ export type TriggerTaskServiceOptions = {
   batchId?: string;
   customIcon?: string;
 };
+
+export class OutOfEntitlementError extends Error {
+  constructor() {
+    super("You can't trigger a task because you have run out of credits.");
+  }
+}
 
 export class TriggerTaskService extends BaseService {
   public async call(
@@ -61,6 +68,13 @@ export class TriggerTaskService extends BaseService {
         span.setAttribute("runId", existingRun.friendlyId);
 
         return existingRun;
+      }
+
+      if (environment.type !== "DEVELOPMENT") {
+        const result = await getEntitlement(environment.organizationId);
+        if (result && result.hasAccess === false) {
+          throw new OutOfEntitlementError();
+        }
       }
 
       const runFriendlyId = generateFriendlyId("run");

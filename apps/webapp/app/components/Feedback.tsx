@@ -55,16 +55,6 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
       <SheetTrigger asChild={true}>{button}</SheetTrigger>
       <SheetContent className="@container">
         <SheetBody className="flex h-full flex-col justify-between">
-          <Header2 className="mb-2.5 text-xl">Get help from the community</Header2>
-          <Paragraph className="mb-4">
-            The quickest way to get help and feedback or to provide advice to others is to join our
-            Discord.
-          </Paragraph>
-          <div className="flex flex-col gap-x-4 @[30rem]:flex-row">
-            <DiscordBanner />
-            <GitHubDiscussionsBanner />
-          </div>
-          <hr className="mb-4" />
           <Header2 className="mb-2.5 text-xl">Send us an email</Header2>
           <Paragraph className="mb-4">We read every message and respond quickly.</Paragraph>
           <Form method="post" action="/resources/feedback" {...form.props}>
@@ -106,6 +96,8 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
             </Fieldset>
           </Form>
           <hr className="my-4" />
+          <DiscordBanner />
+          <hr className="mb-4" />
           <Header2 className="mb-2.5 text-xl">Troubleshooting</Header2>
           <Paragraph className="mb-4">
             If you're having trouble, check out our documentation or the Trigger.dev Status page.
@@ -134,44 +126,20 @@ function DiscordBanner({ className }: { className?: string }) {
       href="https://trigger.dev/discord"
       target="_blank"
       className={cn(
-        "group mb-4 flex w-full items-center justify-between rounded-md border border-charcoal-600 p-4 transition hover:border-text-link",
+        "group mb-4 flex w-full items-center justify-between rounded-md border border-grid-bright bg-charcoal-750 p-4 pl-6 transition hover:border-text-link",
         className
       )}
     >
-      <div className="flex flex-col gap-y-2">
-        <DiscordIcon className="h-8 w-8" />
-        <Header1 className="text-2xl font-semibold text-text-bright transition group-hover:text-white">
-          Join our Discord community
-        </Header1>
-        <Paragraph variant="small" className="mb-4">
-          Get help or answer questions from the Trigger.dev community.
-        </Paragraph>
+      <div className="flex items-center gap-6">
+        <DiscordIcon className="size-12" />
+        <div className="flex flex-col gap-2">
+          <Header1 className="text-2xl font-semibold text-text-bright transition group-hover:text-white">
+            Join our Discord community
+          </Header1>
+          <Paragraph>The quickest way to get answers from the Trigger.dev community.</Paragraph>
+        </div>
       </div>
       <ChevronRightIcon className="size-5 text-charcoal-500 transition group-hover:translate-x-1 group-hover:text-text-link" />
-    </a>
-  );
-}
-
-function GitHubDiscussionsBanner({ className }: { className?: string }) {
-  return (
-    <a
-      href="https://github.com/triggerdotdev/trigger.dev/discussions"
-      target="_blank"
-      className={cn(
-        "group mb-4 flex w-full items-center justify-between rounded-md border border-charcoal-600 p-4 transition hover:border-text-dimmed",
-        className
-      )}
-    >
-      <div className="flex flex-col gap-y-2">
-        <GitHubLightIcon className="mb-1 h-7 w-7" />
-        <Header1 className="text-2xl font-semibold text-text-bright transition group-hover:text-white">
-          View our GitHub Discussions
-        </Header1>
-        <Paragraph variant="small">
-          Post your questions, feedback, and feature requests on GitHub.
-        </Paragraph>
-      </div>
-      <ChevronRightIcon className="size-5 text-charcoal-500 transition group-hover:translate-x-1 group-hover:text-text-bright" />
     </a>
   );
 }

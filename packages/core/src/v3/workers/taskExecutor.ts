@@ -1,6 +1,6 @@
 import { SpanKind } from "@opentelemetry/api";
 import { ConsoleInterceptor } from "../consoleInterceptor";
-import { parseError } from "../errors";
+import { parseError, sanitizeError } from "../errors";
 import { TracingSDK, recordSpanException } from "../otel";
 import {
   BackgroundWorkerProperties,
@@ -169,9 +169,11 @@ export class TaskExecutor {
               return {
                 id: execution.run.id,
                 ok: false,
-                error: handleErrorResult.error
-                  ? parseError(handleErrorResult.error)
-                  : parseError(runError),
+                error: sanitizeError(
+                  handleErrorResult.error
+                    ? parseError(handleErrorResult.error)
+                    : parseError(runError)
+                ),
                 retry: handleErrorResult.status === "retry" ? handleErrorResult.retry : undefined,
                 skippedRetrying: handleErrorResult.status === "skipped",
               } satisfies TaskRunExecutionResult;

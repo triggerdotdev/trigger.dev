@@ -31,6 +31,7 @@ export type ZodFetchOptions = {
   name?: string;
   attributes?: Attributes;
   icon?: string;
+  onResponseBody?: (body: unknown, span: Span) => void;
 };
 
 export type ApiRequestOptions = Pick<ZodFetchOptions, "retry">;
@@ -186,7 +187,13 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
   const $requestInit = await requestInit;
 
   return traceZodFetch({ url, requestInit: $requestInit, options }, async (span) => {
-    return await _doZodFetchWithRetries(schema, url, $requestInit, options);
+    const result = await _doZodFetchWithRetries(schema, url, $requestInit, options);
+
+    if (options?.onResponseBody && span) {
+      options.onResponseBody(result.data, span);
+    }
+
+    return result;
   });
 }
 

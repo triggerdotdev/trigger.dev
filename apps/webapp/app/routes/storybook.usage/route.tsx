@@ -1,4 +1,4 @@
-import { UsageBar } from "~/components/billing/UsageBar";
+import { UsageBar } from "~/components/billing/v2/UsageBar";
 import { Paragraph } from "~/components/primitives/Paragraph";
 
 export default function Story() {

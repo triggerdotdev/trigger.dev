@@ -7,7 +7,7 @@ import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { parseRequestJsonAsync } from "~/utils/parseRequestJson.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { TriggerTaskService } from "~/v3/services/triggerTask.server";
+import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 
 const ParamsSchema = z.object({
@@ -109,6 +109,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     });
   } catch (error) {
     if (error instanceof ServiceValidationError) {
+      return json({ error: error.message }, { status: 422 });
+    } else if (error instanceof OutOfEntitlementError) {
       return json({ error: error.message }, { status: 422 });
     } else if (error instanceof Error) {
       return json({ error: error.message }, { status: 400 });

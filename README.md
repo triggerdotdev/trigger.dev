@@ -13,11 +13,9 @@
 
 </div>
 
-> The Trigger.dev v3 developer preview is now open. For more information and to get early access, check out our [developer preview launch post](https://trigger.dev/blog/v3-developer-preview-launch/).
-
 ## About Trigger.dev
 
-Trigger.dev is an open source platform and SDK which allows you to create long-running background jobs in your codebase. Write normal async code, deploy, and never hit a timeout.
+Trigger.dev is an open source platform and SDK which allows you to create long-running background jobs with no timeouts. Write normal async code, deploy, and never hit a timeout.
 
 #### Features:
 
@@ -26,17 +24,9 @@ Trigger.dev is an open source platform and SDK which allows you to create long-r
 - No infrastructure to manage
 - Works with your existing tech stack
 
-## Long-running tasks on serverless
-
-Reliably run tasks and don’t worry about function timeouts, we handle those for you.
-
-- Auto-resume after a function timeout
-- Auto-resume after a server outage
-- Add delays of up to a year
-
 ## In your codebase
 
-Create tasks where they belong: in your codebase. Version control, localhost, test, review, and deploy like you're already used to.
+Create tasks where they belong: in your codebase. Version control, localhost, test and review like you're already used to.
 
 ```ts
 import { task } from "@trigger.dev/sdk/v3";
@@ -55,7 +45,7 @@ export const helloWorld = task({
 
 ## Deployment
 
-Use our SDK to write tasks in your codebase. There's nothing extra to deploy and no CI to configure, your tasks just connect to our cloud. Or you can always [self-host](https://trigger.dev/docs/v3/open-source-self-hosting#overview).
+Use our SDK to write tasks in your codebase. There's no infrastructure to manage, your tasks automatically scale and connect to our cloud. Or you can always [self-host](https://trigger.dev/docs/v3/open-source-self-hosting#overview).
 
 ## Environments
 

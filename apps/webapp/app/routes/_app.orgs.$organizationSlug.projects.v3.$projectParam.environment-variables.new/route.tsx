@@ -7,7 +7,7 @@ import {
   useForm,
 } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { LockClosedIcon, LockOpenIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { RefObject, useCallback, useEffect, useRef, useState } from "react";
@@ -35,10 +35,18 @@ import { useProject } from "~/hooks/useProject";
 import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3EnvironmentVariablesPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, v3BillingPath, v3EnvironmentVariablesPath } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
 import dotenv from "dotenv";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { TextLink } from "~/components/primitives/TextLink";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/primitives/Tooltip";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -46,13 +54,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new EnvironmentVariablesPresenter();
-    const { environments } = await presenter.call({
+    const { environments, hasStaging } = await presenter.call({
       userId,
       projectSlug: projectParam,
     });
 
     return typedjson({
       environments,
+      hasStaging,
     });
   } catch (error) {
     throw new Response(undefined, {
@@ -156,7 +165,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 export default function Page() {
   const [isOpen, setIsOpen] = useState(false);
-  const { environments } = useTypedLoaderData<typeof loader>();
+  const { environments, hasStaging } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
   const navigate = useNavigate();
@@ -200,7 +209,7 @@ export default function Page() {
           <Fieldset className="mt-2">
             <InputGroup fullWidth>
               <Label>Environments</Label>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2">
                 {environments.map((environment) => (
                   <CheckboxWithLabel
                     key={environment.id}
@@ -210,7 +219,10 @@ export default function Page() {
                     type="radio"
                     label={
                       <span
-                        className={cn("text-xs uppercase", environmentTextClassName(environment))}
+                        className={cn(
+                          "text-xs uppercase tracking-wide",
+                          environmentTextClassName(environment)
+                        )}
                       >
                         {environmentTitle(environment)}
                       </span>
@@ -218,6 +230,27 @@ export default function Page() {
                     variant="button"
                   />
                 ))}
+                {!hasStaging && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <TextLink
+                          to={v3BillingPath(organization)}
+                          className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-3 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
+                        >
+                          <LockClosedIcon className="size-4 text-charcoal-500" />
+                          <Paragraph className="mt-0.5 text-xs uppercase tracking-wide text-staging">
+                            Staging
+                          </Paragraph>
+                        </TextLink>
+                      </TooltipTrigger>
+                      <TooltipContent className="flex items-center gap-2">
+                        <LockOpenIcon className="size-4 text-indigo-500" />
+                        Upgrade your plan to add a Staging environment.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
               </div>
               <FormError id={environmentIds.errorId}>{environmentIds.error}</FormError>
               <Hint>
@@ -225,9 +258,8 @@ export default function Page() {
                 file when running locally.
               </Hint>
             </InputGroup>
-            <Hint>Tip: Paste your .env into this form to populate it:</Hint>
             <InputGroup fullWidth>
-              <FieldLayout>
+              <FieldLayout showDeleteButton={false}>
                 <Label>Keys</Label>
                 <div className="flex justify-between gap-1">
                   <Label>Values</Label>
@@ -254,7 +286,7 @@ export default function Page() {
                 <div className="flex flex-row-reverse items-center gap-2">
                   <Button
                     type="submit"
-                    variant="primary/small"
+                    variant="primary/medium"
                     disabled={isLoading}
                     name="override"
                     value="false"
@@ -262,7 +294,7 @@ export default function Page() {
                     {isLoading ? "Saving" : "Save"}
                   </Button>
                   <Button
-                    variant="secondary/small"
+                    variant="secondary/medium"
                     disabled={isLoading}
                     name="override"
                     value="true"
@@ -274,11 +306,12 @@ export default function Page() {
               cancelButton={
                 <LinkButton
                   to={v3EnvironmentVariablesPath(organization, project)}
-                  variant="tertiary/small"
+                  variant="tertiary/medium"
                 >
                   Cancel
                 </LinkButton>
               }
+              className="mt-2"
             />
           </Fieldset>
         </Form>
@@ -287,8 +320,23 @@ export default function Page() {
   );
 }
 
-function FieldLayout({ children }: { children: React.ReactNode }) {
-  return <div className="grid w-full grid-cols-[1fr_1fr_2rem] gap-2">{children}</div>;
+function FieldLayout({
+  children,
+  showDeleteButton,
+}: {
+  children: React.ReactNode;
+  showDeleteButton: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid w-full gap-1.5",
+        showDeleteButton ? "grid-cols-[1fr_1fr_2rem]" : "grid-cols-[1fr_1fr]"
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
 function VariableFields({
@@ -363,17 +411,23 @@ function VariableFields({
           />
         );
       })}
-      <Button
-        variant="tertiary/medium"
-        type="button"
-        onClick={() => {
-          requestIntent(formRef.current ?? undefined, list.append(variablesFields.name));
-          append([{ key: "", value: "" }]);
-        }}
-        LeadingIcon={PlusIcon}
-      >
-        Add another
-      </Button>
+      <div className={cn("flex items-center justify-between gap-4", items.length > 1 && "pr-10")}>
+        <Paragraph variant="extra-small">
+          Tip: Paste your .env into this form to populate it.
+        </Paragraph>
+        <Button
+          variant="tertiary/medium"
+          className="w-fit"
+          type="button"
+          onClick={() => {
+            requestIntent(formRef.current ?? undefined, list.append(variablesFields.name));
+            append([{ key: "", value: "" }]);
+          }}
+          LeadingIcon={PlusIcon}
+        >
+          Add another
+        </Button>
+      </div>
     </>
   );
 }
@@ -405,7 +459,7 @@ function VariableField({
 
   return (
     <fieldset ref={ref}>
-      <FieldLayout>
+      <FieldLayout showDeleteButton={showDeleteButton}>
         <Input
           id={`${formId}-${baseFieldName}.key`}
           name={`${baseFieldName}.key`}

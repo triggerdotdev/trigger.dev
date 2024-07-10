@@ -1,5 +1,14 @@
 # internal-platform
 
+## 3.0.0-beta.48
+
+## 3.0.0-beta.47
+
+### Patch Changes
+
+- 4f95c9de4: v3: recover from server rate limiting errors in a more reliable way
+- e04d44866: v3: sanitize errors with null unicode characters in some places
+
 ## 3.0.0-beta.46
 
 ### Patch Changes

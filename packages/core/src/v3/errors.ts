@@ -95,6 +95,40 @@ export function createJsonErrorObject(error: TaskRunError): SerializedError {
   }
 }
 
+// Removes any null characters from the error message
+export function sanitizeError(error: TaskRunError): TaskRunError {
+  switch (error.type) {
+    case "BUILT_IN_ERROR": {
+      return {
+        type: "BUILT_IN_ERROR",
+        message: error.message?.replace(/\0/g, ""),
+        name: error.name?.replace(/\0/g, ""),
+        stackTrace: error.stackTrace?.replace(/\0/g, ""),
+      };
+    }
+    case "STRING_ERROR": {
+      return {
+        type: "STRING_ERROR",
+        raw: error.raw.replace(/\0/g, ""),
+      };
+    }
+    case "CUSTOM_ERROR": {
+      return {
+        type: "CUSTOM_ERROR",
+        raw: error.raw.replace(/\0/g, ""),
+      };
+    }
+    case "INTERNAL_ERROR": {
+      return {
+        type: "INTERNAL_ERROR",
+        code: error.code,
+        message: error.message?.replace(/\0/g, ""),
+        stackTrace: error.stackTrace?.replace(/\0/g, ""),
+      };
+    }
+  }
+}
+
 export function correctErrorStackTrace(
   stackTrace: string,
   projectDir?: string,

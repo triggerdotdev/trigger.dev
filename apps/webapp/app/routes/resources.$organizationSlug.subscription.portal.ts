@@ -2,7 +2,7 @@ import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { BillingService } from "~/services/billing.server";
+import { BillingService } from "~/services/billing.v2.server";
 import { requireUserId } from "~/services/session.server";
 import { OrganizationParamsSchema, usagePath } from "~/utils/pathBuilder";
 

@@ -5,6 +5,7 @@ const constants = {
   SHARED_QUEUE: "sharedQueue",
   CURRENT_CONCURRENCY_PART: "currentConcurrency",
   CONCURRENCY_LIMIT_PART: "concurrency",
+  DISABLED_CONCURRENCY_LIMIT_PART: "disabledConcurrency",
   ENV_PART: "env",
   ORG_PART: "org",
   QUEUE_PART: "queue",
@@ -13,7 +14,7 @@ const constants = {
 } as const;
 
 export class MarQSShortKeyProducer implements MarQSKeyProducer {
-  constructor(private _prefix: string) { }
+  constructor(private _prefix: string) {}
 
   sharedQueueScanPattern() {
     return `${this._prefix}*${constants.SHARED_QUEUE}`;
@@ -87,6 +88,12 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return [this.queueKey(env, queue, concurrencyKey), constants.CURRENT_CONCURRENCY_PART].join(
       ":"
     );
+  }
+
+  disabledConcurrencyLimitKeyFromQueue(queue: string) {
+    const orgId = this.normalizeQueue(queue).split(":")[1];
+
+    return `${constants.ORG_PART}:${orgId}:${constants.DISABLED_CONCURRENCY_LIMIT_PART}`;
   }
 
   orgConcurrencyLimitKeyFromQueue(queue: string) {

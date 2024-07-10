@@ -77,7 +77,7 @@ export async function createOrganization(
 }
 
 export async function createEnvironment(
-  organization: Pick<Organization, "id">,
+  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">,
   project: Pick<Project, "id">,
   type: RuntimeEnvironment["type"],
   member?: OrgMember,
@@ -95,7 +95,7 @@ export async function createEnvironment(
       pkApiKey,
       shortcode,
       autoEnableInternalSources: type !== "DEVELOPMENT",
-      maximumConcurrencyLimit: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
+      maximumConcurrencyLimit: organization.maximumConcurrencyLimit / 3,
       organization: {
         connect: {
           id: organization.id,

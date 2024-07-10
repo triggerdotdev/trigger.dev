@@ -1,9 +1,15 @@
 import { prisma } from "~/db.server";
 import { createEnvironment } from "./organization.server";
 
-export async function getTeamMembersAndInvites({ userId, slug }: { userId: string; slug: string }) {
+export async function getTeamMembersAndInvites({
+  userId,
+  organizationId,
+}: {
+  userId: string;
+  organizationId: string;
+}) {
   const org = await prisma.organization.findFirst({
-    where: { slug, members: { some: { userId } } },
+    where: { id: organizationId, members: { some: { userId } } },
     select: {
       members: {
         select: {

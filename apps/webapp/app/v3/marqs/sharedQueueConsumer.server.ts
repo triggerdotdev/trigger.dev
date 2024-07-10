@@ -413,7 +413,7 @@ export class SharedQueueConsumer {
             lockedById: backgroundTask.id,
             lockedToVersionId: deployment.worker.id,
             startedAt: existingTaskRun.startedAt ?? new Date(),
-            baseCostInCents: env.BASE_RUN_COST_IN_CENTS,
+            baseCostInCents: env.CENTS_PER_RUN,
             machinePreset: machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name,
           },
           include: {

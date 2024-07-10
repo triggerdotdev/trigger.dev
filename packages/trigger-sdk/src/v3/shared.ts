@@ -508,6 +508,14 @@ export function createTask<
               style: "codepath",
             }),
           },
+          onResponseBody: (body, span) => {
+            body &&
+              typeof body === "object" &&
+              !Array.isArray(body) &&
+              "id" in body &&
+              typeof body.id === "string" &&
+              span.setAttribute("messaging.message.id", body.id);
+          },
         }
       );
 
@@ -882,11 +890,111 @@ export async function trigger<TTask extends AnyTask>(
           style: "codepath",
         }),
       },
+      onResponseBody: (body, span) => {
+        body &&
+          typeof body === "object" &&
+          !Array.isArray(body) &&
+          "id" in body &&
+          typeof body.id === "string" &&
+          span.setAttribute("messaging.message.id", body.id);
+      },
       ...requestOptions,
     }
   );
 
   return handle as TaskOutputHandle<TTask>;
+}
+
+export async function triggerAndWait<TTask extends AnyTask>(
+  id: TaskIdentifier<TTask>,
+  payload: TaskPayload<TTask>,
+  options?: TaskRunOptions,
+  requestOptions?: ApiRequestOptions
+): Promise<TaskRunResult<TaskOutput<TTask>>> {
+  const ctx = taskContext.ctx;
+
+  if (!ctx) {
+    throw new Error("tasks.triggerAndWait can only be used from inside a task.run()");
+  }
+
+  const apiClient = apiClientManager.client;
+
+  if (!apiClient) {
+    throw apiClientMissingError();
+  }
+
+  const payloadPacket = await stringifyIO(payload);
+
+  return await tracer.startActiveSpan(
+    "tasks.triggerAndWait()",
+    async (span) => {
+      const response = await apiClient.triggerTask(
+        id,
+        {
+          payload: payloadPacket.data,
+          options: {
+            dependentAttempt: ctx.attempt.id,
+            lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
+            queue: options?.queue,
+            concurrencyKey: options?.concurrencyKey,
+            test: taskContext.ctx?.run.isTest,
+            payloadType: payloadPacket.dataType,
+            idempotencyKey: await makeKey(options?.idempotencyKey),
+            delay: options?.delay,
+            ttl: options?.ttl,
+            maxAttempts: options?.maxAttempts,
+          },
+        },
+        {},
+        requestOptions
+      );
+
+      span.setAttribute("messaging.message.id", response.id);
+
+      if (options?.idempotencyKey) {
+        // If an idempotency key is provided, we can check if the result is already available
+        const result = await apiClient.getRunResult(response.id);
+
+        if (result) {
+          logger.log(
+            `Result reused from previous task run with idempotency key '${options.idempotencyKey}'.`,
+            {
+              runId: response.id,
+              idempotencyKey: options.idempotencyKey,
+            }
+          );
+
+          return await handleTaskRunExecutionResult<TaskOutput<TTask>>(result);
+        }
+      }
+
+      const result = await runtime.waitForTask({
+        id: response.id,
+        ctx,
+      });
+
+      return await handleTaskRunExecutionResult<TaskOutput<TTask>>(result);
+    },
+    {
+      kind: SpanKind.PRODUCER,
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
+        [SEMATTRS_MESSAGING_OPERATION]: "publish",
+        ["messaging.client_id"]: taskContext.worker?.id,
+        [SEMATTRS_MESSAGING_DESTINATION]: id,
+        [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
+        ...accessoryAttributes({
+          items: [
+            {
+              text: id,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+    }
+  );
 }
 
 /**
