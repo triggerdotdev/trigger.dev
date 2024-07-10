@@ -111,6 +111,7 @@ model Organization {
 
   maximumExecutionTimePerRunInMs Int @default(900000) // 15 minutes
   maximumConcurrencyLimit        Int @default(10)
+  /// This is deprecated and will be removed in the future
   maximumSchedulesLimit          Int @default(5)
 
   createdAt DateTime  @default(now())
@@ -1660,10 +1661,11 @@ model TaskRun {
 
   concurrencyKey String?
 
-  delayUntil DateTime?
-  queuedAt   DateTime?
-  ttl        String?
-  expiredAt  DateTime?
+  delayUntil  DateTime?
+  queuedAt    DateTime?
+  ttl         String?
+  expiredAt   DateTime?
+  maxAttempts Int?
 
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
@@ -1678,7 +1680,7 @@ model TaskRun {
   sourceBulkActionItems      BulkActionItem[] @relation("SourceActionItemRun")
   destinationBulkActionItems BulkActionItem[] @relation("DestinationActionItemRun")
 
-  @@unique([runtimeEnvironmentId, idempotencyKey])
+  @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Task activity graph
   @@index([projectId, createdAt, taskIdentifier])
   //Runs list
@@ -1686,6 +1688,8 @@ model TaskRun {
   @@index([projectId, taskIdentifier])
   @@index([projectId, status])
   @@index([projectId, taskIdentifier, status])
+  //Schedules
+  @@index([scheduleId])
 }
 
 enum TaskRunStatus {
@@ -2021,7 +2025,7 @@ model BatchTaskRun {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([runtimeEnvironmentId, idempotencyKey])
+  @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
 }
 
 enum BatchTaskRunStatus {
@@ -2177,6 +2181,7 @@ model WorkerDeployment {
   triggeredBy   User?   @relation(fields: [triggeredById], references: [id], onDelete: SetNull, onUpdate: Cascade)
   triggeredById String?
 
+  builtAt    DateTime?
   deployedAt DateTime?
 
   failedAt  DateTime?

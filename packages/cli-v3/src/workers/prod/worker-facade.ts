@@ -292,6 +292,7 @@ async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeco
     while (true) {
       if (_isRunning && _execution) {
         try {
+          // The attempt ID will only be used to heartbeat if the message (run) ID isn't set on the TaskRunProcess
           await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
         } catch (err) {
           console.error("Failed to send HEARTBEAT message", err);

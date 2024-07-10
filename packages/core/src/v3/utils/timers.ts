@@ -1,10 +1,9 @@
-import { TimerOptions } from "node:timers";
 import { setInterval, setTimeout } from "node:timers/promises";
 
 export async function unboundedTimeout<T = void>(
   delay: number = 0,
   value?: T,
-  options?: TimerOptions
+  options?: Parameters<typeof setTimeout>[2]
 ): Promise<T> {
   const maxDelay = 2147483647; // Highest value that will fit in a 32-bit signed integer
 

@@ -5,12 +5,17 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
 import { eventRepository } from "~/v3/eventRepository.server";
+import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
+import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
 import { RequeueTaskRunService } from "~/v3/requeueTaskRun.server";
 import { DeliverAlertService } from "~/v3/services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "~/v3/services/alerts/performDeploymentAlerts.server";
 import { PerformTaskAttemptAlertsService } from "~/v3/services/alerts/performTaskAttemptAlerts.server";
 import { PerformBulkActionService } from "~/v3/services/bulk/performBulkAction.server";
+import { CancelTaskAttemptDependenciesService } from "~/v3/services/cancelTaskAttemptDependencies.server";
+import { EnqueueDelayedRunService } from "~/v3/services/enqueueDelayedRun.server";
 import { ExecuteTasksWaitingForDeployService } from "~/v3/services/executeTasksWaitingForDeploy";
+import { ExpireEnqueuedRunService } from "~/v3/services/expireEnqueuedRun.server";
 import { IndexDeploymentService } from "~/v3/services/indexDeployment.server";
 import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.server";
@@ -30,6 +35,7 @@ import { DeliverEventService } from "./events/deliverEvent.server";
 import { InvokeDispatcherService } from "./events/invokeDispatcher.server";
 import { integrationAuthRepository } from "./externalApis/integrationAuthRepository.server";
 import { IntegrationConnectionCreatedService } from "./externalApis/integrationConnectionCreated.server";
+import { reportInvocationUsage } from "./platform.v3.server";
 import { executionRateLimiter } from "./runExecutionRateLimiter.server";
 import { DeliverRunSubscriptionService } from "./runs/deliverRunSubscription.server";
 import { DeliverRunSubscriptionsService } from "./runs/deliverRunSubscriptions.server";
@@ -44,11 +50,6 @@ import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.se
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout.server";
 import { ResumeTaskService } from "./tasks/resumeTask.server";
-import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
-import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
-import { reportUsageEvent } from "~/v3/openMeter.server";
-import { EnqueueDelayedRunService } from "~/v3/services/enqueueDelayedRun.server";
-import { ExpireEnqueuedRunService } from "~/v3/services/expireEnqueuedRun.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -184,6 +185,9 @@ const workerCatalog = {
   }),
   "v3.expireRun": z.object({
     runId: z.string(),
+  }),
+  "v3.cancelTaskAttemptDependencies": z.object({
+    attemptId: z.string(),
   }),
 };
 
@@ -669,15 +673,11 @@ function getWorkerQueue() {
         priority: 0,
         maxAttempts: 8,
         handler: async (payload, job) => {
-          await reportUsageEvent({
-            source: "webapp",
-            type: "usage",
-            subject: payload.orgId,
-            data: {
-              costInCents: payload.data.costInCents,
-              ...payload.additionalData,
-            },
-          });
+          await reportInvocationUsage(
+            payload.orgId,
+            Number(payload.data.costInCents),
+            payload.additionalData
+          );
         },
       },
       "v3.enqueueDelayedRun": {
@@ -696,6 +696,15 @@ function getWorkerQueue() {
           const service = new ExpireEnqueuedRunService();
 
           return await service.call(payload.runId);
+        },
+      },
+      "v3.cancelTaskAttemptDependencies": {
+        priority: 0,
+        maxAttempts: 8,
+        handler: async (payload, job) => {
+          const service = new CancelTaskAttemptDependenciesService();
+
+          return await service.call(payload.attemptId);
         },
       },
     },

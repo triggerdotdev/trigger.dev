@@ -48,4 +48,7 @@ export const SemanticInternalAttributes = {
   IDEMPOTENCY_KEY: "ctx.run.idempotencyKey",
   USAGE_DURATION_MS: "$usage.durationMs",
   USAGE_COST_IN_CENTS: "$usage.costInCents",
+  RATE_LIMIT_LIMIT: "response.rateLimit.limit",
+  RATE_LIMIT_REMAINING: "response.rateLimit.remaining",
+  RATE_LIMIT_RESET: "response.rateLimit.reset",
 };

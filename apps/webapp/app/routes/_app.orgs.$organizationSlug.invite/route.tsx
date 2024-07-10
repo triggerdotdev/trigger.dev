@@ -1,9 +1,11 @@
 import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import type { ActionFunction } from "@remix-run/node";
+import { LockOpenIcon } from "@heroicons/react/20/solid";
+import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
-import { Fragment, useRef } from "react";
+import { Fragment, useRef, useState } from "react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import simplur from "simplur";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -13,16 +15,50 @@ import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { FormTitle } from "~/components/primitives/FormTitle";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { inviteMembers } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { scheduleEmail } from "~/services/email.server";
 import { requireUserId } from "~/services/session.server";
-import { acceptInvitePath, organizationTeamPath } from "~/utils/pathBuilder";
+import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";
+
+const Params = z.object({
+  organizationSlug: z.string(),
+});
+
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug } = Params.parse(params);
+
+  const organization = await $replica.organization.findFirst({
+    where: { slug: organizationSlug },
+    select: { id: true },
+  });
+
+  if (!organization) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const presenter = new TeamPresenter();
+  const result = await presenter.call({
+    userId,
+    organizationId: organization.id,
+  });
+
+  if (!result) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  return typedjson(result);
+};
 
 const schema = z.object({
   emails: z.preprocess((i) => {
@@ -86,6 +122,8 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
+  const { limits } = useTypedLoaderData<typeof loader>();
+  const [total, setTotal] = useState(limits.used);
   const organization = useOrganization();
   const lastSubmission = useActionData();
 
@@ -109,6 +147,22 @@ export default function Page() {
           title="Invite team members"
           description={`Invite new team members to ${organization.title}.`}
         />
+        {total > limits.limit && (
+          <InfoPanel
+            variant="upgrade"
+            icon={LockOpenIcon}
+            iconClassName="text-indigo-500"
+            title="Unlock more team members"
+            to={v3BillingPath(organization)}
+            buttonLabel="Upgrade"
+            panelClassName="mb-4"
+          >
+            <Paragraph variant="small">
+              You've used all {limits.limit} of your available team members. Upgrade your plan to
+              add more.
+            </Paragraph>
+          </InfoPanel>
+        )}
         <Form method="post" {...form.props}>
           <Fieldset>
             <InputGroup>
@@ -122,6 +176,8 @@ export default function Page() {
                     autoFocus={index === 0}
                     onChange={(e) => {
                       fieldValues.current[index] = e.target.value;
+                      const filledFields = fieldValues.current.filter((v) => v !== "");
+                      setTotal(limits.used + filledFields.length);
                       if (
                         emailFields.length === fieldValues.current.length &&
                         fieldValues.current.every((v) => v !== "")
@@ -136,7 +192,7 @@ export default function Page() {
             </InputGroup>
             <FormButtons
               confirmButton={
-                <Button type="submit" variant={"primary/small"}>
+                <Button type="submit" variant={"primary/small"} disabled={total > limits.limit}>
                   Send invitations
                 </Button>
               }

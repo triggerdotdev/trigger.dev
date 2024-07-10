@@ -165,6 +165,8 @@ export class RunListPresenter extends BasePresenter {
         idempotencyKey: string | null;
         ttl: string | null;
         expiredAt: Date | null;
+        costInCents: number;
+        usageDurationMs: BigInt;
       }[]
     >`
     SELECT
@@ -184,7 +186,9 @@ export class RunListPresenter extends BasePresenter {
     tr."spanId" AS "spanId",
     tr."idempotencyKey" AS "idempotencyKey",
     tr."ttl" AS "ttl",
-    tr."expiredAt" AS "expiredAt"
+    tr."expiredAt" AS "expiredAt",
+    tr."costInCents" AS "costInCents",
+    tr."usageDurationMs" AS "usageDurationMs"
   FROM
     ${sqlDatabaseSchema}."TaskRun" tr
   LEFT JOIN
@@ -303,6 +307,8 @@ export class RunListPresenter extends BasePresenter {
           idempotencyKey: run.idempotencyKey ? run.idempotencyKey : undefined,
           ttl: run.ttl ? run.ttl : undefined,
           expiredAt: run.expiredAt ? run.expiredAt.toISOString() : undefined,
+          costInCents: run.costInCents,
+          usageDurationMs: Number(run.usageDurationMs),
         };
       }),
       pagination: {

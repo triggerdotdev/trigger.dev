@@ -6,7 +6,8 @@ import { env } from "~/env.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { parseRequestJsonAsync } from "~/utils/parseRequestJson.server";
-import { TriggerTaskService } from "~/v3/services/triggerTask.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 
 const ParamsSchema = z.object({
@@ -92,18 +93,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
       traceContext,
     });
 
-    const run = await service.call(
-      taskId,
-      authenticationResult.environment,
-      { ...body.data },
-      // { ...body.data, payload: (anyBody as any).payload },
-      {
-        idempotencyKey: idempotencyKey ?? undefined,
-        triggerVersion: triggerVersion ?? undefined,
-        traceContext,
-        spanParentAsLink: spanParentAsLink === 1,
-      }
-    );
+    const run = await service.call(taskId, authenticationResult.environment, body.data, {
+      idempotencyKey: idempotencyKey ?? undefined,
+      triggerVersion: triggerVersion ?? undefined,
+      traceContext,
+      spanParentAsLink: spanParentAsLink === 1,
+    });
 
     if (!run) {
       return json({ error: "Task not found" }, { status: 404 });
@@ -113,7 +108,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
       id: run.friendlyId,
     });
   } catch (error) {
-    if (error instanceof Error) {
+    if (error instanceof ServiceValidationError) {
+      return json({ error: error.message }, { status: 422 });
+    } else if (error instanceof OutOfEntitlementError) {
+      return json({ error: error.message }, { status: 422 });
+    } else if (error instanceof Error) {
       return json({ error: error.message }, { status: 400 });
     }
 

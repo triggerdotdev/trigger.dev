@@ -33,6 +33,8 @@ import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 import { startActiveSpan } from "./tracer.server";
 
+const MAX_FLUSH_DEPTH = 5;
+
 export type CreatableEvent = Omit<
   Prisma.TaskEventCreateInput,
   "id" | "createdAt" | "properties" | "metadata" | "style" | "output" | "payload"
@@ -344,7 +346,7 @@ export class EventRepository {
     });
   }
 
-  async queryIncompleteEvents(queryOptions: QueryOptions) {
+  async queryIncompleteEvents(queryOptions: QueryOptions, allowCompleteDuplicate = false) {
     // First we will find all the events that match the query options (selecting minimal data).
     const taskEvents = await this.readReplica.taskEvent.findMany({
       where: queryOptions,
@@ -361,6 +363,10 @@ export class EventRepository {
 
       // If the event is cancelled, it is not incomplete
       if (event.isCancelled) return false;
+
+      if (allowCompleteDuplicate) {
+        return true;
+      }
 
       // There must not be another complete event with the same spanId
       const hasCompleteDuplicate = taskEvents.some(
@@ -1005,11 +1011,79 @@ export class EventRepository {
   async #flushBatch(batch: CreatableEvent[]) {
     const events = excludePartialEventsWithCorrespondingFullEvent(batch);
 
-    await this.db.taskEvent.createMany({
-      data: events as Prisma.TaskEventCreateManyInput[],
-    });
+    const flushedEvents = await this.#doFlushBatch(events);
 
-    this.#publishToRedis(events);
+    if (flushedEvents.length !== events.length) {
+      logger.debug("[EventRepository][flushBatch] Failed to insert all events", {
+        attemptCount: events.length,
+        successCount: flushedEvents.length,
+      });
+    }
+
+    this.#publishToRedis(flushedEvents);
+  }
+
+  async #doFlushBatch(events: CreatableEvent[], depth: number = 1): Promise<CreatableEvent[]> {
+    try {
+      await this.db.taskEvent.createMany({
+        data: events as Prisma.TaskEventCreateManyInput[],
+      });
+
+      return events;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+        logger.error("Failed to insert events, most likely because of null characters", {
+          error: {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+            clientVersion: error.clientVersion,
+          },
+        });
+
+        if (events.length === 1) {
+          logger.debug("Attempting to insert event individually and it failed", {
+            event: events[0],
+            error: {
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+              clientVersion: error.clientVersion,
+            },
+          });
+
+          return [];
+        }
+
+        if (depth > MAX_FLUSH_DEPTH) {
+          logger.error("Failed to insert events, reached maximum depth", {
+            error: {
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+              clientVersion: error.clientVersion,
+            },
+            depth,
+            eventsCount: events.length,
+          });
+
+          return [];
+        }
+
+        // Split the events into two batches, and recursively try to insert them.
+        const middle = Math.floor(events.length / 2);
+        const [firstHalf, secondHalf] = [events.slice(0, middle), events.slice(middle)];
+
+        const [firstHalfEvents, secondHalfEvents] = await Promise.all([
+          this.#doFlushBatch(firstHalf, depth + 1),
+          this.#doFlushBatch(secondHalf, depth + 1),
+        ]);
+
+        return firstHalfEvents.concat(secondHalfEvents);
+      }
+
+      throw error;
+    }
   }
 
   async #publishToRedis(events: CreatableEvent[]) {
@@ -1407,7 +1481,9 @@ function filteredAttributes(attributes: Attributes, prefix: string): Attributes 
 }
 
 function calculateDurationFromStart(startTime: bigint, endTime: Date = new Date()) {
-  return Number(BigInt(endTime.getTime() * 1_000_000) - startTime);
+  const $endtime = typeof endTime === "string" ? new Date(endTime) : endTime;
+
+  return Number(BigInt($endtime.getTime() * 1_000_000) - startTime);
 }
 
 function getNowInNanoseconds(): bigint {

@@ -33,5 +33,7 @@ export default defineConfig({
     "./src/v3/zodMessageHandler.ts",
     "./src/v3/zodNamespace.ts",
     "./src/v3/zodSocket.ts",
+    "./src/v3/utils/timers.ts",
   ],
+  external: ["node:timers/promises"],
 });

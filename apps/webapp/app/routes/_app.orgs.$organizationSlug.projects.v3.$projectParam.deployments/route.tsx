@@ -1,6 +1,14 @@
-import { ArrowPathIcon, CommandLineIcon, ServerIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowPathIcon,
+  ArrowUturnLeftIcon,
+  BookOpenIcon,
+  CommandLineIcon,
+  ServerIcon,
+  ServerStackIcon,
+} from "@heroicons/react/20/solid";
 import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Fragment } from "react/jsx-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BlankstateInstructions } from "~/components/BlankstateInstructions";
@@ -11,6 +19,7 @@ import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -31,6 +40,7 @@ import {
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
 import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
+import { RetryDeploymentIndexingDialog } from "~/components/runs/v3/RetryDeploymentIndexingDialog";
 import { RollbackDeploymentDialog } from "~/components/runs/v3/RollbackDeploymentDialog";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -47,6 +57,7 @@ import {
   v3EnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
+import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
 
 const SearchParams = z.object({
   page: z.coerce.number().optional(),
@@ -117,7 +128,12 @@ export default function Page() {
                           user.id !== deployment.environment.userId
                             ? deployment.environment.userName
                             : undefined;
-                        const path = v3DeploymentPath(organization, project, deployment);
+                        const path = v3DeploymentPath(
+                          organization,
+                          project,
+                          deployment,
+                          currentPage
+                        );
                         return (
                           <TableRow key={deployment.id} className="group">
                             <TableCell to={path}>
@@ -136,7 +152,10 @@ export default function Page() {
                             </TableCell>
                             <TableCell to={path}>{deployment.version}</TableCell>
                             <TableCell to={path}>
-                              <DeploymentStatus status={deployment.status} />
+                              <DeploymentStatus
+                                status={deployment.status}
+                                isBuilt={deployment.isBuilt}
+                              />
                             </TableCell>
                             <TableCell to={path}>
                               {deployment.tasksCount !== null ? deployment.tasksCount : "–"}
@@ -209,9 +228,14 @@ function CreateDeploymentInstructions() {
   const project = useProject();
 
   return (
-    <MainCenteredContainer className="max-w-prose">
-      <BlankstateInstructions title="Deploy for the first time">
-        <Paragraph spacing>
+    <MainCenteredContainer className="max-w-md">
+      <InfoPanel
+        icon={ServerStackIcon}
+        iconClassName="text-blue-400"
+        title="Deploy for the first time"
+        panelClassName="max-w-full"
+      >
+        <Paragraph spacing variant="small">
           There are several ways to deploy your tasks. You can use the CLI, Continuous Integration
           (like GitHub Actions), or an integration with a service like Netlify or Vercel. Make sure
           you{" "}
@@ -223,22 +247,22 @@ function CreateDeploymentInstructions() {
         <div className="flex gap-3">
           <LinkButton
             to={docsPath("v3/cli-deploy")}
-            variant="tertiary/medium"
-            LeadingIcon={CommandLineIcon}
+            variant="tertiary/small"
+            LeadingIcon={BookOpenIcon}
             className="inline-flex"
           >
             Deploy with the CLI
           </LinkButton>
           <LinkButton
             to={docsPath("v3/github-actions")}
-            variant="tertiary/medium"
-            LeadingIcon={ServerIcon}
+            variant="tertiary/small"
+            LeadingIcon={BookOpenIcon}
             className="inline-flex"
           >
             Deploy with GitHub actions
           </LinkButton>
         </div>
-      </BlankstateInstructions>
+      </InfoPanel>
     </MainCenteredContainer>
   );
 }
@@ -253,18 +277,37 @@ function DeploymentActionsCell({
   const location = useLocation();
   const project = useProject();
 
-  if (deployment.isCurrent || !deployment.isDeployed) return <TableCell to={path}>{""}</TableCell>;
+  const canRollback = !deployment.isCurrent && deployment.isDeployed;
+  const canRetryIndexing = deployment.isLatest && deploymentIndexingIsRetryable(deployment);
+
+  if (!canRollback && !canRetryIndexing) {
+    return <TableCell to={path}>{""}</TableCell>;
+  }
 
   return (
     <TableCellMenu isSticky>
-      {!deployment.isCurrent && deployment.isDeployed && (
+      {canRollback && (
         <Dialog>
           <DialogTrigger asChild>
-            <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
+            <Button variant="small-menu-item" LeadingIcon={ArrowUturnLeftIcon}>
               Rollback
             </Button>
           </DialogTrigger>
           <RollbackDeploymentDialog
+            projectId={project.id}
+            deploymentShortCode={deployment.shortCode}
+            redirectPath={`${location.pathname}${location.search}`}
+          />
+        </Dialog>
+      )}
+      {canRetryIndexing && (
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
+              Retry indexing
+            </Button>
+          </DialogTrigger>
+          <RetryDeploymentIndexingDialog
             projectId={project.id}
             deploymentShortCode={deployment.shortCode}
             redirectPath={`${location.pathname}${location.search}`}

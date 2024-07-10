@@ -5,7 +5,7 @@ import { InformationCircleIcon } from "@heroicons/react/20/solid";
 
 const variantClasses = {
   basic:
-    "bg-background-dimmed border border-charcoal-700 rounded-md px-3 py-1.5 text-sm text-text-bright shadow-md fade-in-50",
+    "bg-background-bright border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50",
   dark: "bg-background-dimmed border border-grid-bright rounded px-3 py-2 text-sm text-text-bright shadow-md fade-in-50",
 };
 
@@ -58,6 +58,7 @@ function SimpleTooltip({
   variant,
   disableHoverableContent = false,
   className,
+  buttonClassName,
 }: {
   button: React.ReactNode;
   content: React.ReactNode;
@@ -66,11 +67,12 @@ function SimpleTooltip({
   variant?: Variant;
   disableHoverableContent?: boolean;
   className?: string;
+  buttonClassName?: string;
 }) {
   return (
     <TooltipProvider disableHoverableContent={disableHoverableContent}>
       <Tooltip>
-        <TooltipTrigger className="h-fit">{button}</TooltipTrigger>
+        <TooltipTrigger className={cn("h-fit", buttonClassName)}>{button}</TooltipTrigger>
         <TooltipContent
           side={side}
           hidden={hidden}
@@ -87,17 +89,22 @@ function SimpleTooltip({
 export function InfoIconTooltip({
   content,
   buttonClassName,
+  contentClassName,
+  variant = "basic",
 }: {
   content: React.ReactNode;
   buttonClassName?: string;
+  contentClassName?: string;
+  variant?: Variant;
 }) {
   return (
     <SimpleTooltip
       button={
-        <InformationCircleIcon className={cn("h-3.5 w-3.5 text-text-dimmed", buttonClassName)} />
+        <InformationCircleIcon className={cn("size-3.5 text-text-dimmed", buttonClassName)} />
       }
       content={content}
-      variant="dark"
+      variant={variant}
+      className={contentClassName}
     />
   );
 }

@@ -740,7 +740,7 @@ async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmen
     },
     {
       key: "TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS",
-      value: String(env.RUNTIME_WAIT_THRESHOLD_IN_MS),
+      value: String(env.CHECKPOINT_THRESHOLD_IN_MS),
     },
     {
       key: "TRIGGER_ORG_ID",

@@ -5,6 +5,7 @@ export { queue } from "./shared";
 export * from "./tasks";
 export * from "./wait";
 export * from "./usage";
+export * from "./idempotencyKeys";
 export type { Context };
 
 import type { Context } from "./shared";
@@ -24,6 +25,7 @@ export {
   PermissionDeniedError,
   RateLimitError,
   UnprocessableEntityError,
+  AbortTaskRunError,
   logger,
   type LogLevel,
 } from "@trigger.dev/core/v3";

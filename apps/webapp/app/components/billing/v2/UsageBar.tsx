@@ -1,7 +1,7 @@
 import { cn } from "~/utils/cn";
 import { formatNumberCompact } from "~/utils/numberFormatter";
-import { Paragraph } from "../primitives/Paragraph";
-import { SimpleTooltip } from "../primitives/Tooltip";
+import { Paragraph } from "../../primitives/Paragraph";
+import { SimpleTooltip } from "../../primitives/Tooltip";
 import { motion } from "framer-motion";
 
 type UsageBarProps = {

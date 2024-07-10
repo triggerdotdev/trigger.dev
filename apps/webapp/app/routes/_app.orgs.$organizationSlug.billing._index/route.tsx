@@ -4,11 +4,11 @@ import { Await, useLoaderData } from "@remix-run/react";
 import { DataFunctionArgs, defer } from "@remix-run/server-runtime";
 import { Suspense } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
-import { ConcurrentRunsChart } from "~/components/billing/ConcurrentRunsChart";
-import { UsageBar } from "~/components/billing/UsageBar";
+import { ConcurrentRunsChart } from "~/components/billing/v2/ConcurrentRunsChart";
+import { UsageBar } from "~/components/billing/v2/UsageBar";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
-import { DailyRunsChart } from "~/components/billing/DailyRunsChat";
+import { DailyRunsChart } from "~/components/billing/v2/DailyRunsChat";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -157,10 +157,7 @@ export default function Page() {
                           )}
                         <UsageBar
                           numberOfCurrentRuns={data.runsCount}
-                          tierRunLimit={
-                            currentPlan?.usage.runCountCap ??
-                            currentPlan?.subscription?.plan.runs?.pricing?.brackets.at(0)?.upto
-                          }
+                          tierRunLimit={currentPlan?.usage?.runCountCap}
                           projectedRuns={data.projectedRunsCount}
                           subscribedToPaidTier={
                             (currentPlan && currentPlan.subscription?.isPaying) ?? false

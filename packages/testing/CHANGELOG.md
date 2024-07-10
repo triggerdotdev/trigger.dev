@@ -1,5 +1,40 @@
 # @trigger.dev/testing
 
+## 3.0.0-beta.48
+
+### Patch Changes
+
+- Updated dependencies [ecf1110ab]
+  - @trigger.dev/sdk@3.0.0-beta.48
+  - @trigger.dev/core@3.0.0-beta.48
+
+## 3.0.0-beta.47
+
+### Patch Changes
+
+- Updated dependencies [4f95c9de4]
+- Updated dependencies [e04d44866]
+  - @trigger.dev/sdk@3.0.0-beta.47
+  - @trigger.dev/core@3.0.0-beta.47
+
+## 3.0.0-beta.46
+
+### Patch Changes
+
+- Updated dependencies [14c2bdf89]
+  - @trigger.dev/core@3.0.0-beta.46
+  - @trigger.dev/sdk@3.0.0-beta.46
+
+## 3.0.0-beta.45
+
+### Patch Changes
+
+- Updated dependencies [0e77e7ef7]
+- Updated dependencies [568da0178]
+- Updated dependencies [5ae3da6b4]
+  - @trigger.dev/sdk@3.0.0-beta.45
+  - @trigger.dev/core@3.0.0-beta.45
+
 ## 3.0.0-beta.44
 
 ### Patch Changes

@@ -1,4 +1,4 @@
-import { BillingClient, SetPlanBody } from "@trigger.dev/billing";
+import { BillingClient, SetPlanBody } from "@trigger.dev/platform/v2";
 import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
@@ -9,7 +9,11 @@ export class BillingService {
   #prismaClient: PrismaClient;
   #replica: PrismaReplicaClient;
 
-  constructor(isManagedCloud: boolean, prismaClient: PrismaClient = prisma, replica: PrismaReplicaClient = $replica) {
+  constructor(
+    isManagedCloud: boolean,
+    prismaClient: PrismaClient = prisma,
+    replica: PrismaReplicaClient = $replica
+  ) {
     this.#prismaClient = prismaClient;
     this.#replica = replica;
     if (isManagedCloud && process.env.BILLING_API_URL && process.env.BILLING_API_KEY) {
@@ -29,13 +33,13 @@ export class BillingService {
       const result = await this.#billingClient.currentPlan(orgId);
 
       const firstDayOfMonth = new Date();
-      firstDayOfMonth.setDate(1);
-      firstDayOfMonth.setHours(0, 0, 0, 0);
+      firstDayOfMonth.setUTCDate(1);
+      firstDayOfMonth.setUTCHours(0, 0, 0, 0);
 
       const firstDayOfNextMonth = new Date();
-      firstDayOfNextMonth.setDate(1);
-      firstDayOfNextMonth.setMonth(firstDayOfNextMonth.getMonth() + 1);
-      firstDayOfNextMonth.setHours(0, 0, 0, 0);
+      firstDayOfNextMonth.setUTCDate(1);
+      firstDayOfNextMonth.setUTCMonth(firstDayOfNextMonth.getUTCMonth() + 1);
+      firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
 
       const currentRunCount = await this.#replica.jobRun.count({
         where: {

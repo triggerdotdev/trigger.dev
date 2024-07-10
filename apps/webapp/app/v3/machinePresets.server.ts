@@ -1,44 +1,6 @@
 import { MachineConfig, MachinePreset, MachinePresetName } from "@trigger.dev/core/v3";
-import { env } from "~/env.server";
+import { defaultMachine, machines } from "@trigger.dev/platform/v3";
 import { logger } from "~/services/logger.server";
-
-export const presets = {
-  micro: {
-    cpu: 0.25,
-    memory: 0.25,
-    centsPerMs: env.CENTS_PER_HOUR_MICRO / 3_600_000,
-  },
-  "small-1x": {
-    cpu: 0.5,
-    memory: 0.5,
-    centsPerMs: env.CENTS_PER_HOUR_SMALL_1X / 3_600_000,
-  },
-  "small-2x": {
-    cpu: 1,
-    memory: 1,
-    centsPerMs: env.CENTS_PER_HOUR_SMALL_2X / 3_600_000,
-  },
-  "medium-1x": {
-    cpu: 1,
-    memory: 2,
-    centsPerMs: env.CENTS_PER_HOUR_MEDIUM_1X / 3_600_000,
-  },
-  "medium-2x": {
-    cpu: 2,
-    memory: 4,
-    centsPerMs: env.CENTS_PER_HOUR_MEDIUM_2X / 3_600_000,
-  },
-  "large-1x": {
-    cpu: 4,
-    memory: 8,
-    centsPerMs: env.CENTS_PER_HOUR_LARGE_1X / 3_600_000,
-  },
-  "large-2x": {
-    cpu: 8,
-    memory: 16,
-    centsPerMs: env.CENTS_PER_HOUR_LARGE_2X / 3_600_000,
-  },
-};
 
 export function machinePresetFromConfig(config: unknown): MachinePreset {
   const parsedConfig = MachineConfig.safeParse(config);
@@ -62,20 +24,20 @@ export function machinePresetFromConfig(config: unknown): MachinePreset {
   return machinePresetFromName("small-1x");
 }
 
-export function machinePresetFromName(name: MachinePresetName): MachinePreset {
+function machinePresetFromName(name: MachinePresetName): MachinePreset {
   return {
     name,
-    ...presets[name],
+    ...machines[name],
   };
 }
 
 // Finds the smallest machine preset name that satisfies the given CPU and memory requirements
 function derivePresetNameFromValues(cpu: number, memory: number): MachinePresetName {
-  for (const [name, preset] of Object.entries(presets)) {
+  for (const [name, preset] of Object.entries(machines)) {
     if (preset.cpu >= cpu && preset.memory >= memory) {
       return name as MachinePresetName;
     }
   }
 
-  return "small-1x";
+  return defaultMachine;
 }

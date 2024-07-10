@@ -1,6 +1,6 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { UserPlusIcon } from "@heroicons/react/20/solid";
+import { LockOpenIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useState } from "react";
@@ -23,41 +23,55 @@ import {
 import { Button, ButtonContent, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
-import { getTeamMembersAndInvites, removeTeamMember } from "~/models/member.server";
+import { removeTeamMember } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import {
   inviteTeamMemberPath,
   organizationTeamPath,
   resendInvitePath,
   revokeInvitePath,
+  v3BillingPath,
 } from "~/utils/pathBuilder";
+
+const Params = z.object({
+  organizationSlug: z.string(),
+});
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug } = params;
-  invariant(organizationSlug, "organizationSlug not found");
+  const { organizationSlug } = Params.parse(params);
 
-  const result = await getTeamMembersAndInvites({
-    userId,
-    slug: organizationSlug,
+  const organization = await $replica.organization.findFirst({
+    where: { slug: organizationSlug },
+    select: { id: true },
   });
 
-  if (result === null) {
+  if (!organization) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  return typedjson({
-    members: result.members,
-    invites: result.invites,
+  const presenter = new TeamPresenter();
+  const result = await presenter.call({
+    userId,
+    organizationId: organization.id,
   });
+
+  if (!result) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  return typedjson(result);
 };
 
 const schema = z.object({
@@ -101,9 +115,11 @@ type Member = UseDataFunctionReturn<typeof loader>["members"][number];
 type Invite = UseDataFunctionReturn<typeof loader>["invites"][number];
 
 export default function Page() {
+  const { members, invites, limits } = useTypedLoaderData<typeof loader>();
   const user = useUser();
-  const { members, invites } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
+
+  const requiresUpgrade = limits.used >= limits.limit;
 
   return (
     <PageContainer>
@@ -133,7 +149,9 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody>
-        <Header2>Members</Header2>
+        <Header2>
+          Members ({limits.used}/{limits.limit})
+        </Header2>
         <ul className="divide-ui-border flex w-full max-w-md flex-col divide-y border-b border-grid-bright">
           {members.map((member) => (
             <li key={member.user.id} className="flex items-center gap-x-4 py-4">
@@ -150,11 +168,6 @@ export default function Page() {
                 <Paragraph variant="small">{member.user.email}</Paragraph>
               </div>
               <div className="flex grow items-center justify-end gap-4">
-                {/* 
-                // This displays Member or Admin but we'll implement this when we implement roles properly
-                <Paragraph variant="extra-small">
-                  {titleCase(member.role.toLocaleLowerCase())}
-                </Paragraph> */}
                 <LeaveRemoveButton userId={user.id} member={member} memberCount={members.length} />
               </div>
             </li>
@@ -186,15 +199,31 @@ export default function Page() {
           </>
         )}
 
-        <div className="mt-4 flex max-w-md justify-end">
-          <LinkButton
-            to={inviteTeamMemberPath(organization)}
-            variant={"primary/small"}
-            LeadingIcon={UserPlusIcon}
+        {requiresUpgrade ? (
+          <InfoPanel
+            variant="upgrade"
+            icon={LockOpenIcon}
+            iconClassName="text-indigo-500"
+            title="Unlock more team members"
+            to={v3BillingPath(organization)}
+            buttonLabel="Upgrade"
           >
-            Invite a team member
-          </LinkButton>
-        </div>
+            <Paragraph variant="small">
+              You've used all {limits.limit} of your available team members. Upgrade your plan to
+              enable more.
+            </Paragraph>
+          </InfoPanel>
+        ) : (
+          <div className="mt-4 flex max-w-md justify-end">
+            <LinkButton
+              to={inviteTeamMemberPath(organization)}
+              variant={"primary/small"}
+              LeadingIcon={UserPlusIcon}
+            >
+              Invite a team member
+            </LinkButton>
+          </div>
+        )}
       </PageBody>
     </PageContainer>
   );

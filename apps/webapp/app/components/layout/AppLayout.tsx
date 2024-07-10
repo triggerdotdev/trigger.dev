@@ -1,6 +1,6 @@
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
-import { useShowUpgradePrompt } from "../billing/UpgradePrompt";
+import { useShowUpgradePrompt } from "../billing/v3/UpgradePrompt";
 
 /** This container is used to surround the entire app, it correctly places the nav bar */
 export function AppContainer({ children }: { children: React.ReactNode }) {
@@ -60,7 +60,9 @@ export function MainCenteredContainer({
 }) {
   return (
     <div className="h-full w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-      <div className={cn("mx-auto mt-[25vh] max-w-xs overflow-y-auto", className)}>{children}</div>
+      <div className={cn("mx-auto mt-6 max-w-xs overflow-y-auto p-1 md:mt-[22vh]", className)}>
+        {children}
+      </div>
     </div>
   );
 }

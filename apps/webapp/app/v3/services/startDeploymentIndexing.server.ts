@@ -20,6 +20,7 @@ export class StartDeploymentIndexing extends BaseService {
             ? registryProxy.rewriteImageReference(body.imageReference)
             : body.imageReference,
         status: "DEPLOYING",
+        builtAt: new Date(),
       },
     });
 

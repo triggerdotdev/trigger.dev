@@ -1,6 +1,13 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { BookOpenIcon, PencilSquareIcon, PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
+import {
+  BookOpenIcon,
+  InformationCircleIcon,
+  LockOpenIcon,
+  PencilSquareIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@heroicons/react/20/solid";
 import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import {
   ActionFunctionArgs,
@@ -16,16 +23,16 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { PageAccessories, NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Switch } from "~/components/primitives/Switch";
 import {
@@ -50,6 +57,7 @@ import { cn } from "~/utils/cn";
 import {
   ProjectParamSchema,
   docsPath,
+  v3BillingPath,
   v3EnvironmentVariablesPath,
   v3NewEnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
@@ -65,7 +73,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new EnvironmentVariablesPresenter();
-    const { environmentVariables, environments } = await presenter.call({
+    const { environmentVariables, environments, hasStaging } = await presenter.call({
       userId,
       projectSlug: projectParam,
     });
@@ -73,6 +81,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return typedjson({
       environmentVariables,
       environments,
+      hasStaging,
     });
   } catch (error) {
     console.error(error);
@@ -163,7 +172,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 export default function Page() {
   const [revealAll, setRevealAll] = useState(false);
-  const { environmentVariables, environments } = useTypedLoaderData<typeof loader>();
+  const { environmentVariables, environments, hasStaging } = useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
 
@@ -184,12 +193,14 @@ export default function Page() {
       <PageBody>
         <div className={cn("flex h-full flex-col gap-3")}>
           <div className="flex items-center justify-end gap-2">
-            <Switch
-              variant="small"
-              label="Reveal values"
-              checked={revealAll}
-              onCheckedChange={(e) => setRevealAll(e.valueOf())}
-            />
+            {environmentVariables.length > 0 && (
+              <Switch
+                variant="small"
+                label="Reveal values"
+                checked={revealAll}
+                onCheckedChange={(e) => setRevealAll(e.valueOf())}
+              />
+            )}
             <LinkButton
               to={v3NewEnvironmentVariablesPath(organization, project)}
               variant="primary/small"
@@ -254,10 +265,24 @@ export default function Page() {
             </TableBody>
           </Table>
 
-          <Callout variant="info" className="mb-4">
-            Dev environment variables specified here will be overridden by ones in your .env file
-            when running locally.
-          </Callout>
+          <div className="flex gap-3">
+            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-[22rem]">
+              Dev environment variables specified here will be overridden by ones in your .env file
+              when running locally.
+            </InfoPanel>
+            {!hasStaging && (
+              <InfoPanel
+                icon={LockOpenIcon}
+                variant="upgrade"
+                title="Unlock a Staging environment"
+                to={v3BillingPath(organization)}
+                buttonLabel="Upgrade"
+                iconClassName="text-indigo-500"
+              >
+                Upgrade your plan to add a Staging environment.
+              </InfoPanel>
+            )}
+          </div>
         </div>
         <Outlet />
       </PageBody>
@@ -313,9 +338,11 @@ function EditEnvironmentVariablePanel({
           <input type="hidden" name="key" value={variable.key} />
           <FormError id={id.errorId}>{id.error}</FormError>
           <Fieldset>
-            <InputGroup fullWidth className="mb-4 mt-2">
+            <InputGroup fullWidth className="mb-5 mt-2">
               <Label>Key</Label>
-              <InlineCode>{variable.key}</InlineCode>
+              <InlineCode variant="base" className="pl-1.5">
+                {variable.key}
+              </InlineCode>
             </InputGroup>
           </Fieldset>
           <Fieldset>
@@ -335,7 +362,7 @@ function EditEnvironmentVariablePanel({
                         className="flex items-center justify-end"
                         htmlFor={`values[${index}].value`}
                       >
-                        <EnvironmentLabel environment={environment} className="h-5 px-2" />
+                        <EnvironmentLabel environment={environment} size="large" className="px-2" />
                       </label>
                       <Input
                         name={`values[${index}].value`}
@@ -353,12 +380,12 @@ function EditEnvironmentVariablePanel({
 
             <FormButtons
               confirmButton={
-                <Button type="submit" variant="primary/small" disabled={isLoading}>
+                <Button type="submit" variant="primary/medium" disabled={isLoading}>
                   {isLoading ? "Saving…" : "Save"}
                 </Button>
               }
               cancelButton={
-                <Button onClick={() => setIsOpen(false)} variant="tertiary/small" type="button">
+                <Button onClick={() => setIsOpen(false)} variant="tertiary/medium" type="button">
                   Cancel
                 </Button>
               }

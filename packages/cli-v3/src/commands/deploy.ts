@@ -1412,10 +1412,10 @@ async function resolveEnvironmentVariables(
   const projectConfig = config.config;
 
   return await tracer.startActiveSpan("resolveEnvironmentVariables", async (span) => {
-    try {
-      const $spinner = spinner();
-      $spinner.start("Resolving environment variables");
+    const $spinner = spinner();
+    $spinner.start("Resolving environment variables");
 
+    try {
       let processEnv: Record<string, string | undefined> = {
         ...process.env,
       };
@@ -1473,10 +1473,14 @@ async function resolveEnvironmentVariables(
           $spinner.stop("No environment variables to sync");
           return;
         }
+      } else {
+        $spinner.stop("No environment variables to sync");
       }
 
       $spinner.stop("Environment variables resolved");
     } catch (e) {
+      $spinner.stop("Failed to resolve environment variables");
+
       recordSpanException(span, e);
 
       throw e;

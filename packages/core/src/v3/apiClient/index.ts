@@ -26,8 +26,10 @@ import {
 } from "../schemas";
 import { taskContext } from "../task-context-api";
 import {
+  ApiRequestOptions,
   CursorPagePromise,
   ZodFetchOptions,
+  isRequestOptions,
   zodfetch,
   zodfetchCursorPage,
   zodfetchOffsetLimitPage,
@@ -51,7 +53,7 @@ export type TriggerOptions = {
   spanParentAsLink?: boolean;
 };
 
-const zodFetchOptions: ZodFetchOptions = {
+const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
   retry: {
     maxAttempts: 3,
     minTimeoutInMs: 1000,
@@ -61,20 +63,29 @@ const zodFetchOptions: ZodFetchOptions = {
   },
 };
 
+export type { ApiRequestOptions };
+export { isRequestOptions };
+
 /**
  * Trigger.dev v3 API client
  */
 export class ApiClient {
   private readonly baseUrl: string;
+  private readonly defaultRequestOptions: ZodFetchOptions;
 
   constructor(
     baseUrl: string,
-    private readonly accessToken: string
+    private readonly accessToken: string,
+    requestOptions: ApiRequestOptions = {}
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, requestOptions);
   }
 
-  async getRunResult(runId: string): Promise<TaskRunExecutionResult | undefined> {
+  async getRunResult(
+    runId: string,
+    requestOptions?: ZodFetchOptions
+  ): Promise<TaskRunExecutionResult | undefined> {
     try {
       return await zodfetch(
         TaskRunExecutionResult,
@@ -83,7 +94,7 @@ export class ApiClient {
           method: "GET",
           headers: this.#getHeaders(false),
         },
-        zodFetchOptions
+        mergeRequestOptions(this.defaultRequestOptions, requestOptions)
       );
     } catch (error) {
       if (error instanceof ApiError) {
@@ -96,7 +107,10 @@ export class ApiClient {
     }
   }
 
-  async getBatchResults(batchId: string): Promise<BatchTaskRunExecutionResult | undefined> {
+  async getBatchResults(
+    batchId: string,
+    requestOptions?: ZodFetchOptions
+  ): Promise<BatchTaskRunExecutionResult | undefined> {
     return await zodfetch(
       BatchTaskRunExecutionResult,
       `${this.baseUrl}/api/v1/batches/${batchId}/results`,
@@ -104,11 +118,16 @@ export class ApiClient {
         method: "GET",
         headers: this.#getHeaders(false),
       },
-      zodFetchOptions
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  triggerTask(taskId: string, body: TriggerTaskRequestBody, options?: TriggerOptions) {
+  triggerTask(
+    taskId: string,
+    body: TriggerTaskRequestBody,
+    options?: TriggerOptions,
+    requestOptions?: ZodFetchOptions
+  ) {
     const encodedTaskId = encodeURIComponent(taskId);
 
     return zodfetch(
@@ -119,11 +138,16 @@ export class ApiClient {
         headers: this.#getHeaders(options?.spanParentAsLink ?? false),
         body: JSON.stringify(body),
       },
-      zodFetchOptions
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  batchTriggerTask(taskId: string, body: BatchTriggerTaskRequestBody, options?: TriggerOptions) {
+  batchTriggerTask(
+    taskId: string,
+    body: BatchTriggerTaskRequestBody,
+    options?: TriggerOptions,
+    requestOptions?: ZodFetchOptions
+  ) {
     const encodedTaskId = encodeURIComponent(taskId);
 
     return zodfetch(
@@ -134,11 +158,11 @@ export class ApiClient {
         headers: this.#getHeaders(options?.spanParentAsLink ?? false),
         body: JSON.stringify(body),
       },
-      zodFetchOptions
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  createUploadPayloadUrl(filename: string) {
+  createUploadPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
       `${this.baseUrl}/api/v1/packets/${filename}`,
@@ -146,11 +170,11 @@ export class ApiClient {
         method: "PUT",
         headers: this.#getHeaders(false),
       },
-      zodFetchOptions
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  getPayloadUrl(filename: string) {
+  getPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
       `${this.baseUrl}/api/v1/packets/${filename}`,
@@ -158,11 +182,11 @@ export class ApiClient {
         method: "GET",
         headers: this.#getHeaders(false),
       },
-      zodFetchOptions
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  retrieveRun(runId: string) {
+  retrieveRun(runId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       RetrieveRunResponse,
       `${this.baseUrl}/api/v3/runs/${runId}`,
@@ -170,11 +194,14 @@ export class ApiClient {
         method: "GET",
         headers: this.#getHeaders(false),
       },
-      zodFetchOptions
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  listRuns(query?: ListRunsQueryParams): CursorPagePromise<typeof ListRunResponseItem> {
+  listRuns(
+    query?: ListRunsQueryParams,
+    requestOptions?: ZodFetchOptions
+  ): CursorPagePromise<typeof ListRunResponseItem> {
     const searchParams = createSearchQueryForListRuns(query);
 
     return zodfetchCursorPage(
@@ -190,13 +217,14 @@ export class ApiClient {
         method: "GET",
         headers: this.#getHeaders(false),
       },
-      zodFetchOptions
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
   listProjectRuns(
     projectRef: string,
-    query?: ListProjectRunsQueryParams
+    query?: ListProjectRunsQueryParams,
+    requestOptions?: ZodFetchOptions
   ): CursorPagePromise<typeof ListRunResponseItem> {
     const searchParams = createSearchQueryForListRuns(query);
 
@@ -220,11 +248,11 @@ export class ApiClient {
         method: "GET",
         headers: this.#getHeaders(false),
       },
-      zodFetchOptions
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  replayRun(runId: string) {
+  replayRun(runId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       ReplayRunResponse,
       `${this.baseUrl}/api/v1/runs/${runId}/replay`,
@@ -232,11 +260,11 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
       },
-      zodFetchOptions
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  cancelRun(runId: string) {
+  cancelRun(runId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       CanceledRunResponse,
       `${this.baseUrl}/api/v2/runs/${runId}/cancel`,
@@ -244,11 +272,11 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
       },
-      zodFetchOptions
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  rescheduleRun(runId: string, body: RescheduleRunRequestBody) {
+  rescheduleRun(runId: string, body: RescheduleRunRequestBody, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       RetrieveRunResponse,
       `${this.baseUrl}/api/v1/runs/${runId}/reschedule`,
@@ -257,19 +285,24 @@ export class ApiClient {
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
       },
-      zodFetchOptions
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  createSchedule(options: CreateScheduleOptions) {
-    return zodfetch(ScheduleObject, `${this.baseUrl}/api/v1/schedules`, {
-      method: "POST",
-      headers: this.#getHeaders(false),
-      body: JSON.stringify(options),
-    });
+  createSchedule(options: CreateScheduleOptions, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ScheduleObject,
+      `${this.baseUrl}/api/v1/schedules`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(options),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
   }
 
-  listSchedules(options?: ListScheduleOptions) {
+  listSchedules(options?: ListScheduleOptions, requestOptions?: ZodFetchOptions) {
     const searchParams = new URLSearchParams();
 
     if (options?.page) {
@@ -290,58 +323,94 @@ export class ApiClient {
       {
         method: "GET",
         headers: this.#getHeaders(false),
-      }
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  retrieveSchedule(scheduleId: string) {
-    return zodfetch(ScheduleObject, `${this.baseUrl}/api/v1/schedules/${scheduleId}`, {
-      method: "GET",
-      headers: this.#getHeaders(false),
-    });
+  retrieveSchedule(scheduleId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ScheduleObject,
+      `${this.baseUrl}/api/v1/schedules/${scheduleId}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
   }
 
-  updateSchedule(scheduleId: string, options: UpdateScheduleOptions) {
-    return zodfetch(ScheduleObject, `${this.baseUrl}/api/v1/schedules/${scheduleId}`, {
-      method: "PUT",
-      headers: this.#getHeaders(false),
-      body: JSON.stringify(options),
-    });
+  updateSchedule(
+    scheduleId: string,
+    options: UpdateScheduleOptions,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      ScheduleObject,
+      `${this.baseUrl}/api/v1/schedules/${scheduleId}`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(options),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
   }
 
-  deactivateSchedule(scheduleId: string) {
-    return zodfetch(ScheduleObject, `${this.baseUrl}/api/v1/schedules/${scheduleId}/deactivate`, {
-      method: "POST",
-      headers: this.#getHeaders(false),
-    });
+  deactivateSchedule(scheduleId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ScheduleObject,
+      `${this.baseUrl}/api/v1/schedules/${scheduleId}/deactivate`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
   }
 
-  activateSchedule(scheduleId: string) {
-    return zodfetch(ScheduleObject, `${this.baseUrl}/api/v1/schedules/${scheduleId}/activate`, {
-      method: "POST",
-      headers: this.#getHeaders(false),
-    });
+  activateSchedule(scheduleId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ScheduleObject,
+      `${this.baseUrl}/api/v1/schedules/${scheduleId}/activate`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
   }
 
-  deleteSchedule(scheduleId: string) {
-    return zodfetch(DeletedScheduleObject, `${this.baseUrl}/api/v1/schedules/${scheduleId}`, {
-      method: "DELETE",
-      headers: this.#getHeaders(false),
-    });
+  deleteSchedule(scheduleId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      DeletedScheduleObject,
+      `${this.baseUrl}/api/v1/schedules/${scheduleId}`,
+      {
+        method: "DELETE",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
   }
 
-  listEnvVars(projectRef: string, slug: string) {
+  listEnvVars(projectRef: string, slug: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       EnvironmentVariables,
       `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
-      }
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  importEnvVars(projectRef: string, slug: string, body: ImportEnvironmentVariablesParams) {
+  importEnvVars(
+    projectRef: string,
+    slug: string,
+    body: ImportEnvironmentVariablesParams,
+    requestOptions?: ZodFetchOptions
+  ) {
     return zodfetch(
       EnvironmentVariableResponseBody,
       `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/import`,
@@ -349,22 +418,29 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
-      }
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  retrieveEnvVar(projectRef: string, slug: string, key: string) {
+  retrieveEnvVar(projectRef: string, slug: string, key: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       EnvironmentVariableValue,
       `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/${key}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
-      }
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  createEnvVar(projectRef: string, slug: string, body: CreateEnvironmentVariableRequestBody) {
+  createEnvVar(
+    projectRef: string,
+    slug: string,
+    body: CreateEnvironmentVariableRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
     return zodfetch(
       EnvironmentVariableResponseBody,
       `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}`,
@@ -372,7 +448,8 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
-      }
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
@@ -380,7 +457,8 @@ export class ApiClient {
     projectRef: string,
     slug: string,
     key: string,
-    body: UpdateEnvironmentVariableRequestBody
+    body: UpdateEnvironmentVariableRequestBody,
+    requestOptions?: ZodFetchOptions
   ) {
     return zodfetch(
       EnvironmentVariableResponseBody,
@@ -389,18 +467,20 @@ export class ApiClient {
         method: "PUT",
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
-      }
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
-  deleteEnvVar(projectRef: string, slug: string, key: string) {
+  deleteEnvVar(projectRef: string, slug: string, key: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       EnvironmentVariableResponseBody,
       `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/${key}`,
       {
         method: "DELETE",
         headers: this.#getHeaders(false),
-      }
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
@@ -482,4 +562,22 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
   }
 
   return searchParams;
+}
+
+export function mergeRequestOptions(
+  defaultOptions: ZodFetchOptions,
+  options?: ApiRequestOptions
+): ZodFetchOptions {
+  if (!options) {
+    return defaultOptions;
+  }
+
+  return {
+    ...defaultOptions,
+    ...options,
+    retry: {
+      ...defaultOptions.retry,
+      ...options.retry,
+    },
+  };
 }

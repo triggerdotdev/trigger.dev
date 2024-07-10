@@ -106,8 +106,10 @@ export function authorizationRateLimitMiddleware({
       hashedAuthorizationValue
     );
 
+    const $remaining = Math.max(0, remaining); // remaining can be negative if the user has exceeded the limit, so clamp it to 0
+
     res.set("x-ratelimit-limit", limit.toString());
-    res.set("x-ratelimit-remaining", remaining.toString());
+    res.set("x-ratelimit-remaining", $remaining.toString());
     res.set("x-ratelimit-reset", reset.toString());
 
     if (success) {
@@ -122,12 +124,12 @@ export function authorizationRateLimitMiddleware({
           title: "Rate Limit Exceeded",
           status: 429,
           type: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429",
-          detail: `Rate limit exceeded ${remaining}/${limit} requests remaining. Retry in ${secondsUntilReset} seconds.`,
+          detail: `Rate limit exceeded ${$remaining}/${limit} requests remaining. Retry in ${secondsUntilReset} seconds.`,
           reset,
           limit,
           remaining,
           secondsUntilReset,
-          error: `Rate limit exceeded ${remaining}/${limit} requests remaining. Retry in ${secondsUntilReset} seconds.`,
+          error: `Rate limit exceeded ${$remaining}/${limit} requests remaining. Retry in ${secondsUntilReset} seconds.`,
         },
         null,
         2
@@ -138,7 +140,11 @@ export function authorizationRateLimitMiddleware({
 
 export const apiRateLimiter = authorizationRateLimitMiddleware({
   keyPrefix: "api",
-  limiter: Ratelimit.slidingWindow(env.API_RATE_LIMIT_MAX, env.API_RATE_LIMIT_WINDOW as Duration),
+  limiter: Ratelimit.tokenBucket(
+    env.API_RATE_LIMIT_REFILL_RATE,
+    env.API_RATE_LIMIT_REFILL_INTERVAL as Duration,
+    env.API_RATE_LIMIT_MAX
+  ),
   pathMatchers: [/^\/api/],
   // Allow /api/v1/tasks/:id/callback/:secret
   pathWhiteList: [
@@ -152,6 +158,8 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     /^\/api\/v1\/sources\/http\/[^\/]+$/, // /api/v1/sources/http/$id
     /^\/api\/v1\/endpoints\/[^\/]+\/[^\/]+\/index\/[^\/]+$/, // /api/v1/endpoints/$environmentId/$endpointSlug/index/$indexHookIdentifier
     "/api/v1/timezones",
+    "/api/v1/usage/ingest",
+    /^\/api\/v1\/runs\/[^\/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
   ],
   log: {
     rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",

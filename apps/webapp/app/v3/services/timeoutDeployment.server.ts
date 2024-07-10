@@ -2,6 +2,7 @@ import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { workerQueue } from "~/services/worker.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
+import { PrismaClientOrTransaction } from "~/db.server";
 
 export class TimeoutDeploymentService extends BaseService {
   public async call(id: string, fromStatus: string, errorMessage: string) {
@@ -20,6 +21,10 @@ export class TimeoutDeploymentService extends BaseService {
     }
 
     if (deployment.status !== fromStatus) {
+      logger.error("Deployment is not in the correct state to be timed out", {
+        currentStatus: deployment.status,
+        fromStatus,
+      });
       return;
     }
 
@@ -56,5 +61,9 @@ export class TimeoutDeploymentService extends BaseService {
         jobKeyMode: "replace",
       }
     );
+  }
+
+  static async dequeue(deploymentId: string, tx?: PrismaClientOrTransaction) {
+    await workerQueue.dequeue(`timeoutDeployment:${deploymentId}`, { tx });
   }
 }

@@ -61,7 +61,5 @@ export const config: TriggerConfig = {
   },
   onFailure: async (payload, error, { ctx }) => {
     console.log(`Task ${ctx.task.id} failed ${ctx.run.id}`);
-
-    throw error;
   },
 };

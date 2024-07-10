@@ -13,7 +13,10 @@ import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { uploadToObjectStore } from "../r2.server";
 import { startActiveSpan } from "../tracer.server";
-import { BaseService } from "./baseService.server";
+import { getEntitlement } from "~/services/platform.v3.server";
+import { BaseService, ServiceValidationError } from "./baseService.server";
+import { logger } from "~/services/logger.server";
+import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -24,6 +27,12 @@ export type TriggerTaskServiceOptions = {
   batchId?: string;
   customIcon?: string;
 };
+
+export class OutOfEntitlementError extends Error {
+  constructor() {
+    super("You can't trigger a task because you have run out of credits.");
+  }
+}
 
 export class TriggerTaskService extends BaseService {
   public async call(
@@ -46,18 +55,26 @@ export class TriggerTaskService extends BaseService {
       const existingRun = idempotencyKey
         ? await this._prisma.taskRun.findUnique({
             where: {
-              runtimeEnvironmentId_idempotencyKey: {
+              runtimeEnvironmentId_taskIdentifier_idempotencyKey: {
                 runtimeEnvironmentId: environment.id,
                 idempotencyKey,
+                taskIdentifier: taskId,
               },
             },
           })
         : undefined;
 
-      if (existingRun && existingRun.taskIdentifier === taskId) {
+      if (existingRun) {
         span.setAttribute("runId", existingRun.friendlyId);
 
         return existingRun;
+      }
+
+      if (environment.type !== "DEVELOPMENT") {
+        const result = await getEntitlement(environment.organizationId);
+        if (result && result.hasAccess === false) {
+          throw new OutOfEntitlementError();
+        }
       }
 
       const runFriendlyId = generateFriendlyId("run");
@@ -68,6 +85,81 @@ export class TriggerTaskService extends BaseService {
         runFriendlyId,
         environment
       );
+
+      const dependentAttempt = body.options?.dependentAttempt
+        ? await this._prisma.taskRunAttempt.findUnique({
+            where: { friendlyId: body.options.dependentAttempt },
+            include: {
+              taskRun: {
+                select: {
+                  id: true,
+                  status: true,
+                },
+              },
+            },
+          })
+        : undefined;
+
+      if (
+        dependentAttempt &&
+        (isFinalAttemptStatus(dependentAttempt.status) ||
+          isFinalRunStatus(dependentAttempt.taskRun.status))
+      ) {
+        logger.debug("Dependent attempt or run is in a terminal state", {
+          dependentAttempt: dependentAttempt,
+        });
+
+        if (isFinalAttemptStatus(dependentAttempt.status)) {
+          throw new ServiceValidationError(
+            `Cannot trigger ${taskId} as the parent attempt has a status of ${dependentAttempt.status}`
+          );
+        } else {
+          throw new ServiceValidationError(
+            `Cannot trigger ${taskId} as the parent run has a status of ${dependentAttempt.taskRun.status}`
+          );
+        }
+      }
+
+      const dependentBatchRun = body.options?.dependentBatch
+        ? await this._prisma.batchTaskRun.findUnique({
+            where: { friendlyId: body.options.dependentBatch },
+            include: {
+              dependentTaskAttempt: {
+                include: {
+                  taskRun: {
+                    select: {
+                      id: true,
+                      status: true,
+                    },
+                  },
+                },
+              },
+            },
+          })
+        : undefined;
+
+      if (
+        dependentBatchRun &&
+        dependentBatchRun.dependentTaskAttempt &&
+        (isFinalAttemptStatus(dependentBatchRun.dependentTaskAttempt.status) ||
+          isFinalRunStatus(dependentBatchRun.dependentTaskAttempt.taskRun.status))
+      ) {
+        logger.debug("Dependent batch run task attempt or run has been canceled", {
+          dependentBatchRunId: dependentBatchRun.id,
+          status: dependentBatchRun.status,
+          attempt: dependentBatchRun.dependentTaskAttempt,
+        });
+
+        if (isFinalAttemptStatus(dependentBatchRun.dependentTaskAttempt.status)) {
+          throw new ServiceValidationError(
+            `Cannot trigger ${taskId} as the parent attempt has a status of ${dependentBatchRun.dependentTaskAttempt.status}`
+          );
+        } else {
+          throw new ServiceValidationError(
+            `Cannot trigger ${taskId} as the parent run has a status of ${dependentBatchRun.dependentTaskAttempt.taskRun.status}`
+          );
+        }
+      }
 
       return await eventRepository.traceEvent(
         taskId,
@@ -139,6 +231,7 @@ export class TriggerTaskService extends BaseService {
                   isTest: body.options?.test ?? false,
                   delayUntil,
                   queuedAt: delayUntil ? undefined : new Date(),
+                  maxAttempts: body.options?.maxAttempts,
                   ttl,
                 },
               });
@@ -159,32 +252,20 @@ export class TriggerTaskService extends BaseService {
               event.setAttribute("runId", taskRun.friendlyId);
               span.setAttribute("runId", taskRun.friendlyId);
 
-              if (body.options?.dependentAttempt) {
-                const dependentAttempt = await tx.taskRunAttempt.findUnique({
-                  where: { friendlyId: body.options.dependentAttempt },
+              if (dependentAttempt) {
+                await tx.taskRunDependency.create({
+                  data: {
+                    taskRunId: taskRun.id,
+                    dependentAttemptId: dependentAttempt.id,
+                  },
                 });
-
-                if (dependentAttempt) {
-                  await tx.taskRunDependency.create({
-                    data: {
-                      taskRunId: taskRun.id,
-                      dependentAttemptId: dependentAttempt.id,
-                    },
-                  });
-                }
-              } else if (body.options?.dependentBatch) {
-                const dependentBatchRun = await tx.batchTaskRun.findUnique({
-                  where: { friendlyId: body.options.dependentBatch },
+              } else if (dependentBatchRun) {
+                await tx.taskRunDependency.create({
+                  data: {
+                    taskRunId: taskRun.id,
+                    dependentBatchRunId: dependentBatchRun.id,
+                  },
                 });
-
-                if (dependentBatchRun) {
-                  await tx.taskRunDependency.create({
-                    data: {
-                      taskRunId: taskRun.id,
-                      dependentBatchRunId: dependentBatchRun.id,
-                    },
-                  });
-                }
               }
 
               if (body.options?.queue) {

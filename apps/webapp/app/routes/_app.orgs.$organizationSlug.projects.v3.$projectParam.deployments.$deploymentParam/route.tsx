@@ -132,7 +132,11 @@ export default function Page() {
             </Property>
             <Property label="Version">{deployment.version}</Property>
             <Property label="Status">
-              <DeploymentStatus status={deployment.status} className="text-sm" />
+              <DeploymentStatus
+                status={deployment.status}
+                isBuilt={deployment.isBuilt}
+                className="text-sm"
+              />
             </Property>
             <Property label="Tasks">{deployment.tasks ? deployment.tasks.length : "–"}</Property>
             <Property label="SDK Version">
@@ -141,6 +145,17 @@ export default function Page() {
             <Property label="Started at">
               <Paragraph variant="small/bright">
                 <DateTimeAccurate date={deployment.createdAt} /> UTC
+              </Paragraph>
+            </Property>
+            <Property label="Built at">
+              <Paragraph variant="small/bright">
+                {deployment.builtAt ? (
+                  <>
+                    <DateTimeAccurate date={deployment.builtAt} /> UTC
+                  </>
+                ) : (
+                  "–"
+                )}
               </Paragraph>
             </Property>
             <Property label="Deployed at">
