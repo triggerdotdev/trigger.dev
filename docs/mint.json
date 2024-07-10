@@ -138,7 +138,8 @@
         "v3/machines",
         "v3/idempotency",
         "v3/reattempting-replaying",
-        "v3/notifications"
+        "v3/notifications",
+        "v3/run-usage"
       ]
     },
     {
