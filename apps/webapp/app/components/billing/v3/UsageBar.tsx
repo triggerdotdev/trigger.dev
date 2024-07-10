@@ -44,7 +44,7 @@ export function UsageBar({
   return (
     <div className="h-fit w-full py-12">
       <div className="relative h-3 w-full rounded-sm bg-background-bright">
-        {billingLimit && (
+        {billingLimit !== undefined && (
           <motion.div
             initial={{ width: billingLimitPercentage / startFactor + "%" }}
             animate={{ width: billingLimitPercentage + "%" }}
@@ -60,7 +60,7 @@ export function UsageBar({
             />
           </motion.div>
         )}
-        {tierLimit && (
+        {tierLimit !== undefined && (
           <motion.div
             initial={{ width: tierRunLimitPercentage / startFactor + "%" }}
             animate={{ width: tierRunLimitPercentage + "%" }}
@@ -76,7 +76,7 @@ export function UsageBar({
             />
           </motion.div>
         )}
-        {projectedUsage && projectedUsage !== 0 && (
+        {projectedUsage !== undefined && projectedUsage !== 0 && (
           <motion.div
             initial={{ width: projectedRunsPercentage / startFactor + "%" }}
             animate={{ width: projectedRunsPercentage + "%" }}
