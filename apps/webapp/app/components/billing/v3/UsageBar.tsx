@@ -57,7 +57,6 @@ export function UsageBar({
               value={formatCurrency(billingLimit, false)}
               position="bottomRow2"
               percentage={billingLimitPercentage}
-              tooltipContent={`Billing limit: ${formatCurrency(billingLimit, false)}`}
             />
           </motion.div>
         )}
@@ -74,10 +73,6 @@ export function UsageBar({
               value={formatCurrency(tierLimit, false)}
               position="bottomRow1"
               percentage={tierRunLimitPercentage}
-              tooltipContent={`${isPaying ? "Included usage" : "Tier limit"}: ${formatCurrency(
-                tierLimit,
-                false
-              )}`}
             />
           </motion.div>
         )}
@@ -94,7 +89,6 @@ export function UsageBar({
               value={formatCurrency(projectedUsage, false)}
               position="topRow2"
               percentage={projectedRunsPercentage}
-              tooltipContent={`Projected runs: ${formatCurrency(projectedUsage, false)}`}
             />
           </motion.div>
         )}
@@ -113,7 +107,6 @@ export function UsageBar({
             value={formatCurrency(current, false)}
             position="topRow1"
             percentage={usagePercentage}
-            tooltipContent={`Used: ${formatCurrency(current, false)}`}
           />
         </motion.div>
         <motion.div
@@ -140,7 +133,7 @@ type LegendProps = {
   value: number | string;
   percentage: number;
   position: keyof typeof positions;
-  tooltipContent: string;
+  tooltipContent?: string;
 };
 
 function Legend({ text, value, position, percentage, tooltipContent }: LegendProps) {
@@ -154,17 +147,24 @@ function Legend({ text, value, position, percentage, tooltipContent }: LegendPro
         flipLegendPosition === true ? "-translate-x-full border-r" : "border-l"
       )}
     >
-      <SimpleTooltip
-        button={
-          <Paragraph className="mr-px h-fit whitespace-nowrap bg-background-bright px-1.5 text-xs text-text-bright">
-            {text}
-            <span className="ml-1 text-text-dimmed">{value}</span>
-          </Paragraph>
-        }
-        side="top"
-        content={tooltipContent}
-        className="z-50 h-fit"
-      />
+      {tooltipContent ? (
+        <SimpleTooltip
+          button={
+            <Paragraph className="mr-px h-fit whitespace-nowrap bg-background-bright px-1.5 text-xs text-text-bright">
+              {text}
+              <span className="ml-1 text-text-dimmed">{value}</span>
+            </Paragraph>
+          }
+          side="top"
+          content={tooltipContent}
+          className="z-50 h-fit"
+        />
+      ) : (
+        <Paragraph className="mr-px h-fit whitespace-nowrap bg-background-bright px-1.5 text-xs text-text-bright">
+          {text}
+          <span className="ml-1 text-text-dimmed">{value}</span>
+        </Paragraph>
+      )}
     </div>
   );
 }
