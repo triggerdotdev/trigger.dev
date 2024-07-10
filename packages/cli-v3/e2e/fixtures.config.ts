@@ -18,6 +18,11 @@ export const fixturesConfig: TestCase[] = [
     workspaceRelativeDir: "packages/trigger",
   },
   {
+    id: "compile-monorepo-packages-npm",
+    skipTypecheck: true,
+    workspaceRelativeDir: "packages/trigger",
+  },
+  {
     id: "config-infisical-sdk",
     skipTypecheck: true,
   },
