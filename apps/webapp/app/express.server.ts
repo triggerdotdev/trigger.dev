@@ -5,6 +5,8 @@ import compression from "compression";
 import { registryProxy } from "./v3/registryProxy.server";
 import { apiRateLimiter } from "./services/apiRateLimit.server";
 import { registerSocketIo } from "./socket.server";
+import { runWithHttpContext } from "./entry.server";
+import { nanoid } from "nanoid";
 
 export const express = createExpressApp({
   configure(app) {
@@ -50,6 +52,13 @@ export const express = createExpressApp({
           return;
         }
         next();
+      });
+
+      app.use((req, res, next) => {
+        // Generate a unique request ID for each request
+        const requestId = nanoid();
+
+        runWithHttpContext({ requestId, path: req.url, host: req.hostname }, next);
       });
     }
 
