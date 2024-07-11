@@ -77,6 +77,12 @@ function onThrow<T>(
 
           innerSpan.setStatus({ code: SpanStatusCode.ERROR });
 
+          if (e instanceof Error && e.name === "AbortTaskRunError") {
+            innerSpan.end();
+
+            throw e;
+          }
+
           const nextRetryDelay = calculateNextRetryDelay(opts, attempt);
 
           if (!nextRetryDelay) {

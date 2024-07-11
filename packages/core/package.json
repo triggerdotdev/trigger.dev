@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "3.0.0-beta.37",
+  "version": "3.0.0-beta.48",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -21,6 +21,70 @@
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./eventFilterMatches": {
+      "import": {
+        "types": "./dist/eventFilterMatches.d.mts",
+        "default": "./dist/eventFilterMatches.mjs"
+      },
+      "require": "./dist/eventFilterMatches.js",
+      "types": "./dist/eventFilterMatches.d.ts"
+    },
+    "./replacements": {
+      "import": {
+        "types": "./dist/replacements.d.mts",
+        "default": "./dist/replacements.mjs"
+      },
+      "require": "./dist/replacements.js",
+      "types": "./dist/replacements.d.ts"
+    },
+    "./requestFilterMatches": {
+      "import": {
+        "types": "./dist/requestFilterMatches.d.mts",
+        "default": "./dist/requestFilterMatches.mjs"
+      },
+      "require": "./dist/requestFilterMatches.js",
+      "types": "./dist/requestFilterMatches.d.ts"
+    },
+    "./retry": {
+      "import": {
+        "types": "./dist/retry.d.mts",
+        "default": "./dist/retry.mjs"
+      },
+      "require": "./dist/retry.js",
+      "types": "./dist/retry.d.ts"
+    },
+    "./utils": {
+      "import": {
+        "types": "./dist/utils.d.mts",
+        "default": "./dist/utils.mjs"
+      },
+      "require": "./dist/utils.js",
+      "types": "./dist/utils.d.ts"
+    },
+    "./schemas": {
+      "import": {
+        "types": "./dist/schemas/index.d.mts",
+        "default": "./dist/schemas/index.mjs"
+      },
+      "require": "./dist/schemas/index.js",
+      "types": "./dist/schemas/index.d.ts"
+    },
+    "./types": {
+      "import": {
+        "types": "./dist/types.d.mts",
+        "default": "./dist/types.mjs"
+      },
+      "require": "./dist/types.js",
+      "types": "./dist/types.d.ts"
+    },
+    "./versions": {
+      "import": {
+        "types": "./dist/versions.d.mts",
+        "default": "./dist/versions.mjs"
+      },
+      "require": "./dist/versions.js",
+      "types": "./dist/versions.d.ts"
+    },
     "./v3": {
       "import": {
         "types": "./dist/v3/index.d.mts",
@@ -28,6 +92,22 @@
       },
       "require": "./dist/v3/index.js",
       "types": "./dist/v3/index.d.ts"
+    },
+    "./v3/errors": {
+      "import": {
+        "types": "./dist/v3/errors.d.mts",
+        "default": "./dist/v3/errors.mjs"
+      },
+      "require": "./dist/v3/errors.js",
+      "types": "./dist/v3/errors.d.ts"
+    },
+    "./v3/logger-api": {
+      "import": {
+        "types": "./dist/v3/logger-api.d.mts",
+        "default": "./dist/v3/logger-api.mjs"
+      },
+      "require": "./dist/v3/logger-api.js",
+      "types": "./dist/v3/logger-api.d.ts"
     },
     "./v3/otel": {
       "import": {
@@ -37,13 +117,13 @@
       "require": "./dist/v3/otel/index.js",
       "types": "./dist/v3/otel/index.d.ts"
     },
-    "./v3/schemas": {
+    "./v3/semanticInternalAttributes": {
       "import": {
-        "types": "./dist/v3/schemas/index.d.mts",
-        "default": "./dist/v3/schemas/index.mjs"
+        "types": "./dist/v3/semanticInternalAttributes.d.mts",
+        "default": "./dist/v3/semanticInternalAttributes.mjs"
       },
-      "require": "./dist/v3/schemas/index.js",
-      "types": "./dist/v3/schemas/index.d.ts"
+      "require": "./dist/v3/semanticInternalAttributes.js",
+      "types": "./dist/v3/semanticInternalAttributes.d.ts"
     },
     "./v3/utils/durations": {
       "import": {
@@ -52,6 +132,46 @@
       },
       "require": "./dist/v3/utils/durations.js",
       "types": "./dist/v3/utils/durations.d.ts"
+    },
+    "./v3/utils/flattenAttributes": {
+      "import": {
+        "types": "./dist/v3/utils/flattenAttributes.d.mts",
+        "default": "./dist/v3/utils/flattenAttributes.mjs"
+      },
+      "require": "./dist/v3/utils/flattenAttributes.js",
+      "types": "./dist/v3/utils/flattenAttributes.d.ts"
+    },
+    "./v3/utils/ioSerialization": {
+      "import": {
+        "types": "./dist/v3/utils/ioSerialization.d.mts",
+        "default": "./dist/v3/utils/ioSerialization.mjs"
+      },
+      "require": "./dist/v3/utils/ioSerialization.js",
+      "types": "./dist/v3/utils/ioSerialization.d.ts"
+    },
+    "./v3/utils/omit": {
+      "import": {
+        "types": "./dist/v3/utils/omit.d.mts",
+        "default": "./dist/v3/utils/omit.mjs"
+      },
+      "require": "./dist/v3/utils/omit.js",
+      "types": "./dist/v3/utils/omit.d.ts"
+    },
+    "./v3/utils/retries": {
+      "import": {
+        "types": "./dist/v3/utils/retries.d.mts",
+        "default": "./dist/v3/utils/retries.mjs"
+      },
+      "require": "./dist/v3/utils/retries.js",
+      "types": "./dist/v3/utils/retries.d.ts"
+    },
+    "./v3/utils/structuredLogger": {
+      "import": {
+        "types": "./dist/v3/utils/structuredLogger.d.mts",
+        "default": "./dist/v3/utils/structuredLogger.mjs"
+      },
+      "require": "./dist/v3/utils/structuredLogger.js",
+      "types": "./dist/v3/utils/structuredLogger.d.ts"
     },
     "./v3/zodfetch": {
       "import": {
@@ -93,13 +213,13 @@
       "require": "./dist/v3/zodIpc.js",
       "types": "./dist/v3/zodIpc.d.ts"
     },
-    "./v3/utils/structuredLogger": {
+    "./v3/utils/timers": {
       "import": {
-        "types": "./dist/v3/utils/structuredLogger.d.mts",
-        "default": "./dist/v3/utils/structuredLogger.mjs"
+        "types": "./dist/v3/utils/timers.d.mts",
+        "default": "./dist/v3/utils/timers.mjs"
       },
-      "require": "./dist/v3/utils/structuredLogger.js",
-      "types": "./dist/v3/utils/structuredLogger.d.ts"
+      "require": "./dist/v3/utils/timers.js",
+      "types": "./dist/v3/utils/timers.d.ts"
     },
     "./v3/dev": {
       "import": {
@@ -124,6 +244,14 @@
       },
       "require": "./dist/v3/workers/index.js",
       "types": "./dist/v3/workers/index.d.ts"
+    },
+    "./v3/schemas": {
+      "import": {
+        "types": "./dist/v3/schemas/index.d.mts",
+        "default": "./dist/v3/schemas/index.mjs"
+      },
+      "require": "./dist/v3/schemas/index.js",
+      "types": "./dist/v3/schemas/index.d.ts"
     },
     "./package.json": "./package.json"
   },
@@ -158,9 +286,8 @@
     "@opentelemetry/sdk-trace-base": "^1.22.0",
     "@opentelemetry/sdk-trace-node": "^1.22.0",
     "@opentelemetry/semantic-conventions": "^1.22.0",
-    "form-data-encoder": "^4.0.2",
     "humanize-duration": "^3.27.3",
-    "socket.io-client": "4.7.4",
+    "socket.io-client": "4.7.5",
     "superjson": "^2.2.1",
     "ulidx": "^2.2.1",
     "zod": "3.22.3",
@@ -173,6 +300,7 @@
     "@types/humanize-duration": "^3.27.1",
     "@types/jest": "^29.5.3",
     "@types/node": "20.12.7",
+    "@types/readable-stream": "^4.0.14",
     "jest": "^29.6.2",
     "rimraf": "^3.0.2",
     "socket.io": "4.7.4",

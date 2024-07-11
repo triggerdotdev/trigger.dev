@@ -10,6 +10,7 @@ import cronstrue from "cronstrue";
 import { calculateNextScheduledTimestamp } from "../utils/calculateNextSchedule.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { env } from "~/env.server";
+import { getLimit } from "~/services/platform.v3.server";
 
 export type UpsertTaskScheduleServiceOptions = UpsertSchedule;
 
@@ -67,32 +68,29 @@ export class UpsertTaskScheduleService extends BaseService {
     //if creating a schedule, check they're under the limits
     if (!schedule.friendlyId) {
       //check they're within their limit
-      const limits = await this._prisma.organization.findFirst({
-        select: {
-          maximumSchedulesLimit: true,
-        },
+      const project = await this._prisma.project.findFirst({
         where: {
-          projects: {
-            some: {
-              id: projectId,
-            },
-          },
+          id: projectId,
+        },
+        select: {
+          organizationId: true,
         },
       });
 
-      if (!limits) {
-        throw new ServiceValidationError("Organization not found");
+      if (!project) {
+        throw new ServiceValidationError("Project not found");
       }
 
+      const limit = await getLimit(project.organizationId, "schedules", 500);
       const schedulesCount = await this._prisma.taskSchedule.count({
         where: {
           projectId,
         },
       });
 
-      if (schedulesCount >= limits.maximumSchedulesLimit) {
+      if (schedulesCount >= limit) {
         throw new ServiceValidationError(
-          `You have created ${schedulesCount}/${limits.maximumSchedulesLimit} schedules so you'll need to increase your limits or delete some schedules. Increase your limits by contacting support.`
+          `You have created ${schedulesCount}/${limit} schedules so you'll need to increase your limits or delete some schedules. Increase your limits by contacting support.`
         );
       }
     }

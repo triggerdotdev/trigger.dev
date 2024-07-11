@@ -25,3 +25,15 @@ const currencyFormatter = Intl.NumberFormat("en-US", {
 export const formatCurrency = (num: number, rounded: boolean): string => {
   return rounded ? roundedCurrencyFormatter.format(num) : currencyFormatter.format(num);
 };
+
+const accurateCurrencyFormatter = Intl.NumberFormat("en-US", {
+  style: "currency",
+  currencyDisplay: "symbol",
+  minimumFractionDigits: 8,
+  maximumFractionDigits: 8,
+  currency: "USD",
+});
+
+export function formatCurrencyAccurate(num: number): string {
+  return accurateCurrencyFormatter.format(num);
+}

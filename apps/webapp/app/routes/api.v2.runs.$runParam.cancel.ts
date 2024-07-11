@@ -33,6 +33,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const taskRun = await prisma.taskRun.findUnique({
     where: {
       friendlyId: runParam,
+      runtimeEnvironmentId: authenticationResult.environment.id,
     },
   });
 

@@ -1,4 +1,4 @@
-import { Prisma, TaskRun, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
+import { Prisma, TaskRun } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
@@ -7,22 +7,8 @@ import { socketIo } from "../handleSocketIo.server";
 import { devPubSub } from "../marqs/devPubSub.server";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
-
-export const CANCELLABLE_STATUSES: Array<TaskRunStatus> = [
-  "PENDING",
-  "WAITING_FOR_DEPLOY",
-  "EXECUTING",
-  "PAUSED",
-  "WAITING_TO_RESUME",
-  "PAUSED",
-  "RETRYING_AFTER_FAILURE",
-];
-
-const CANCELLABLE_ATTEMPT_STATUSES: Array<TaskRunAttemptStatus> = [
-  "EXECUTING",
-  "PAUSED",
-  "PENDING",
-];
+import { CANCELLABLE_ATTEMPT_STATUSES, isCancellableRunStatus } from "../taskStatus";
+import { CancelTaskAttemptDependenciesService } from "./cancelTaskAttemptDependencies.server";
 
 type ExtendedTaskRun = Prisma.TaskRunGetPayload<{
   include: {
@@ -53,7 +39,11 @@ export class CancelTaskRunService extends BaseService {
     };
 
     // Make sure the task run is in a cancellable state
-    if (!CANCELLABLE_STATUSES.includes(taskRun.status)) {
+    if (!isCancellableRunStatus(taskRun.status)) {
+      logger.error("Task run is not in a cancellable state", {
+        runId: taskRun.id,
+        status: taskRun.status,
+      });
       return;
     }
 
@@ -77,6 +67,16 @@ export class CancelTaskRunService extends BaseService {
           },
           include: {
             backgroundWorker: true,
+            dependencies: {
+              include: {
+                taskRun: true,
+              },
+            },
+            batchTaskRunItems: {
+              include: {
+                taskRun: true,
+              },
+            },
           },
         },
         runtimeEnvironment: true,
@@ -114,6 +114,8 @@ export class CancelTaskRunService extends BaseService {
     attempts: ExtendedTaskRunAttempt[]
   ) {
     for (const attempt of attempts) {
+      await CancelTaskAttemptDependenciesService.enqueue(attempt.id, this._prisma);
+
       if (run.runtimeEnvironment.type === "DEVELOPMENT") {
         // Signal the task run attempt to stop
         await devPubSub.publish(

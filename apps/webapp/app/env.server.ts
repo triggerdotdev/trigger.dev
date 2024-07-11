@@ -97,8 +97,9 @@ const EnvironmentSchema = z.object({
    * @example "1000ms"
    * @example "1000s"
    */
-  API_RATE_LIMIT_WINDOW: z.string().default("60s"),
-  API_RATE_LIMIT_MAX: z.coerce.number().int().default(600),
+  API_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"), // refill 250 tokens every 10 seconds
+  API_RATE_LIMIT_MAX: z.coerce.number().int().default(750), // allow bursts of 750 requests
+  API_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(250), // refix 250 tokens every 10 seconds
   API_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
   API_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
 
@@ -151,7 +152,7 @@ const EnvironmentSchema = z.object({
   PROD_OTEL_LOG_EXPORT_TIMEOUT_MILLIS: z.string().default("30000"),
   PROD_OTEL_LOG_MAX_QUEUE_SIZE: z.string().default("512"),
 
-  RUNTIME_WAIT_THRESHOLD_IN_MS: z.coerce.number().int().default(30000),
+  CHECKPOINT_THRESHOLD_IN_MS: z.coerce.number().int().default(30000),
 
   // Internal OTEL environment variables
   INTERNAL_OTEL_TRACE_EXPORTER_URL: z.string().optional(),
@@ -193,17 +194,17 @@ const EnvironmentSchema = z.object({
   USAGE_EVENT_URL: z.string().optional(),
   PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
-  CENTS_PER_HOUR_MICRO: z.coerce.number().default(0),
-  CENTS_PER_HOUR_SMALL_1X: z.coerce.number().default(0),
-  CENTS_PER_HOUR_SMALL_2X: z.coerce.number().default(0),
-  CENTS_PER_HOUR_MEDIUM_1X: z.coerce.number().default(0),
-  CENTS_PER_HOUR_MEDIUM_2X: z.coerce.number().default(0),
-  CENTS_PER_HOUR_LARGE_1X: z.coerce.number().default(0),
-  CENTS_PER_HOUR_LARGE_2X: z.coerce.number().default(0),
-  BASE_RUN_COST_IN_CENTS: z.coerce.number().default(0),
+  CENTS_PER_VCPU_SECOND: z.coerce.number().default(0),
+  CENTS_PER_GB_RAM_SECOND: z.coerce.number().default(0),
+  CENTS_PER_RUN: z.coerce.number().default(0),
 
   USAGE_OPEN_METER_API_KEY: z.string().optional(),
   USAGE_OPEN_METER_BASE_URL: z.string().optional(),
+  EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
+  MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
+  MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
+  TASK_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().default(524_288), // 512KB
+  TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

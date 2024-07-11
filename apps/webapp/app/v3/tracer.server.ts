@@ -4,7 +4,10 @@ import {
   DiagConsoleLogger,
   DiagLogLevel,
   Link,
+  Span,
   SpanKind,
+  SpanOptions,
+  SpanStatusCode,
   diag,
   trace,
 } from "@opentelemetry/api";
@@ -77,6 +80,32 @@ class CustomWebappSampler implements Sampler {
 
 export const tracer = singleton("tracer", getTracer);
 
+export async function startActiveSpan<T>(
+  name: string,
+  fn: (span: Span) => Promise<T>,
+  options?: SpanOptions
+): Promise<T> {
+  return tracer.startActiveSpan(name, options ?? {}, async (span) => {
+    try {
+      return await fn(span);
+    } catch (error) {
+      if (error instanceof Error) {
+        span.recordException(error);
+      } else if (typeof error === "string") {
+        span.recordException(new Error(error));
+      } else {
+        span.recordException(new Error(String(error)));
+      }
+
+      span.setStatus({ code: SpanStatusCode.ERROR });
+
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
+}
+
 function getTracer() {
   if (env.INTERNAL_OTEL_TRACE_DISABLED === "1") {
     console.log(`🔦 Tracer disabled, returning a noop tracer`);
@@ -89,7 +118,7 @@ function getTracer() {
   const samplingRate = 1.0 / Math.max(parseInt(env.INTERNAL_OTEL_TRACE_SAMPLING_RATE, 10), 1);
 
   const provider = new NodeTracerProvider({
-    forceFlushTimeoutMillis: 500,
+    forceFlushTimeoutMillis: 15_000,
     resource: new Resource({
       [SEMRESATTRS_SERVICE_NAME]: env.SERVICE_NAME,
     }),
@@ -101,7 +130,7 @@ function getTracer() {
   if (env.INTERNAL_OTEL_TRACE_EXPORTER_URL) {
     const exporter = new OTLPTraceExporter({
       url: env.INTERNAL_OTEL_TRACE_EXPORTER_URL,
-      timeoutMillis: 10_000,
+      timeoutMillis: 15_000,
       headers:
         env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_NAME &&
         env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_VALUE

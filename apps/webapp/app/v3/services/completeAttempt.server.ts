@@ -6,6 +6,7 @@ import {
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
   flattenAttributes,
+  sanitizeError,
 } from "@trigger.dev/core/v3";
 import { PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -21,6 +22,7 @@ import { CreateCheckpointService } from "./createCheckpoint.server";
 import { TaskRun } from "@trigger.dev/database";
 import { PerformTaskAttemptAlertsService } from "./alerts/performTaskAttemptAlerts.server";
 import { RetryAttemptService } from "./retryAttempt.server";
+import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -59,6 +61,18 @@ export class CompleteAttemptService extends BaseService {
       });
 
       // No attempt, so there's no message to ACK
+      return "COMPLETED";
+    }
+
+    if (
+      isFinalAttemptStatus(taskRunAttempt.status) ||
+      isFinalRunStatus(taskRunAttempt.taskRun.status)
+    ) {
+      // We don't want to retry a task run that has already been marked as failed, cancelled, or completed
+      logger.debug("[CompleteAttemptService] Attempt or run is already in a final state", {
+        taskRunAttempt,
+        completion,
+      });
 
       return "COMPLETED";
     }
@@ -153,12 +167,14 @@ export class CompleteAttemptService extends BaseService {
       return "COMPLETED";
     }
 
+    const sanitizedError = sanitizeError(completion.error);
+
     await this._prisma.taskRunAttempt.update({
       where: { id: taskRunAttempt.id },
       data: {
         status: "FAILED",
         completedAt: new Date(),
-        error: completion.error,
+        error: sanitizedError,
         usageDurationMs: completion.usage?.durationMs,
       },
     });
@@ -276,15 +292,15 @@ export class CompleteAttemptService extends BaseService {
             name: "exception",
             time: new Date(),
             properties: {
-              exception: createExceptionPropertiesFromError(completion.error),
+              exception: createExceptionPropertiesFromError(sanitizedError),
             },
           },
         ],
       });
 
       if (
-        completion.error.type === "INTERNAL_ERROR" &&
-        completion.error.code === "GRACEFUL_EXIT_TIMEOUT"
+        sanitizedError.type === "INTERNAL_ERROR" &&
+        sanitizedError.code === "GRACEFUL_EXIT_TIMEOUT"
       ) {
         // We need to fail all incomplete spans
         const inProgressEvents = await eventRepository.queryIncompleteEvents({
@@ -297,7 +313,7 @@ export class CompleteAttemptService extends BaseService {
 
         const exception = {
           type: "Graceful exit timeout",
-          message: completion.error.message,
+          message: sanitizedError.message,
         };
 
         await Promise.all(
@@ -344,6 +360,7 @@ export class CompleteAttemptService extends BaseService {
     supportsLazyAttempts?: boolean
   ) {
     if (checkpointEventId || !supportsLazyAttempts) {
+      // Workers without lazy attempt support always need to go through the queue, which is where the attempt is created
       // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
       return await marqs?.replaceMessage(
         run.id,
@@ -355,8 +372,9 @@ export class CompleteAttemptService extends BaseService {
         retryTimestamp
       );
     } else {
-      // There's no checkpoint so the worker is still running and waiting for a retry message
-      // It supports lazy attempts so we can bypass the queue and send the message directly to the worker
+      // There's no checkpoint and the worker supports lazy attempts
+      // This means the worker is still running and waiting for a retry message
+      // It supports lazy attempts so we can bypass the queue and send the message directly to it
       RetryAttemptService.enqueue(run.id, this._prisma, new Date(retryTimestamp));
     }
   }
@@ -391,7 +409,12 @@ async function findAttempt(prismaClient: PrismaClientOrTransaction, friendlyId: 
     include: {
       taskRun: true,
       backgroundWorkerTask: true,
-      backgroundWorker: true,
+      backgroundWorker: {
+        select: {
+          id: true,
+          supportsLazyAttempts: true,
+        },
+      },
     },
   });
 }

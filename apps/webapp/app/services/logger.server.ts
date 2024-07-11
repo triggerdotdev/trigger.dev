@@ -2,6 +2,7 @@ import type { LogLevel } from "@trigger.dev/core-backend";
 import { Logger } from "@trigger.dev/core-backend";
 import { sensitiveDataReplacer } from "./sensitiveDataReplacer";
 import { AsyncLocalStorage } from "async_hooks";
+import { getHttpContext } from "./httpAsyncStorage.server";
 
 const currentFieldsStore = new AsyncLocalStorage<Record<string, unknown>>();
 
@@ -16,7 +17,8 @@ export const logger = new Logger(
   sensitiveDataReplacer,
   () => {
     const fields = currentFieldsStore.getStore();
-    return fields ? { ...fields } : {};
+    const httpContext = getHttpContext();
+    return { ...fields, http: httpContext };
   }
 );
 

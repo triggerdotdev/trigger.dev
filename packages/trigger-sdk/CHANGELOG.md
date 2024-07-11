@@ -1,5 +1,105 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.48
+
+### Patch Changes
+
+- ecf1110ab: v3: Export AbortTaskRunError from @trigger.dev/sdk/v3
+  - @trigger.dev/core@3.0.0-beta.48
+  - @trigger.dev/core-backend@3.0.0-beta.48
+
+## 3.0.0-beta.47
+
+### Patch Changes
+
+- 4f95c9de4: v3: recover from server rate limiting errors in a more reliable way
+- Updated dependencies [4f95c9de4]
+- Updated dependencies [e04d44866]
+  - @trigger.dev/core@3.0.0-beta.47
+  - @trigger.dev/core-backend@3.0.0-beta.47
+
+## 3.0.0-beta.46
+
+### Patch Changes
+
+- Updated dependencies [14c2bdf89]
+  - @trigger.dev/core@3.0.0-beta.46
+  - @trigger.dev/core-backend@3.0.0-beta.46
+
+## 3.0.0-beta.45
+
+### Patch Changes
+
+- 0e77e7ef7: v3: Trigger delayed runs and reschedule them
+- Updated dependencies [0e77e7ef7]
+- Updated dependencies [568da0178]
+- Updated dependencies [5ae3da6b4]
+  - @trigger.dev/core@3.0.0-beta.45
+  - @trigger.dev/core-backend@3.0.0-beta.45
+
+## 3.0.0-beta.44
+
+### Patch Changes
+
+- Updated dependencies [39885a427]
+  - @trigger.dev/core@3.0.0-beta.44
+  - @trigger.dev/core-backend@3.0.0-beta.44
+
+## 3.0.0-beta.43
+
+### Patch Changes
+
+- 34ca7667d: v3: Include presigned urls for downloading large payloads and outputs when using runs.retrieve
+- Updated dependencies [34ca7667d]
+  - @trigger.dev/core@3.0.0-beta.43
+  - @trigger.dev/core-backend@3.0.0-beta.43
+
+## 3.0.0-beta.42
+
+### Patch Changes
+
+- ecef19966: Use global setTimeout to ensure cross-runtime support
+  - @trigger.dev/core@3.0.0-beta.42
+  - @trigger.dev/core-backend@3.0.0-beta.42
+
+## 3.0.0-beta.41
+
+### Patch Changes
+
+- 7c36a1a4b: v3: Adding SDK functions for triggering tasks in a typesafe way, without importing task file
+  - @trigger.dev/core@3.0.0-beta.41
+  - @trigger.dev/core-backend@3.0.0-beta.41
+
+## 3.0.0-beta.40
+
+### Patch Changes
+
+- Updated dependencies [55d1f8c67]
+- Updated dependencies [098932ea9]
+- Updated dependencies [9835f4ec5]
+  - @trigger.dev/core@3.0.0-beta.40
+  - @trigger.dev/core-backend@3.0.0-beta.40
+
+## 3.0.0-beta.39
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.39
+- @trigger.dev/core-backend@3.0.0-beta.39
+
+## 3.0.0-beta.38
+
+### Patch Changes
+
+- 1b90ffbb8: v3: Usage tracking
+- c405ae711: Added timezone support to schedules
+- Updated dependencies [1b90ffbb8]
+- Updated dependencies [0ed93a748]
+- Updated dependencies [c405ae711]
+- Updated dependencies [c405ae711]
+  - @trigger.dev/core@3.0.0-beta.38
+  - @trigger.dev/core-backend@3.0.0-beta.38
+
 ## 3.0.0-beta.37
 
 ### Patch Changes

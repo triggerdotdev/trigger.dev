@@ -9,14 +9,19 @@ import { BaseService } from "./services/baseService.server";
 const FAILABLE_TASK_RUN_STATUSES: TaskRunStatus[] = ["EXECUTING", "PENDING", "WAITING_FOR_DEPLOY"];
 
 export class FailedTaskRunService extends BaseService {
-  public async call(runFriendlyId: string, completion: TaskRunFailedExecutionResult) {
+  public async call(anyRunId: string, completion: TaskRunFailedExecutionResult) {
+    const isFriendlyId = anyRunId.startsWith("run_");
+
     const taskRun = await this._prisma.taskRun.findUnique({
-      where: { friendlyId: runFriendlyId },
+      where: {
+        friendlyId: isFriendlyId ? anyRunId : undefined,
+        id: !isFriendlyId ? anyRunId : undefined,
+      },
     });
 
     if (!taskRun) {
       logger.error("[FailedTaskRunService] Task run not found", {
-        runFriendlyId,
+        anyRunId,
         completion,
       });
 

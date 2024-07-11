@@ -1,8 +1,8 @@
 import { CalendarDaysIcon, ReceiptRefundIcon } from "@heroicons/react/20/solid";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Outlet } from "@remix-run/react";
-import { ActiveSubscription } from "@trigger.dev/billing";
 import { formatDurationInDays } from "@trigger.dev/core/v3/utils/durations";
+import { ActiveSubscription } from "@trigger.dev/platform/v2";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -29,7 +29,7 @@ function planLabel(subscription: ActiveSubscription | undefined, periodEnd: Date
     return `You're currently on the ${subscription.plan.title} plan`;
   }
   const costDescription = subscription.plan.concurrentRuns.pricing
-    ? `\$${subscription.plan.concurrentRuns.pricing?.tierCost}/mo`
+    ? `\$${subscription.plan.concurrentRuns.pricing.tierCost}/mo`
     : "";
   if (subscription.canceledAt) {
     return (
@@ -55,7 +55,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={isManagedCloud ? "Usage & Billing" : "Usage"} />
+        <PageTitle title={isManagedCloud ? "Usage & Billing (v2)" : "Usage (v2)"} />
         <PageAccessories>
           {isManagedCloud && (
             <>
@@ -86,27 +86,22 @@ export default function Page() {
       <PageBody scrollable={false}>
         <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
           <div className="px-4 pt-4">
-            {allV3Projects ? (
+            {hasV3Project ? (
               <Callout variant="warning" className="mb-3">
-                This organization only has v3 projects. These are currently free. Usage data and
-                billing will be available soon.
-              </Callout>
-            ) : hasV3Project ? (
-              <Callout variant="warning" className="mb-3">
-                This organization has a mix of v2 and v3 projects – v3 projects do not count towards
-                your usage (below) and are currently free.
+                This organization has a mix of v2 and v3 projects. They have separate subscriptions,
+                this is the usage and billing for v2.
               </Callout>
             ) : null}
             {hasV2Project && (
               <PageInfoRow>
                 <PageInfoGroup>
-                  {currentPlan?.subscription && (
+                  {currentPlan?.subscription && currentPlan.usage && (
                     <PageInfoProperty
                       icon={<ReceiptRefundIcon className="h-4 w-4 text-green-600" />}
                       value={planLabel(currentPlan.subscription, currentPlan.usage.periodEnd)}
                     />
                   )}
-                  {currentPlan?.subscription?.isPaying && (
+                  {currentPlan?.subscription?.isPaying && currentPlan.usage && (
                     <PageInfoProperty
                       icon={<CalendarDaysIcon className="h-4 w-4 text-green-600" />}
                       label={"Billing period"}

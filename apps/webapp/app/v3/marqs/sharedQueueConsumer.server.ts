@@ -17,7 +17,6 @@ import {
   BackgroundWorkerTask,
   RuntimeEnvironment,
   TaskRun,
-  TaskRunAttemptStatus,
   TaskRunStatus,
 } from "@trigger.dev/database";
 import { z } from "zod";
@@ -43,6 +42,7 @@ import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
 import { env } from "~/env.server";
+import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -268,6 +268,7 @@ export class SharedQueueConsumer {
     // TODO: For every ACK, decide what should be done with the existing run and attempts. Make sure to check the current statuses first.
 
     switch (messageBody.data.type) {
+      // MARK: EXECUTE
       case "EXECUTE": {
         const existingTaskRun = await prisma.taskRun.findUnique({
           where: {
@@ -412,7 +413,7 @@ export class SharedQueueConsumer {
             lockedById: backgroundTask.id,
             lockedToVersionId: deployment.worker.id,
             startedAt: existingTaskRun.startedAt ?? new Date(),
-            baseCostInCents: env.BASE_RUN_COST_IN_CENTS,
+            baseCostInCents: env.CENTS_PER_RUN,
             machinePreset: machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name,
           },
           include: {
@@ -478,7 +479,7 @@ export class SharedQueueConsumer {
           ? lockedTaskRun.attempts[0].number + 1
           : 1;
 
-        const isRetry = nextAttemptNumber > 1;
+        const isRetry = lockedTaskRun.status === "WAITING_TO_RESUME" && nextAttemptNumber > 1;
 
         try {
           if (messageBody.data.checkpointEventId) {
@@ -493,6 +494,8 @@ export class SharedQueueConsumer {
               logger.error("Failed to restore checkpoint", {
                 queueMessage: message.data,
                 messageId: message.messageId,
+                runStatus: lockedTaskRun.status,
+                isRetry,
               });
 
               await this.#ackAndDoMoreWork(message.messageId);
@@ -503,8 +506,18 @@ export class SharedQueueConsumer {
           }
 
           if (!deployment.worker.supportsLazyAttempts) {
-            const service = new CreateTaskRunAttemptService();
-            await service.call(lockedTaskRun.friendlyId, undefined, false);
+            try {
+              const service = new CreateTaskRunAttemptService();
+              await service.call(lockedTaskRun.friendlyId, undefined, false);
+            } catch (error) {
+              logger.error("Failed to create task run attempt for outdate worker", {
+                error,
+                taskRun: lockedTaskRun.id,
+              });
+
+              await this.#ackAndDoMoreWork(message.messageId);
+              return;
+            }
           }
 
           if (isRetry) {
@@ -568,6 +581,7 @@ export class SharedQueueConsumer {
 
         break;
       }
+      // MARK: DEP RESUME
       // Resume after dependency completed with no remaining retries
       case "RESUME": {
         if (messageBody.data.checkpointEventId) {
@@ -728,6 +742,11 @@ export class SharedQueueConsumer {
         }
 
         try {
+          logger.debug("Broadcasting RESUME_AFTER_DEPENDENCY", {
+            runId: resumableAttempt.taskRunId,
+            attemptId: resumableAttempt.id,
+          });
+
           // The attempt should still be running so we can broadcast to all coordinators to resume immediately
           socketIo.coordinatorNamespace.emit("RESUME_AFTER_DEPENDENCY", {
             version: "v1",
@@ -752,6 +771,7 @@ export class SharedQueueConsumer {
 
         break;
       }
+      // MARK: DURATION RESUME
       // Resume after duration-based wait
       case "RESUME_AFTER_DURATION": {
         try {
@@ -785,6 +805,7 @@ export class SharedQueueConsumer {
 
         break;
       }
+      // MARK: FAIL
       // Fail for whatever reason, usually runs that have been resumed but stopped heartbeating
       case "FAIL": {
         const existingTaskRun = await prisma.taskRun.findUnique({
@@ -962,19 +983,7 @@ class SharedQueueTasks {
     }
 
     if (setToExecuting) {
-      const FINAL_RUN_STATUSES: TaskRunStatus[] = [
-        "CANCELED",
-        "COMPLETED_SUCCESSFULLY",
-        "COMPLETED_WITH_ERRORS",
-        "INTERRUPTED",
-        "SYSTEM_FAILURE",
-      ];
-      const FINAL_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["CANCELED", "COMPLETED", "FAILED"];
-
-      if (
-        FINAL_ATTEMPT_STATUSES.includes(attempt.status) ||
-        FINAL_RUN_STATUSES.includes(attempt.taskRun.status)
-      ) {
+      if (isFinalAttemptStatus(attempt.status) || isFinalRunStatus(attempt.taskRun.status)) {
         logger.error("Status already in final state", {
           attempt: {
             id: attempt.id,
@@ -1134,6 +1143,11 @@ class SharedQueueTasks {
       },
       include: {
         lockedBy: true,
+        _count: {
+          select: {
+            attempts: true,
+          },
+        },
       },
     });
 
@@ -1155,6 +1169,7 @@ class SharedQueueTasks {
       runId: run.friendlyId,
       messageId: run.id,
       isTest: run.isTest,
+      attemptCount: run._count.attempts,
     } satisfies TaskRunExecutionLazyAttemptPayload;
   }
 

@@ -23,7 +23,11 @@ export class TaskMetadataParseError extends Error {
 }
 
 export class UnexpectedExitError extends Error {
-  constructor(public code: number) {
+  constructor(
+    public code: number,
+    public signal: NodeJS.Signals | null,
+    public stderr: string | undefined
+  ) {
     super(`Unexpected exit with code ${code}`);
 
     this.name = "UnexpectedExitError";
@@ -60,4 +64,40 @@ export class GracefulExitTimeoutError extends Error {
 
     this.name = "GracefulExitTimeoutError";
   }
+}
+
+export function getFriendlyErrorMessage(
+  code: number,
+  signal: NodeJS.Signals | null,
+  stderr: string | undefined,
+  dockerMode = true
+) {
+  const message = (text: string) => {
+    if (signal) {
+      return `[${signal}] ${text}`;
+    } else {
+      return text;
+    }
+  };
+
+  if (code === 137) {
+    if (dockerMode) {
+      return message(
+        "Process ran out of memory! Try choosing a machine preset with more memory for this task."
+      );
+    } else {
+      // Note: containerState reason and message should be checked to clarify the error
+      return message(
+        "Process most likely ran out of memory, but we can't be certain. Try choosing a machine preset with more memory for this task."
+      );
+    }
+  }
+
+  if (stderr?.includes("OOMErrorHandler")) {
+    return message(
+      "Process ran out of memory! Try choosing a machine preset with more memory for this task."
+    );
+  }
+
+  return message(`Process exited with code ${code}.`);
 }

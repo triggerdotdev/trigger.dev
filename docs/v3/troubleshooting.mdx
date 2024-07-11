@@ -47,6 +47,27 @@ The first thing to do is to try again. If that fails then join [our Discord](htt
 
 Usually there will be some useful guidance below this message. If you can't figure out what's going wrong then join [our Discord](https://trigger.dev/discord) and create a Help forum post with a link to your deployment.
 
+## Project setup issues
+
+### `The requested module 'node:events' does not provide an export named 'addAbortListener'`
+If you see this error it means you're not a supported version of Node:
+
+```
+SyntaxError: The requested module 'node:events' does not provide an export named 'addAbortListener'
+at ModuleJob._instantiate (node:internal/modules/esm/module_job:123:21)
+at async ModuleJob.run (node:internal/modules/esm/module_job:189:5)
+
+Node.js v19.9.0
+```
+
+You need to be on at least these minor versions:
+
+| Version | Minimum |
+| ----- | ------- |
+| 18   | 18.16+  |
+| 20   | 20.11+  |
+| 21   | 21.0+  |
+
 ## Runtime issues
 
 ### `Environment variable not found:`

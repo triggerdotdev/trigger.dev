@@ -23,6 +23,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import {
   Table,
+  TableBlankRow,
   TableBody,
   TableCell,
   TableHeader,
@@ -180,6 +181,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
+function PlaceholderText({ title }: { title: string }) {
+  return (
+    <div className="flex items-center justify-center">
+      <Paragraph className="w-auto">{title}</Paragraph>
+    </div>
+  );
+}
+
 export default function Page() {
   const { schedule } = useTypedLoaderData<typeof loader>();
   const location = useLocation();
@@ -252,18 +261,30 @@ export default function Page() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {schedule.nextRuns.map((run, index) => (
-                    <TableRow key={index}>
-                      {!isUtc && (
-                        <TableCell>
-                          <DateTime date={run} timeZone={schedule.timezone} />
-                        </TableCell>
-                      )}
-                      <TableCell>
-                        <DateTime date={run} timeZone="UTC" />
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {schedule.active ? (
+                    schedule.nextRuns.length ? (
+                      schedule.nextRuns.map((run, index) => (
+                        <TableRow key={index}>
+                          {!isUtc && (
+                            <TableCell>
+                              <DateTime date={run} timeZone={schedule.timezone} />
+                            </TableCell>
+                          )}
+                          <TableCell>
+                            <DateTime date={run} timeZone="UTC" />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableBlankRow colSpan={1}>
+                        <PlaceholderText title="You found a bug" />
+                      </TableBlankRow>
+                    )
+                  ) : (
+                    <TableBlankRow colSpan={1}>
+                      <PlaceholderText title="Schedule disabled" />
+                    </TableBlankRow>
+                  )}
                 </TableBody>
               </Table>
             </div>

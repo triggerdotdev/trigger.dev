@@ -68,6 +68,9 @@ export const TriggerTaskRequestBody = z.object({
       idempotencyKey: z.string().optional(),
       test: z.boolean().optional(),
       payloadType: z.string().optional(),
+      delay: z.string().or(z.coerce.date()).optional(),
+      ttl: z.string().or(z.number().nonnegative().int()).optional(),
+      maxAttempts: z.number().int().optional(),
     })
     .optional(),
 });
@@ -106,6 +109,12 @@ export const GetBatchResponseBody = z.object({
 });
 
 export type GetBatchResponseBody = z.infer<typeof GetBatchResponseBody>;
+
+export const RescheduleRunRequestBody = z.object({
+  delay: z.string().or(z.coerce.date()),
+});
+
+export type RescheduleRunRequestBody = z.infer<typeof RescheduleRunRequestBody>;
 
 export const GetEnvironmentVariablesResponseBody = z.object({
   variables: z.record(z.string()),
@@ -377,6 +386,10 @@ export const RunStatus = z.enum([
   "INTERRUPTED",
   /// Task has failed to complete, due to an error in the system
   "SYSTEM_FAILURE",
+  /// Task has been scheduled to run at a specific time
+  "DELAYED",
+  /// Task has expired and won't be executed
+  "EXPIRED",
 ]);
 
 export type RunStatus = z.infer<typeof RunStatus>;
@@ -426,12 +439,17 @@ const CommonRunFields = {
   updatedAt: z.coerce.date(),
   startedAt: z.coerce.date().optional(),
   finishedAt: z.coerce.date().optional(),
+  delayedUntil: z.coerce.date().optional(),
+  ttl: z.string().optional(),
+  expiredAt: z.coerce.date().optional(),
 };
 
 export const RetrieveRunResponse = z.object({
   ...CommonRunFields,
   payload: z.any().optional(),
+  payloadPresignedUrl: z.string().optional(),
   output: z.any().optional(),
+  outputPresignedUrl: z.string().optional(),
   schedule: RunScheduleDetails.optional(),
   attempts: z.array(
     z

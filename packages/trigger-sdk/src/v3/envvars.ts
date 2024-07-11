@@ -1,5 +1,6 @@
 import type {
   ApiPromise,
+  ApiRequestOptions,
   CreateEnvironmentVariableParams,
   EnvironmentVariableResponseBody,
   EnvironmentVariableValue,
@@ -7,32 +8,45 @@ import type {
   ImportEnvironmentVariablesParams,
   UpdateEnvironmentVariableParams,
 } from "@trigger.dev/core/v3";
-import { apiClientManager, taskContext } from "@trigger.dev/core/v3";
+import {
+  apiClientManager,
+  isRequestOptions,
+  mergeRequestOptions,
+  taskContext,
+} from "@trigger.dev/core/v3";
 import { apiClientMissingError } from "./shared";
+import { tracer } from "./tracer";
 
 export type { CreateEnvironmentVariableParams, ImportEnvironmentVariablesParams };
 
 export function upload(
   projectRef: string,
   slug: string,
-  params: ImportEnvironmentVariablesParams
+  params: ImportEnvironmentVariablesParams,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableResponseBody>;
 export function upload(
-  params: ImportEnvironmentVariablesParams
+  params: ImportEnvironmentVariablesParams,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableResponseBody>;
 export function upload(
   projectRefOrParams: string | ImportEnvironmentVariablesParams,
-  slug?: string,
-  params?: ImportEnvironmentVariablesParams
+  slugOrRequestOptions?: string | ApiRequestOptions,
+  params?: ImportEnvironmentVariablesParams,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableResponseBody> {
   let $projectRef: string;
   let $params: ImportEnvironmentVariablesParams;
   let $slug: string;
+  const $requestOptions = overloadRequestOptions("upload", slugOrRequestOptions, requestOptions);
 
   if (taskContext.ctx) {
     if (typeof projectRefOrParams === "string") {
       $projectRef = projectRefOrParams;
-      $slug = slug ?? taskContext.ctx.environment.slug;
+      $slug =
+        typeof slugOrRequestOptions === "string"
+          ? slugOrRequestOptions
+          : taskContext.ctx.environment.slug;
 
       if (!params) {
         throw new Error("params is required");
@@ -49,7 +63,7 @@ export function upload(
       throw new Error("projectRef is required");
     }
 
-    if (!slug) {
+    if (!slugOrRequestOptions || typeof slugOrRequestOptions !== "string") {
       throw new Error("slug is required");
     }
 
@@ -58,7 +72,7 @@ export function upload(
     }
 
     $projectRef = projectRefOrParams;
-    $slug = slug;
+    $slug = slugOrRequestOptions;
     $params = params;
   }
 
@@ -68,14 +82,27 @@ export function upload(
     throw apiClientMissingError();
   }
 
-  return apiClient.importEnvVars($projectRef, $slug, $params);
+  return apiClient.importEnvVars($projectRef, $slug, $params, $requestOptions);
 }
 
-export function list(projectRef: string, slug: string): ApiPromise<EnvironmentVariables>;
-export function list(): ApiPromise<EnvironmentVariables>;
-export function list(projectRef?: string, slug?: string): ApiPromise<EnvironmentVariables> {
-  const $projectRef = projectRef ?? taskContext.ctx?.project.ref;
+export function list(
+  projectRef: string,
+  slug: string,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<EnvironmentVariables>;
+export function list(requestOptions?: ApiRequestOptions): ApiPromise<EnvironmentVariables>;
+export function list(
+  projectRefOrRequestOptions?: string | ApiRequestOptions,
+  slug?: string,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<EnvironmentVariables> {
+  const $projectRef = !isRequestOptions(projectRefOrRequestOptions)
+    ? projectRefOrRequestOptions
+    : taskContext.ctx?.project.ref;
   const $slug = slug ?? taskContext.ctx?.environment.slug;
+  let $requestOptions = isRequestOptions(projectRefOrRequestOptions)
+    ? projectRefOrRequestOptions
+    : requestOptions;
 
   if (!$projectRef) {
     throw new Error("projectRef is required");
@@ -85,36 +112,52 @@ export function list(projectRef?: string, slug?: string): ApiPromise<Environment
     throw new Error("slug is required");
   }
 
+  $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "envvars.list()",
+      icon: "id-badge",
+    },
+    $requestOptions
+  );
+
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
     throw apiClientMissingError();
   }
 
-  return apiClient.listEnvVars($projectRef, $slug);
+  return apiClient.listEnvVars($projectRef, $slug, $requestOptions);
 }
 
 export function create(
   projectRef: string,
   slug: string,
-  params: CreateEnvironmentVariableParams
+  params: CreateEnvironmentVariableParams,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableResponseBody>;
 export function create(
-  params: CreateEnvironmentVariableParams
+  params: CreateEnvironmentVariableParams,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableResponseBody>;
 export function create(
   projectRefOrParams: string | CreateEnvironmentVariableParams,
-  slug?: string,
-  params?: CreateEnvironmentVariableParams
+  slugOrRequestOptions?: string | ApiRequestOptions,
+  params?: CreateEnvironmentVariableParams,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableResponseBody> {
   let $projectRef: string;
   let $slug: string;
   let $params: CreateEnvironmentVariableParams;
+  const $requestOptions = overloadRequestOptions("create", slugOrRequestOptions, requestOptions);
 
   if (taskContext.ctx) {
     if (typeof projectRefOrParams === "string") {
       $projectRef = projectRefOrParams;
-      $slug = slug ?? taskContext.ctx.environment.slug;
+      $slug =
+        typeof slugOrRequestOptions === "string"
+          ? slugOrRequestOptions
+          : taskContext.ctx.environment.slug;
 
       if (!params) {
         throw new Error("params is required");
@@ -131,7 +174,7 @@ export function create(
       throw new Error("projectRef is required");
     }
 
-    if (!slug) {
+    if (!slugOrRequestOptions || typeof slugOrRequestOptions !== "string") {
       throw new Error("slug is required");
     }
 
@@ -140,7 +183,7 @@ export function create(
     }
 
     $projectRef = projectRefOrParams;
-    $slug = slug;
+    $slug = slugOrRequestOptions;
     $params = params;
   }
 
@@ -150,27 +193,36 @@ export function create(
     throw apiClientMissingError();
   }
 
-  return apiClient.createEnvVar($projectRef, $slug, $params);
+  return apiClient.createEnvVar($projectRef, $slug, $params, $requestOptions);
 }
 
 export function retrieve(
   projectRef: string,
   slug: string,
-  name: string
+  name: string,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableValue>;
-export function retrieve(name: string): ApiPromise<EnvironmentVariableValue>;
+export function retrieve(
+  name: string,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<EnvironmentVariableValue>;
 export function retrieve(
   projectRefOrName: string,
-  slug?: string,
-  name?: string
+  slugOrRequestOptions?: string | ApiRequestOptions,
+  name?: string,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableValue> {
   let $projectRef: string;
   let $slug: string;
   let $name: string;
+  const $requestOptions = overloadRequestOptions("retrieve", slugOrRequestOptions, requestOptions);
 
   if (typeof name === "string") {
     $projectRef = projectRefOrName;
-    $slug = slug!;
+    $slug =
+      typeof slugOrRequestOptions === "string"
+        ? slugOrRequestOptions
+        : taskContext.ctx?.environment.slug!;
     $name = name;
   } else {
     $projectRef = taskContext.ctx?.project.ref!;
@@ -192,27 +244,36 @@ export function retrieve(
     throw apiClientMissingError();
   }
 
-  return apiClient.retrieveEnvVar($projectRef, $slug, $name);
+  return apiClient.retrieveEnvVar($projectRef, $slug, $name, $requestOptions);
 }
 
 export function del(
   projectRef: string,
   slug: string,
-  name: string
+  name: string,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableResponseBody>;
-export function del(name: string): ApiPromise<EnvironmentVariableResponseBody>;
+export function del(
+  name: string,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<EnvironmentVariableResponseBody>;
 export function del(
   projectRefOrName: string,
-  slug?: string,
-  name?: string
+  slugOrRequestOptions?: string | ApiRequestOptions,
+  name?: string,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableResponseBody> {
   let $projectRef: string;
   let $slug: string;
   let $name: string;
+  const $requestOptions = overloadRequestOptions("del", slugOrRequestOptions, requestOptions);
 
   if (typeof name === "string") {
     $projectRef = projectRefOrName;
-    $slug = slug!;
+    $slug =
+      typeof slugOrRequestOptions === "string"
+        ? slugOrRequestOptions
+        : taskContext.ctx?.environment.slug!;
     $name = name;
   } else {
     $projectRef = taskContext.ctx?.project.ref!;
@@ -234,35 +295,42 @@ export function del(
     throw apiClientMissingError();
   }
 
-  return apiClient.deleteEnvVar($projectRef, $slug, $name);
+  return apiClient.deleteEnvVar($projectRef, $slug, $name, $requestOptions);
 }
 
 export function update(
   projectRef: string,
   slug: string,
   name: string,
-  params: UpdateEnvironmentVariableParams
+  params: UpdateEnvironmentVariableParams,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableResponseBody>;
 export function update(
   name: string,
-  params: UpdateEnvironmentVariableParams
+  params: UpdateEnvironmentVariableParams,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableResponseBody>;
 export function update(
   projectRefOrName: string,
   slugOrParams: string | UpdateEnvironmentVariableParams,
-  name?: string,
-  params?: UpdateEnvironmentVariableParams
+  nameOrRequestOptions?: string | ApiRequestOptions,
+  params?: UpdateEnvironmentVariableParams,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableResponseBody> {
   let $projectRef: string;
   let $slug: string;
   let $name: string;
   let $params: UpdateEnvironmentVariableParams;
+  const $requestOptions = overloadRequestOptions("update", nameOrRequestOptions, requestOptions);
 
   if (taskContext.ctx) {
     if (typeof slugOrParams === "string") {
       $projectRef = slugOrParams;
       $slug = slugOrParams ?? taskContext.ctx.environment.slug;
-      $name = name!;
+      $name =
+        typeof nameOrRequestOptions === "string"
+          ? nameOrRequestOptions
+          : taskContext.ctx.environment.slug;
 
       if (!params) {
         throw new Error("params is required");
@@ -300,5 +368,31 @@ export function update(
     throw apiClientMissingError();
   }
 
-  return apiClient.updateEnvVar($projectRef, $slug, $name, $params);
+  return apiClient.updateEnvVar($projectRef, $slug, $name, $params, $requestOptions);
+}
+
+function overloadRequestOptions(
+  name: string,
+  slugOrRequestOptions?: string | ApiRequestOptions,
+  requestOptions?: ApiRequestOptions
+): ApiRequestOptions {
+  if (isRequestOptions(slugOrRequestOptions)) {
+    return mergeRequestOptions(
+      {
+        tracer,
+        name: `envvars.${name}()`,
+        icon: "id-badge",
+      },
+      slugOrRequestOptions
+    );
+  } else {
+    return mergeRequestOptions(
+      {
+        tracer,
+        name: `envvars.${name}()`,
+        icon: "id-badge",
+      },
+      requestOptions
+    );
+  }
 }

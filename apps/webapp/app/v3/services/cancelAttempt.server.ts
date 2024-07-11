@@ -1,12 +1,12 @@
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { eventRepository } from "../eventRepository.server";
-import { marqs } from "~/v3/marqs/index.server";
-import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
+import { marqs } from "~/v3/marqs/index.server";
+import { eventRepository } from "../eventRepository.server";
+import { BaseService } from "./baseService.server";
 
 import { PrismaClientOrTransaction, prisma } from "~/db.server";
+import { isCancellableRunStatus } from "../taskStatus";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
-import { CANCELLABLE_STATUSES } from "./cancelTaskRun.server";
 
 export class CancelAttemptService extends BaseService {
   public async call(
@@ -43,6 +43,14 @@ export class CancelAttemptService extends BaseService {
         return;
       }
 
+      if (taskRunAttempt.status === "CANCELED") {
+        logger.warn("Task run attempt is already cancelled", {
+          attemptId,
+        });
+
+        return;
+      }
+
       await marqs?.acknowledgeMessage(taskRunId);
 
       await this._prisma.taskRunAttempt.update({
@@ -55,7 +63,7 @@ export class CancelAttemptService extends BaseService {
           taskRun: {
             update: {
               data: {
-                status: CANCELLABLE_STATUSES.includes(taskRunAttempt.taskRun.status)
+                status: isCancellableRunStatus(taskRunAttempt.taskRun.status)
                   ? "INTERRUPTED"
                   : undefined,
               },

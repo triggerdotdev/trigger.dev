@@ -1,5 +1,141 @@
 # trigger.dev
 
+## 3.0.0-beta.48
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.48
+
+## 3.0.0-beta.47
+
+### Patch Changes
+
+- 16ad59533: v3: update @depot/cli to latest 0.0.1-cli.2.71.0
+- Updated dependencies [4f95c9de4]
+- Updated dependencies [e04d44866]
+  - @trigger.dev/core@3.0.0-beta.47
+
+## 3.0.0-beta.46
+
+### Patch Changes
+
+- 14c2bdf89: Tasks should now be much more robust and resilient to reconnects during crucial operations and other failure scenarios.
+
+  Task runs now have to signal checkpointable state prior to ALL checkpoints. This ensures flushing always happens.
+
+  All important socket.io RPCs will now be retried with backoff. Actions relying on checkpoints will be replayed if we haven't been checkpointed and restored as expected, e.g. after reconnect.
+
+  Other changes:
+
+  - Fix retry check in shared queue
+  - Fix env var sync spinner
+  - Heartbeat between retries
+  - Fix retry prep
+  - Fix prod worker no tasks detection
+  - Fail runs above `MAX_TASK_RUN_ATTEMPTS`
+  - Additional debug logs in all places
+  - Prevent crashes due to failed socket schema parsing
+  - Remove core-apps barrel
+  - Upgrade socket.io-client to fix an ACK memleak
+  - Additional index failure logs
+  - Prevent message loss during reconnect
+  - Prevent burst of heartbeats on reconnect
+  - Prevent crash on failed cleanup
+  - Handle at-least-once lazy execute message delivery
+  - Handle uncaught entry point exceptions
+
+- Updated dependencies [14c2bdf89]
+  - @trigger.dev/core@3.0.0-beta.46
+
+## 3.0.0-beta.45
+
+### Patch Changes
+
+- 374b6b9c0: Increase dev worker timeout
+- c75e29a9a: Add sox and audiowaveform binaries to worker images
+- 568da0178: - Improve non-zero exit code error messages
+  - Detect OOM conditions within worker child processes
+  - Internal errors can have optional stack traces
+  - Docker provider can be set to enforce machine presets
+- 52b6f48a9: Add e2e fixtures corresponding to past issues
+  Implement e2e suite parallelism
+  Enhance log level for specific e2e suite messages
+- 5ae3da6b4: Await file watcher cleanup in dev
+- f56582995: v3: Copy over more of the project's package.json keys into the deployed package.json (support for custom config like zenstack)
+- d0d3a64bd: - Prevent downgrades during update check and advise to upgrade CLI
+  - Detect bun and use npm instead
+  - During init, fail early and advise if not a TypeScript project
+  - During init, allow specifying custom package manager args
+  - Add links to dev worker started message
+  - Fix links in unsupported terminals
+- 5ae3da6b4: - Fix artifact detection logs
+  - Fix OOM detection and error messages
+  - Add test link to cli deployment completion
+- 75ec4ac6a: v3: postInstall config option now replaces the postinstall script found in package.json
+- Updated dependencies [0e77e7ef7]
+- Updated dependencies [568da0178]
+- Updated dependencies [5ae3da6b4]
+  - @trigger.dev/core@3.0.0-beta.45
+
+## 3.0.0-beta.44
+
+### Patch Changes
+
+- Updated dependencies [39885a427]
+  - @trigger.dev/core@3.0.0-beta.44
+
+## 3.0.0-beta.43
+
+### Patch Changes
+
+- 77ad4127c: Improved ESM module require error detection logic
+- Updated dependencies [34ca7667d]
+  - @trigger.dev/core@3.0.0-beta.43
+
+## 3.0.0-beta.42
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.42
+
+## 3.0.0-beta.41
+
+### Patch Changes
+
+- c7a55804d: Fix jsonc-parser import
+  - @trigger.dev/core@3.0.0-beta.41
+
+## 3.0.0-beta.40
+
+### Patch Changes
+
+- 098932ea9: v3: vercel edge runtime support
+- 9835f4ec5: v3: fix otel flushing causing CLEANUP ack timeout errors by always setting a forceFlushTimeoutMillis value
+- Updated dependencies [55d1f8c67]
+- Updated dependencies [098932ea9]
+- Updated dependencies [9835f4ec5]
+  - @trigger.dev/core@3.0.0-beta.40
+
+## 3.0.0-beta.39
+
+### Patch Changes
+
+- 8757fdcee: v3: [prod] force flush timeout should be 1s
+  - @trigger.dev/core@3.0.0-beta.39
+
+## 3.0.0-beta.38
+
+### Patch Changes
+
+- d4ccdf710: Add an e2e suite to test compiling with v3 CLI.
+- 1b90ffbb8: v3: Usage tracking
+- e02320f65: fix: allow command login to read api url from cli args
+- Updated dependencies [1b90ffbb8]
+- Updated dependencies [0ed93a748]
+- Updated dependencies [c405ae711]
+- Updated dependencies [c405ae711]
+  - @trigger.dev/core@3.0.0-beta.38
+
 ## 3.0.0-beta.37
 
 ### Patch Changes

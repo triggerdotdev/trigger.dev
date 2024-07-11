@@ -1,5 +1,90 @@
 # @trigger.dev/slack
 
+## 3.0.0-beta.48
+
+### Patch Changes
+
+- Updated dependencies [ecf1110ab]
+  - @trigger.dev/sdk@3.0.0-beta.48
+  - @trigger.dev/integration-kit@3.0.0-beta.48
+
+## 3.0.0-beta.47
+
+### Patch Changes
+
+- Updated dependencies [4f95c9de4]
+  - @trigger.dev/sdk@3.0.0-beta.47
+  - @trigger.dev/integration-kit@3.0.0-beta.47
+
+## 3.0.0-beta.46
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.46
+- @trigger.dev/sdk@3.0.0-beta.46
+
+## 3.0.0-beta.45
+
+### Patch Changes
+
+- Updated dependencies [0e77e7ef7]
+  - @trigger.dev/sdk@3.0.0-beta.45
+  - @trigger.dev/integration-kit@3.0.0-beta.45
+
+## 3.0.0-beta.44
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.44
+- @trigger.dev/sdk@3.0.0-beta.44
+
+## 3.0.0-beta.43
+
+### Patch Changes
+
+- Updated dependencies [34ca7667d]
+  - @trigger.dev/sdk@3.0.0-beta.43
+  - @trigger.dev/integration-kit@3.0.0-beta.43
+
+## 3.0.0-beta.42
+
+### Patch Changes
+
+- Updated dependencies [ecef19966]
+  - @trigger.dev/sdk@3.0.0-beta.42
+  - @trigger.dev/integration-kit@3.0.0-beta.42
+
+## 3.0.0-beta.41
+
+### Patch Changes
+
+- Updated dependencies [7c36a1a4b]
+  - @trigger.dev/sdk@3.0.0-beta.41
+  - @trigger.dev/integration-kit@3.0.0-beta.41
+
+## 3.0.0-beta.40
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.40
+- @trigger.dev/sdk@3.0.0-beta.40
+
+## 3.0.0-beta.39
+
+### Patch Changes
+
+- @trigger.dev/integration-kit@3.0.0-beta.39
+- @trigger.dev/sdk@3.0.0-beta.39
+
+## 3.0.0-beta.38
+
+### Patch Changes
+
+- Updated dependencies [1b90ffbb8]
+- Updated dependencies [c405ae711]
+  - @trigger.dev/sdk@3.0.0-beta.38
+  - @trigger.dev/integration-kit@3.0.0-beta.38
+
 ## 3.0.0-beta.37
 
 ### Patch Changes

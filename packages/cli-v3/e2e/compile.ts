@@ -33,19 +33,9 @@ export async function compile(options: CompileOptions) {
   } = options;
   const configPath =
     options.resolvedConfig.status === "file" ? options.resolvedConfig.path : undefined;
-
-  // COPIED FROM compileProject()
-  // const compileSpinner = spinner();
-  // compileSpinner.start(`Building project in ${config.projectDir}`);
-
   const taskFiles = await gatherTaskFiles(config);
-  const workerFacade = readFileSync(
-    resolve("./dist/workers/prod/worker-facade.js"),
-    // join(cliRootPath(), "workers", "prod", "worker-facade.js"),
-    "utf-8"
-  );
+  const workerFacade = readFileSync(resolve("./dist/workers/prod/worker-facade.js"), "utf-8");
 
-  // const workerSetupPath = join(cliRootPath(), "workers", "prod", "worker-setup.js");
   const workerSetupPath = resolve("./dist/workers/prod/worker-setup.js");
 
   let workerContents = workerFacade
@@ -74,7 +64,6 @@ export async function compile(options: CompileOptions) {
   const result = await build({
     stdin: {
       contents: workerContents,
-      // resolveDir: process.cwd(),
       resolveDir: config.projectDir,
       sourcefile: "__entryPoint.ts",
     },
@@ -87,11 +76,7 @@ export async function compile(options: CompileOptions) {
     platform: "node",
     format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
     target: ["node18", "es2020"],
-    // outdir: "out",
     outdir: resolve(config.projectDir, "out"),
-    // banner: {
-    //   js: `process.on("uncaughtException", function(error, origin) { if (error instanceof Error) { process.send && process.send({ type: "EVENT", message: { type: "UNCAUGHT_EXCEPTION", payload: { error: { name: error.name, message: error.message, stack: error.stack }, origin }, version: "v1" } }); } else { process.send && process.send({ type: "EVENT", message: { type: "UNCAUGHT_EXCEPTION", payload: { error: { name: "Error", message: typeof error === "string" ? error : JSON.stringify(error) }, origin }, version: "v1" } }); } });`,
-    // },
     footer: {
       js: "process.exit();",
     },
@@ -112,14 +97,6 @@ export async function compile(options: CompileOptions) {
   });
 
   if (result.errors.length > 0) {
-    // compileSpinner.stop("Build failed, aborting deployment");
-
-    // span.setAttributes({
-    //   "build.workerErrors": result.errors.map(
-    //     (error) => `Error: ${error.text} at ${error.location?.file}`
-    //   ),
-    // });
-
     throw new Error("Build failed, aborting deployment");
   }
 
@@ -127,16 +104,11 @@ export async function compile(options: CompileOptions) {
     await writeJSONFile(join(options.outputMetafile, "worker.json"), result.metafile);
   }
 
-  const entryPointContents = readFileSync(
-    resolve("./dist/workers/prod/entry-point.js"),
-    // join(cliRootPath(), "workers", "prod", "entry-point.js"),
-    "utf-8"
-  );
+  const entryPointContents = readFileSync(resolve("./dist/workers/prod/entry-point.js"), "utf-8");
 
   const entryPointResult = await build({
     stdin: {
       contents: entryPointContents,
-      // resolveDir: process.cwd(),
       resolveDir: config.projectDir,
       sourcefile: "index.ts",
     },
@@ -150,7 +122,6 @@ export async function compile(options: CompileOptions) {
     packages: "external",
     format: "cjs", // This is needed to support opentelemetry instrumentation that uses module patching
     target: ["node18", "es2020"],
-    // outdir: "out",
     outdir: resolve(config.projectDir, "out"),
     define: {
       __PROJECT_CONFIG__: JSON.stringify(config),
@@ -161,14 +132,6 @@ export async function compile(options: CompileOptions) {
   });
 
   if (entryPointResult.errors.length > 0) {
-    // compileSpinner.stop("Build failed, aborting deployment");
-
-    // span.setAttributes({
-    //   "build.entryPointErrors": entryPointResult.errors.map(
-    //     (error) => `Error: ${error.text} at ${error.location?.file}`
-    //   ),
-    // });
-
     throw new Error("Build failed, aborting deployment");
   }
 
@@ -179,13 +142,9 @@ export async function compile(options: CompileOptions) {
     );
   }
 
-  // Create a tmp directory to store the build
-  // const tempDir = await createTempDir();
-
   logger.debug(`Writing compiled files to ${tempDir}`);
 
   // Get the metaOutput for the result build
-  // const metaOutput = result.metafile!.outputs[posix.join("out", "stdin.js")];
   const metaOutput =
     result.metafile!.outputs[
       posix.join("e2e", "fixtures", basename(config.projectDir), "out", "stdin.js")
@@ -194,8 +153,6 @@ export async function compile(options: CompileOptions) {
   invariant(metaOutput, "Meta output for the result build is missing");
 
   // Get the metaOutput for the entryPoint build
-  // const entryPointMetaOutput =
-  //       entryPointResult.metafile!.outputs[posix.join("out", "stdin.js")];
   const entryPointMetaOutput =
     entryPointResult.metafile!.outputs[
       posix.join("e2e", "fixtures", basename(config.projectDir), "out", "stdin.js")

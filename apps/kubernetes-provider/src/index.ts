@@ -1,12 +1,12 @@
 import * as k8s from "@kubernetes/client-node";
 import {
   ProviderShell,
-  SimpleLogger,
   TaskOperations,
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
   TaskOperationsRestoreOptions,
-} from "@trigger.dev/core-apps";
+} from "@trigger.dev/core-apps/provider";
+import { SimpleLogger } from "@trigger.dev/core-apps/logger";
 import {
   MachinePreset,
   PostStartCauses,
@@ -16,12 +16,20 @@ import {
 import { randomUUID } from "crypto";
 import { TaskMonitor } from "./taskMonitor";
 import { PodCleaner } from "./podCleaner";
+import { UptimeHeartbeat } from "./uptimeHeartbeat";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 const NODE_NAME = process.env.NODE_NAME || "local";
 const OTEL_EXPORTER_OTLP_ENDPOINT =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318";
+
 const POD_CLEANER_INTERVAL_SECONDS = Number(process.env.POD_CLEANER_INTERVAL_SECONDS || "300");
+
+const UPTIME_HEARTBEAT_URL = process.env.UPTIME_HEARTBEAT_URL;
+const UPTIME_INTERVAL_SECONDS = Number(process.env.UPTIME_INTERVAL_SECONDS || "60");
+const UPTIME_MAX_PENDING_RUNS = Number(process.env.UPTIME_MAX_PENDING_RUNS || "25");
+const UPTIME_MAX_PENDING_INDECES = Number(process.env.UPTIME_MAX_PENDING_INDECES || "10");
+const UPTIME_MAX_PENDING_ERRORS = Number(process.env.UPTIME_MAX_PENDING_ERRORS || "10");
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 logger.log(`running in ${RUNTIME_ENV} mode`);
@@ -529,27 +537,28 @@ provider.listen();
 
 const taskMonitor = new TaskMonitor({
   runtimeEnv: RUNTIME_ENV,
-  onIndexFailure: async (deploymentId, failureInfo) => {
-    logger.log("Indexing failed", { deploymentId, failureInfo });
+  onIndexFailure: async (deploymentId, details) => {
+    logger.log("Indexing failed", { deploymentId, details });
 
     try {
       provider.platformSocket.send("INDEXING_FAILED", {
         deploymentId,
         error: {
-          name: `Crashed with exit code ${failureInfo.exitCode}`,
-          message: failureInfo.reason,
-          stack: failureInfo.logs,
+          name: `Crashed with exit code ${details.exitCode}`,
+          message: details.reason,
+          stack: details.logs,
         },
+        overrideCompletion: details.overrideCompletion,
       });
     } catch (error) {
       logger.error(error);
     }
   },
-  onRunFailure: async (runId, failureInfo) => {
-    logger.log("Run failed:", { runId, failureInfo });
+  onRunFailure: async (runId, details) => {
+    logger.log("Run failed:", { runId, details });
 
     try {
-      provider.platformSocket.send("WORKER_CRASHED", { runId, ...failureInfo });
+      provider.platformSocket.send("WORKER_CRASHED", { runId, ...details });
     } catch (error) {
       logger.error(error);
     }
@@ -565,3 +574,19 @@ const podCleaner = new PodCleaner({
 });
 
 podCleaner.start();
+
+if (UPTIME_HEARTBEAT_URL) {
+  const uptimeHeartbeat = new UptimeHeartbeat({
+    runtimeEnv: RUNTIME_ENV,
+    namespace: "default",
+    intervalInSeconds: UPTIME_INTERVAL_SECONDS,
+    pingUrl: UPTIME_HEARTBEAT_URL,
+    maxPendingRuns: UPTIME_MAX_PENDING_RUNS,
+    maxPendingIndeces: UPTIME_MAX_PENDING_INDECES,
+    maxPendingErrors: UPTIME_MAX_PENDING_ERRORS,
+  });
+
+  uptimeHeartbeat.start();
+} else {
+  logger.log("Uptime heartbeat is disabled, set UPTIME_HEARTBEAT_URL to enable.");
+}

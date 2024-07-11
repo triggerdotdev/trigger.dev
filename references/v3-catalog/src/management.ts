@@ -5,12 +5,27 @@ import { firstScheduledTask } from "./trigger/scheduled";
 import { simpleChildTask } from "./trigger/subtasks";
 import { taskThatErrors } from "./trigger/retries";
 import { unfriendlyIdTask } from "./trigger/other";
+import { spamRateLimiter } from "./trigger/retries";
 
 dotenv.config();
+
+async function doSpamRateLimiter() {
+  // Trigger 10 runs
+  await spamRateLimiter.batchTrigger(
+    Array.from({ length: 10 }, (_, i) => ({ payload: { runId: "run_pxxs52j3geik6cj6j8piq" } }))
+  );
+}
+
+// doSpamRateLimiter().catch(console.error);
 
 async function doEnvVars() {
   configure({
     secretKey: process.env.TRIGGER_ACCESS_TOKEN,
+    requestOptions: {
+      retry: {
+        maxAttempts: 1,
+      },
+    },
   });
 
   const response1 = await envvars.upload("yubjwjsfkxnylobaqvqz", "dev", {
@@ -50,43 +65,6 @@ async function doEnvVars() {
   const deleteResponse = await envvars.del("yubjwjsfkxnylobaqvqz", "dev", "MY_ENV_VAR_CREATE");
 
   console.log("deleteResponse", deleteResponse);
-
-  const response2 = await envvars.upload("yubjwjsfkxnylobaqvqz", "dev", {
-    variables: createReadStream(".uploadable-env"),
-    override: true,
-  });
-
-  console.log("response2", response2);
-
-  const response3 = await envvars.upload("yubjwjsfkxnylobaqvqz", "prod", {
-    variables: createReadStream(".uploadable-env"),
-    override: true,
-  });
-
-  console.log("response3", response3);
-
-  const response4 = await envvars.upload("yubjwjsfkxnylobaqvqz", "prod", {
-    variables: await fetch(
-      "https://gist.githubusercontent.com/ericallam/7a1001c6b03986a74d0f8aad4fd890aa/raw/fe2bc4da82f3b17178d47f58ec1458af47af5035/.env"
-    ),
-    override: true,
-  });
-
-  console.log("response4", response4);
-
-  const response5 = await envvars.upload("yubjwjsfkxnylobaqvqz", "prod", {
-    variables: new File(["IM_A_FILE=GREAT_FOR_YOU"], ".env"),
-    override: true,
-  });
-
-  console.log("response5", response5);
-
-  const response6 = await envvars.upload("yubjwjsfkxnylobaqvqz", "prod", {
-    variables: Buffer.from("IN_BUFFER=TRUE"),
-    override: true,
-  });
-
-  console.log("response6", response6);
 }
 
 async function doRuns() {
@@ -117,11 +95,18 @@ async function doRuns() {
 async function doListRuns() {
   let pageCount = 0;
 
-  let page = await runs.list({
-    limit: 100,
-  });
+  let page = await runs.list(
+    {
+      limit: 100,
+    },
+    {
+      retry: {
+        maxAttempts: 1,
+      },
+    }
+  );
 
-  console.log(`run page #${++pageCount}`);
+  console.log(`run page #${++pageCount}, with ${page.data.length} runs`);
 
   // Convenience methods are provided for manually paginating:
   while (page.hasNextPage()) {

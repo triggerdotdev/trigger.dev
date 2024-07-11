@@ -1,16 +1,17 @@
 import {
   AcademicCapIcon,
-  ArrowRightIcon,
   ArrowRightOnRectangleIcon,
   BeakerIcon,
   BellAlertIcon,
   ChartBarIcon,
   ClockIcon,
+  CreditCardIcon,
   CursorArrowRaysIcon,
   IdentificationIcon,
   KeyIcon,
   ServerStackIcon,
   ShieldCheckIcon,
+  SignalIcon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
@@ -44,6 +45,7 @@ import {
   projectSetupPath,
   projectTriggersPath,
   v3ApiKeysPath,
+  v3BillingPath,
   v3DeploymentsPath,
   v3EnvironmentVariablesPath,
   v3ProjectAlertsPath,
@@ -52,13 +54,14 @@ import {
   v3RunsPath,
   v3SchedulesPath,
   v3TestPath,
+  v3UsagePath,
 } from "~/utils/pathBuilder";
 import { Feedback } from "../Feedback";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { LogoIcon } from "../LogoIcon";
 import { StepContentContainer } from "../StepContentContainer";
 import { UserProfilePhoto } from "../UserProfilePhoto";
-import { FreePlanUsage } from "../billing/FreePlanUsage";
+import { FreePlanUsage } from "../billing/v2/FreePlanUsage";
 import { Badge } from "../primitives/Badge";
 import { Button } from "../primitives/Buttons";
 import { Callout } from "../primitives/Callout";
@@ -75,6 +78,7 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
+import { TextLink } from "../primitives/TextLink";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
 
@@ -100,8 +104,8 @@ type SideMenuProps = {
 export function SideMenu({ user, project, organization, organizations }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
-  const { isManagedCloud } = useFeatures();
   const currentPlan = useCurrentPlan();
+  const { isManagedCloud } = useFeatures();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -173,16 +177,36 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               name="Team"
               icon={UserGroupIcon}
               to={organizationTeamPath(organization)}
-              iconColor="text-sky-500"
+              iconColor="text-amber-500"
               data-action="team"
             />
-            <SideMenuItem
-              name={isManagedCloud ? "Usage & Billing" : "Usage"}
-              icon={ChartBarIcon}
-              to={organizationBillingPath(organization)}
-              iconColor="text-green-600"
-              data-action="usage & billing"
-            />
+            {organization.projects.some((proj) => proj.version === "V3") && isManagedCloud && (
+              <>
+                <SideMenuItem
+                  name="Usage"
+                  icon={ChartBarIcon}
+                  to={v3UsagePath(organization)}
+                  iconColor="text-green-600"
+                  data-action="usage"
+                />
+                <SideMenuItem
+                  name="Billing"
+                  icon={CreditCardIcon}
+                  to={v3BillingPath(organization)}
+                  iconColor="text-blue-600"
+                  data-action="billing"
+                />
+              </>
+            )}
+            {organization.projects.some((proj) => proj.version === "V2") && (
+              <SideMenuItem
+                name="Usage (v2)"
+                icon={ChartBarIcon}
+                to={organizationBillingPath(organization)}
+                iconColor="text-green-600"
+                data-action="usage & billing"
+              />
+            )}
             <SideMenuItem
               name="Organization settings"
               icon="settings"
@@ -193,22 +217,19 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
           </div>
         </div>
         <div className="m-2">
-          {project.version === "V2" ? (
-            <Callout variant={"info"}>This is a v2 project</Callout>
-          ) : (
-            <Callout variant={"idea"}>This is a v3 project in Developer Preview</Callout>
+          {project.version === "V2" && (
+            <Callout variant={"info"}>
+              <Paragraph variant="small">
+                This is a v2 project.{" "}
+                <TextLink href="https://trigger.dev/docs/v3/upgrading-from-v2">
+                  Upgrade to v3
+                </TextLink>
+              </Paragraph>
+            </Callout>
           )}
         </div>
         <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
-          {project.version === "V2" && (
-            <SideMenuItem
-              to="https://trigger.dev/v3-early-access"
-              target="_blank"
-              name="Request access to v3"
-              icon={V3Icon}
-            />
-          )}
-          {currentPlan?.subscription?.isPaying === true && (
+          {currentPlan?.v3Subscription?.plan?.limits.support === "slack" && (
             <Dialog>
               <DialogTrigger asChild>
                 <Button
@@ -263,23 +284,13 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             data-action="join our discord"
             target="_blank"
           />
-          {project.version === "V2" ? (
-            <SideMenuItem
-              name="Documentation"
-              icon="docs"
-              to="https://trigger.dev/docs"
-              data-action="documentation"
-              target="_blank"
-            />
-          ) : (
-            <SideMenuItem
-              name="Documentation (v3)"
-              icon="docs"
-              to="https://trigger.dev/docs/v3"
-              data-action="documentation"
-              target="_blank"
-            />
-          )}
+          <SideMenuItem
+            name="Documentation"
+            icon="docs"
+            to="https://trigger.dev/docs"
+            data-action="documentation"
+            target="_blank"
+          />
           <SideMenuItem
             name="Changelog"
             icon="star"
@@ -287,41 +298,31 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
             data-action="changelog"
             target="_blank"
           />
-          {project.version === "V2" ? (
-            <Feedback
-              button={
-                <Button
-                  variant="small-menu-item"
-                  LeadingIcon="log"
-                  data-action="help & feedback"
-                  fullWidth
-                  textAlignLeft
-                >
-                  Help & Feedback
-                </Button>
-              }
-            />
-          ) : (
-            <Feedback
-              defaultValue="developer preview"
-              button={
-                <Button
-                  variant="small-menu-item"
-                  LeadingIcon="log"
-                  leadingIconClassName="text-primary"
-                  data-action="help & feedback"
-                  fullWidth
-                  textAlignLeft
-                >
-                  <span className="text-primary">Give feedback on v3</span>
-                </Button>
-              }
-            />
-          )}
-          {currentPlan && !currentPlan.subscription?.isPaying && currentPlan.usage.runCountCap && (
+          <SideMenuItem
+            name="Status"
+            icon={SignalIcon}
+            to="https://status.trigger.dev/"
+            data-action="status"
+            target="_blank"
+          />
+          <Feedback
+            button={
+              <Button
+                variant="small-menu-item"
+                LeadingIcon="log"
+                leadingIconClassName="text-primary"
+                data-action="help & feedback"
+                fullWidth
+                textAlignLeft
+              >
+                <span className="text-primary">Help & Feedback</span>
+              </Button>
+            }
+          />
+          {currentPlan?.v3Subscription?.isPaying === false && (
             <FreePlanUsage
-              to={organizationBillingPath(organization)}
-              percentage={currentPlan.usage.currentRunCount / currentPlan.usage.runCountCap}
+              to={v3BillingPath(organization)}
+              percentage={currentPlan.v3Usage.usagePercentage}
             />
           )}
         </div>
@@ -474,7 +475,7 @@ function V2ProjectSideMenu({
 }) {
   return (
     <>
-      <SideMenuHeader title={"Project"}>
+      <SideMenuHeader title={"Project (v2)"}>
         <PopoverMenuItem
           to={projectSetupPath(organization, project)}
           title="Framework setup"
@@ -546,7 +547,7 @@ function V3ProjectSideMenu({
 
   return (
     <>
-      <SideMenuHeader title={"Project (v3)"} />
+      <SideMenuHeader title={"Project"} />
       <SideMenuItem
         name="Tasks"
         icon={TaskIcon}
@@ -613,17 +614,5 @@ function V3ProjectSideMenu({
         data-action="project-settings"
       />
     </>
-  );
-}
-
-function V3Icon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="16" height="16" rx="8" fill="#A8FF53" />
-      <path
-        d="M7.7488 6.17L5.5818 12H3.6678L1.5008 6.17H3.2058L4.6248 10.339L6.0328 6.17H7.7488ZM11.0527 7.292C11.6357 7.303 12.2297 7.006 12.2297 6.28C12.2297 5.774 11.7787 5.433 11.0527 5.433C10.4147 5.433 9.98567 5.741 9.91967 6.214L8.22567 6.126C8.36867 4.861 9.51267 4.014 11.0857 4.014C12.8457 4.014 13.9567 4.806 13.9567 6.049C13.9567 6.951 13.3847 7.534 12.3067 7.776C13.5387 8.04 14.2207 8.777 14.2207 9.855C14.2207 11.274 13.0107 12.176 11.0857 12.176C9.32567 12.176 8.12667 11.197 8.04967 9.712L9.75467 9.646C9.83167 10.405 10.4917 10.757 11.0967 10.757C11.8007 10.757 12.4937 10.394 12.4937 9.591C12.4937 8.81 11.7897 8.425 11.0527 8.447L10.3817 8.458V7.281L11.0527 7.292Z"
-        fill="#15171A"
-      />
-    </svg>
   );
 }

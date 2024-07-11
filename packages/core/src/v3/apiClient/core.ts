@@ -1,10 +1,13 @@
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { ApiConnectionError, ApiError } from "./errors";
 import { RetryOptions } from "../schemas";
 import { calculateNextRetryDelay } from "../utils/retries";
-import { FormDataEncoder } from "form-data-encoder";
-import { Readable } from "node:stream";
+import { ApiConnectionError, ApiError } from "./errors";
+
+import { Attributes, Span } from "@opentelemetry/api";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes";
+import { TriggerTracer } from "../tracer";
+import { accessoryAttributes } from "../utils/styleAttributes";
 import {
   CursorPage,
   CursorPageParams,
@@ -24,6 +27,30 @@ export const defaultRetryOptions = {
 
 export type ZodFetchOptions = {
   retry?: RetryOptions;
+  tracer?: TriggerTracer;
+  name?: string;
+  attributes?: Attributes;
+  icon?: string;
+  onResponseBody?: (body: unknown, span: Span) => void;
+};
+
+export type ApiRequestOptions = Pick<ZodFetchOptions, "retry">;
+type KeysEnum<T> = { [P in keyof Required<T>]: true };
+
+// This is required so that we can determine if a given object matches the ApiRequestOptions
+// type at runtime. While this requires duplication, it is enforced by the TypeScript
+// compiler such that any missing / extraneous keys will cause an error.
+const requestOptionsKeys: KeysEnum<ApiRequestOptions> = {
+  retry: true,
+};
+
+export const isRequestOptions = (obj: unknown): obj is ApiRequestOptions => {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    !isEmptyObj(obj) &&
+    Object.keys(obj).every((k) => hasOwn(requestOptionsKeys, k))
+  );
 };
 
 interface FetchCursorPageParams extends CursorPageParams {
@@ -114,59 +141,6 @@ export function zodfetchOffsetLimitPage<TItemSchema extends z.ZodTypeAny>(
   return new OffsetLimitPagePromise(fetchResult, schema, url, params, requestInit, options);
 }
 
-export function zodupload<
-  TResponseBodySchema extends z.ZodTypeAny,
-  TBody = Record<string, unknown>,
->(
-  schema: TResponseBodySchema,
-  url: string,
-  body: TBody,
-  requestInit?: RequestInit,
-  options?: ZodFetchOptions
-): ApiPromise<z.output<TResponseBodySchema>> {
-  const finalRequestInit = createMultipartFormRequestInit(body, requestInit);
-
-  return new ApiPromise(_doZodFetch(schema, url, finalRequestInit, options));
-}
-
-async function createMultipartFormRequestInit<TBody = Record<string, unknown>>(
-  body: TBody,
-  requestInit?: RequestInit
-): Promise<RequestInit> {
-  const form = await createForm(body);
-  const encoder = new FormDataEncoder(form);
-
-  const finalHeaders: Record<string, string> = {};
-
-  for (const [key, value] of Object.entries(requestInit?.headers || {})) {
-    finalHeaders[key] = value as string;
-  }
-
-  for (const [key, value] of Object.entries(encoder.headers)) {
-    finalHeaders[key] = value;
-  }
-
-  finalHeaders["Content-Length"] = String(encoder.contentLength);
-
-  const finalRequestInit: RequestInit = {
-    ...requestInit,
-    headers: finalHeaders,
-    body: Readable.from(encoder) as any,
-    // @ts-expect-error
-    duplex: "half",
-  };
-
-  return finalRequestInit;
-}
-
-const createForm = async <T = Record<string, unknown>>(body: T | undefined): Promise<FormData> => {
-  const form = new FormData();
-  await Promise.all(
-    Object.entries(body || {}).map(([key, value]) => addFormValue(form, key, value))
-  );
-  return form;
-};
-
 type ZodFetchResult<T> = {
   data: T;
   response: Response;
@@ -174,17 +148,64 @@ type ZodFetchResult<T> = {
 
 type PromiseOrValue<T> = T | Promise<T>;
 
+async function traceZodFetch<T>(
+  params: {
+    url: string;
+    requestInit?: RequestInit;
+    options?: ZodFetchOptions;
+  },
+  callback: (span?: Span) => Promise<T>
+): Promise<T> {
+  if (!params.options?.tracer) {
+    return callback();
+  }
+
+  const url = new URL(params.url);
+  const method = params.requestInit?.method ?? "GET";
+  const name = params.options.name ?? `${method} ${url.pathname}`;
+
+  return await params.options.tracer.startActiveSpan(
+    name,
+    async (span) => {
+      return await callback(span);
+    },
+    {
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: params.options?.icon ?? "api",
+        ...params.options.attributes,
+      },
+    }
+  );
+}
+
 async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
   schema: TResponseBodySchema,
   url: string,
   requestInit?: PromiseOrValue<RequestInit>,
+  options?: ZodFetchOptions
+): Promise<ZodFetchResult<z.output<TResponseBodySchema>>> {
+  const $requestInit = await requestInit;
+
+  return traceZodFetch({ url, requestInit: $requestInit, options }, async (span) => {
+    const result = await _doZodFetchWithRetries(schema, url, $requestInit, options);
+
+    if (options?.onResponseBody && span) {
+      options.onResponseBody(result.data, span);
+    }
+
+    return result;
+  });
+}
+
+async function _doZodFetchWithRetries<TResponseBodySchema extends z.ZodTypeAny>(
+  schema: TResponseBodySchema,
+  url: string,
+  requestInit?: RequestInit,
   options?: ZodFetchOptions,
   attempt = 1
 ): Promise<ZodFetchResult<z.output<TResponseBodySchema>>> {
   try {
-    const $requestInit = await requestInit;
-
-    const response = await fetch(url, requestInitWithCache($requestInit));
+    const response = await fetch(url, requestInitWithCache(requestInit));
 
     const responseHeaders = createResponseHeaders(response.headers);
 
@@ -192,9 +213,9 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
       const retryResult = shouldRetry(response, attempt, options?.retry);
 
       if (retryResult.retry) {
-        await new Promise((resolve) => setTimeout(resolve, retryResult.delay));
+        await waitForRetry(url, attempt + 1, retryResult.delay, options, requestInit, response);
 
-        return await _doZodFetch(schema, url, requestInit, options, attempt + 1);
+        return await _doZodFetchWithRetries(schema, url, requestInit, options, attempt + 1);
       } else {
         const errText = await response.text().catch((e) => castToError(e).message);
         const errJSON = safeJsonParse(errText);
@@ -223,9 +244,9 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
       const delay = calculateNextRetryDelay(retry, attempt);
 
       if (delay) {
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await waitForRetry(url, attempt + 1, delay, options, requestInit);
 
-        return await _doZodFetch(schema, url, requestInit, options, attempt + 1);
+        return await _doZodFetchWithRetries(schema, url, requestInit, options, attempt + 1);
       }
     }
 
@@ -278,7 +299,27 @@ function shouldRetry(
   if (response.status === 409) return shouldRetryForOptions();
 
   // Retry on rate limits.
-  if (response.status === 429) return shouldRetryForOptions();
+  if (response.status === 429) {
+    if (
+      attempt >= (typeof retryOptions?.maxAttempts === "number" ? retryOptions?.maxAttempts : 3)
+    ) {
+      return { retry: false };
+    }
+
+    // x-ratelimit-reset is the unix timestamp in milliseconds when the rate limit will reset.
+    const resetAtUnixEpochMs = response.headers.get("x-ratelimit-reset");
+
+    if (resetAtUnixEpochMs) {
+      const resetAtUnixEpoch = parseInt(resetAtUnixEpochMs, 10);
+      const delay = resetAtUnixEpoch - Date.now() + Math.floor(Math.random() * 1000);
+
+      if (delay > 0) {
+        return { retry: true, delay };
+      }
+    }
+
+    return shouldRetryForOptions();
+  }
 
   // Retry internal errors.
   if (response.status >= 500) return shouldRetryForOptions();
@@ -323,214 +364,6 @@ function requestInitWithCache(requestInit?: RequestInit): RequestInit {
     return requestInit ?? {};
   }
 }
-
-const addFormValue = async (form: FormData, key: string, value: unknown): Promise<void> => {
-  if (value === undefined) return;
-  if (value == null) {
-    throw new TypeError(
-      `Received null for "${key}"; to pass null in FormData, you must use the string 'null'`
-    );
-  }
-
-  // TODO: make nested formats configurable
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    form.append(key, String(value));
-  } else if (
-    isUploadable(value) ||
-    isBlobLike(value) ||
-    value instanceof Buffer ||
-    value instanceof ArrayBuffer
-  ) {
-    const file = await toFile(value);
-    form.append(key, file as File);
-  } else if (Array.isArray(value)) {
-    await Promise.all(value.map((entry) => addFormValue(form, key + "[]", entry)));
-  } else if (typeof value === "object") {
-    await Promise.all(
-      Object.entries(value).map(([name, prop]) => addFormValue(form, `${key}[${name}]`, prop))
-    );
-  } else {
-    throw new TypeError(
-      `Invalid value given to form, expected a string, number, boolean, object, Array, File or Blob but got ${value} instead`
-    );
-  }
-};
-
-export type ToFileInput = Uploadable | Exclude<BlobLikePart, string> | AsyncIterable<BlobLikePart>;
-
-/**
- * Helper for creating a {@link File} to pass to an SDK upload method from a variety of different data formats
- * @param value the raw content of the file.  Can be an {@link Uploadable}, {@link BlobLikePart}, or {@link AsyncIterable} of {@link BlobLikePart}s
- * @param {string=} name the name of the file. If omitted, toFile will try to determine a file name from bits if possible
- * @param {Object=} options additional properties
- * @param {string=} options.type the MIME type of the content
- * @param {number=} options.lastModified the last modified timestamp
- * @returns a {@link File} with the given properties
- */
-export async function toFile(
-  value: ToFileInput | PromiseLike<ToFileInput>,
-  name?: string | null | undefined,
-  options?: FilePropertyBag | undefined
-): Promise<FileLike> {
-  // If it's a promise, resolve it.
-  value = await value;
-
-  // Use the file's options if there isn't one provided
-  options ??= isFileLike(value) ? { lastModified: value.lastModified, type: value.type } : {};
-
-  if (isResponseLike(value)) {
-    const blob = await value.blob();
-    name ||= new URL(value.url).pathname.split(/[\\/]/).pop() ?? "unknown_file";
-
-    return new File([blob as any], name, options);
-  }
-
-  const bits = await getBytes(value);
-
-  name ||= getName(value) ?? "unknown_file";
-
-  if (!options.type) {
-    const type = (bits[0] as any)?.type;
-    if (typeof type === "string") {
-      options = { ...options, type };
-    }
-  }
-
-  return new File(bits, name, options);
-}
-
-function getName(value: any): string | undefined {
-  return (
-    getStringFromMaybeBuffer(value.name) ||
-    getStringFromMaybeBuffer(value.filename) ||
-    // For fs.ReadStream
-    getStringFromMaybeBuffer(value.path)?.split(/[\\/]/).pop()
-  );
-}
-
-const getStringFromMaybeBuffer = (x: string | Buffer | unknown): string | undefined => {
-  if (typeof x === "string") return x;
-  if (typeof Buffer !== "undefined" && x instanceof Buffer) return String(x);
-  return undefined;
-};
-
-async function getBytes(value: ToFileInput): Promise<Array<BlobPart>> {
-  let parts: Array<BlobPart> = [];
-  if (
-    typeof value === "string" ||
-    ArrayBuffer.isView(value) || // includes Uint8Array, Buffer, etc.
-    value instanceof ArrayBuffer
-  ) {
-    parts.push(value);
-  } else if (isBlobLike(value)) {
-    parts.push(await value.arrayBuffer());
-  } else if (
-    isAsyncIterableIterator(value) // includes Readable, ReadableStream, etc.
-  ) {
-    for await (const chunk of value) {
-      parts.push(chunk as BlobPart); // TODO, consider validating?
-    }
-  } else {
-    throw new Error(
-      `Unexpected data type: ${typeof value}; constructor: ${value?.constructor
-        ?.name}; props: ${propsForError(value)}`
-    );
-  }
-
-  return parts;
-}
-
-function propsForError(value: any): string {
-  const props = Object.getOwnPropertyNames(value);
-  return `[${props.map((p) => `"${p}"`).join(", ")}]`;
-}
-
-const isAsyncIterableIterator = (value: any): value is AsyncIterableIterator<unknown> =>
-  value != null && typeof value === "object" && typeof value[Symbol.asyncIterator] === "function";
-
-/**
- * Intended to match web.Blob, node.Blob, node-fetch.Blob, etc.
- */
-export interface BlobLike {
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob/size) */
-  readonly size: number;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob/type) */
-  readonly type: string;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob/text) */
-  text(): Promise<string>;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob/slice) */
-  slice(start?: number, end?: number): BlobLike;
-  // unfortunately @types/node-fetch@^2.6.4 doesn't type the arrayBuffer method
-}
-
-/**
- * Intended to match web.File, node.File, node-fetch.File, etc.
- */
-export interface FileLike extends BlobLike {
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/File/lastModified) */
-  readonly lastModified: number;
-  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/File/name) */
-  readonly name: string;
-}
-
-/**
- * Intended to match web.Response, node.Response, node-fetch.Response, etc.
- */
-export interface ResponseLike {
-  url: string;
-  blob(): Promise<BlobLike>;
-}
-
-export type Uploadable = FileLike | ResponseLike | Readable;
-
-export const isResponseLike = (value: any): value is ResponseLike =>
-  value != null &&
-  typeof value === "object" &&
-  typeof value.url === "string" &&
-  typeof value.blob === "function";
-
-export const isFileLike = (value: any): value is FileLike =>
-  value != null &&
-  typeof value === "object" &&
-  typeof value.name === "string" &&
-  typeof value.lastModified === "number" &&
-  isBlobLike(value);
-
-/**
- * The BlobLike type omits arrayBuffer() because @types/node-fetch@^2.6.4 lacks it; but this check
- * adds the arrayBuffer() method type because it is available and used at runtime
- */
-export const isBlobLike = (
-  value: any
-): value is BlobLike & { arrayBuffer(): Promise<ArrayBuffer> } =>
-  value != null &&
-  typeof value === "object" &&
-  typeof value.size === "number" &&
-  typeof value.type === "string" &&
-  typeof value.text === "function" &&
-  typeof value.slice === "function" &&
-  typeof value.arrayBuffer === "function";
-
-export const isFsReadStream = (value: any): value is Readable => value instanceof Readable;
-
-export const isUploadable = (value: any): value is Uploadable => {
-  return isFileLike(value) || isResponseLike(value) || isFsReadStream(value);
-};
-
-export type BlobLikePart =
-  | string
-  | ArrayBuffer
-  | ArrayBufferView
-  | BlobLike
-  | Uint8Array
-  | DataView;
-
-export const isRecordLike = (value: any): value is Record<string, string> =>
-  value != null &&
-  typeof value === "object" &&
-  !Array.isArray(value) &&
-  Object.keys(value).length > 0 &&
-  Object.keys(value).every((key) => typeof key === "string" && typeof value[key] === "string");
 
 /**
  * A subclass of `Promise` providing additional helper methods
@@ -684,4 +517,52 @@ export class OffsetLimitPagePromise<TItemSchema extends z.ZodTypeAny>
       yield item;
     }
   }
+}
+
+async function waitForRetry(
+  url: string,
+  attempt: number,
+  delay: number,
+  options?: ZodFetchOptions,
+  requestInit?: RequestInit,
+  response?: Response
+): Promise<void> {
+  if (options?.tracer) {
+    const method = requestInit?.method ?? "GET";
+
+    return options.tracer.startActiveSpan(
+      response ? `wait after ${response.status}` : `wait after error`,
+      async (span) => {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "wait",
+          ...accessoryAttributes({
+            items: [
+              {
+                text: `retrying ${options?.name ?? method.toUpperCase()} in ${delay}ms`,
+                variant: "normal",
+              },
+            ],
+            style: "codepath",
+          }),
+        },
+      }
+    );
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, delay));
+}
+
+// https://stackoverflow.com/a/34491287
+export function isEmptyObj(obj: Object | null | undefined): boolean {
+  if (!obj) return true;
+  for (const _k in obj) return false;
+  return true;
+}
+
+// https://eslint.org/docs/latest/rules/no-prototype-builtins
+export function hasOwn(obj: Object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
 }

@@ -16,6 +16,7 @@ export class ApiError extends Error {
     headers: APIHeaders | undefined
   ) {
     super(`${ApiError.makeMessage(status, error, message)}`);
+    this.name = "TriggerApiError";
     this.status = status;
     this.headers = headers;
 
@@ -132,6 +133,22 @@ export class UnprocessableEntityError extends ApiError {
 
 export class RateLimitError extends ApiError {
   override readonly status: 429 = 429;
+
+  get millisecondsUntilReset(): number | undefined {
+    // x-ratelimit-reset is the unix timestamp in milliseconds when the rate limit will reset.
+    const resetAtUnixEpochMs = (this.headers ?? {})["x-ratelimit-reset"];
+
+    if (typeof resetAtUnixEpochMs === "string") {
+      const resetAtUnixEpoch = parseInt(resetAtUnixEpochMs, 10);
+
+      if (isNaN(resetAtUnixEpoch)) {
+        return;
+      }
+
+      // Add between 0 and 2000ms to the reset time to add jitter
+      return Math.max(resetAtUnixEpoch - Date.now() + Math.floor(Math.random() * 2000), 0);
+    }
+  }
 }
 
 export class InternalServerError extends ApiError {}

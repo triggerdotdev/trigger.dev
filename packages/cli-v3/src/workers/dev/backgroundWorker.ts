@@ -23,7 +23,6 @@ import dotenv from "dotenv";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
 import { dirname, resolve } from "node:path";
-import terminalLink from "terminal-link";
 import {
   chalkError,
   chalkGrey,
@@ -33,6 +32,7 @@ import {
   chalkTask,
   chalkWarning,
   chalkWorker,
+  cliLink,
   prettyPrintDate,
 } from "../../utilities/cliOutput.js";
 import { safeDeleteFileSync } from "../../utilities/fileSystem.js";
@@ -45,6 +45,7 @@ import {
   TaskMetadataParseError,
   UncaughtExceptionError,
   UnexpectedExitError,
+  getFriendlyErrorMessage,
 } from "../common/errors.js";
 import { CliApiClient } from "../../apiClient.js";
 
@@ -373,7 +374,7 @@ export class BackgroundWorker {
         resolved = true;
         child.kill();
         reject(new Error("Worker timed out"));
-      }, 5000);
+      }, 20_000);
 
       child.on("message", async (msg: any) => {
         const message = this._handler.parseMessage(msg);
@@ -605,7 +606,7 @@ export class BackgroundWorker {
 
     const pipe = chalkGrey("|");
     const bullet = chalkGrey("○");
-    const link = chalkLink(terminalLink("View logs", logsUrl));
+    const link = chalkLink(cliLink("View logs", logsUrl));
     let timestampPrefix = chalkGrey(prettyPrintDate(payload.execution.attempt.startedAt));
     const workerPrefix = chalkWorker(this.metadata.version);
     const taskPrefix = chalkTask(execution.task.id);
@@ -723,6 +724,8 @@ export class BackgroundWorker {
           error: {
             type: "INTERNAL_ERROR",
             code: TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE,
+            message: getFriendlyErrorMessage(e.code, e.signal, e.stderr),
+            stackTrace: e.stderr,
           },
         };
       }
@@ -782,6 +785,7 @@ class TaskRunProcess {
   private _currentExecution: TaskRunExecution | undefined;
   private _isBeingKilled: boolean = false;
   private _isBeingCancelled: boolean = false;
+  private _stderr: Array<string> = [];
   /**
    * @deprecated use onTaskRunHeartbeat instead
    */
@@ -1009,7 +1013,13 @@ class TaskRunProcess {
         } else if (this._isBeingKilled) {
           rejecter(new CleanupProcessError());
         } else {
-          rejecter(new UnexpectedExitError(code ?? -1));
+          rejecter(
+            new UnexpectedExitError(
+              code ?? -1,
+              signal,
+              this._stderr.length ? this._stderr.join("\n") : undefined
+            )
+          );
         }
       }
     }
@@ -1048,9 +1058,16 @@ class TaskRunProcess {
       `${this._currentExecution.run.id}.${this._currentExecution.attempt.number}`
     );
 
+    const errorLine = data.toString();
+
     logger.log(
-      `${chalkError("○")} ${chalkGrey(prettyPrintDate(new Date()))} ${runId} ${data.toString()}`
+      `${chalkError("○")} ${chalkGrey(prettyPrintDate(new Date()))} ${runId} ${errorLine}`
     );
+
+    if (this._stderr.length > 100) {
+      this._stderr.shift();
+    }
+    this._stderr.push(errorLine);
   }
 
   #kill() {

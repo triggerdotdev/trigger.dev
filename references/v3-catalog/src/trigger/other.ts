@@ -82,3 +82,43 @@ export const unfriendlyIdTask = task({
     console.log("Hello world");
   },
 });
+
+export const oomTask = task({
+  id: "oom-task",
+  machine: {
+    preset: "micro",
+  },
+  run: async () => {
+    logger.info("running out of memory below this line");
+
+    let a = "a";
+
+    try {
+      while (true) {
+        a += a;
+      }
+    } catch (error) {
+      logger.error(error instanceof Error ? error.message : "Unknown error", { error });
+
+      let b = [];
+      while (true) {
+        b.push(a.replace(/a/g, "b"));
+      }
+    }
+  },
+});
+
+export const returnZeroCharacters = task({
+  id: "return-zero-characters",
+  run: async (payload: { forceError?: boolean }) => {
+    if (payload.forceError) {
+      throw new Error("All zeros: \u0000\x00\0");
+    }
+
+    return {
+      unicode: "\u0000",
+      hex: "\x00",
+      octal: "\0",
+    };
+  },
+});

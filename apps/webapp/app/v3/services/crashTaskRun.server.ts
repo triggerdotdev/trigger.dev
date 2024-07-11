@@ -1,27 +1,11 @@
-import {
-  TaskRun,
-  TaskRunAttempt,
-  TaskRunAttemptStatus,
-  TaskRunStatus,
-} from "@trigger.dev/database";
+import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
 import { eventRepository } from "../eventRepository.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
-
-export const CRASHABLE_RUN_STATUSES: Array<TaskRunStatus> = [
-  "PENDING",
-  "WAITING_FOR_DEPLOY",
-  "EXECUTING",
-  "PAUSED",
-  "WAITING_TO_RESUME",
-  "PAUSED",
-  "RETRYING_AFTER_FAILURE",
-];
-
-const CRASHABLE_ATTEMPT_STATUSES: Array<TaskRunAttemptStatus> = ["EXECUTING", "PAUSED", "PENDING"];
+import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus";
 
 export type CrashTaskRunServiceOptions = {
   reason?: string;
@@ -29,6 +13,7 @@ export type CrashTaskRunServiceOptions = {
   logs?: string;
   crashAttempts?: boolean;
   crashedAt?: Date;
+  overrideCompletion?: boolean;
 };
 
 export class CrashTaskRunService extends BaseService {
@@ -52,7 +37,8 @@ export class CrashTaskRunService extends BaseService {
     }
 
     // Make sure the task run is in a crashable state
-    if (!CRASHABLE_RUN_STATUSES.includes(taskRun.status)) {
+    if (!opts.overrideCompletion && !isCrashableRunStatus(taskRun.status)) {
+      logger.error("Task run is not in a crashable state", { runId, status: taskRun.status });
       return;
     }
 
@@ -89,9 +75,12 @@ export class CrashTaskRunService extends BaseService {
       },
     });
 
-    const inProgressEvents = await eventRepository.queryIncompleteEvents({
-      runId: taskRun.friendlyId,
-    });
+    const inProgressEvents = await eventRepository.queryIncompleteEvents(
+      {
+        runId: taskRun.friendlyId,
+      },
+      options?.overrideCompletion
+    );
 
     logger.debug("Crashing in-progress events", {
       inProgressEvents: inProgressEvents.map((event) => event.id),

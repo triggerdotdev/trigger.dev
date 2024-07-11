@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/eslint-plugin",
-  "version": "3.0.0-beta.37",
+  "version": "3.0.0-beta.48",
   "description": "ESLint plugin with trigger.dev best practices",
   "keywords": [
     "eslint",
@@ -18,9 +18,13 @@
     "update:eslint-docs": "eslint-doc-generator"
   },
   "dependencies": {
-    "requireindex": "^1.2.0"
+    "requireindex": "^1.2.0",
+    "tsconfig-paths": "^4.2.0"
   },
   "devDependencies": {
+    "@babel/parser": "^7.24.7",
+    "@babel/traverse": "^7.24.7",
+    "@types/babel__traverse": "^7.20.6",
     "eslint": "^8.19.0",
     "eslint-doc-generator": "^1.0.0",
     "eslint-plugin-eslint-plugin": "^5.0.0",

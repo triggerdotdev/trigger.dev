@@ -10,6 +10,7 @@ import { marqs } from "~/v3/marqs/index.server";
 import { logger } from "~/services/logger.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
+import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 
 export class CreateDeployedBackgroundWorkerService extends BaseService {
   public async call(
@@ -101,6 +102,7 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
 
       await ExecuteTasksWaitingForDeployService.enqueue(backgroundWorker.id, this._prisma);
       await PerformDeploymentAlertsService.enqueue(deployment.id, this._prisma);
+      await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
 
       return backgroundWorker;
     });

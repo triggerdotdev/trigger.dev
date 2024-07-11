@@ -1,13 +1,13 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import {
-  ArrowUpRightIcon,
   BellAlertIcon,
   BellSlashIcon,
   BookOpenIcon,
   EnvelopeIcon,
   GlobeAltIcon,
   LockClosedIcon,
+  LockOpenIcon,
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
@@ -23,7 +23,8 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DetailCell } from "~/components/primitives/DetailCell";
-import { Header2 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -56,6 +57,7 @@ import { cn } from "~/utils/cn";
 import {
   ProjectParamSchema,
   docsPath,
+  v3BillingPath,
   v3NewProjectAlertPath,
   v3ProjectAlertsPath,
 } from "~/utils/pathBuilder";
@@ -147,9 +149,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { alertChannels } = useTypedLoaderData<typeof loader>();
+  const { alertChannels, limits } = useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
+
+  const requiresUpgrade = limits.used >= limits.limit;
 
   return (
     <PageContainer>
@@ -167,7 +171,7 @@ export default function Page() {
       </NavBar>
       <PageBody>
         <div className={cn("flex h-full flex-col gap-3")}>
-          {alertChannels.length > 0 && alertChannels.length < 10 && (
+          {alertChannels.length > 0 && !requiresUpgrade && (
             <div className="flex items-end justify-between">
               <Header2 className="">Project alerts</Header2>
               <LinkButton
@@ -257,21 +261,40 @@ export default function Page() {
               )}
             </TableBody>
           </Table>
-          <div className="mt-4">
-            <Header2 className="mb-1">Platform alerts</Header2>
-            <Paragraph variant="small" className="mb-4">
-              Subscribe to get email notifications when Trigger.dev creates, updates or resolves a
-              platform incident.
-            </Paragraph>
-            <LinkButton
-              variant="tertiary/medium"
-              TrailingIcon={ArrowUpRightIcon}
-              to="https://status.trigger.dev/"
-              target="_blank"
-              className="inline-flex"
-            >
-              Subscribe
-            </LinkButton>
+          <div className="flex items-stretch gap-3">
+            {requiresUpgrade ? (
+              <InfoPanel
+                variant="upgrade"
+                icon={LockOpenIcon}
+                iconClassName="text-indigo-500"
+                title="Unlock more alerts"
+                to={v3BillingPath(organization)}
+                buttonLabel="Upgrade"
+              >
+                <Paragraph variant="small">
+                  You've used all {limits.limit} of your available alerts. Upgrade your plan to
+                  enable more.
+                </Paragraph>
+              </InfoPanel>
+            ) : (
+              <div className="flex h-fit flex-col items-start gap-4 rounded-md border border-grid-bright bg-background-bright p-4">
+                <div className="flex items-center justify-between gap-6">
+                  <Header3>
+                    You've used {limits.used}/{limits.limit} of your alerts.
+                  </Header3>
+
+                  <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
+                    Upgrade
+                  </LinkButton>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full border border-grid-bright">
+                  <div
+                    className="h-full bg-grid-bright"
+                    style={{ width: `${(limits.used / limits.limit) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <Outlet />

@@ -16,13 +16,17 @@ export const TaskRunExecutionPayload = z.object({
 
 export type TaskRunExecutionPayload = z.infer<typeof TaskRunExecutionPayload>;
 
+// **IMPORTANT NOTE**: If you change this schema, make sure it is backwards compatible with the previous version as this also used when a worker signals to the coordinator that a TaskRun is complete.
+// Strategies for not breaking backwards compatibility:
+// 1. Add new fields as optional
+// 2. If a field is required, add a default value
 export const ProdTaskRunExecution = TaskRunExecution.extend({
   worker: z.object({
     id: z.string(),
     contentHash: z.string(),
     version: z.string(),
   }),
-  machine: MachinePreset,
+  machine: MachinePreset.default({ name: "small-1x", cpu: 1, memory: 1, centsPerMs: 0 }),
 });
 
 export type ProdTaskRunExecution = z.infer<typeof ProdTaskRunExecution>;
@@ -216,6 +220,7 @@ export type WaitReason = z.infer<typeof WaitReason>;
 
 export const TaskRunExecutionLazyAttemptPayload = z.object({
   runId: z.string(),
+  attemptCount: z.number().optional(),
   messageId: z.string(),
   isTest: z.boolean(),
   traceContext: z.record(z.unknown()),

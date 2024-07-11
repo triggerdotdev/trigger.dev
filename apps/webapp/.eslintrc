@@ -1,13 +1,36 @@
 {
-  "extends": ["@remix-run/eslint-config", "@remix-run/eslint-config/node", "prettier"],
-  "rules": {
-    "@typescript-eslint/strict-boolean-expressions": [
-      "error",
-      {
-        "allowNullableBoolean": true,
-        "allowNullableString": true,
-        "allowNullableNumber": true
+  "plugins": [
+    "@trigger.dev/eslint-plugin",
+    "react-hooks",
+    "@typescript-eslint/eslint-plugin",
+    "import"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "overrides": [
+    {
+      "files": ["*.ts", "*.tsx"],
+      "rules": {
+        // Autofixes imports from "@trigger.dev/core" to fine grained modules
+        "@trigger.dev/no-trigger-core-import": "error",
+        // Normalize `import type {}` and `import { type }`
+        "@typescript-eslint/consistent-type-imports": [
+          "warn",
+          {
+            // the "type" annotation can get tangled and cause syntax errors
+            // during some autofixes, so easier to just turn it off
+            "prefer": "type-imports",
+            "disallowTypeAnnotations": true,
+            "fixStyle": "inline-type-imports"
+          }
+        ],
+        // no-trigger-core-import splits imports into multiple lines
+        // this one merges them back into a single line
+        // if they still import from the same module
+        "import/no-duplicates": ["warn", { "prefer-inline": true }],
+        // lots of undeclared vars, enable this rule if you want to clean them up
+        "turbo/no-undeclared-env-vars": "off"
       }
-    ]
-  }
+    }
+  ],
+  "ignorePatterns": ["seed.js", "seedCloud.ts", "populate.js"]
 }

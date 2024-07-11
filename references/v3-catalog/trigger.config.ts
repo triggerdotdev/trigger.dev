@@ -48,9 +48,10 @@ export const config: TriggerConfig = {
   enableConsoleLogging: false,
   additionalPackages: ["wrangler@3.35.0", "pg@8.11.5"],
   additionalFiles: ["./wrangler/wrangler.toml"],
-  dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp"],
+  dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp", /@t3-oss/],
   instrumentations: [new OpenAIInstrumentation()],
   logLevel: "info",
+  postInstall: "echo '========== config.postInstall'",
   onStart: async (payload, { ctx }) => {
     if (ctx.organization.id === "clsylhs0v0002dyx75xx4pod1") {
       console.log("Initializing the app data source");
@@ -60,7 +61,5 @@ export const config: TriggerConfig = {
   },
   onFailure: async (payload, error, { ctx }) => {
     console.log(`Task ${ctx.task.id} failed ${ctx.run.id}`);
-
-    throw error;
   },
 };

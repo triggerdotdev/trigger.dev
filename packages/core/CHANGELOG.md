@@ -1,5 +1,91 @@
 # internal-platform
 
+## 3.0.0-beta.48
+
+## 3.0.0-beta.47
+
+### Patch Changes
+
+- 4f95c9de4: v3: recover from server rate limiting errors in a more reliable way
+- e04d44866: v3: sanitize errors with null unicode characters in some places
+
+## 3.0.0-beta.46
+
+### Patch Changes
+
+- 14c2bdf89: Tasks should now be much more robust and resilient to reconnects during crucial operations and other failure scenarios.
+
+  Task runs now have to signal checkpointable state prior to ALL checkpoints. This ensures flushing always happens.
+
+  All important socket.io RPCs will now be retried with backoff. Actions relying on checkpoints will be replayed if we haven't been checkpointed and restored as expected, e.g. after reconnect.
+
+  Other changes:
+
+  - Fix retry check in shared queue
+  - Fix env var sync spinner
+  - Heartbeat between retries
+  - Fix retry prep
+  - Fix prod worker no tasks detection
+  - Fail runs above `MAX_TASK_RUN_ATTEMPTS`
+  - Additional debug logs in all places
+  - Prevent crashes due to failed socket schema parsing
+  - Remove core-apps barrel
+  - Upgrade socket.io-client to fix an ACK memleak
+  - Additional index failure logs
+  - Prevent message loss during reconnect
+  - Prevent burst of heartbeats on reconnect
+  - Prevent crash on failed cleanup
+  - Handle at-least-once lazy execute message delivery
+  - Handle uncaught entry point exceptions
+
+## 3.0.0-beta.45
+
+### Patch Changes
+
+- 0e77e7ef7: v3: Trigger delayed runs and reschedule them
+- 568da0178: - Improve non-zero exit code error messages
+  - Detect OOM conditions within worker child processes
+  - Internal errors can have optional stack traces
+  - Docker provider can be set to enforce machine presets
+- 5ae3da6b4: - Fix artifact detection logs
+  - Fix OOM detection and error messages
+  - Add test link to cli deployment completion
+
+## 3.0.0-beta.44
+
+### Patch Changes
+
+- 39885a427: v3: fix missing init output in task run function when no middleware is defined
+
+## 3.0.0-beta.43
+
+### Patch Changes
+
+- 34ca7667d: v3: Include presigned urls for downloading large payloads and outputs when using runs.retrieve
+
+## 3.0.0-beta.42
+
+## 3.0.0-beta.41
+
+## 3.0.0-beta.40
+
+### Patch Changes
+
+- 55d1f8c67: Add callback to checkpoint created message
+- 098932ea9: v3: vercel edge runtime support
+- 9835f4ec5: v3: fix otel flushing causing CLEANUP ack timeout errors by always setting a forceFlushTimeoutMillis value
+
+## 3.0.0-beta.39
+
+## 3.0.0-beta.38
+
+### Patch Changes
+
+- 1b90ffbb8: v3: Usage tracking
+- 0ed93a748: v3: Remove aggressive otel flush timeouts in dev/prod
+- c405ae711: Make deduplicationKey required when creating/updating a schedule
+- c405ae711: Added timezone support to schedules
+
 ## 3.0.0-beta.37
 
 ### Patch Changes

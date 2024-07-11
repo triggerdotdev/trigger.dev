@@ -1,20 +1,34 @@
 import "server-only";
-import { envvars, logger, task, wait } from "@trigger.dev/sdk/v3";
+import { logger, task, tasks, wait } from "@trigger.dev/sdk/v3";
 import { traceAsync } from "@/telemetry";
 
-export const simplestTask = task({
+export const fetchPostTask = task({
   id: "fetch-post-task",
   run: async (payload: { url: string }) => {
     const response = await fetch(payload.url, {
-      method: "POST",
-      body: JSON.stringify({
-        hello: "world",
-        taskId: "fetch-post-task",
-        foo: "barrrrrrrrrrrrrrrrrrrrrrr",
-      }),
+      method: "GET",
     });
 
-    return response.json();
+    return response.json() as Promise<{ url: string; method: string }>;
+  },
+});
+
+export const anyPayloadTask = task({
+  id: "any-payload-task",
+  run: async (payload: any) => {
+    const result = await tasks.triggerAndWait<typeof fetchPostTask>("fetch-post-task", {
+      url: "https://jsonplaceholder.typicode.com/posts/1",
+    });
+
+    if (result.ok) {
+      logger.info("Result from fetch-post-task", { output: result.output });
+    } else {
+      logger.error("Error from fetch-post-task", { error: result.error });
+    }
+
+    return {
+      payload,
+    };
   },
 });
 
@@ -28,18 +42,6 @@ export const taskWithSpecialCharacters = task({
     return {
       message: "This task has special characters in its ID",
     };
-  },
-});
-
-export const updateEnvVars = task({
-  id: "update-env-vars",
-  run: async () => {
-    return await envvars.upload({
-      variables: await fetch(
-        "https://gist.githubusercontent.com/ericallam/7a1001c6b03986a74d0f8aad4fd890aa/raw/fe2bc4da82f3b17178d47f58ec1458af47af5035/.env"
-      ),
-      override: true,
-    });
   },
 });
 
@@ -66,7 +68,7 @@ export const createJsonHeroDoc = task({
 
     const json: any = await response.json();
 
-    return json;
+    return json as { id: string; title: string; location: string };
   },
 });
 

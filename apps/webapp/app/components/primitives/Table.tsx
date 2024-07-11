@@ -3,6 +3,7 @@ import { Link } from "@remix-run/react";
 import { ReactNode, forwardRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
+import { InfoIconTooltip } from "./Tooltip";
 
 type TableProps = {
   containerClassName?: string;
@@ -87,10 +88,11 @@ type TableCellBasicProps = {
 
 type TableHeaderCellProps = TableCellBasicProps & {
   hiddenLabel?: boolean;
+  tooltip?: ReactNode;
 };
 
 export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellProps>(
-  ({ className, alignment = "left", children, colSpan, hiddenLabel = false }, ref) => {
+  ({ className, alignment = "left", children, colSpan, hiddenLabel = false, tooltip }, ref) => {
     let alignmentClassName = "text-left";
     switch (alignment) {
       case "center":
@@ -112,7 +114,16 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         )}
         colSpan={colSpan}
       >
-        {hiddenLabel ? <span className="sr-only">{children}</span> : children}
+        {hiddenLabel ? (
+          <span className="sr-only">{children}</span>
+        ) : tooltip ? (
+          <div className="flex items-center gap-1">
+            {children}
+            <InfoIconTooltip content={tooltip} contentClassName="normal-case tracking-normal" />
+          </div>
+        ) : (
+          children
+        )}
       </th>
     );
   }

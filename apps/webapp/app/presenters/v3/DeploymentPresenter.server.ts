@@ -90,6 +90,7 @@ export class DeploymentPresenter {
           },
         },
         status: true,
+        builtAt: true,
         deployedAt: true,
         createdAt: true,
         promotions: {
@@ -134,6 +135,7 @@ export class DeploymentPresenter {
         version: deployment.version,
         status: deployment.status,
         createdAt: deployment.createdAt,
+        builtAt: deployment.builtAt,
         deployedAt: deployment.deployedAt,
         tasks: deployment.worker?.tasks,
         label: deployment.promotions?.[0]?.label,
@@ -152,6 +154,7 @@ export class DeploymentPresenter {
         projectId: deployment.projectId,
         organizationId: project.organizationId,
         errorData: DeploymentPresenter.prepareErrorData(deployment.errorData),
+        isBuilt: !!deployment.builtAt,
       },
     };
   }

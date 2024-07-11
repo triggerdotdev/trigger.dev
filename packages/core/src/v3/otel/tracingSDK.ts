@@ -197,13 +197,11 @@ export class TracingSDK {
   }
 
   public async flush() {
-    await this._traceProvider.forceFlush();
-    await this._logProvider.forceFlush();
+    await Promise.all([this._traceProvider.forceFlush(), this._logProvider.forceFlush()]);
   }
 
   public async shutdown() {
-    await this._traceProvider.shutdown();
-    await this._logProvider.shutdown();
+    await Promise.all([this._traceProvider.shutdown(), this._logProvider.shutdown()]);
   }
 }
 

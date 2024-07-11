@@ -4,8 +4,8 @@ import { Direction } from "~/components/runs/RunStatuses";
 import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { CANCELLABLE_STATUSES } from "~/v3/services/cancelTaskRun.server";
 import { BasePresenter } from "./basePresenter.server";
+import { isCancellableRunStatus } from "~/v3/taskStatus";
 
 export type RunListOptions = {
   userId?: string;
@@ -158,10 +158,15 @@ export class RunListPresenter extends BasePresenter {
         createdAt: Date;
         startedAt: Date | null;
         lockedAt: Date | null;
+        delayUntil: Date | null;
         updatedAt: Date;
         isTest: boolean;
         spanId: string;
         idempotencyKey: string | null;
+        ttl: string | null;
+        expiredAt: Date | null;
+        costInCents: number;
+        usageDurationMs: BigInt;
       }[]
     >`
     SELECT
@@ -174,11 +179,16 @@ export class RunListPresenter extends BasePresenter {
     tr.status AS status,
     tr."createdAt" AS "createdAt",
     tr."startedAt" AS "startedAt",
+    tr."delayUntil" AS "delayUntil",
     tr."lockedAt" AS "lockedAt",
     tr."updatedAt" AS "updatedAt",
     tr."isTest" AS "isTest",
     tr."spanId" AS "spanId",
-    tr."idempotencyKey" AS "idempotencyKey"
+    tr."idempotencyKey" AS "idempotencyKey",
+    tr."ttl" AS "ttl",
+    tr."expiredAt" AS "expiredAt",
+    tr."costInCents" AS "costInCents",
+    tr."usageDurationMs" AS "usageDurationMs"
   FROM
     ${sqlDatabaseSchema}."TaskRun" tr
   LEFT JOIN
@@ -283,6 +293,7 @@ export class RunListPresenter extends BasePresenter {
           createdAt: run.createdAt.toISOString(),
           updatedAt: run.updatedAt.toISOString(),
           startedAt: startedAt ? startedAt.toISOString() : undefined,
+          delayUntil: run.delayUntil ? run.delayUntil.toISOString() : undefined,
           hasFinished,
           finishedAt: hasFinished ? run.updatedAt.toISOString() : undefined,
           isTest: run.isTest,
@@ -291,9 +302,13 @@ export class RunListPresenter extends BasePresenter {
           taskIdentifier: run.taskIdentifier,
           spanId: run.spanId,
           isReplayable: true,
-          isCancellable: CANCELLABLE_STATUSES.includes(run.status),
+          isCancellable: isCancellableRunStatus(run.status),
           environment: displayableEnvironment(environment, userId),
           idempotencyKey: run.idempotencyKey ? run.idempotencyKey : undefined,
+          ttl: run.ttl ? run.ttl : undefined,
+          expiredAt: run.expiredAt ? run.expiredAt.toISOString() : undefined,
+          costInCents: run.costInCents,
+          usageDurationMs: Number(run.usageDurationMs),
         };
       }),
       pagination: {

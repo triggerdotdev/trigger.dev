@@ -3,7 +3,7 @@ import { TaskRun } from "@trigger.dev/database";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
-import { TriggerTaskService } from "./triggerTask.server";
+import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
 
 export class ReplayTaskRunService extends BaseService {
   public async call(existingTaskRun: TaskRun) {
@@ -35,28 +35,38 @@ export class ReplayTaskRunService extends BaseService {
       payloadPacketType: payloadPacket.dataType,
     });
 
-    const triggerTaskService = new TriggerTaskService();
-    return await triggerTaskService.call(
-      existingTaskRun.taskIdentifier,
-      authenticatedEnvironment,
-      {
-        payload: parsedPayload,
-        options: {
-          queue: {
-            name: existingTaskRun.queue,
+    try {
+      const triggerTaskService = new TriggerTaskService();
+      return await triggerTaskService.call(
+        existingTaskRun.taskIdentifier,
+        authenticatedEnvironment,
+        {
+          payload: parsedPayload,
+          options: {
+            queue: {
+              name: existingTaskRun.queue,
+            },
+            concurrencyKey: existingTaskRun.concurrencyKey ?? undefined,
+            test: existingTaskRun.isTest,
+            payloadType: payloadPacket.dataType,
           },
-          concurrencyKey: existingTaskRun.concurrencyKey ?? undefined,
-          test: existingTaskRun.isTest,
-          payloadType: payloadPacket.dataType,
         },
-      },
-      {
-        spanParentAsLink: true,
-        parentAsLinkType: "replay",
-        traceContext: {
-          traceparent: `00-${existingTaskRun.traceId}-${existingTaskRun.spanId}-01`,
-        },
+        {
+          spanParentAsLink: true,
+          parentAsLinkType: "replay",
+          traceContext: {
+            traceparent: `00-${existingTaskRun.traceId}-${existingTaskRun.spanId}-01`,
+          },
+        }
+      );
+    } catch (error) {
+      if (error instanceof OutOfEntitlementError) {
+        return;
       }
-    );
+
+      logger.error("Failed to replay a run", { error: error });
+
+      return;
+    }
   }
 }

@@ -51,11 +51,24 @@ export class MarqsConcurrencyMonitor {
       processedKeys: 0,
     };
 
-    const { stream, redis } = this.marqs.queueConcurrencyScanStream(10, () => {
-      this._logger.debug("[MarqsConcurrencyMonitor] stream closed", {
-        stats,
-      });
-    });
+    const { stream, redis } = this.marqs.queueConcurrencyScanStream(
+      10,
+      () => {
+        this._logger.debug("[MarqsConcurrencyMonitor] stream closed", {
+          stats,
+        });
+      },
+      (error) => {
+        this._logger.debug("[MarqsConcurrencyMonitor] stream error", {
+          stats,
+          error: {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+          },
+        });
+      }
+    );
 
     stream.on("data", async (keys) => {
       stream.pause();
@@ -80,9 +93,11 @@ export class MarqsConcurrencyMonitor {
 
       stats.processedKeys += uniqueKeys.length;
 
-      await Promise.all(uniqueKeys.map((key) => this.#processKey(key, redis))).finally(() => {
-        stream.resume();
-      });
+      await Promise.allSettled(uniqueKeys.map((key) => this.#processKey(key, redis))).finally(
+        () => {
+          stream.resume();
+        }
+      );
     });
   }
 
@@ -91,8 +106,20 @@ export class MarqsConcurrencyMonitor {
     const orgKey = this.keys.orgCurrentConcurrencyKeyFromQueue(key);
     const envKey = this.keys.envCurrentConcurrencyKeyFromQueue(key);
 
-    // Next, we need to get all the items from the key, and any parent keys (org, env, queue) using sunion.
-    const runIds = await redis.sunion(orgKey, envKey, key);
+    let runIds: string[] = [];
+
+    try {
+      // Next, we need to get all the items from the key, and any parent keys (org, env, queue) using sunion.
+      runIds = await redis.sunion(orgKey, envKey, key);
+    } catch (e) {
+      this._logger.error("[MarqsConcurrencyMonitor] error during sunion", {
+        key,
+        orgKey,
+        envKey,
+        runIds,
+        error: e,
+      });
+    }
 
     if (runIds.length === 0) {
       return;

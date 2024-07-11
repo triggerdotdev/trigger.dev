@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
   "openapi": ["/openapi.yml", "/v3-openapi.yaml"],
-  "versions": ["v3 (Developer Preview)", "v2"],
+  "versions": ["v3", "v2"],
   "api": {
     "playground": {
       "mode": "simple"
@@ -16,15 +16,19 @@
   },
   "favicon": "/images/favicon.png",
   "colors": {
-    "primary": "#818cf8",
-    "light": "#818cf8",
-    "dark": "#818cf8",
+    "primary": "#A8FF53",
+    "light": "#A8FF53",
+    "dark": "#A8FF53",
     "anchors": {
       "from": "#fff",
       "to": "#eee"
+    },
+    "background": {
+      "light": "#fff",
+      "dark": "#121317"
     }
   },
-  "backgroundImage": "/images/docs-background.png",
+  "theme": "quill",
   "modeToggle": {
     "default": "dark",
     "isHidden": true
@@ -42,36 +46,6 @@
     {
       "name": "Community",
       "url": "https://discord.gg/kA47vcd8P6"
-    }
-  ],
-  "primaryTab": {
-    "name": "Home"
-  },
-  "tabs": [
-    {
-      "name": "Integrations",
-      "url": "integrations",
-      "version": "v2"
-    },
-    {
-      "name": "Reference",
-      "url": "sdk",
-      "version": "v2"
-    },
-    {
-      "name": "Examples",
-      "url": "https://trigger.dev/apis",
-      "version": "v2"
-    },
-    {
-      "name": "v3 Developer Preview",
-      "url": "https://trigger.dev/docs/v3",
-      "version": "v2"
-    },
-    {
-      "name": "v2",
-      "url": "https://trigger.dev/docs/documentation",
-      "version": "v3 (Developer Preview)"
     }
   ],
   "redirects": [
@@ -95,12 +69,12 @@
   "navigation": [
     {
       "group": "",
-      "version": "v3 (Developer Preview)",
+      "version": "v3",
       "pages": ["v3/introduction"]
     },
     {
       "group": "Getting Started",
-      "version": "v3 (Developer Preview)",
+      "version": "v3",
       "pages": [
         "v3/quick-start",
         "v3/upgrading-from-v2",
@@ -111,7 +85,7 @@
     },
     {
       "group": "Fundamentals",
-      "version": "v3 (Developer Preview)",
+      "version": "v3",
       "pages": [
         "v3/trigger-folder",
         "v3/tasks-overview",
@@ -126,12 +100,12 @@
     },
     {
       "group": "Development",
-      "version": "v3 (Developer Preview)",
+      "version": "v3",
       "pages": ["v3/cli-dev", "v3/run-tests"]
     },
     {
       "group": "Deployment",
-      "version": "v3 (Developer Preview)",
+      "version": "v3",
       "pages": [
         "v3/deploy-environment-variables",
         "v3/cli-deploy",
@@ -144,7 +118,7 @@
     },
     {
       "group": "Writing tasks",
-      "version": "v3 (Developer Preview)",
+      "version": "v3",
       "pages": [
         "v3/writing-tasks-introduction",
         "v3/logging",
@@ -164,21 +138,27 @@
         "v3/machines",
         "v3/idempotency",
         "v3/reattempting-replaying",
-        "v3/notifications"
+        "v3/notifications",
+        "v3/run-usage"
       ]
     },
     {
       "group": "API reference",
-      "version": "v3 (Developer Preview)",
+      "version": "v3",
       "pages": [
         "v3/management/overview",
+        {
+          "group": "Tasks API",
+          "pages": ["v3/management/tasks/trigger", "v3/management/tasks/batch-trigger"]
+        },
         {
           "group": "Runs API",
           "pages": [
             "v3/management/runs/list",
             "v3/management/runs/retrieve",
             "v3/management/runs/replay",
-            "v3/management/runs/cancel"
+            "v3/management/runs/cancel",
+            "v3/management/runs/reschedule"
           ]
         },
         {
@@ -213,14 +193,15 @@
     },
     {
       "group": "Open source",
-      "version": "v3 (Developer Preview)",
+      "version": "v3",
       "pages": ["v3/github-repo", "v3/open-source-self-hosting", "v3/open-source-contributing"]
     },
     {
       "group": "Troubleshooting",
-      "version": "v3 (Developer Preview)",
+      "version": "v3",
       "pages": [
         "v3/troubleshooting",
+        "v3/upgrading-packages",
         "v3/troubleshooting-alerts",
         "v3/troubleshooting-uptime-status",
         "v3/troubleshooting-github-issues",
@@ -229,7 +210,7 @@
     },
     {
       "group": "Help",
-      "version": "v3 (Developer Preview)",
+      "version": "v3",
       "pages": ["v3/community", "v3/help-slack", "v3/help-email"]
     },
     {
