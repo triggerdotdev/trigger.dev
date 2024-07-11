@@ -69,7 +69,6 @@ export class MarQS {
   private redis: Redis;
   public keys: MarQSKeyProducer;
   private queuePriorityStrategy: MarQSQueuePriorityStrategy;
-  #requeueingWorkers: Array<AsyncWorker> = [];
   #rebalanceWorkers: Array<AsyncWorker> = [];
 
   constructor(private readonly options: MarQSOptions) {
@@ -846,9 +845,13 @@ export class MarQS {
       });
 
       stream.on("data", async (keys) => {
-        stream.pause();
-
         const uniqueKeys = Array.from(new Set<string>(keys));
+
+        if (uniqueKeys.length === 0) {
+          return;
+        }
+
+        stream.pause();
 
         logger.debug("Rebalancing parent queues", {
           component: "marqs",
