@@ -590,11 +590,11 @@ function getWorkerQueue() {
       },
       "v3.triggerScheduledTask": {
         priority: 0,
-        maxAttempts: 3,
+        maxAttempts: 3, // total delay of 30 seconds
         handler: async (payload, job) => {
           const service = new TriggerScheduledTaskService();
 
-          return await service.call(payload.instanceId);
+          return await service.call(payload.instanceId, job.attempts === job.max_attempts);
         },
       },
       "v3.performTaskAttemptAlerts": {
