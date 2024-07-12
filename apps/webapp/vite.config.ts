@@ -6,6 +6,7 @@ import { installGlobals } from "@remix-run/node";
 import { config } from "dotenv";
 import { expand } from "dotenv-expand";
 import { denyImports } from "vite-env-only";
+import { viteCommonjs } from "@originjs/vite-plugin-commonjs";
 
 expand(
   config({
@@ -138,6 +139,7 @@ export default defineConfig({
       serverModuleFormat: "esm",
     }).filter((plugin) => plugin.name !== "remix-dot-server"),
     tsconfigPaths() as Plugin,
+    viteCommonjs() as Plugin,
     denyImports({
       client: {
         specifiers: ["@trigger.dev/core"],

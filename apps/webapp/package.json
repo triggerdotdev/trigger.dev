@@ -92,12 +92,12 @@
     "@tailwindcss/container-queries": "^0.1.1",
     "@tanstack/react-virtual": "^3.0.4",
     "@team-plain/typescript-sdk": "^3.5.0",
-    "@trigger.dev/platform": "1.0.12",
     "@trigger.dev/companyicons": "^1.5.35",
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/core-backend": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "@trigger.dev/otlp-importer": "workspace:*",
+    "@trigger.dev/platform": "1.0.12",
     "@trigger.dev/sdk": "workspace:*",
     "@trigger.dev/yalt": "workspace:*",
     "@types/pg": "8.6.6",
@@ -187,6 +187,7 @@
     "zod-validation-error": "^1.5.0"
   },
   "devDependencies": {
+    "@originjs/vite-plugin-commonjs": "^1.0.3",
     "@remix-run/dev": "2.9.2",
     "@remix-run/eslint-config": "2.9.2",
     "@remix-run/testing": "^2.9.2",
