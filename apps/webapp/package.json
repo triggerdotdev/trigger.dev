@@ -239,7 +239,7 @@
     "prettier": "^2.8.8",
     "prettier-plugin-tailwindcss": "^0.3.0",
     "prop-types": "^15.8.1",
-    "remix-express-dev-server": "^0.2.5",
+    "remix-express-dev-server": "^0.4.4",
     "rimraf": "^3.0.2",
     "style-loader": "^3.3.4",
     "tailwind-scrollbar": "^3.0.1",
