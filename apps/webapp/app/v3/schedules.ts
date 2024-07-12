@@ -1,7 +1,6 @@
 import cronParser from "cron-parser";
 import { z } from "zod";
 
-const { parseExpression } = cronParser;
 export const CronPattern = z.string().refine(
   (val) => {
     //only allow CRON expressions that don't include seconds (they have 5 parts)
@@ -15,7 +14,7 @@ export const CronPattern = z.string().refine(
     }
 
     try {
-      parseExpression(val);
+      cronParser.parseExpression(val);
       return true;
     } catch (e) {
       return false;
@@ -36,7 +35,7 @@ export const CronPattern = z.string().refine(
     }
 
     try {
-      parseExpression(val);
+      cronParser.parseExpression(val);
       return {
         message: "Unknown problem",
       };
