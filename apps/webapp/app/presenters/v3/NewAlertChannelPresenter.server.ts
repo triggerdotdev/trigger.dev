@@ -69,8 +69,6 @@ async function getSlackChannelsForToken(integration: AuthenticatableIntegration)
   return (channels ?? [])
     .filter((channel) => !channel.is_archived)
     .filter((channel) => channel.is_channel)
-    .filter((channel) => !channel.is_ext_shared)
-    .filter((channel) => channel.unlinked === 0)
     .filter((channel) => channel.num_members)
     .sort((a, b) => a.name!.localeCompare(b.name!));
 }
