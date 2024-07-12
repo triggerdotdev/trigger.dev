@@ -1,9 +1,9 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { ChevronRightIcon } from "@heroicons/react/24/solid";
+import { ChevronRightIcon, LightBulbIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
-import { DiscordIcon, GitHubLightIcon } from "@trigger.dev/companyicons";
+import { DiscordIcon } from "@trigger.dev/companyicons";
 import { ActivityIcon } from "lucide-react";
 import { ReactNode, useState } from "react";
 import { FeedbackType, feedbackTypeLabel, schema } from "~/routes/resources.feedback";
@@ -96,7 +96,19 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
             </Fieldset>
           </Form>
           <hr className="my-4" />
-          <DiscordBanner />
+          <LinkBanner
+            title="Join our Discord community"
+            description="The quickest way to get answers from the Trigger.dev community."
+            icon={<DiscordIcon className="size-12" />}
+            to="https://trigger.dev/discord"
+          />
+          <LinkBanner
+            title="Suggest a feature"
+            description="Have an idea for a new feature or improvement? Let us know!"
+            icon={<LightBulbIcon className="size-12 text-sun-500" />}
+            to="https://feedback.trigger.dev/"
+            hoverColor="hover:border-sun-400"
+          />
           <hr className="mb-4" />
           <Header2 className="mb-2.5 text-xl">Troubleshooting</Header2>
           <Paragraph className="mb-4">
@@ -120,26 +132,41 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
   );
 }
 
-function DiscordBanner({ className }: { className?: string }) {
+function LinkBanner({
+  className,
+  icon,
+  title,
+  description,
+  to,
+  hoverColor = "hover:border-text-link",
+}: {
+  className?: string;
+  icon?: ReactNode;
+  title?: string;
+  description?: string;
+  to?: string;
+  hoverColor?: string;
+}) {
   return (
     <a
-      href="https://trigger.dev/discord"
+      href={to}
       target="_blank"
       className={cn(
-        "group mb-4 flex w-full items-center justify-between rounded-md border border-grid-bright bg-charcoal-750 p-4 pl-6 transition hover:border-text-link",
+        "group mb-4 flex w-full items-center justify-between rounded-md border border-grid-bright bg-charcoal-750 p-4 pl-6 transition",
+        hoverColor,
         className
       )}
     >
       <div className="flex items-center gap-6">
-        <DiscordIcon className="size-12" />
+        {icon}
         <div className="flex flex-col gap-2">
           <Header1 className="text-2xl font-semibold text-text-bright transition group-hover:text-white">
-            Join our Discord community
+            {title}
           </Header1>
-          <Paragraph>The quickest way to get answers from the Trigger.dev community.</Paragraph>
+          <Paragraph>{description}</Paragraph>
         </div>
       </div>
-      <ChevronRightIcon className="size-5 text-charcoal-500 transition group-hover:translate-x-1 group-hover:text-text-link" />
+      <ChevronRightIcon className="size-5 text-charcoal-500 transition group-hover:translate-x-1 group-hover:text-text-bright" />
     </a>
   );
 }
