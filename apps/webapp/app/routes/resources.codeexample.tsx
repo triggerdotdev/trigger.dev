@@ -1,11 +1,11 @@
 import { useFetcher } from "@remix-run/react";
-import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useEffect } from "react";
 import invariant from "tiny-invariant";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
-import { ApiExample } from "~/services/externalApis/apis.server";
+import { type ApiExample } from "~/services/externalApis/apis.server";
 import { requireUserId } from "~/services/session.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {

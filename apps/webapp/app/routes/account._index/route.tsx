@@ -1,7 +1,7 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { Form, useActionData } from "@remix-run/react";
-import { ActionFunction, json } from "@remix-run/server-runtime";
+import { type ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";

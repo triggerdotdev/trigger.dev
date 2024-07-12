@@ -1,10 +1,5 @@
-import {
-  ErrorWithStack,
-  ErrorWithStackSchema,
-  EventSpecificationSchema,
-  StyleSchema,
-} from "@trigger.dev/core";
-import { PrismaClient, prisma } from "~/db.server";
+import { type ErrorWithStack , ErrorWithStackSchema , EventSpecificationSchema , StyleSchema } from '@trigger.dev/core/schemas';
+import { type PrismaClient, prisma } from "~/db.server";
 import { isRunCompleted, runBasicStatus } from "~/models/jobRun.server";
 import { mergeProperties } from "~/utils/mergeProperties.server";
 import { taskListToTree } from "~/utils/taskListToTree";

@@ -1,4 +1,6 @@
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { Link } from "@remix-run/react";
+import { IntegrationIcon } from "~/assets/icons/IntegrationIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { useJob } from "~/hooks/useJob";
@@ -8,20 +10,16 @@ import { docsPath, jobTestPath } from "~/utils/pathBuilder";
 import { CodeBlock } from "../code/CodeBlock";
 import { InlineCode } from "../code/InlineCode";
 import { EnvironmentLabel } from "../environments/EnvironmentLabel";
-import { HelpPanelProps } from "../integrations/ApiKeyHelp";
+import { type HelpPanelProps } from "../integrations/ApiKeyHelp";
 import { HelpInstall } from "../integrations/HelpInstall";
 import { HelpSamples } from "../integrations/HelpSamples";
 import { LinkButton } from "../primitives/Buttons";
 import { Callout, variantClasses } from "../primitives/Callout";
 import { Header2 } from "../primitives/Headers";
 import { TextLink } from "../primitives/TextLink";
-import integrationButton from "./integration-button.png";
-import selectEnvironment from "./select-environment.png";
-import selectExample from "./select-example.png";
-import { StepContentContainer } from "../StepContentContainer";
 import { TriggerDevCommand } from "../SetupCommands";
-import { IntegrationIcon } from "~/assets/icons/IntegrationIcon";
-import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { StepContentContainer } from "../StepContentContainer";
+import integrationButton from "./integration-button.png";
 
 export function HowToRunYourJob() {
   const organization = useOrganization();

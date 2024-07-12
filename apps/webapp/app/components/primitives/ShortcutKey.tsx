@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { Modifier, ShortcutDefinition } from "~/hooks/useShortcutKeys";
+import { type Modifier, type ShortcutDefinition } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { useOperatingSystem } from "./OperatingSystemProvider";
 import {

@@ -10,11 +10,11 @@ import {
   useNavigate,
   useNavigation,
 } from "@remix-run/react";
-import { RuntimeEnvironmentType, User } from "@trigger.dev/database";
+import { type RuntimeEnvironmentType, type User } from "@trigger.dev/database";
 import { useMemo } from "react";
 import { usePathName } from "~/hooks/usePathName";
 import type { RunBasicStatus } from "~/models/jobRun.server";
-import { ViewRun } from "~/presenters/RunPresenter.server";
+import { type ViewRun } from "~/presenters/RunPresenter.server";
 import { cancelSchema } from "~/routes/resources.runs.$runId.cancel";
 import { schema } from "~/routes/resources.runs.$runId.rerun";
 import { cn } from "~/utils/cn";

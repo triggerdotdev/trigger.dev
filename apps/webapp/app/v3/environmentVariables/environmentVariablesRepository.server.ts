@@ -1,8 +1,8 @@
 import {
   Prisma,
-  PrismaClient,
-  RuntimeEnvironment,
-  RuntimeEnvironmentType,
+  type PrismaClient,
+  type RuntimeEnvironment,
+  type RuntimeEnvironmentType,
 } from "@trigger.dev/database";
 import { z } from "zod";
 import { environmentTitle } from "~/components/environments/EnvironmentLabel";
@@ -11,13 +11,13 @@ import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
-  CreateResult,
-  DeleteEnvironmentVariable,
-  DeleteEnvironmentVariableValue,
-  EnvironmentVariable,
-  ProjectEnvironmentVariable,
-  Repository,
-  Result,
+  type CreateResult,
+  type DeleteEnvironmentVariable,
+  type DeleteEnvironmentVariableValue,
+  type EnvironmentVariable,
+  type ProjectEnvironmentVariable,
+  type Repository,
+  type Result,
 } from "./repository";
 
 function secretKeyProjectPrefix(projectId: string) {

@@ -1,7 +1,7 @@
-import { PrismaClient, prisma } from "~/db.server";
-import { Project } from "~/models/project.server";
+import { type PrismaClient, prisma } from "~/db.server";
+import { type Project } from "~/models/project.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { User } from "~/models/user.server";
+import { type User } from "~/models/user.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 
 export class ProjectPresenter {

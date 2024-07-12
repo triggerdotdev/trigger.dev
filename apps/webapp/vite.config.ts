@@ -1,5 +1,5 @@
 import { vitePlugin as remix } from "@remix-run/dev";
-import { defineConfig, Plugin } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { expressDevServer } from "remix-express-dev-server";
 import { installGlobals } from "@remix-run/node";

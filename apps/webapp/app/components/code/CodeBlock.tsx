@@ -1,6 +1,5 @@
 import { Clipboard, ClipboardCheck } from "lucide-react";
-import type { Language, PrismTheme } from "prism-react-renderer";
-import { Highlight, Prism } from "prism-react-renderer";
+import { Highlight, Prism, type Language, type PrismTheme } from "prism-react-renderer";
 import { forwardRef, useCallback, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Paragraph } from "../primitives/Paragraph";

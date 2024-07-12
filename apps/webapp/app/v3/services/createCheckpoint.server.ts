@@ -1,4 +1,4 @@
-import { CoordinatorToPlatformMessages } from "@trigger.dev/core/v3";
+import { type CoordinatorToPlatformMessages } from '@trigger.dev/core/v3/schemas';
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import type { Checkpoint, CheckpointRestoreEvent } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";

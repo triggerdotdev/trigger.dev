@@ -1,4 +1,4 @@
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { z } from "zod";
 import { env } from "~/env.server";
 import nodeCrypto from "node:crypto";

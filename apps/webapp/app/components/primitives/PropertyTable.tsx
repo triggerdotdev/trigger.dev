@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Paragraph } from "./Paragraph";
 import { cn } from "~/utils/cn";
 

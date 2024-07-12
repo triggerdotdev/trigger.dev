@@ -1,6 +1,6 @@
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3/utils/durations";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
-import { PrismaClient, prisma } from "~/db.server";
+import { type PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 import { eventRepository } from "~/v3/eventRepository.server";
 

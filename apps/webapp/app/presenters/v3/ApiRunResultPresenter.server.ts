@@ -1,6 +1,6 @@
-import { TaskRunExecutionResult } from "@trigger.dev/core/v3";
+import { type TaskRunExecutionResult } from '@trigger.dev/core/v3/schemas';
 import { executionResultForTaskRun } from "~/models/taskRun.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BasePresenter } from "./basePresenter.server";
 
 export class ApiRunResultPresenter extends BasePresenter {

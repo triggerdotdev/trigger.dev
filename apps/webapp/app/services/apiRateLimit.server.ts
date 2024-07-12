@@ -1,10 +1,10 @@
 import { Ratelimit } from "@upstash/ratelimit";
-import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
-import { RedisOptions } from "ioredis";
+import { type Request as ExpressRequest, type Response as ExpressResponse, type NextFunction } from "express";
+import { type RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
 import { env } from "~/env.server";
 import { logger } from "./logger.server";
-import { Duration, Limiter, RateLimiter, createRedisRateLimitClient } from "./rateLimiter.server";
+import { type Duration, type Limiter, RateLimiter, createRedisRateLimitClient } from "./rateLimiter.server";
 
 type Options = {
   redis?: RedisOptions;

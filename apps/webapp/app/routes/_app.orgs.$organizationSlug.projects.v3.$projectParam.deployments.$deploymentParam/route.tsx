@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { UserAvatar } from "~/components/UserProfilePhoto";

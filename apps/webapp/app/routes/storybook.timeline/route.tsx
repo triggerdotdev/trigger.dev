@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
-import { SpanProps } from "~/components/primitives/Timeline";
+import { type SpanProps } from "~/components/primitives/Timeline";
 import { cn } from "~/utils/cn";
 
 const maxDuration = 10_000;

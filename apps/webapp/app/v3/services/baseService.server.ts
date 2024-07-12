@@ -1,6 +1,6 @@
-import { Span, SpanKind } from "@opentelemetry/api";
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type Span, SpanKind } from "@opentelemetry/api";
+import { type PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
 
 export abstract class BaseService {

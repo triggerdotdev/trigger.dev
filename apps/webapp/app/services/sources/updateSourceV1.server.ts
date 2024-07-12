@@ -1,7 +1,6 @@
 import type { RuntimeEnvironment } from "@trigger.dev/database";
-import type { TriggerSource, UpdateTriggerSourceBodyV1 } from "@trigger.dev/core";
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
+import { type TriggerSource , type UpdateTriggerSourceBodyV1 } from '@trigger.dev/core/schemas';
+import { prisma ,type  PrismaClient  } from "~/db.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 
 export class UpdateSourceServiceV1 {

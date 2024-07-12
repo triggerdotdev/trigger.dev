@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AppContainer } from "~/components/layout/AppLayout";

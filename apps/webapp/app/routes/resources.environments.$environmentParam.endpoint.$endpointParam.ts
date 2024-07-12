@@ -1,4 +1,4 @@
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { DeleteEndpointService } from "~/services/endpoints/deleteEndpointService";
 import { IndexEndpointService } from "~/services/endpoints/indexEndpoint.server";

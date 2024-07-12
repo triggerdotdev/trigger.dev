@@ -1,5 +1,5 @@
-import { SCHEDULED_EVENT, ScheduledPayload } from "@trigger.dev/core";
-import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { SCHEDULED_EVENT , type ScheduledPayload } from '@trigger.dev/core/schemas';
+import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { NextScheduledEventService } from "./nextScheduledEvent.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { InvokeDispatcherService } from "../events/invokeDispatcher.server";

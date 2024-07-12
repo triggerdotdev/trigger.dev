@@ -1,8 +1,8 @@
-import { WorkerDeploymentStatus } from "@trigger.dev/database";
-import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
-import { Organization } from "~/models/organization.server";
-import { Project } from "~/models/project.server";
-import { User } from "~/models/user.server";
+import { type WorkerDeploymentStatus } from "@trigger.dev/database";
+import { sqlDatabaseSchema, type PrismaClient, prisma } from "~/db.server";
+import { type Organization } from "~/models/organization.server";
+import { type Project } from "~/models/project.server";
+import { type User } from "~/models/user.server";
 import { getUsername } from "~/utils/username";
 
 const pageSize = 20;

@@ -2,7 +2,7 @@ import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/so
 import { useRef, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
-import { Tree, TreeView, flattenTree, useTree } from "~/components/primitives/TreeView/TreeView";
+import { type Tree, TreeView, flattenTree, useTree } from "~/components/primitives/TreeView/TreeView";
 import { cn } from "~/utils/cn";
 
 const words = [

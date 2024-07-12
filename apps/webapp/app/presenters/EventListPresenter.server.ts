@@ -1,5 +1,5 @@
-import { PrismaClient, prisma } from "~/db.server";
-import { Direction, FilterableEnvironment } from "~/components/runs/RunStatuses";
+import { type PrismaClient, prisma } from "~/db.server";
+import { type Direction, type FilterableEnvironment } from "~/components/runs/RunStatuses";
 import { getUsername } from "~/utils/username";
 
 type EventListOptions = {

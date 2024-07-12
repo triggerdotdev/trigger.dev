@@ -1,5 +1,5 @@
-import { ScheduleObject } from "@trigger.dev/core/v3";
-import { PrismaClient, prisma } from "~/db.server";
+import { type ScheduleObject } from '@trigger.dev/core/v3/schemas';
+import { type PrismaClient, prisma } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { nextScheduledTimestamps } from "~/v3/utils/calculateNextSchedule.server";
 import { RunListPresenter } from "./RunListPresenter.server";

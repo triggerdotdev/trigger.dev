@@ -1,4 +1,4 @@
-import { PrismaClient, prisma } from "~/db.server";
+import { type PrismaClient, prisma } from "~/db.server";
 import { PerformRunExecutionV3Service } from "./performRunExecutionV3.server";
 import { ResumeRunService } from "./resumeRun.server";
 

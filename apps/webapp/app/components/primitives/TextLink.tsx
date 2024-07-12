@@ -1,5 +1,5 @@
 import { Link } from "@remix-run/react";
-import { IconNamesOrString, NamedIcon } from "./NamedIcon";
+import { type IconNamesOrString, NamedIcon } from "./NamedIcon";
 import { cn } from "~/utils/cn";
 
 const variations = {

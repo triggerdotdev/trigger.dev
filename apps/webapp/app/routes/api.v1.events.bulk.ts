@@ -1,11 +1,10 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
-import { json } from "@remix-run/server-runtime";
-import { SendBulkEventsBodySchema } from "@trigger.dev/core";
+import { json ,type  ActionFunctionArgs  } from "@remix-run/server-runtime";
+import { SendBulkEventsBodySchema } from '@trigger.dev/core/schemas';
 import { generateErrorMessage } from "zod-error";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { IngestSendEvent } from "~/services/events/ingestSendEvent.server";
 import { eventRecordToApiJson } from "~/api.server";
-import { EventRecord } from "@trigger.dev/database";
+import { type EventRecord } from "@trigger.dev/database";
 
 export async function action({ request }: ActionFunctionArgs) {
   // Ensure this is a POST request

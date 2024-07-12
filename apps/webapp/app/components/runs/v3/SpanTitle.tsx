@@ -1,8 +1,8 @@
 import { ChevronRightIcon } from "@heroicons/react/20/solid";
-import type { TaskEventStyle } from "@trigger.dev/core/v3";
+import { type TaskEventStyle } from '@trigger.dev/core/v3/schemas';
 import type { TaskEventLevel } from "@trigger.dev/database";
 import { Fragment } from "react";
-import { RunEvent } from "~/presenters/v3/RunPresenter.server";
+import { type RunEvent } from "~/presenters/v3/RunPresenter.server";
 import { cn } from "~/utils/cn";
 
 type SpanTitleProps = {

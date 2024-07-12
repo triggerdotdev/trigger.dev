@@ -1,7 +1,7 @@
 import { ClockIcon, LockOpenIcon, PlusIcon, RectangleGroupIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { Outlet, useLocation, useParams } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -46,7 +46,7 @@ import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import {
-  ScheduleListItem,
+  type ScheduleListItem,
   ScheduleListPresenter,
 } from "~/presenters/v3/ScheduleListPresenter.server";
 import { requireUserId } from "~/services/session.server";

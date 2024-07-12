@@ -1,5 +1,5 @@
-import { JobRun } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
+import { type JobRun } from "@trigger.dev/database";
+import { type PrismaClient, prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
 
 export class DeliverRunSubscriptionsService {

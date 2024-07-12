@@ -1,14 +1,8 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
-import { json } from "@remix-run/server-runtime";
-import type { CompleteTaskBodyOutput } from "@trigger.dev/core";
-import {
-  API_VERSIONS,
-  CompleteTaskBodyInputSchema,
-  CompleteTaskBodyV2InputSchema,
-} from "@trigger.dev/core";
+import { json ,type  ActionFunctionArgs  } from "@remix-run/server-runtime";
+import { API_VERSIONS } from '@trigger.dev/core/versions';
+import { CompleteTaskBodyInputSchema , CompleteTaskBodyV2InputSchema ,  type CompleteTaskBodyOutput } from '@trigger.dev/core/schemas';
 import { z } from "zod";
-import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { authenticateApiRequest ,type  AuthenticatedEnvironment  } from "~/services/apiAuth.server";
 import { CompleteRunTaskService } from "./CompleteRunTaskService.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 import { parseRequestJsonAsync } from "~/utils/parseRequestJson.server";

@@ -1,10 +1,8 @@
 import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
-import type { ShouldRevalidateFunction } from "@remix-run/react";
-import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "@remix-run/react";
-import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration ,type  ShouldRevalidateFunction  } from "@remix-run/react";
+import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExternalScripts } from "remix-utils/external-scripts";
-import type { ToastMessage } from "~/models/message.server";
-import { commitSession, getSession } from "~/models/message.server";
+import { commitSession, getSession ,type  ToastMessage  } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css?url";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
 import { HighlightInit } from "./components/HighlightInit";

@@ -1,7 +1,6 @@
-import { InitializeTriggerBody, REGISTER_SOURCE_EVENT_V1 } from "@trigger.dev/core";
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
+import { type InitializeTriggerBody , REGISTER_SOURCE_EVENT_V1 } from '@trigger.dev/core/schemas';
+import { prisma ,type  PrismaClient  } from "~/db.server";
+import { type AuthenticatedEnvironment } from "../apiAuth.server";
 import { EndpointApi } from "../endpointApi.server";
 import { RegisterTriggerSourceServiceV1 } from "./registerTriggerSourceV1.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";

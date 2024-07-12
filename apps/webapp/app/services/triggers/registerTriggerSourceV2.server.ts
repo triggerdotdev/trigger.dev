@@ -1,13 +1,8 @@
-import {
-  RegisterSourceEventOptions,
-  RegisterSourceEventV2,
-  RegisterTriggerBodyV2,
-  RegisteredOptionsDiff,
-} from "@trigger.dev/core";
+import { type RegisterSourceEventOptions , type RegisterSourceEventV2 , type RegisterTriggerBodyV2 , RegisteredOptionsDiff } from '@trigger.dev/core/schemas';
 import { z } from "zod";
-import { $transaction, PrismaClient, prisma } from "~/db.server";
+import { $transaction, type PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
+import { type AuthenticatedEnvironment } from "../apiAuth.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 import { RegisterSourceServiceV2 } from "../sources/registerSourceV2.server";
 

@@ -1,5 +1,5 @@
 import assertNever from "assert-never";
-import { PrismaClientOrTransaction } from "~/db.server";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import { BaseService } from "../baseService.server";
 import { CancelTaskRunService } from "../cancelTaskRun.server";

@@ -1,6 +1,6 @@
 import type { DynamicTrigger, EventDispatcher } from "@trigger.dev/database";
-import { CronMetadata, IntervalMetadata, ScheduleMetadata } from "@trigger.dev/core";
-import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type CronMetadata , type IntervalMetadata , type ScheduleMetadata } from '@trigger.dev/core/schemas';
+import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { NextScheduledEventService } from "./nextScheduledEvent.server";
 
 export class RegisterScheduleSourceService {

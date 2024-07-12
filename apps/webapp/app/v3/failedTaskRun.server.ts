@@ -1,8 +1,8 @@
-import { TaskRunFailedExecutionResult } from "@trigger.dev/core/v3";
+import { type TaskRunFailedExecutionResult } from '@trigger.dev/core/v3/schemas';
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 
-import { TaskRunStatus } from "@trigger.dev/database";
+import { type TaskRunStatus } from "@trigger.dev/database";
 import { createExceptionPropertiesFromError, eventRepository } from "./eventRepository.server";
 import { BaseService } from "./services/baseService.server";
 

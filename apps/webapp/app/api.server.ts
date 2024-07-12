@@ -1,5 +1,5 @@
-import { ApiEventLog } from "@trigger.dev/core";
-import { EventRecord } from "@trigger.dev/database";
+import { type ApiEventLog } from "@trigger.dev/core/schemas";
+import { type EventRecord } from "@trigger.dev/database";
 
 export function eventRecordToApiJson(eventRecord: EventRecord): ApiEventLog {
   return {

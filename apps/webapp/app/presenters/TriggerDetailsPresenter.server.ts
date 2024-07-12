@@ -1,4 +1,4 @@
-import { PrismaClient, prisma } from "~/db.server";
+import { type PrismaClient, prisma } from "~/db.server";
 
 export type DetailedEvent = NonNullable<Awaited<ReturnType<TriggerDetailsPresenter["call"]>>>;
 

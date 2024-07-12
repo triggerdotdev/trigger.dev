@@ -9,7 +9,7 @@ import { Header2 } from "./Headers";
 import { LoadingBarDivider } from "./LoadingBarDivider";
 import { NamedIcon } from "./NamedIcon";
 import { Paragraph } from "./Paragraph";
-import { Tabs, TabsProps } from "./Tabs";
+import { Tabs, type TabsProps } from "./Tabs";
 
 type WithChildren = {
   children: React.ReactNode;

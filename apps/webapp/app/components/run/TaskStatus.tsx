@@ -1,4 +1,4 @@
-import type { TaskStatus } from "@trigger.dev/core";
+import { type TaskStatus } from '@trigger.dev/core/schemas';
 import {
   CheckCircleIcon,
   CheckIcon,

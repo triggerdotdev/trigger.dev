@@ -1,5 +1,4 @@
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
+import { prisma ,type  PrismaClient  } from "~/db.server";
 import { workerQueue } from "../worker.server";
 import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
 import { RuntimeEnvironmentType } from "~/database-types";

@@ -1,4 +1,4 @@
-import { DetailedEvent } from "~/presenters/TriggerDetailsPresenter.server";
+import { type DetailedEvent } from "~/presenters/TriggerDetailsPresenter.server";
 import { CodeBlock } from "../code/CodeBlock";
 import { DateTime } from "../primitives/DateTime";
 import { Header3 } from "../primitives/Headers";
@@ -11,7 +11,7 @@ import {
   RunPanelIconSection,
   RunPanelProperties,
 } from "./RunCard";
-import type { DisplayProperty } from "@trigger.dev/core";
+import { type DisplayProperty } from '@trigger.dev/core/schemas';
 
 export function TriggerDetail({
   trigger,

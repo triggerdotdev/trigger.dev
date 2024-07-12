@@ -1,19 +1,20 @@
 import {
-  ChatPostMessageArguments,
+  type ChatPostMessageArguments,
   ErrorCode,
-  WebAPIHTTPError,
-  WebAPIPlatformError,
-  WebAPIRateLimitedError,
-  WebAPIRequestError,
+  type WebAPIHTTPError,
+  type WebAPIPlatformError,
+  type WebAPIRateLimitedError,
+  type WebAPIRequestError,
 } from "@slack/web-api";
-import { TaskRunError, createJsonErrorObject } from "@trigger.dev/core/v3";
+import { TaskRunError } from '@trigger.dev/core/v3/schemas';
+import { createJsonErrorObject } from '@trigger.dev/core/v3/errors';
 import assertNever from "assert-never";
 import { subtle } from "crypto";
-import { Prisma, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type Prisma, type PrismaClientOrTransaction, type prisma } from "~/db.server";
 import { env } from "~/env.server";
 import {
   OrgIntegrationRepository,
-  OrganizationIntegrationForService,
+  type OrganizationIntegrationForService,
 } from "~/models/orgIntegration.server";
 import {
   ProjectAlertEmailProperties,

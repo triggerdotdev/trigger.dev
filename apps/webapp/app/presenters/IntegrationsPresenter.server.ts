@@ -1,11 +1,11 @@
-import { User } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
+import { type User } from "@trigger.dev/database";
+import { type PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { Organization } from "~/models/organization.server";
+import { type Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
-import { Api, apisList } from "~/services/externalApis/apis.server";
+import { type Api, apisList } from "~/services/externalApis/apis.server";
 import { integrationCatalog } from "~/services/externalApis/integrationCatalog.server";
-import { Integration, OAuthClientSchema } from "~/services/externalApis/types";
+import { type Integration, OAuthClientSchema } from "~/services/externalApis/types";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 
 export type IntegrationOrApi =

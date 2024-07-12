@@ -1,6 +1,6 @@
-import { stringifyIO } from "@trigger.dev/core/v3";
+import { stringifyIO } from '@trigger.dev/core/v3/utils/ioSerialization';
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
-import { TestTaskData } from "../testTask";
+import { type TestTaskData } from "../testTask";
 import { BaseService } from "./baseService.server";
 import { TriggerTaskService } from "./triggerTask.server";
 

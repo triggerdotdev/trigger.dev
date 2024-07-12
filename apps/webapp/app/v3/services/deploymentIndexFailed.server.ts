@@ -1,7 +1,7 @@
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
-import { WorkerDeploymentStatus } from "@trigger.dev/database";
+import { type WorkerDeploymentStatus } from "@trigger.dev/database";
 
 const FINAL_DEPLOYMENT_STATUSES: WorkerDeploymentStatus[] = [
   "CANCELED",

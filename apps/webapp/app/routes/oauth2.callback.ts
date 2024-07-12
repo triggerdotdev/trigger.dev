@@ -1,10 +1,9 @@
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect } from "@remix-run/server-runtime";
+import { redirect ,type  LoaderFunctionArgs  } from "@remix-run/server-runtime";
 import z from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
-import { OAuthClient, OAuthClientSchema } from "~/services/externalApis/types";
+import { type OAuthClient, OAuthClientSchema } from "~/services/externalApis/types";
 import { logger } from "~/services/logger.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { requestUrl } from "~/utils/requestUrl.server";

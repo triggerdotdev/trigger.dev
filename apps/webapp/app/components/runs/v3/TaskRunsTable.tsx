@@ -8,13 +8,13 @@ import {
 import { StopIcon } from "@heroicons/react/24/outline";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
-import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { formatDuration , formatDurationMilliseconds } from '@trigger.dev/core/v3/utils/durations';
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { useEnvironments } from "~/hooks/useEnvironments";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { RunListAppliedFilters, RunListItem } from "~/presenters/v3/RunListPresenter.server";
+import { type RunListAppliedFilters, type RunListItem } from "~/presenters/v3/RunListPresenter.server";
 import { docsPath, v3RunSpanPath, v3TestPath } from "~/utils/pathBuilder";
 import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
 import { DateTime } from "../../primitives/DateTime";

@@ -1,9 +1,9 @@
-import { clientWebsocketMessages, serverWebsocketMessages } from "@trigger.dev/core/v3";
+import { clientWebsocketMessages , serverWebsocketMessages } from '@trigger.dev/core/v3/schemas';
 import { ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
 import { randomUUID } from "node:crypto";
 import type { CloseEvent, ErrorEvent, MessageEvent, WebSocket } from "ws";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { DevQueueConsumer } from "./marqs/devQueueConsumer.server";
 

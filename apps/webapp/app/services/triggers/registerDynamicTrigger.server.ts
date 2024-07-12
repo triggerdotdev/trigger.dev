@@ -1,7 +1,6 @@
-import type { DynamicTriggerEndpointMetadata } from "@trigger.dev/core";
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
-import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
+import { type DynamicTriggerEndpointMetadata } from '@trigger.dev/core/schemas';
+import { prisma ,type  PrismaClient  } from "~/db.server";
+import { type ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 
 export class RegisterDynamicTriggerService {
   #prismaClient: PrismaClient;

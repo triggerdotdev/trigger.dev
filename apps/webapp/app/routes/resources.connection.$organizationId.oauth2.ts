@@ -1,6 +1,6 @@
 import { conform } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { redirect, typedjson } from "remix-typedjson";
 import z from "zod";
 import { prisma } from "~/db.server";

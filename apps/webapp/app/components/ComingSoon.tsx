@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { type ReactNode } from "react";
 import { MainCenteredContainer } from "./layout/AppLayout";
 import { Header2 } from "./primitives/Headers";
 import { NamedIconInBox } from "./primitives/NamedIcon";

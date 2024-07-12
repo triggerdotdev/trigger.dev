@@ -2,7 +2,7 @@ import { CheckIcon } from "@heroicons/react/20/solid";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Button } from "./Buttons";
-import { IconNames, NamedIcon } from "./NamedIcon";
+import { type IconNames, NamedIcon } from "./NamedIcon";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 
 const variants = {

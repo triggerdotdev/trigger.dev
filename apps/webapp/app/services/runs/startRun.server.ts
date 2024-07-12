@@ -3,8 +3,7 @@ import {
   type Integration,
   type IntegrationConnection,
 } from "@trigger.dev/database";
-import type { PrismaClient, PrismaClientOrTransaction } from "~/db.server";
-import { prisma } from "~/db.server";
+import { prisma ,type  PrismaClient,type  PrismaClientOrTransaction  } from "~/db.server";
 import { autoIncrementCounter } from "../autoIncrementCounter.server";
 import { logger } from "../logger.server";
 import { workerQueue } from "../worker.server";

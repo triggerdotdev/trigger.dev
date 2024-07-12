@@ -1,11 +1,8 @@
-import {
-  IOPacket,
-  SemanticInternalAttributes,
-  TriggerTaskRequestBody,
-  packetRequiresOffloading,
-} from "@trigger.dev/core/v3";
+import { type IOPacket , packetRequiresOffloading } from '@trigger.dev/core/v3/utils/ioSerialization';
+import { SemanticInternalAttributes } from '@trigger.dev/core/v3/semanticInternalAttributes';
+import { type TriggerTaskRequestBody } from '@trigger.dev/core/v3/schemas';
 import { env } from "~/env.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
 import { workerQueue } from "~/services/worker.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";

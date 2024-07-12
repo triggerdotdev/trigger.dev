@@ -1,14 +1,8 @@
-import {
-  IntegrationConfig,
-  JobMetadata,
-  SCHEDULED_EVENT,
-  TriggerMetadata,
-  assertExhaustive,
-} from "@trigger.dev/core";
+import { type IntegrationConfig , type JobMetadata , SCHEDULED_EVENT , type TriggerMetadata } from '@trigger.dev/core/schemas';
+import { assertExhaustive } from '@trigger.dev/core/utils';
 import type { Endpoint, Integration, Job, JobIntegration, JobVersion } from "@trigger.dev/database";
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
-import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
+import { prisma ,type  PrismaClient  } from "~/db.server";
+import { type ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 import type { RuntimeEnvironment } from "~/models/runtimeEnvironment.server";
 import { putConcurrencyLimitGroup, putJobConcurrencyLimit } from "~/v3/marqs/v2.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";

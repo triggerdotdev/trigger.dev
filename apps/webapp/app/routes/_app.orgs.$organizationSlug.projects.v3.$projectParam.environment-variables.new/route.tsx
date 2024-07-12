@@ -1,5 +1,5 @@
 import {
-  FieldConfig,
+  type FieldConfig,
   list,
   requestIntent,
   useFieldList,
@@ -9,8 +9,8 @@ import {
 import { parse } from "@conform-to/zod";
 import { LockClosedIcon, LockOpenIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
-import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import {

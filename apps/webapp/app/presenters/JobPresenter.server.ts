@@ -1,16 +1,11 @@
-import {
-  DisplayProperty,
-  DisplayPropertySchema,
-  EventSpecificationSchema,
-  TriggerHelpSchema,
-} from "@trigger.dev/core";
-import { PrismaClient, Prisma, prisma } from "~/db.server";
-import { Organization } from "~/models/organization.server";
-import { Project } from "~/models/project.server";
-import { User } from "~/models/user.server";
+import { type DisplayProperty , DisplayPropertySchema , EventSpecificationSchema , TriggerHelpSchema } from '@trigger.dev/core/schemas';
+import { PrismaClient, type Prisma, prisma } from "~/db.server";
+import { type Organization } from "~/models/organization.server";
+import { type Project } from "~/models/project.server";
+import { type User } from "~/models/user.server";
 import { z } from "zod";
 import { projectPath } from "~/utils/pathBuilder";
-import { Job } from "@trigger.dev/database";
+import { type Job } from "@trigger.dev/database";
 import { BasePresenter } from "./v3/basePresenter.server";
 
 export class JobPresenter extends BasePresenter {

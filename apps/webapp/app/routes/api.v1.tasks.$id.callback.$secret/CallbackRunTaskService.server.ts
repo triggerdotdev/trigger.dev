@@ -1,4 +1,4 @@
-import { $transaction, PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { $transaction, type PrismaClient, type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { ResumeTaskService } from "~/services/tasks/resumeTask.server";
 import { workerQueue } from "~/services/worker.server";

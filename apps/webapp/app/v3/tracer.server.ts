@@ -1,27 +1,27 @@
 import {
-  Attributes,
-  Context,
+  type Attributes,
+  type Context,
   DiagConsoleLogger,
   DiagLogLevel,
-  Link,
-  Span,
-  SpanKind,
-  SpanOptions,
+  type Link,
+  type Span,
+  type SpanKind,
+  type SpanOptions,
   SpanStatusCode,
   diag,
   trace,
 } from "@opentelemetry/api";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { InstrumentationOption, registerInstrumentations } from "@opentelemetry/instrumentation";
+import { type InstrumentationOption, registerInstrumentations } from "@opentelemetry/instrumentation";
 import { ExpressInstrumentation } from "@opentelemetry/instrumentation-express";
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
 import { Resource } from "@opentelemetry/resources";
 import {
   BatchSpanProcessor,
   ParentBasedSampler,
-  Sampler,
+  type Sampler,
   SamplingDecision,
-  SamplingResult,
+  type SamplingResult,
   SimpleSpanProcessor,
   TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace-base";
@@ -29,7 +29,7 @@ import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { SEMRESATTRS_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import prismaInstrumentation from "@prisma/instrumentation";
 import { env } from "~/env.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { singleton } from "~/utils/singleton";
 import { LoggerSpanExporter } from "./telemetry/loggerExporter.server";
 

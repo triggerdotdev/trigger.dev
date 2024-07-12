@@ -1,5 +1,5 @@
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { title } from "process";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";

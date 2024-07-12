@@ -1,5 +1,5 @@
 import { MAX_RUN_CHUNK_EXECUTION_LIMIT } from "~/consts";
-import { prisma, PrismaClient } from "~/db.server";
+import { prisma, type PrismaClient } from "~/db.server";
 import { EndpointApi } from "../endpointApi.server";
 import { logger } from "../logger.server";
 import { detectResponseIsTimeout } from "~/models/endpoint.server";

@@ -1,14 +1,11 @@
-import { PrismaClient, RuntimeEnvironment, Webhook } from "@trigger.dev/database";
+import { type PrismaClient, type RuntimeEnvironment, type Webhook } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { logger } from "../logger.server";
 import { json } from "@remix-run/server-runtime";
-import {
-  RequestFilterSchema,
-  WebhookContextMetadataSchema,
-  requestFilterMatches,
-} from "@trigger.dev/core";
+import { RequestFilterSchema , WebhookContextMetadataSchema } from '@trigger.dev/core/schemas';
+import { requestFilterMatches } from '@trigger.dev/core/requestFilterMatches';
 import { EndpointApi } from "../endpointApi.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { getSecretStore } from "../secrets/secretStore.server";

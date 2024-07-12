@@ -1,5 +1,5 @@
-import type { CompleteTaskBodyOutput, ServerTask } from "@trigger.dev/core";
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type CompleteTaskBodyOutput , type ServerTask } from '@trigger.dev/core/schemas';
+import { type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";

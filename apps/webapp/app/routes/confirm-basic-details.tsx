@@ -2,7 +2,7 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import { HandRaisedIcon } from "@heroicons/react/24/solid";
-import { ActionFunction, json } from "@remix-run/node";
+import { type ActionFunction, json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { forwardRef, useState } from "react";

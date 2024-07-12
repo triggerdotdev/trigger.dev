@@ -1,5 +1,5 @@
-import { Direction } from "~/components/runs/RunStatuses";
-import { PrismaClient, prisma } from "~/db.server";
+import { type Direction } from "~/components/runs/RunStatuses";
+import { type PrismaClient, prisma } from "~/db.server";
 
 type RunListOptions = {
   userId: string;

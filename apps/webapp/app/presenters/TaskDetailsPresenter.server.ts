@@ -1,5 +1,5 @@
-import { RedactSchema, StyleSchema } from "@trigger.dev/core";
-import { PrismaClient, prisma } from "~/db.server";
+import { RedactSchema , StyleSchema } from '@trigger.dev/core/schemas';
+import { type PrismaClient, prisma } from "~/db.server";
 import { mergeProperties } from "~/utils/mergeProperties.server";
 import { Redactor } from "~/utils/redactor";
 

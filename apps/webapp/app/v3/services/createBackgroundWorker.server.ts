@@ -1,7 +1,7 @@
-import { CreateBackgroundWorkerRequestBody, TaskResource } from "@trigger.dev/core/v3";
+import { type CreateBackgroundWorkerRequestBody , type TaskResource } from '@trigger.dev/core/v3/schemas';
 import type { BackgroundWorker } from "@trigger.dev/database";
-import { Prisma, PrismaClientOrTransaction } from "~/db.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { Prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";

@@ -1,4 +1,4 @@
-import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { safeJsonParse } from "~/utils/json";
 import { TriggerEndpointIndexHookService } from "./TriggerEndpointIndexHookService.server";

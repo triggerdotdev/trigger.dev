@@ -1,7 +1,7 @@
-import { BackgroundWorkerTask } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
-import { Project } from "~/models/project.server";
-import { User } from "~/models/user.server";
+import { type BackgroundWorkerTask } from "@trigger.dev/database";
+import { type PrismaClient, prisma } from "~/db.server";
+import { type Project } from "~/models/project.server";
+import { type User } from "~/models/user.server";
 
 export class TaskPresenter {
   #prismaClient: PrismaClient;

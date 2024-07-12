@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import {
   redirectBackWithSuccessMessage,

@@ -1,4 +1,4 @@
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import {
   Table,
   TableBody,

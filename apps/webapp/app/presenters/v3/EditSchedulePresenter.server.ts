@@ -1,5 +1,5 @@
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
+import { type RuntimeEnvironmentType } from "@trigger.dev/database";
+import { type PrismaClient, prisma } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getTimezones } from "~/utils/timezones.server";
 

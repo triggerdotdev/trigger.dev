@@ -1,4 +1,4 @@
-import { IncomingMessage } from "node:http";
+import { type IncomingMessage } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { authenticateApiKey } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";

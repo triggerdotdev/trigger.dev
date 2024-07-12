@@ -5,8 +5,8 @@ import { NamedIconInBox } from "../primitives/NamedIcon";
 import { Paragraph } from "../primitives/Paragraph";
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTrigger } from "../primitives/Sheet";
 import { SelectOAuthMethod } from "./SelectOAuthMethod";
-import { Integration } from "~/services/externalApis/types";
-import { Client } from "~/presenters/IntegrationsPresenter.server";
+import { type Integration } from "~/services/externalApis/types";
+import { type Client } from "~/presenters/IntegrationsPresenter.server";
 
 export function IntegrationWithMissingFieldSheet({
   integration,

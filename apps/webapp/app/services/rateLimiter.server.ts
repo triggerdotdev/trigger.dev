@@ -1,5 +1,5 @@
 import { Ratelimit } from "@upstash/ratelimit";
-import Redis, { RedisOptions } from "ioredis";
+import Redis, { type RedisOptions } from "ioredis";
 import { env } from "~/env.server";
 import { logger } from "./logger.server";
 

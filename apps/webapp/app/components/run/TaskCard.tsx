@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Fragment, useState } from "react";
 import simplur from "simplur";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { ViewTask } from "~/presenters/RunPresenter.server";
+import { type ViewTask } from "~/presenters/RunPresenter.server";
 import { cn } from "~/utils/cn";
 import {
   RunPanel,

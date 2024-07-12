@@ -4,8 +4,8 @@ import { ChevronDownIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import * as React from "react";
 import { cn } from "~/utils/cn";
-import { ButtonContentPropsType, LinkButton } from "./Buttons";
-import { Paragraph, ParagraphVariant } from "./Paragraph";
+import { type ButtonContentPropsType, LinkButton } from "./Buttons";
+import { Paragraph, type ParagraphVariant } from "./Paragraph";
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;

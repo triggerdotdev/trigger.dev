@@ -11,13 +11,11 @@ import type {
 import jsonpointer from "jsonpointer";
 import { customAlphabet } from "nanoid";
 import * as crypto from "node:crypto";
-import type { PrismaClient, PrismaClientOrTransaction, PrismaTransactionClient } from "~/db.server";
-import { prisma } from "~/db.server";
+import { prisma ,type  PrismaClient,type  PrismaClientOrTransaction,type  PrismaTransactionClient  } from "~/db.server";
 import { env } from "~/env.server";
 import { workerQueue } from "~/services/worker.server";
 import { getSecretStore } from "../secrets/secretStore.server";
-import type { IntegrationCatalog } from "./integrationCatalog.server";
-import { integrationCatalog } from "./integrationCatalog.server";
+import { integrationCatalog ,type  IntegrationCatalog  } from "./integrationCatalog.server";
 import {
   createOAuth2Url,
   getClientConfig,
@@ -25,14 +23,14 @@ import {
   refreshOAuth2Token,
 } from "./oauth2.server";
 import {
-  AccessToken,
+  type AccessToken,
   AccessTokenSchema,
-  ApiAuthenticationMethodOAuth2,
-  ConnectionMetadata,
-  GrantTokenParams,
-  OAuthClient,
+  type ApiAuthenticationMethodOAuth2,
+  type ConnectionMetadata,
+  type GrantTokenParams,
+  type OAuthClient,
   OAuthClientSchema,
-  RefreshTokenParams,
+  type RefreshTokenParams,
 } from "./types";
 import { logger } from "../logger.server";
 

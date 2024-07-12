@@ -1,12 +1,12 @@
-import type { Prettify } from "@trigger.dev/core";
+import { type Prettify } from '@trigger.dev/core/types';
 import { z } from "zod";
 import {
-  RuntimeEnvironment,
+  type RuntimeEnvironment,
   findEnvironmentByApiKey,
   findEnvironmentByPublicApiKey,
 } from "~/models/runtimeEnvironment.server";
 import {
-  PersonalAccessTokenAuthenticationResult,
+  type PersonalAccessTokenAuthenticationResult,
   authenticateApiRequestWithPersonalAccessToken,
   isPersonalAccessToken,
 } from "./personalAccessToken.server";

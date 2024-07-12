@@ -1,5 +1,5 @@
 import { CheckBadgeIcon } from "@heroicons/react/24/solid";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { RunsVolumeDiscountTable } from "~/components/billing/v2/RunsVolumeDiscountTable";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -12,7 +12,7 @@ import { useNewCustomerSubscribed } from "~/hooks/useNewCustomerSubscribed";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
 import { BillingService } from "~/services/billing.v2.server";
 import { requireUserId } from "~/services/session.server";
-import { Handle } from "~/utils/handle";
+import { type Handle } from "~/utils/handle";
 import { OrganizationParamsSchema } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {

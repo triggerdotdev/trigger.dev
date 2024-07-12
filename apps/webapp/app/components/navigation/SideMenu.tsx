@@ -19,9 +19,9 @@ import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { useFeatures } from "~/hooks/useFeatures";
-import { MatchedOrganization } from "~/hooks/useOrganizations";
-import { MatchedProject } from "~/hooks/useProject";
-import { User } from "~/models/user.server";
+import { type MatchedOrganization } from "~/hooks/useOrganizations";
+import { type MatchedProject } from "~/hooks/useProject";
+import { type User } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { cn } from "~/utils/cn";
 import {

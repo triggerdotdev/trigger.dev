@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { metricsRegister } from "~/metrics.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {

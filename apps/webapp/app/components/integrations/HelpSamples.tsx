@@ -1,7 +1,6 @@
-import { Integration } from "~/services/externalApis/types";
-import { HelpPanelIntegration, HelpPanelProps } from "./ApiKeyHelp";
-import { Paragraph } from "../primitives/Paragraph";
 import { CodeBlock } from "../code/CodeBlock";
+import { Paragraph } from "../primitives/Paragraph";
+import { type HelpPanelIntegration, type HelpPanelProps } from "./ApiKeyHelp";
 
 export type ReplacementData = {
   slug: string;

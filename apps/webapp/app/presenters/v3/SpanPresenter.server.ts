@@ -1,4 +1,4 @@
-import { prettyPrintPacket } from "@trigger.dev/core/v3";
+import { prettyPrintPacket } from '@trigger.dev/core/v3/utils/ioSerialization';
 import { PrismaClient, prisma } from "~/db.server";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { BasePresenter } from "./basePresenter.server";

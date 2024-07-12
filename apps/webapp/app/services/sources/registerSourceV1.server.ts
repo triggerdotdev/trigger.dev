@@ -1,11 +1,10 @@
 import type { Endpoint } from "@trigger.dev/database";
-import type { SourceMetadataV1 } from "@trigger.dev/core";
-import { $transaction, PrismaClientOrTransaction } from "~/db.server";
-import { prisma } from "~/db.server";
+import { type SourceMetadataV1 } from '@trigger.dev/core/schemas';
+import { $transaction, type PrismaClientOrTransaction , prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { workerQueue } from "../worker.server";
 import { generateSecret } from "./utils.server";
-import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
+import { type ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 
 export class RegisterSourceServiceV1 {
   #prismaClient: PrismaClientOrTransaction;

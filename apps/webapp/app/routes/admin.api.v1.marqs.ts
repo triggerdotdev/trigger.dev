@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { marqs } from "~/v3/marqs/index.server";

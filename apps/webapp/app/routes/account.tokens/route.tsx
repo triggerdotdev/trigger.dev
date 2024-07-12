@@ -3,7 +3,7 @@ import { parse } from "@conform-to/zod";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useFetcher } from "@remix-run/react";
-import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -33,8 +33,8 @@ import {
 } from "~/components/primitives/Table";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import {
-  CreatedPersonalAccessToken,
-  ObfuscatedPersonalAccessToken,
+  type CreatedPersonalAccessToken,
+  type ObfuscatedPersonalAccessToken,
   createPersonalAccessToken,
   getValidPersonalAccessTokens,
   revokePersonalAccessToken,

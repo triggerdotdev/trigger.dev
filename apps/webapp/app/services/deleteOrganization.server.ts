@@ -1,5 +1,5 @@
 import { DateFormatter } from "@internationalized/date";
-import { PrismaClient } from "@trigger.dev/database";
+import { type PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { BillingService } from "./billing.v2.server";

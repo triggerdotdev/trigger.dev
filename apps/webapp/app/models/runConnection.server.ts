@@ -1,7 +1,6 @@
 import type { Integration, RunConnection } from "@trigger.dev/database";
-import type { ConnectionAuth } from "@trigger.dev/core";
-import type { ConnectionWithSecretReference } from "~/services/externalApis/integrationAuthRepository.server";
-import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
+import { type ConnectionAuth } from '@trigger.dev/core/schemas';
+import { integrationAuthRepository ,type  ConnectionWithSecretReference  } from "~/services/externalApis/integrationAuthRepository.server";
 
 export type ResolvableRunConnection = RunConnection & {
   integration: Integration;

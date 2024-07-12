@@ -1,4 +1,4 @@
-import { ActionFunctionArgs, json, redirect } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, json, redirect } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { workerQueue } from "~/services/worker.server";

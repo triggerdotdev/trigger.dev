@@ -1,10 +1,10 @@
 import {
-  AuthenticatableIntegration,
+  type AuthenticatableIntegration,
   OrgIntegrationRepository,
 } from "~/models/orgIntegration.server";
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
-import { WebClient } from "@slack/web-api";
+import { type WebClient } from "@slack/web-api";
 
 export class NewAlertChannelPresenter extends BasePresenter {
   public async call(projectId: string) {

@@ -1,10 +1,5 @@
-import {
-  CronMetadata,
-  IntervalMetadata,
-  ScheduleMetadata,
-  ScheduleMetadataSchema,
-} from "@trigger.dev/core";
-import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type CronMetadata , type IntervalMetadata , type ScheduleMetadata , ScheduleMetadataSchema } from '@trigger.dev/core/schemas';
+import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
 import cronParser from "cron-parser";
 import { logger } from "../logger.server";
 import { DeliverScheduledEventService } from "./deliverScheduledEvent.server";

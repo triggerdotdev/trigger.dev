@@ -1,8 +1,12 @@
 import { fromZodError } from "zod-validation-error";
 import type { EventDispatcher, EventRecord } from "@trigger.dev/database";
-import type { EventFilter } from "@trigger.dev/core";
-import { EventFilterSchema, RequestWithRawBodySchema, eventFilterMatches } from "@trigger.dev/core";
-import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
+import {
+  type EventFilter,
+  EventFilterSchema,
+  RequestWithRawBodySchema,
+} from "@trigger.dev/core/schemas";
+import { eventFilterMatches } from "@trigger.dev/core/eventFilterMatches";
+import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "../worker.server";
 
@@ -112,8 +116,7 @@ export class DeliverEventService {
         },
         { timeout: 10000 }
       );
-    }
-    catch (error) {
+    } catch (error) {
       if (error instanceof AlreadyDeliveredError) {
         logger.debug("Event already delivered, AlreadyDeliveredError", {
           eventRecord: id,

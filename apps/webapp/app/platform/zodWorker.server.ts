@@ -1,27 +1,25 @@
 import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
-import type {
-  CronItem,
-  CronItemOptions,
-  DbJob as GraphileJob,
-  Runner as GraphileRunner,
-  JobHelpers,
-  RunnerOptions,
-  Task,
-  TaskList,
-  TaskSpec,
-  WorkerUtils,
-} from "graphile-worker";
 import {
+
   Logger as GraphileLogger,
   run as graphileRun,
   makeWorkerUtils,
-  parseCronItems,
-} from "graphile-worker";
+  parseCronItems,type 
+  CronItem,type 
+  CronItemOptions,type 
+  DbJob as GraphileJob,type 
+  Runner as GraphileRunner,type 
+  JobHelpers,type 
+  RunnerOptions,type 
+  Task,type 
+  TaskList,type 
+  TaskSpec,type 
+  WorkerUtils} from "graphile-worker";
 
-import { flattenAttributes } from "@trigger.dev/core/v3";
+import { flattenAttributes } from '@trigger.dev/core/v3/utils/flattenAttributes';
 import omit from "lodash.omit";
 import { z } from "zod";
-import { $replica, PrismaClient, PrismaClientOrTransaction } from "~/db.server";
+import { $replica, type PrismaClient, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { PgListenService } from "~/services/db/pgListen.server";
 import { workerLogger as logger } from "~/services/logger.server";

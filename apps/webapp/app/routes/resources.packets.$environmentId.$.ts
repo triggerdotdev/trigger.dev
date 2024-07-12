@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs } from "@remix-run/node";
+import { type LoaderFunctionArgs } from "@remix-run/node";
 import { basename } from "node:path";
 import { z } from "zod";
 import { prisma } from "~/db.server";

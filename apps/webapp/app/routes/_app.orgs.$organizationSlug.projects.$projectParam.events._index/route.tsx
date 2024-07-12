@@ -1,5 +1,5 @@
 import { useNavigation } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EventListSearchSchema } from "~/components/events/EventStatuses";
 import { EventsFilters } from "~/components/events/EventsFilters";

@@ -1,6 +1,6 @@
-import { UIMatch } from "@remix-run/react";
+import { type UIMatch } from "@remix-run/react";
 import type { User } from "~/models/user.server";
-import { loader } from "~/root";
+import { type loader } from "~/root";
 import { useChanged } from "./useChanged";
 import { useTypedMatchesData } from "./useTypedMatchData";
 

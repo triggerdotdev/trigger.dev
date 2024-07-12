@@ -1,6 +1,6 @@
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
-import { ReactNode, forwardRef, useState } from "react";
+import { type ReactNode, forwardRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
 import { InfoIconTooltip } from "./Tooltip";

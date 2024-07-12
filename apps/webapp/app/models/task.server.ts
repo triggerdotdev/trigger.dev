@@ -1,4 +1,4 @@
-import type { CachedTask, ServerTask } from "@trigger.dev/core";
+import { type CachedTask , type ServerTask } from '@trigger.dev/core/schemas';
 import type { Task, TaskAttempt } from "@trigger.dev/database";
 
 export type TaskWithAttempts = Task & {

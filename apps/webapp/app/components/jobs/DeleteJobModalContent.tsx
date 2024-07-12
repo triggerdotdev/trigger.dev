@@ -1,8 +1,8 @@
 import { useFetcher } from "@remix-run/react";
 import { useEffect } from "react";
-import { loader } from "~/routes/resources.jobs.$jobId";
+import { type loader } from "~/routes/resources.jobs.$jobId";
 import { cn } from "~/utils/cn";
-import { JobEnvironment, JobStatusTable } from "../JobsStatusTable";
+import { type JobEnvironment, JobStatusTable } from "../JobsStatusTable";
 import { Button } from "../primitives/Buttons";
 import { Header1, Header2 } from "../primitives/Headers";
 import { NamedIcon } from "../primitives/NamedIcon";

@@ -7,7 +7,7 @@ import {
   ServerStackIcon,
 } from "@heroicons/react/20/solid";
 import { Outlet, useLocation, useParams } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment } from "react/jsx-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -46,7 +46,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
 import {
-  DeploymentListItem,
+  type DeploymentListItem,
   DeploymentListPresenter,
 } from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";

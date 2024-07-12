@@ -1,14 +1,6 @@
-import {
-  ClientToSharedQueueMessages,
-  CoordinatorSocketData,
-  CoordinatorToPlatformMessages,
-  PlatformToCoordinatorMessages,
-  PlatformToProviderMessages,
-  ProviderToPlatformMessages,
-  SharedQueueToClientMessages,
-} from "@trigger.dev/core/v3";
+import { ClientToSharedQueueMessages , CoordinatorSocketData , CoordinatorToPlatformMessages , PlatformToCoordinatorMessages , PlatformToProviderMessages , ProviderToPlatformMessages , SharedQueueToClientMessages } from '@trigger.dev/core/v3/schemas';
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
-import { Server } from "socket.io";
+import { type Server } from "socket.io";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { SharedSocketConnection } from "./sharedSocketConnection";

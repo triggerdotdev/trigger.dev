@@ -1,10 +1,10 @@
-import { User } from "@trigger.dev/database";
-import { replacements } from "@trigger.dev/core";
-import { PrismaClient, prisma } from "~/db.server";
-import { Job } from "~/models/job.server";
-import { Organization } from "~/models/organization.server";
-import { Project } from "~/models/project.server";
-import { EventExample } from "@trigger.dev/core";
+import { type User } from "@trigger.dev/database";
+import { replacements } from '@trigger.dev/core/replacements';
+import { type PrismaClient, prisma } from "~/db.server";
+import { type Job } from "~/models/job.server";
+import { type Organization } from "~/models/organization.server";
+import { type Project } from "~/models/project.server";
+import { EventExample } from '@trigger.dev/core/schemas';
 
 export class TestJobPresenter {
   #prismaClient: PrismaClient;

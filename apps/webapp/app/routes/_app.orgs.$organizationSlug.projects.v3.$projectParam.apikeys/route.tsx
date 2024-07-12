@@ -1,5 +1,5 @@
 import { BookOpenIcon, InformationCircleIcon, LockOpenIcon } from "@heroicons/react/20/solid";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";

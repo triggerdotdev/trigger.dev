@@ -1,5 +1,5 @@
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TaskDetail } from "~/components/run/TaskDetail";
 import { TaskDetailsPresenter } from "~/presenters/TaskDetailsPresenter.server";

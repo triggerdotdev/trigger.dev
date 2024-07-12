@@ -1,11 +1,5 @@
-import {
-  StatusUpdate,
-  StatusHistory,
-  StatusHistorySchema,
-  StatusUpdateState,
-  StatusUpdateData,
-} from "@trigger.dev/core";
-import { PrismaClient } from "@trigger.dev/database";
+import { type StatusUpdate , type StatusHistory , StatusHistorySchema , type StatusUpdateState , type StatusUpdateData } from '@trigger.dev/core/schemas';
+import { type PrismaClient } from "@trigger.dev/database";
 import { prisma, $transaction } from "~/db.server";
 
 export class SetStatusService {

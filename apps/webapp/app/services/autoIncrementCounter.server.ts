@@ -1,9 +1,9 @@
-import Redis, { RedisOptions } from "ioredis";
+import Redis, { type RedisOptions } from "ioredis";
 import {
   $transaction,
   Prisma,
-  PrismaClientOrTransaction,
-  PrismaTransactionOptions,
+  type PrismaClientOrTransaction,
+  type PrismaTransactionOptions,
   prisma,
 } from "~/db.server";
 import { env } from "~/env.server";

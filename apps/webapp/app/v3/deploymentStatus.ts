@@ -1,4 +1,4 @@
-import { WorkerDeployment } from "@trigger.dev/database";
+import { type WorkerDeployment } from "@trigger.dev/database";
 
 export const deploymentIndexingIsRetryable = ({
   builtAt,

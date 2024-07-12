@@ -1,6 +1,5 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
-import { json } from "@remix-run/server-runtime";
-import { InvokeJobRequestBodySchema } from "@trigger.dev/core";
+import { json ,type  ActionFunctionArgs  } from "@remix-run/server-runtime";
+import { InvokeJobRequestBodySchema } from '@trigger.dev/core/schemas';
 import { z } from "zod";
 import { PrismaErrorSchema } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";

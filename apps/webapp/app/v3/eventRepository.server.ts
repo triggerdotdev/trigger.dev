@@ -1,33 +1,21 @@
-import { Attributes, Link, TraceFlags } from "@opentelemetry/api";
+import { type Attributes, type Link, TraceFlags } from "@opentelemetry/api";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
-import {
-  ExceptionEventProperties,
-  ExceptionSpanEvent,
-  NULL_SENTINEL,
-  PRIMARY_VARIANT,
-  SemanticInternalAttributes,
-  SpanEvent,
-  SpanEvents,
-  SpanMessagingEvent,
-  TaskEventStyle,
-  TaskRunError,
-  correctErrorStackTrace,
-  createPacketAttributesAsJson,
-  flattenAttributes,
-  isExceptionSpanEvent,
-  omit,
-  unflattenAttributes,
-} from "@trigger.dev/core/v3";
-import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
-import Redis, { RedisOptions } from "ioredis";
+import { type ExceptionEventProperties , type ExceptionSpanEvent , PRIMARY_VARIANT , type SpanEvent , type SpanEvents , SpanMessagingEvent , type TaskEventStyle , type TaskRunError , isExceptionSpanEvent } from '@trigger.dev/core/v3/schemas';
+import { NULL_SENTINEL , flattenAttributes , unflattenAttributes } from '@trigger.dev/core/v3/utils/flattenAttributes';
+import { SemanticInternalAttributes } from '@trigger.dev/core/v3/semanticInternalAttributes';
+import { correctErrorStackTrace } from '@trigger.dev/core/v3/errors';
+import { createPacketAttributesAsJson } from '@trigger.dev/core/v3/utils/ioSerialization';
+import { omit } from '@trigger.dev/core/v3/utils/omit';
+import { Prisma, type TaskEvent, type TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
+import Redis, { type RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
 import { Gauge } from "prom-client";
-import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
+import { $replica, type PrismaClient, type PrismaReplicaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { metricsRegister } from "~/metrics.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";

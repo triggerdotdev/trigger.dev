@@ -10,12 +10,12 @@ import {
 } from "@heroicons/react/20/solid";
 import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import {
-  ActionFunctionArgs,
-  LoaderFunctionArgs,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
   json,
   redirectDocument,
 } from "@remix-run/server-runtime";
-import { RuntimeEnvironment } from "@trigger.dev/database";
+import { type RuntimeEnvironment } from "@trigger.dev/database";
 import { Fragment, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -49,7 +49,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import {
-  EnvironmentVariableWithSetValues,
+  type EnvironmentVariableWithSetValues,
   EnvironmentVariablesPresenter,
 } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { requireUserId } from "~/services/session.server";

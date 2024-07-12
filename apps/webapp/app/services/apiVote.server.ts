@@ -1,4 +1,4 @@
-import { PrismaClient, prisma } from "~/db.server";
+import { type PrismaClient, prisma } from "~/db.server";
 
 export class ApiVoteService {
   #prismaClient: PrismaClient;

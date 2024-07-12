@@ -1,9 +1,9 @@
-import { Help, Integration } from "~/services/externalApis/types";
+import { type Help, type Integration } from "~/services/externalApis/types";
 import { InlineCode } from "../code/InlineCode";
 import { Header1 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 import { HelpInstall } from "./HelpInstall";
-import { HelpSamples, ReplacementData } from "./HelpSamples";
+import { HelpSamples, type ReplacementData } from "./HelpSamples";
 
 export type HelpPanelIntegration = Pick<Integration, "name" | "packageName" | "identifier">;
 

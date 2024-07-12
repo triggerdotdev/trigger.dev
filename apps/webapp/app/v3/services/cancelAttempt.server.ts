@@ -1,10 +1,10 @@
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
 import { BaseService } from "./baseService.server";
 
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { isCancellableRunStatus } from "../taskStatus";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 

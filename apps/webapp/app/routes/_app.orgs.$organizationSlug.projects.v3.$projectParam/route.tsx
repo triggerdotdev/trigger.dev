@@ -1,11 +1,11 @@
 import { Outlet } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { Handle } from "~/utils/handle";
+import { type Handle } from "~/utils/handle";
 import { ProjectParamSchema, projectPath, v3ProjectPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ params }: LoaderFunctionArgs) => {

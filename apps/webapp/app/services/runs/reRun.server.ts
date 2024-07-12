@@ -1,4 +1,4 @@
-import { PrismaClient, prisma } from "~/db.server";
+import { type PrismaClient, prisma } from "~/db.server";
 import { CreateRunService } from "../runs/createRun.server";
 
 export class ReRunService {

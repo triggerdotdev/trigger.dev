@@ -5,16 +5,15 @@ import {
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
 } from "@heroicons/react/20/solid";
-import type { Location } from "@remix-run/react";
-import { useLoaderData, useParams, useRevalidator } from "@remix-run/react";
-import { LoaderFunctionArgs, SerializeFrom } from "@remix-run/server-runtime";
-import { Virtualizer } from "@tanstack/react-virtual";
+import { useLoaderData, useParams, useRevalidator ,type  Location  } from "@remix-run/react";
+import { type LoaderFunctionArgs, type SerializeFrom } from "@remix-run/server-runtime";
+import { type Virtualizer } from "@tanstack/react-virtual";
 import {
   formatDurationMilliseconds,
   millisecondsToNanoseconds,
   nanosecondsToMilliseconds,
 } from "@trigger.dev/core/v3/utils/durations";
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -43,8 +42,8 @@ import { ShortcutKey, variants } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
-import { TreeView, UseTreeStateOutput, useTree } from "~/components/primitives/TreeView/TreeView";
-import { NodesState } from "~/components/primitives/TreeView/reducer";
+import { TreeView, type UseTreeStateOutput, useTree } from "~/components/primitives/TreeView/TreeView";
+import { type NodesState } from "~/components/primitives/TreeView/reducer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
@@ -54,7 +53,7 @@ import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceLocation } from "~/hooks/useReplaceLocation";
-import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { type Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useUser } from "~/hooks/useUser";
 import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";

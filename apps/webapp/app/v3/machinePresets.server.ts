@@ -1,4 +1,4 @@
-import { MachineConfig, MachinePreset, MachinePresetName } from "@trigger.dev/core/v3";
+import { MachineConfig , type MachinePreset , type MachinePresetName } from '@trigger.dev/core/v3/schemas';
 import { defaultMachine, machines } from "@trigger.dev/platform/v3";
 import { logger } from "~/services/logger.server";
 

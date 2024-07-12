@@ -1,9 +1,9 @@
-import { Prisma, TaskSchedule } from "@trigger.dev/database";
+import { type Prisma, type TaskSchedule } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { ZodError } from "zod";
-import { $transaction, PrismaClientOrTransaction } from "~/db.server";
+import { $transaction, type PrismaClientOrTransaction } from "~/db.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { CronPattern, UpsertSchedule } from "../schedules";
+import { CronPattern, type UpsertSchedule } from "../schedules";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import cronstrue from "cronstrue";

@@ -1,8 +1,8 @@
-import { REGISTER_WEBHOOK, WebhookMetadata } from "@trigger.dev/core";
-import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
+import { REGISTER_WEBHOOK , type WebhookMetadata } from '@trigger.dev/core/schemas';
+import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
-import { Prisma, WebhookEnvironment } from "@trigger.dev/database";
+import { type Prisma, type WebhookEnvironment } from "@trigger.dev/database";
 import { ulid } from "../ulid.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 import { z } from "zod";

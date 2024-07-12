@@ -1,7 +1,6 @@
-import type { TriggerSource, UpdateWebhookBody } from "@trigger.dev/core";
+import { type TriggerSource , type UpdateWebhookBody } from '@trigger.dev/core/schemas';
 import type { RuntimeEnvironment } from "@trigger.dev/database";
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
+import { prisma ,type  PrismaClient  } from "~/db.server";
 
 export class UpdateWebhookService {
   #prismaClient: PrismaClient;

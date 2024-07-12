@@ -1,6 +1,6 @@
-import { InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
+import { type InitializeDeploymentRequestBody } from '@trigger.dev/core/v3/schemas';
 import { customAlphabet } from "nanoid";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";

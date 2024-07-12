@@ -1,7 +1,6 @@
 import type { JobVersion } from "@trigger.dev/database";
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
-import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
+import { prisma ,type  PrismaClient  } from "~/db.server";
+import { type ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { DisableScheduleSourceService } from "../schedules/disableScheduleSource.server";
 

@@ -1,4 +1,4 @@
-import { Attributes } from "@opentelemetry/api";
+import { type Attributes } from "@opentelemetry/api";
 import { startActiveSpan } from "~/v3/tracer.server";
 
 export async function parseRequestJsonAsync(

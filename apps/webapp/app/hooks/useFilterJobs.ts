@@ -1,4 +1,4 @@
-import { ProjectJob } from "~/presenters/JobListPresenter.server";
+import { type ProjectJob } from "~/presenters/JobListPresenter.server";
 import { useTextFilter } from "./useTextFilter";
 import { useToggleFilter } from "./useToggleFilter";
 

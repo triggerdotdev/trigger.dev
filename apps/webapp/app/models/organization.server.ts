@@ -7,7 +7,7 @@ import type {
 } from "@trigger.dev/database";
 import { customAlphabet } from "nanoid";
 import slug from "slug";
-import { prisma, PrismaClientOrTransaction } from "~/db.server";
+import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { generate } from "random-words";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 import { env } from "~/env.server";

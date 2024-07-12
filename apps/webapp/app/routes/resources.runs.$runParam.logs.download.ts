@@ -1,10 +1,10 @@
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
 import {
   PreparedEvent,
-  RunPreparedEvent,
+  type RunPreparedEvent,
   eventRepository,
   getDateFromNanoseconds,
 } from "~/v3/eventRepository.server";

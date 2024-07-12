@@ -1,9 +1,9 @@
-import { Logger } from "@trigger.dev/core-backend";
+import { type Logger } from "@trigger.dev/core-backend";
 import type { PoolClient } from "pg";
-import { z } from "zod";
+import { type z } from "zod";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
-import { NotificationCatalog, NotificationChannel, notificationCatalog } from "./types";
+import { type NotificationCatalog, type NotificationChannel, notificationCatalog } from "./types";
 
 export class PgListenService {
   #poolClient: PoolClient;

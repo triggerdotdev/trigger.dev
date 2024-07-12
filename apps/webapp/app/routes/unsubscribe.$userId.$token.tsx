@@ -1,5 +1,5 @@
 import { parse } from "@conform-to/zod";
-import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
 import { inspect } from "util";
 import { z } from "zod";

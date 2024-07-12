@@ -1,8 +1,8 @@
-import type { DisplayProperty, StyleName } from "@trigger.dev/core";
+import { type DisplayProperty , type StyleName } from '@trigger.dev/core/schemas';
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { motion } from "framer-motion";
 import { HourglassIcon } from "lucide-react";
-import { ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Callout } from "~/components/primitives/Callout";
 import { LabelValueStack } from "~/components/primitives/LabelValueStack";

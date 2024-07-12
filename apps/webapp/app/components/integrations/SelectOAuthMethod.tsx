@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { ApiAuthenticationMethodOAuth2, Integration } from "~/services/externalApis/types";
+import {
+  type ApiAuthenticationMethodOAuth2,
+  type Integration,
+} from "~/services/externalApis/types";
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
 import type { ConnectionType } from "@trigger.dev/database";
 import { Header2 } from "../primitives/Headers";
 import { ConnectToOAuthForm } from "./ConnectToOAuthForm";
 import { Paragraph } from "../primitives/Paragraph";
-import { Client } from "~/presenters/IntegrationsPresenter.server";
+import { type Client } from "~/presenters/IntegrationsPresenter.server";
 import { UpdateOAuthForm } from "./UpdateOAuthForm";
 import { LinkButton } from "../primitives/Buttons";
 import { BookOpenIcon } from "@heroicons/react/20/solid";

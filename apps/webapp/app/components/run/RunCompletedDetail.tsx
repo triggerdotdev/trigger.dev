@@ -2,7 +2,7 @@ import { CodeBlock } from "~/components/code/CodeBlock";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RunStatusIcon, RunStatusLabel } from "~/components/runs/RunStatuses";
-import { MatchedRun } from "~/hooks/useRun";
+import { type MatchedRun } from "~/hooks/useRun";
 import {
   RunPanel,
   RunPanelBody,

@@ -1,6 +1,6 @@
-import { ExternalAccount, Integration, TriggerSource } from "@trigger.dev/database";
-import type { ConnectionAuth } from "@trigger.dev/core";
-import { PrismaClientOrTransaction } from "~/db.server";
+import { type ExternalAccount, type Integration, type TriggerSource } from "@trigger.dev/database";
+import { type ConnectionAuth } from '@trigger.dev/core/schemas';
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 import { logger } from "~/services/logger.server";
 

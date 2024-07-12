@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { ExportResult, ExportResultCode, hrTimeToMicroseconds } from "@opentelemetry/core";
-import { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
+import { type ExportResult, ExportResultCode, hrTimeToMicroseconds } from "@opentelemetry/core";
+import { type ReadableSpan, type SpanExporter } from "@opentelemetry/sdk-trace-base";
 
 export class LoggerSpanExporter implements SpanExporter {
   /**

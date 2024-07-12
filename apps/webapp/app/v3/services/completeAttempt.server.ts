@@ -1,15 +1,9 @@
-import { Attributes } from "@opentelemetry/api";
-import {
-  TaskRunContext,
-  TaskRunExecution,
-  TaskRunExecutionResult,
-  TaskRunFailedExecutionResult,
-  TaskRunSuccessfulExecutionResult,
-  flattenAttributes,
-  sanitizeError,
-} from "@trigger.dev/core/v3";
-import { PrismaClientOrTransaction } from "~/db.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type Attributes } from "@opentelemetry/api";
+import { TaskRunContext , type TaskRunExecution , type TaskRunExecutionResult , type TaskRunFailedExecutionResult , type TaskRunSuccessfulExecutionResult } from '@trigger.dev/core/v3/schemas';
+import { flattenAttributes } from '@trigger.dev/core/v3/utils/flattenAttributes';
+import { sanitizeError } from '@trigger.dev/core/v3/errors';
+import { type PrismaClientOrTransaction } from "~/db.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
 import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
@@ -19,7 +13,7 @@ import { CancelAttemptService } from "./cancelAttempt.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { CreateCheckpointService } from "./createCheckpoint.server";
-import { TaskRun } from "@trigger.dev/database";
+import { type TaskRun } from "@trigger.dev/database";
 import { PerformTaskAttemptAlertsService } from "./alerts/performTaskAttemptAlerts.server";
 import { RetryAttemptService } from "./retryAttempt.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";

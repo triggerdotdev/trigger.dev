@@ -1,7 +1,7 @@
-import { JobRun, RuntimeEnvironmentType } from "@trigger.dev/database";
-import { PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type JobRun, RuntimeEnvironmentType } from "@trigger.dev/database";
+import { type PrismaClient, type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
-import { PerformRunExecutionV3Service, RunExecutionPriority } from "./performRunExecutionV3.server";
+import { PerformRunExecutionV3Service, type RunExecutionPriority } from "./performRunExecutionV3.server";
 
 type FoundRun = NonNullable<Awaited<ReturnType<typeof findRun>>>;
 

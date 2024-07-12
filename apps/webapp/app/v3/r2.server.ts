@@ -1,6 +1,6 @@
 import { AwsClient } from "aws4fetch";
 import { env } from "~/env.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { startActiveSpan } from "./tracer.server";

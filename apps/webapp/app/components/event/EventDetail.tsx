@@ -8,7 +8,7 @@ import {
   RunPanelIconProperty,
   RunPanelIconSection,
 } from "~/components/run/RunCard";
-import { Event } from "~/presenters/EventPresenter.server";
+import { type Event } from "~/presenters/EventPresenter.server";
 
 export function EventDetail({ event }: { event: Event }) {
   const { id, name, payload, context, timestamp, deliveredAt } = event;

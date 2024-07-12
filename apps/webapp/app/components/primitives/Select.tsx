@@ -1,14 +1,14 @@
 import * as Ariakit from "@ariakit/react";
-import { SelectProps as AriaSelectProps } from "@ariakit/react";
+import { type SelectProps as AriaSelectProps } from "@ariakit/react";
 import { SelectValue } from "@ariakit/react-core/select/select-value";
 import { Link } from "@remix-run/react";
 import * as React from "react";
 import { Fragment, useMemo, useState } from "react";
-import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { ShortcutKey } from "./ShortcutKey";
 import { ChevronDown } from "lucide-react";
-import { MatchSorterOptions, matchSorter } from "match-sorter";
+import { type MatchSorterOptions, matchSorter } from "match-sorter";
 
 const sizes = {
   small: {

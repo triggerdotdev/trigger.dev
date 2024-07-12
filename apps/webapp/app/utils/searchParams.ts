@@ -1,4 +1,4 @@
-import { ZodType } from "zod";
+import { type ZodType } from "zod";
 import { fromZodError } from "zod-validation-error";
 
 export function objectToSearchParams(

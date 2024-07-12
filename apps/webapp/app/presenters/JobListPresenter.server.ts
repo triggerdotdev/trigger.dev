@@ -1,15 +1,11 @@
-import {
-  DisplayProperty,
-  DisplayPropertySchema,
-  EventSpecificationSchema,
-} from "@trigger.dev/core";
+import { type DisplayProperty , DisplayPropertySchema , EventSpecificationSchema } from '@trigger.dev/core/schemas';
 import { PrismaClient, Prisma, prisma, sqlDatabaseSchema } from "~/db.server";
-import { Organization } from "~/models/organization.server";
-import { Project } from "~/models/project.server";
-import { User } from "~/models/user.server";
+import { type Organization } from "~/models/organization.server";
+import { type Project } from "~/models/project.server";
+import { type User } from "~/models/user.server";
 import { z } from "zod";
 import { projectPath } from "~/utils/pathBuilder";
-import { JobRunStatus } from "@trigger.dev/database";
+import { type JobRunStatus } from "@trigger.dev/database";
 import { BasePresenter } from "./v3/basePresenter.server";
 
 export type ProjectJob = Awaited<ReturnType<JobListPresenter["call"]>>[0];
