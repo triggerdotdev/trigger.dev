@@ -140,7 +140,7 @@ export default defineConfig({
     tsconfigPaths() as Plugin,
     denyImports({
       client: {
-        specifiers: ["node:stream", "@trigger.dev/core"],
+        specifiers: ["@trigger.dev/core"],
       },
       server: {
         specifiers: ["@trigger.dev/core"],
