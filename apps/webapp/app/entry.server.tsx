@@ -12,9 +12,16 @@ import * as Worker from "~/services/worker.server";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import {
   OperatingSystemContextProvider,
-  OperatingSystemPlatform,
+  type OperatingSystemPlatform,
 } from "./components/primitives/OperatingSystemProvider";
+import { Prisma } from "./db.server";
+import { env } from "./env.server";
+import { eventLoopMonitor } from "./eventLoopMonitor.server";
+import { getSharedSqsEventConsumer } from "./services/events/sqsEventConsumer";
+import { logger } from "./services/logger.server";
+import { singleton } from "./utils/singleton";
 import { initializeWebSocketServer } from "./v3/handleWebsockets.server";
+
 initializeWebSocketServer();
 
 const ABORT_DELAY = 30000;
@@ -181,6 +188,8 @@ function logError(error: unknown, request?: Request) {
 
 export { express } from "./express.server";
 
+const sqsEventConsumer = singleton("sqsEventConsumer", getSharedSqsEventConsumer);
+
 process.on("uncaughtException", (error, origin) => {
   if (
     error instanceof Prisma.PrismaClientKnownRequestError ||
@@ -206,13 +215,9 @@ process.on("uncaughtException", (error, origin) => {
 });
 
 export { apiRateLimiter } from "./services/apiRateLimit.server";
+export { runWithHttpContext } from "./services/httpAsyncStorage.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { registryProxy } from "./v3/registryProxy.server";
-export { runWithHttpContext } from "./services/httpAsyncStorage.server";
-import { eventLoopMonitor } from "./eventLoopMonitor.server";
-import { env } from "./env.server";
-import { logger } from "./services/logger.server";
-import { Prisma } from "./db.server";
 
 if (env.EVENT_LOOP_MONITOR_ENABLED === "1") {
   eventLoopMonitor.enable();
