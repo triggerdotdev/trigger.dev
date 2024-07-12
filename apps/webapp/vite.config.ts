@@ -86,6 +86,7 @@ export default defineConfig({
       "prom-client",
       "random-words",
       "react-use/esm/useEvent",
+      "recharts",
       "remix-auth-email-link",
       "remix-auth-github",
       "remix-auth",
