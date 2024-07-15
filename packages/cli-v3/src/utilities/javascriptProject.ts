@@ -1,16 +1,14 @@
-import { $, ExecaError } from "execa";
+import { $ } from "execa";
 import { join } from "node:path";
 import { readJSONFileSync } from "./fileSystem";
 import { logger } from "./logger";
 import { PackageManager, getUserPackageManager } from "./getUserPackageManager";
 import { PackageJson } from "type-fest";
 import { assertExhaustive } from "./assertExhaustive";
-import { builtinModules } from "node:module";
 import { tracer } from "../cli/common";
 import { recordSpanException } from "@trigger.dev/core/v3/otel";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 
-export type ResolveOptions = { allowDev: boolean };
 export type DependencyMeta = { version: string; external: boolean };
 
 export class JavascriptProject {
@@ -126,13 +124,25 @@ export class JavascriptProject {
 
               packagesMeta[packageName] = { version: packageJsonVersion, external };
               missingPackageVersions[packageName] = packageJsonVersion;
+            } else {
+              // Last resort: check devDependencies
+              const devPackageJsonVersion = this.packageJson.devDependencies?.[packageName];
+
+              if (typeof devPackageJsonVersion === "string") {
+                logger.debug(`Resolved ${packageName} version using devDependencies`, {
+                  devPackageJsonVersion,
+                });
+
+                packagesMeta[packageName] = { version: devPackageJsonVersion, external };
+                missingPackageVersions[packageName] = devPackageJsonVersion;
+              }
             }
           }
 
           span.setAttributes({
             ...flattenAttributes(missingPackageVersions, "missingPackageVersions"),
             missingPackages: missingPackagesMeta.map(
-              ([pkgName]: [string, DependencyMeta]) => pkgName
+              ([packageName]: [string, DependencyMeta]) => packageName
             ),
           });
 
@@ -152,53 +162,6 @@ export class JavascriptProject {
         }
       }
     );
-  }
-
-  async resolve(packageName: string, options?: ResolveOptions): Promise<string | undefined> {
-    if (isBuiltInModule(packageName)) {
-      return undefined;
-    }
-
-    const opts = { allowDev: false, ...options };
-
-    const command = await this.#getCommand();
-
-    try {
-      const version = await command.resolveDependencyVersion(packageName, {
-        cwd: this.projectPath,
-      });
-
-      if (version) {
-        logger.debug(`Resolved ${packageName} version using ${command.name}`, { version });
-
-        return version;
-      }
-
-      const packageJsonVersion = this.packageJson.dependencies?.[packageName];
-
-      if (typeof packageJsonVersion === "string") {
-        logger.debug(`Resolved ${packageName} version using package.json`, { packageJsonVersion });
-
-        return packageJsonVersion;
-      }
-
-      if (opts.allowDev) {
-        const devPackageJsonVersion = this.packageJson.devDependencies?.[packageName];
-
-        if (typeof devPackageJsonVersion === "string") {
-          logger.debug(`Resolved ${packageName} version using devDependencies`, {
-            devPackageJsonVersion,
-          });
-
-          return devPackageJsonVersion;
-        }
-      }
-    } catch (error) {
-      logger.debug(`Failed to resolve dependency version using ${command.name}`, {
-        packageName,
-        error,
-      });
-    }
   }
 
   async #getCommand(): Promise<PackageManagerCommands> {
@@ -253,11 +216,6 @@ interface PackageManagerCommands {
   extractDirectDependenciesMeta(
     options: PackageManagerOptions
   ): Promise<Record<string, DependencyMeta>>;
-
-  resolveDependencyVersion(
-    packageName: string,
-    options: PackageManagerOptions
-  ): Promise<string | undefined>;
 }
 
 class PNPMCommands implements PackageManagerCommands {
@@ -273,22 +231,6 @@ class PNPMCommands implements PackageManagerCommands {
     const { stdout, stderr } = await $({ cwd: options.cwd })`${this.cmd} install`;
 
     logger.debug(`Installing dependencies using ${this.name}`, { stdout, stderr });
-  }
-
-  async resolveDependencyVersion(packageName: string, options: PackageManagerOptions) {
-    const { stdout } = await $({ cwd: options.cwd })`${this.cmd} list ${packageName} -r --json`;
-    const result = JSON.parse(stdout) as PnpmList;
-
-    logger.debug(`Resolving ${packageName} version using ${this.name}`);
-
-    // Return the first dependency version that matches the package name
-    for (const dep of result) {
-      const dependency = dep.dependencies?.[packageName];
-
-      if (dependency) {
-        return dependency.version;
-      }
-    }
   }
 
   async extractDirectDependenciesMeta(options: PackageManagerOptions) {
@@ -359,15 +301,6 @@ class NPMCommands implements PackageManagerCommands {
     logger.debug(`Installing dependencies using ${this.name}`, { stdout, stderr });
   }
 
-  async resolveDependencyVersion(packageName: string, options: PackageManagerOptions) {
-    const { stdout } = await $({ cwd: options.cwd })`${this.cmd} list ${packageName} --json`;
-    const output = JSON.parse(stdout) as NpmListOutput;
-
-    logger.debug(`Resolving ${packageName} version using ${this.name}`, { output });
-
-    return this.#recursivelySearchDependencies(output.dependencies, packageName);
-  }
-
   async extractDirectDependenciesMeta(
     options: PackageManagerOptions
   ): Promise<Record<string, DependencyMeta>> {
@@ -391,25 +324,6 @@ class NPMCommands implements PackageManagerCommands {
     }
 
     return JSON.parse(childProcess.stdout) as NpmListOutput;
-  }
-
-  #recursivelySearchDependencies(
-    dependencies: Record<string, NpmDependency>,
-    packageName: string
-  ): string | undefined {
-    for (const [name, dependency] of Object.entries(dependencies)) {
-      if (name === packageName) {
-        return dependency.version;
-      }
-
-      if (dependency.dependencies) {
-        const result = this.#recursivelySearchDependencies(dependency.dependencies, packageName);
-
-        if (result) {
-          return result;
-        }
-      }
-    }
   }
 
   #flattenDependenciesMeta(
@@ -443,22 +357,6 @@ class YarnCommands implements PackageManagerCommands {
     const { stdout, stderr } = await $({ cwd: options.cwd })`${this.cmd} install`;
 
     logger.debug(`Installing dependencies using ${this.name}`, { stdout, stderr });
-  }
-
-  async resolveDependencyVersion(packageName: string, options: PackageManagerOptions) {
-    const { stdout } = await $({ cwd: options.cwd })`${this.cmd} info ${packageName} --json`;
-
-    const lines = stdout.split("\n");
-
-    logger.debug(`Resolving ${packageName} version using ${this.name}`);
-
-    for (const line of lines) {
-      const json = JSON.parse(line);
-
-      if (json.value === packageName) {
-        return json.children.Version;
-      }
-    }
   }
 
   async extractDirectDependenciesMeta(options: PackageManagerOptions) {
@@ -522,13 +420,4 @@ class YarnCommands implements PackageManagerCommands {
       },
     ];
   }
-}
-
-function isBuiltInModule(module: string): boolean {
-  // if the module has node: prefix, it's a built-in module
-  if (module.startsWith("node:")) {
-    return true;
-  }
-
-  return builtinModules.includes(module);
 }

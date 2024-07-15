@@ -9,12 +9,12 @@ import {
 } from "@trigger.dev/core/v3";
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import { Command, Option as CommandOption } from "commander";
-import { Metafile, build } from "esbuild";
+import { build } from "esbuild";
 import { execa } from "execa";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, posix, relative, resolve } from "node:path";
+import { dirname, join, posix, relative } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -32,11 +32,7 @@ import {
 import { ReadConfigResult, readConfig } from "../utilities/configFiles.js";
 import { createTempDir, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
-import {
-  detectPackageNameFromImportPath,
-  parsePackageName,
-  stripWorkspaceFromVersion,
-} from "../utilities/installPackages";
+import { parsePackageName, stripWorkspaceFromVersion } from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
@@ -1319,11 +1315,7 @@ async function compileProject(
         entryPointImports: entryPointMetaOutput.imports,
       });
 
-      const dependencies = await resolveRequiredDependencies(
-        directDependenciesMeta,
-        config,
-        javascriptProject
-      );
+      const dependencies = await resolveRequiredDependencies(directDependenciesMeta, config);
 
       logger.debug("gatherRequiredDependencies()", { dependencies });
 
@@ -1694,8 +1686,7 @@ export async function typecheckProject(config: ResolvedConfig) {
 // Returns the dependency names and the version to use (taken from the CLI deps package.json)
 export async function resolveRequiredDependencies(
   directDependenciesMeta: Record<string, DependencyMeta>,
-  config: ResolvedConfig,
-  project: JavascriptProject
+  config: ResolvedConfig
 ) {
   return await tracer.startActiveSpan("resolveRequiredDependencies", async (span) => {
     span.setAttribute("resolvablePackageNames", Object.keys(directDependenciesMeta));
@@ -1721,8 +1712,8 @@ export async function resolveRequiredDependencies(
       }
     }
 
-    for (const [pkgName, { version }] of Object.entries(directDependenciesMeta)) {
-      dependencies[pkgName] = version;
+    for (const [packageName, { version }] of Object.entries(directDependenciesMeta)) {
+      dependencies[packageName] = version;
     }
 
     if (config.additionalPackages) {
@@ -1739,9 +1730,7 @@ export async function resolveRequiredDependencies(
           dependencies[packageParts.name] = packageParts.version;
           continue;
         } else {
-          const externalDependencyVersion = await project.resolve(packageParts.name, {
-            allowDev: true,
-          });
+          const externalDependencyVersion = directDependenciesMeta[packageParts.name]?.version;
 
           if (externalDependencyVersion) {
             dependencies[packageParts.name] = externalDependencyVersion;
