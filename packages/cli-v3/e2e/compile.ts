@@ -67,7 +67,6 @@ export async function compile(options: CompileOptions) {
 
   const e2eJsProject = new E2EJavascriptProject(config.projectDir, packageManager);
   const directDependenciesMeta = await e2eJsProject.extractDirectDependenciesMeta();
-  console.log("DIRECT DEPS", directDependenciesMeta);
 
   const result = await build({
     stdin: {
