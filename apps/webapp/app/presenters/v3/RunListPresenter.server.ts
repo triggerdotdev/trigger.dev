@@ -1,4 +1,4 @@
-import { Prisma, TaskRunStatus } from "@trigger.dev/database";
+import { Prisma, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import parse from "parse-duration";
 import { Direction } from "~/components/runs/RunStatuses";
 import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
@@ -94,12 +94,16 @@ export class RunListPresenter extends BasePresenter {
     });
 
     //get all possible tasks
-    const possibleTasksAsync = this._replica.backgroundWorkerTask.findMany({
-      distinct: ["slug"],
-      where: {
-        projectId: project.id,
-      },
-    });
+    const possibleTasksAsync = this._replica.$queryRaw<
+    {
+      slug: string;
+      triggerSource: TaskTriggerSource
+    }[]
+    >`
+    SELECT DISTINCT(slug), "triggerSource"
+    FROM ${sqlDatabaseSchema}."BackgroundWorkerTask"
+    WHERE "projectId" = ${project.id}
+    ORDER BY slug ASC;`;
 
     //get possible bulk actions
     const bulkActionsAsync = this._replica.bulkActionGroup.findMany({
