@@ -91,17 +91,13 @@ export class EnvironmentVariablesRepository implements Repository {
       return { success: false as const, error: `Environment not found` };
     }
 
-    // Check to see if any of the variables are `TRIGGER_SECRET_KEY` or `TRIGGER_API_URL`
-    const triggerKeys = options.variables.map((v) => v.key);
-    if (triggerKeys.includes("TRIGGER_SECRET_KEY") || triggerKeys.includes("TRIGGER_API_URL")) {
-      return {
-        success: false as const,
-        error: `You cannot set the variables TRIGGER_SECRET_KEY or TRIGGER_API_URL as they will be set automatically`,
-      };
-    }
+    // Remove `TRIGGER_SECRET_KEY` or `TRIGGER_API_URL`
+    let values = options.variables.filter(
+      (v) => v.key !== "TRIGGER_SECRET_KEY" && v.key !== "TRIGGER_API_URL"
+    );
 
     //get rid of empty variables
-    const values = options.variables.filter((v) => v.key.trim() !== "" && v.value.trim() !== "");
+    values = options.variables.filter((v) => v.key.trim() !== "" && v.value.trim() !== "");
     if (values.length === 0) {
       return { success: false as const, error: `You must set at least one value` };
     }
