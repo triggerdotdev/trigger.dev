@@ -51,7 +51,7 @@ logger.loggerLevel = options.logLevel;
 
 if (testCases.length > 0) {
   describe.concurrent("bundling", async () => {
-    beforeEach<E2EFixtureTest>(async ({ fixtureDir, packageManager, workspaceDir }) => {
+    beforeEach<E2EFixtureTest>(async ({ fixtureDir, packageManager, skip, workspaceDir }) => {
       await rimraf(join(workspaceDir, "**/node_modules"), {
         glob: true,
       });
@@ -73,6 +73,13 @@ if (testCases.length > 0) {
             resolve(join(workspaceDir, "yarn.lock"))
           );
         }
+      }
+
+      if (
+        options.packageManager &&
+        !existsSync(resolve(fixtureDir, LOCKFILES[options.packageManager]))
+      ) {
+        skip();
       }
 
       await installFixtureDeps({ fixtureDir, packageManager, workspaceDir });
@@ -112,10 +119,8 @@ if (testCases.length > 0) {
         `fixture '${testCase.id}'`,
         { timeout: TIMEOUT },
         async ({
-          fixtureDir,
           packageManager,
           resolveEnv,
-          skip,
           skipTypecheck,
           tempDir,
           wantCompilationError,
@@ -126,13 +131,6 @@ if (testCases.length > 0) {
           wantWorkerError,
           workspaceDir,
         }) => {
-          if (
-            options.packageManager &&
-            !existsSync(resolve(fixtureDir, LOCKFILES[options.packageManager]))
-          ) {
-            skip();
-          }
-
           let resolvedConfig: ReadConfigResult;
           const configExpect = expect(
             (async () => {
