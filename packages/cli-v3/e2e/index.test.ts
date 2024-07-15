@@ -20,6 +20,7 @@ import { E2EOptions, E2EOptionsSchema } from "./schemas";
 import { fixturesConfig, TestCase } from "./fixtures.config";
 import { Metafile, OutputFile } from "esbuild";
 import { findUpMultiple } from "find-up";
+import { DependencyMeta } from "../src/utilities/javascriptProject";
 
 interface E2EFixtureTest extends TestCase {
   fixtureDir: string;
@@ -163,6 +164,7 @@ if (testCases.length > 0) {
             ).resolves.not.toThrowError();
           }
 
+          let directDependenciesMeta: Record<string, DependencyMeta>;
           let entryPointMetaOutput: Metafile["outputs"]["out/stdin.js"];
           let entryPointOutputFile: OutputFile;
           let workerMetaOutput: Metafile["outputs"]["out/stdin.js"];
@@ -175,6 +177,7 @@ if (testCases.length > 0) {
                 resolvedConfig: resolvedConfig!,
                 tempDir,
               });
+              directDependenciesMeta = compilationResult.directDependenciesMeta;
               entryPointMetaOutput = compilationResult.entryPointMetaOutput;
               entryPointOutputFile = compilationResult.entryPointOutputFile;
               workerMetaOutput = compilationResult.workerMetaOutput;
@@ -201,6 +204,7 @@ if (testCases.length > 0) {
           const depsExpectation = expect(
             (async () => {
               dependencies = await handleDependencies({
+                directDependenciesMeta: directDependenciesMeta!,
                 entryPointMetaOutput: entryPointMetaOutput!,
                 metaOutput: workerMetaOutput!,
                 resolvedConfig: resolvedConfig!,

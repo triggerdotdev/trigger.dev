@@ -214,6 +214,7 @@ export async function compile(options: CompileOptions) {
   await writeFile(join(tempDir, "index.js"), entryPointOutputFile.text);
 
   return {
+    directDependenciesMeta,
     workerMetaOutput: metaOutput,
     workerOutputFile,
     entryPointMetaOutput,
