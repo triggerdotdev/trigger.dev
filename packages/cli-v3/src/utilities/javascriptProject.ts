@@ -123,14 +123,9 @@ export class JavascriptProject {
     );
   }
 
-  async resolveAll(
-    packageNames: string[],
-    options?: ResolveOptions
-  ): Promise<Record<string, string>> {
+  async resolveAll(packageNames: string[]): Promise<Record<string, string>> {
     return tracer.startActiveSpan("JavascriptProject.resolveAll", async (span) => {
       const externalPackages = packageNames.filter((packageName) => !isBuiltInModule(packageName));
-
-      const opts = { allowDev: false, ...options };
 
       const command = await this.#getCommand();
 
@@ -167,18 +162,6 @@ export class JavascriptProject {
             });
 
             missingPackageVersions[packageName] = packageJsonVersion;
-          }
-
-          if (opts.allowDev) {
-            const devPackageJsonVersion = this.packageJson.devDependencies?.[packageName];
-
-            if (typeof devPackageJsonVersion === "string") {
-              logger.debug(`Resolved ${packageName} version using devDependencies`, {
-                devPackageJsonVersion,
-              });
-
-              missingPackageVersions[packageName] = devPackageJsonVersion;
-            }
           }
         }
 
