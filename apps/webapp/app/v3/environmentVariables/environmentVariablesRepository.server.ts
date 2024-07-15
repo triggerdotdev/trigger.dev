@@ -97,7 +97,7 @@ export class EnvironmentVariablesRepository implements Repository {
     );
 
     //get rid of empty variables
-    values = options.variables.filter((v) => v.key.trim() !== "" && v.value.trim() !== "");
+    values = values.filter((v) => v.key.trim() !== "" && v.value.trim() !== "");
     if (values.length === 0) {
       return { success: false as const, error: `You must set at least one value` };
     }
