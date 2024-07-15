@@ -56,7 +56,7 @@ import {
   parseBuildErrorStack,
   parseNpmInstallError,
 } from "../utilities/deployErrors";
-import { JavascriptProject } from "../utilities/javascriptProject";
+import { DependencyMeta, JavascriptProject } from "../utilities/javascriptProject";
 import { docs, getInTouch } from "../utilities/links";
 import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { safeJsonParse } from "../utilities/safeJsonParse";
@@ -1154,8 +1154,8 @@ async function compileProject(
         );
       }
 
-      const jsProject = new JavascriptProject(config.projectDir);
-      const directDependenciesMeta = await jsProject.extractDirectDependenciesMeta();
+      const javascriptProject = new JavascriptProject(config.projectDir);
+      const directDependenciesMeta = await javascriptProject.extractDirectDependenciesMeta();
 
       const result = await build({
         stdin: {
@@ -1314,17 +1314,16 @@ async function compileProject(
       // Save the entryPoint outputFile to /tmp/dir/index.js
       await writeFile(join(tempDir, "index.js"), entryPointOutputFile.text);
 
-      logger.debug("Getting the imports for the worker and entryPoint builds", {
+      logger.debug("Imports for the worker and entryPoint builds", {
         workerImports: metaOutput.imports,
         entryPointImports: entryPointMetaOutput.imports,
       });
 
-      // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
-      const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
-
-      const javascriptProject = new JavascriptProject(config.projectDir);
-
-      const dependencies = await resolveRequiredDependencies(allImports, config, javascriptProject);
+      const dependencies = await resolveRequiredDependencies(
+        directDependenciesMeta,
+        config,
+        javascriptProject
+      );
 
       logger.debug("gatherRequiredDependencies()", { dependencies });
 
@@ -1694,36 +1693,19 @@ export async function typecheckProject(config: ResolvedConfig) {
 // Returns the dependencies that are required by the output that are found in output and the CLI package dependencies
 // Returns the dependency names and the version to use (taken from the CLI deps package.json)
 export async function resolveRequiredDependencies(
-  imports: Metafile["outputs"][string]["imports"],
+  directDependenciesMeta: Record<string, DependencyMeta>,
   config: ResolvedConfig,
   project: JavascriptProject
 ) {
   return await tracer.startActiveSpan("resolveRequiredDependencies", async (span) => {
-    const resolvablePackageNames = new Set<string>();
+    span.setAttribute("resolvablePackageNames", Object.keys(directDependenciesMeta));
 
-    for (const file of imports) {
-      if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
-        continue;
-      }
-
-      const packageName = detectPackageNameFromImportPath(file.path);
-
-      if (!packageName) {
-        continue;
-      }
-
-      resolvablePackageNames.add(packageName);
-    }
-
-    span.setAttribute("resolvablePackageNames", Array.from(resolvablePackageNames));
-
-    const resolvedPackageVersions = await project.resolveAll(Array.from(resolvablePackageNames));
-    const missingPackages = Array.from(resolvablePackageNames).filter(
-      (packageName) => !resolvedPackageVersions[packageName]
-    );
+    const missingPackages = Object.entries(directDependenciesMeta)
+      .filter(([, pkgMeta]) => !pkgMeta.version)
+      .map(([name]) => name);
 
     span.setAttributes({
-      ...flattenAttributes(resolvedPackageVersions, "resolvedPackageVersions"),
+      ...flattenAttributes(directDependenciesMeta, "resolvedPackageVersions"),
     });
     span.setAttribute("missingPackages", missingPackages);
 
@@ -1739,8 +1721,8 @@ export async function resolveRequiredDependencies(
       }
     }
 
-    for (const [packageName, version] of Object.entries(resolvedPackageVersions)) {
-      dependencies[packageName] = version;
+    for (const [pkgName, { version }] of Object.entries(directDependenciesMeta)) {
+      dependencies[pkgName] = version;
     }
 
     if (config.additionalPackages) {
