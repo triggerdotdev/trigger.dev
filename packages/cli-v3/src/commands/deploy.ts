@@ -1689,14 +1689,19 @@ export async function resolveRequiredDependencies(
   config: ResolvedConfig
 ) {
   return await tracer.startActiveSpan("resolveRequiredDependencies", async (span) => {
-    span.setAttribute("resolvablePackageNames", Object.keys(directDependenciesMeta));
+    const externalDirectDependenciesVersion = Object.fromEntries(
+      Object.entries(directDependenciesMeta)
+        .filter(([, { external }]) => external)
+        .map(([packageName, { version }]) => [packageName, version])
+    );
+    span.setAttribute("resolvablePackageNames", Object.keys(externalDirectDependenciesVersion));
 
-    const missingPackages = Object.entries(directDependenciesMeta)
-      .filter(([, pkgMeta]) => !pkgMeta.version)
+    const missingPackages = Object.entries(externalDirectDependenciesVersion)
+      .filter(([, version]) => !version)
       .map(([name]) => name);
 
     span.setAttributes({
-      ...flattenAttributes(directDependenciesMeta, "resolvedPackageVersions"),
+      ...flattenAttributes(externalDirectDependenciesVersion, "resolvedPackageVersions"),
     });
     span.setAttribute("missingPackages", missingPackages);
 
@@ -1712,7 +1717,7 @@ export async function resolveRequiredDependencies(
       }
     }
 
-    for (const [packageName, { version }] of Object.entries(directDependenciesMeta)) {
+    for (const [packageName, version] of Object.entries(externalDirectDependenciesVersion)) {
       dependencies[packageName] = version;
     }
 
@@ -1730,7 +1735,7 @@ export async function resolveRequiredDependencies(
           dependencies[packageParts.name] = packageParts.version;
           continue;
         } else {
-          const externalDependencyVersion = directDependenciesMeta[packageParts.name]?.version;
+          const externalDependencyVersion = externalDirectDependenciesVersion[packageParts.name];
 
           if (externalDependencyVersion) {
             dependencies[packageParts.name] = externalDependencyVersion;
