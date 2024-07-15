@@ -52,7 +52,7 @@ logger.loggerLevel = options.logLevel;
 if (testCases.length > 0) {
   describe.concurrent("bundling", async () => {
     beforeEach<E2EFixtureTest>(async ({ fixtureDir, packageManager, skip, workspaceDir }) => {
-      await rimraf(join(workspaceDir, "**/node_modules/**"), {
+      await rimraf(join(workspaceDir, "**/node_modules"), {
         glob: true,
       });
       await rimraf(join(workspaceDir, ".yarn"), { glob: true });
@@ -119,7 +119,6 @@ if (testCases.length > 0) {
         `fixture '${testCase.id}'`,
         { timeout: TIMEOUT },
         async ({
-          fixtureDir,
           packageManager,
           resolveEnv,
           skipTypecheck,

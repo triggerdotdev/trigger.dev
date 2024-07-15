@@ -483,12 +483,14 @@ class NPMCommands implements PackageManagerCommands {
     return results;
   }
 
-  async extractDirectDependenciesMeta(options: PackageManagerOptions) {
+  async extractDirectDependenciesMeta(
+    options: PackageManagerOptions
+  ): Promise<Record<string, DependencyMeta>> {
     const result = await this.#listDirectDependencies(options);
 
     logger.debug(`Extracting direct dependencies metadata using ${this.name}`);
 
-    return this.#flattenDependenciesMeta(result.dependencies);
+    return result.dependencies ? this.#flattenDependenciesMeta(result.dependencies) : {};
   }
 
   async #listDirectDependencies(options: PackageManagerOptions) {
@@ -546,11 +548,11 @@ class NPMCommands implements PackageManagerCommands {
     let results: Record<string, DependencyMeta> = {};
 
     for (const [name, dep] of Object.entries(dependencies)) {
-      const { version, resolved, dependencies } = dep;
-      results[name] = { version, external: !resolved.startsWith("file:") };
+      const { version, resolved, dependencies: children } = dep;
+      results[name] = { version, external: !!resolved && !resolved.startsWith("file:") };
 
-      if (dependencies) {
-        results = { ...results, ...this.#flattenDependenciesMeta(dependencies) };
+      if (children) {
+        results = { ...results, ...this.#flattenDependenciesMeta(children) };
       }
     }
 

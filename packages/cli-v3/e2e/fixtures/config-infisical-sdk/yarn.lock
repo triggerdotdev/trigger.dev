@@ -1165,15 +1165,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"infisical-sdk@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "infisical-sdk@workspace:."
-  dependencies:
-    "@infisical/sdk": "npm:^2.2.3"
-    "@trigger.dev/sdk": "npm:3.0.0-beta.33"
-  languageName: unknown
-  linkType: soft
-
 "ini@npm:^1.3.2":
   version: 1.3.8
   resolution: "ini@npm:1.3.8"
