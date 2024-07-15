@@ -16,8 +16,10 @@ import { PackageManager } from "../src/utilities/getUserPackageManager.js";
 import { logger } from "../src/utilities/logger.js";
 import { cliLink } from "../src/utilities/cliOutput.js";
 import { E2EJavascriptProject } from "./javascriptProject.js";
+import { DependencyMeta } from "../src/utilities/javascriptProject.js";
 
 type HandleDependenciesOptions = {
+  directDependenciesMeta: Record<string, DependencyMeta>;
   entryPointMetaOutput: Metafile["outputs"]["out/stdin.js"];
   metaOutput: Metafile["outputs"]["out/stdin.js"];
   packageManager: PackageManager;
@@ -30,6 +32,7 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
     throw new Error("cannot resolve config");
   }
   const {
+    directDependenciesMeta,
     entryPointMetaOutput,
     metaOutput,
     packageManager,
@@ -37,17 +40,14 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
     tempDir,
   } = options;
 
-  logger.debug("Getting the imports for the worker and entryPoint builds", {
+  logger.debug("Imports for the worker and entryPoint builds", {
     workerImports: metaOutput.imports,
     entryPointImports: entryPointMetaOutput.imports,
   });
 
-  // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
-  const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
-
   const javascriptProject = new E2EJavascriptProject(config.projectDir, packageManager);
 
-  const dependencies = await resolveRequiredDependencies(allImports, config, javascriptProject);
+  const dependencies = await resolveRequiredDependencies(directDependenciesMeta, config);
 
   logger.debug("gatherRequiredDependencies()", { dependencies });
 
