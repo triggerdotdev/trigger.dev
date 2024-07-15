@@ -1,5 +1,5 @@
 import { parse } from "@conform-to/zod";
-import { ActionFunction, json } from "@remix-run/server-runtime";
+import { type ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { revokeInvite } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";

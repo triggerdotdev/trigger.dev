@@ -1,4 +1,4 @@
-import { InlineCode, InlineCodeVariant } from "~/components/code/InlineCode";
+import { InlineCode, type InlineCodeVariant } from "~/components/code/InlineCode";
 import { SpanCodePathAccessory } from "./SpanTitle";
 import { cn } from "~/utils/cn";
 

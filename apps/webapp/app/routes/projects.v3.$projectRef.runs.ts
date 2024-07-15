@@ -1,7 +1,7 @@
-import { LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { EnvSlug, isEnvSlug } from "~/models/api-key.server";
+import { type EnvSlug, isEnvSlug } from "~/models/api-key.server";
 import { requireUserId } from "~/services/session.server";
 
 const ParamsSchema = z.object({

@@ -1,6 +1,5 @@
 import { z } from "zod";
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
+import { prisma ,type  PrismaClient  } from "~/db.server";
 import { EndpointApi } from "../endpointApi.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 

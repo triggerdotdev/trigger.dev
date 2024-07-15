@@ -1,4 +1,4 @@
-import { PrismaClient, User } from "@trigger.dev/database";
+import { type PrismaClient, type User } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 
 export class NewOrganizationPresenter {

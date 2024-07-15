@@ -1,8 +1,8 @@
-import { Link, LinkProps, NavLink, NavLinkProps } from "@remix-run/react";
+import { Link, type LinkProps, NavLink, type NavLinkProps } from "@remix-run/react";
 import React, { forwardRef, useImperativeHandle, useRef } from "react";
-import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { IconNamesOrString, NamedIcon } from "./NamedIcon";
+import { type IconNamesOrString, NamedIcon } from "./NamedIcon";
 import { ShortcutKey } from "./ShortcutKey";
 
 const sizes = {

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useImperativeHandle, useRef } from "react";
 import { cn } from "~/utils/cn";
-import { Icon, RenderIcon } from "./Icon";
+import { Icon, type RenderIcon } from "./Icon";
 
 const containerBase =
   "has-[:focus-visible]:outline-none has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-0 has-[:focus]:border-ring has-[:focus]:outline-none has-[:focus]:ring-2 has-[:focus]:ring-ring has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 ring-offset-background transition cursor-text";

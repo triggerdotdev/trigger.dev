@@ -1,7 +1,7 @@
 import type { EventRecord } from "@trigger.dev/database";
-import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
+import { type AuthenticatedEnvironment } from "../apiAuth.server";
 
 export class CancelEventService {
   #prismaClient: PrismaClientOrTransaction;

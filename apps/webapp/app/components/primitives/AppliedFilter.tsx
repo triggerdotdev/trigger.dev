@@ -1,5 +1,5 @@
 import { XMarkIcon } from "@heroicons/react/20/solid";
-import { ReactNode } from "react";
+import { type ReactNode } from "react";
 import { cn } from "~/utils/cn";
 
 const variants = {

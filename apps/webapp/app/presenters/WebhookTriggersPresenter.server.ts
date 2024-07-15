@@ -1,6 +1,6 @@
-import { Organization, User } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
-import { Project } from "~/models/project.server";
+import { type Organization, type User } from "@trigger.dev/database";
+import { type PrismaClient, prisma } from "~/db.server";
+import { type Project } from "~/models/project.server";
 
 export class WebhookTriggersPresenter {
   #prismaClient: PrismaClient;

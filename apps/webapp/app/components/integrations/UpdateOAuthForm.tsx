@@ -6,7 +6,11 @@ import { useState } from "react";
 import simplur from "simplur";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useTextFilter } from "~/hooks/useTextFilter";
-import { ApiAuthenticationMethodOAuth2, Integration, Scope } from "~/services/externalApis/types";
+import {
+  type ApiAuthenticationMethodOAuth2,
+  type Integration,
+  type Scope,
+} from "~/services/externalApis/types";
 import { cn } from "~/utils/cn";
 import { CodeBlock } from "../code/CodeBlock";
 import { Button } from "../primitives/Buttons";
@@ -18,7 +22,7 @@ import { Input } from "../primitives/Input";
 import { InputGroup } from "../primitives/InputGroup";
 import { Label } from "../primitives/Label";
 import { Paragraph } from "../primitives/Paragraph";
-import { Client } from "~/presenters/IntegrationsPresenter.server";
+import { type Client } from "~/presenters/IntegrationsPresenter.server";
 import { schema } from "~/routes/resources.connection.$organizationId.oauth2.$integrationId";
 
 export type Status = "loading" | "idle";

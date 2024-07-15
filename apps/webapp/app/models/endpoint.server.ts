@@ -1,6 +1,6 @@
 import { VERCEL_RESPONSE_TIMEOUT_STATUS_CODES } from "~/consts";
 import { prisma } from "~/db.server";
-import { Prettify } from "~/lib.es5";
+import { type Prettify } from "~/lib.es5";
 
 export type ExtendedEndpoint = Prettify<Awaited<ReturnType<typeof findEndpoint>>>;
 

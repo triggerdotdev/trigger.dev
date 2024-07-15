@@ -5,8 +5,11 @@ import {
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
 import { useParams } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import {
+  formatDurationNanoseconds,
+  nanosecondsToMilliseconds,
+} from "@trigger.dev/core/v3/utils/durations";
 import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
@@ -30,7 +33,7 @@ import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptSt
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { Span, SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
+import { type Span, SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
@@ -40,7 +43,7 @@ import {
   v3SpanParamsSchema,
   v3TraceSpanPath,
 } from "~/utils/pathBuilder";
-import { SpanLink } from "~/v3/eventRepository.server";
+import { type SpanLink } from "~/v3/eventRepository.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

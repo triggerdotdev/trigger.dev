@@ -1,23 +1,12 @@
-import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
+import { type Context, ROOT_CONTEXT, type Span, SpanKind, context, trace } from "@opentelemetry/api";
+import { type MachinePreset , type ProdTaskRunExecution , type ProdTaskRunExecutionPayload , type TaskRunError , type TaskRunExecution , type TaskRunExecutionLazyAttemptPayload , type TaskRunExecutionResult , type TaskRunFailedExecutionResult , type TaskRunSuccessfulExecutionResult , type serverWebsocketMessages } from '@trigger.dev/core/v3/schemas';
+import { type ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import {
-  MachinePreset,
-  ProdTaskRunExecution,
-  ProdTaskRunExecutionPayload,
-  TaskRunError,
-  TaskRunExecution,
-  TaskRunExecutionLazyAttemptPayload,
-  TaskRunExecutionResult,
-  TaskRunFailedExecutionResult,
-  TaskRunSuccessfulExecutionResult,
-  serverWebsocketMessages,
-} from "@trigger.dev/core/v3";
-import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
-import {
-  BackgroundWorker,
-  BackgroundWorkerTask,
-  RuntimeEnvironment,
-  TaskRun,
-  TaskRunStatus,
+  type BackgroundWorker,
+  type BackgroundWorkerTask,
+  type RuntimeEnvironment,
+  type TaskRun,
+  type TaskRunStatus,
 } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -39,7 +28,7 @@ import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.se
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
 import { tracer } from "../tracer.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
-import { EnvironmentVariable } from "../environmentVariables/repository";
+import { type EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
 import { env } from "~/env.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";

@@ -1,7 +1,7 @@
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { JobRunStatus } from "~/models/job.server";
-import { ProjectJob } from "~/presenters/JobListPresenter.server";
+import { type JobRunStatus } from "~/models/job.server";
+import { type ProjectJob } from "~/presenters/JobListPresenter.server";
 import { jobPath, jobTestPath } from "~/utils/pathBuilder";
 import { Button } from "../primitives/Buttons";
 import { DateTime } from "../primitives/DateTime";

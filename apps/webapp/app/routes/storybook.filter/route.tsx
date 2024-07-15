@@ -20,7 +20,7 @@ import {
   runStatusTitle,
 } from "~/components/runs/v3/TaskRunStatus";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
+import { type ShortcutDefinition } from "~/hooks/useShortcutKeys";
 
 export default function Story() {
   return (

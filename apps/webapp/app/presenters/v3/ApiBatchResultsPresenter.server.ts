@@ -1,6 +1,6 @@
-import { BatchTaskRunExecutionResult } from "@trigger.dev/core/v3";
+import { type BatchTaskRunExecutionResult } from '@trigger.dev/core/v3/schemas';
 import { executionResultForTaskRun } from "~/models/taskRun.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BasePresenter } from "./basePresenter.server";
 
 export class ApiBatchResultsPresenter extends BasePresenter {

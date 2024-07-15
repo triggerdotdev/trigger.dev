@@ -1,6 +1,6 @@
-import { RunTaskBodyOutput, ServerTask } from "@trigger.dev/core";
-import { TaskStatus } from "@trigger.dev/database";
-import { $transaction, PrismaClient, prisma } from "~/db.server";
+import { type RunTaskBodyOutput , type ServerTask } from '@trigger.dev/core/schemas';
+import { type TaskStatus } from "@trigger.dev/database";
+import { $transaction, type PrismaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";
 import { generateSecret } from "~/services/sources/utils.server";

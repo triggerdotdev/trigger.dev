@@ -1,7 +1,7 @@
-import { ScheduleMetadataSchema } from "@trigger.dev/core";
-import { User } from "@trigger.dev/database";
-import { Organization } from "~/models/organization.server";
-import { Project } from "~/models/project.server";
+import { ScheduleMetadataSchema } from '@trigger.dev/core/schemas';
+import { type User } from "@trigger.dev/database";
+import { type Organization } from "~/models/organization.server";
+import { type Project } from "~/models/project.server";
 import { calculateNextScheduledEvent } from "~/services/schedules/nextScheduledEvent.server";
 import { BasePresenter } from "./v3/basePresenter.server";
 

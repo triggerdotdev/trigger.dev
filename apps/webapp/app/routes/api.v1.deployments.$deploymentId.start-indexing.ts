@@ -1,5 +1,5 @@
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { StartDeploymentIndexingRequestBody } from "@trigger.dev/core/v3";
+import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { StartDeploymentIndexingRequestBody } from '@trigger.dev/core/v3/schemas';
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";

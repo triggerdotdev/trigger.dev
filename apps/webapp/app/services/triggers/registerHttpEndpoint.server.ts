@@ -1,7 +1,7 @@
-import { HttpEndpointMetadata } from "@trigger.dev/core";
+import { type HttpEndpointMetadata } from '@trigger.dev/core/schemas';
 import { z } from "zod";
-import { $transaction, Prisma, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
+import { $transaction, Prisma, type PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 import { getSecretStore } from "../secrets/secretStore.server";
 import { generateSecret } from "../sources/utils.server";
 import { logger } from "../logger.server";

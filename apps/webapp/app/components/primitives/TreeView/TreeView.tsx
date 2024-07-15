@@ -1,8 +1,8 @@
-import { VirtualItem, Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
+import { type VirtualItem, type Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
 import { motion } from "framer-motion";
-import { MutableRefObject, RefObject, useCallback, useEffect, useReducer, useRef } from "react";
+import { type MutableRefObject, type RefObject, useCallback, useEffect, useReducer, useRef } from "react";
 import { cn } from "~/utils/cn";
-import { NodeState, NodesState, reducer } from "./reducer";
+import { type NodeState, type NodesState, reducer } from "./reducer";
 import { concreteStateFromInput, selectedIdFromState } from "./utils";
 
 export type TreeViewProps<TData> = {

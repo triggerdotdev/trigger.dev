@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EditSchedulePresenter } from "~/presenters/v3/EditSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";

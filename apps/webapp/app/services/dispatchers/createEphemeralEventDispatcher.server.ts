@@ -1,6 +1,6 @@
-import { EphemeralEventDispatcherRequestBody } from "@trigger.dev/core";
-import { $transaction, PrismaClient, prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
+import { type EphemeralEventDispatcherRequestBody } from '@trigger.dev/core/schemas';
+import { $transaction, type PrismaClient, prisma } from "~/db.server";
+import { type AuthenticatedEnvironment } from "../apiAuth.server";
 import { ExpireDispatcherService } from "./expireDispatcher.server";
 
 export class CreateEphemeralEventDispatcherService {

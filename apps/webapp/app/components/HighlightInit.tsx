@@ -1,4 +1,4 @@
-import { H, HighlightOptions } from "highlight.run";
+import { H, type HighlightOptions } from "highlight.run";
 import { useEffect } from "react";
 
 interface Props extends HighlightOptions {

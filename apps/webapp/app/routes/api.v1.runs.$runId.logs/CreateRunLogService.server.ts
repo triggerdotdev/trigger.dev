@@ -1,7 +1,7 @@
-import type { LogMessage } from "@trigger.dev/core";
+import { type LogMessage } from '@trigger.dev/core/schemas';
 import type { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
 export class CreateRunLogService {

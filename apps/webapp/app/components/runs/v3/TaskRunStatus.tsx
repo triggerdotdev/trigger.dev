@@ -11,7 +11,7 @@ import {
   TrashIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
-import { TaskRunStatus } from "@trigger.dev/database";
+import { type TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { SnowflakeIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";

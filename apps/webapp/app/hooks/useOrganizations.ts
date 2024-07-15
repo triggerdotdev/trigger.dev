@@ -1,5 +1,5 @@
-import { UIMatch } from "@remix-run/react";
-import { UseDataFunctionReturn } from "remix-typedjson";
+import { type UIMatch } from "@remix-run/react";
+import { type UseDataFunctionReturn } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import type { loader as orgLoader } from "~/routes/_app.orgs.$organizationSlug/route";
 import { useChanged } from "./useChanged";

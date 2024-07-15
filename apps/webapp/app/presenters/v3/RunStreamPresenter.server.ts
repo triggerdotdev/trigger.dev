@@ -1,6 +1,6 @@
-import { TaskRun } from "@trigger.dev/database";
+import { type TaskRun } from "@trigger.dev/database";
 import { eventStream } from "remix-utils/sse/server";
-import { PrismaClient, prisma } from "~/db.server";
+import { type PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { throttle } from "~/utils/throttle";
 import { eventRepository } from "~/v3/eventRepository.server";

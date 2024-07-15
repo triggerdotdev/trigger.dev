@@ -1,5 +1,5 @@
-import { BatchTaskRunItem, TaskRunAttempt, TaskRunDependency } from "@trigger.dev/database";
-import { $transaction, PrismaClientOrTransaction } from "~/db.server";
+import { type BatchTaskRunItem, type TaskRunAttempt, type TaskRunDependency } from "@trigger.dev/database";
+import { $transaction, type PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import { BaseService } from "./baseService.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";

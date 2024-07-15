@@ -1,6 +1,6 @@
 import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
-import { MatchedOrganization, useOrganization } from "~/hooks/useOrganizations";
+import { type MatchedOrganization, useOrganization } from "~/hooks/useOrganizations";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { v3BillingPath } from "~/utils/pathBuilder";
 import { LinkButton } from "../../primitives/Buttons";

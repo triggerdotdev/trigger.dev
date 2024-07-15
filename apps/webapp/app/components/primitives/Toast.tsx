@@ -3,7 +3,7 @@ import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { Toaster, toast } from "sonner";
 
 import { useTypedLoaderData } from "remix-typedjson";
-import { loader } from "~/root";
+import { type loader } from "~/root";
 import { useEffect } from "react";
 import { Paragraph } from "./Paragraph";
 

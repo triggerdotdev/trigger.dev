@@ -23,8 +23,8 @@ import {
 } from "../primitives/SimpleSelect";
 import { Spinner } from "../primitives/Spinner";
 import {
-  FilterableEnvironment,
-  FilterableStatus,
+  type FilterableEnvironment,
+  type FilterableStatus,
   RunListSearchSchema,
   environmentKeys,
   statusKeys,

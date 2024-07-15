@@ -1,11 +1,12 @@
-import { ScheduledTaskPayload, parsePacket, prettyPrintPacket } from "@trigger.dev/core/v3";
+import { ScheduledTaskPayload } from '@trigger.dev/core/v3/schemas';
+import { parsePacket , prettyPrintPacket } from '@trigger.dev/core/v3/utils/ioSerialization';
 import {
-  RuntimeEnvironmentType,
+  type RuntimeEnvironmentType,
   TaskRunAttemptStatus,
-  TaskRunStatus,
+  type TaskRunStatus,
   TaskTriggerSource,
 } from "@trigger.dev/database";
-import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
+import { sqlDatabaseSchema, type PrismaClient, prisma } from "~/db.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { getUsername } from "~/utils/username";
 

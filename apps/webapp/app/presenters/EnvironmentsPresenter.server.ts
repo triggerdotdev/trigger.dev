@@ -1,6 +1,6 @@
-import { PrismaClient, prisma } from "~/db.server";
-import { Project } from "~/models/project.server";
-import { User } from "~/models/user.server";
+import { type PrismaClient, prisma } from "~/db.server";
+import { type Project } from "~/models/project.server";
+import { type User } from "~/models/user.server";
 import type {
   Endpoint,
   EndpointIndex,
@@ -8,12 +8,7 @@ import type {
   RuntimeEnvironment,
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
-import {
-  EndpointIndexError,
-  EndpointIndexErrorSchema,
-  IndexEndpointStats,
-  parseEndpointIndexStats,
-} from "@trigger.dev/core";
+import { type EndpointIndexError , EndpointIndexErrorSchema , type IndexEndpointStats , parseEndpointIndexStats } from '@trigger.dev/core/schemas';
 import { sortEnvironments } from "~/utils/environmentSort";
 
 export type Client = {

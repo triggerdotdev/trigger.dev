@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PricingCalculator } from "~/components/billing/v2/PricingCalculator";
 import { PricingTiers } from "~/components/billing/v2/PricingTiers";

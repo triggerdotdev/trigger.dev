@@ -1,17 +1,12 @@
-import {
-  CoordinatorToPlatformMessages,
-  TaskRunExecution,
-  TaskRunExecutionResult,
-  WaitReason,
-} from "@trigger.dev/core/v3";
+import { type CoordinatorToPlatformMessages , type TaskRunExecution , type TaskRunExecutionResult , type WaitReason } from '@trigger.dev/core/v3/schemas';
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
-import { $transaction, PrismaClientOrTransaction } from "~/db.server";
+import { $transaction, type PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { socketIo } from "../handleSocketIo.server";
 import { SharedQueueMessageBody, sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
 import { BaseService } from "./baseService.server";
-import { TaskRunAttempt } from "@trigger.dev/database";
+import { type TaskRunAttempt } from "@trigger.dev/database";
 import { isFinalRunStatus } from "../taskStatus";
 
 export class ResumeAttemptService extends BaseService {

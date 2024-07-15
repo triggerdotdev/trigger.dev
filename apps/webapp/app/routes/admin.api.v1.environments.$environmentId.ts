@@ -1,4 +1,4 @@
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";

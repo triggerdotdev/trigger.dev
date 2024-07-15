@@ -1,6 +1,6 @@
-import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
+import { type CreateBackgroundWorkerRequestBody } from '@trigger.dev/core/v3/schemas';
 import type { BackgroundWorker } from "@trigger.dev/database";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { BaseService } from "./baseService.server";
 import { createBackgroundTasks } from "./createBackgroundWorker.server";

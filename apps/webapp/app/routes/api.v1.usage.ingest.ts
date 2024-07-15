@@ -1,4 +1,4 @@
-import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { logger } from "~/services/logger.server";
 import { reportComputeUsage } from "~/services/platform.v3.server";
 

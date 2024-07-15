@@ -1,14 +1,6 @@
-import {
-  ClientToSharedQueueMessages,
-  CoordinatorSocketData,
-  CoordinatorToPlatformMessages,
-  PlatformToCoordinatorMessages,
-  PlatformToProviderMessages,
-  ProviderToPlatformMessages,
-  SharedQueueToClientMessages,
-} from "@trigger.dev/core/v3";
+import { ClientToSharedQueueMessages , CoordinatorSocketData , CoordinatorToPlatformMessages , PlatformToCoordinatorMessages , PlatformToProviderMessages , ProviderToPlatformMessages , SharedQueueToClientMessages } from '@trigger.dev/core/v3/schemas';
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
-import { Server } from "socket.io";
+import { type Server } from "socket.io";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { SharedSocketConnection } from "./sharedSocketConnection";
@@ -20,20 +12,13 @@ import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { CreateDeployedBackgroundWorkerService } from "./services/createDeployedBackgroundWorker.server";
 import { ResumeAttemptService } from "./services/resumeAttempt.server";
 import { DeploymentIndexFailed } from "./services/deploymentIndexFailed.server";
-import { Redis } from "ioredis";
-import { createAdapter } from "@socket.io/redis-adapter";
 import { CrashTaskRunService } from "./services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
+import { io } from "~/socket.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
 function initalizeIoServer() {
-  const io = initializeSocketIOServerInstance();
-
-  io.on("connection", (socket) => {
-    logger.log(`[socket.io][${socket.id}] connection at url: ${socket.request.url}`);
-  });
-
   const coordinatorNamespace = createCoordinatorNamespace(io);
   const providerNamespace = createProviderNamespace(io);
   const sharedQueueConsumerNamespace = createSharedQueueConsumerNamespace(io);
@@ -44,31 +29,6 @@ function initalizeIoServer() {
     providerNamespace,
     sharedQueueConsumerNamespace,
   };
-}
-
-function initializeSocketIOServerInstance() {
-  if (env.REDIS_HOST && env.REDIS_PORT) {
-    const pubClient = new Redis({
-      port: env.REDIS_PORT,
-      host: env.REDIS_HOST,
-      username: env.REDIS_USERNAME,
-      password: env.REDIS_PASSWORD,
-      enableAutoPipelining: true,
-      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-    });
-    const subClient = pubClient.duplicate();
-
-    const io = new Server({
-      adapter: createAdapter(pubClient, subClient, {
-        key: "tr:socket.io:",
-        publishOnSpecificResponseChannel: true,
-      }),
-    });
-
-    return io;
-  }
-
-  return new Server();
 }
 
 function createCoordinatorNamespace(io: Server) {

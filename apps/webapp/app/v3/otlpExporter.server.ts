@@ -1,28 +1,28 @@
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
-import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
+import { SemanticInternalAttributes } from '@trigger.dev/core/v3/semanticInternalAttributes';
 import {
-  AnyValue,
-  ExportLogsServiceRequest,
+  type AnyValue,
+  type ExportLogsServiceRequest,
   ExportLogsServiceResponse,
-  ExportTraceServiceRequest,
+  type ExportTraceServiceRequest,
   ExportTraceServiceResponse,
-  KeyValue,
-  ResourceLogs,
-  ResourceSpans,
+  type KeyValue,
+  type ResourceLogs,
+  type ResourceSpans,
   SeverityNumber,
-  Span,
-  Span_Event,
-  Span_Link,
+  type Span,
+  type Span_Event,
+  type Span_Link,
   Span_SpanKind,
   Status_StatusCode,
 } from "@trigger.dev/otlp-importer";
 import {
-  CreatableEventKind,
-  CreatableEventStatus,
-  EventRepository,
+  type CreatableEventKind,
+  type CreatableEventStatus,
+  type EventRepository,
   eventRepository,
   type CreatableEvent,
-  CreatableEventEnvironmentType,
+  type CreatableEventEnvironmentType,
 } from "./eventRepository.server";
 import { logger } from "~/services/logger.server";
 

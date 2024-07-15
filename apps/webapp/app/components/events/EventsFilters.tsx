@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "../primitives/SimpleSelect";
 import { EventListSearchSchema } from "./EventStatuses";
-import { environmentKeys, FilterableEnvironment } from "~/components/runs/RunStatuses";
+import { environmentKeys, type FilterableEnvironment } from "~/components/runs/RunStatuses";
 import { TimeFrameFilter } from "../runs/TimeFrameFilter";
 import { useCallback } from "react";
 import { Button } from "../primitives/Buttons";

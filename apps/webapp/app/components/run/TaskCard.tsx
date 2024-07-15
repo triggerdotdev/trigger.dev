@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Fragment, useState } from "react";
 import simplur from "simplur";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { ViewTask } from "~/presenters/RunPresenter.server";
+import { type ViewTask } from "~/presenters/RunPresenter.server";
 import { cn } from "~/utils/cn";
 import {
   RunPanel,
@@ -20,7 +20,7 @@ import {
   UpdatingDuration,
 } from "./RunCard";
 import { TaskStatusIcon } from "./TaskStatus";
-import { formatDuration } from "@trigger.dev/core/v3";
+import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 
 type TaskCardProps = ViewTask & {
   selectedId?: string;

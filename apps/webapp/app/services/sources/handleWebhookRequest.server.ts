@@ -1,8 +1,7 @@
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
+import { prisma ,type  PrismaClient  } from "~/db.server";
 import { workerQueue } from "../worker.server";
 import { createHttpSourceRequest } from "~/utils/createHttpSourceRequest";
-import { WebhookContextMetadata } from "@trigger.dev/core";
+import { type WebhookContextMetadata } from '@trigger.dev/core/schemas';
 import { createHash } from "crypto";
 import { RuntimeEnvironmentType } from "~/database-types";
 

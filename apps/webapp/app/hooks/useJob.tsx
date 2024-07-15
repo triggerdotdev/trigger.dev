@@ -1,8 +1,8 @@
-import { UseDataFunctionReturn } from "remix-typedjson";
+import { type UseDataFunctionReturn } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import type { loader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.jobs.$jobParam/route";
 import { useChanged } from "./useChanged";
-import { UIMatch } from "@remix-run/react";
+import { type UIMatch } from "@remix-run/react";
 import { useTypedMatchesData } from "./useTypedMatchData";
 
 export type MatchedJob = UseDataFunctionReturn<typeof loader>["job"];

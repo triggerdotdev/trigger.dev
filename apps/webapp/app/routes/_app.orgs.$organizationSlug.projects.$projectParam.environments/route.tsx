@@ -1,5 +1,5 @@
 import { useRevalidator } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
@@ -30,7 +30,7 @@ import {
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { ClientEndpoint, EnvironmentsPresenter } from "~/presenters/EnvironmentsPresenter.server";
+import { type ClientEndpoint, EnvironmentsPresenter } from "~/presenters/EnvironmentsPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
@@ -39,7 +39,7 @@ import {
   projectEnvironmentsStreamingPath,
 } from "~/utils/pathBuilder";
 import { requestUrl } from "~/utils/requestUrl.server";
-import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
+import { type RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
 import { FirstEndpointSheet } from "./FirstEndpointSheet";
 import { BookOpenIcon } from "@heroicons/react/20/solid";

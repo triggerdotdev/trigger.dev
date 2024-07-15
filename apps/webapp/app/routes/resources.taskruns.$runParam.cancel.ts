@@ -1,5 +1,5 @@
 import { parse } from "@conform-to/zod";
-import { ActionFunction, json } from "@remix-run/node";
+import { type ActionFunction, json } from "@remix-run/node";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";

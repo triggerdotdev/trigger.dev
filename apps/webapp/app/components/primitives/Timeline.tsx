@@ -1,8 +1,8 @@
 import {
   Component,
-  ComponentPropsWithoutRef,
+  type ComponentPropsWithoutRef,
   Fragment,
-  ReactNode,
+  type ReactNode,
   createContext,
   useCallback,
   useContext,

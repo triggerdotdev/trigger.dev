@@ -1,6 +1,6 @@
-import { RegisterDynamicSchedulePayload, SCHEDULED_EVENT } from "@trigger.dev/core";
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
-import { ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
+import { type RegisterDynamicSchedulePayload , SCHEDULED_EVENT } from '@trigger.dev/core/schemas';
+import { type PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type ExtendedEndpoint, findEndpoint } from "~/models/endpoint.server";
 
 export class RegisterDynamicScheduleService {
   #prismaClient: PrismaClientOrTransaction;

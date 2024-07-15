@@ -1,15 +1,11 @@
-import {
-  DeploymentErrorData,
-  ExternalBuildData,
-  TaskMetadataFailedToParseData,
-  groupTaskMetadataIssuesByTask,
-} from "@trigger.dev/core/v3";
-import { WorkerDeployment, WorkerDeploymentStatus } from "@trigger.dev/database";
-import { z } from "zod";
-import { PrismaClient, prisma } from "~/db.server";
-import { Organization } from "~/models/organization.server";
-import { Project } from "~/models/project.server";
-import { User } from "~/models/user.server";
+import { DeploymentErrorData , ExternalBuildData , TaskMetadataFailedToParseData } from '@trigger.dev/core/v3/schemas';
+import { groupTaskMetadataIssuesByTask } from '@trigger.dev/core/v3/errors';
+import { type WorkerDeployment, WorkerDeploymentStatus } from "@trigger.dev/database";
+import { type z } from "zod";
+import { type PrismaClient, prisma } from "~/db.server";
+import { type Organization } from "~/models/organization.server";
+import { type Project } from "~/models/project.server";
+import { type User } from "~/models/user.server";
 import { safeJsonParse } from "~/utils/json";
 import { getUsername } from "~/utils/username";
 

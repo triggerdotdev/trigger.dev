@@ -1,5 +1,5 @@
-import { Job } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
+import { type Job } from "@trigger.dev/database";
+import { type PrismaClient, prisma } from "~/db.server";
 
 type ApiRunOptions = {
   runId: Job["id"];

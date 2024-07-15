@@ -1,5 +1,5 @@
 import { prisma } from "~/db.server";
-import { SearchParams } from "~/routes/admin._index";
+import { type SearchParams } from "~/routes/admin._index";
 
 const pageSize = 20;
 

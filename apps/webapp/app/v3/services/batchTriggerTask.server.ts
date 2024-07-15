@@ -1,5 +1,6 @@
-import { BatchTriggerTaskRequestBody, logger } from "@trigger.dev/core/v3";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type BatchTriggerTaskRequestBody } from '@trigger.dev/core/v3/schemas';
+import { logger } from '@trigger.dev/core/v3/logger-api';
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TriggerTaskService } from "./triggerTask.server";

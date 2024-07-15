@@ -1,5 +1,5 @@
-import { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
-import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
+import { Prisma, type RuntimeEnvironmentType } from "@trigger.dev/database";
+import { type ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getCurrentPlan, getLimit, getLimits } from "~/services/platform.v3.server";

@@ -1,5 +1,5 @@
 import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { WhatAreHttpEndpoints } from "~/components/helpContent/HelpContentText";

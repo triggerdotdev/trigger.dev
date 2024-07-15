@@ -1,4 +1,4 @@
-import { Outlet, ShouldRevalidateFunction, UIMatch } from "@remix-run/react";
+import { Outlet, type ShouldRevalidateFunction, type UIMatch } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";

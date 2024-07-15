@@ -1,4 +1,4 @@
-import { ActionFunction, LoaderFunction, LoaderFunctionArgs, json } from "@remix-run/node";
+import { type ActionFunction, LoaderFunction, type LoaderFunctionArgs, json } from "@remix-run/node";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
 import { prisma } from "~/db.server";

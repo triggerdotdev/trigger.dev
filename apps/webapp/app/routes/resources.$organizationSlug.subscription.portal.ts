@@ -1,4 +1,4 @@
-import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";

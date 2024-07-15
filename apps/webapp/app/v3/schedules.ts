@@ -1,4 +1,4 @@
-import { parseExpression } from "cron-parser";
+import cronParser from "cron-parser";
 import { z } from "zod";
 
 export const CronPattern = z.string().refine(
@@ -14,7 +14,7 @@ export const CronPattern = z.string().refine(
     }
 
     try {
-      parseExpression(val);
+      cronParser.parseExpression(val);
       return true;
     } catch (e) {
       return false;
@@ -35,7 +35,7 @@ export const CronPattern = z.string().refine(
     }
 
     try {
-      parseExpression(val);
+      cronParser.parseExpression(val);
       return {
         message: "Unknown problem",
       };

@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import {
@@ -36,8 +36,8 @@ import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import {
-  SelectedEnvironment,
-  TaskListItem,
+  type SelectedEnvironment,
+  type TaskListItem,
   TestPresenter,
 } from "~/presenters/v3/TestPresenter.server";
 import { requireUserId } from "~/services/session.server";

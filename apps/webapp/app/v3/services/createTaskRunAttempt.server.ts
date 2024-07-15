@@ -1,10 +1,10 @@
-import { TaskRunExecution } from "@trigger.dev/core/v3";
-import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type TaskRunExecution } from '@trigger.dev/core/v3/schemas';
+import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { BaseService, ServiceValidationError } from "./baseService.server";
-import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { type TaskRun, type TaskRunAttempt } from "@trigger.dev/database";
 import { machinePresetFromConfig } from "../machinePresets.server";
 import { workerQueue } from "~/services/worker.server";
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";

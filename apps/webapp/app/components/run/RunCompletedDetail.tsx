@@ -2,7 +2,7 @@ import { CodeBlock } from "~/components/code/CodeBlock";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RunStatusIcon, RunStatusLabel } from "~/components/runs/RunStatuses";
-import { MatchedRun } from "~/hooks/useRun";
+import { type MatchedRun } from "~/hooks/useRun";
 import {
   RunPanel,
   RunPanelBody,
@@ -12,7 +12,7 @@ import {
   RunPanelIconProperty,
   RunPanelIconSection,
 } from "./RunCard";
-import { formatDuration } from "@trigger.dev/core/v3";
+import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 
 export function RunCompletedDetail({ run }: { run: MatchedRun }) {
   return (

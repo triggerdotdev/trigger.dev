@@ -1,7 +1,7 @@
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { DiscordIcon } from "@trigger.dev/companyicons";
-import { User } from "@trigger.dev/database";
+import { type User } from "@trigger.dev/database";
 import { useFeatures } from "~/hooks/useFeatures";
 import { cn } from "~/utils/cn";
 import { accountPath, personalAccessTokensPath, rootPath } from "~/utils/pathBuilder";

@@ -1,6 +1,5 @@
 import { InboxArrowDownIcon } from "@heroicons/react/24/solid";
-import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
-import { redirect } from "@remix-run/node";
+import { redirect ,type  ActionFunctionArgs,type  LoaderFunctionArgs,type  MetaFunction  } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";

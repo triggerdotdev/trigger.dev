@@ -2,7 +2,7 @@ import { parse } from "@conform-to/zod";
 import { BoltIcon, BoltSlashIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { DialogDescription } from "@radix-ui/react-dialog";
 import { Form, useLocation } from "@remix-run/react";
-import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { token } from "morgan";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";

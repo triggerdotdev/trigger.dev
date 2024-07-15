@@ -1,10 +1,10 @@
 import { RedisOptions } from "ioredis";
 import { nanoid } from "nanoid";
 import {
-  MarQSQueuePriorityStrategy,
-  PriorityStrategyChoice,
-  QueueRange,
-  QueueWithScores,
+  type MarQSQueuePriorityStrategy,
+  type PriorityStrategyChoice,
+  type QueueRange,
+  type QueueWithScores,
 } from "./types";
 
 export type SimpleWeightedChoiceStrategyOptions = {

@@ -1,6 +1,5 @@
 import type { Job } from "@trigger.dev/database";
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
+import { prisma ,type  PrismaClient  } from "~/db.server";
 import { telemetry } from "../telemetry.server";
 import { logger } from "../logger.server";
 

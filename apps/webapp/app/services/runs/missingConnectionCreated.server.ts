@@ -1,7 +1,7 @@
-import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { env } from "~/env.server";
-import { MISSING_CONNECTION_NOTIFICATION } from "@trigger.dev/core";
+import { MISSING_CONNECTION_NOTIFICATION } from '@trigger.dev/core/schemas';
 
 export class MissingConnectionCreatedService {
   #prismaClient: PrismaClientOrTransaction;

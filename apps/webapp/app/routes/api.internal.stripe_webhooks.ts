@@ -1,4 +1,4 @@
-import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 
 /*
   To use this route, use the stripe CLI to forward events to this route:

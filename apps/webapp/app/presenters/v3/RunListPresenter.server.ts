@@ -1,6 +1,6 @@
-import { Prisma, TaskRunStatus } from "@trigger.dev/database";
+import { Prisma, type TaskRunStatus } from "@trigger.dev/database";
 import parse from "parse-duration";
-import { Direction } from "~/components/runs/RunStatuses";
+import { type Direction } from "~/components/runs/RunStatuses";
 import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";

@@ -2,7 +2,7 @@ import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { workerQueue } from "~/services/worker.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
-import { PrismaClientOrTransaction } from "~/db.server";
+import { type PrismaClientOrTransaction } from "~/db.server";
 
 export class TimeoutDeploymentService extends BaseService {
   public async call(id: string, fromStatus: string, errorMessage: string) {

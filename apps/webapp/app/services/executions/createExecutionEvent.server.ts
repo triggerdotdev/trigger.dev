@@ -1,4 +1,4 @@
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { logger } from "../logger.server";
 
 export type CreateExecutionEventInput = {

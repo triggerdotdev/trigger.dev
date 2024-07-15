@@ -1,5 +1,5 @@
 import type { EventDispatcher } from "@trigger.dev/database";
-import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { workerQueue } from "../worker.server";
 import { DeliverScheduledEventService } from "./deliverScheduledEvent.server";
 

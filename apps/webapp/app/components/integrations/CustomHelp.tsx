@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { CodeExample } from "~/routes/resources.codeexample";
-import { Api } from "~/services/externalApis/apis.server";
+import { type Api } from "~/services/externalApis/apis.server";
 import { cn } from "~/utils/cn";
 import { Feedback } from "../Feedback";
-import { Header1, Header2, Header3 } from "../primitives/Headers";
+import { Header1, Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 import { TextLink } from "../primitives/TextLink";
 

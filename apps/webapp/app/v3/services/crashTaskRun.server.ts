@@ -1,9 +1,9 @@
-import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { type TaskRun, type TaskRunAttempt } from "@trigger.dev/database";
 import { eventRepository } from "../eventRepository.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus";
 

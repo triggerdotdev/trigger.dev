@@ -1,16 +1,7 @@
-import {
-  REGISTER_SOURCE_EVENT_V2,
-  REGISTER_SOURCE_EVENT_V1,
-  RegisterTriggerSource,
-  RegisterSourceEventV1,
-  RegisterSourceEventV2,
-  RegisterSourceEventOptions,
-  RegisteredOptionsDiff,
-} from "@trigger.dev/core";
+import { REGISTER_SOURCE_EVENT_V2 , REGISTER_SOURCE_EVENT_V1 , type RegisterTriggerSource , type RegisterSourceEventV1 , type RegisterSourceEventV2 , type RegisterSourceEventOptions , type RegisteredOptionsDiff } from '@trigger.dev/core/schemas';
 import type { SecretReference, TriggerSource, TriggerSourceOption } from "@trigger.dev/database";
 import { z } from "zod";
-import type { PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
+import { prisma ,type  PrismaClient  } from "~/db.server";
 import { env } from "~/env.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";

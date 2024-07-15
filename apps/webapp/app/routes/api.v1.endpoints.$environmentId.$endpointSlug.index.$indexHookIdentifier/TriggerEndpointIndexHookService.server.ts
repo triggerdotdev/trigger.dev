@@ -1,6 +1,5 @@
 import { z } from "zod";
-import type { PrismaClient } from "~/db.server";
-import { $transaction, prisma } from "~/db.server";
+import { $transaction, prisma ,type  PrismaClient  } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { workerQueue } from "~/services/worker.server";
 import { RuntimeEnvironmentType } from "~/database-types";

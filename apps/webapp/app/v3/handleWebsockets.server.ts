@@ -1,4 +1,4 @@
-import { IncomingMessage } from "node:http";
+import { type IncomingMessage } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { authenticateApiKey } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -7,27 +7,26 @@ import { AuthenticatedSocketConnection } from "./authenticatedSocketConnection.s
 import { Gauge } from "prom-client";
 import { metricsRegister } from "~/metrics.server";
 
-export const wss = singleton("wss", initalizeWebSocketServer);
-
+import { wss } from "~/socket.server";
 let authenticatedConnections: Map<string, AuthenticatedSocketConnection>;
 
-function initalizeWebSocketServer() {
-  const server = new WebSocketServer({ noServer: true });
+export function initializeWebSocketServer() {
+  return singleton("wss:register", () => {
+    wss.on("connection", handleWebSocketConnection);
 
-  server.on("connection", handleWebSocketConnection);
+    authenticatedConnections = new Map();
 
-  authenticatedConnections = new Map();
+    new Gauge({
+      name: "dev_authenticated_connections",
+      help: "Number of authenticated dev connections",
+      collect() {
+        this.set(authenticatedConnections.size);
+      },
+      registers: [metricsRegister],
+    });
 
-  new Gauge({
-    name: "dev_authenticated_connections",
-    help: "Number of authenticated dev connections",
-    collect() {
-      this.set(authenticatedConnections.size);
-    },
-    registers: [metricsRegister],
+    return wss;
   });
-
-  return server;
 }
 
 async function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage) {

@@ -1,5 +1,5 @@
 import { Await, useLoaderData, useNavigation } from "@remix-run/react";
-import { LoaderFunctionArgs, defer } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, defer } from "@remix-run/server-runtime";
 import { Suspense } from "react";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";

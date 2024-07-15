@@ -1,5 +1,5 @@
 import { cn } from "~/utils/cn";
-import { Icon, IconInBox, RenderIcon } from "./Icon";
+import { Icon, IconInBox, type RenderIcon } from "./Icon";
 import { Paragraph } from "./Paragraph";
 
 const variations = {

@@ -1,18 +1,11 @@
-import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
-import {
-  TaskRunExecution,
-  TaskRunExecutionLazyAttemptPayload,
-  TaskRunExecutionPayload,
-  TaskRunExecutionResult,
-  TaskRunFailedExecutionResult,
-  serverWebsocketMessages,
-} from "@trigger.dev/core/v3";
-import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
-import { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
+import { type Context, ROOT_CONTEXT, type Span, SpanKind, context, trace } from "@opentelemetry/api";
+import { type TaskRunExecution , type TaskRunExecutionLazyAttemptPayload , type TaskRunExecutionPayload , type TaskRunExecutionResult , type TaskRunFailedExecutionResult , type serverWebsocketMessages } from '@trigger.dev/core/v3/schemas';
+import { type ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
+import { type BackgroundWorker, type BackgroundWorkerTask } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { createNewSession, disconnectSession } from "~/models/runtimeEnvironment.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { resolveVariablesForEnvironment } from "../environmentVariables/environmentVariablesRepository.server";
@@ -25,7 +18,7 @@ import {
   attributesFromAuthenticatedEnv,
   tracer,
 } from "../tracer.server";
-import { DevSubscriber, devPubSub } from "./devPubSub.server";
+import { type DevSubscriber, devPubSub } from "./devPubSub.server";
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({

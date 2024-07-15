@@ -1,5 +1,5 @@
-import { MISSING_CONNECTION_RESOLVED_NOTIFICATION } from "@trigger.dev/core";
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
+import { MISSING_CONNECTION_RESOLVED_NOTIFICATION } from '@trigger.dev/core/schemas';
+import { type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { IngestSendEvent } from "../events/ingestSendEvent.server";
 import { logger } from "../logger.server";
 import { workerQueue } from "../worker.server";

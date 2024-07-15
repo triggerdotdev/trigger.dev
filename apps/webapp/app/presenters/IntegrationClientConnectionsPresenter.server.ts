@@ -1,6 +1,6 @@
-import { User } from "@trigger.dev/database";
-import { PrismaClient, prisma } from "~/db.server";
-import { Organization } from "~/models/organization.server";
+import { type User } from "@trigger.dev/database";
+import { type PrismaClient, prisma } from "~/db.server";
+import { type Organization } from "~/models/organization.server";
 import { ConnectionMetadataSchema } from "~/services/externalApis/types";
 
 export class IntegrationClientConnectionsPresenter {

@@ -1,6 +1,6 @@
 import { useLocation } from "@remix-run/react";
 import { LinkButton } from "~/components/primitives/Buttons";
-import { Direction } from "~/components/runs/RunStatuses";
+import { type Direction } from "~/components/runs/RunStatuses";
 import { cn } from "~/utils/cn";
 
 type List = {

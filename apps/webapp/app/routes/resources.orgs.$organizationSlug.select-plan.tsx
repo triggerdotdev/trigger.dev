@@ -5,14 +5,14 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useLocation, useNavigation } from "@remix-run/react";
-import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import {
-  FreePlanDefinition,
-  Limits,
-  PaidPlanDefinition,
-  Plans,
-  SetPlanBody,
-  SubscriptionResult,
+  type FreePlanDefinition,
+  type Limits,
+  type PaidPlanDefinition,
+  type Plans,
+  type SetPlanBody,
+  type SubscriptionResult,
 } from "@trigger.dev/platform/v3";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import { z } from "zod";

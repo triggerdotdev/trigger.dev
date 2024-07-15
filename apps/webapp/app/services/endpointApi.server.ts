@@ -1,25 +1,5 @@
-import {
-  API_VERSIONS,
-  ConnectionAuth,
-  EndpointHeadersSchema,
-  ErrorWithStackSchema,
-  ExecuteJobHeadersSchema,
-  HttpSourceResponseSchema,
-  IndexEndpointResponseSchema,
-  NormalizedResponseSchema,
-  PongResponse,
-  PongResponseSchema,
-  PreprocessRunBody,
-  PreprocessRunResponseSchema,
-  RegisterTriggerBodySchemaV1,
-  RegisterTriggerBodyV1,
-  RunJobBody,
-  RunJobResponseSchema,
-  RunNotification,
-  ValidateResponse,
-  ValidateResponseSchema,
-  WebhookDeliveryResponseSchema,
-} from "@trigger.dev/core";
+import { API_VERSIONS } from '@trigger.dev/core/versions';
+import { type ConnectionAuth , EndpointHeadersSchema , ErrorWithStackSchema , ExecuteJobHeadersSchema , HttpSourceResponseSchema , IndexEndpointResponseSchema , NormalizedResponseSchema , type PongResponse , PongResponseSchema , type PreprocessRunBody , PreprocessRunResponseSchema , RegisterTriggerBodySchemaV1 , type RegisterTriggerBodyV1 , type RunJobBody , RunJobResponseSchema , type RunNotification , type ValidateResponse , ValidateResponseSchema , WebhookDeliveryResponseSchema } from '@trigger.dev/core/schemas';
 import { performance } from "node:perf_hooks";
 import { safeBodyFromResponse, safeParseBodyFromResponse } from "~/utils/json";
 import { logger } from "./logger.server";

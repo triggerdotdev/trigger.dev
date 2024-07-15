@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient, prisma } from "~/db.server";
+import { Prisma, type PrismaClient, prisma } from "~/db.server";
 import { ResumeRunService } from "./resumeRun.server";
 
 const RESUMABLE_STATUSES = [

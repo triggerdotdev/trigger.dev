@@ -2,11 +2,10 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { parseExpression } from "cron-parser";
+import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import cronParser from "cron-parser";
 import cronstrue from "cronstrue";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   environmentTextClassName,
   environmentTitle,
@@ -32,19 +31,20 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
+import { TimezoneList } from "~/components/scheduled/timezones";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
+import { type EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, docsPath, v3SchedulesPath } from "~/utils/pathBuilder";
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
-import { TimezoneList } from "~/components/scheduled/timezones";
 
+const { parseExpression } = cronParser;
 const cronFormat = `*    *    *    *    *
 ┬    ┬    ┬    ┬    ┬
 │    │    │    │    |

@@ -1,5 +1,5 @@
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { ExternalBuildData } from "@trigger.dev/core/v3";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { ExternalBuildData } from '@trigger.dev/core/v3/schemas';
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";

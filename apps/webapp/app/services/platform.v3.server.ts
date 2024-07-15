@@ -1,5 +1,5 @@
-import { BillingClient, Limits, SetPlanBody, UsageSeriesParams } from "@trigger.dev/platform/v3";
-import { Organization, Project } from "@trigger.dev/database";
+import { BillingClient, type Limits, type SetPlanBody, type UsageSeriesParams } from "@trigger.dev/platform/v3";
+import { type Organization, type Project } from "@trigger.dev/database";
 import { redirect } from "remix-typedjson";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";

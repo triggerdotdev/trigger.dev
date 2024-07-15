@@ -2,7 +2,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
 import { OperatingSystemContextProvider } from "~/components/primitives/OperatingSystemProvider";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
-import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
+import { type ShortcutDefinition } from "~/hooks/useShortcutKeys";
 
 const shortcuts: ShortcutDefinition[] = [
   { key: "esc" },

@@ -1,6 +1,6 @@
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
-import { WorkerDeployment } from "@trigger.dev/database";
+import { type WorkerDeployment } from "@trigger.dev/database";
 import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 

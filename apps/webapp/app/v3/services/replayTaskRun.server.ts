@@ -1,5 +1,5 @@
-import { conditionallyImportPacket, parsePacket } from "@trigger.dev/core/v3";
-import { TaskRun } from "@trigger.dev/database";
+import { conditionallyImportPacket , parsePacket } from '@trigger.dev/core/v3/utils/ioSerialization';
+import { type TaskRun } from "@trigger.dev/database";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";

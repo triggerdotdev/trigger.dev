@@ -10,7 +10,7 @@ import {
 } from "~/components/environments/EndpointIndexStatus";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
-import { Callout, CalloutVariant } from "~/components/primitives/Callout";
+import { Callout, type CalloutVariant } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
 import { FormError } from "~/components/primitives/FormError";
@@ -20,9 +20,9 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Sheet, SheetBody, SheetContent, SheetHeader } from "~/components/primitives/Sheet";
-import { ClientEndpoint } from "~/presenters/EnvironmentsPresenter.server";
+import { type ClientEndpoint } from "~/presenters/EnvironmentsPresenter.server";
 import { endpointStreamingPath } from "~/utils/pathBuilder";
-import { EndpointIndexStatus, RuntimeEnvironmentType } from "../../../../../packages/database/src";
+import { type EndpointIndexStatus, type RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { bodySchema } from "../resources.environments.$environmentParam.endpoint";
 
 type ConfigureEndpointSheetProps = {

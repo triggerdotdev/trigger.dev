@@ -1,8 +1,11 @@
 import { json as jsonLang } from "@codemirror/lang-json";
 import type { ViewUpdate } from "@codemirror/view";
 import { CheckIcon, ClipboardIcon, TrashIcon } from "@heroicons/react/20/solid";
-import type { ReactCodeMirrorProps, UseCodeMirror } from "@uiw/react-codemirror";
-import { useCodeMirror } from "@uiw/react-codemirror";
+import {
+  useCodeMirror,
+  type ReactCodeMirrorProps,
+  type UseCodeMirror,
+} from "@uiw/react-codemirror";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";

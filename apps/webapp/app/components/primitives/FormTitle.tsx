@@ -1,7 +1,6 @@
 import { cn } from "~/utils/cn";
 import { Header1 } from "./Headers";
-import type { IconNames } from "./NamedIcon";
-import { NamedIcon } from "./NamedIcon";
+import { NamedIcon ,type  IconNames  } from "./NamedIcon";
 import { Paragraph } from "./Paragraph";
 
 export function FormTitle({

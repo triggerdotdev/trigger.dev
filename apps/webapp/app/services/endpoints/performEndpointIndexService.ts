@@ -1,4 +1,4 @@
-import { PrismaClient, prisma } from "~/db.server";
+import { type PrismaClient, prisma } from "~/db.server";
 import { EndpointApi } from "../endpointApi.server";
 import { RegisterJobService } from "../jobs/registerJob.server";
 import { logger } from "../logger.server";
@@ -7,13 +7,12 @@ import { RegisterDynamicScheduleService } from "../triggers/registerDynamicSched
 import { RegisterDynamicTriggerService } from "../triggers/registerDynamicTrigger.server";
 import { DisableJobService } from "../jobs/disableJob.server";
 import { RegisterSourceServiceV2 } from "../sources/registerSourceV2.server";
-import { EndpointIndexError } from "@trigger.dev/core";
+import { type EndpointIndexError , type IndexEndpointStats } from '@trigger.dev/core/schemas';
 import { safeBodyFromResponse } from "~/utils/json";
 import { fromZodError } from "zod-validation-error";
-import { IndexEndpointStats } from "@trigger.dev/core";
 import { RegisterHttpEndpointService } from "../triggers/registerHttpEndpoint.server";
 import { RegisterWebhookService } from "../triggers/registerWebhook.server";
-import { EndpointIndex } from "@trigger.dev/database";
+import { type EndpointIndex } from "@trigger.dev/database";
 import { env } from "~/env.server";
 
 const MAX_SEQUENTIAL_FAILURE_COUNT = env.MAX_SEQUENTIAL_INDEX_FAILURE_COUNT;

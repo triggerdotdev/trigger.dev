@@ -1,4 +1,4 @@
-import { ErrorWithStack, ErrorWithStackSchema } from "@trigger.dev/core";
+import { type ErrorWithStack , ErrorWithStackSchema } from '@trigger.dev/core/schemas';
 
 export function formatError(error: ErrorWithStack, style: "short" | "long" = "short"): string {
   if (style === "short") {

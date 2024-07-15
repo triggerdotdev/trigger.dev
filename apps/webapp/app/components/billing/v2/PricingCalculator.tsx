@@ -1,5 +1,5 @@
 import * as Slider from "@radix-ui/react-slider";
-import { Plans, estimate } from "@trigger.dev/platform/v2";
+import { type Plans, estimate } from "@trigger.dev/platform/v2";
 import { useCallback, useState } from "react";
 import { DefinitionTip } from "../../DefinitionTooltip";
 import { Header2 } from "../../primitives/Headers";

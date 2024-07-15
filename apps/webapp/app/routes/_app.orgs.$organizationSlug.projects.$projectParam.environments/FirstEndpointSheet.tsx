@@ -19,7 +19,7 @@ import {
 import { TextLink } from "~/components/primitives/TextLink";
 import { docsPath } from "~/utils/pathBuilder";
 import { bodySchema } from "../resources.projects.$projectId.endpoint";
-import { RuntimeEnvironment, RuntimeEnvironmentType } from "@trigger.dev/database";
+import { RuntimeEnvironment, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import {
   Select,
   SelectContent,

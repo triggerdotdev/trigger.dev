@@ -1,6 +1,6 @@
-import { RunNotification } from "@trigger.dev/core";
+import { type RunNotification } from '@trigger.dev/core/schemas';
 import { subtle } from "node:crypto";
-import { PrismaClient, prisma } from "~/db.server";
+import { type PrismaClient, prisma } from "~/db.server";
 import { EndpointApi } from "../endpointApi.server";
 
 // Infer the type of the #findSubscription method

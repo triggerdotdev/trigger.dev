@@ -1,6 +1,5 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
-import { json } from "@remix-run/server-runtime";
-import { CreateAuthorizationCodeResponse } from "@trigger.dev/core/v3";
+import { json ,type  ActionFunctionArgs  } from "@remix-run/server-runtime";
+import { type CreateAuthorizationCodeResponse } from '@trigger.dev/core/v3/schemas';
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { createAuthorizationCode } from "~/services/personalAccessToken.server";

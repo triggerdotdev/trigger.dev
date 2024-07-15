@@ -1,5 +1,5 @@
-import { StartDeploymentIndexingRequestBody } from "@trigger.dev/core/v3";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type StartDeploymentIndexingRequestBody } from '@trigger.dev/core/v3/schemas';
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { registryProxy } from "../registryProxy.server";
 import { BaseService } from "./baseService.server";
 import { IndexDeploymentService } from "./indexDeployment.server";

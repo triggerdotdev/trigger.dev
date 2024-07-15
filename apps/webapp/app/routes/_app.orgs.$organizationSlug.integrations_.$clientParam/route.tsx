@@ -1,5 +1,5 @@
 import { Outlet } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { connectionType } from "~/components/integrations/connectionType";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";

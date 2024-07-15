@@ -1,6 +1,6 @@
 import { useFetcher } from "@remix-run/react";
 import React from "react";
-import { Api } from "~/services/externalApis/apis.server";
+import { type Api } from "~/services/externalApis/apis.server";
 import { Header1 } from "../primitives/Headers";
 import { NamedIconInBox } from "../primitives/NamedIcon";
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTrigger } from "../primitives/Sheet";

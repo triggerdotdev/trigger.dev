@@ -1,5 +1,5 @@
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { MarQSKeyProducer } from "./types";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type MarQSKeyProducer } from "./types";
 
 const constants = {
   SHARED_QUEUE: "sharedQueue",

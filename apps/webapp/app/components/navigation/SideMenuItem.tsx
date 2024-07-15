@@ -1,8 +1,8 @@
-import { AnchorHTMLAttributes } from "react";
+import { type AnchorHTMLAttributes } from "react";
 import { usePathName } from "~/hooks/usePathName";
 import { cn } from "~/utils/cn";
 import { LinkButton } from "../primitives/Buttons";
-import { IconNames } from "../primitives/NamedIcon";
+import { type IconNames } from "../primitives/NamedIcon";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { Icon } from "../primitives/Icon";
 import { IconExclamationCircle } from "@tabler/icons-react";

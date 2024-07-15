@@ -2,8 +2,8 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { HashtagIcon, LockClosedIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/router";
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/router";
+import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { SlackIcon } from "@trigger.dev/companyicons";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -33,7 +33,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3ProjectAlertsPath } from "~/utils/pathBuilder";
 import {
-  CreateAlertChannelOptions,
+  type CreateAlertChannelOptions,
   CreateAlertChannelService,
 } from "~/v3/services/alerts/createAlertChannel.server";
 

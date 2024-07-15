@@ -1,6 +1,5 @@
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { json } from "@remix-run/server-runtime";
-import { GetEvent } from "@trigger.dev/core";
+import { json ,type  LoaderFunctionArgs  } from "@remix-run/server-runtime";
+import { type GetEvent } from '@trigger.dev/core/schemas';
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";

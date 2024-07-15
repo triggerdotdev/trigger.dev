@@ -1,5 +1,5 @@
 import { ArrowPathIcon, NoSymbolIcon } from "@heroicons/react/20/solid";
-import { BulkActionType } from "@trigger.dev/database";
+import { type BulkActionType } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { cn } from "~/utils/cn";
 

@@ -2,7 +2,12 @@ import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
-import { ActiveSubscription, Plan, Plans, SetPlanBodySchema } from "@trigger.dev/platform/v2";
+import {
+  type ActiveSubscription,
+  type Plan,
+  type Plans,
+  SetPlanBodySchema,
+} from "@trigger.dev/platform/v2";
 import { useState } from "react";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { cn } from "~/utils/cn";

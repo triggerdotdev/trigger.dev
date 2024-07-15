@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { EnvironmentsStreamPresenter } from "~/presenters/EnvironmentsStreamPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema } from "~/utils/pathBuilder";

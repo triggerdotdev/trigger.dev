@@ -1,6 +1,6 @@
-import { TaskRun } from "@trigger.dev/database";
+import { type TaskRun } from "@trigger.dev/database";
 import { BaseService, ServiceValidationError } from "./baseService.server";
-import { RescheduleRunRequestBody } from "@trigger.dev/core/v3";
+import { type RescheduleRunRequestBody } from '@trigger.dev/core/v3/schemas';
 import { parseDelay } from "./triggerTask.server";
 import { $transaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";

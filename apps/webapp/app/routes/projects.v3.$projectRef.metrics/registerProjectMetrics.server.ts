@@ -1,7 +1,7 @@
-import { TaskQueue } from "@trigger.dev/database";
-import { Gauge, Registry } from "prom-client";
+import { type TaskQueue } from "@trigger.dev/database";
+import { Gauge, type Registry } from "prom-client";
 import { prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { marqs } from "~/v3/marqs/index.server";
 
 export async function registerProjectMetrics(

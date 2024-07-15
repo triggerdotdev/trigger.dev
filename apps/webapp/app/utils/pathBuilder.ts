@@ -9,8 +9,8 @@ import type {
   WorkerDeployment,
 } from "@trigger.dev/database";
 import { z } from "zod";
-import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
-import { Job } from "~/models/job.server";
+import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { type Job } from "~/models/job.server";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import { objectToSearchParams } from "./searchParams";

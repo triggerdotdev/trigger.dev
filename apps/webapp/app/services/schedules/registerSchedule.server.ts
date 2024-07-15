@@ -1,7 +1,6 @@
-import { RegisterScheduleBody } from "@trigger.dev/core";
-import { $transaction, PrismaClient } from "~/db.server";
-import { prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
+import { type RegisterScheduleBody } from '@trigger.dev/core/schemas';
+import { $transaction, type PrismaClient , prisma } from "~/db.server";
+import { type AuthenticatedEnvironment } from "../apiAuth.server";
 import { RegisterScheduleSourceService } from "./registerScheduleSource.server";
 
 export class RegisterScheduleService {

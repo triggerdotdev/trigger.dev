@@ -1,5 +1,5 @@
-import { PrismaClient, prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
+import { type PrismaClient, prisma } from "~/db.server";
+import { type AuthenticatedEnvironment } from "../apiAuth.server";
 
 export class UnregisterScheduleService {
   #prismaClient: PrismaClient;

@@ -1,7 +1,7 @@
 import {
-  Direction,
-  FilterableEnvironment,
-  FilterableStatus,
+  type Direction,
+  type FilterableEnvironment,
+  type FilterableStatus,
   filterableStatuses,
 } from "~/components/runs/RunStatuses";
 import { getUsername } from "~/utils/username";

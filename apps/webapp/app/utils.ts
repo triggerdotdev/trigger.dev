@@ -1,5 +1,4 @@
-import type { UIMatch } from "@remix-run/react";
-import { useMatches } from "@remix-run/react";
+import { useMatches ,type  UIMatch  } from "@remix-run/react";
 
 const DEFAULT_REDIRECT = "/";
 

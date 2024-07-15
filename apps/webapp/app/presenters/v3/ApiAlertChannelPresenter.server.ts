@@ -1,7 +1,7 @@
 import {
-  ProjectAlertChannel,
-  ProjectAlertChannelType,
-  ProjectAlertType,
+  type ProjectAlertChannel,
+  type ProjectAlertChannelType,
+  type ProjectAlertType,
 } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { z } from "zod";

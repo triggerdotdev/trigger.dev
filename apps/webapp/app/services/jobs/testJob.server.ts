@@ -1,5 +1,5 @@
-import { EventSpecificationSchema } from "@trigger.dev/core";
-import { $transaction, PrismaClient, prisma } from "~/db.server";
+import { EventSpecificationSchema } from '@trigger.dev/core/schemas';
+import { $transaction, type PrismaClient, prisma } from "~/db.server";
 import { CreateRunService } from "../runs/createRun.server";
 
 export class TestJobService {

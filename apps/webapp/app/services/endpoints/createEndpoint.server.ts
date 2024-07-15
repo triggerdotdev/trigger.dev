@@ -1,6 +1,6 @@
 import { customAlphabet } from "nanoid";
-import { $transaction, prisma, PrismaClient } from "~/db.server";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
+import { $transaction, prisma, type PrismaClient } from "~/db.server";
+import { type AuthenticatedEnvironment } from "../apiAuth.server";
 import { EndpointApi } from "../endpointApi.server";
 import { workerQueue } from "../worker.server";
 import { env } from "~/env.server";

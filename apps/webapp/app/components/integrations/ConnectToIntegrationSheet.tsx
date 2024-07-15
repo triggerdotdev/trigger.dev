@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Integration } from "~/services/externalApis/types";
+import { type Integration } from "~/services/externalApis/types";
 import { apiReferencePath, docsIntegrationPath } from "~/utils/pathBuilder";
 import { LinkButton } from "../primitives/Buttons";
 import { Header1, Header2 } from "../primitives/Headers";
@@ -8,7 +8,6 @@ import { Paragraph } from "../primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTrigger } from "../primitives/Sheet";
 import { ApiKeyHelp } from "./ApiKeyHelp";
-import { CustomHelp } from "./CustomHelp";
 import { SelectOAuthMethod } from "./SelectOAuthMethod";
 
 type IntegrationMethod = "apikey" | "oauth2" | "custom";

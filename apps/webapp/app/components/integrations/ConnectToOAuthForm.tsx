@@ -8,7 +8,11 @@ import simplur from "simplur";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useTextFilter } from "~/hooks/useTextFilter";
 import { createSchema } from "~/routes/resources.connection.$organizationId.oauth2";
-import { ApiAuthenticationMethodOAuth2, Integration, Scope } from "~/services/externalApis/types";
+import {
+  type ApiAuthenticationMethodOAuth2,
+  type Integration,
+  type Scope,
+} from "~/services/externalApis/types";
 import { cn } from "~/utils/cn";
 import { CodeBlock } from "../code/CodeBlock";
 import { Button } from "../primitives/Buttons";

@@ -1,9 +1,9 @@
 import { WebClient } from "@slack/web-api";
 import {
-  IntegrationService,
-  Organization,
-  OrganizationIntegration,
-  SecretReference,
+  type IntegrationService,
+  type Organization,
+  type OrganizationIntegration,
+  type SecretReference,
 } from "@trigger.dev/database";
 import { z } from "zod";
 import { $transaction, prisma } from "~/db.server";

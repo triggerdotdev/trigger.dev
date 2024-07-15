@@ -1,4 +1,4 @@
-import { PrismaClient, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type PrismaClient, type PrismaClientOrTransaction, prisma } from "~/db.server";
 import { logger } from "../logger.server";
 import { ResumeRunService } from "../runs/resumeRun.server";
 import { workerQueue } from "../worker.server";

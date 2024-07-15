@@ -1,4 +1,4 @@
-import { DisplayProperty, DisplayPropertiesSchema } from "@trigger.dev/core";
+import { type DisplayProperty , DisplayPropertiesSchema } from '@trigger.dev/core/schemas';
 
 // Takes a list of potential arrays of DisplayProperties and merges them together so no duplicates exist based on the label
 // For example, if the propertyLists are:

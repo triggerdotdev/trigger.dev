@@ -1,5 +1,5 @@
 import { parse } from "@conform-to/zod";
-import { ActionFunction, json } from "@remix-run/node";
+import { type ActionFunction, json } from "@remix-run/node";
 import { z } from "zod";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";

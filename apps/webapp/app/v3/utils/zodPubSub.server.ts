@@ -1,8 +1,8 @@
-import { Logger } from "@trigger.dev/core-backend";
-import { ZodMessageCatalogSchema, ZodMessageHandler } from "@trigger.dev/core/v3/zodMessageHandler";
+import { type Logger } from "@trigger.dev/core-backend";
+import { type ZodMessageCatalogSchema, ZodMessageHandler } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
-import Redis, { RedisOptions } from "ioredis";
-import { z } from "zod";
+import Redis, { type RedisOptions } from "ioredis";
+import { type z } from "zod";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
 

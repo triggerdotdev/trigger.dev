@@ -1,8 +1,8 @@
 import {
-  Span,
+  type Span,
   SpanKind,
-  SpanOptions,
-  Tracer,
+  type SpanOptions,
+  type Tracer,
   context,
   propagation,
   trace,
@@ -12,10 +12,10 @@ import {
   SEMATTRS_MESSAGING_OPERATION,
   SEMATTRS_MESSAGING_SYSTEM,
 } from "@opentelemetry/semantic-conventions";
-import { flattenAttributes } from "@trigger.dev/core/v3";
+import { flattenAttributes } from '@trigger.dev/core/v3/utils/flattenAttributes';
 import Redis, { type Callback, type RedisOptions, type Result } from "ioredis";
 import { env } from "~/env.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { attributesFromAuthenticatedEnv } from "../tracer.server";
@@ -23,12 +23,12 @@ import { AsyncWorker } from "./asyncWorker.server";
 import { MarQSShortKeyProducer } from "./marqsKeyProducer.server";
 import { SimpleWeightedChoiceStrategy } from "./simpleWeightedPriorityStrategy.server";
 import {
-  MarQSKeyProducer,
-  MarQSQueuePriorityStrategy,
+  type MarQSKeyProducer,
+  type MarQSQueuePriorityStrategy,
   MessagePayload,
-  QueueCapacities,
-  QueueRange,
-  VisibilityTimeoutStrategy,
+  type QueueCapacities,
+  type QueueRange,
+  type VisibilityTimeoutStrategy,
 } from "./types";
 import { V3VisibilityTimeout } from "./v3VisibilityTimeout.server";
 

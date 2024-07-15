@@ -1,9 +1,4 @@
-import type {
-  TaskRunExecutionResult,
-  TaskRunFailedExecutionResult,
-  TaskRunSuccessfulExecutionResult,
-} from "@trigger.dev/core/v3";
-import { TaskRunError } from "@trigger.dev/core/v3";
+import { type TaskRunExecutionResult , type TaskRunFailedExecutionResult , type TaskRunSuccessfulExecutionResult , TaskRunError } from '@trigger.dev/core/v3/schemas';
 
 import type {
   TaskRun,

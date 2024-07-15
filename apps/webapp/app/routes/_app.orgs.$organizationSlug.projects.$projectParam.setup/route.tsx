@@ -1,5 +1,5 @@
 import { Outlet } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import { useTypedMatchData, useTypedMatchesData } from "~/hooks/useTypedMatchData";

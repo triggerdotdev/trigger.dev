@@ -1,5 +1,5 @@
-import { FailTaskBodyInput, ServerTask } from "@trigger.dev/core";
-import { PrismaClient } from "@trigger.dev/database";
+import { type FailTaskBodyInput , type ServerTask } from '@trigger.dev/core/schemas';
+import { type PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { taskWithAttemptsToServerTask } from "~/models/task.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";

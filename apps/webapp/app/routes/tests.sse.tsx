@@ -1,5 +1,5 @@
 import { useLoaderData } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEventSource } from "~/hooks/useEventSource";
 import { z } from "zod";
 

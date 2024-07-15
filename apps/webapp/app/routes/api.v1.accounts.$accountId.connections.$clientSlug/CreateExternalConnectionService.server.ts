@@ -1,6 +1,6 @@
-import { CreateExternalConnectionBody } from "@trigger.dev/core";
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type CreateExternalConnectionBody } from '@trigger.dev/core/schemas';
+import { type PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { integrationAuthRepository } from "~/services/externalApis/integrationAuthRepository.server";
 
 export class CreateExternalConnectionService {

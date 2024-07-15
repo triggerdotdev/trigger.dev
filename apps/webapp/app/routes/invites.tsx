@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ActionFunction, LoaderFunctionArgs, json, redirect } from "@remix-run/node";
+import { type ActionFunction, type LoaderFunctionArgs, json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";

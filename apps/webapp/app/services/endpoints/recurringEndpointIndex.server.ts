@@ -1,4 +1,4 @@
-import { PrismaClient, prisma } from "~/db.server";
+import { type PrismaClient, prisma } from "~/db.server";
 import { logger } from "../logger.server";
 import { workerQueue } from "../worker.server";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";

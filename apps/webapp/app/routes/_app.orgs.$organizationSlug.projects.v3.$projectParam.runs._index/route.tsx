@@ -1,7 +1,7 @@
 import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
 import { Form, useNavigation } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconCircleX } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ListChecks, ListX } from "lucide-react";

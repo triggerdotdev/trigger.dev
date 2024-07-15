@@ -1,5 +1,5 @@
 import { RequeueTaskRunService } from "../requeueTaskRun.server";
-import { VisibilityTimeoutStrategy } from "./types";
+import { type VisibilityTimeoutStrategy } from "./types";
 
 export class V3VisibilityTimeout implements VisibilityTimeoutStrategy {
   async heartbeat(messageId: string, timeoutInMs: number): Promise<void> {

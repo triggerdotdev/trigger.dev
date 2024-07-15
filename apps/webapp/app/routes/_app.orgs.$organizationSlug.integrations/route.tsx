@@ -30,11 +30,11 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { MatchedOrganization, useOrganization } from "~/hooks/useOrganizations";
+import { type MatchedOrganization, useOrganization } from "~/hooks/useOrganizations";
 import { useTextFilter } from "~/hooks/useTextFilter";
 import {
-  Client,
-  IntegrationOrApi,
+  type Client,
+  type IntegrationOrApi,
   IntegrationsPresenter,
 } from "~/presenters/IntegrationsPresenter.server";
 import { requireUserId } from "~/services/session.server";

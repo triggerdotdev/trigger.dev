@@ -1,6 +1,5 @@
 import type { Job, JobVersion } from "@trigger.dev/database";
-import { $transaction, PrismaClientOrTransaction } from "~/db.server";
-import { prisma } from "~/db.server";
+import { $transaction, type PrismaClientOrTransaction , prisma } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
