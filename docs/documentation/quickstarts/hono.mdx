@@ -5,6 +5,8 @@ description: "Start creating Jobs in 5 minutes in your Hono project."
 icon: "fire"
 ---
 
+<Snippet file="v3-redirect-warning.mdx" />
+
 Hono is a fast & lightweight web framework built on top of Web Standards, and we support using Hono with Trigger.dev on Cloudflare Workers, Bun, Deno, and Node.js.
 
 ## Installing Required Packages
@@ -214,6 +216,7 @@ export default app;
 ### Deno
 
 Import trigger.dev packages with Deno using [npm: specifiers](https://docs.deno.com/runtime/manual/node/npm_specifiers):
+
 ```ts index.ts
 import { createMiddleware } from "npm:@trigger.dev/hono@latest";
 import { TriggerClient, invokeTrigger } from "npm:@trigger.dev/sdk@latest";
@@ -221,16 +224,20 @@ import { Hono } from "npm:hono"; // Make sure to use the npm specifier for hono 
 ```
 
 To load a `.env` file on startup, pass the `deno run` command a `--env` flag:
+
 ```bash
 deno run --env --allow-net --watch index.ts
 ```
 
 You can also load an environment variables file in code using the `dotenv` package:
+
 ```ts index.ts
 import { load } from "https://deno.land/std@0.208.0/dotenv/mod.ts";
 const env = await load();
 ```
+
 In which case you need to pass the `--allow-env` and `--allow-read` flags:
+
 ```bash
 deno run --allow-env --allow-net --allow-read --watch index.ts
 ```
