@@ -3,4 +3,5 @@
 "@trigger.dev/core": patch
 ---
 
-Add ping/pong mechanism initiated by dev CLI to keep TCP connections alive
+- Prevent uncaught exceptions when handling WebSocket messages
+- Improve CLI dev command WebSocket debug and error logging
