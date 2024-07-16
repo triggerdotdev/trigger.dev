@@ -2,10 +2,12 @@ import { clientWebsocketMessages, serverWebsocketMessages } from "@trigger.dev/c
 import { ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
 import { randomUUID } from "node:crypto";
-import type { CloseEvent, ErrorEvent, MessageEvent, WebSocket } from "ws";
+import type { CloseEvent, ErrorEvent, MessageEvent } from "ws";
+import { WebSocket } from "ws";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { DevQueueConsumer } from "./marqs/devQueueConsumer.server";
+import { HeartbeatService } from "./services/heartbeatService.server";
 
 export class AuthenticatedSocketConnection {
   public id: string;
@@ -14,6 +16,7 @@ export class AuthenticatedSocketConnection {
   private _sender: ZodMessageSender<typeof serverWebsocketMessages>;
   private _consumer: DevQueueConsumer;
   private _messageHandler: ZodMessageHandler<typeof clientWebsocketMessages>;
+  private _pingService: HeartbeatService;
 
   constructor(
     public ws: WebSocket,
@@ -49,6 +52,38 @@ export class AuthenticatedSocketConnection {
     ws.addEventListener("message", this.#handleMessage.bind(this));
     ws.addEventListener("close", this.#handleClose.bind(this));
     ws.addEventListener("error", this.#handleError.bind(this));
+
+    ws.on("ping", (data) => {
+      logger.debug("[AuthenticatedSocketConnection] Received ping", {
+        id: this.id,
+        envId: this.authenticatedEnv.id,
+        data,
+      });
+    });
+
+    ws.on("pong", (data) => {
+      logger.debug("[AuthenticatedSocketConnection] Received pong", {
+        id: this.id,
+        envId: this.authenticatedEnv.id,
+        data,
+      });
+    });
+
+    this._pingService = new HeartbeatService({
+      heartbeat: async () => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          logger.debug("[AuthenticatedSocketConnection] Websocket not open, skipping ping");
+          return;
+        }
+
+        logger.debug("[AuthenticatedSocketConnection] Sending ping", {
+          id: this.id,
+          envId: this.authenticatedEnv.id,
+        });
+
+        ws.ping();
+      },
+    });
 
     this._messageHandler = new ZodMessageHandler({
       schema: clientWebsocketMessages,
@@ -127,6 +162,8 @@ export class AuthenticatedSocketConnection {
 
   async #handleClose(ev: CloseEvent) {
     logger.debug("[AuthenticatedSocketConnection] Websocket closed", { ev });
+
+    this._pingService.stop();
 
     await this._consumer.stop();
 
