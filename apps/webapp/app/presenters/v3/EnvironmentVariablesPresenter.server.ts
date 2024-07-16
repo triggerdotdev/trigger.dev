@@ -78,26 +78,11 @@ export class EnvironmentVariablesPresenter {
       where: {
         project: {
           slug: projectSlug,
-        },
-        OR: [
-          {
-            type: {
-              in: ["PREVIEW", "STAGING", "PRODUCTION"],
-            },
-          },
-          {
-            type: "DEVELOPMENT",
-            orgMember: {
-              userId,
-            },
-          },
-        ],
+        }
       },
     });
 
-    const sortedEnvironments = sortEnvironments(environments).filter(
-      (e) => e.orgMember?.userId === userId || e.orgMember === null
-    );
+    const sortedEnvironments = sortEnvironments(environments);
 
     const repository = new EnvironmentVariablesRepository(this.#prismaClient);
     const variables = await repository.getProject(project.id);
@@ -119,7 +104,9 @@ export class EnvironmentVariablesPresenter {
           }, {} as Record<string, { value: string | undefined; environment: { type: string; id: string } }>),
         };
       }),
-      environments: sortedEnvironments.map((environment) => ({
+      environments: sortedEnvironments.filter(
+        (e) => e.orgMember?.userId === userId || e.orgMember === null
+      ).map((environment) => ({
         id: environment.id,
         type: environment.type,
       })),
